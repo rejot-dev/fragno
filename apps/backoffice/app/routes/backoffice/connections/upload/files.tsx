@@ -811,7 +811,7 @@ function CreateFolderForm({
   );
 }
 
-function UploadFilesView({
+function useUploadFilesViewState({
   files,
   filesError,
 }: {
@@ -1099,9 +1099,10 @@ function UploadFilesView({
   }, [nextQueuedUpload, startUploads, uploadingFiles]);
 
   if (configError) {
-    return (
-      <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-600">{configError}</div>
-    );
+    return {
+      status: "config-error",
+      message: configError,
+    } as const;
   }
 
   const queueFilesForPrefix = (
@@ -1257,6 +1258,75 @@ function UploadFilesView({
     }
   };
 
+  return {
+    status: "ready",
+    files,
+    filesError,
+    actionError,
+    actionSuccess,
+    uploadError,
+    downloadError,
+    orgId,
+    selectedNodeKey,
+    providerTrees,
+    openFolders,
+    setFolderOpen,
+    selectedNodeKind,
+    selectedFile,
+    missingFileParentHref,
+    downloadUrl,
+    supportsSignedDownload,
+    actionBusy,
+    downloadingFile,
+    handleDownloadFile,
+    selectedFolderNode,
+    selectedPrefix,
+    uploadTargetProvider,
+    uploadTargetPrefix,
+    selectedProvider,
+    createFolder,
+    isDragActive,
+    handleDropFiles,
+    handleDragEnter,
+    handleDragLeave,
+    fileInputId,
+    fileInputRef,
+    handleBrowseSelection,
+    hasFailedUploads,
+    startUploads,
+    uploadingFiles,
+    activeUploadPrefix,
+    hasFinishedUploads,
+    clearFinishedUploads,
+    pendingUploadsElsewhere,
+    folderQueue,
+  } as const;
+}
+
+type ReadyUploadFilesViewState = Extract<
+  ReturnType<typeof useUploadFilesViewState>,
+  { status: "ready" }
+>;
+
+function UploadFilesView({
+  files,
+  filesError,
+}: {
+  files: UploadFileRecord[];
+  filesError: string | null;
+}) {
+  const state = useUploadFilesViewState({ files, filesError });
+
+  if (state.status === "config-error") {
+    return (
+      <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-600">
+        {state.message}
+      </div>
+    );
+  }
+
+  const { actionError, actionSuccess, uploadError, downloadError } = state;
+
   return (
     <div className="space-y-4">
       {filesError ? <p className="text-xs text-red-500">{filesError}</p> : null}
@@ -1266,359 +1336,412 @@ function UploadFilesView({
       {downloadError ? <p className="text-xs text-red-500">{downloadError}</p> : null}
 
       <section className="grid gap-4 lg:grid-cols-[minmax(18rem,0.92fr)_minmax(24rem,1.08fr)]">
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                Explorer
-              </p>
-              <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                Browse the stored key hierarchy. Select a folder to upload into it or a file to
-                inspect it.
-              </p>
-            </div>
+        <UploadExplorerPanel state={state} />
+        <UploadSelectionPanel state={state} />
+      </section>
+    </div>
+  );
+}
 
-            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-              {files.length} loaded
-            </span>
+function UploadExplorerPanel({ state }: { state: ReadyUploadFilesViewState }) {
+  const { files, orgId, selectedNodeKey, providerTrees, openFolders, setFolderOpen } = state;
+
+  return (
+    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+            Explorer
+          </p>
+          <p className="mt-2 text-sm text-[var(--bo-muted)]">
+            Browse the stored key hierarchy. Select a folder to upload into it or a file to inspect
+            it.
+          </p>
+        </div>
+
+        <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
+          {files.length} loaded
+        </span>
+      </div>
+
+      <nav
+        aria-label="Upload file explorer"
+        className="mt-4 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3"
+      >
+        <Link
+          to={buildSelectionHref(orgId, { kind: "root" })}
+          aria-current={selectedNodeKey === "root" ? "page" : undefined}
+          className={
+            selectedNodeKey === "root"
+              ? "flex items-center justify-between gap-3 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-3 text-[var(--bo-fg)]"
+              : "flex items-center justify-between gap-3 rounded-sm border border-transparent bg-transparent px-3 py-3 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)]"
+          }
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <FolderOpen className="h-4 w-4 shrink-0" />
+            <span className="truncate text-sm font-semibold">Upload roots</span>
+          </span>
+          <span className="shrink-0 text-[11px] tracking-[0.22em] text-current/70 uppercase">
+            {files.length} files
+          </span>
+        </Link>
+
+        {providerTrees.length === 0 ? (
+          <p className="mt-4 text-sm text-[var(--bo-muted)]">
+            No upload providers are configured yet.
+          </p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {providerTrees.map((providerTree) => (
+              <UploadProviderRootTree
+                key={providerTree.provider}
+                providerTree={providerTree}
+                orgId={orgId}
+                selectedNodeKey={selectedNodeKey}
+                openPrefixes={openFolders}
+                onOpenChange={setFolderOpen}
+              />
+            ))}
+          </div>
+        )}
+      </nav>
+    </div>
+  );
+}
+
+function UploadSelectionPanel({ state }: { state: ReadyUploadFilesViewState }) {
+  return (
+    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+      {state.selectedNodeKind === "file" ? (
+        <UploadFileSelectionPanel state={state} />
+      ) : (
+        <UploadFolderSelectionPanel state={state} />
+      )}
+    </div>
+  );
+}
+
+function UploadFileSelectionPanel({ state }: { state: ReadyUploadFilesViewState }) {
+  const {
+    selectedFile,
+    missingFileParentHref,
+    downloadUrl,
+    supportsSignedDownload,
+    actionBusy,
+    downloadingFile,
+    handleDownloadFile,
+  } = state;
+
+  if (!selectedFile) {
+    return (
+      <div className="space-y-4">
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+            File detail
+          </p>
+          <p className="mt-2 text-sm text-[var(--bo-muted)]">
+            The selected file is no longer available. Open its containing folder to upload a
+            replacement or inspect nearby files.
+          </p>
+          <div className="mt-4">
+            <Link
+              to={missingFileParentHref}
+              className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+              Open containing folder
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+              File detail
+            </p>
+            <p className="mt-2 text-lg font-semibold text-[var(--bo-fg)]">
+              {selectedFile.filename}
+            </p>
+            <p className="mt-1 text-xs break-all text-[var(--bo-muted)]">{selectedFile.fileKey}</p>
           </div>
 
-          <nav
-            aria-label="Upload file explorer"
-            className="mt-4 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3"
+          <Link
+            to={missingFileParentHref}
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
-            <Link
-              to={buildSelectionHref(orgId, { kind: "root" })}
-              aria-current={selectedNodeKey === "root" ? "page" : undefined}
-              className={
-                selectedNodeKey === "root"
-                  ? "flex items-center justify-between gap-3 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-3 text-[var(--bo-fg)]"
-                  : "flex items-center justify-between gap-3 rounded-sm border border-transparent bg-transparent px-3 py-3 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)]"
-              }
+            Open folder
+          </Link>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <DetailStat label="Provider" value={selectedFile.provider} />
+          <DetailStat label="Status" value={selectedFile.status} />
+          <DetailStat label="Size" value={formatBytes(selectedFile.sizeBytes)} />
+          <DetailStat label="Content type" value={selectedFile.contentType} />
+          <DetailStat
+            label="Created"
+            value={formatUploadTimestamp(selectedFile.createdAt) || "Unknown"}
+          />
+          <DetailStat
+            label="Updated"
+            value={formatUploadTimestamp(selectedFile.updatedAt) || "Unknown"}
+          />
+        </div>
+      </div>
+
+      {downloadUrl ? (
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+            Download URL
+          </p>
+          <p className="mt-2 break-all text-[var(--bo-fg)]">{downloadUrl.url}</p>
+          <p className="mt-1 text-xs text-[var(--bo-muted-2)]">
+            Expires: {formatUploadTimestamp(downloadUrl.expiresAt)}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="grid gap-2">
+        {supportsSignedDownload ? (
+          <Form method="post">
+            <input type="hidden" name="intent" value="download-url" />
+            <input type="hidden" name="provider" value={selectedFile.provider} />
+            <input type="hidden" name="fileKey" value={selectedFile.fileKey} />
+            <button
+              type="submit"
+              disabled={actionBusy}
+              className="inline-flex w-full items-center justify-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
             >
-              <span className="flex min-w-0 items-center gap-2">
-                <FolderOpen className="h-4 w-4 shrink-0" />
-                <span className="truncate text-sm font-semibold">Upload roots</span>
-              </span>
-              <span className="shrink-0 text-[11px] tracking-[0.22em] text-current/70 uppercase">
-                {files.length} files
-              </span>
-            </Link>
+              <Download className="h-3.5 w-3.5" />
+              Generate download URL
+            </button>
+          </Form>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void handleDownloadFile()}
+            disabled={actionBusy || downloadingFile}
+            className="inline-flex w-full items-center justify-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {downloadingFile ? "Downloading…" : "Download file"}
+          </button>
+        )}
 
-            {providerTrees.length === 0 ? (
-              <p className="mt-4 text-sm text-[var(--bo-muted)]">
-                No upload providers are configured yet.
-              </p>
-            ) : (
-              <div className="mt-3 space-y-2">
-                {providerTrees.map((providerTree) => (
-                  <UploadProviderRootTree
-                    key={providerTree.provider}
-                    providerTree={providerTree}
-                    orgId={orgId}
-                    selectedNodeKey={selectedNodeKey}
-                    openPrefixes={openFolders}
-                    onOpenChange={setFolderOpen}
-                  />
-                ))}
-              </div>
-            )}
-          </nav>
-        </div>
+        <Form method="post">
+          <input type="hidden" name="intent" value="delete-file" />
+          <input type="hidden" name="provider" value={selectedFile.provider} />
+          <input type="hidden" name="fileKey" value={selectedFile.fileKey} />
+          <button
+            type="submit"
+            disabled={actionBusy}
+            className="inline-flex w-full items-center justify-center gap-2 border border-red-300 bg-red-50 px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-red-600 uppercase transition-colors hover:border-red-400 disabled:opacity-60"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete file
+          </button>
+        </Form>
+      </div>
+    </div>
+  );
+}
 
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
-          {selectedNodeKind === "file" ? (
-            selectedFile ? (
-              <div className="space-y-4">
-                <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                        File detail
-                      </p>
-                      <p className="mt-2 text-lg font-semibold text-[var(--bo-fg)]">
-                        {selectedFile.filename}
-                      </p>
-                      <p className="mt-1 text-xs break-all text-[var(--bo-muted)]">
-                        {selectedFile.fileKey}
-                      </p>
-                    </div>
+function UploadFolderSelectionPanel({ state }: { state: ReadyUploadFilesViewState }) {
+  const {
+    selectedNodeKind,
+    selectedFolderNode,
+    selectedPrefix,
+    uploadTargetProvider,
+    uploadTargetPrefix,
+    selectedProvider,
+    createFolder,
+    isDragActive,
+    handleDropFiles,
+    handleDragEnter,
+    handleDragLeave,
+    fileInputId,
+    fileInputRef,
+    handleBrowseSelection,
+    hasFailedUploads,
+    startUploads,
+    uploadingFiles,
+    activeUploadPrefix,
+    hasFinishedUploads,
+    clearFinishedUploads,
+    pendingUploadsElsewhere,
+    folderQueue,
+  } = state;
 
-                    <Link
-                      to={missingFileParentHref}
-                      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                    >
-                      Open folder
-                    </Link>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <DetailStat label="Provider" value={selectedFile.provider} />
-                    <DetailStat label="Status" value={selectedFile.status} />
-                    <DetailStat label="Size" value={formatBytes(selectedFile.sizeBytes)} />
-                    <DetailStat label="Content type" value={selectedFile.contentType} />
-                    <DetailStat
-                      label="Created"
-                      value={formatUploadTimestamp(selectedFile.createdAt) || "Unknown"}
-                    />
-                    <DetailStat
-                      label="Updated"
-                      value={formatUploadTimestamp(selectedFile.updatedAt) || "Unknown"}
-                    />
-                  </div>
-                </div>
-
-                {downloadUrl ? (
-                  <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-                    <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                      Download URL
-                    </p>
-                    <p className="mt-2 break-all text-[var(--bo-fg)]">{downloadUrl.url}</p>
-                    <p className="mt-1 text-xs text-[var(--bo-muted-2)]">
-                      Expires: {formatUploadTimestamp(downloadUrl.expiresAt)}
-                    </p>
-                  </div>
-                ) : null}
-
-                <div className="grid gap-2">
-                  {supportsSignedDownload ? (
-                    <Form method="post">
-                      <input type="hidden" name="intent" value="download-url" />
-                      <input type="hidden" name="provider" value={selectedFile.provider} />
-                      <input type="hidden" name="fileKey" value={selectedFile.fileKey} />
-                      <button
-                        type="submit"
-                        disabled={actionBusy}
-                        className="inline-flex w-full items-center justify-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        Generate download URL
-                      </button>
-                    </Form>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => void handleDownloadFile()}
-                      disabled={actionBusy || downloadingFile}
-                      className="inline-flex w-full items-center justify-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      {downloadingFile ? "Downloading…" : "Download file"}
-                    </button>
-                  )}
-
-                  <Form method="post">
-                    <input type="hidden" name="intent" value="delete-file" />
-                    <input type="hidden" name="provider" value={selectedFile.provider} />
-                    <input type="hidden" name="fileKey" value={selectedFile.fileKey} />
-                    <button
-                      type="submit"
-                      disabled={actionBusy}
-                      className="inline-flex w-full items-center justify-center gap-2 border border-red-300 bg-red-50 px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-red-600 uppercase transition-colors hover:border-red-400 disabled:opacity-60"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Delete file
-                    </button>
-                  </Form>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
-                  <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                    File detail
-                  </p>
-                  <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                    The selected file is no longer available. Open its containing folder to upload a
-                    replacement or inspect nearby files.
-                  </p>
-                  <div className="mt-4">
-                    <Link
-                      to={missingFileParentHref}
-                      className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                    >
-                      <FolderOpen className="h-3.5 w-3.5" />
-                      Open containing folder
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            )
-          ) : (
-            <div className="space-y-4">
-              <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                      Upload target
-                    </p>
-                    <p className="mt-2 text-lg font-semibold text-[var(--bo-fg)]">
-                      {selectedNodeKind === "root"
-                        ? "Root"
-                        : (selectedFolderNode?.name ??
-                          getLeafLabel(stripTrailingSlash(selectedPrefix)))}
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--bo-muted)]">
-                      {uploadTargetProvider ? (
-                        <>
-                          Uploads land under{" "}
-                          <span className="font-semibold text-[var(--bo-fg)]">
-                            {formatPrefixLabel(uploadTargetPrefix ?? "")}
-                          </span>{" "}
-                          using readable collision-safe keys.
-                        </>
-                      ) : (
-                        "Select a configured upload root to browse, create folders, or upload files."
-                      )}
-                    </p>
-                  </div>
-
-                  <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-                    Uploads via:{" "}
-                    {selectedProvider ? toProviderLabel(selectedProvider) : "select a root"}
-                  </span>
-                </div>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <DetailStat label="Files" value={String(selectedFolderNode?.fileCount ?? 0)} />
-                  <DetailStat
-                    label="Nested folders"
-                    value={String(selectedFolderNode?.folderCount ?? 0)}
-                  />
-                  <DetailStat
-                    label="Stored size"
-                    value={formatBytes(selectedFolderNode?.totalSizeBytes ?? 0)}
-                  />
-                </div>
-
-                {selectedFolderNode?.providers.length ? (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {selectedFolderNode.providers.map((provider) => (
-                      <span
-                        key={provider}
-                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase"
-                      >
-                        {provider}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-
-              <CreateFolderForm
-                key={`${uploadTargetProvider ?? "none"}:${uploadTargetPrefix ?? "none"}`}
-                parentPrefix={uploadTargetPrefix ?? ""}
-                enabled={Boolean(uploadTargetProvider)}
-                onCreate={createFolder}
-              />
-
-              <div
-                className={
-                  isDragActive
-                    ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] p-4"
-                    : "border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] p-4"
-                }
-                onDrop={handleDropFiles}
-                onDragEnter={handleDragEnter}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-              >
-                <input
-                  id={fileInputId}
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  onChange={handleBrowseSelection}
-                  className="sr-only"
-                />
-
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                  <div>
-                    <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                      Drop zone
-                    </p>
-                    <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                      Drag files here or choose them manually. New files upload straight into{" "}
-                      <span className="font-semibold text-[var(--bo-fg)]">
-                        {formatPrefixLabel(uploadTargetPrefix ?? "")}
-                      </span>
-                      .
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={!uploadTargetProvider}
-                      className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                    >
-                      <Upload className="h-3.5 w-3.5" />
-                      Choose files
-                    </button>
-                    {hasFailedUploads ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (uploadTargetProvider && uploadTargetPrefix !== null) {
-                            void startUploads(uploadTargetProvider, uploadTargetPrefix);
-                          }
-                        }}
-                        disabled={
-                          uploadingFiles || !uploadTargetProvider || uploadTargetPrefix === null
-                        }
-                        className="inline-flex items-center gap-2 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-                      >
-                        <RefreshCcw className="h-3.5 w-3.5" />
-                        {uploadingFiles && activeUploadPrefix === uploadTargetPrefix
-                          ? "Uploading…"
-                          : "Retry failed"}
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (uploadTargetProvider && uploadTargetPrefix !== null) {
-                          clearFinishedUploads(uploadTargetProvider, uploadTargetPrefix);
-                        }
-                      }}
-                      disabled={
-                        !hasFinishedUploads ||
-                        uploadingFiles ||
-                        !uploadTargetProvider ||
-                        uploadTargetPrefix === null
-                      }
-                      className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Clear finished
-                    </button>
-                  </div>
-                </div>
-
-                {pendingUploadsElsewhere > 0 ? (
-                  <p className="mt-3 text-xs text-[var(--bo-muted-2)]">
-                    {pendingUploadsElsewhere} queued, active, or failed upload
-                    {pendingUploadsElsewhere === 1 ? "" : "s"} in another folder.
-                  </p>
-                ) : null}
-              </div>
-
-              {folderQueue.length > 0 ? (
-                <div className="space-y-2">
-                  {folderQueue.map((item) => (
-                    <UploadQueueCard key={item.id} item={item} />
-                  ))}
-                </div>
+  return (
+    <div className="space-y-4">
+      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+              Upload target
+            </p>
+            <p className="mt-2 text-lg font-semibold text-[var(--bo-fg)]">
+              {selectedNodeKind === "root"
+                ? "Root"
+                : (selectedFolderNode?.name ?? getLeafLabel(stripTrailingSlash(selectedPrefix)))}
+            </p>
+            <p className="mt-1 text-xs text-[var(--bo-muted)]">
+              {uploadTargetProvider ? (
+                <>
+                  Uploads land under{" "}
+                  <span className="font-semibold text-[var(--bo-fg)]">
+                    {formatPrefixLabel(uploadTargetPrefix ?? "")}
+                  </span>{" "}
+                  using readable collision-safe keys.
+                </>
               ) : (
-                <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4 text-sm text-[var(--bo-muted)]">
-                  No files queued for {formatPrefixLabel(uploadTargetPrefix ?? "")} yet.
-                </div>
+                "Select a configured upload root to browse, create folders, or upload files."
               )}
-            </div>
-          )}
+            </p>
+          </div>
+
+          <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
+            Uploads via: {selectedProvider ? toProviderLabel(selectedProvider) : "select a root"}
+          </span>
         </div>
-      </section>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <DetailStat label="Files" value={String(selectedFolderNode?.fileCount ?? 0)} />
+          <DetailStat label="Nested folders" value={String(selectedFolderNode?.folderCount ?? 0)} />
+          <DetailStat
+            label="Stored size"
+            value={formatBytes(selectedFolderNode?.totalSizeBytes ?? 0)}
+          />
+        </div>
+
+        {selectedFolderNode?.providers.length ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {selectedFolderNode.providers.map((provider) => (
+              <span
+                key={provider}
+                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase"
+              >
+                {provider}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <CreateFolderForm
+        key={`${uploadTargetProvider ?? "none"}:${uploadTargetPrefix ?? "none"}`}
+        parentPrefix={uploadTargetPrefix ?? ""}
+        enabled={Boolean(uploadTargetProvider)}
+        onCreate={createFolder}
+      />
+
+      <div
+        className={
+          isDragActive
+            ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] p-4"
+            : "border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] p-4"
+        }
+        onDrop={handleDropFiles}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+      >
+        <input
+          id={fileInputId}
+          ref={fileInputRef}
+          type="file"
+          multiple
+          onChange={handleBrowseSelection}
+          className="sr-only"
+        />
+
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+              Drop zone
+            </p>
+            <p className="mt-2 text-sm text-[var(--bo-muted)]">
+              Drag files here or choose them manually. New files upload straight into{" "}
+              <span className="font-semibold text-[var(--bo-fg)]">
+                {formatPrefixLabel(uploadTargetPrefix ?? "")}
+              </span>
+              .
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!uploadTargetProvider}
+              className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              Choose files
+            </button>
+            {hasFailedUploads ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (uploadTargetProvider && uploadTargetPrefix !== null) {
+                    void startUploads(uploadTargetProvider, uploadTargetPrefix);
+                  }
+                }}
+                disabled={uploadingFiles || !uploadTargetProvider || uploadTargetPrefix === null}
+                className="inline-flex items-center gap-2 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+              >
+                <RefreshCcw className="h-3.5 w-3.5" />
+                {uploadingFiles && activeUploadPrefix === uploadTargetPrefix
+                  ? "Uploading…"
+                  : "Retry failed"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                if (uploadTargetProvider && uploadTargetPrefix !== null) {
+                  clearFinishedUploads(uploadTargetProvider, uploadTargetPrefix);
+                }
+              }}
+              disabled={
+                !hasFinishedUploads ||
+                uploadingFiles ||
+                !uploadTargetProvider ||
+                uploadTargetPrefix === null
+              }
+              className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Clear finished
+            </button>
+          </div>
+        </div>
+
+        {pendingUploadsElsewhere > 0 ? (
+          <p className="mt-3 text-xs text-[var(--bo-muted-2)]">
+            {pendingUploadsElsewhere} queued, active, or failed upload
+            {pendingUploadsElsewhere === 1 ? "" : "s"} in another folder.
+          </p>
+        ) : null}
+      </div>
+
+      {folderQueue.length > 0 ? (
+        <div className="space-y-2">
+          {folderQueue.map((item) => (
+            <UploadQueueCard key={item.id} item={item} />
+          ))}
+        </div>
+      ) : (
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4 text-sm text-[var(--bo-muted)]">
+          No files queued for {formatPrefixLabel(uploadTargetPrefix ?? "")} yet.
+        </div>
+      )}
     </div>
   );
 }
