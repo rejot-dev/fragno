@@ -24,7 +24,7 @@ export function buildOutboxPlan(operations: MutationOperation<AnySchema>[]): Out
   const lookups: OutboxRefLookup[] = [];
 
   for (const op of operations) {
-    if (op.type === "check") {
+    if (op.type === "check" || op.type === "check-absent") {
       continue;
     }
 

@@ -5,6 +5,7 @@ import { buildCondition } from "../../../query/condition-builder";
 import type { Condition } from "../../../query/condition-builder";
 import { buildFindOptions } from "../../../query/find-options";
 import type { AnySelectClause } from "../../../query/mod";
+import { buildCheckAbsentCondition } from "../../../query/unit-of-work/check-absent";
 import type {
   RetrievalOperation,
   MutationOperation,
@@ -358,6 +359,26 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       op: "check",
       expectedAffectedRows: null,
       expectedReturnedRows: 1, // Check that exactly 1 row was returned
+    };
+  }
+
+  override compileCheckAbsent(
+    op: MutationOperation<AnySchema> & { type: "check-absent" },
+  ): CompiledMutation<CompiledQuery> {
+    const sqlCompiler = this.getSQLCompiler(op.schema, op.namespace);
+    const { table, condition } = buildCheckAbsentCondition(
+      op.schema,
+      op.table,
+      op.indexName,
+      op.values,
+    );
+
+    return {
+      query: sqlCompiler.compileCheck(table, condition),
+      operation: op,
+      op: "check-absent",
+      expectedAffectedRows: null,
+      expectedReturnedRows: 0,
     };
   }
 }

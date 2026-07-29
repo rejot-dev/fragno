@@ -26,6 +26,7 @@ import {
 import { getDbNowOffsetMs, isDbNow } from "../../query/db-now";
 import type { CompiledJoin } from "../../query/find-options";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
+import { buildCheckAbsentCondition } from "../../query/unit-of-work/check-absent";
 import type {
   CompiledMutation,
   MutationOperation,
@@ -1094,6 +1095,40 @@ const checkRow = (
   }
 };
 
+const checkAbsent = (
+  op: Extract<MutationOperation<AnySchema>, { type: "check-absent" }>,
+  namespaceStore: InMemoryNamespaceStore,
+  tableStore: InMemoryTableStore,
+  resolver?: NamingResolver,
+): void => {
+  const { table, normalizedIndexName } = buildCheckAbsentCondition(
+    op.schema,
+    op.table,
+    op.indexName,
+    op.values,
+  );
+  const indexStore = tableStore.indexes.get(normalizedIndexName);
+  if (!indexStore) {
+    throw new Error(`Missing in-memory index "${normalizedIndexName}" on table "${table.name}".`);
+  }
+
+  const encodedValues = encodeValues(op.values, table, false, {}, resolver);
+  const resolvedValues = resolveReferenceSubqueries(namespaceStore, encodedValues, resolver);
+  const key = buildIndexKey(table, indexStore.definition, resolvedValues, resolver);
+  const matches = indexStore.index.scan({
+    start: key,
+    startInclusive: true,
+    end: key,
+    endInclusive: true,
+    limit: 1,
+  });
+  if (matches.length > 0) {
+    throw new VersionConflictError(
+      `Version conflict: index "${op.indexName}" on table "${table.name}" was expected to be absent.`,
+    );
+  }
+};
+
 const resolveSchemaForLookup = (
   table: AnyTable,
   namespace: string | undefined,
@@ -1600,7 +1635,7 @@ export const createInMemoryUowExecutor = (
           continue;
         }
 
-        if (operation.type === "check") {
+        if (operation.type === "check" || operation.type === "check-absent") {
           const resolver = getResolver(operation.schema, operation.namespace, resolverFactory);
           const namespaceStore = getNamespaceStore(
             store,
@@ -1613,7 +1648,11 @@ export const createInMemoryUowExecutor = (
             throw new Error(`Invalid table name ${operation.table}.`);
           }
           const tableStore = getTableStore(namespaceStore, table, resolver);
-          checkRow(operation, tableStore, table, resolver);
+          if (operation.type === "check") {
+            checkRow(operation, tableStore, table, resolver);
+          } else {
+            checkAbsent(operation, namespaceStore, tableStore, resolver);
+          }
           continue;
         }
 

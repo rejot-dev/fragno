@@ -38,6 +38,7 @@ const testSchema = schema("test", (s) => {
         .addColumn("createdAt", column("timestamp"))
         .addColumn("invitedBy", referenceColumn({ table: "users" }).nullable())
         .createIndex("idx_email", ["email"], { unique: true })
+        .createIndex("idx_name_email", ["name", "email"], { unique: true })
         .createIndex("idx_users_name", ["name"])
         .createIndex("idx_age", ["age"])
         .createIndex("idx_users_name_created_id", ["name", "createdAt", "id"]);
@@ -365,6 +366,40 @@ describe("GenericSQLUOWOperationCompiler", () => {
       `"select 1 as "exists" from "users" where ("users"."id" = ? and "users"."_version" = ?) limit ?"`,
     );
     assert(result!.expectedReturnedRows === 1);
+  });
+
+  test("compileCheckAbsent operation for a composite unique index", () => {
+    const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+
+    const result = compiler.compileCheckAbsent({
+      type: "check-absent",
+      schema: testSchema,
+      table: "users",
+      indexName: "idx_name_email",
+      values: { name: "Alice", email: "alice@example.com" },
+    });
+
+    expect(result.query.sql).toMatchInlineSnapshot(
+      `"select 1 as "exists" from "users" where ("users"."name" = ? and "users"."email" = ?) limit ?"`,
+    );
+    assert(result.expectedReturnedRows === 0);
+  });
+
+  test("compileCheckAbsent operation for the built-in primary index", () => {
+    const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+
+    const result = compiler.compileCheckAbsent({
+      type: "check-absent",
+      schema: testSchema,
+      table: "users",
+      indexName: "_primary",
+      values: { id: "user-123" },
+    });
+
+    expect(result.query.sql).toMatchInlineSnapshot(
+      `"select 1 as "exists" from "users" where "users"."id" = ? limit ?"`,
+    );
+    assert(result.expectedReturnedRows === 0);
   });
 
   describe("compileCreate - dialect differences", () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it, assert } from "vitest";
+import { describe, expect, it, assert, vi } from "vitest";
 
 import { UnitOfWork } from "../../query/unit-of-work/unit-of-work";
 import type { AnySchema } from "../../schema/create";
@@ -36,6 +36,16 @@ const mutableValuesSchema = schema("mutable-values", (s) =>
   ),
 );
 
+const uniqueKeySchema = schema("unique-key", (s) =>
+  s.addTable("records", (t) =>
+    t
+      .addColumn("id", idColumn())
+      .addColumn("scope", column("string"))
+      .addColumn("key", column("string"))
+      .createIndex("records_scope_key_idx", ["scope", "key"], { unique: true }),
+  ),
+);
+
 const createUowFactoryWithOptions = <TSchema extends AnySchema>(
   testSchemaToUse: TSchema,
   optionsOverrides: InMemoryAdapterOptions = {},
@@ -54,6 +64,36 @@ const createUowFactoryWithOptions = <TSchema extends AnySchema>(
 };
 
 describe("in-memory uow mutations", () => {
+  it("uses a bounded exact-key scan for absence checks", async () => {
+    const { createUow, store } = createUowFactoryWithOptions(uniqueKeySchema);
+    const seed = createUow();
+    seed.create("records", { id: "record-1", scope: "scope-a", key: "key-a" });
+    seed.create("records", { id: "record-2", scope: "scope-b", key: "key-b" });
+    assert((await seed.executeMutations()).success);
+
+    const indexStore = store.namespaces
+      .get("unique-key")
+      ?.tables.get("records")
+      ?.indexes.get("records_scope_key_idx");
+    assert(indexStore);
+    const scan = vi.spyOn(indexStore.index, "scan");
+
+    const check = createUow();
+    check.checkAbsent("records", "records_scope_key_idx", {
+      scope: "scope-b",
+      key: "missing-key",
+    });
+    assert((await check.executeMutations()).success);
+
+    expect(scan).toHaveBeenCalledExactlyOnceWith({
+      start: ["scope-b", "missing-key"],
+      startInclusive: true,
+      end: ["scope-b", "missing-key"],
+      endInclusive: true,
+      limit: 1,
+    });
+  });
+
   it("snapshots mutable column values on writes and reads", async () => {
     const { createUow } = createUowFactoryWithOptions(mutableValuesSchema);
     const payload = { nested: { value: "created" } };

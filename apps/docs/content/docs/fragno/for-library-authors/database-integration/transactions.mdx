@@ -185,8 +185,7 @@ updated row's version, while `.retryOnUniqueConflict(...)` handles the accepted 
 
 ### Standalone `uow.check(table, id)`
 
-Sometimes you want to assert that a record hasn't changed _without_ updating it (e.g. guard related
-rows before writing):
+Use a standalone check to guard a row without updating it:
 
 ```typescript
 transfer: function (from: FragnoId, to: FragnoId) {
@@ -200,16 +199,25 @@ transfer: function (from: FragnoId, to: FragnoId) {
 }
 ```
 
+### Assert absence with `uow.checkAbsent()`
+
+Use a complete, non-null unique-index key to assert that no matching row exists:
+
+```typescript
+uow.checkAbsent("file", "idx_file_provider_key", {
+  provider,
+  key: fileKey,
+});
+```
+
+The unique constraint remains the final guard against a concurrent create after the check.
+
 ### Important: `.check()` requires a `FragnoId`, not a string
 
-`.check()` **throws** if you try to use it with a plain string ID, because a string doesn't contain
-version information:
+- ✅ `uow.check("users", user.id)`
+- ❌ `uow.check("users", "user-123")`
 
-- ✅ `uow.update("users", user.id, (b) => b.set(...).check())` (where `user.id` came from a query)
-- ❌ `uow.update("users", "user-123", (b) => b.set(...).check())`
-
-You _can_ update/delete using a string ID **without** `.check()` (no version guard), but that means
-last-write-wins.
+Updates and deletes can use a string ID without `.check()`, but then use last-write-wins semantics.
 
 ### End-to-end example: handler controls execution, service performs the transfer
 

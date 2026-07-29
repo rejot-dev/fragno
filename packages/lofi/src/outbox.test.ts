@@ -114,7 +114,13 @@ describe("outbox utilities", () => {
 
   it("converts uow operations into lofi mutations", () => {
     const appSchema = schema("app", (s) =>
-      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+      s.addTable("users", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn("email", column("string"))
+          .createIndex("idx_email", ["email"], { unique: true }),
+      ),
     );
 
     const mutations = uowOperationsToLofiMutations([
@@ -145,6 +151,13 @@ describe("outbox utilities", () => {
         schema: appSchema,
         table: "users",
         id: FragnoId.fromExternal("user-3", 1),
+      },
+      {
+        type: "check-absent",
+        schema: appSchema,
+        table: "users",
+        indexName: "idx_email",
+        values: { email: "missing@example.com" },
       },
     ]);
 
