@@ -17,6 +17,7 @@ export type RouteCallerConfig = {
 };
 
 type ArrayBufferViewOfArrayBuffer = ArrayBufferView & { buffer: ArrayBuffer };
+type RouteCallerRawBody = BodyInit | ArrayBufferView;
 
 type FragmentLike = {
   routes?: readonly AnyFragnoRouteConfig[];
@@ -31,7 +32,8 @@ export type RouteCallerForFragment<TFragment extends FragmentLike> = TFragment e
       path: TPath,
       inputOptions?: RouteHandlerInputOptions<
         TPath,
-        RouteCallMatch<TRoutes, TMethod, TPath>["inputSchema"]
+        RouteCallMatch<TRoutes, TMethod, TPath>["inputSchema"],
+        TMethod extends "GET" | "HEAD" ? never : RouteCallerRawBody
       >,
     ) => Promise<
       FragnoResponse<
@@ -68,7 +70,11 @@ export function createRouteCaller<TFragment extends FragmentLike>(
   const callRoute = async <TPath extends string>(
     method: HTTPMethod,
     path: TPath,
-    inputOptions?: RouteHandlerInputOptions<TPath, StandardSchemaV1 | undefined>,
+    inputOptions?: RouteHandlerInputOptions<
+      TPath,
+      StandardSchemaV1 | undefined,
+      RouteCallerRawBody
+    >,
   ): Promise<FragnoResponse<unknown>> => {
     const headers = baseHeaders ? new Headers(baseHeaders) : new Headers();
     const explicitHeaders = inputOptions?.headers
@@ -107,22 +113,15 @@ export function createRouteCaller<TFragment extends FragmentLike>(
     if (inputOptions && "body" in inputOptions) {
       const rawBody = (inputOptions as { body?: unknown }).body;
 
-      if (rawBody instanceof FormData || rawBody instanceof Blob) {
-        body = rawBody;
-        if (!hasExplicitContentType) {
-          headers.delete("content-type");
-        }
-      } else if (rawBody instanceof ReadableStream) {
-        body = rawBody;
-        if (!hasExplicitContentType) {
-          headers.delete("content-type");
-        }
-      } else if (rawBody instanceof ArrayBuffer) {
-        body = rawBody;
-        if (!hasExplicitContentType) {
-          headers.delete("content-type");
-        }
-      } else if (isArrayBufferView(rawBody)) {
+      if (
+        typeof rawBody === "string" ||
+        rawBody instanceof URLSearchParams ||
+        rawBody instanceof FormData ||
+        rawBody instanceof Blob ||
+        rawBody instanceof ReadableStream ||
+        rawBody instanceof ArrayBuffer ||
+        isArrayBufferView(rawBody)
+      ) {
         body = rawBody;
         if (!hasExplicitContentType) {
           headers.delete("content-type");
@@ -135,14 +134,17 @@ export function createRouteCaller<TFragment extends FragmentLike>(
       }
     }
 
-    const response = await fetch(
-      new Request(url, {
-        method,
-        headers,
-        body,
-        redirect,
-      }),
-    );
+    const requestInit: RequestInit & { duplex?: "half" } = {
+      method,
+      headers,
+      body,
+      redirect,
+    };
+    if (body instanceof ReadableStream) {
+      requestInit.duplex = "half";
+    }
+
+    const response = await fetch(new Request(url, requestInit));
 
     return parseFragnoResponse(response);
   };

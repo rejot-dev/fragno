@@ -114,6 +114,16 @@ describe("createRouteCaller", () => {
         outputSchema: z.object({ ok: z.boolean() }),
         handler: async (_ctx, { json }) => json({ ok: true }),
       }),
+      defineRoute({
+        method: "PUT",
+        path: "/files/:fileId/content",
+        contentType: "application/octet-stream",
+        outputSchema: z.object({ sizeBytes: z.number() }),
+        handler: async (ctx, { json }) => {
+          const bytes = new Uint8Array(await new Response(ctx.bodyStream()).arrayBuffer());
+          return json({ sizeBytes: bytes.byteLength });
+        },
+      }),
     ] as const;
 
     type FakeFragment = {
@@ -147,6 +157,10 @@ describe("createRouteCaller", () => {
           return Response.json({ ok: body.text === "hello" });
         }
 
+        if (url.pathname === "/api/files/file-1/content") {
+          return Response.json({ sizeBytes: (await request.arrayBuffer()).byteLength });
+        }
+
         return Response.json({ message: "Not found", code: "NOT_FOUND" }, { status: 404 });
       },
     });
@@ -162,6 +176,28 @@ describe("createRouteCaller", () => {
       pathParams: { threadId: "thread-1" },
       body: { text: "hello" },
     });
+    const contentResponse = await callRoute("PUT", "/files/:fileId/content", {
+      pathParams: { fileId: "file-1" },
+      headers: { "content-type": "application/octet-stream" },
+      body: new Blob([new Uint8Array([1, 2, 3])]),
+    });
+    const textContentResponse = await callRoute("PUT", "/files/:fileId/content", {
+      pathParams: { fileId: "file-1" },
+      body: "hello",
+    });
+    const formContentResponse = await callRoute("PUT", "/files/:fileId/content", {
+      pathParams: { fileId: "file-1" },
+      body: new URLSearchParams({ a: "b" }),
+    });
+    const streamContentResponse = await callRoute("PUT", "/files/:fileId/content", {
+      pathParams: { fileId: "file-1" },
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1, 2, 3]));
+          controller.close();
+        },
+      }),
+    });
 
     expectTypeOf<Extract<typeof listResponse, { type: "json" }>["data"]>().toEqualTypeOf<{
       threads: { id: string }[];
@@ -174,6 +210,9 @@ describe("createRouteCaller", () => {
     }>();
     expectTypeOf<Extract<typeof replyResponse, { type: "json" }>["data"]>().toEqualTypeOf<{
       ok: boolean;
+    }>();
+    expectTypeOf<Extract<typeof contentResponse, { type: "json" }>["data"]>().toEqualTypeOf<{
+      sizeBytes: number;
     }>();
     expectTypeOf<typeof listResponse>().toExtend<FragnoResponse<unknown>>();
 
@@ -191,6 +230,26 @@ describe("createRouteCaller", () => {
     assert(replyResponse.type === "json");
     if (replyResponse.type === "json") {
       assert(replyResponse.data.ok);
+    }
+
+    assert(contentResponse.type === "json");
+    if (contentResponse.type === "json") {
+      assert(contentResponse.data.sizeBytes === 3);
+    }
+
+    assert(textContentResponse.type === "json");
+    if (textContentResponse.type === "json") {
+      assert(textContentResponse.data.sizeBytes === 5);
+    }
+
+    assert(formContentResponse.type === "json");
+    if (formContentResponse.type === "json") {
+      assert(formContentResponse.data.sizeBytes === 3);
+    }
+
+    assert(streamContentResponse.type === "json");
+    if (streamContentResponse.type === "json") {
+      assert(streamContentResponse.data.sizeBytes === 3);
     }
   });
 });
