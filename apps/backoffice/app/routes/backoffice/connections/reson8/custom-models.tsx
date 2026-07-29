@@ -12,8 +12,10 @@ import {
 
 import { FormContainer, FormField } from "@/components/backoffice";
 
+import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope";
+import { formatTimestamp } from "../formatting";
 import { createReson8CustomModel, fetchReson8Config, fetchReson8CustomModels } from "./data";
-import { formatTimestamp, type Reson8LayoutContext } from "./shared";
+import type { Reson8LayoutContext } from "./shared";
 
 type Reson8CustomModelsActionData = {
   ok: boolean;
@@ -57,10 +59,12 @@ const normalizeCustomModelInput = (input: Reson8CustomModelForm) => {
 };
 
 export async function loader({ request, context, params }: LoaderFunctionArgs) {
-  const orgId = params.orgId;
-  if (!orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const { integration, orgId } = await resolveAuthenticatedOrgIntegrationContext({
+    request,
+    context,
+    params,
+    integration: "reson8",
+  });
 
   const { configState, configError } = await fetchReson8Config(context, orgId);
   if (configError) {
@@ -72,7 +76,7 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
   }
 
   if (!configState?.configured) {
-    return redirect(`/backoffice/connections/reson8/${orgId}/configuration`);
+    return redirect(`${integration.basePath}/configuration`);
   }
 
   const { models, modelsError } = await fetchReson8CustomModels(request, context, orgId);
@@ -84,10 +88,12 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
 }
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
-  const orgId = params.orgId;
-  if (!orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const { orgId } = await resolveAuthenticatedOrgIntegrationContext({
+    request,
+    context,
+    params,
+    integration: "reson8",
+  });
 
   const formData = await request.formData();
   const payload = {

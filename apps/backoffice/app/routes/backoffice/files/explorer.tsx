@@ -4,7 +4,7 @@ import { Link, useLoaderData, useOutletContext, useRevalidator } from "react-rou
 
 import { eq, useLiveQuery } from "@tanstack/react-db";
 
-import { formatBytes } from "@/components/backoffice";
+import { BackofficeSystemState, formatBytes } from "@/components/backoffice";
 import { ClientOnly } from "@/components/client-only";
 import type { FilesExplorerTreeNode } from "@/files";
 import { toUploadFileRecord, type UploadFileRecord } from "@/fragno/upload/file-record";
@@ -86,14 +86,18 @@ export default function BackofficeFilesExplorer() {
 
 function FilesExplorerLoading() {
   return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-      Loading local file metadata…
+    <BackofficeSystemState
+      tone="loading"
+      label="Mounting filesystem"
+      title="Synchronizing workspace files…"
+      description="Loading mounted roots, upload metadata, and local file projections."
+    >
       <noscript>
-        <span className="mt-2 block text-red-700 dark:text-red-200">
+        <span className="text-[var(--bo-failed)]">
           JavaScript is required to open synchronized files.
         </span>
       </noscript>
-    </div>
+    </BackofficeSystemState>
   );
 }
 
@@ -202,9 +206,12 @@ function FilesExplorerView({
       {loadError ? <MessageTone tone="error">{loadError}</MessageTone> : null}
 
       {tree.length === 0 ? (
-        <section className="border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          No filesystem mounts are available for this organisation yet.
-        </section>
+        <BackofficeSystemState
+          tone="empty"
+          label="No mounted roots"
+          title="This workspace has no filesystems yet."
+          description="Configure a filesystem contributor or upload integration to make files available here."
+        />
       ) : (
         <section className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
           <aside className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
@@ -415,8 +422,8 @@ function StatCard({ label, value }: { label: string; value: string }) {
 function MessageTone({ tone, children }: { tone: "error" | "success"; children: ReactNode }) {
   const toneClass =
     tone === "error"
-      ? "border-[color:var(--bo-border-strong)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
-      : "border-[color:var(--bo-border)] bg-[var(--bo-panel)] text-[var(--bo-fg)]";
+      ? "border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] text-[var(--bo-failed)]"
+      : "border-[color:var(--bo-live)] bg-[var(--bo-live-bg)] text-[var(--bo-live)]";
 
   return <section className={`border p-3 text-sm ${toneClass}`}>{children}</section>;
 }

@@ -38,18 +38,18 @@ export default function BackofficeConnectionsUpload() {
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
-          { label: "Connections", to: "/backoffice/connections" },
+          { label: "Internals", to: "/backoffice/internals" },
           { label: "Upload" },
         ]}
-        eyebrow="Connections"
+        eyebrow="Administration"
         title="Upload connection workspace."
         description="Pick an organisation to configure storage and manage files."
         actions={
           <Link
-            to="/backoffice/connections"
+            to="/backoffice/internals"
             className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
-            Back to connections
+            Back to internals
           </Link>
         }
       />

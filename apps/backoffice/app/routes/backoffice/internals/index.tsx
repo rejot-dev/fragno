@@ -1,8 +1,10 @@
 import { Link, useOutletContext } from "react-router";
 
-import { BackofficePageHeader } from "@/components/backoffice";
+import { BackofficePageHeader, BackofficeStatusLight } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
+
+type BackofficeMe = BackofficeLayoutContext["me"];
 
 type InternalDestination = {
   id: string;
@@ -30,13 +32,6 @@ function internalDestinations(hasOrganization: boolean): InternalDestination[] {
       to: hasOrganization ? "/backoffice/connections/upload" : null,
     },
     {
-      id: "reson8",
-      name: "Reson8",
-      description: "Inspect transcription configuration, models, and runtime operations.",
-      status: hasOrganization ? "Available" : "Planned",
-      to: hasOrganization ? "/backoffice/connections/reson8" : null,
-    },
-    {
       id: "durable-hooks",
       name: "Durable hooks",
       description:
@@ -52,13 +47,6 @@ function internalDestinations(hasOrganization: boolean): InternalDestination[] {
       status: "Available",
       to: "/backoffice/internals/workflows",
     },
-    {
-      id: "audit-log",
-      name: "Audit log",
-      description: "Review administrative events and operational metadata for each workspace.",
-      status: "Planned",
-      to: null,
-    },
   ];
 }
 
@@ -71,8 +59,11 @@ export function meta() {
 
 export default function BackofficeInternals() {
   const { me } = useOutletContext<BackofficeLayoutContext>();
-  const { data: currentMe } = authClient.useMe();
-  const destinations = internalDestinations((currentMe ?? me).organizations.length > 0);
+  const { data: currentMeData } = authClient.useMe();
+  const currentMe = currentMeData as BackofficeMe | null | undefined;
+  const effectiveMe = currentMe ?? me;
+  const hasOrganization = effectiveMe ? effectiveMe.organizations.length > 0 : false;
+  const destinations = internalDestinations(hasOrganization);
 
   return (
     <div className="space-y-4">
@@ -80,7 +71,7 @@ export default function BackofficeInternals() {
         breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Internals" }]}
         eyebrow="Administration"
         title="Durable systems and operational tooling."
-        description="Inspect the internal queues, hooks, connections, and control planes that power fragments."
+        description="Inspect the internal queues, hooks, service adapters, and control planes that power fragments."
       />
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -89,7 +80,7 @@ export default function BackofficeInternals() {
           return (
             <div
               key={item.id}
-              className="bo-panel-surface flex min-h-52 flex-col bg-[var(--bo-panel)] p-4"
+              className="bo-fragment-surface bo-panel-surface flex min-h-52 flex-col bg-[var(--bo-panel)] p-4"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -100,9 +91,9 @@ export default function BackofficeInternals() {
                     {item.name}
                   </h2>
                 </div>
-                <span className="shrink-0 bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase shadow-[inset_0_0_0_1px_var(--bo-border)]">
-                  {isAvailable ? "Live" : "Soon"}
-                </span>
+                <BackofficeStatusLight tone={isAvailable ? "live" : "waiting"}>
+                  {isAvailable ? "Online" : "Planned"}
+                </BackofficeStatusLight>
               </div>
               <p className="mt-4 text-sm text-pretty text-[var(--bo-muted)]">{item.description}</p>
               <div className="mt-auto pt-4">

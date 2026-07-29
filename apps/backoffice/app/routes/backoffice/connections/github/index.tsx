@@ -23,7 +23,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   const organizationId = activeOrganizationId ?? fallbackOrganizationId;
 
   if (!organizationId) {
-    return redirect("/backoffice/connections");
+    return redirect("/backoffice/automations");
   }
 
   return redirect(

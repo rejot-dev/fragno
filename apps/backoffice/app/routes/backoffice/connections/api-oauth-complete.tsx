@@ -42,7 +42,9 @@ export function meta({ loaderData }: Route.MetaArgs) {
 export default function BackofficeApiOAuthComplete() {
   const { orgId, connectionSlug, status, code, message } = useLoaderData<typeof loader>();
   const isSuccess = status === "success";
-  const backUrl = "/backoffice/connections";
+  const backUrl = orgId
+    ? `/backoffice/automations/org/${encodeURIComponent(orgId)}/api`
+    : "/backoffice/automations";
 
   return (
     <section className="mx-auto max-w-4xl overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
@@ -111,7 +113,7 @@ export default function BackofficeApiOAuthComplete() {
           to={backUrl}
           className="inline-flex min-h-10 items-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96]"
         >
-          Back to connections
+          Back to API
         </Link>
       </div>
     </section>

@@ -23,9 +23,7 @@ export default [
         route("invites", "routes/backoffice/organisation-invites.tsx"),
         route("billing", "routes/backoffice/organisation-billing.tsx"),
       ]),
-      route("connections", "routes/backoffice/connections/index.tsx"),
       route("connections/resend", "routes/backoffice/connections/resend/index.tsx"),
-      route("connections/reson8", "routes/backoffice/connections/reson8/index.tsx"),
       route("connections/mcp", "routes/backoffice/connections/mcp/index.tsx"),
       route(
         "connections/api/oauth-complete",
@@ -147,6 +145,22 @@ export default [
         ],
       ),
       route(
+        "automations/:scopeKind/:scopeId/integrations/reson8",
+        "routes/backoffice/connections/reson8/organisation-layout.tsx",
+        { id: "scoped-integrations/reson8/layout" },
+        [
+          route("configuration", "routes/backoffice/connections/reson8/configuration.tsx", {
+            id: "scoped-integrations/reson8/configuration",
+          }),
+          route("custom-models", "routes/backoffice/connections/reson8/custom-models.tsx", {
+            id: "scoped-integrations/reson8/custom-models",
+          }),
+          route("transcribe", "routes/backoffice/connections/reson8/transcribe.tsx", {
+            id: "scoped-integrations/reson8/transcribe",
+          }),
+        ],
+      ),
+      route(
         "automations/:scopeKind/:scopeId/integrations/github",
         "routes/backoffice/connections/github/organisation-layout.tsx",
         { id: "scoped-integrations/github/layout" },
@@ -187,16 +201,6 @@ export default [
         route("sandboxes", "routes/backoffice/automations/sandboxes.tsx"),
       ]),
 
-      route(
-        "connections/reson8/:orgId",
-        "routes/backoffice/connections/reson8/organisation-layout.tsx",
-        [
-          index("routes/backoffice/connections/reson8/organisation-index.tsx"),
-          route("configuration", "routes/backoffice/connections/reson8/configuration.tsx"),
-          route("custom-models", "routes/backoffice/connections/reson8/custom-models.tsx"),
-          route("transcribe", "routes/backoffice/connections/reson8/transcribe.tsx"),
-        ],
-      ),
       route("connections/mcp/:orgId", "routes/backoffice/connections/mcp/organisation-layout.tsx", [
         index("routes/backoffice/connections/mcp/organisation-index.tsx"),
         route("configuration", "routes/backoffice/connections/mcp/configuration.tsx"),

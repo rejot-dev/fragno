@@ -12,7 +12,7 @@ export function BackofficeBreadcrumbs({ items }: { items: BreadcrumbItem[] }) {
     items.length > 1 && items[0]?.label === "Backoffice" ? items.slice(1) : items;
 
   return (
-    <nav aria-label="Breadcrumb" className="text-[10px] tracking-[0.24em] uppercase">
+    <nav aria-label="Breadcrumb" className="font-mono text-[9px] tracking-[0.18em] uppercase">
       <ol className="flex flex-wrap items-center gap-2 text-[var(--bo-muted-2)]">
         {visibleItems.map((item, index) => {
           const isLast = index === visibleItems.length - 1;

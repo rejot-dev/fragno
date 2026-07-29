@@ -3,7 +3,7 @@ import { Link, useOutletContext } from "react-router";
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
-import { formatTimestamp } from "./shared";
+import { formatTimestamp } from "../formatting";
 
 export function meta() {
   return [
@@ -22,18 +22,18 @@ export default function BackofficeConnectionsTelegram() {
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
-          { label: "Connections", to: "/backoffice/connections" },
+          { label: "Automations", to: "/backoffice/automations" },
           { label: "Telegram" },
         ]}
-        eyebrow="Connections"
+        eyebrow="Integrations"
         title="Telegram connection workspace."
         description="Pick an organisation to configure bots, webhooks, and message capture."
         actions={
           <Link
-            to="/backoffice/connections"
+            to="/backoffice/automations"
             className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
-            Back to connections
+            Back to automations
           </Link>
         }
       />

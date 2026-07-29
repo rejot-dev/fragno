@@ -354,19 +354,19 @@ export const DURABLE_HOOKS_OBJECT_CONFIGURE_META: Partial<
   >
 > = {
   api: {
-    path: () => "/backoffice/connections",
+    path: (orgId) => `/backoffice/automations/org/${orgId}/api`,
     label: "Configure API",
   },
   telegram: {
-    path: (orgId) => `/backoffice/connections/telegram/${orgId}/configuration`,
+    path: (orgId) => `/backoffice/automations/org/${orgId}/integrations/telegram/configuration`,
     label: "Configure Telegram",
   },
   otp: {
-    path: (orgId) => `/backoffice/connections/telegram/${orgId}/configuration`,
+    path: (orgId) => `/backoffice/automations/org/${orgId}/integrations/telegram/configuration`,
     label: "Open Telegram linking",
   },
   resend: {
-    path: (orgId) => `/backoffice/connections/resend/${orgId}/configuration`,
+    path: (orgId) => `/backoffice/automations/org/${orgId}/integrations/resend/configuration`,
     label: "Configure Resend",
   },
   mcp: {
@@ -378,7 +378,7 @@ export const DURABLE_HOOKS_OBJECT_CONFIGURE_META: Partial<
     label: "Configure Upload",
   },
   github: {
-    path: (orgId) => `/backoffice/connections/github/${orgId}/configuration`,
+    path: (orgId) => `/backoffice/automations/org/${orgId}/integrations/github/configuration`,
     label: "Configure GitHub",
   },
   pi: {

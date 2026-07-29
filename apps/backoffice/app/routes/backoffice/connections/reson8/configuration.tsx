@@ -10,7 +10,9 @@ import {
 import { FormContainer, FormField } from "@/components/backoffice";
 import { getReson8DurableObject } from "@/worker-runtime/durable-objects";
 
-import { formatTimestamp, type Reson8ConfigState, type Reson8LayoutContext } from "./shared";
+import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope";
+import { formatTimestamp } from "../formatting";
+import type { Reson8ConfigState, Reson8LayoutContext } from "./shared";
 
 type Reson8ConfigForm = {
   apiKey: string;
@@ -23,17 +25,20 @@ type Reson8ConfigActionData = {
 };
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const { orgId } = await resolveAuthenticatedOrgIntegrationContext({
+    request,
+    context,
+    params,
+    integration: "reson8",
+  });
 
   const formData = await request.formData();
   const apiKey = typeof formData.get("apiKey") === "string" ? String(formData.get("apiKey")) : "";
 
-  const reson8Do = getReson8DurableObject(context, params.orgId);
+  const reson8Do = getReson8DurableObject(context, orgId);
 
   try {
-    const configState = await reson8Do.setAdminConfig({ apiKey }, params.orgId);
+    const configState = await reson8Do.setAdminConfig({ apiKey }, orgId);
     return {
       ok: true,
       message: "Reson8 API key saved.",

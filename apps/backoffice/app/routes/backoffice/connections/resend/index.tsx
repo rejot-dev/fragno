@@ -5,8 +5,8 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
+import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/index";
-import { formatTimestamp } from "./shared";
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
@@ -39,18 +39,18 @@ export default function BackofficeConnectionsResend() {
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
-          { label: "Connections", to: "/backoffice/connections" },
+          { label: "Automations", to: "/backoffice/automations" },
           { label: "Resend" },
         ]}
-        eyebrow="Connections"
+        eyebrow="Integrations"
         title="Resend connection workspace."
         description="Pick an organisation to configure Resend webhooks and monitor email delivery."
         actions={
           <Link
-            to="/backoffice/connections"
+            to="/backoffice/automations"
             className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
-            Back to connections
+            Back to automations
           </Link>
         }
       />
