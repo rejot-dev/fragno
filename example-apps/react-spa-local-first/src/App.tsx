@@ -741,6 +741,9 @@ export default function App() {
         }
 
         const data = (await response.json()) as InternalDescribeResponse | InternalDescribeError;
+        if (signal.aborted || cancelled) {
+          return;
+        }
         if (data && typeof data === "object" && "error" in data) {
           setEndpointInfos((prev) => ({
             ...prev,

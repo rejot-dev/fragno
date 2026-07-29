@@ -405,7 +405,7 @@ export function useStore<SomeStore extends Store>(
   store: SomeStore,
   options: UseStoreOptions<SomeStore> = {},
 ): StoreValue<SomeStore> {
-  const readStoreValue = (): StoreValue<SomeStore> => store.get();
+  const readStoreValue = useCallback((): StoreValue<SomeStore> => store.get(), [store]);
   const snapshotRef = useRef<{ value: StoreValue<SomeStore> } | null>(null);
   if (snapshotRef.current === null) {
     snapshotRef.current = { value: readStoreValue() };
@@ -430,7 +430,7 @@ export function useStore<SomeStore extends Store>(
       }
       return store.listen(emitChange);
     },
-    [keys, store],
+    [keys, readStoreValue, store],
   );
 
   const get = () => snapshotRef.current!.value;

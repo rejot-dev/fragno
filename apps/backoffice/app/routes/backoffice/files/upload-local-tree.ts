@@ -22,6 +22,10 @@ type LocalUploadExplorer = {
 };
 
 const NODE_SORTER = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 export function isUploadExplorerMount(mount: FileMountMetadata): mount is UploadExplorerMount {
   return mount.kind === "upload" && mount.uploadProvider !== undefined;
@@ -366,15 +370,10 @@ function formatBytesValue(value: number): string {
   return `${size >= 10 || exponent === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[exponent]}`;
 }
 
-const dateTimeFormatter = new Intl.DateTimeFormat("en", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
 function formatDateValue(value: string | Date): string {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {
     return "—";
   }
-  return dateTimeFormatter.format(date);
+  return DATE_TIME_FORMATTER.format(date);
 }
