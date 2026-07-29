@@ -1,0 +1,147 @@
+import { Menu } from "@base-ui/react/menu";
+import { Check, Monitor, Moon, Sun } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+
+import { cn } from "@/lib/utils";
+
+type ThemeChoice = "light" | "dark" | "system";
+
+const THEME_OPTIONS = [
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: Moon },
+  { value: "system", label: "System", icon: Monitor },
+] as const;
+
+function isThemeChoice(value: unknown): value is ThemeChoice {
+  return value === "light" || value === "dark" || value === "system";
+}
+
+function applyTheme(choice: ThemeChoice) {
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const isDark = choice === "dark" || (choice === "system" && prefersDark);
+  const root = document.documentElement;
+
+  root.classList.toggle("dark", isDark);
+  root.style.colorScheme = isDark ? "dark" : "light";
+}
+
+export function BackofficeThemeMenu() {
+  const [choice, setChoice] = useState<ThemeChoice>("system");
+  const [isReady, setIsReady] = useState(false);
+
+  const updateTheme = useCallback((nextChoice: ThemeChoice) => {
+    setChoice(nextChoice);
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    applyTheme(nextChoice);
+    try {
+      window.localStorage.setItem("theme", nextChoice);
+    } catch {
+      // Theme persistence is optional when storage is unavailable.
+    }
+  }, []);
+
+  useEffect(() => {
+    let storedTheme: string | null = null;
+    try {
+      storedTheme = window.localStorage.getItem("theme");
+    } catch {
+      // Fall back to the system theme when storage is unavailable.
+    }
+
+    const initialChoice = isThemeChoice(storedTheme) ? storedTheme : "system";
+    setChoice(initialChoice);
+    applyTheme(initialChoice);
+
+    const frame = window.requestAnimationFrame(() => {
+      setIsReady(true);
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleSystemThemeChange = () => {
+      applyTheme("system");
+    };
+
+    if (choice === "system") {
+      mediaQuery.addEventListener("change", handleSystemThemeChange);
+    }
+    return () => {
+      mediaQuery.removeEventListener("change", handleSystemThemeChange);
+    };
+  }, [choice]);
+
+  return (
+    <Menu.Root modal={false}>
+      <Menu.Trigger
+        type="button"
+        disabled={!isReady}
+        aria-label={`Theme: ${choice}`}
+        title="Choose theme"
+        className="bo-control-surface group flex size-10 shrink-0 items-center justify-center bg-[var(--bo-panel)] text-[var(--bo-muted)] transition-[scale,background-color,color,box-shadow] duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:not-disabled:scale-[0.96] disabled:opacity-60 data-[popup-open]:bg-[var(--bo-accent-bg)] data-[popup-open]:text-[var(--bo-accent-fg)]"
+      >
+        <span className="relative size-4" aria-hidden="true">
+          {THEME_OPTIONS.map(({ value, icon: Icon }) => (
+            <Icon
+              key={value}
+              className={cn(
+                "absolute inset-0 size-4",
+                isReady &&
+                  "transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)]",
+                choice === value
+                  ? "scale-100 opacity-100 blur-0"
+                  : "scale-[0.25] opacity-0 blur-[4px]",
+              )}
+            />
+          ))}
+        </span>
+      </Menu.Trigger>
+
+      <Menu.Portal>
+        <Menu.Positioner side="bottom" align="end" sideOffset={8} className="z-50">
+          <Menu.Popup
+            data-backoffice-root
+            className="bo-popover-surface w-52 origin-top-right bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] transition-[opacity,transform] duration-150 ease-out outline-none data-[ending-style]:-translate-y-1 data-[ending-style]:opacity-0 data-[starting-style]:-translate-y-1 data-[starting-style]:opacity-0"
+          >
+            <Menu.RadioGroup
+              value={choice}
+              aria-label="Appearance"
+              onValueChange={(value) => {
+                if (isThemeChoice(value)) {
+                  updateTheme(value);
+                }
+              }}
+              className="space-y-1"
+            >
+              <p
+                aria-hidden="true"
+                className="px-2 py-1 text-[9px] font-semibold tracking-[0.24em] text-[var(--bo-muted-2)] uppercase"
+              >
+                Appearance
+              </p>
+              {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+                <Menu.RadioItem
+                  key={value}
+                  value={value}
+                  className="flex min-h-10 cursor-default items-center gap-3 px-2.5 text-sm text-[var(--bo-muted)] transition-[scale,background-color,color] duration-150 ease-out outline-none active:scale-[0.96] data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)]"
+                >
+                  <Icon className="size-4 shrink-0" aria-hidden="true" />
+                  <span className="flex-1">{label}</span>
+                  <Menu.RadioItemIndicator className="text-[var(--bo-accent-fg)]">
+                    <Check className="size-4" aria-hidden="true" />
+                  </Menu.RadioItemIndicator>
+                </Menu.RadioItem>
+              ))}
+            </Menu.RadioGroup>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  );
+}

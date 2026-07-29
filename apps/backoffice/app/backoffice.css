@@ -13,6 +13,15 @@
   --bo-accent-fg: #0b111b;
   --bo-grid: 180, 190, 210;
   --bo-overlay: 245, 247, 251;
+  --bo-control-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --bo-control-shadow-hover:
+    0 0 0 1px rgba(0, 0, 0, 0.09), 0 1px 2px -1px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --bo-panel-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06), 0 3px 8px rgba(0, 0, 0, 0.05);
+  --bo-popover-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.09), 0 12px 28px -8px rgba(15, 23, 42, 0.22),
+    0 24px 48px -16px rgba(15, 23, 42, 0.16);
 }
 
 .dark [data-backoffice-root] {
@@ -30,6 +39,26 @@
   --bo-accent-fg: #f8fbff;
   --bo-grid: 43, 58, 82;
   --bo-overlay: 8, 10, 16;
+  --bo-control-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --bo-control-shadow-hover: 0 0 0 1px rgba(255, 255, 255, 0.13);
+  --bo-panel-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --bo-popover-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 20px 44px -12px rgba(0, 0, 0, 0.7);
+}
+
+.bo-control-surface {
+  box-shadow: var(--bo-control-shadow);
+}
+
+.bo-control-surface:hover {
+  box-shadow: var(--bo-control-shadow-hover);
+}
+
+.bo-panel-surface {
+  box-shadow: var(--bo-panel-shadow);
+}
+
+.bo-popover-surface {
+  box-shadow: var(--bo-popover-shadow);
 }
 
 .backoffice-scroll {
