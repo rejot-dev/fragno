@@ -1,15 +1,20 @@
+import { Menu } from "@base-ui/react/menu";
 import { Fragment, type ReactNode } from "react";
 import { Link, isRouteErrorResponse, useSearchParams } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
+import { BackofficeBreadcrumbs } from "@/components/backoffice/breadcrumbs";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../route-errors";
 import type { AutomationTab } from "./layout-context";
 import {
   automationScopeTabPath,
+  automationUiScopeId,
+  resolveAutomationScopeTab,
   type AutomationScopeOption,
   type AutomationUiScope,
 } from "./scope";
+import { usePreviousAutomationScope } from "./scope-history";
 import {
   SCRIPT_VIEW_MODE_SEARCH_PARAM,
   WORKFLOW_GRAPH_DETAIL_MODE_SEARCH_PARAM,
@@ -28,234 +33,356 @@ export function useScriptPresentation() {
   };
 }
 
-export function AutomationHeader({ selectedScope }: { selectedScope: AutomationUiScope }) {
-  const scopeLabel = selectedScope.label;
-  const orgId =
-    selectedScope.kind === "org" || selectedScope.kind === "project" ? selectedScope.orgId : null;
+const AUTOMATION_SCOPE_GROUPS = [
+  { kind: "system", label: "System" },
+  { kind: "org", label: "Organisations" },
+  { kind: "user", label: "Personal" },
+  { kind: "project", label: "Projects" },
+] as const;
+
+const AUTOMATION_TAB_GROUPS = [
+  [{ id: "dashboard", label: "Dashboard" }],
+  [
+    { id: "terminal", label: "Terminal" },
+    { id: "scripts", label: "Scripts" },
+    { id: "router", label: "Router" },
+  ],
+  [
+    { id: "store", label: "Store" },
+    { id: "events", label: "Events" },
+    { id: "events-catalog", label: "Events Catalog" },
+  ],
+  [
+    { id: "api", label: "API" },
+    { id: "integrations", label: "Integrations" },
+    { id: "mcp", label: "MCP" },
+  ],
+  [{ id: "sandboxes", label: "Sandboxes" }],
+] as const satisfies readonly (readonly { id: AutomationTab; label: string }[])[];
+
+const automationScopeKindLabel = (kind: AutomationUiScope["kind"]) => {
+  switch (kind) {
+    case "system":
+      return "System";
+    case "org":
+      return "Org";
+    case "project":
+      return "Project";
+    case "user":
+      return "User";
+  }
+
+  throw new Error("Unsupported automation scope kind.");
+};
+
+const automationScopeItemContent = (option: AutomationScopeOption) => (
+  <>
+    <span className="flex min-w-0 items-center justify-between gap-4">
+      <span className="truncate text-sm font-medium tracking-normal text-[var(--bo-fg)] normal-case">
+        {option.label}
+      </span>
+      <span className="shrink-0 text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
+        {automationScopeKindLabel(option.kind)}
+      </span>
+    </span>
+    <span className="truncate text-xs tracking-normal text-[var(--bo-muted-2)] normal-case">
+      {option.description}
+    </span>
+  </>
+);
+
+function AutomationScopeMenu({
+  selectedScope,
+  scopeOptions,
+  projectsError,
+  createProjectPath,
+  isCreatingProject,
+  scriptPresentation,
+  activeTab,
+  triggerKindLabel,
+  triggerLabel,
+}: {
+  selectedScope: AutomationUiScope;
+  scopeOptions: AutomationScopeOption[];
+  projectsError: string | null;
+  createProjectPath?: string;
+  isCreatingProject: boolean;
+  scriptPresentation: ReturnType<typeof useScriptPresentation>;
+  activeTab: AutomationTab;
+  triggerKindLabel: string;
+  triggerLabel: string;
+}) {
+  const selectedId = automationUiScopeId(selectedScope);
+  const previousScope = usePreviousAutomationScope(selectedScope);
+  const previousScopePath = previousScope
+    ? automationScopeTabPath(previousScope, resolveAutomationScopeTab(previousScope, activeTab))
+    : null;
 
   return (
-    <BackofficePageHeader
-      breadcrumbs={[
-        { label: "Backoffice", to: "/backoffice" },
-        { label: "Automations", to: "/backoffice/automations" },
-        { label: scopeLabel },
-      ]}
-      eyebrow="Automations"
-      title={`Automations for ${scopeLabel}`}
-      description="See the live system map, then inspect the scoped terminal, scripts, routes, events, integrations, sandboxes, and store bindings."
-      actions={
-        orgId ? (
-          <Link
-            to={`/backoffice/organisations/${orgId}`}
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+    <div className="flex w-full min-w-0 items-stretch gap-2 sm:w-auto">
+      {previousScope && previousScopePath ? (
+        <Link
+          to={pathWithScriptPresentation(previousScopePath, scriptPresentation)}
+          preventScrollReset
+          title={`Return to ${previousScope.label}`}
+          aria-label={`Return to the previous automation scope: ${previousScope.label}`}
+          className="flex min-h-10 shrink-0 items-center gap-1.5 border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] px-2.5 text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,border-color,color] duration-150 ease-out hover:border-[color:var(--bo-accent)] hover:bg-[var(--bo-accent-bg)] hover:text-[var(--bo-accent-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
+        >
+          <span className="text-[var(--bo-accent-fg)]" aria-hidden="true">
+            ↶
+          </span>
+          Last
+        </Link>
+      ) : (
+        <span
+          aria-disabled="true"
+          title="No previous automation scope in this tab"
+          className="flex min-h-10 shrink-0 cursor-not-allowed items-center gap-1.5 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2.5 text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase opacity-30"
+        >
+          <span aria-hidden="true">↶</span>
+          Last
+        </span>
+      )}
+
+      <Menu.Root modal={false}>
+        <Menu.Trigger
+          type="button"
+          aria-label={`Switch automation scope. Current context: ${triggerLabel}`}
+          className="group flex min-h-10 min-w-0 flex-1 items-center gap-2.5 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] py-2 pr-2.5 pl-3 text-left transition-[scale,background-color,border-color,color] duration-150 ease-out outline-none hover:border-[color:var(--bo-border-strong)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] data-[popup-open]:border-[color:var(--bo-accent)] data-[popup-open]:bg-[var(--bo-accent-bg)] sm:flex-none"
+        >
+          <span className="shrink-0 text-[8px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase group-data-[popup-open]:text-[var(--bo-accent-fg)]">
+            Automation scope
+          </span>
+          <span className="h-4 w-px shrink-0 bg-[var(--bo-border-strong)]" aria-hidden="true" />
+          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+            <span className="shrink-0 text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
+              {triggerKindLabel}
+            </span>
+            <span className="text-[var(--bo-muted-2)]" aria-hidden="true">
+              ·
+            </span>
+            <span className="min-w-0 truncate text-sm font-medium tracking-normal text-[var(--bo-fg)] normal-case">
+              {triggerLabel}
+            </span>
+          </span>
+          <span
+            aria-hidden="true"
+            className="shrink-0 text-xs text-[var(--bo-muted-2)] transition-transform duration-150 ease-out group-data-[popup-open]:rotate-180 group-data-[popup-open]:text-[var(--bo-accent-fg)]"
           >
-            View organisation
-          </Link>
-        ) : null
-      }
-    />
+            ▾
+          </span>
+        </Menu.Trigger>
+
+        <Menu.Portal style={{ position: "relative", zIndex: 2147483647 }}>
+          <Menu.Positioner side="bottom" align="end" sideOffset={10} style={{ zIndex: 2147483647 }}>
+            <Menu.Popup
+              data-backoffice-root
+              className="relative max-h-[min(32rem,calc(100vh-6rem))] w-[min(24rem,calc(100vw-2rem))] origin-top-left overflow-y-auto border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] p-2 text-left tracking-normal text-[var(--bo-fg)] shadow-[0_18px_50px_rgba(15,23,42,0.2)] transition-[opacity,transform] duration-150 ease-out outline-none data-[ending-style]:-translate-y-1 data-[ending-style]:opacity-0 data-[starting-style]:-translate-y-1 data-[starting-style]:opacity-0 dark:shadow-[0_22px_60px_rgba(0,0,0,0.55)]"
+            >
+              <p className="px-2 py-1 text-[10px] font-semibold tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+                Switch automation scope
+              </p>
+
+              {AUTOMATION_SCOPE_GROUPS.map((group) => {
+                const options = scopeOptions.filter((option) => option.kind === group.kind);
+                const isProjectGroup = group.kind === "project";
+                const showProjectsError = isProjectGroup && projectsError;
+                const showCreateProject = isProjectGroup && createProjectPath;
+                if (options.length === 0 && !showProjectsError && !showCreateProject) {
+                  return null;
+                }
+
+                return (
+                  <Fragment key={group.kind}>
+                    <Menu.Separator className="my-2 h-px bg-[var(--bo-border)]" />
+                    <Menu.Group className="space-y-1">
+                      <Menu.GroupLabel className="px-2 py-1 text-[9px] font-semibold tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+                        {group.label}
+                      </Menu.GroupLabel>
+                      {options.map((option) => {
+                        const isCurrent = !isCreatingProject && option.id === selectedId;
+                        const className = isCurrent
+                          ? "grid min-h-11 cursor-default gap-1 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-2.5 py-2 text-left text-[var(--bo-accent-fg)] outline-none"
+                          : "grid min-h-11 gap-1 border border-transparent px-2.5 py-2 text-left text-[var(--bo-muted)] outline-none transition-[background-color,border-color,color] duration-150 ease-out data-[highlighted]:border-[color:var(--bo-border-strong)] data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)]";
+
+                        return isCurrent ? (
+                          <Menu.Item key={option.id} disabled className={className}>
+                            {automationScopeItemContent(option)}
+                          </Menu.Item>
+                        ) : (
+                          <Menu.Item
+                            key={option.id}
+                            render={
+                              <Link
+                                to={pathWithScriptPresentation(option.to, scriptPresentation)}
+                                preventScrollReset
+                              />
+                            }
+                            className={className}
+                          >
+                            {automationScopeItemContent(option)}
+                          </Menu.Item>
+                        );
+                      })}
+                      {showProjectsError ? (
+                        <p className="px-2 py-1.5 text-xs text-red-700 dark:text-red-200">
+                          {projectsError}
+                        </p>
+                      ) : null}
+                      {showCreateProject ? (
+                        isCreatingProject ? (
+                          <Menu.Item
+                            disabled
+                            className="grid min-h-11 cursor-default gap-1 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-2.5 py-2 text-left outline-none"
+                          >
+                            <span className="text-sm font-medium text-[var(--bo-fg)]">
+                              New project
+                            </span>
+                            <span className="text-xs text-[var(--bo-muted-2)]">
+                              Creating a project-scoped runtime
+                            </span>
+                          </Menu.Item>
+                        ) : (
+                          <Menu.Item
+                            render={<Link to={createProjectPath} preventScrollReset />}
+                            className="grid min-h-11 gap-1 border border-transparent px-2.5 py-2 text-left transition-[background-color,border-color,color] duration-150 ease-out outline-none data-[highlighted]:border-[color:var(--bo-border-strong)] data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)]"
+                          >
+                            <span className="text-sm font-medium text-[var(--bo-fg)]">
+                              + New project
+                            </span>
+                            <span className="text-xs text-[var(--bo-muted-2)]">
+                              Create a project-scoped runtime
+                            </span>
+                          </Menu.Item>
+                        )
+                      ) : null}
+                    </Menu.Group>
+                  </Fragment>
+                );
+              })}
+            </Menu.Popup>
+          </Menu.Positioner>
+        </Menu.Portal>
+      </Menu.Root>
+    </div>
   );
 }
 
-export function AutomationScopePicker({
+function AutomationTabRail({
+  selectedScope,
+  activeTab,
+  disabled,
+  scriptPresentation,
+}: {
+  selectedScope: AutomationUiScope;
+  activeTab: AutomationTab;
+  disabled: boolean;
+  scriptPresentation: ReturnType<typeof useScriptPresentation>;
+}) {
+  return (
+    <div className="border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
+      <nav aria-label="Automation workspace sections" className="backoffice-scroll overflow-x-auto">
+        <div role="tablist" className="flex min-w-max items-center gap-2">
+          {AUTOMATION_TAB_GROUPS.map((group, groupIndex) => (
+            <Fragment key={group[0].id}>
+              {groupIndex > 0 ? (
+                <span className="h-6 w-px shrink-0 bg-[var(--bo-border)]" aria-hidden="true" />
+              ) : null}
+              {group.map((tab) => {
+                const tabDisabled =
+                  disabled || resolveAutomationScopeTab(selectedScope, tab.id) !== tab.id;
+                const isActive = !tabDisabled && activeTab === tab.id;
+                const className = tabDisabled
+                  ? "inline-flex min-h-10 shrink-0 cursor-not-allowed items-center border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase opacity-50"
+                  : isActive
+                    ? "inline-flex min-h-10 shrink-0 items-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase outline-none transition-[scale] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
+                    : "inline-flex min-h-10 shrink-0 items-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase outline-none transition-[scale,background-color,border-color,color] duration-150 ease-out hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]";
+
+                return tabDisabled ? (
+                  <span
+                    key={tab.id}
+                    role="tab"
+                    aria-selected="false"
+                    aria-disabled="true"
+                    className={className}
+                  >
+                    {tab.label}
+                  </span>
+                ) : (
+                  <Link
+                    key={tab.id}
+                    to={pathWithScriptPresentation(
+                      automationScopeTabPath(selectedScope, tab.id),
+                      scriptPresentation,
+                    )}
+                    role="tab"
+                    aria-selected={isActive}
+                    className={className}
+                  >
+                    {tab.label}
+                  </Link>
+                );
+              })}
+            </Fragment>
+          ))}
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+export function AutomationWorkspaceHeader({
   selectedScope,
   scopeOptions,
   projectsError,
   createProjectPath,
   isCreatingProject = false,
+  activeTab,
 }: {
   selectedScope: AutomationUiScope;
   scopeOptions: AutomationScopeOption[];
   projectsError: string | null;
   createProjectPath?: string;
   isCreatingProject?: boolean;
-}) {
-  const scriptPresentation = useScriptPresentation();
-  const selectedId =
-    selectedScope.kind === "system"
-      ? "system:system"
-      : selectedScope.kind === "project"
-        ? `project:${selectedScope.projectId}`
-        : selectedScope.kind === "org"
-          ? `org:${selectedScope.orgId}`
-          : `user:${selectedScope.userId}`;
-
-  return (
-    <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">Scope</p>
-          <p className="mt-1 text-sm text-[var(--bo-muted)]">
-            Select which automation runtime to inspect.
-          </p>
-        </div>
-        {projectsError ? (
-          <p className="text-xs text-red-700 dark:text-red-200">{projectsError}</p>
-        ) : null}
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {scopeOptions.map((option) => {
-          const isActive = !isCreatingProject && option.id === selectedId;
-          return (
-            <Link
-              key={option.id}
-              to={pathWithScriptPresentation(option.to, scriptPresentation)}
-              className={
-                isActive
-                  ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-left text-[var(--bo-accent-fg)]"
-                  : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-left text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-              }
-            >
-              <span className="block text-[10px] font-semibold tracking-[0.22em] uppercase">
-                {option.kind}
-              </span>
-              <span className="mt-1 block text-sm font-medium text-[var(--bo-fg)]">
-                {option.label}
-              </span>
-              <span className="mt-1 block text-xs text-[var(--bo-muted-2)]">
-                {option.description}
-              </span>
-            </Link>
-          );
-        })}
-        {createProjectPath ? (
-          <Link
-            to={createProjectPath}
-            preventScrollReset
-            aria-current={isCreatingProject ? "page" : undefined}
-            className={
-              isCreatingProject
-                ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-left text-[var(--bo-accent-fg)]"
-                : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-left text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-            }
-          >
-            <span className="block text-[10px] font-semibold tracking-[0.22em] uppercase">
-              Project
-            </span>
-            <span className="mt-1 block text-sm font-medium text-[var(--bo-fg)]">+ New</span>
-            <span className="mt-1 block text-xs text-[var(--bo-muted-2)]">
-              Create project scope
-            </span>
-          </Link>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-export function AutomationTabs({
-  selectedScope,
-  activeTab,
-  disabled = false,
-}: {
-  selectedScope: AutomationUiScope;
   activeTab: AutomationTab;
-  disabled?: boolean;
 }) {
   const scriptPresentation = useScriptPresentation();
-  const tabs = [
-    {
-      id: "dashboard" as const,
-      label: "Dashboard",
-      to: automationScopeTabPath(selectedScope, "dashboard"),
-    },
-    {
-      id: "terminal" as const,
-      label: "Terminal",
-      to: automationScopeTabPath(selectedScope, "terminal"),
-    },
-    {
-      id: "scripts" as const,
-      label: "Scripts",
-      to: automationScopeTabPath(selectedScope, "scripts"),
-    },
-    {
-      id: "router" as const,
-      label: "Router",
-      to: automationScopeTabPath(selectedScope, "router"),
-    },
-    {
-      id: "store" as const,
-      label: "Store",
-      to: automationScopeTabPath(selectedScope, "store"),
-    },
-    {
-      id: "events" as const,
-      label: "Events",
-      to: automationScopeTabPath(selectedScope, "events"),
-    },
-    {
-      id: "events-catalog" as const,
-      label: "Events Catalog",
-      to: automationScopeTabPath(selectedScope, "events-catalog"),
-    },
-    {
-      id: "api" as const,
-      label: "API",
-      to: automationScopeTabPath(selectedScope, "api"),
-    },
-    {
-      id: "integrations" as const,
-      label: "Integrations",
-      to: automationScopeTabPath(selectedScope, "integrations"),
-    },
-    {
-      id: "mcp" as const,
-      label: "MCP",
-      to: automationScopeTabPath(selectedScope, "mcp"),
-    },
-    {
-      id: "sandboxes" as const,
-      label: "Sandboxes",
-      to: automationScopeTabPath(selectedScope, "sandboxes"),
-    },
-  ].map((tab) => ({
-    ...tab,
-    disabled:
-      disabled || (selectedScope.kind === "system" && ["api", "mcp", "sandboxes"].includes(tab.id)),
-  }));
+  const workspaceKindLabel = isCreatingProject
+    ? "Project"
+    : automationScopeKindLabel(selectedScope.kind);
+  const workspaceLabel = isCreatingProject ? "New project" : selectedScope.label;
 
   return (
-    <div
-      role="tablist"
-      aria-label="Automation backoffice tabs"
-      className="flex flex-wrap items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2"
-    >
-      {tabs.map((tab) => {
-        const isActive = !tab.disabled && activeTab === tab.id;
-        const className = tab.disabled
-          ? "cursor-not-allowed border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted-2)] opacity-50"
-          : isActive
-            ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)]"
-            : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
+    <section className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)] shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-none">
+      <div className="p-3 md:px-4">
+        <h1 className="sr-only">Automations for {workspaceLabel}</h1>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <BackofficeBreadcrumbs
+            items={[{ label: "Backoffice", to: "/backoffice" }, { label: "Automations" }]}
+          />
+          <div className="w-full min-w-0 sm:w-auto sm:max-w-md">
+            <AutomationScopeMenu
+              selectedScope={selectedScope}
+              scopeOptions={scopeOptions}
+              projectsError={projectsError}
+              createProjectPath={createProjectPath}
+              isCreatingProject={isCreatingProject}
+              scriptPresentation={scriptPresentation}
+              activeTab={activeTab}
+              triggerKindLabel={workspaceKindLabel}
+              triggerLabel={workspaceLabel}
+            />
+          </div>
+        </div>
+      </div>
 
-        return (
-          <Fragment key={tab.id}>
-            {tab.id === "terminal" ||
-            tab.id === "scripts" ||
-            tab.id === "store" ||
-            tab.id === "api" ||
-            tab.id === "sandboxes" ? (
-              <span className="h-6 w-px bg-[var(--bo-border)]" aria-hidden="true" />
-            ) : null}
-            {tab.disabled ? (
-              <span role="tab" aria-selected="false" aria-disabled="true" className={className}>
-                {tab.label}
-              </span>
-            ) : (
-              <Link
-                to={pathWithScriptPresentation(tab.to, scriptPresentation)}
-                role="tab"
-                aria-selected={isActive}
-                className={className}
-              >
-                {tab.label}
-              </Link>
-            )}
-          </Fragment>
-        );
-      })}
-    </div>
+      <AutomationTabRail
+        selectedScope={selectedScope}
+        activeTab={activeTab}
+        disabled={isCreatingProject}
+        scriptPresentation={scriptPresentation}
+      />
+    </section>
   );
 }
 
@@ -283,12 +410,15 @@ export function AutomationErrorBoundary({
 
   return (
     <div className="space-y-4">
-      <AutomationHeader
-        selectedScope={{
-          kind: "org",
-          orgId: params.orgId ?? params.scopeId ?? "organisation",
-          label: "Error",
-        }}
+      <BackofficePageHeader
+        breadcrumbs={[
+          { label: "Backoffice", to: "/backoffice" },
+          { label: "Automations", to: "/backoffice/automations" },
+          { label: "Error" },
+        ]}
+        eyebrow="Automations"
+        title="Automation workspace unavailable"
+        description="The requested automation scope could not be opened."
       />
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">

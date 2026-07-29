@@ -56,6 +56,21 @@ export const automationScopeRouteId = (scope: AutomationUiScope): string =>
 export const automationScopeBasePath = (scope: AutomationUiScope) =>
   `/backoffice/automations/${scope.kind}/${automationScopeRouteId(scope)}`;
 
+export const automationUiScopeId = (scope: AutomationUiScope) => {
+  switch (scope.kind) {
+    case "system":
+      return "system:system";
+    case "org":
+      return `org:${scope.orgId}`;
+    case "project":
+      return `project:${scope.orgId}:${scope.projectId}`;
+    case "user":
+      return `user:${scope.userId}`;
+  }
+
+  throw new Error("Unsupported automation UI scope kind.");
+};
+
 export type AutomationScopeTab =
   | "dashboard"
   | "terminal"
@@ -68,6 +83,16 @@ export type AutomationScopeTab =
   | "integrations"
   | "mcp"
   | "sandboxes";
+
+const SYSTEM_UNAVAILABLE_AUTOMATION_TABS = new Set<AutomationScopeTab>(["api", "mcp", "sandboxes"]);
+
+export const resolveAutomationScopeTab = (
+  scope: AutomationUiScope,
+  requestedTab: AutomationScopeTab,
+) =>
+  scope.kind === "system" && SYSTEM_UNAVAILABLE_AUTOMATION_TABS.has(requestedTab)
+    ? "scripts"
+    : requestedTab;
 
 export const automationScopeTabPath = (
   scope: AutomationUiScope,
@@ -98,30 +123,33 @@ export const createAutomationScopeOptions = ({
     ),
   }));
 
-  const projectOptions = projects
-    .filter((project) => !project.archivedAt)
-    .map((project) => {
-      const projectId = toExternalId(project.id);
-      return {
-        id: `project:${projectId}`,
-        kind: "project" as const,
-        label: projectLabel(project),
-        description: project.slug?.trim() ? `Project · ${project.slug}` : "Project scope",
-        to: automationScopeTabPath(
-          {
-            kind: "project",
-            orgId: projectOrgId,
-            projectId,
-            label: projectLabel(project),
-          },
-          currentTab,
-        ),
-      };
-    })
-    .filter((option) => option.to.includes("/project/"));
+  const projectOptions = projects.flatMap((project) => {
+    if (project.archivedAt) {
+      return [];
+    }
+
+    const projectId = toExternalId(project.id);
+    const option = {
+      id: `project:${projectOrgId}:${projectId}`,
+      kind: "project" as const,
+      label: projectLabel(project),
+      description: project.slug?.trim() ? `Project · ${project.slug}` : "Project scope",
+      to: automationScopeTabPath(
+        {
+          kind: "project",
+          orgId: projectOrgId,
+          projectId,
+          label: projectLabel(project),
+        },
+        currentTab,
+      ),
+    };
+
+    return option.to.includes("/project/") ? [option] : [];
+  });
 
   const userScope = { kind: "user" as const, userId: user.id, label: userName(user) };
-  const systemTab = ["api", "mcp", "sandboxes"].includes(currentTab) ? "scripts" : currentTab;
+  const systemScope = { kind: "system" as const, label: SYSTEM_AUTOMATION_SCOPE_LABEL };
   const systemOptions: AutomationScopeOption[] = isAutomationAdmin(user)
     ? [
         {
@@ -130,8 +158,8 @@ export const createAutomationScopeOptions = ({
           label: SYSTEM_AUTOMATION_SCOPE_LABEL,
           description: "Global system automation scope",
           to: automationScopeTabPath(
-            { kind: "system", label: SYSTEM_AUTOMATION_SCOPE_LABEL },
-            systemTab,
+            systemScope,
+            resolveAutomationScopeTab(systemScope, currentTab),
           ),
         },
       ]

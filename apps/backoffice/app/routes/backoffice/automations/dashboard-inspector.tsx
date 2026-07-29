@@ -59,14 +59,9 @@ export function DashboardInspector({
   return (
     <aside className="min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] xl:sticky xl:top-3 xl:max-h-[calc(100vh-7rem)] xl:overflow-hidden">
       <div className="flex min-h-11 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] px-3">
-        <div>
-          <p className="text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
-            Inspector
-          </p>
-          <p className="mt-0.5 text-[10px] text-[var(--bo-muted)]">
-            {selection ? selection.kind : "Nothing selected"}
-          </p>
-        </div>
+        <p className="text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
+          Inspector
+        </p>
         {selection ? (
           <button
             type="button"
@@ -101,12 +96,12 @@ export function DashboardInspector({
           />
         ) : null}
         {!selection ? (
-          <div className="m-3 border border-dashed border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
-            <CircleDot className="h-4 w-4 text-[var(--bo-muted-2)]" />
-            <p className="mt-3 text-sm font-semibold text-[var(--bo-fg)]">Select an item</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--bo-muted)]">
-              Choose a capability, trigger, or action to inspect it without leaving the system map.
-            </p>
+          <div
+            role="status"
+            aria-label="No item selected"
+            className="flex min-h-48 items-center justify-center"
+          >
+            <CircleDot aria-hidden="true" className="h-5 w-5 text-[var(--bo-muted-2)] opacity-40" />
           </div>
         ) : null}
       </div>
@@ -126,7 +121,7 @@ function SourceInspector({
   return (
     <div className="p-3">
       <div className="flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-lime-500/10 text-lime-700 dark:text-lime-300">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center bg-lime-500/10 text-lime-700 dark:text-lime-300">
           <Icon className="h-4 w-4" strokeWidth={1.8} />
         </span>
         <div className="min-w-0">
