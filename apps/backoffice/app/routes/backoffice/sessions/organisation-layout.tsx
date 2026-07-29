@@ -4,10 +4,11 @@ import { Outlet } from "react-router";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { PiConfigState } from "@/fragno/pi/pi-shared";
 
+import { createOrganisationScopeOptions } from "../integrations/scope";
 import { throwOrganisationNotFound } from "../route-errors";
 import type { Route } from "./+types/organisation-layout";
 import { fetchPiAdapterIdentity, fetchPiConfig } from "./data";
-import { PiErrorBoundary, PiHeader, PiTabs, type PiLayoutContext, type PiTab } from "./shared";
+import { PiErrorBoundary, PiWorkspaceHeader, type PiLayoutContext, type PiTab } from "./shared";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId) {
@@ -42,6 +43,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   return {
     scope,
     organisation,
+    organisationOptions: createOrganisationScopeOptions(me.organizations),
     persistenceSource,
     persistenceError,
     configState,
@@ -99,8 +101,13 @@ export default function BackofficeOrganisationPiLayout({
     <div
       className={isSessions ? "flex h-full min-h-0 flex-col gap-4 overflow-hidden" : "space-y-4"}
     >
-      <PiHeader orgId={orgId} organisationName={organisation?.name ?? orgId} />
-      <PiTabs orgId={orgId} activeTab={activeTab} isConfigured={Boolean(configState?.configured)} />
+      <PiWorkspaceHeader
+        orgId={orgId}
+        organisationName={organisation?.name ?? orgId}
+        organisationOptions={loaderData.organisationOptions}
+        activeTab={activeTab}
+        isConfigured={Boolean(configState?.configured)}
+      />
       <div
         className={
           isSessions

@@ -1,8 +1,14 @@
 import type { Dispatch, SetStateAction } from "react";
-import { Link, isRouteErrorResponse } from "react-router";
+import { isRouteErrorResponse } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficePageHeader } from "@/components/backoffice";
+import { BackofficeBreadcrumbs } from "@/components/backoffice/breadcrumbs";
+import {
+  BackofficeOrganisationScopeMenu,
+  type BackofficeOrganisationScopeOption,
+} from "@/components/backoffice/organisation-scope-menu";
+import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
 import type { PiConfigState } from "@/fragno/pi/pi-shared";
 import type { PiCollectionSource } from "@/fragno/pi/tanstack/browser-database";
 
@@ -24,97 +30,78 @@ export type PiLayoutContext = {
 
 export type PiTab = "sessions" | "harnesses" | "configuration";
 
-export function PiHeader({
+const PI_TABS = [
+  { id: "sessions", label: "Sessions" },
+  { id: "harnesses", label: "Harnesses" },
+  { id: "configuration", label: "Configuration" },
+] as const satisfies readonly { id: PiTab; label: string }[];
+
+const piTabLabel = (activeTab: PiTab) => {
+  const tab = PI_TABS.find((candidate) => candidate.id === activeTab);
+  if (!tab) {
+    throw new Error("Unsupported Pi tab.");
+  }
+  return tab.label;
+};
+
+export function PiWorkspaceHeader({
   orgId,
   organisationName,
-}: {
-  orgId: string;
-  organisationName?: string | null;
-}) {
-  return (
-    <BackofficePageHeader
-      breadcrumbs={[
-        { label: "Backoffice", to: "/backoffice" },
-        { label: "Sessions", to: "/backoffice/sessions" },
-        { label: organisationName ?? orgId },
-      ]}
-      eyebrow="Agents"
-      title={`Pi sessions for ${organisationName ?? orgId}`}
-      description="Create, inspect, and manage Pi agent sessions for your organisation."
-    />
-  );
-}
-
-export function PiTabs({
-  orgId,
+  organisationOptions,
   activeTab,
   isConfigured,
 }: {
   orgId: string;
+  organisationName?: string | null;
+  organisationOptions: BackofficeOrganisationScopeOption[];
   activeTab: PiTab;
   isConfigured: boolean;
 }) {
-  const basePath = `/backoffice/sessions/${orgId}`;
-  const tabs = [
+  const workspaceLabel = organisationName ?? orgId;
+  const breadcrumbs = [
+    { label: "Backoffice", to: "/backoffice" },
     {
-      id: "sessions" as const,
       label: "Sessions",
-      to: `${basePath}/sessions`,
-      disabled: !isConfigured,
+      to: activeTab === "sessions" ? undefined : "/backoffice/sessions",
     },
-    {
-      id: "harnesses" as const,
-      label: "Harnesses",
-      to: `${basePath}/harnesses`,
-      disabled: false,
-    },
-    {
-      id: "configuration" as const,
-      label: "Configuration",
-      to: `${basePath}/configuration`,
-      disabled: false,
-    },
+    ...(activeTab === "sessions" ? [] : [{ label: piTabLabel(activeTab) }]),
   ];
+  const basePath = `/backoffice/sessions/${encodeURIComponent(orgId)}`;
+  const tabs = PI_TABS.map((tab) => ({
+    id: tab.id,
+    label: tab.label,
+    to: `${basePath}/${tab.id}`,
+    disabled: tab.id === "sessions" && !isConfigured && activeTab !== "sessions",
+    active: tab.id === activeTab,
+  }));
 
   return (
-    <div
-      role="tablist"
-      aria-label="Pi backoffice tabs"
-      className="flex flex-wrap items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2"
-    >
-      {tabs.map((tab) => {
-        const isActive = activeTab === tab.id;
-        const className = isActive
-          ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)]"
-          : tab.disabled
-            ? "inline-flex items-center gap-2 cursor-not-allowed border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted-2)] opacity-60"
-            : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
+    <section className="bo-fragment-surface bo-panel-surface overflow-hidden bg-[var(--bo-panel)]">
+      <div className="p-3 md:px-4">
+        <h1 className="sr-only">Pi sessions for {workspaceLabel}</h1>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="bo-product-code">SES</span>
+            <BackofficeBreadcrumbs items={breadcrumbs} />
+          </div>
+          <div className="w-full min-w-0 sm:w-auto sm:max-w-md">
+            <BackofficeOrganisationScopeMenu
+              activeOrganisationId={orgId}
+              activeOrganisationLabel={workspaceLabel}
+              options={organisationOptions}
+              pathForOption={(option) =>
+                `/backoffice/sessions/${encodeURIComponent(option.id)}/${activeTab}`
+              }
+              scopeLabel="Session scope"
+            />
+          </div>
+        </div>
+      </div>
 
-        if (tab.disabled) {
-          return (
-            <span
-              key={tab.id}
-              role="tab"
-              aria-selected={isActive}
-              aria-disabled="true"
-              className={className}
-              title="Configure API keys and add at least one harness to enable sessions."
-            >
-              {tab.label}
-              <span className="rounded border border-[color:var(--bo-border-strong)] px-1.5 py-0.5 text-[8px] tracking-[0.18em] text-[var(--bo-muted)]">
-                Setup required
-              </span>
-            </span>
-          );
-        }
-
-        return (
-          <Link key={tab.id} to={tab.to} role="tab" aria-selected={isActive} className={className}>
-            {tab.label}
-          </Link>
-        );
-      })}
-    </div>
+      <div className="border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
+        <OverflowTabRow items={tabs} ariaLabel="Pi workspace sections" />
+      </div>
+    </section>
   );
 }
 
@@ -139,7 +126,16 @@ export function PiErrorBoundary({ error, params }: { error: unknown; params: { o
 
   return (
     <div className="space-y-4">
-      <PiHeader orgId={params.orgId ?? "organisation"} organisationName="Error" />
+      <BackofficePageHeader
+        breadcrumbs={[
+          { label: "Backoffice", to: "/backoffice" },
+          { label: "Sessions", to: "/backoffice/sessions" },
+          { label: "Error" },
+        ]}
+        eyebrow="Agents"
+        title="Pi sessions unavailable"
+        description="The requested organisation session workspace could not be opened."
+      />
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           {statusCode} · {statusText}
