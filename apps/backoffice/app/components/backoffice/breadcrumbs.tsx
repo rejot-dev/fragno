@@ -1,4 +1,3 @@
-import { Drawer } from "@base-ui/react/drawer";
 import { Separator } from "@base-ui/react/separator";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
@@ -8,35 +7,19 @@ export type BreadcrumbItem = {
   to?: string;
 };
 
-export function BackofficeBreadcrumbs({
-  items,
-  showSidebarTrigger = true,
-}: {
-  items: BreadcrumbItem[];
-  showSidebarTrigger?: boolean;
-}) {
+export function BackofficeBreadcrumbs({ items }: { items: BreadcrumbItem[] }) {
+  const visibleItems =
+    items.length > 1 && items[0]?.label === "Backoffice" ? items.slice(1) : items;
+
   return (
     <nav aria-label="Breadcrumb" className="text-[10px] tracking-[0.24em] uppercase">
       <ol className="flex flex-wrap items-center gap-2 text-[var(--bo-muted-2)]">
-        {showSidebarTrigger ? (
-          <li className="flex items-center gap-2 lg:hidden">
-            <Drawer.Trigger
-              type="button"
-              aria-label="Open sidebar"
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-            >
-              Menu
-            </Drawer.Trigger>
-            <Separator orientation="vertical" className="h-3 w-px bg-[var(--bo-border-strong)]" />
-          </li>
-        ) : null}
-        {items.map((item, index) => {
-          const isLast = index === items.length - 1;
-          const isBackofficeRoot = index === 0 && item.label === "Backoffice";
+        {visibleItems.map((item, index) => {
+          const isLast = index === visibleItems.length - 1;
           return (
             <li
               key={`${item.to ?? "current"}:${String(item.label)}`}
-              className={`${isBackofficeRoot ? "hidden lg:flex" : "flex"} items-center gap-2`}
+              className="flex items-center gap-2"
             >
               {item.to && !isLast ? (
                 <Link to={item.to} className="transition-colors hover:text-[var(--bo-fg)]">
