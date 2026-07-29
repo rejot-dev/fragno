@@ -26,6 +26,16 @@ const createAdapterThatThrows = (error: Error) =>
       }),
   }) as unknown as SqlDriverAdapter;
 
+const createAdapterReturningRows = (rows: Record<string, unknown>[]) =>
+  ({
+    transaction: async (
+      callback: (trx: { executeQuery: () => Promise<unknown> }) => Promise<unknown>,
+    ) =>
+      await callback({
+        executeQuery: async () => ({ rows }),
+      }),
+  }) as unknown as SqlDriverAdapter;
+
 describe("compileOutboxVersionReservationPlan", () => {
   it("quotes MySQL settings identifiers", () => {
     const dialect = new MysqlDialect({ pool: {} as never });
@@ -70,6 +80,44 @@ describe("executeMutation", () => {
     const result = await executeMutation(adapter, new NodePostgresDriverConfig(), mutationBatch, {
       dialect,
     });
+    assert(!result.success);
+  });
+
+  it("accepts an empty result for checkAbsent", async () => {
+    const adapter = createAdapterReturningRows([]);
+    const result = await executeMutation(
+      adapter,
+      new NodePostgresDriverConfig(),
+      [
+        {
+          op: "check-absent",
+          query: compiledQuery,
+          expectedAffectedRows: null,
+          expectedReturnedRows: 0,
+        },
+      ],
+      { dialect },
+    );
+
+    assert(result.success);
+  });
+
+  it("returns success=false when checkAbsent finds a row", async () => {
+    const adapter = createAdapterReturningRows([{ exists: 1 }]);
+    const result = await executeMutation(
+      adapter,
+      new NodePostgresDriverConfig(),
+      [
+        {
+          op: "check-absent",
+          query: compiledQuery,
+          expectedAffectedRows: null,
+          expectedReturnedRows: 0,
+        },
+      ],
+      { dialect },
+    );
+
     assert(!result.success);
   });
 });

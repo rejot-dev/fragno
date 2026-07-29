@@ -160,17 +160,14 @@ export async function executeMutation(
             );
           }
         }
-        // "check" operations are handled below via expectedReturnedRows
+        // Check operations are handled below via expectedReturnedRows.
 
         if (compiledMutation.expectedReturnedRows !== null) {
-          // For SELECT queries (check operations), verify row count
           const returnedRowCount = resultInterpreter.getReturnedRowCount(result);
 
           if (returnedRowCount !== BigInt(compiledMutation.expectedReturnedRows)) {
-            // Version conflict detected - the SELECT didn't return the expected number of rows
-            // This means either the row doesn't exist or the version has changed
             throw new SqlVersionConflictError(
-              `Version conflict: expected ${compiledMutation.expectedReturnedRows} rows returned, but got ${returnedRowCount}`,
+              `Optimistic concurrency conflict: expected ${compiledMutation.expectedReturnedRows} rows returned, but got ${returnedRowCount}`,
             );
           }
         }

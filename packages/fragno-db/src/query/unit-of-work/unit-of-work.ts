@@ -12,6 +12,11 @@ import { dbInterval, dbNow, type DbInterval, type DbIntervalInput, type DbNow } 
 import type { CompiledJoin } from "../find-options";
 import type { SelectClause, TableToInsertValues, TableToUpdateValues, SelectResult } from "../mod";
 import {
+  buildCheckAbsentCondition,
+  type CheckAbsentIndexName,
+  type CheckAbsentIndexValues,
+} from "./check-absent";
+import {
   QueryTreeFindBuilder,
   type CompiledQueryTreeRootNode,
   type ExtractQueryTreeBuilderCount,
@@ -240,6 +245,14 @@ export type MutationOperation<
       namespace?: string | null;
       table: TTable["name"];
       id: FragnoId;
+    }
+  | {
+      type: "check-absent";
+      schema: TSchema;
+      namespace?: string | null;
+      table: TTable["name"];
+      indexName: string;
+      values: Record<string, unknown>;
     };
 
 /**
@@ -260,9 +273,9 @@ export interface CompiledMutation<TOutput> {
    */
   uowId?: string;
   /**
-   * The type of mutation operation (create, update, delete, or check).
+   * The type of mutation operation.
    */
-  op: "create" | "update" | "delete" | "check";
+  op: "create" | "update" | "delete" | "check" | "check-absent";
   /**
    * Number of rows this operation must affect for the transaction to succeed.
    * If actual affected rows doesn't match, it indicates a version conflict.
@@ -271,7 +284,7 @@ export interface CompiledMutation<TOutput> {
   expectedAffectedRows: bigint | null;
   /**
    * Number of rows this SELECT query must return for the transaction to succeed.
-   * Used for check operations to verify version without modifying data.
+   * Used for check operations to verify their asserted row count.
    * null means this is not a SELECT query that needs row count validation.
    */
   expectedReturnedRows: number | null;
@@ -2357,6 +2370,34 @@ export class TypedUnitOfWork<
       namespace: this.#namespace,
       table: tableName,
       id,
+    });
+  }
+
+  /**
+   * Check that no row exists for a complete, non-null unique-index key.
+   */
+  checkAbsent<
+    TTableName extends keyof TSchema["tables"] & string,
+    TIndexName extends CheckAbsentIndexName<TSchema["tables"][TTableName]>,
+  >(
+    tableName: TTableName,
+    indexName: TIndexName,
+    values: CheckAbsentIndexValues<TSchema["tables"][TTableName], TIndexName>,
+  ): void {
+    const { normalizedIndexName } = buildCheckAbsentCondition(
+      this.#schema,
+      tableName,
+      indexName,
+      values as Record<string, unknown>,
+    );
+
+    this.#uow.addMutationOperation({
+      type: "check-absent",
+      schema: this.#schema,
+      namespace: this.#namespace,
+      table: tableName,
+      indexName: normalizedIndexName,
+      values: values as Record<string, unknown>,
     });
   }
 

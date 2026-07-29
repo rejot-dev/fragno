@@ -464,7 +464,7 @@ export abstract class SQLQueryCompiler {
   }
 
   /**
-   * Compile a CHECK query (SELECT 1 to verify a row exists).
+   * Compile a CHECK query whose expected row count determines the asserted record state.
    */
   compileCheck(table: AnyTable, where: Condition): CompiledQuery {
     const query = this.db

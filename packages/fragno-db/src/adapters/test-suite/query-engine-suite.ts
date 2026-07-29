@@ -142,6 +142,179 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
       }
     });
 
+    it("checks unique-index absence against mutation-time state and rolls back on conflict", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const guarded = createSuiteUnitOfWork(adapter, "check-absence-guarded").findFirst(
+          "users",
+          (b) =>
+            b.whereIndex("users_email_idx", (eb) => eb("email", "=", "absence-target@example.com")),
+        );
+        const [missingUser] = await guarded.executeRetrieve();
+        expect(missingUser).toBeNull();
+
+        const concurrentCreate = createSuiteUnitOfWork(adapter, "check-absence-concurrent-create");
+        concurrentCreate.create("users", {
+          id: "user-absence-target",
+          name: "Concurrent",
+          email: "absence-target@example.com",
+        });
+        assert((await concurrentCreate.executeMutations()).success);
+
+        guarded.create("users", {
+          id: "user-absence-rolled-back",
+          name: "Rolled back",
+          email: "absence-rolled-back@example.com",
+        });
+        guarded.checkAbsent("users", "users_email_idx", {
+          email: "absence-target@example.com",
+        });
+        assert(!(await guarded.executeMutations()).success);
+
+        const [rolledBackUser] = await createSuiteUnitOfWork(adapter, "check-absence-rollback")
+          .findFirst("users", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", "user-absence-rolled-back")),
+          )
+          .executeRetrieve();
+        expect(rolledBackUser).toBeNull();
+
+        const absentCheck = createSuiteUnitOfWork(adapter, "check-absence-success");
+        absentCheck.checkAbsent("users", "users_email_idx", {
+          email: "still-absent@example.com",
+        });
+        assert((await absentCheck.executeMutations()).success);
+      } finally {
+        await close?.();
+      }
+    });
+
+    it("checks primary-key absence before creating a row", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const create = createSuiteUnitOfWork(adapter, "check-primary-absence-create");
+        create.checkAbsent("users", "primary", { id: "user-primary-absence" });
+        create.create("users", {
+          id: "user-primary-absence",
+          name: "Primary Absence",
+          email: "primary-absence@example.com",
+        });
+        assert((await create.executeMutations()).success);
+
+        const duplicate = createSuiteUnitOfWork(adapter, "check-primary-absence-conflict");
+        duplicate.create("users", {
+          id: "user-primary-rollback",
+          name: "Primary Rollback",
+          email: "primary-rollback@example.com",
+        });
+        duplicate.checkAbsent("users", "primary", { id: "user-primary-absence" });
+        assert(!(await duplicate.executeMutations()).success);
+
+        const [rolledBackUser] = await createSuiteUnitOfWork(
+          adapter,
+          "verify-primary-absence-rollback",
+        )
+          .findFirst("users", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", "user-primary-rollback")),
+          )
+          .executeRetrieve();
+        expect(rolledBackUser).toBeNull();
+      } finally {
+        await close?.();
+      }
+    });
+
+    it("checks composite unique keys without conflating partial matches", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const firstReservation = createSuiteUnitOfWork(adapter, "reserve-first-key");
+        firstReservation.checkAbsent("reservations", "reservations_scope_key_idx", {
+          scope: "scope-a",
+          key: "shared-key",
+        });
+        firstReservation.create("reservations", {
+          id: "reservation-a",
+          scope: "scope-a",
+          key: "shared-key",
+        });
+        assert((await firstReservation.executeMutations()).success);
+
+        const differentScope = createSuiteUnitOfWork(adapter, "reserve-key-in-different-scope");
+        differentScope.checkAbsent("reservations", "reservations_scope_key_idx", {
+          scope: "scope-b",
+          key: "shared-key",
+        });
+        differentScope.create("reservations", {
+          id: "reservation-b",
+          scope: "scope-b",
+          key: "shared-key",
+        });
+        assert((await differentScope.executeMutations()).success);
+
+        const duplicateReservation = createSuiteUnitOfWork(adapter, "reject-duplicate-reservation");
+        duplicateReservation.checkAbsent("reservations", "reservations_scope_key_idx", {
+          scope: "scope-a",
+          key: "shared-key",
+        });
+        assert(!(await duplicateReservation.executeMutations()).success);
+      } finally {
+        await close?.();
+      }
+    });
+
+    it("uses the unique constraint as the final guard after an absence check", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        let retryContext: UniqueConflictRetryContext | undefined;
+        const contestedReservation = createSuiteUnitOfWork(adapter, "contested-reservation");
+        contestedReservation.checkAbsent("reservations", "reservations_scope_key_idx", {
+          scope: "scope-a",
+          key: "contested-key",
+        });
+        contestedReservation.create("reservations", {
+          id: "reservation-first-contender",
+          scope: "scope-a",
+          key: "contested-key",
+        });
+        contestedReservation.create(
+          "reservations",
+          {
+            id: "reservation-second-contender",
+            scope: "scope-a",
+            key: "contested-key",
+          },
+          {
+            retryOnUniqueConflict: (context) => {
+              retryContext = context;
+              return true;
+            },
+          },
+        );
+
+        assert(!(await contestedReservation.executeMutations()).success);
+        expect(retryContext?.error).toBeInstanceOf(DatabaseConstraintError);
+        expect(retryContext?.operation).toEqual({
+          type: "create",
+          schema: "query_engine_suite",
+          namespace,
+          table: "reservations",
+        });
+
+        const [reservations] = await createSuiteUnitOfWork(
+          adapter,
+          "verify-contested-reservation-rollback",
+        )
+          .find("reservations", (b) =>
+            b.whereIndex("reservations_scope_key_idx", (eb) =>
+              eb.and(eb("scope", "=", "scope-a"), eb("key", "=", "contested-key")),
+            ),
+          )
+          .executeRetrieve();
+        expect(reservations).toHaveLength(0);
+      } finally {
+        await close?.();
+      }
+    });
+
     it("checks and deletes rows with version enforcement", async () => {
       const { adapter, close } = await createContext();
       try {

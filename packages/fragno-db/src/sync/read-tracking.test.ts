@@ -29,7 +29,7 @@ const testSchema = schema("test", (s) =>
       t
         .addColumn("id", idColumn())
         .addColumn("name", column("string"))
-        .createIndex("name_idx", ["name"]),
+        .createIndex("name_idx", ["name"], { unique: true }),
     )
     .addTable("posts", (t) =>
       t
@@ -249,8 +249,10 @@ describe("read tracking", () => {
     const createdId = uow.create("users", { name: "test" });
     uow.update("users", createdId, (b) => b.set({ name: "next" }));
     uow.delete("users", createdId);
+    uow.checkAbsent("users", "name_idx", { name: "missing" });
 
     const keys = collectWriteKeys(baseUow.getMutationOperations());
+    expect(keys).toHaveLength(3);
     expect(keys).toEqual(
       expect.arrayContaining([expect.objectContaining({ table: "users", schema: "tenant" })]),
     );

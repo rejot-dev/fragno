@@ -1477,7 +1477,12 @@ describe("Instrumentation", () => {
 describe("Error Handling", () => {
   const testSchema = schema("test", (s) =>
     s.addTable("users", (t) =>
-      t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
+      t
+        .addColumn("id", idColumn())
+        .addColumn("name", "string")
+        .addColumn("email", "string")
+        .createIndex("idx_email", ["email"], { unique: true })
+        .createIndex("idx_name", ["name"]),
     ),
   );
 
@@ -1756,6 +1761,70 @@ describe("Error Handling", () => {
     assert(checkOp.type === "check");
     assert(checkOp.table === "users");
     expect(checkOp.id).toBe(userId);
+  });
+
+  it("should support checkAbsent() with complete unique-index values", () => {
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+    const typedUow = uow.forSchema(testSchema);
+
+    typedUow.checkAbsent("users", "idx_email", { email: "alice@example.com" });
+
+    const mutationOps = uow.getMutationOperations();
+    expect(mutationOps).toHaveLength(1);
+
+    const checkOp = mutationOps[0];
+    assert(checkOp?.type === "check-absent");
+    assert(checkOp.table === "users");
+    assert(checkOp.indexName === "idx_email");
+    expect(checkOp.values).toEqual({ email: "alice@example.com" });
+  });
+
+  it("supports checkAbsent() with the built-in primary index", () => {
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+    const typedUow = uow.forSchema(testSchema);
+
+    typedUow.checkAbsent("users", "primary", { id: "user-123" });
+
+    const mutationOps = uow.getMutationOperations();
+    expect(mutationOps).toHaveLength(1);
+
+    const checkOp = mutationOps[0];
+    assert(checkOp?.type === "check-absent");
+    assert(checkOp.indexName === "_primary");
+    expect(checkOp.values).toEqual({ id: "user-123" });
+
+    // oxlint-disable-next-line no-constant-condition
+    if (false) {
+      // @ts-expect-error The primary index only accepts the table's ID column.
+      typedUow.checkAbsent("users", "primary", { email: "alice@example.com" });
+    }
+  });
+
+  it("restricts checkAbsent() to unique indexes and their complete keys", () => {
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+    const typedUow = uow.forSchema(testSchema);
+
+    expect(() =>
+      typedUow.checkAbsent("users", "idx_name" as "idx_email", {
+        email: "alice@example.com",
+      }),
+    ).toThrow('checkAbsent() requires a unique index; "idx_name" is not unique.');
+    expect(() => typedUow.checkAbsent("users", "idx_email", {} as { email: string })).toThrow(
+      'checkAbsent() values for index "idx_email" must contain exactly: email.',
+    );
+    expect(() =>
+      typedUow.checkAbsent("users", "idx_email", {
+        email: null,
+      } as unknown as { email: string }),
+    ).toThrow('checkAbsent() requires a non-null value for unique-index column "email".');
+
+    // oxlint-disable-next-line no-constant-condition
+    if (false) {
+      // @ts-expect-error Every indexed column is required.
+      typedUow.checkAbsent("users", "idx_email", {});
+      // @ts-expect-error Values outside the selected index are not accepted.
+      typedUow.checkAbsent("users", "idx_email", { email: "alice@example.com", name: "Alice" });
+    }
   });
 });
 

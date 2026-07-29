@@ -257,9 +257,10 @@ batched.
 
 - Definitions:
   - Transaction: atomic unit of DB work that commits or rolls back together.
-  - `.check()`: validation step inside a transaction to abort on invariants.
+  - `.check()`: OCC assertion that a retrieved `FragnoId` still has the same row version.
+  - `.checkAbsent()`: OCC assertion that a complete, non-null unique-index key has no matching row.
   - Boundary: the scope that decides what runs inside a transaction.
-- Covers: transaction boundaries and `.check()` patterns.
+- Covers: transaction boundaries, row-version checks, and unique-index absence checks.
 - Read when: composing multi-step DB operations that must be atomic.
 - Full docs:
   `curl -L "https://fragno.dev/docs/fragno/for-library-authors/database-integration/transactions" -H "accept: text/markdown"`

@@ -89,6 +89,13 @@ export const queryEngineSuiteSchema = schema("query_engine_suite", (s) =>
         .addColumn("id", idColumn())
         .addColumn("email", column("string"))
         .createIndex("invitations_email_idx", ["email"]),
+    )
+    .addTable("reservations", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("scope", column("string"))
+        .addColumn("key", column("string"))
+        .createIndex("reservations_scope_key_idx", ["scope", "key"], { unique: true }),
     ),
 );
 

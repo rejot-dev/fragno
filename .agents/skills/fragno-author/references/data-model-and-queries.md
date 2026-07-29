@@ -42,8 +42,9 @@ session -> members -> roles -> organization in a single retrieve phase.
 
 ## 5. Mutate only after validation
 
-Use `.check()` inside `mutate(...)` for invariants. If a rule depends on DB state, retrieve it in
-the same transaction and validate before writing.
+Use `.check()` inside `mutate(...)` to guard retrieved row versions. Use `.checkAbsent()` with a
+complete, non-null unique-index key to guard expected absence; the unique constraint remains the
+final race guard. Retrieve DB state in the same transaction before writing.
 
 ## 6. Hooks do async work
 

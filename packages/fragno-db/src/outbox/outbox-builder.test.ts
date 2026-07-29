@@ -31,7 +31,8 @@ const defaultsSchema = schema("outbox_defaults", (s) =>
         column("string")
           .defaultTo$(() => "hidden-runtime-generated")
           .hidden(),
-      ),
+      )
+      .createIndex("idx_label", ["label"], { unique: true }),
   ),
 );
 
@@ -49,6 +50,20 @@ function createOperation(
 }
 
 describe("buildOutboxPlan", () => {
+  it("excludes concurrency assertions", () => {
+    const plan = buildOutboxPlan([
+      {
+        type: "check-absent",
+        schema: defaultsSchema,
+        table: "records",
+        indexName: "idx_label",
+        values: { label: "Missing" },
+      },
+    ]);
+
+    expect(plan).toEqual({ drafts: [], lookups: [] });
+  });
+
   it("materializes omitted visible database defaults", () => {
     const now = new Date("2026-07-21T12:00:00.000Z");
     const plan = buildOutboxPlan([

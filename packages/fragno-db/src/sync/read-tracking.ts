@@ -304,7 +304,7 @@ export const collectWriteKeys = (
   const keys: ReadKey[] = [];
 
   for (const op of operations) {
-    if (op.type === "check") {
+    if (op.type === "check" || op.type === "check-absent") {
       continue;
     }
 

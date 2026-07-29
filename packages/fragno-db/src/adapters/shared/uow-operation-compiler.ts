@@ -100,6 +100,10 @@ export abstract class UOWOperationCompiler<TCompiledQuery> {
     op: MutationOperation<AnySchema> & { type: "check" },
   ): CompiledMutation<TCompiledQuery> | null;
 
+  abstract compileCheckAbsent(
+    op: MutationOperation<AnySchema> & { type: "check-absent" },
+  ): CompiledMutation<TCompiledQuery> | null;
+
   // ==================== Utility Methods ====================
 
   /**
@@ -209,6 +213,8 @@ export function createUOWCompilerFromOperationCompiler<TCompiledQuery>(
           return operationCompiler.compileDelete(op);
         case "check":
           return operationCompiler.compileCheck(op);
+        case "check-absent":
+          return operationCompiler.compileCheckAbsent(op);
         default: {
           const exhaustiveCheck: never = op;
           throw new Error(

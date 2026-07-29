@@ -46,7 +46,7 @@ export function uowOperationsToLofiMutations(
   options?: UowOperationsToLofiMutationsOptions,
 ): LofiMutation[] {
   const mutations = operations.flatMap((operation, index): LofiMutation[] => {
-    if (operation.type === "check") {
+    if (operation.type === "check" || operation.type === "check-absent") {
       return [];
     }
 
