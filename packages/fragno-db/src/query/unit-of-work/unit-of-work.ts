@@ -1,21 +1,23 @@
-import type { DatabaseConstraintError } from "../../errors";
 import type { TriggeredHook, TriggerHookOptions, HooksMap, HookPayload } from "../../hooks/hooks";
 import type { AnySchema, AnyTable, Index, IdColumn, AnyColumn } from "../../schema/create";
 import { FragnoId, getTableRelations } from "../../schema/create";
-import { generateId } from "../../schema/generate-id";
 import type { Prettify } from "../../util/types";
 import type { Condition, ConditionBuilder } from "../condition-builder";
 import { buildCondition } from "../condition-builder";
 import type { CursorResult } from "../cursor";
 import { Cursor, getCursorMetadata } from "../cursor";
-import { dbInterval, dbNow, type DbInterval, type DbIntervalInput, type DbNow } from "../db-now";
+import type { DbInterval, DbIntervalInput, DbNow } from "../db-now";
 import type { CompiledJoin } from "../find-options";
-import type { SelectClause, TableToInsertValues, TableToUpdateValues, SelectResult } from "../mod";
+import type { SelectClause, TableToInsertValues, SelectResult } from "../mod";
+import type { CheckAbsentIndexName, CheckAbsentIndexValues } from "./check-absent";
 import {
-  buildCheckAbsentCondition,
-  type CheckAbsentIndexName,
-  type CheckAbsentIndexValues,
-} from "./check-absent";
+  DeleteBuilder,
+  MutationRecorder,
+  UpdateBuilder,
+  type CreateOptions,
+  type MutationOperation,
+  type SchemaMutationRecorder,
+} from "./mutation-recorder";
 import {
   QueryTreeFindBuilder,
   type CompiledQueryTreeRootNode,
@@ -183,76 +185,6 @@ export type RetrievalOperation<
       table: TTable;
       indexName: string;
       options: Pick<FindOptions<TTable>, "where" | "useIndex">;
-    };
-
-/**
- * Mutation operations - write operations in the second phase
- */
-export interface UniqueConflictRetryContext {
-  error: DatabaseConstraintError;
-  operation: {
-    type: "create" | "update";
-    schema: string;
-    namespace: string | null;
-    table: string;
-  };
-}
-
-export type UniqueConflictRetryDecider = (context: UniqueConflictRetryContext) => boolean;
-
-export interface CreateOptions {
-  /**
-   * Decide whether a unique-constraint failure should be treated as an optimistic concurrency
-   * conflict. The transaction's retrieval phase must resolve any accepted conflict on retry.
-   */
-  retryOnUniqueConflict?: UniqueConflictRetryDecider;
-}
-
-export type MutationOperation<
-  TSchema extends AnySchema,
-  TTable extends AnyTable = TSchema["tables"][keyof TSchema["tables"]],
-> =
-  | {
-      type: "update";
-      schema: TSchema;
-      namespace?: string | null;
-      table: TTable["name"];
-      id: FragnoId | string;
-      checkVersion: boolean;
-      set: TableToUpdateValues<TTable>;
-      retryOnUniqueConflict?: UniqueConflictRetryDecider;
-    }
-  | {
-      type: "create";
-      schema: TSchema;
-      namespace?: string | null;
-      table: TTable["name"];
-      values: TableToInsertValues<TTable>;
-      generatedExternalId: string;
-      retryOnUniqueConflict?: UniqueConflictRetryDecider;
-    }
-  | {
-      type: "delete";
-      schema: TSchema;
-      namespace?: string | null;
-      table: TTable["name"];
-      id: FragnoId | string;
-      checkVersion: boolean;
-    }
-  | {
-      type: "check";
-      schema: TSchema;
-      namespace?: string | null;
-      table: TTable["name"];
-      id: FragnoId;
-    }
-  | {
-      type: "check-absent";
-      schema: TSchema;
-      namespace?: string | null;
-      table: TTable["name"];
-      indexName: string;
-      values: Record<string, unknown>;
     };
 
 /**
@@ -585,131 +517,6 @@ export class FindBuilder<
     };
 
     return { type: "find", indexName, options };
-  }
-}
-
-/**
- * Builder for update operations in Unit of Work
- */
-export class UpdateBuilder<TTable extends AnyTable> {
-  readonly #tableName: string;
-  readonly #id: FragnoId | string;
-
-  #checkVersion = false;
-  #retryOnUniqueConflict?: UniqueConflictRetryDecider;
-  #setValues?: TableToUpdateValues<TTable>;
-
-  constructor(tableName: string, id: FragnoId | string) {
-    this.#tableName = tableName;
-    this.#id = id;
-  }
-
-  /**
-   * Specify values to update
-   */
-  set(values: TableToUpdateValues<TTable>): this {
-    this.#setValues = values;
-    return this;
-  }
-
-  /**
-   * Database timestamp helper for mutation values.
-   */
-  now(): DbNow {
-    return dbNow();
-  }
-
-  interval(input: DbIntervalInput): DbInterval {
-    return dbInterval(input);
-  }
-
-  /**
-   * Enable version checking for optimistic concurrency control
-   * @throws Error if the ID is just a string (no version available)
-   */
-  check(): this {
-    if (typeof this.#id === "string") {
-      throw new Error(
-        `Cannot use check() with a string ID on table "${this.#tableName}". ` +
-          `Version checking requires a FragnoId with version information.`,
-      );
-    }
-    this.#checkVersion = true;
-    return this;
-  }
-
-  /**
-   * Decide whether a unique-constraint failure should be treated as an optimistic concurrency
-   * conflict. The transaction's retrieval phase must resolve any accepted conflict on retry.
-   */
-  retryOnUniqueConflict(decide: UniqueConflictRetryDecider): this {
-    this.#retryOnUniqueConflict = decide;
-    return this;
-  }
-
-  /**
-   * @internal
-   */
-  build(): {
-    id: FragnoId | string;
-    checkVersion: boolean;
-    retryOnUniqueConflict?: UniqueConflictRetryDecider;
-    set: TableToUpdateValues<TTable>;
-  } {
-    if (!this.#setValues) {
-      throw new Error(
-        `Must specify values using .set() before finalizing update operation on table "${this.#tableName}"`,
-      );
-    }
-
-    return {
-      id: this.#id,
-      checkVersion: this.#checkVersion,
-      ...(this.#retryOnUniqueConflict
-        ? { retryOnUniqueConflict: this.#retryOnUniqueConflict }
-        : {}),
-      set: this.#setValues,
-    };
-  }
-}
-
-/**
- * Builder for delete operations in Unit of Work
- */
-export class DeleteBuilder {
-  readonly #tableName: string;
-  readonly #id: FragnoId | string;
-
-  #checkVersion = false;
-
-  constructor(tableName: string, id: FragnoId | string) {
-    this.#tableName = tableName;
-    this.#id = id;
-  }
-
-  /**
-   * Enable version checking for optimistic concurrency control
-   * @throws Error if the ID is just a string (no version available)
-   */
-  check(): this {
-    if (typeof this.#id === "string") {
-      throw new Error(
-        `Cannot use check() with a string ID on table "${this.#tableName}". ` +
-          `Version checking requires a FragnoId with version information.`,
-      );
-    }
-    this.#checkVersion = true;
-    return this;
-  }
-
-  /**
-   * @internal
-   */
-  build(): { id: FragnoId | string; checkVersion: boolean } {
-    return {
-      id: this.#id,
-      checkVersion: this.#checkVersion,
-    };
   }
 }
 
@@ -1896,6 +1703,7 @@ export class TypedUnitOfWork<
   readonly #schema: TSchema;
   readonly #namespace?: string | null;
   readonly #uow: UnitOfWork<TRawInput>;
+  readonly #mutations: SchemaMutationRecorder<TSchema>;
   readonly #operationIndices: number[] = [];
   #cachedRetrievalPhase?: Promise<TRetrievalResults>;
 
@@ -1903,6 +1711,9 @@ export class TypedUnitOfWork<
     this.#schema = schema;
     this.#namespace = namespace;
     this.#uow = uow;
+    this.#mutations = new MutationRecorder((operation) => {
+      uow.addMutationOperation(operation);
+    }).forSchema(schema, namespace);
   }
 
   /**
@@ -2001,14 +1812,14 @@ export class TypedUnitOfWork<
    * Database timestamp helper for inserts.
    */
   now(): DbNow {
-    return dbNow();
+    return this.#mutations.now();
   }
 
   /**
    * Build a database interval for use with now().plus(...).
    */
   interval(input: DbIntervalInput): DbInterval {
-    return dbInterval(input);
+    return this.#mutations.interval(input);
   }
 
   registerSchema(schema: AnySchema, namespace: string | null): void {
@@ -2242,7 +2053,7 @@ export class TypedUnitOfWork<
   // oxlint-enable typescript/no-unsafe-return
 
   generateId(tableName: keyof TSchema["tables"] & string): FragnoId {
-    return generateId(this.#schema, tableName);
+    return this.#mutations.generateId(tableName);
   }
 
   create<TableName extends keyof TSchema["tables"] & string>(
@@ -2250,59 +2061,7 @@ export class TypedUnitOfWork<
     values: TableToInsertValues<TSchema["tables"][TableName]>,
     options: CreateOptions = {},
   ): FragnoId {
-    const tableSchema = this.#schema.tables[tableName];
-    if (!tableSchema) {
-      throw new Error(`Table ${tableName} not found in schema`);
-    }
-
-    const idColumn = tableSchema.getIdColumn();
-    let externalId: string;
-    let updatedValues = values;
-
-    // Check if ID value is provided in values
-    const providedIdValue = (values as Record<string, unknown>)[idColumn.name];
-
-    if (providedIdValue !== undefined) {
-      // Extract string from FragnoId or use string directly
-      if (
-        typeof providedIdValue === "object" &&
-        providedIdValue !== null &&
-        "externalId" in providedIdValue
-      ) {
-        externalId = (providedIdValue as FragnoId).externalId;
-      } else {
-        externalId = providedIdValue as string;
-      }
-    } else {
-      // Generate using the column's default configuration
-      const generated = idColumn.generateDefaultValue();
-      if (generated === undefined) {
-        throw new Error(
-          `No ID value provided and ID column ${idColumn.name} has no default generator`,
-        );
-      }
-      externalId = generated as string;
-
-      // Add the generated ID to values so it's used in the insert
-      updatedValues = {
-        ...values,
-        [idColumn.name]: externalId,
-      } as TableToInsertValues<TSchema["tables"][TableName]>;
-    }
-
-    this.#uow.addMutationOperation({
-      type: "create",
-      schema: this.#schema,
-      namespace: this.#namespace,
-      table: tableName,
-      values: updatedValues,
-      generatedExternalId: externalId,
-      ...(options.retryOnUniqueConflict
-        ? { retryOnUniqueConflict: options.retryOnUniqueConflict }
-        : {}),
-    });
-
-    return FragnoId.fromExternal(externalId, 0);
+    return this.#mutations.create(tableName, values, options);
   }
 
   update<TableName extends keyof TSchema["tables"] & string>(
@@ -2312,20 +2071,7 @@ export class TypedUnitOfWork<
       builder: Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build">,
     ) => Omit<UpdateBuilder<TSchema["tables"][TableName]>, "build"> | void,
   ): void {
-    const builder = new UpdateBuilder<TSchema["tables"][TableName]>(tableName, id);
-    builderFn(builder);
-    const { id: opId, checkVersion, retryOnUniqueConflict, set } = builder.build();
-
-    this.#uow.addMutationOperation({
-      type: "update",
-      schema: this.#schema,
-      namespace: this.#namespace,
-      table: tableName,
-      id: opId,
-      checkVersion,
-      set,
-      ...(retryOnUniqueConflict ? { retryOnUniqueConflict } : {}),
-    });
+    this.#mutations.update(tableName, id, builderFn);
   }
 
   delete(
@@ -2333,44 +2079,14 @@ export class TypedUnitOfWork<
     id: FragnoId | string,
     builderFn?: (builder: Omit<DeleteBuilder, "build">) => Omit<DeleteBuilder, "build"> | void,
   ): void {
-    const builder = new DeleteBuilder(tableName, id);
-    builderFn?.(builder);
-    const { id: opId, checkVersion } = builder.build();
-
-    this.#uow.addMutationOperation({
-      type: "delete",
-      schema: this.#schema,
-      namespace: this.#namespace,
-      table: tableName,
-      id: opId,
-      checkVersion,
-    });
+    this.#mutations.delete(tableName, id, builderFn);
   }
 
   /**
    * Check that a record's version hasn't changed since retrieval.
-   * This is useful for ensuring related records remain unchanged during a transaction.
-   *
-   * @param tableName - The table name
-   * @param id - The FragnoId with version information (string IDs are not allowed)
-   * @throws Error if the ID is a string without version information
-   *
-   * @example
-   * ```ts
-   * // Ensure both accounts haven't changed before creating a transfer
-   * uow.check("accounts", fromAccount.id);
-   * uow.check("accounts", toAccount.id);
-   * uow.create("transactions", { fromAccountId, toAccountId, amount });
-   * ```
    */
   check(tableName: keyof TSchema["tables"] & string, id: FragnoId): void {
-    this.#uow.addMutationOperation({
-      type: "check",
-      schema: this.#schema,
-      namespace: this.#namespace,
-      table: tableName,
-      id,
-    });
+    this.#mutations.check(tableName, id);
   }
 
   /**
@@ -2384,21 +2100,7 @@ export class TypedUnitOfWork<
     indexName: TIndexName,
     values: CheckAbsentIndexValues<TSchema["tables"][TTableName], TIndexName>,
   ): void {
-    const { normalizedIndexName } = buildCheckAbsentCondition(
-      this.#schema,
-      tableName,
-      indexName,
-      values as Record<string, unknown>,
-    );
-
-    this.#uow.addMutationOperation({
-      type: "check-absent",
-      schema: this.#schema,
-      namespace: this.#namespace,
-      table: tableName,
-      indexName: normalizedIndexName,
-      values: values as Record<string, unknown>,
-    });
+    this.#mutations.checkAbsent(tableName, indexName, values);
   }
 
   get $hooks(): THooks {

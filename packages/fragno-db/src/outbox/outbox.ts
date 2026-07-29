@@ -1,4 +1,4 @@
-import type { MutationOperation } from "../query/unit-of-work/unit-of-work";
+import type { MutationOperation } from "../query/unit-of-work/mutation-recorder";
 import type { AnySchema, AnyTable, FragnoId } from "../schema/create";
 
 export type OutboxConfig = {

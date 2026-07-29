@@ -1,6 +1,6 @@
 import type { DatabaseAdapter } from "../adapters/adapters";
 import type { OutboxConfig } from "../outbox/outbox";
-import type { MutationOperation } from "../query/unit-of-work/unit-of-work";
+import type { MutationOperation } from "../query/unit-of-work/mutation-recorder";
 import type { AnySchema } from "../schema/create";
 
 export type OutboxState = {

@@ -11,8 +11,8 @@ import {
   createHandlerTxBuilder,
   createServiceTxBuilder,
 } from "../../query/unit-of-work/execute-unit-of-work";
+import type { UniqueConflictRetryContext } from "../../query/unit-of-work/mutation-recorder";
 import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-policy";
-import type { UniqueConflictRetryContext } from "../../query/unit-of-work/unit-of-work";
 import { FragnoId, type AnySchema } from "../../schema/create";
 import { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import type { DatabaseAdapter } from "../adapters";

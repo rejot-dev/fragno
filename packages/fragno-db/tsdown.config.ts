@@ -22,6 +22,7 @@ export default defineConfig([
       "./src/sql-driver/dialects/dialects.ts",
       "./src/sql-driver/dialects/durable-object-dialect.ts",
       "./src/query/unit-of-work/unit-of-work.ts",
+      "./src/query/unit-of-work/mutation-recorder.ts",
       "./src/query/cursor.ts",
       "./src/db-fragment-definition-builder.ts",
       "./src/buffered-pump.ts",

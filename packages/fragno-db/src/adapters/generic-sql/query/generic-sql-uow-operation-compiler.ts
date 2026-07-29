@@ -6,9 +6,9 @@ import type { Condition } from "../../../query/condition-builder";
 import { buildFindOptions } from "../../../query/find-options";
 import type { AnySelectClause } from "../../../query/mod";
 import { buildCheckAbsentCondition } from "../../../query/unit-of-work/check-absent";
+import type { MutationOperation } from "../../../query/unit-of-work/mutation-recorder";
 import type {
   RetrievalOperation,
-  MutationOperation,
   CompiledMutation,
 } from "../../../query/unit-of-work/unit-of-work";
 import { materializeRuntimeCreateValues } from "../../../query/value-encoding";
