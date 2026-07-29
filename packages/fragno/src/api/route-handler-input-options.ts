@@ -9,8 +9,13 @@ import type { ExtractPathParams } from "./internal/path";
 export type RouteHandlerInputOptions<
   TPath extends string,
   TInputSchema extends StandardSchemaV1 | undefined,
+  TRawBody = never,
 > = {
   pathParams?: ExtractPathParams<TPath>;
   query?: URLSearchParams | Record<string, string>;
   headers?: Headers | Record<string, string>;
-} & (TInputSchema extends undefined ? { body?: never } : { body: InferOr<TInputSchema, unknown> });
+} & (TInputSchema extends undefined
+  ? [TRawBody] extends [never]
+    ? { body?: never }
+    : { body?: TRawBody }
+  : { body: InferOr<TInputSchema, unknown> });
