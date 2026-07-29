@@ -29,6 +29,14 @@ export default {
         files: ["app/db/schema.ts"],
         rules: ["deslop/unused-file"],
       },
+      {
+        // Durable workflow operations stay sequential so step order and external effects are obvious.
+        files: [
+          "app/fragno/automation/marketplace-ingest-workflow.ts",
+          "app/fragno/automation/marketplace-publish-workflow.ts",
+        ],
+        rules: ["react-doctor/async-await-in-loop"],
+      },
     ],
   },
 };

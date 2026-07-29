@@ -9,6 +9,13 @@ type AppProps = {
   database: LocalDatabase;
 };
 
+const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 type RequestState =
   | { state: "idle" }
   | { state: "pending"; message: string }
@@ -355,12 +362,7 @@ function formatDate(value: Date | string | number): string {
   if (Number.isNaN(date.valueOf())) {
     return String(value);
   }
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  return DATE_FORMATTER.format(date);
 }
 
 function formatError(error: unknown): string {

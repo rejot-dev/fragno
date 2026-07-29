@@ -119,7 +119,7 @@ export function createWorkflowGraphPresentation(
       parentOverrides.set(acceptedChild.id, workflow.id);
       sortOrderOverrides.set(
         acceptedChild.id,
-        guard.condition.order + (index + 1) / (acceptedChildren.length + 1),
+        guardCondition.order + (index + 1) / (acceptedChildren.length + 1),
       );
     }
   }
