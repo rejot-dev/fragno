@@ -262,7 +262,7 @@ Automated proof:
 The slice is complete when a single codemode result can render a useful multi-section Backoffice
 report with no custom component code in the result.
 
-### - [ ] Slice 4 — Teach immediate UI generation through a Backoffice skill
+### - [x] Slice 4 — Teach immediate UI generation through a Backoffice skill
 
 **User-visible outcome:** when a user asks for a dashboard, report, table, or visual summary, the Pi
 agent can discover the skill and return a valid interface using the production catalog.

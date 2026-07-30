@@ -8,6 +8,8 @@ import {
   staticFileMount,
 } from "@/files";
 
+import type { FileContent } from "../interface";
+
 const createStaticFs = (
   staticFileArtifacts: () => Record<string, string> | Promise<Record<string, string>>,
 ) => {
@@ -26,6 +28,8 @@ const createStaticFs = (
   return fs;
 };
 
+const staticContent = STATIC_FILE_CONTENT as Record<string, FileContent>;
+
 describe("static file contributor", () => {
   test("exposes the /static mount metadata", async () => {
     expect(staticFileMount).toMatchObject({
@@ -43,6 +47,11 @@ describe("static file contributor", () => {
     expect(await staticFileContributor.readFile?.(`${STATIC_FILE_MOUNT_POINT}/SYSTEM.md`)).toEqual(
       STATIC_FILE_CONTENT["SYSTEM.md"],
     );
+    expect(
+      await staticFileContributor.readFile?.(
+        `${STATIC_FILE_MOUNT_POINT}/skills/generating-backoffice-uis/SKILL.md`,
+      ),
+    ).toEqual(staticContent["skills/generating-backoffice-uis/SKILL.md"]);
 
     expect(entries?.map((entry) => entry.name)).toEqual(expect.arrayContaining(["SYSTEM.md"]));
     expect(staticFileContributor.getAllPaths?.()).toEqual(

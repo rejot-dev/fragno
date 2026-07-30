@@ -208,12 +208,19 @@ describe("Backoffice Pi skills", () => {
     });
     const skills = await loadBackofficePiSkills(fs);
 
-    expect(Object.keys(skills)).toContain("building-automations");
+    expect(Object.keys(skills)).toEqual(
+      expect.arrayContaining(["building-automations", "generating-backoffice-uis"]),
+    );
     expect(skills["building-automations"]).toMatchObject({
       location: "/static/skills/building-automations/SKILL.md",
       directory: "/static/skills/building-automations",
     });
     expect(skills["building-automations"]?.body).toContain("events.catalogList");
+    expect(skills["generating-backoffice-uis"]).toMatchObject({
+      location: "/static/skills/generating-backoffice-uis/SKILL.md",
+      directory: "/static/skills/generating-backoffice-uis",
+    });
+    expect(skills["generating-backoffice-uis"]?.description).toContain("visual summaries");
   });
 
   test("reflects skills from the mounted virtual filesystem", async () => {
