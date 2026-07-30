@@ -37,6 +37,12 @@ export type PreparedFileBatchEntry =
       precondition: UploadFileWritePrecondition;
     }
   | {
+      kind: "delete";
+      provider: string;
+      fileKey: string;
+      precondition: Extract<UploadFileWritePrecondition, { kind: "revision" }>;
+    }
+  | {
       kind: "assert";
       provider: string;
       fileKey: string;
