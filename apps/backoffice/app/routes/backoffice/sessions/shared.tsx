@@ -30,48 +30,40 @@ export type PiLayoutContext = {
 
 export type PiTab = "sessions" | "harnesses" | "configuration";
 
-const PI_TABS = [
-  { id: "sessions", label: "Sessions" },
+const PI_INTERNAL_TABS = [
   { id: "harnesses", label: "Harnesses" },
   { id: "configuration", label: "Configuration" },
-] as const satisfies readonly { id: PiTab; label: string }[];
-
-const piTabLabel = (activeTab: PiTab) => {
-  const tab = PI_TABS.find((candidate) => candidate.id === activeTab);
-  if (!tab) {
-    throw new Error("Unsupported Pi tab.");
-  }
-  return tab.label;
-};
+] as const satisfies readonly { id: Exclude<PiTab, "sessions">; label: string }[];
 
 export function PiWorkspaceHeader({
   orgId,
   organisationName,
   organisationOptions,
   activeTab,
-  isConfigured,
 }: {
   orgId: string;
   organisationName?: string | null;
   organisationOptions: BackofficeOrganisationScopeOption[];
   activeTab: PiTab;
-  isConfigured: boolean;
 }) {
   const workspaceLabel = organisationName ?? orgId;
-  const breadcrumbs = [
-    { label: "Backoffice", to: "/backoffice" },
-    {
-      label: "Sessions",
-      to: activeTab === "sessions" ? undefined : "/backoffice/sessions",
-    },
-    ...(activeTab === "sessions" ? [] : [{ label: piTabLabel(activeTab) }]),
-  ];
-  const basePath = `/backoffice/sessions/${encodeURIComponent(orgId)}`;
-  const tabs = PI_TABS.map((tab) => ({
+  const isInternals = activeTab !== "sessions";
+  const activeInternalTab = isInternals
+    ? PI_INTERNAL_TABS.find((candidate) => candidate.id === activeTab)
+    : null;
+  const breadcrumbs = isInternals
+    ? [
+        { label: "Backoffice", to: "/backoffice" },
+        { label: "Internals", to: "/backoffice/internals" },
+        { label: "Pi", to: "/backoffice/internals/pi" },
+        ...(activeInternalTab ? [{ label: activeInternalTab.label }] : []),
+      ]
+    : [{ label: "Backoffice", to: "/backoffice" }, { label: "Sessions" }];
+  const basePath = `/backoffice/internals/pi/${encodeURIComponent(orgId)}`;
+  const tabs = PI_INTERNAL_TABS.map((tab) => ({
     id: tab.id,
     label: tab.label,
     to: `${basePath}/${tab.id}`,
-    disabled: tab.id === "sessions" && !isConfigured && activeTab !== "sessions",
     active: tab.id === activeTab,
   }));
 
@@ -90,17 +82,21 @@ export function PiWorkspaceHeader({
               activeOrganisationLabel={workspaceLabel}
               options={organisationOptions}
               pathForOption={(option) =>
-                `/backoffice/sessions/${encodeURIComponent(option.id)}/${activeTab}`
+                isInternals
+                  ? `/backoffice/internals/pi/${encodeURIComponent(option.id)}/${activeTab}`
+                  : `/backoffice/sessions/${encodeURIComponent(option.id)}/sessions`
               }
-              scopeLabel="Session scope"
+              scopeLabel={isInternals ? "Pi internal scope" : "Session scope"}
             />
           </div>
         </div>
       </div>
 
-      <div className="border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
-        <OverflowTabRow items={tabs} ariaLabel="Pi workspace sections" />
-      </div>
+      {isInternals ? (
+        <div className="border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
+          <OverflowTabRow items={tabs} ariaLabel="Pi internal sections" />
+        </div>
+      ) : null}
     </section>
   );
 }

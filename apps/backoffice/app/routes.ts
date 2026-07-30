@@ -233,8 +233,6 @@ export default [
       route("sessions", "routes/backoffice/sessions/index.tsx"),
       route("sessions/:orgId", "routes/backoffice/sessions/organisation-layout.tsx", [
         index("routes/backoffice/sessions/organisation-index.tsx"),
-        route("configuration", "routes/backoffice/sessions/configuration.tsx"),
-        route("harnesses", "routes/backoffice/sessions/harnesses.tsx"),
         route("sessions", "routes/backoffice/sessions/sessions.tsx", [
           index("routes/backoffice/sessions/sessions-index.tsx"),
           route(":workflowName/:sessionId", "routes/backoffice/sessions/session-detail.tsx"),
@@ -252,6 +250,12 @@ export default [
       route("internals", "routes/backoffice/internals/layout.tsx", [
         index("routes/backoffice/internals/index.tsx"),
         route("github", "routes/backoffice/internals/github.tsx"),
+        route("pi", "routes/backoffice/internals/pi.tsx"),
+        route("pi/:orgId", "routes/backoffice/internals/pi-layout.tsx", [
+          index("routes/backoffice/internals/pi-organisation-index.tsx"),
+          route("configuration", "routes/backoffice/sessions/configuration.tsx"),
+          route("harnesses", "routes/backoffice/sessions/harnesses.tsx"),
+        ]),
         route("durable-hooks", "routes/backoffice/internals/durable-hooks.tsx"),
         route("workflows", "routes/backoffice/internals/workflows.tsx"),
         route(
