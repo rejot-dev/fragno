@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import {
   BACKOFFICE_UI_LIMITS,
@@ -230,7 +230,7 @@ describe("parseBackofficeUiResult", () => {
       }),
     );
 
-    expect(result.kind).toBe("valid");
+    assert(result.kind === "valid");
   });
 
   test("still rejects invalid literal component props", () => {
@@ -264,7 +264,7 @@ describe("parseBackofficeUiResult", () => {
       }),
     );
 
-    expect(result.kind).toBe("valid");
+    assert(result.kind === "valid");
   });
 
   test("rejects generated UI above the element count limit", () => {

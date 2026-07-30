@@ -1,4 +1,5 @@
 import type { FileContent } from "../interface";
+import { GENERATING_BACKOFFICE_UIS_SKILL_CONTENT } from "./generating-backoffice-uis-skill";
 
 const starterSkill = ({
   name,
@@ -23,6 +24,7 @@ ${body.trim()}
 });
 
 export const GENERAL_SKILL_CONTENT: Record<string, FileContent> = {
+  ...GENERATING_BACKOFFICE_UIS_SKILL_CONTENT,
   ...starterSkill({
     name: "building-automations",
     title: "Building Automations",

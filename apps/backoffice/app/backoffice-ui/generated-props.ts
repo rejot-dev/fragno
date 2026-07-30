@@ -2,7 +2,6 @@ import { z } from "zod";
 
 import { VisibilityConditionSchema } from "@json-render/core";
 
-
 const generatedPropsSchemaCache = new WeakMap<z.ZodObject, z.ZodType>();
 
 function createGeneratedPropSchema(literalSchema: z.ZodType): z.ZodType {
@@ -33,10 +32,9 @@ function generatedPropsSchema(literalPropsSchema: z.ZodObject) {
   }
 
   const generatedShape = Object.fromEntries(
-    Object.entries(literalPropsSchema.shape).map(([name, literalSchema]) => [
-      name,
-      createGeneratedPropSchema(literalSchema),
-    ]),
+    (Object.entries(literalPropsSchema.shape) as Array<[string, z.ZodType]>).map(
+      ([name, literalSchema]) => [name, createGeneratedPropSchema(literalSchema)],
+    ),
   );
   const schema = z.strictObject(generatedShape);
   generatedPropsSchemaCache.set(literalPropsSchema, schema);

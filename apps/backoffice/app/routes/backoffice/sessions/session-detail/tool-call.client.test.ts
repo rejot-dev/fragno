@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, assert } from "vitest";
 
 import { createElement } from "react";
 
@@ -24,7 +24,9 @@ describe("ToolCallDetails", () => {
       ),
     );
 
-    expect(container.querySelector("details")?.open).toBe(false);
+    const details = container.querySelector("details");
+    assert(details);
+    assert(!details.open);
   });
 
   test("automatically opens when a completed result becomes tagged generated UI", async () => {
@@ -47,7 +49,7 @@ describe("ToolCallDetails", () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelector("details")?.open).toBe(true);
+      assert(container.querySelector("details")?.open);
     });
   });
 
@@ -82,7 +84,8 @@ describe("ToolCallDetails", () => {
     expect(screen.getByLabelText("Orders")).toBeDefined();
     const rawSummary = screen.getByText("Raw result").closest("summary");
     const rawDetails = rawSummary?.closest("details");
-    expect(rawDetails?.open).toBe(false);
+    assert(rawDetails);
+    assert(!rawDetails.open);
     expect(container.querySelector("pre")).toBeNull();
     expect(container.textContent).not.toContain("raw-only-marker");
 
@@ -92,7 +95,7 @@ describe("ToolCallDetails", () => {
     fireEvent.click(rawSummary);
 
     await waitFor(() => {
-      expect(rawDetails?.open).toBe(true);
+      assert(rawDetails.open);
       expect(container.querySelector("pre")).not.toBeNull();
       expect(container.textContent).toContain("raw-only-marker");
     });
@@ -100,7 +103,7 @@ describe("ToolCallDetails", () => {
     fireEvent.click(rawSummary);
 
     await waitFor(() => {
-      expect(rawDetails?.open).toBe(false);
+      assert(!rawDetails.open);
       expect(container.querySelector("pre")).toBeNull();
       expect(container.textContent).not.toContain("raw-only-marker");
     });
