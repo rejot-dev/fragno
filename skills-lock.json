@@ -1,6 +1,18 @@
 {
   "version": 1,
   "skills": {
+    "core": {
+      "source": "vercel-labs/json-render",
+      "sourceType": "github",
+      "skillPath": "skills/core/SKILL.md",
+      "computedHash": "ff1d5f1daa4736237aab6c37b7642ae8e623d65b8cb2eb9916c6ba33384efb81"
+    },
+    "react": {
+      "source": "vercel-labs/json-render",
+      "sourceType": "github",
+      "skillPath": "skills/react/SKILL.md",
+      "computedHash": "42e6c3acd47b1f2374b7401fae31c5b496a3e12b0949289c9f5b60513c519316"
+    },
     "react-doctor": {
       "source": "millionco/react-doctor",
       "sourceType": "github",
