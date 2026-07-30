@@ -8,6 +8,13 @@ import type { UploadSnapshot } from "./upload-model";
 import { toSafeNumber } from "./upload-model";
 
 export type FileRow = TableToColumnValues<typeof uploadSchema.tables.file>;
+type ReadyFileRow = FileRow & { status: "ready" };
+type RevisionFileWritePrecondition = Extract<UploadFileWritePrecondition, { kind: "revision" }>;
+type FileWritePreconditionDetails = {
+  uploadId?: string;
+  provider: string;
+  fileKey: string;
+};
 type FilePublicationRecord = Omit<FileRow, "id" | "createdAt" | "updatedAt" | "completedAt">;
 type UploadPublicationSource = Pick<
   UploadSnapshot,
@@ -46,7 +53,7 @@ export function buildUploadHookPayload(
   };
 }
 
-function buildFileHookPayload(file: FileRow): FileHookPayload {
+export function buildFileHookPayload(file: FileRow): FileHookPayload {
   return {
     provider: file.provider,
     fileKey: file.key,
@@ -59,8 +66,18 @@ function buildFileHookPayload(file: FileRow): FileHookPayload {
 
 export function assertFileWritePrecondition(
   file: FileRow | null,
+  precondition: RevisionFileWritePrecondition,
+  details?: FileWritePreconditionDetails,
+): asserts file is ReadyFileRow;
+export function assertFileWritePrecondition(
+  file: FileRow | null,
   precondition: UploadFileWritePrecondition | undefined,
-  details?: { uploadId?: string; provider: string; fileKey: string },
+  details?: FileWritePreconditionDetails,
+): void;
+export function assertFileWritePrecondition(
+  file: FileRow | null,
+  precondition: UploadFileWritePrecondition | undefined,
+  details?: FileWritePreconditionDetails,
 ): void {
   if (!precondition) {
     return;

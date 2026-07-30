@@ -8,6 +8,7 @@ import type { PreparedFileBatchEntry, UploadFileWritePrecondition } from "../typ
 import { UploadServiceError } from "./errors";
 import {
   assertFileWritePrecondition,
+  buildFileHookPayload,
   buildUploadHookPayload,
   type FileRow,
   planFilePublication,
@@ -644,6 +645,10 @@ export const createUploadServices = () => {
         (entry): entry is Extract<PreparedFileBatchEntry, { kind: "write" }> =>
           entry.kind === "write",
       );
+      const deletions = input.entries.filter(
+        (entry): entry is Extract<PreparedFileBatchEntry, { kind: "delete" }> =>
+          entry.kind === "delete",
+      );
       const assertions = input.entries.filter(
         (entry): entry is Extract<PreparedFileBatchEntry, { kind: "assert" }> =>
           entry.kind === "assert",
@@ -656,21 +661,21 @@ export const createUploadServices = () => {
         );
       }
 
-      const assertionGroups = new Map<string, string[]>();
-      for (const assertion of assertions) {
-        if (assertion.provider !== input.activeProvider) {
+      const fileQueryGroups = new Map<string, string[]>();
+      for (const entry of [...deletions, ...assertions]) {
+        if (entry.provider !== input.activeProvider) {
           throw new UploadServiceError(
             "PROVIDER_MISMATCH",
-            "A prepared batch assertion belongs to a different provider.",
-            { provider: assertion.provider, fileKey: assertion.fileKey },
+            "A prepared batch entry belongs to a different provider.",
+            { provider: entry.provider, fileKey: entry.fileKey },
           );
         }
-        const keys = assertionGroups.get(assertion.provider) ?? [];
-        keys.push(assertion.fileKey);
-        assertionGroups.set(assertion.provider, keys);
+        const keys = fileQueryGroups.get(entry.provider) ?? [];
+        keys.push(entry.fileKey);
+        fileQueryGroups.set(entry.provider, keys);
       }
       const uploadIdChunks = chunkBatchValues(uploadIds);
-      const assertionQueries = Array.from(assertionGroups, ([provider, keys]) =>
+      const fileQueries = Array.from(fileQueryGroups, ([provider, keys]) =>
         chunkBatchValues(Array.from(new Set(keys))).map((fileKeys) => ({ provider, fileKeys })),
       ).flat();
 
@@ -698,7 +703,7 @@ export const createUploadServices = () => {
               ),
             );
           }
-          for (const query of assertionQueries) {
+          for (const query of fileQueries) {
             retrieval.find("file", (b) =>
               b.whereIndex("idx_file_provider_key", (eb) =>
                 eb.and(eb("provider", "=", query.provider), eb("key", "in", query.fileKeys)),
@@ -718,12 +723,12 @@ export const createUploadServices = () => {
             uploadIdChunks.length,
           ) as UploadWithFile[][];
           const unexpiredResultsStart = uploadIdChunks.length;
-          const assertionResultsStart = unexpiredResultsStart + uploadIdChunks.length;
+          const fileResultsStart = unexpiredResultsStart + uploadIdChunks.length;
           const unexpiredUploadResults = retrieveResult.slice(
             unexpiredResultsStart,
-            assertionResultsStart,
+            fileResultsStart,
           ) as UploadSnapshot[][];
-          const assertionResults = retrieveResult.slice(assertionResultsStart) as FileRow[][];
+          const fileResults = retrieveResult.slice(fileResultsStart) as FileRow[][];
           const unexpiredUploadIds = new Set(
             unexpiredUploadResults.flat().map((upload) => upload.id.toString()),
           );
@@ -743,12 +748,12 @@ export const createUploadServices = () => {
                     ]
                   : [],
               ),
-            ...assertionResults
+            ...fileResults
               .flat()
               .map((file) => [batchFileAddress(file.provider, file.key), file] as const),
           ]);
 
-          const writeDestinations = new Set<string>();
+          const mutationDestinations = new Set<string>();
           const plans = writes.map((entry) => {
             const upload = uploadsById.get(entry.uploadId);
             if (!upload) {
@@ -772,10 +777,10 @@ export const createUploadServices = () => {
             }
 
             const address = batchFileAddress(upload.provider, upload.key);
-            if (writeDestinations.has(address)) {
+            if (mutationDestinations.has(address)) {
               throw new UploadServiceError(
                 "INVALID_REQUEST",
-                "Prepared file batches cannot contain duplicate write destinations.",
+                "Prepared file batches cannot contain duplicate mutation destinations.",
                 {
                   uploadId: entry.uploadId,
                   provider: upload.provider,
@@ -783,7 +788,7 @@ export const createUploadServices = () => {
                 },
               );
             }
-            writeDestinations.add(address);
+            mutationDestinations.add(address);
             const file = upload.file ?? filesByAddress.get(address) ?? null;
 
             if (upload.status === "completed") {
@@ -828,6 +833,29 @@ export const createUploadServices = () => {
             return { entry, upload, file, publication, alreadyCommitted: false as const };
           });
 
+          const deletionPlans = deletions.map((entry) => {
+            const address = batchFileAddress(entry.provider, entry.fileKey);
+            if (mutationDestinations.has(address)) {
+              throw new UploadServiceError(
+                "INVALID_REQUEST",
+                "Prepared file batches cannot contain duplicate mutation destinations.",
+                { provider: entry.provider, fileKey: entry.fileKey },
+              );
+            }
+            mutationDestinations.add(address);
+
+            const file = filesByAddress.get(address) ?? null;
+            if (file?.status === "deleted" && file.id.version === entry.precondition.revision + 1) {
+              return { entry, file, alreadyDeleted: true as const };
+            }
+
+            assertFileWritePrecondition(file, entry.precondition, {
+              provider: entry.provider,
+              fileKey: entry.fileKey,
+            });
+            return { entry, file, alreadyDeleted: false as const };
+          });
+
           for (const assertion of assertions) {
             const file =
               filesByAddress.get(batchFileAddress(assertion.provider, assertion.fileKey)) ?? null;
@@ -852,7 +880,7 @@ export const createUploadServices = () => {
           }
 
           const databaseNow = uow.now();
-          const files = plans.map((plan) => {
+          const writtenFiles = plans.map((plan) => {
             if (plan.alreadyCommitted) {
               uow.check("upload", plan.upload.id);
               uow.check("file", plan.file.id);
@@ -898,8 +926,30 @@ export const createUploadServices = () => {
               revision: fileId.version,
             };
           });
+          const deletedFiles = deletionPlans.map((plan) => {
+            if (plan.alreadyDeleted) {
+              uow.check("file", plan.file.id);
+              return { ...plan.file, revision: plan.file.id.version };
+            }
 
-          return { files };
+            uow.update("file", plan.file.id, (b) =>
+              b
+                .set({
+                  status: "deleted",
+                  updatedAt: databaseNow,
+                  deletedAt: databaseNow,
+                })
+                .check(),
+            );
+            uow.triggerHook("onFileDeleted", buildFileHookPayload(plan.file));
+            return {
+              ...plan.file,
+              status: "deleted" as const,
+              revision: plan.file.id.version + 1,
+            };
+          });
+
+          return { files: [...writtenFiles, ...deletedFiles] };
         })
         .build();
     },

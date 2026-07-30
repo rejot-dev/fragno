@@ -62,6 +62,15 @@ const preparedFileBatchEntrySchema = z.discriminatedUnion("kind", [
     precondition: fileWritePreconditionSchema,
   }),
   z.object({
+    kind: z.literal("delete"),
+    provider: providerNamespaceSchema,
+    fileKey: z.string().min(1),
+    precondition: z.object({
+      kind: z.literal("revision"),
+      revision: z.number().int().nonnegative(),
+    }),
+  }),
+  z.object({
     kind: z.literal("assert"),
     provider: providerNamespaceSchema,
     fileKey: z.string().min(1),
@@ -521,12 +530,12 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           const activeProvider = getResolvedConfig().storage.name;
           try {
             const entries = payload.entries.map((entry) =>
-              entry.kind === "assert"
-                ? {
+              entry.kind === "write"
+                ? entry
+                : {
                     ...entry,
                     fileKey: resolveFileKeyInput({ fileKey: entry.fileKey }).fileKey,
-                  }
-                : entry,
+                  },
             );
             const result = await this.handlerTx()
               .withServiceCalls(() => [

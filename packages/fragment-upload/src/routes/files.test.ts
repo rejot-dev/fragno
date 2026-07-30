@@ -158,6 +158,144 @@ describe("upload file routes", async () => {
     assert((await secondContent.text()) === "second-v1");
   });
 
+  it("commits and replays prepared writes with revision-conditional deletions", async () => {
+    const removedKey = "prepared/removed.txt";
+    const removed = await fragment.callRoute("POST", "/files", {
+      body: createFileForm({ content: "remove me", filename: "removed.txt", fileKey: removedKey }),
+    });
+    assert(removed.type === "json");
+    const removedSnapshot = await fragment.callRoute("GET", "/files/by-key", {
+      query: { provider, key: removedKey },
+    });
+    assert(removedSnapshot.type === "json");
+    const prepared = await prepareProxyFile("prepared/created-with-delete.txt", "created");
+    const entries = [
+      {
+        kind: "write" as const,
+        uploadId: prepared.uploadId,
+        precondition: { kind: "absent" as const },
+      },
+      {
+        kind: "delete" as const,
+        provider,
+        fileKey: removedKey,
+        precondition: { kind: "revision" as const, revision: removedSnapshot.data.revision },
+      },
+    ];
+
+    const committed = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: { entries },
+    });
+    assert(committed.type === "json");
+    expect(committed.data.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ fileKey: prepared.fileKey, status: "ready" }),
+        expect.objectContaining({ fileKey: removedKey, status: "deleted" }),
+      ]),
+    );
+
+    const replayed = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: { entries },
+    });
+    assert(replayed.type === "json");
+    expect(replayed.data.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ fileKey: prepared.fileKey, status: "ready" }),
+        expect.objectContaining({ fileKey: removedKey, status: "deleted" }),
+      ]),
+    );
+
+    const removedContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: removedKey },
+    });
+    assert(removedContent.status === 410);
+    const createdContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: prepared.fileKey },
+    });
+    await expect(createdContent.text()).resolves.toBe("created");
+  });
+
+  it("leaves prepared writes unpublished when a conditional deletion loses its revision", async () => {
+    const removedKey = "prepared/stale-delete.txt";
+    const removed = await fragment.callRoute("POST", "/files", {
+      body: createFileForm({
+        content: "current",
+        filename: "stale-delete.txt",
+        fileKey: removedKey,
+      }),
+    });
+    assert(removed.type === "json");
+    const removedSnapshot = await fragment.callRoute("GET", "/files/by-key", {
+      query: { provider, key: removedKey },
+    });
+    assert(removedSnapshot.type === "json");
+    const prepared = await prepareProxyFile("prepared/rejected-by-delete.txt", "unpublished");
+
+    const rejected = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: {
+        entries: [
+          {
+            kind: "write",
+            uploadId: prepared.uploadId,
+            precondition: { kind: "absent" },
+          },
+          {
+            kind: "delete",
+            provider,
+            fileKey: removedKey,
+            precondition: { kind: "revision", revision: removedSnapshot.data.revision + 1 },
+          },
+        ],
+      },
+    });
+    assert(rejected.type === "error");
+    assert(rejected.status === 412);
+    assert(rejected.error.code === "FILE_PRECONDITION_FAILED");
+
+    const removedContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: removedKey },
+    });
+    await expect(removedContent.text()).resolves.toBe("current");
+    const unpublished = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: prepared.fileKey },
+    });
+    assert(unpublished.status === 404);
+  });
+
+  it("leaves prepared writes unpublished when a conditional deletion target is missing", async () => {
+    const missingKey = "prepared/missing-delete.txt";
+    const prepared = await prepareProxyFile(
+      "prepared/rejected-by-missing-delete.txt",
+      "unpublished",
+    );
+
+    const rejected = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: {
+        entries: [
+          {
+            kind: "write",
+            uploadId: prepared.uploadId,
+            precondition: { kind: "absent" },
+          },
+          {
+            kind: "delete",
+            provider,
+            fileKey: missingKey,
+            precondition: { kind: "revision", revision: 0 },
+          },
+        ],
+      },
+    });
+    assert(rejected.type === "error");
+    assert(rejected.status === 412);
+    assert(rejected.error.code === "FILE_PRECONDITION_FAILED");
+
+    const unpublished = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: prepared.fileKey },
+    });
+    assert(unpublished.status === 404);
+  });
+
   it("leaves every file unchanged when a prepared batch assertion fails", async () => {
     const stableKey = "prepared/stable.txt";
     const changedKey = "prepared/changed.txt";
