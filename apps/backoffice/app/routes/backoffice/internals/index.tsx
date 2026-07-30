@@ -25,6 +25,13 @@ function internalDestinations(hasOrganization: boolean): InternalDestination[] {
       to: "/backoffice/internals/github",
     },
     {
+      id: "pi",
+      name: "Pi",
+      description: "Inspect Pi harnesses and manage organisation-scoped provider configuration.",
+      status: hasOrganization ? "Available" : "Planned",
+      to: hasOrganization ? "/backoffice/internals/pi" : null,
+    },
+    {
       id: "upload",
       name: "Upload",
       description: "Configure upload storage and inspect organisation-scoped upload operations.",

@@ -106,7 +106,6 @@ export default function BackofficeOrganisationPiLayout({
         organisationName={organisation?.name ?? orgId}
         organisationOptions={loaderData.organisationOptions}
         activeTab={activeTab}
-        isConfigured={Boolean(configState?.configured)}
       />
       <div
         className={
