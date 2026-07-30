@@ -261,6 +261,33 @@
   }
 }
 
+@keyframes bo-session-workspace-enter {
+  from {
+    opacity: 0;
+    transform: translateX(1.5rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.bo-session-workspace-drawer {
+  animation-name: bo-session-workspace-enter;
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  animation-fill-mode: both;
+}
+
+@media (min-width: 48rem) {
+  .bo-session-thread-pane {
+    transition-property: width;
+    transition-duration: 220ms;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+}
+
 .backoffice-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--bo-grid), 0.5) transparent;

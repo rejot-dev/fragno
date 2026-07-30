@@ -60,7 +60,7 @@ function GeneratedUiFailureNotice({ message, value }: { message: string; value: 
   );
 }
 
-function RawValueDisclosure({ value }: { value: unknown }) {
+export function RawValueDisclosure({ value }: { value: unknown }) {
   const [open, setOpen] = useState(false);
 
   return (

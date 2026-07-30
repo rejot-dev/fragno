@@ -53,13 +53,13 @@ export function SessionThread({
   };
 
   return (
-    <ThreadPrimitive.Root className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--bo-panel)]">
+    <ThreadPrimitive.Root className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--bo-panel)]">
       <ThreadPrimitive.Viewport
         ref={viewportRef}
         autoScroll
         turnAnchor="top"
         onScroll={handleViewportScroll}
-        className="backoffice-scroll flex min-h-0 flex-1 flex-col overflow-y-auto scroll-smooth px-3 sm:px-6"
+        className="backoffice-scroll flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain scroll-smooth px-3 sm:px-6"
       >
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col py-5 sm:py-8">
           <ThreadPrimitive.Messages>

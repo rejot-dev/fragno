@@ -101,7 +101,7 @@ export default function BackofficeOrganisationPiLayout({
     <div
       className={
         isSessions
-          ? "flex min-h-[calc(100dvh-7.25rem)] flex-col gap-2 overflow-hidden sm:min-h-[calc(100dvh-5rem)]"
+          ? "flex h-[calc(100dvh-7.25rem)] min-h-0 flex-col gap-2 overflow-hidden sm:h-[calc(100dvh-5rem)]"
           : "space-y-4"
       }
     >

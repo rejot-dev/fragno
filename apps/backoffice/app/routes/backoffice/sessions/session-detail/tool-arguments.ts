@@ -152,20 +152,21 @@ const extractStreamingJsonStringField = (rawText: string | undefined, fieldNames
   return null;
 };
 
+export const getCodeArgumentSource = ({ rawText, value }: { rawText?: string; value: unknown }) => {
+  const codeArgument = getCodeArgument(value);
+  const streamingCode = extractStreamingJsonStringField(rawText, ["code"]);
+  if (streamingCode && streamingCode.length >= (codeArgument ? codeArgument.code.length : 0)) {
+    return streamingCode;
+  }
+  return codeArgument?.code ?? null;
+};
+
 export const formatToolArgumentsDisplayText = ({
   rawText,
   value,
 }: {
   rawText?: string;
   value: unknown;
-}) => {
-  const codeArgument = getCodeArgument(value);
-  const streamingCode = extractStreamingJsonStringField(rawText, ["code"]);
-  if (streamingCode && streamingCode.length >= (codeArgument ? codeArgument.code.length : 0)) {
-    return streamingCode;
-  }
-  if (codeArgument) {
-    return codeArgument.code;
-  }
-  return rawText && rawText.length > 0 ? rawText : formatJson(value);
-};
+}) =>
+  getCodeArgumentSource({ rawText, value }) ??
+  (rawText && rawText.length > 0 ? rawText : formatJson(value));
