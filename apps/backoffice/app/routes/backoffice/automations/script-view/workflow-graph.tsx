@@ -44,13 +44,15 @@ export function ScriptWorkflowGraph({
   runtimeToolCallsByStepId,
   selectedRun,
   scrollViewport,
+  fillHeight = false,
   onSourceSelect,
 }: {
   visualization: WorkflowVisualizationSnapshot;
   detailMode: WorkflowGraphDetailMode;
   runtimeToolCallsByStepId: ReadonlyMap<string, readonly ResolvedWorkflowRuntimeToolCall[]>;
   selectedRun: ScriptWorkflowRun | null;
-  scrollViewport: LinkedScrollViewport;
+  scrollViewport?: LinkedScrollViewport;
+  fillHeight?: boolean;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   const workflows = visualization.graph.nodes.filter((node) => node.kind === "workflow");
@@ -61,7 +63,7 @@ export function ScriptWorkflowGraph({
       {...scrollViewport}
       tabIndex={0}
       aria-label="Workflow graph"
-      className="backoffice-scroll max-h-[calc(100vh-10rem)] min-h-[36rem] overflow-auto bg-[var(--bo-panel-2)] p-4 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--bo-accent)]"
+      className={`backoffice-scroll overflow-auto overscroll-contain bg-[var(--bo-panel-2)] p-4 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--bo-accent)] ${fillHeight ? "h-full min-h-0" : "max-h-[calc(100vh-10rem)] min-h-[36rem]"}`}
     >
       {workflows.length === 0 ? (
         <NonWorkflowMessage />
