@@ -22,6 +22,20 @@ import {
 import { SessionDisplayOptions } from "./session-detail/display-options";
 import { SessionHeader } from "./session-detail/session-header";
 import { SessionThread } from "./session-detail/session-thread";
+import {
+  SessionWorkspaceNavigationProvider,
+  type SessionWorkspaceNavigation,
+} from "./session-detail/workspace-context";
+import {
+  createSessionWorkspaceState,
+  reconcileSessionWorkspaceState,
+} from "./session-detail/workspace-model";
+import {
+  SessionMobileWorkspaceTabs,
+  SessionWorkspacePanel,
+} from "./session-detail/workspace-panel";
+import { projectSessionWorkspaceTabs } from "./session-detail/workspace-projection";
+import { SessionWorkspaceSplit } from "./session-detail/workspace-split";
 import type { PiSessionsOutletContext } from "./session-types";
 
 const TERMINAL_SESSION_LABELS: Record<string, string> = {
@@ -165,6 +179,47 @@ function PiSessionDetailView({
       }),
     [messages, projection.draftAgentMessage, projection.readyForInput, statusText],
   );
+  const workspaceTabs = useMemo(
+    () =>
+      projectSessionWorkspaceTabs({
+        draftAgentMessage: projection.draftAgentMessage,
+        messages,
+      }),
+    [messages, projection.draftAgentMessage],
+  );
+  const [workspaceState, setWorkspaceState] = useState(() =>
+    createSessionWorkspaceState(workspaceTabs),
+  );
+  const workspaceTabIds = useMemo(
+    () => new Set(workspaceTabs.map((tab) => tab.id)),
+    [workspaceTabs],
+  );
+
+  useEffect(() => {
+    setWorkspaceState((current) => reconcileSessionWorkspaceState(current, workspaceTabs));
+  }, [workspaceTabs]);
+
+  const openWorkspaceTab = useCallback(
+    (tabId: string) => {
+      if (!workspaceTabIds.has(tabId)) {
+        return;
+      }
+      setWorkspaceState((current) => ({ ...current, open: true, selectedTabId: tabId }));
+    },
+    [workspaceTabIds],
+  );
+  const closeWorkspace = useCallback(() => {
+    setWorkspaceState((current) => ({ ...current, open: false }));
+  }, []);
+  const workspaceNavigation = useMemo<SessionWorkspaceNavigation>(
+    () => ({
+      hasTab: (tabId) => workspaceTabIds.has(tabId),
+      openTab: openWorkspaceTab,
+    }),
+    [openWorkspaceTab, workspaceTabIds],
+  );
+  const selectedWorkspaceTab =
+    workspaceTabs.find((tab) => tab.id === workspaceState.selectedTabId) ?? workspaceTabs.at(-1);
 
   const handleSend = useCallback(
     async (message: AppendMessage) => {
@@ -265,21 +320,47 @@ function PiSessionDetailView({
           </div>
         ) : null}
 
-        <SessionThread
-          disabledReason={disabledReason}
-          error={sendError}
-          modelLabel={modelLabel}
-          needsNudge={needsNudge}
-          onContinue={handleContinue}
-          onStop={handleStop}
-          running={running}
-          showThinking={displayOptions.showThinking}
-          showToolCalls={displayOptions.showToolCalls}
-          showUsage={displayOptions.showUsage}
-          statusText={statusText}
-          commandKind={commandKind}
-          onCommandKindChange={setCommandKind}
-        />
+        {workspaceTabs.length > 0 ? (
+          <SessionMobileWorkspaceTabs
+            tabs={workspaceTabs}
+            selectedTabId={workspaceState.open ? (selectedWorkspaceTab?.id ?? null) : null}
+            onSelectChat={closeWorkspace}
+            onSelectTab={openWorkspaceTab}
+          />
+        ) : null}
+
+        <SessionWorkspaceNavigationProvider value={workspaceNavigation}>
+          <SessionWorkspaceSplit
+            storageKey={`backoffice:pi-session-workspace:${scope.orgId}`}
+            left={
+              <SessionThread
+                disabledReason={disabledReason}
+                error={sendError}
+                modelLabel={modelLabel}
+                needsNudge={needsNudge}
+                onContinue={handleContinue}
+                onStop={handleStop}
+                running={running}
+                showThinking={displayOptions.showThinking}
+                showToolCalls={displayOptions.showToolCalls}
+                showUsage={displayOptions.showUsage}
+                statusText={statusText}
+                commandKind={commandKind}
+                onCommandKindChange={setCommandKind}
+              />
+            }
+            right={
+              workspaceState.open && selectedWorkspaceTab ? (
+                <SessionWorkspacePanel
+                  tabs={workspaceTabs}
+                  selectedTabId={selectedWorkspaceTab.id}
+                  onClose={closeWorkspace}
+                  onSelectTab={openWorkspaceTab}
+                />
+              ) : null
+            }
+          />
+        </SessionWorkspaceNavigationProvider>
       </div>
     </AssistantRuntimeProvider>
   );

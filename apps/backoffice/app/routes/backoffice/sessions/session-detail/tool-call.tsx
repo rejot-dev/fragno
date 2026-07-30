@@ -10,8 +10,9 @@ import {
   type ToolResultMessage,
   normalizePiContent,
 } from "./assistant-runtime";
+import { getExecCodeModeResultDetails } from "./exec-code-mode";
 import { MessageImage, ScrollablePre } from "./message-content";
-import { ResultContent } from "./result-content";
+import { RawValueDisclosure, ResultContent } from "./result-content";
 import {
   formatJson,
   formatResultValue,
@@ -21,11 +22,14 @@ import {
   getReadPath,
 } from "./tool-arguments";
 import { formatEventTimestamp, tapScale } from "./ui";
+import { useSessionWorkspaceNavigation } from "./workspace-context";
+import { generatedUiTabId, workflowGraphTabId } from "./workspace-model";
 
 const ordinaryResultPresentation: BackofficeUiParseResult = { kind: "ordinary" };
 
 export function ToolCallBlock(props: ToolCallMessagePartProps) {
   const createdAt = useAuiState((state) => state.message.createdAt);
+  const workspaceNavigation = useSessionWorkspaceNavigation();
   const artifact = (props.artifact ?? null) as PiToolCallArtifact | null;
   const draftTool = artifact?.draftTool ?? null;
   const completedToolResult = artifact?.completedToolResult ?? null;
@@ -49,6 +53,12 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
   const hasTaggedGeneratedUi = resultPresentation.kind !== "ordinary";
   const canExpandOrdinaryResult =
     (execCodeModeDetails?.hasResult ?? false) && resultPresentation.kind === "ordinary";
+  const generatedUiWorkspaceTabId = generatedUiTabId(props.toolCallId);
+  const workflowGraphWorkspaceTabId = workflowGraphTabId(props.toolCallId);
+  const canOpenGeneratedUi =
+    resultPresentation.kind === "valid" &&
+    Boolean(workspaceNavigation?.hasTab(generatedUiWorkspaceTabId));
+  const canOpenWorkflowGraph = Boolean(workspaceNavigation?.hasTab(workflowGraphWorkspaceTabId));
   const [resultExpanded, setResultExpanded] = useState(false);
   const running =
     props.status.type === "running" || Boolean(draftTool && draftTool.status !== "done");
@@ -85,6 +95,13 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
         rawResult={execCodeModeDetails?.result}
         result={completedToolResult}
         useExecCodeModeFormatting={execCodeModeDetails !== null}
+        onOpenGeneratedUi={
+          canOpenGeneratedUi
+            ? () => {
+                workspaceNavigation?.openTab(generatedUiWorkspaceTabId);
+              }
+            : undefined
+        }
       />
     </ToolResultSection>
   ) : null;
@@ -125,11 +142,24 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
         </span>
       </summary>
       <div className="space-y-3 border-t border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
+        {canOpenWorkflowGraph ? (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                workspaceNavigation?.openTab(workflowGraphWorkspaceTabId);
+              }}
+              className={`inline-flex min-h-10 items-center border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 text-[10px] font-semibold tracking-[0.1em] text-[var(--bo-fg)] uppercase transition-[border-color,scale] duration-150 ease-out hover:border-[color:var(--bo-accent)] ${tapScale}`}
+            >
+              Open workflow graph
+            </button>
+          </div>
+        ) : null}
         {hasTaggedGeneratedUi && completedToolResult ? (
           <>
             {completedResultSection}
             <ToolResultDisclosure label="Code">
-              <ToolArgumentsBlock value={props.args} />
+              <ToolArgumentsBlock rawText={props.argsText} value={props.args} />
             </ToolResultDisclosure>
             {partialResult ? (
               <ToolResultDisclosure label="Live result">{partialResult}</ToolResultDisclosure>
@@ -138,7 +168,7 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
           </>
         ) : (
           <>
-            <ToolArgumentsBlock value={props.args} />
+            <ToolArgumentsBlock rawText={props.argsText} value={props.args} />
             {partialResult ? (
               <ToolResultSection label="Live result">{partialResult}</ToolResultSection>
             ) : null}
@@ -230,17 +260,17 @@ function ToolResultDisclosure({ children, label }: { children: ReactNode; label:
   );
 }
 
-function ToolArgumentsBlock({ value }: { value: unknown }) {
+function ToolArgumentsBlock({ rawText, value }: { rawText?: string; value: unknown }) {
   const codeArgument = getCodeArgument(value);
   if (!codeArgument) {
-    return <ScrollablePre>{formatToolArgumentsDisplayText({ value })}</ScrollablePre>;
+    return <ScrollablePre>{formatToolArgumentsDisplayText({ rawText, value })}</ScrollablePre>;
   }
 
   const restKeys = Object.keys(codeArgument.rest);
   return (
     <div className="space-y-2">
       {restKeys.length > 0 ? <ScrollablePre>{formatJson(codeArgument.rest)}</ScrollablePre> : null}
-      <ScrollablePre>{formatToolArgumentsDisplayText({ value })}</ScrollablePre>
+      <ScrollablePre>{formatToolArgumentsDisplayText({ rawText, value })}</ScrollablePre>
     </div>
   );
 }
@@ -252,6 +282,7 @@ export function ToolResultContent({
   rawResult,
   result,
   useExecCodeModeFormatting,
+  onOpenGeneratedUi,
 }: {
   expanded: boolean;
   hasRawResult: boolean;
@@ -259,6 +290,7 @@ export function ToolResultContent({
   rawResult: unknown;
   result: ToolResultMessage;
   useExecCodeModeFormatting: boolean;
+  onOpenGeneratedUi?: () => void;
 }) {
   const messageContent = (
     <div className="space-y-2">
@@ -283,6 +315,10 @@ export function ToolResultContent({
     return messageContent;
   }
 
+  if (parsedResult.kind === "valid") {
+    return <GeneratedUiWorkspaceSummary rawValue={rawResult} onOpen={onOpenGeneratedUi} />;
+  }
+
   return (
     <ResultContent parsedValue={parsedResult} showRawValue={expanded} value={rawResult}>
       <ScrollablePre>{formatResultValue(rawResult)}</ScrollablePre>
@@ -290,17 +326,27 @@ export function ToolResultContent({
   );
 }
 
-function getExecCodeModeResultDetails(details: unknown) {
-  if (!details || typeof details !== "object" || Array.isArray(details)) {
-    return { hasResult: false, logs: [], result: undefined };
-  }
-
-  const resultDetails = details as Record<string, unknown>;
-  return {
-    hasResult: "result" in resultDetails,
-    logs: Array.isArray(resultDetails.logs)
-      ? resultDetails.logs.filter((line): line is string => typeof line === "string")
-      : [],
-    result: resultDetails.result,
-  };
+function GeneratedUiWorkspaceSummary({
+  rawValue,
+  onOpen,
+}: {
+  rawValue: unknown;
+  onOpen?: () => void;
+}) {
+  return (
+    <div className="space-y-2">
+      {onOpen ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onOpen}
+            className={`inline-flex min-h-10 items-center border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 text-[10px] font-semibold tracking-[0.1em] text-[var(--bo-fg)] uppercase transition-[border-color,scale] duration-150 ease-out hover:border-[color:var(--bo-accent)] ${tapScale}`}
+          >
+            Open interface
+          </button>
+        </div>
+      ) : null}
+      <RawValueDisclosure value={rawValue} />
+    </div>
+  );
 }

@@ -59,17 +59,20 @@ function renderToolResult({
       rawResult: rawValue,
       result,
       useExecCodeModeFormatting,
+      onOpenGeneratedUi: () => undefined,
     }),
   );
 }
 
 describe("ToolResultContent", () => {
-  test("chooses generated UI for an execCodeMode result with a valid $ui sidecar", () => {
+  test("moves valid generated UI out of the tool card and keeps a workspace launcher", () => {
     const markup = renderToolResult({});
 
-    expect(markup).toContain('aria-label="Orders"');
-    expect(markup).toContain(">24</p>");
+    expect(markup).not.toContain("Generated interface ready");
+    expect(markup).toContain("Open interface");
     expect(markup).toContain("Raw result");
+    expect(markup).not.toContain('aria-label="Orders"');
+    expect(markup).not.toContain(">24</p>");
     expect(markup).not.toContain("raw-sidecar-marker");
     expect(markup).not.toContain("log-sidecar-marker");
   });

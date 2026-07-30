@@ -14,7 +14,12 @@ export default mergeConfig(
       coverage: {
         enabled: false,
       },
-      include: ["app/**/*.test.ts", "workers/**/*.test.ts", "scripts/**/*.test.ts"],
+      include: [
+        "app/**/*.test.ts",
+        "app/**/*.test.tsx",
+        "workers/**/*.test.ts",
+        "scripts/**/*.test.ts",
+      ],
       exclude: ["app/**/*.cloudflare.test.ts", "workers/**/*.cloudflare.test.ts"],
     },
   }),

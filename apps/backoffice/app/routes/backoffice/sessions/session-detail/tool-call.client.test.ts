@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, test, assert } from "vitest";
+import { afterEach, describe, expect, test, assert, vi } from "vitest";
 
 import { createElement } from "react";
 
@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 
 import { ResultContent } from "./result-content";
-import { ToolCallDetails } from "./tool-call";
+import { ToolCallDetails, ToolResultContent } from "./tool-call";
 
 afterEach(cleanup);
 
@@ -51,6 +51,50 @@ describe("ToolCallDetails", () => {
     await waitFor(() => {
       assert(container.querySelector("details")?.open);
     });
+  });
+
+  test("opens a valid generated result through its workspace launcher", () => {
+    const onOpenGeneratedUi = vi.fn();
+    const value = {
+      $ui: {
+        version: 1,
+        state: {},
+        spec: {
+          root: "metric",
+          elements: {
+            metric: {
+              type: "Metric",
+              props: { label: "Orders", value: "24" },
+              children: [],
+            },
+          },
+        },
+      },
+    };
+
+    render(
+      createElement(ToolResultContent, {
+        expanded: false,
+        hasRawResult: true,
+        parsedResult: parseBackofficeUiResult(value),
+        rawResult: value,
+        result: {
+          role: "toolResult",
+          toolCallId: "generated",
+          toolName: "execCodeMode",
+          content: [],
+          details: { result: value },
+          isError: false,
+          timestamp: 1,
+        } as never,
+        useExecCodeModeFormatting: true,
+        onOpenGeneratedUi,
+      }),
+    );
+
+    expect(screen.queryByLabelText("Orders")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open interface" }));
+    expect(onOpenGeneratedUi).toHaveBeenCalledOnce();
   });
 
   test("formats and mounts raw output only while its disclosure is open", async () => {

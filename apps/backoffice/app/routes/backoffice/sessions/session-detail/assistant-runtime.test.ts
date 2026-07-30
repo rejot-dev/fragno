@@ -220,7 +220,8 @@ describe("createAssistantUiMessages", () => {
           "tool-bash": {
             id: "tool-bash",
             name: "bash",
-            args: { command: "pnpm test" },
+            args: {},
+            argsText: '{"command":"pnpm test',
             status: "running",
           },
         },
@@ -232,7 +233,11 @@ describe("createAssistantUiMessages", () => {
     expect(pending?.content).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: "reasoning", text: "I will run the command." }),
-        expect.objectContaining({ type: "tool-call", toolCallId: "tool-bash" }),
+        expect.objectContaining({
+          type: "tool-call",
+          toolCallId: "tool-bash",
+          argsText: '{"command":"pnpm test',
+        }),
       ]),
     );
   });
