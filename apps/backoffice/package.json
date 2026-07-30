@@ -19,6 +19,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@assistant-ui/react": "^0.15.1",
     "@base-ui/react": "^1.2.0",
     "@cfworker/json-schema": "^4.1.1",
     "@cloudflare/sandbox": "^0.7.12",

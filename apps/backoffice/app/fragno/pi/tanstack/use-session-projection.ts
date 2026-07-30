@@ -109,6 +109,7 @@ export function usePiSessionProjection({
   return {
     session,
     projection,
+    instanceStatus: projectionRows?.instanceStatus ?? null,
     error,
     isLoading: !sessionQuery.isReady || !projectionQuery.isReady,
   };

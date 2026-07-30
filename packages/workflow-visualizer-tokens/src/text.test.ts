@@ -1,25 +1,15 @@
 import { expect, test } from "vitest";
 
-import { readFileSync } from "node:fs";
-
 import { visualizeWorkflowSource } from "./index.ts";
+import { loadBackofficeAutomationFixtures } from "./test-support/backoffice-automation-fixtures.ts";
 import {
   renderWorkflowGraphText,
   renderWorkflowMachineDebugText,
   renderWorkflowVisualizationText,
 } from "./text.ts";
 
-// These Backoffice fixtures are inspection snapshots; update these paths when fixtures move.
-const AUTOMATION_FIXTURE_FILES = [
-  "../../../apps/backoffice/app/files/content/starter-automations.ts",
-  "../../../apps/backoffice/app/files/content/static-automations.ts",
-  "../../../apps/backoffice/app/files/content/system-automations.ts",
-];
-
 test("renders the Backoffice automation fixtures for quick inspection", () => {
-  const rendered = AUTOMATION_FIXTURE_FILES.flatMap((relativePath) =>
-    extractAutomationSources(readFileSync(new URL(relativePath, import.meta.url), "utf8")),
-  )
+  const rendered = loadBackofficeAutomationFixtures()
     .map(([path, source]) => {
       const snapshot = visualizeWorkflowSource(path, source);
       return `--- ${path} ---\n${renderWorkflowGraphText(snapshot.graph)}`;
@@ -156,10 +146,3 @@ test("renders partial construction and active submachine state", () => {
       step workflow-source:automations/partial.workflow.js#0/step#2 [labeled] < workflow-source:automations/partial.workflow.js#0/condition#0"
   `);
 });
-
-function extractAutomationSources(sourceFile: string): Array<[string, string]> {
-  return [...sourceFile.matchAll(/"([^"]+\.workflow\.js)": `([\s\S]*?)`,\n/g)].map((match) => [
-    match[1] ?? "",
-    match[2] ?? "",
-  ]);
-}

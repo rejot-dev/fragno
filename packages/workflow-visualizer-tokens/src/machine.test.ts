@@ -1,7 +1,5 @@
 import { assert, describe, expect, it } from "vitest";
 
-import { readFileSync } from "node:fs";
-
 import {
   createWorkflowTokenMachine,
   renderWorkflowVisualizationText,
@@ -15,19 +13,10 @@ import type {
   WorkflowGraph,
   WorkflowNode,
 } from "./model.ts";
+import { loadBackofficeAutomationFixtures } from "./test-support/backoffice-automation-fixtures.ts";
 import { tokenizeWorkflowSource } from "./tokenizer.ts";
 
-const AUTOMATION_FIXTURE_FILES = [
-  "../../../apps/backoffice/app/files/content/starter-automations.ts",
-  "../../../apps/backoffice/app/files/content/static-automations.ts",
-  "../../../apps/backoffice/app/files/content/system-automations.ts",
-];
-
-const AUTOMATIONS = new Map(
-  AUTOMATION_FIXTURE_FILES.flatMap((relativePath) =>
-    extractAutomationSources(readFileSync(new URL(relativePath, import.meta.url), "utf8")),
-  ),
-);
+const AUTOMATIONS = new Map(loadBackofficeAutomationFixtures());
 
 const EXPECTED_DURABLE_STEPS: Record<string, string[]> = {
   "automations/telegram-user-linking.workflow.js": [
@@ -1011,13 +1000,6 @@ function visualizeFixture(path: string) {
   const source = AUTOMATIONS.get(path);
   assert(source !== undefined);
   return visualizeWorkflowSource(path, source);
-}
-
-function extractAutomationSources(sourceFile: string): Array<[string, string]> {
-  return [...sourceFile.matchAll(/"([^"]+\.workflow\.js)": `([\s\S]*?)`,\n/g)].map((match) => [
-    match[1] ?? "",
-    match[2] ?? "",
-  ]);
 }
 
 function stepByLabel(graph: WorkflowGraph, label: string): StepNode {
