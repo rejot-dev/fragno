@@ -172,6 +172,12 @@ importers:
       '@journeyapps/wa-sqlite':
         specifier: ^1.4.1
         version: 1.7.2
+      '@json-render/core':
+        specifier: 0.19.0
+        version: 0.19.0(zod@4.3.5)
+      '@json-render/react':
+        specifier: 0.19.0
+        version: 0.19.0(react@19.2.7)(zod@4.3.5)
       '@monaco-editor/react':
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.55.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -5161,6 +5167,16 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
+
+  '@json-render/core@0.19.0':
+    resolution: {integrity: sha512-vvcyZ+10EDZKbEyB1J2kXOGfDaiZR2LurZGSqi2r5STHyKr+Te85DWaBxTwRGgM7U1LtIvNx85BzzjElRKoAIg==}
+    peerDependencies:
+      zod: 4.3.5
+
+  '@json-render/react@0.19.0':
+    resolution: {integrity: sha512-kTW6b6cSNRrlEfCUf/69SLoLn+CufC968ruge9tnQlp9pDTGG/SK8pgM541FdgwMFA4zm3s5mpM3G8rdODKc/A==}
+    peerDependencies:
+      react: ^19.2.3
 
   '@jsonforms/core@3.7.0':
     resolution: {integrity: sha512-CE9viWtwi9QWLqlWLeOul1/R1GRAyOA9y6OoUpsCc0FhyR+g5p29F3k0fUExHWxL0Sf4KHcXYkfhtqfRBPS8ww==}
@@ -19805,6 +19821,17 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@json-render/core@0.19.0(zod@4.3.5)':
+    dependencies:
+      zod: 4.3.5
+
+  '@json-render/react@0.19.0(react@19.2.7)(zod@4.3.5)':
+    dependencies:
+      '@json-render/core': 0.19.0(zod@4.3.5)
+      react: 19.2.7
+    transitivePeerDependencies:
+      - zod
 
   '@jsonforms/core@3.7.0':
     dependencies:

@@ -9,9 +9,10 @@ import {
   normalizePiContent,
 } from "./assistant-runtime";
 import { MessageImage, ScrollablePre } from "./message-content";
+import { ResultContent } from "./result-content";
 import {
-  formatExecCodeModeExpandedResult,
   formatJson,
+  formatResultValue,
   formatToolArgumentsDisplayText,
   getCodeArgument,
   getLoadedSkillName,
@@ -35,7 +36,11 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
     props.toolName === "read"
       ? (getReadPath(props.args) ?? getReadPath(completedToolResult?.details))
       : null;
-  const canExpandResult = props.toolName === "execCodeMode" && completedToolResult !== null;
+  const execCodeModeDetails =
+    props.toolName === "execCodeMode"
+      ? getExecCodeModeResultDetails(completedToolResult?.details)
+      : null;
+  const canExpandResult = execCodeModeDetails?.hasResult ?? false;
   const running =
     props.status.type === "running" || Boolean(draftTool && draftTool.status !== "done");
   const status = running
@@ -78,6 +83,11 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
             <ScrollablePre>{formatJson(draftTool.partialResult)}</ScrollablePre>
           </ToolResultSection>
         ) : null}
+        {execCodeModeDetails && execCodeModeDetails.logs.length > 0 ? (
+          <ToolResultSection label="Logs">
+            <ScrollablePre>{execCodeModeDetails.logs.join("\n")}</ScrollablePre>
+          </ToolResultSection>
+        ) : null}
         {completedToolResult ? (
           <ToolResultSection
             label={completedToolResult.isError ? "Error" : "Result"}
@@ -90,15 +100,17 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
                   }}
                   className={`inline-flex min-h-10 items-center px-2 text-[10px] font-medium text-[var(--bo-muted)] transition-[color,scale] duration-150 ease-out hover:text-[var(--bo-fg)] ${tapScale}`}
                 >
-                  {resultExpanded ? "Collapse" : "Expand"}
+                  {resultExpanded ? "Hide raw" : "Show raw"}
                 </button>
               ) : null
             }
           >
             <ToolResultContent
               expanded={canExpandResult && resultExpanded}
+              hasRawResult={execCodeModeDetails?.hasResult ?? false}
+              rawResult={execCodeModeDetails?.result}
               result={completedToolResult}
-              useExecCodeModeFormatting={canExpandResult}
+              useExecCodeModeFormatting={execCodeModeDetails !== null}
             />
           </ToolResultSection>
         ) : null}
@@ -154,21 +166,20 @@ function ToolArgumentsBlock({ value }: { value: unknown }) {
   );
 }
 
-function ToolResultContent({
+export function ToolResultContent({
   expanded,
+  hasRawResult,
+  rawResult,
   result,
   useExecCodeModeFormatting,
 }: {
   expanded: boolean;
+  hasRawResult: boolean;
+  rawResult: unknown;
   result: ToolResultMessage;
   useExecCodeModeFormatting: boolean;
 }) {
-  const expandedText = useExecCodeModeFormatting ? formatExecCodeModeExpandedResult(result) : null;
-  if (expanded && expandedText !== null) {
-    return <ScrollablePre expanded>{expandedText}</ScrollablePre>;
-  }
-
-  return (
+  const messageContent = (
     <div className="space-y-2">
       {normalizePiContent(result.content).map((block, index) => {
         if (block.type === "text") {
@@ -186,4 +197,29 @@ function ToolResultContent({
       })}
     </div>
   );
+
+  if (!useExecCodeModeFormatting || !hasRawResult) {
+    return messageContent;
+  }
+
+  return (
+    <ResultContent generatedUiEnabled showRawValue={expanded} value={rawResult}>
+      <ScrollablePre>{formatResultValue(rawResult)}</ScrollablePre>
+    </ResultContent>
+  );
+}
+
+function getExecCodeModeResultDetails(details: unknown) {
+  if (!details || typeof details !== "object" || Array.isArray(details)) {
+    return { hasResult: false, logs: [], result: undefined };
+  }
+
+  const resultDetails = details as Record<string, unknown>;
+  return {
+    hasResult: "result" in resultDetails,
+    logs: Array.isArray(resultDetails.logs)
+      ? resultDetails.logs.filter((line): line is string => typeof line === "string")
+      : [],
+    result: resultDetails.result,
+  };
 }

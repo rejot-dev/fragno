@@ -18,6 +18,9 @@ const formatJsonString = (value: string) => {
   }
 };
 
+export const formatResultValue = (value: unknown) =>
+  typeof value === "string" ? formatJsonString(value) : formatJson(value);
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value && typeof value === "object" && !Array.isArray(value));
 
@@ -66,27 +69,6 @@ export const getLoadedSkillName = ({
   const resultPath = getReadPath(completedToolResult.details);
   const argumentPath = getReadPath(argumentsValue);
   return getSkillNameFromPath(resultPath ?? argumentPath);
-};
-
-export const formatExecCodeModeExpandedResult = (result: ToolResultMessage) => {
-  if (!isRecord(result.details)) {
-    return null;
-  }
-
-  const lines: string[] = [];
-  if (Array.isArray(result.details.logs)) {
-    lines.push(...result.details.logs.filter((line): line is string => typeof line === "string"));
-  }
-
-  if ("result" in result.details && result.details.result !== undefined) {
-    const resultText =
-      typeof result.details.result === "string"
-        ? formatJsonString(result.details.result)
-        : formatJson(result.details.result);
-    lines.push(resultText);
-  }
-
-  return lines.length > 0 ? lines.join("\n") : null;
 };
 
 const decodeStreamingJsonString = (value: string) => {
