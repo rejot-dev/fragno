@@ -1,180 +1,124 @@
-import { Suspense, use, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router";
 
-import { eq, useLiveQuery } from "@tanstack/react-db";
-
-import { ClientOnly } from "@/components/client-only";
-import { marketplaceIngestionTargetScopeKey } from "@/fragno/automation/marketplace-ingestions";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 import {
-  getAutomationBrowserDatabase,
-  type AutomationCollectionSource,
-} from "@/fragno/automation/tanstack/browser-database";
-import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
+  MARKETPLACE_LATEST_VERSIONS_MAX_IDS,
+  type MarketplaceLatestPublishedVersions,
+} from "@/fragno/marketplace/contracts";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import {
-  summarizeInstalledWorkspace,
-  type InstalledSourceSnapshot,
-  type InstalledSourceSnapshots,
-} from "./installed-state";
+import { buildBackofficeLoginPath } from "../auth-navigation";
+import type { Route } from "./+types/installed";
 import type { MarketplaceLayoutContext } from "./layout-context";
 import { marketplaceListingPath } from "./navigation";
-import { toMarketplaceTargetScope } from "./scope";
+import { marketplaceScopeFromRouteParams } from "./scope";
 
 export function meta() {
   return [{ title: "Installed · Marketplace" }];
 }
 
-export default function BackofficeMarketplaceInstalled() {
-  const context = useOutletContext<MarketplaceLayoutContext>();
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
+  const me = await getAuthMe(request, context);
+  if (!me?.user) {
+    return Response.redirect(
+      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
+      302,
+    );
+  }
 
-  return (
-    <ClientOnly fallback={<InstalledLoading />}>
-      <Suspense fallback={<InstalledLoading />}>
-        <InstalledCollections context={context} />
-      </Suspense>
-    </ClientOnly>
+  const targetScope = marketplaceScopeFromRouteParams(params);
+  if (targetScope.kind === "user" && targetScope.userId !== me.user.id) {
+    throw new Response("Not Found", { status: 404 });
+  }
+  if (
+    targetScope.kind !== "user" &&
+    !me.organizations.some(({ organization }) => organization.id === targetScope.orgId)
+  ) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  const ingestionOrganizations =
+    targetScope.kind === "user"
+      ? me.organizations.map(({ organization }) => organization)
+      : me.organizations
+          .map(({ organization }) => organization)
+          .filter((organization) => organization.id === targetScope.orgId);
+  const runtime = context.get(BackofficeWorkerContext).runtime;
+  const ingestionPages = await Promise.all(
+    ingestionOrganizations.map(async (organization) => ({
+      organization,
+      ingestions: await runtime.objects.automations
+        .forOrg(organization.id)
+        .listMarketplaceIngestions({ targetScope }),
+    })),
   );
+  const ingestions = ingestionPages.flatMap(({ organization, ingestions: records }) =>
+    records.map((ingestion) => ({
+      ...ingestion,
+      organizationId: organization.id,
+      organizationName: organization.name ?? organization.id,
+    })),
+  );
+  const listingIds = Array.from(new Set(ingestions.map((ingestion) => ingestion.listingId)));
+  const latestPublishedVersions: MarketplaceLatestPublishedVersions = {};
+  const marketplace = runtime.objects.marketplace.singleton();
+  for (let offset = 0; offset < listingIds.length; offset += MARKETPLACE_LATEST_VERSIONS_MAX_IDS) {
+    const listingIdBatch = listingIds.slice(offset, offset + MARKETPLACE_LATEST_VERSIONS_MAX_IDS);
+    Object.assign(
+      latestPublishedVersions,
+      await marketplace.getLatestPublishedVersions({ listingIds: listingIdBatch }),
+    );
+  }
+
+  return {
+    ingestions: ingestions.map((ingestion) => {
+      const latestVersion = latestPublishedVersions[ingestion.listingId] ?? null;
+      return {
+        ...ingestion,
+        latestVersion,
+        outOfDate: latestVersion !== null && ingestion.version !== latestVersion,
+      };
+    }),
+  };
 }
 
-function InstalledCollections({ context }: { context: MarketplaceLayoutContext }) {
-  const database = use(getAutomationBrowserDatabase());
-  const targetScope = toMarketplaceTargetScope(context.selectedScope);
-  const sourceOrganizationIds = useMemo(
-    () => context.ingestionCollectionSources.map((source) => source.organizationId),
-    [context.ingestionCollectionSources],
-  );
-  const sourceSetKey = JSON.stringify(sourceOrganizationIds);
-  const [sourceSnapshots, setSourceSnapshots] = useState<InstalledSourceSnapshots>({
-    sourceSetKey,
-    byOrganizationId: {},
-  });
-  const effectiveSnapshots =
-    sourceSnapshots.sourceSetKey === sourceSetKey ? sourceSnapshots.byOrganizationId : {};
-  const { isLoading, showEmpty, totalRecordCount } = summarizeInstalledWorkspace({
-    sourceOrganizationIds,
-    snapshots: effectiveSnapshots,
-  });
-  const reportSourceSnapshot = useCallback(
-    (organizationId: string, snapshot: InstalledSourceSnapshot) => {
-      setSourceSnapshots((current) => {
-        const currentSnapshots =
-          current.sourceSetKey === sourceSetKey ? current.byOrganizationId : {};
-        const existing = currentSnapshots[organizationId];
-        if (existing?.status === snapshot.status && existing.recordCount === snapshot.recordCount) {
-          return current;
-        }
-        return {
-          sourceSetKey,
-          byOrganizationId: {
-            ...currentSnapshots,
-            [organizationId]: snapshot,
-          },
-        };
-      });
-    },
-    [sourceSetKey],
-  );
+export default function BackofficeMarketplaceInstalled({ loaderData }: Route.ComponentProps) {
+  const { selectedScope } = useOutletContext<MarketplaceLayoutContext>();
 
-  return (
-    <div className="max-w-7xl space-y-4">
-      {isLoading && totalRecordCount === 0 ? <InstalledLoading /> : null}
-      {showEmpty ? <InstalledEmpty /> : null}
-      {context.ingestionCollectionSources.map((collectionSource) => (
-        <InstalledCollection
-          key={collectionSource.organizationId}
-          collections={database.collectionsFor(collectionSource.source)}
-          collectionSource={collectionSource.source}
-          organizationId={collectionSource.organizationId}
-          organizationName={collectionSource.organizationName}
-          selectedScope={context.selectedScope}
-          targetScopeKey={marketplaceIngestionTargetScopeKey(targetScope)}
-          onSnapshot={reportSourceSnapshot}
-        />
-      ))}
-    </div>
-  );
-}
-
-function InstalledCollection({
-  collections,
-  collectionSource,
-  organizationId,
-  organizationName,
-  selectedScope,
-  targetScopeKey,
-  onSnapshot,
-}: {
-  collections: AutomationCollections;
-  collectionSource: AutomationCollectionSource;
-  organizationId: string;
-  organizationName: string;
-  selectedScope: MarketplaceLayoutContext["selectedScope"];
-  targetScopeKey: string;
-  onSnapshot: (organizationId: string, snapshot: InstalledSourceSnapshot) => void;
-}) {
-  const query = useLiveQuery(
-    (builder) =>
-      builder
-        .from({ ingestion: collections.marketplaceIngestions })
-        .where(({ ingestion }) => eq(ingestion.targetScopeKey, targetScopeKey))
-        .orderBy(({ ingestion }) => ingestion.id, "asc"),
-    [collections.marketplaceIngestions, targetScopeKey],
-  );
-  const ingestions = query.data ?? [];
-  const sourceError = query.isError
-    ? collections.marketplaceIngestions.utils.getLastError()
-    : undefined;
-  const sourceErrorMessage =
-    sourceError instanceof Error
-      ? sourceError.message
-      : query.isError
-        ? "Marketplace ingestion synchronization failed."
-        : null;
-  const sourceStatus: InstalledSourceSnapshot["status"] = query.isError
-    ? "error"
-    : query.isReady
-      ? "ready"
-      : "loading";
-
-  useEffect(() => {
-    onSnapshot(organizationId, {
-      status: sourceStatus,
-      recordCount: ingestions.length,
-    });
-  }, [ingestions.length, onSnapshot, organizationId, sourceStatus]);
-
-  if (ingestions.length === 0 && !sourceErrorMessage) {
-    return null;
+  if (loaderData.ingestions.length === 0) {
+    return <InstalledEmpty />;
   }
 
   return (
-    <section className="space-y-3">
-      {sourceErrorMessage ? (
-        <div className="border border-red-400/40 bg-red-500/8 p-4 text-sm text-red-700 dark:text-red-200">
-          {ingestions.length > 0
-            ? `Could not synchronize all marketplace ingestions from ${organizationName}: ${sourceErrorMessage}`
-            : `Could not load marketplace ingestions from ${organizationName}: ${sourceErrorMessage}`}
-        </div>
-      ) : null}
-      {ingestions.map((ingestion) => (
+    <div className="max-w-7xl space-y-3">
+      {loaderData.ingestions.map((ingestion) => (
         <article
-          key={`${collectionSource.scope.kind}:${ingestion.id}`}
+          key={`${ingestion.organizationId}:${ingestion.id}`}
           className="grid gap-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
         >
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="border border-emerald-400/40 px-2 py-1 text-[9px] tracking-[0.16em] text-emerald-700 uppercase dark:text-emerald-200">
-                Installed
+              <span
+                className={
+                  ingestion.outOfDate
+                    ? "border border-amber-400/40 px-2 py-1 text-[9px] tracking-[0.16em] text-amber-700 uppercase dark:text-amber-200"
+                    : "border border-emerald-400/40 px-2 py-1 text-[9px] tracking-[0.16em] text-emerald-700 uppercase dark:text-emerald-200"
+                }
+              >
+                {ingestion.outOfDate ? "Update available" : "Installed"}
               </span>
               <span className="font-mono text-[10px] text-[var(--bo-muted-2)]">
-                v{ingestion.version}
+                Installed v{ingestion.version}
+              </span>
+              <span className="font-mono text-[10px] text-[var(--bo-muted-2)]">
+                Latest {ingestion.latestVersion ? `v${ingestion.latestVersion}` : "unavailable"}
               </span>
             </div>
             <p className="mt-3 font-mono text-sm break-all text-[var(--bo-fg)]">
               {ingestion.listingId}
             </p>
             <p className="mt-2 font-mono text-[10px] text-[var(--bo-muted-2)]">
-              {ingestion.targetScopeKey}
+              {ingestion.organizationName} · {ingestion.targetScopeKey}
             </p>
           </div>
           <div className="flex flex-wrap gap-2 md:justify-end">
@@ -182,12 +126,12 @@ function InstalledCollection({
               to={marketplaceListingPath(ingestion.listingId, selectedScope)}
               className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
             >
-              View listing
+              {ingestion.outOfDate ? "Review update" : "View listing"}
             </Link>
           </div>
         </article>
       ))}
-    </section>
+    </div>
   );
 }
 
@@ -201,18 +145,5 @@ function InstalledEmpty() {
         This workspace has no marketplace ingestions yet.
       </h2>
     </section>
-  );
-}
-
-function InstalledLoading() {
-  return (
-    <div className="max-w-7xl border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-      Loading marketplace ingestions…
-      <noscript>
-        <span className="mt-2 block text-red-700 dark:text-red-200">
-          JavaScript is required to open installed marketplace data.
-        </span>
-      </noscript>
-    </div>
   );
 }

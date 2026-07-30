@@ -27,30 +27,44 @@ const targetFile = (revision: number, checksum: string): MarketplaceWorkspaceTar
 });
 
 describe("planMarketplaceWorkspaceUpdate", () => {
-  test("writes absent files with their source mode", () => {
-    const source = sourceFile("commands/new.ts", "new");
+  test("creates files added by the requested version with their source mode", () => {
+    const requestedSource = sourceFile("commands/new.ts", "new");
 
     expect(
       planMarketplaceWorkspaceUpdate({
-        observations: [{ source, target: null }],
-        previousSourceFilesByPath: new Map(),
+        observations: [
+          {
+            relativePath: requestedSource.relativePath,
+            requestedSource,
+            installedSource: null,
+            target: null,
+          },
+        ],
       }),
     ).toEqual({
-      writes: [{ source, precondition: { kind: "absent" }, mode: 0o755 }],
+      writes: [{ source: requestedSource, precondition: { kind: "absent" }, mode: 0o755 }],
+      deletions: [],
       assertions: [],
     });
   });
 
   test("asserts files that already match the requested version", () => {
-    const source = sourceFile("commands/current.ts", "same");
+    const requestedSource = sourceFile("commands/current.ts", "same");
 
     expect(
       planMarketplaceWorkspaceUpdate({
-        observations: [{ source, target: targetFile(4, "same") }],
-        previousSourceFilesByPath: new Map(),
+        observations: [
+          {
+            relativePath: requestedSource.relativePath,
+            requestedSource,
+            installedSource: null,
+            target: targetFile(4, "same"),
+          },
+        ],
       }),
     ).toEqual({
       writes: [],
+      deletions: [],
       assertions: [
         {
           path: "/workspace/commands/current.ts",
@@ -61,28 +75,110 @@ describe("planMarketplaceWorkspaceUpdate", () => {
   });
 
   test("replaces files that still match the installed version without replacing their mode", () => {
-    const source = sourceFile("commands/current.ts", "next");
+    const requestedSource = sourceFile("commands/current.ts", "next");
     const installedSource = sourceFile("commands/current.ts", "installed", 0o700);
 
     expect(
       planMarketplaceWorkspaceUpdate({
-        observations: [{ source, target: targetFile(7, "installed") }],
-        previousSourceFilesByPath: new Map([[source.relativePath, installedSource]]),
+        observations: [
+          {
+            relativePath: requestedSource.relativePath,
+            requestedSource,
+            installedSource,
+            target: targetFile(7, "installed"),
+          },
+        ],
       }),
     ).toEqual({
-      writes: [{ source, precondition: { kind: "revision", revision: 7 } }],
+      writes: [{ source: requestedSource, precondition: { kind: "revision", revision: 7 } }],
+      deletions: [],
       assertions: [],
     });
   });
 
+  test("removes files omitted by the requested version when they still match the installed source", () => {
+    const installedSource = sourceFile("commands/removed.ts", "installed");
+
+    expect(
+      planMarketplaceWorkspaceUpdate({
+        observations: [
+          {
+            relativePath: installedSource.relativePath,
+            requestedSource: null,
+            installedSource,
+            target: targetFile(9, "installed"),
+          },
+        ],
+      }),
+    ).toEqual({
+      writes: [],
+      deletions: [
+        {
+          path: "/workspace/commands/removed.ts",
+          precondition: { kind: "revision", revision: 9 },
+        },
+      ],
+      assertions: [],
+    });
+  });
+
+  test("asserts that an already removed file remains absent", () => {
+    const installedSource = sourceFile("commands/removed.ts", "installed");
+
+    expect(
+      planMarketplaceWorkspaceUpdate({
+        observations: [
+          {
+            relativePath: installedSource.relativePath,
+            requestedSource: null,
+            installedSource,
+            target: null,
+          },
+        ],
+      }),
+    ).toEqual({
+      writes: [],
+      deletions: [],
+      assertions: [
+        {
+          path: "/workspace/commands/removed.ts",
+          precondition: { kind: "absent" },
+        },
+      ],
+    });
+  });
+
   test("rejects files changed independently of the installed version", () => {
-    const source = sourceFile("commands/current.ts", "next");
+    const requestedSource = sourceFile("commands/current.ts", "next");
     const installedSource = sourceFile("commands/current.ts", "installed");
 
     expect(() =>
       planMarketplaceWorkspaceUpdate({
-        observations: [{ source, target: targetFile(7, "local") }],
-        previousSourceFilesByPath: new Map([[source.relativePath, installedSource]]),
+        observations: [
+          {
+            relativePath: requestedSource.relativePath,
+            requestedSource,
+            installedSource,
+            target: targetFile(7, "local"),
+          },
+        ],
+      }),
+    ).toThrow(MarketplaceWorkspaceFileConflictError);
+  });
+
+  test("rejects locally modified files that the requested version removes", () => {
+    const installedSource = sourceFile("commands/removed.ts", "installed");
+
+    expect(() =>
+      planMarketplaceWorkspaceUpdate({
+        observations: [
+          {
+            relativePath: installedSource.relativePath,
+            requestedSource: null,
+            installedSource,
+            target: targetFile(7, "local"),
+          },
+        ],
       }),
     ).toThrow(MarketplaceWorkspaceFileConflictError);
   });

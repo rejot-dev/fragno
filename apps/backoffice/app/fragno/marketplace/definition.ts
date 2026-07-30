@@ -8,6 +8,7 @@ import {
   marketplaceArtifactManifestInputSchema,
   marketplaceCreateDraftListingInputSchema,
   marketplaceInsertStaticEntriesInputSchema,
+  marketplaceLatestPublishedVersionsInputSchema,
   marketplaceListingPageInputSchema,
   marketplaceOwnedListingInputSchema,
   marketplaceOwnedListingPageInputSchema,
@@ -18,6 +19,7 @@ import {
   type MarketplaceArtifactManifest,
   type MarketplaceDraftResult,
   type MarketplaceInsertStaticEntriesResult,
+  type MarketplaceLatestPublishedVersions,
   type MarketplaceListingDetail,
   type MarketplaceListingPage,
   type MarketplaceListingPageInput,
@@ -51,6 +53,7 @@ import {
   MARKETPLACE_PUBLISHED_VERSION_INDEX,
 } from "./pagination";
 import { marketplaceFragmentSchema } from "./schema";
+import { compareMarketplaceVersions } from "./version";
 
 export class MarketplaceDomainError extends Error {
   constructor(
@@ -203,12 +206,13 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
               }),
           )
           .transformRetrieve(([listing, versionPage]): MarketplaceListingDetail | null => {
-            if (
-              listing?.status !== "published" ||
-              !listing.latestPublishedVersion ||
-              !listing.publishedAt
-            ) {
+            if (listing?.status !== "published") {
               return null;
+            }
+            if (!listing.latestPublishedVersion || !listing.publishedAt) {
+              throw new Error(
+                `Published marketplace listing ${listing.id.externalId} is incomplete.`,
+              );
             }
 
             return {
@@ -269,6 +273,14 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
             if (!listing) {
               return null;
             }
+            if (
+              listing.status === "published" &&
+              (!listing.latestPublishedVersion || !listing.publishedAt)
+            ) {
+              throw new Error(
+                `Published marketplace listing ${listing.id.externalId} is incomplete.`,
+              );
+            }
 
             return {
               listingId: listing.id.externalId,
@@ -281,6 +293,35 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
                   : [],
               ),
             };
+          })
+          .build();
+      },
+
+      getLatestPublishedVersions: function (rawInput: unknown) {
+        const input = marketplaceLatestPublishedVersionsInputSchema.parse(rawInput);
+
+        return this.serviceTx(marketplaceFragmentSchema)
+          .retrieve((uow) =>
+            uow.find("marketplace_listing", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "in", input.listingIds)),
+            ),
+          )
+          .transformRetrieve(([listings]): MarketplaceLatestPublishedVersions => {
+            const versions: MarketplaceLatestPublishedVersions = Object.fromEntries(
+              input.listingIds.map((listingId) => [listingId, null]),
+            );
+            for (const listing of listings) {
+              if (listing.status !== "published") {
+                continue;
+              }
+              if (!listing.latestPublishedVersion || !listing.publishedAt) {
+                throw new Error(
+                  `Published marketplace listing ${listing.id.externalId} is incomplete.`,
+                );
+              }
+              versions[listing.id.externalId] = listing.latestPublishedVersion;
+            }
+            return versions;
           })
           .build();
       },
@@ -482,6 +523,13 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
                     }
                     skipped.push(identity);
                     continue;
+                  }
+
+                  if (
+                    listing.latestPublishedVersion !== null &&
+                    compareMarketplaceVersions(entry.version, listing.latestPublishedVersion) <= 0
+                  ) {
+                    throw new MarketplaceVersionTransitionError(entry.slug, entry.version);
                   }
 
                   uow.update("marketplace_listing", listing.id, (b) =>
@@ -767,9 +815,6 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
             }
 
             if (version.status === "published") {
-              if (listing.latestPublishedVersion !== input.version) {
-                throw new MarketplaceVersionTransitionError(slug, input.version);
-              }
               if (
                 input.artifactDirectory &&
                 version.artifactDirectory &&
@@ -815,6 +860,13 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
                 version: input.version,
                 published: true,
               } satisfies MarketplacePublishVersionResult;
+            }
+
+            if (
+              listing.latestPublishedVersion !== null &&
+              compareMarketplaceVersions(input.version, listing.latestPublishedVersion) <= 0
+            ) {
+              throw new MarketplaceVersionTransitionError(slug, input.version);
             }
 
             const now = uow.now();

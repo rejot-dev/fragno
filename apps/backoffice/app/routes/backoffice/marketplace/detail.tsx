@@ -160,7 +160,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
         await context
           .get(BackofficeWorkerContext)
           .runtime.objects.automations.forOrg(installationOrganization.id)
-          .listMarketplaceIngestions()
+          .listMarketplaceIngestions({ targetScope: selectedScope })
       ).filter(
         (ingestion) =>
           ingestion.listingId === detail.listing.listingId &&
@@ -175,6 +175,8 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     ingestions: ingestions.map((ingestion) => ({
       ...ingestion,
       organizationName: installationOrganization?.name ?? installationOrganization?.id ?? "",
+      latestVersion: detail.listing.latestVersion,
+      outOfDate: ingestion.version !== detail.listing.latestVersion,
     })),
   };
 }
@@ -350,7 +352,11 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
                   disabled={navigation.state !== "idle"}
                   className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent)] px-3 py-2 text-xs font-semibold tracking-[0.12em] text-white uppercase disabled:opacity-50"
                 >
-                  {navigation.state === "submitting" ? "Requesting…" : "Add to selected scope"}
+                  {navigation.state === "submitting"
+                    ? "Requesting…"
+                    : ingestions.some((ingestion) => ingestion.outOfDate)
+                      ? "Update selected scope"
+                      : "Add to selected scope"}
                 </button>
               </Form>
             ) : (
@@ -383,7 +389,15 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
                     <p className="font-medium text-[var(--bo-fg)]">
                       {ingestion.organizationName} · {ingestion.targetScopeKey}
                     </p>
-                    <p className="mt-1 font-mono text-[var(--bo-muted)]">v{ingestion.version}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[var(--bo-muted)]">
+                      <span>Installed v{ingestion.version}</span>
+                      <span>Latest v{ingestion.latestVersion}</span>
+                      {ingestion.outOfDate ? (
+                        <span className="text-amber-700 dark:text-amber-200">Update available</span>
+                      ) : (
+                        <span className="text-emerald-700 dark:text-emerald-200">Up to date</span>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

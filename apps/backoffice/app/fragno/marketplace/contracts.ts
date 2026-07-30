@@ -1,9 +1,11 @@
 import { z } from "zod";
 
 import { marketplaceListingId, marketplaceVersionId } from "./owner";
+import { MARKETPLACE_VERSION_PATTERN } from "./version";
 
 export const MARKETPLACE_DEFAULT_PAGE_SIZE = 18;
 export const MARKETPLACE_MAX_PAGE_SIZE = 60;
+export const MARKETPLACE_LATEST_VERSIONS_MAX_IDS = 500;
 const MARKETPLACE_DATABASE_ID_MAX_LENGTH = 128;
 
 export const marketplaceSlugSchema = z
@@ -18,7 +20,7 @@ export const marketplaceVersionSchema = z
   .string()
   .trim()
   .max(40)
-  .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u, "Use a semantic version such as 1.0.0.")
+  .regex(MARKETPLACE_VERSION_PATTERN, "Use a semantic version such as 1.0.0.")
   .meta({ examples: ["1.0.0", "2.1.0-beta.1"] });
 
 export const marketplaceArtifactDirectorySchema = z
@@ -216,6 +218,23 @@ export type MarketplaceArtifactManifestInput = z.infer<
   typeof marketplaceArtifactManifestInputSchema
 >;
 
+export const marketplaceLatestPublishedVersionsInputSchema = z.object({
+  listingIds: z
+    .array(marketplaceListingIdSchema)
+    .min(1)
+    .max(MARKETPLACE_LATEST_VERSIONS_MAX_IDS)
+    .refine(
+      (listingIds) => new Set(listingIds).size === listingIds.length,
+      "Marketplace listing ids must be unique.",
+    ),
+});
+
+export type MarketplaceLatestPublishedVersionsInput = z.infer<
+  typeof marketplaceLatestPublishedVersionsInputSchema
+>;
+
+export type MarketplaceLatestPublishedVersions = Record<string, string | null>;
+
 export const marketplaceArtifactManifestSchema = z.object({
   listingId: marketplaceListingIdSchema,
   slug: marketplaceSlugSchema,
@@ -245,6 +264,10 @@ export const marketplaceStaticPublicationEntryResultSchema = z.discriminatedUnio
   marketplaceStaticPublicationIdentitySchema.extend({
     state: z.literal("requested"),
     workflowStatus: z.literal("active"),
+  }),
+  marketplaceStaticPublicationIdentitySchema.extend({
+    state: z.literal("queued"),
+    blockedByVersion: marketplaceVersionSchema,
   }),
   marketplaceStaticPublicationIdentitySchema.extend({
     state: z.literal("pending"),

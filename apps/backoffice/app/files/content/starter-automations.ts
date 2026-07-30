@@ -1,10 +1,8 @@
 import type { FileContent } from "../interface";
-import { TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE } from "./telegram-test-command";
 
 export const STARTER_AUTOMATION_SCRIPT_PATHS = {
   telegramUserLinking: "automations/telegram-user-linking.workflow.js",
   telegramUserPiLinking: "automations/telegram-user-pi-linking.workflow.js",
-  telegramTestCommand: "automations/telegram-test-command.workflow.js",
   piDefaultAgentConfigure: "automations/pi-default-agent-configure.workflow.js",
 } as const;
 
@@ -309,5 +307,4 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
   },
 );
 `,
-  "automations/telegram-test-command.workflow.js": TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
 };

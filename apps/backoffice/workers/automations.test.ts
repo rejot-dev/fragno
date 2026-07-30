@@ -5,7 +5,7 @@ import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
-import { TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE } from "@/files/content/telegram-test-command";
+import { TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE } from "@/files/content/telegram-test-command";
 import { loadAutomationCatalog } from "@/fragno/automation/catalog";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 import {
@@ -184,7 +184,7 @@ describe("Automations object scope binding", () => {
           listingId,
           targetScope: { kind: "user", userId: "user-1" },
         }),
-      ).resolves.toMatchObject({ state: "requested", version: "1.0.0" });
+      ).resolves.toMatchObject({ state: "requested", version: "1.1.0" });
       await runtime.drain();
 
       await expect(
@@ -192,7 +192,7 @@ describe("Automations object scope binding", () => {
           targetScope: { kind: "user", userId: "user-1" },
           listingId,
         }),
-      ).resolves.toMatchObject({ version: "1.0.0" });
+      ).resolves.toMatchObject({ version: "1.1.0" });
 
       const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
       contentUrl.searchParams.set("provider", "database");
@@ -201,7 +201,7 @@ describe("Automations object scope binding", () => {
         .forUser({ userId: "user-1" })
         .fetch(new Request(contentUrl));
       assert(content.ok);
-      await expect(content.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE);
+      await expect(content.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE);
     } finally {
       await runtime.cleanup();
     }
@@ -233,7 +233,7 @@ describe("Automations object scope binding", () => {
       const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
         targetScope: { kind: "user", userId: "user-1" },
         listingId,
-        version: "1.0.0",
+        version: "1.1.0",
       });
       await expect(
         automations.requestMarketplaceIngestion({
@@ -337,6 +337,13 @@ describe("Automations object scope binding", () => {
               message: "Static marketplace entry missing-entry@1.0.0 was not found.",
             },
           },
+          expect.objectContaining({
+            listingId,
+            slug: "telegram-test-command",
+            version: "1.1.0",
+            state: "queued",
+            blockedByVersion: "1.0.0",
+          }),
         ],
       });
     } finally {

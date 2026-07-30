@@ -248,6 +248,11 @@ type UploadFileWriteUploadRequest = {
   precondition: UploadFileWritePrecondition;
 };
 
+export type UploadFileDeletion = {
+  path: string;
+  precondition: Extract<UploadFileWritePrecondition, { kind: "revision" }>;
+};
+
 export type UploadFileAssertion = {
   path: string;
   precondition: UploadFileWritePrecondition;
@@ -271,6 +276,7 @@ export interface UploadFileSystem extends IFileSystem {
   ): Promise<UploadFileWriteUploadRequest>;
   commitPreparedFileWrites(input: {
     writes: PreparedUploadFileWrite[];
+    deletions?: UploadFileDeletion[];
     assertions?: UploadFileAssertion[];
   }): Promise<UploadFileMutationSnapshot[]>;
 }
@@ -600,6 +606,18 @@ const createUploadFileSystemForContext = (
         }
       }
 
+      const deletions = (input.deletions ?? []).map((deletion) => {
+        const { fileKey, isRoot } = toRelativeUploadPath(mountPoint, deletion.path);
+        if (isRoot || !fileKey) {
+          throw new Error(`Cannot delete the mounted upload root '${mountPoint}'.`);
+        }
+        return {
+          kind: "delete" as const,
+          provider,
+          fileKey,
+          precondition: deletion.precondition,
+        };
+      });
       const assertions = (input.assertions ?? []).map((assertion) => {
         const { fileKey, isRoot } = toRelativeUploadPath(mountPoint, assertion.path);
         if (isRoot || !fileKey) {
@@ -621,12 +639,14 @@ const createUploadFileSystemForContext = (
               uploadId: write.uploadId,
               precondition: write.precondition,
             })),
+            ...deletions,
             ...assertions,
           ],
         }),
       });
       if (response.status === 412) {
         const conflictPath =
+          input.deletions?.[0]?.path ??
           input.assertions?.[0]?.path ??
           (input.writes[0] ? `${mountPoint}/${input.writes[0].fileKey}` : mountPoint);
         throw new UploadFileWriteConflictError(conflictPath);

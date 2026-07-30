@@ -1,6 +1,10 @@
 import type { UploadChecksum } from "@fragno-dev/upload";
 
-import type { UploadFileAssertion, UploadFileWritePrecondition } from "@/files/contributors/upload";
+import type {
+  UploadFileAssertion,
+  UploadFileDeletion,
+  UploadFileWritePrecondition,
+} from "@/files/contributors/upload";
 
 export type MarketplaceIngestionSourceFile = {
   fileKey: string;
@@ -18,7 +22,9 @@ export type MarketplaceWorkspaceTargetFile = {
 };
 
 export type MarketplaceWorkspaceFileObservation = {
-  source: MarketplaceIngestionSourceFile;
+  relativePath: string;
+  requestedSource: MarketplaceIngestionSourceFile | null;
+  installedSource: MarketplaceIngestionSourceFile | null;
   target: MarketplaceWorkspaceTargetFile | null;
 };
 
@@ -30,6 +36,7 @@ export type MarketplaceWorkspaceWrite = {
 
 export type MarketplaceWorkspaceUpdatePlan = {
   writes: MarketplaceWorkspaceWrite[];
+  deletions: UploadFileDeletion[];
   assertions: UploadFileAssertion[];
 };
 
@@ -50,38 +57,54 @@ export const marketplaceFileContentsMatch = (
 
 export const planMarketplaceWorkspaceUpdate = (input: {
   observations: MarketplaceWorkspaceFileObservation[];
-  previousSourceFilesByPath: ReadonlyMap<string, MarketplaceIngestionSourceFile>;
 }): MarketplaceWorkspaceUpdatePlan => {
   const writes: MarketplaceWorkspaceWrite[] = [];
+  const deletions: UploadFileDeletion[] = [];
   const assertions: UploadFileAssertion[] = [];
 
-  for (const { source, target } of input.observations) {
+  for (const { relativePath, requestedSource, installedSource, target } of input.observations) {
+    const path = `/workspace/${relativePath}`;
+
+    if (!requestedSource) {
+      if (!installedSource) {
+        throw new Error(`Marketplace update observation '${relativePath}' has no source version.`);
+      }
+      if (!target) {
+        assertions.push({ path, precondition: { kind: "absent" } });
+        continue;
+      }
+      if (!marketplaceFileContentsMatch(installedSource, target)) {
+        throw new MarketplaceWorkspaceFileConflictError(relativePath);
+      }
+      deletions.push({
+        path,
+        precondition: { kind: "revision", revision: target.revision },
+      });
+      continue;
+    }
+
     if (!target) {
       writes.push({
-        source,
+        source: requestedSource,
         precondition: { kind: "absent" },
-        ...(source.mode === null ? {} : { mode: source.mode }),
+        ...(requestedSource.mode === null ? {} : { mode: requestedSource.mode }),
       });
       continue;
     }
 
     const targetPrecondition = { kind: "revision" as const, revision: target.revision };
-    if (marketplaceFileContentsMatch(source, target)) {
-      assertions.push({
-        path: `/workspace/${source.relativePath}`,
-        precondition: targetPrecondition,
-      });
+    if (marketplaceFileContentsMatch(requestedSource, target)) {
+      assertions.push({ path, precondition: targetPrecondition });
       continue;
     }
 
-    const installedSource = input.previousSourceFilesByPath.get(source.relativePath);
     if (installedSource && marketplaceFileContentsMatch(installedSource, target)) {
-      writes.push({ source, precondition: targetPrecondition });
+      writes.push({ source: requestedSource, precondition: targetPrecondition });
       continue;
     }
 
-    throw new MarketplaceWorkspaceFileConflictError(source.relativePath);
+    throw new MarketplaceWorkspaceFileConflictError(relativePath);
   }
 
-  return { writes, assertions };
+  return { writes, deletions, assertions };
 };

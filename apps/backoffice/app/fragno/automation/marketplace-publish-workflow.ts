@@ -15,9 +15,13 @@ import {
   marketplaceSlugSchema,
   marketplaceVersionSchema,
   type MarketplaceDraftResult,
+  type MarketplacePublishVersionResult,
 } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
-import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
+import {
+  getNextStaticMarketplaceEntry,
+  getStaticMarketplaceEntry,
+} from "@/fragno/marketplace/static-entries";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import type { UploadFragment } from "@/fragno/upload-server";
 import { bytesToHex, sha256Hex } from "@/lib/crypto";
@@ -80,6 +84,7 @@ const inferMarketplaceArtifactContentType = (fileKey: string): string => {
 const marketplacePublishWorkflowParamsSchema = z.object({
   slug: marketplaceSlugSchema,
   version: marketplaceVersionSchema,
+  publishNextVersions: z.boolean().default(false),
 });
 
 const marketplacePublishWorkflowOutputSchema = z.object({
@@ -166,13 +171,16 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
 
         return {
           entry,
+          nextEntry: event.payload.publishNextVersions
+            ? getNextStaticMarketplaceEntry(entry)
+            : null,
           listingId,
           artifactDirectory,
           artifactUploadName: marketplaceArtifactUploadName(listingId),
           files,
         };
       });
-      const { entry, listingId, artifactDirectory, files } = snapshot;
+      const { entry, nextEntry, listingId, artifactDirectory, files } = snapshot;
       const callUploadRoute = createArtifactUploadRouteCaller(snapshot.artifactUploadName);
 
       const createdDraft = await step.do(
@@ -331,32 +339,62 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
       await step.do(
         "publish marketplace artifact version",
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
-        async () => {
+        async (tx) => {
           const manifest = await marketplace.getArtifactManifest({ listingId: draft.listingId });
           const existingVersion = manifest?.versions.find(
             (candidate) => candidate.version === entry.version,
           );
+          let result: MarketplacePublishVersionResult;
           if (existingVersion) {
             if (existingVersion.directory !== artifactDirectory) {
               throw new NonRetryableError(
                 `Marketplace version '${entry.version}' is already published with a different artifact directory.`,
               );
             }
-            return { published: false } as const;
+            result = {
+              listingId: draft.listingId,
+              slug: entry.slug,
+              version: entry.version,
+              published: false,
+            };
+          } else {
+            const publishedVersion = await marketplace.publishVersion({
+              owner: entry.owner,
+              listingId: draft.listingId,
+              version: entry.version,
+              artifactDirectory,
+            });
+            if (!publishedVersion.ok) {
+              throw new NonRetryableError(
+                `${publishedVersion.error.code}: ${publishedVersion.error.message}`,
+              );
+            }
+            result = publishedVersion.value;
           }
 
-          const publishedVersion = await marketplace.publishVersion({
-            owner: entry.owner,
-            listingId: draft.listingId,
-            version: entry.version,
-            artifactDirectory,
-          });
-          if (!publishedVersion.ok) {
-            throw new NonRetryableError(
-              `${publishedVersion.error.code}: ${publishedVersion.error.message}`,
-            );
+          if (nextEntry) {
+            const nextListingId = marketplaceListingId({
+              ownerScope: nextEntry.owner.scope,
+              slug: nextEntry.slug,
+            });
+            tx.workflowServiceCalls(() => [
+              {
+                type: "createInstance",
+                workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+                instanceId: buildMarketplacePublicationWorkflowInstanceId({
+                  listingId: nextListingId,
+                  version: nextEntry.version,
+                }),
+                params: {
+                  slug: nextEntry.slug,
+                  version: nextEntry.version,
+                  publishNextVersions: true,
+                },
+              },
+            ]);
           }
-          return publishedVersion.value;
+
+          return result;
         },
       );
 

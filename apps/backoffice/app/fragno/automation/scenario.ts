@@ -772,8 +772,13 @@ export const backofficeFiles = {
       ...mapContentToMountedFiles("/static", STATIC_FILE_CONTENT),
       ...mapContentToMountedFiles("/system", SYSTEM_FILE_CONTENT),
     }),
-  workspaceStarter: () =>
-    createPreset(mapContentToMountedFiles("/workspace", WORKSPACE_STARTER_CONTENT)),
+  workspaceStarter: (additionalFiles: Record<string, string | Uint8Array> = {}) =>
+    createPreset(
+      mapContentToMountedFiles("/workspace", {
+        ...WORKSPACE_STARTER_CONTENT,
+        ...additionalFiles,
+      }),
+    ),
   fullStarter: () =>
     createPreset({
       ...mapContentToMountedFiles("/static", STATIC_FILE_CONTENT),

@@ -1,9 +1,5 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
-import {
-  defineWorkflow,
-  NonRetryableError,
-  type WorkflowStep,
-} from "@fragno-dev/workflows/workflow";
+import { defineWorkflow, NonRetryableError } from "@fragno-dev/workflows/workflow";
 import { z } from "zod";
 
 import type {
@@ -174,81 +170,6 @@ const assertMarketplaceSourceBytesMatch = async (
   }
 };
 
-const listMarketplaceArtifactFiles = async (input: {
-  artifactDirectory: string;
-  callRoute: UploadRouteCaller;
-  pageStepName: string;
-  step: WorkflowStep;
-}): Promise<MarketplaceIngestionSourceFile[]> => {
-  const artifactPrefix = `${input.artifactDirectory}/`;
-  const files: MarketplaceIngestionSourceFile[] = [];
-  let cursor: string | undefined;
-  let listingComplete = false;
-
-  for (let pageIndex = 0; pageIndex < MARKETPLACE_ARTIFACT_MAX_LIST_PAGES; pageIndex += 1) {
-    const pageCursor = cursor;
-    const page = await input.step.do(
-      input.pageStepName,
-      MARKETPLACE_EXTERNAL_STEP_RETRIES,
-      async function listPublishedMarketplaceArtifactFilePage() {
-        const response = await input.callRoute("GET", "/files", {
-          query: {
-            provider: UPLOAD_PROVIDER_DATABASE,
-            prefix: artifactPrefix,
-            status: "ready",
-            pageSize: String(MARKETPLACE_ARTIFACT_LIST_PAGE_SIZE),
-            ...(pageCursor ? { cursor: pageCursor } : {}),
-          },
-        });
-        if (response.type !== "json" || response.status < 200 || response.status >= 300) {
-          throw new Error(`Failed to list Marketplace artifact files (${response.status}).`);
-        }
-        return response.data;
-      },
-    );
-
-    for (const file of page.files) {
-      if (file.metadata?.__docsDirectoryMarker === true) {
-        continue;
-      }
-      const relativePath = normalizeMarketplaceArtifactPath(
-        file.fileKey.slice(artifactPrefix.length),
-      );
-      const checksum = file.checksum;
-      if (!checksum) {
-        throw new NonRetryableError(`Marketplace artifact file '${file.fileKey}' has no checksum.`);
-      }
-      files.push({
-        fileKey: file.fileKey,
-        relativePath,
-        contentType: file.contentType,
-        sizeBytes: file.sizeBytes,
-        checksum,
-        mode: uploadFileMode(file),
-      });
-    }
-
-    if (!page.hasNextPage) {
-      listingComplete = true;
-      break;
-    }
-    if (!page.cursor) {
-      throw new NonRetryableError(
-        "Marketplace artifact listing reported another page without a cursor.",
-      );
-    }
-    cursor = page.cursor;
-  }
-
-  if (!listingComplete) {
-    throw new NonRetryableError(
-      `Marketplace artifact listing exceeds ${MARKETPLACE_ARTIFACT_MAX_LIST_PAGES} pages.`,
-    );
-  }
-
-  return files.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
-};
-
 export const buildMarketplaceIngestionWorkflowInstanceId = async (input: {
   targetScope: BackofficeRoutableScope;
   listingId: string;
@@ -406,27 +327,124 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
 
       const sourceObject = runtime.objects.upload.forName(artifact.uploadName);
       const sourceUploadRoutes = createUploadRouteCaller(sourceObject);
-      const sourceFiles = await listMarketplaceArtifactFiles({
-        artifactDirectory: artifact.artifactDirectory,
-        callRoute: sourceUploadRoutes,
-        pageStepName: "list marketplace artifact files page",
-        step,
-      });
+      const artifactListings: Array<{
+        kind: "requested" | "installed";
+        artifactDirectory: string;
+        pageStepName:
+          | "list marketplace artifact files page"
+          | "list installed marketplace artifact files page";
+      }> = [
+        {
+          kind: "requested",
+          artifactDirectory: artifact.artifactDirectory,
+          pageStepName: "list marketplace artifact files page",
+        },
+      ];
+      if (artifact.previousArtifactDirectory) {
+        artifactListings.push({
+          kind: "installed",
+          artifactDirectory: artifact.previousArtifactDirectory,
+          pageStepName: "list installed marketplace artifact files page",
+        });
+      }
+
+      const artifactFiles: Record<"requested" | "installed", MarketplaceIngestionSourceFile[]> = {
+        requested: [],
+        installed: [],
+      };
+      for (const listing of artifactListings) {
+        const artifactPrefix = `${listing.artifactDirectory}/`;
+        const files: MarketplaceIngestionSourceFile[] = [];
+        let cursor: string | undefined;
+        let listingComplete = false;
+
+        for (let pageIndex = 0; pageIndex < MARKETPLACE_ARTIFACT_MAX_LIST_PAGES; pageIndex += 1) {
+          const pageCursor = cursor;
+          const page = await step.do(
+            listing.pageStepName,
+            MARKETPLACE_EXTERNAL_STEP_RETRIES,
+            async () => {
+              const response = await sourceUploadRoutes("GET", "/files", {
+                query: {
+                  provider: UPLOAD_PROVIDER_DATABASE,
+                  prefix: artifactPrefix,
+                  status: "ready",
+                  pageSize: String(MARKETPLACE_ARTIFACT_LIST_PAGE_SIZE),
+                  ...(pageCursor ? { cursor: pageCursor } : {}),
+                },
+              });
+              if (response.type !== "json" || response.status < 200 || response.status >= 300) {
+                throw new Error(`Failed to list Marketplace artifact files (${response.status}).`);
+              }
+
+              const pageFiles: MarketplaceIngestionSourceFile[] = [];
+              for (const file of response.data.files) {
+                if (file.metadata?.__docsDirectoryMarker === true) {
+                  continue;
+                }
+                const checksum = file.checksum;
+                if (!checksum) {
+                  throw new NonRetryableError(
+                    `Marketplace artifact file '${file.fileKey}' has no checksum.`,
+                  );
+                }
+                pageFiles.push({
+                  fileKey: file.fileKey,
+                  relativePath: normalizeMarketplaceArtifactPath(
+                    file.fileKey.slice(artifactPrefix.length),
+                  ),
+                  contentType: file.contentType,
+                  sizeBytes: file.sizeBytes,
+                  checksum,
+                  mode: uploadFileMode(file),
+                });
+              }
+
+              return {
+                files: pageFiles,
+                cursor: response.data.cursor,
+                hasNextPage: response.data.hasNextPage,
+              };
+            },
+          );
+          files.push(...page.files);
+
+          if (!page.hasNextPage) {
+            listingComplete = true;
+            break;
+          }
+          if (!page.cursor) {
+            throw new NonRetryableError(
+              "Marketplace artifact listing reported another page without a cursor.",
+            );
+          }
+          cursor = page.cursor;
+        }
+
+        if (!listingComplete) {
+          throw new NonRetryableError(
+            `Marketplace artifact listing exceeds ${MARKETPLACE_ARTIFACT_MAX_LIST_PAGES} pages.`,
+          );
+        }
+        artifactFiles[listing.kind] = files.sort((left, right) =>
+          left.relativePath.localeCompare(right.relativePath),
+        );
+      }
+
+      const sourceFiles = artifactFiles.requested;
       if (sourceFiles.length === 0) {
         throw new NonRetryableError("Marketplace artifact contains no files.");
       }
-
-      const previousSourceFiles = artifact.previousArtifactDirectory
-        ? await listMarketplaceArtifactFiles({
-            artifactDirectory: artifact.previousArtifactDirectory,
-            callRoute: sourceUploadRoutes,
-            pageStepName: "list installed marketplace artifact files page",
-            step,
-          })
-        : [];
+      const previousSourceFiles = artifactFiles.installed;
+      const requestedSourceFilesByPath = new Map(
+        sourceFiles.map((source) => [source.relativePath, source]),
+      );
       const previousSourceFilesByPath = new Map(
         previousSourceFiles.map((source) => [source.relativePath, source]),
       );
+      const observedRelativePaths = Array.from(
+        new Set([...requestedSourceFilesByPath.keys(), ...previousSourceFilesByPath.keys()]),
+      ).sort((left, right) => left.localeCompare(right));
 
       const destinationObject = runtime.objects.upload.for(input.targetScope);
       const destinationUploadRoutes = createUploadRouteCaller(destinationObject);
@@ -435,18 +453,17 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
         async function planMarketplaceWorkspaceWrites() {
           const observations: MarketplaceWorkspaceFileObservation[] = [];
-          for (const source of sourceFiles) {
+          for (const relativePath of observedRelativePaths) {
             observations.push({
-              source,
-              target: await requestUploadFile(destinationUploadRoutes, source.relativePath),
+              relativePath,
+              requestedSource: requestedSourceFilesByPath.get(relativePath) ?? null,
+              installedSource: previousSourceFilesByPath.get(relativePath) ?? null,
+              target: await requestUploadFile(destinationUploadRoutes, relativePath),
             });
           }
 
           try {
-            return planMarketplaceWorkspaceUpdate({
-              observations,
-              previousSourceFilesByPath,
-            });
+            return planMarketplaceWorkspaceUpdate({ observations });
           } catch (error) {
             if (error instanceof MarketplaceWorkspaceFileConflictError) {
               throw new NonRetryableError(error.message);
@@ -598,6 +615,7 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
           try {
             return await targetFileSystem.commitPreparedFileWrites({
               writes: preparedWrites,
+              deletions: workspaceUpdate.deletions,
               assertions: workspaceUpdate.assertions,
             });
           } catch (error) {
@@ -623,6 +641,14 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
             if (!marketplaceFileContentsMatch(source, target)) {
               throw new NonRetryableError(
                 `Marketplace ingestion verification failed for '/workspace/${source.relativePath}'.`,
+              );
+            }
+          }
+          for (const deletion of workspaceUpdate.deletions) {
+            const relativePath = deletion.path.slice("/workspace/".length);
+            if (await requestUploadFile(destinationUploadRoutes, relativePath)) {
+              throw new NonRetryableError(
+                `Marketplace ingestion verification failed to remove '${deletion.path}'.`,
               );
             }
           }

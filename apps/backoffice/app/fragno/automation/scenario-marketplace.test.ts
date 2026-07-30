@@ -17,11 +17,11 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
-import { TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE } from "@/files/content/telegram-test-command";
 import {
-  marketplaceArtifactUploadName,
-  type MarketplaceStaticArtifactEntry,
-} from "@/fragno/marketplace/artifacts";
+  TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
+  TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE,
+} from "@/files/content/telegram-test-command";
+import { marketplaceArtifactUploadName } from "@/fragno/marketplace/artifacts";
 import type {
   MarketplaceCreateDraftListingInput,
   MarketplacePublishVersionInput,
@@ -54,35 +54,23 @@ const MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME = `v1:named:${encodeURIComponent(
   marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
 )}`;
 const MARKETPLACE_ARTIFACT_FILE_KEY = "automations/telegram-test-command.workflow.js";
+const MARKETPLACE_ARTIFACT_CONFLICT_MESSAGE =
+  "Marketplace ingestion conflicts with workspace file '/workspace/automations/telegram-test-command.workflow.js'.";
 const MARKETPLACE_UNCHANGED_FILE_KEY = "prompts/marketplace.md";
 const MARKETPLACE_UNCHANGED_FILE_SOURCE = "# Marketplace\n";
-const UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = `${TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE}\n// Marketplace version 1.1.0`;
-const UPDATED_STATIC_MARKETPLACE_ENTRY: MarketplaceStaticArtifactEntry = {
-  ...STATIC_MARKETPLACE_ENTRIES[0],
-  version: "1.1.0",
-  metadata: {
-    ...STATIC_MARKETPLACE_ENTRIES[0].metadata,
-    name: "Telegram test command 1.1",
-  },
-  files: {
-    [MARKETPLACE_ARTIFACT_FILE_KEY]: UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
-  },
+const MARKETPLACE_REMOVED_FILE_KEY = "prompts/removed-in-next-version.md";
+const MARKETPLACE_REMOVED_FILE_SOURCE = "# Removed in the next Marketplace version\n";
+const UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE;
+const UPDATED_STATIC_MARKETPLACE_ENTRY = STATIC_MARKETPLACE_ENTRIES[1];
+
+type MarketplaceWorkflowListEntry = { id: string };
+type MarketplaceWorkflowHistoryStep = {
+  name: string;
+  status: string;
+  attempts: number;
 };
 
-const mutableStaticMarketplaceEntries =
-  STATIC_MARKETPLACE_ENTRIES as unknown as MarketplaceStaticArtifactEntry[];
-
-const withUpdatedStaticMarketplaceEntry = async (run: () => Promise<void>) => {
-  mutableStaticMarketplaceEntries.push(UPDATED_STATIC_MARKETPLACE_ENTRY);
-  try {
-    await run();
-  } finally {
-    const index = mutableStaticMarketplaceEntries.indexOf(UPDATED_STATIC_MARKETPLACE_ENTRY);
-    if (index >= 0) {
-      mutableStaticMarketplaceEntries.splice(index, 1);
-    }
-  }
-};
+const withUpdatedStaticMarketplaceEntry = async (run: () => Promise<void>) => await run();
 
 const withTwoFileMarketplaceVersions = async (run: () => Promise<void>) => {
   const baseFiles = STATIC_MARKETPLACE_ENTRIES[0].files as Record<string, string>;
@@ -104,6 +92,30 @@ const withTwoFileMarketplaceVersions = async (run: () => Promise<void>) => {
       delete updatedFiles[MARKETPLACE_UNCHANGED_FILE_KEY];
     } else {
       updatedFiles[MARKETPLACE_UNCHANGED_FILE_KEY] = originalUpdatedFile;
+    }
+  }
+};
+
+const withRemovedFileMarketplaceVersion = async (run: () => Promise<void>) => {
+  const baseFiles = STATIC_MARKETPLACE_ENTRIES[0].files as Record<string, string>;
+  const updatedFiles = UPDATED_STATIC_MARKETPLACE_ENTRY.files as Record<string, string>;
+  const originalBaseFile = baseFiles[MARKETPLACE_REMOVED_FILE_KEY];
+  const originalUpdatedFile = updatedFiles[MARKETPLACE_REMOVED_FILE_KEY];
+  baseFiles[MARKETPLACE_REMOVED_FILE_KEY] = MARKETPLACE_REMOVED_FILE_SOURCE;
+  delete updatedFiles[MARKETPLACE_REMOVED_FILE_KEY];
+
+  try {
+    await withUpdatedStaticMarketplaceEntry(run);
+  } finally {
+    if (originalBaseFile === undefined) {
+      delete baseFiles[MARKETPLACE_REMOVED_FILE_KEY];
+    } else {
+      baseFiles[MARKETPLACE_REMOVED_FILE_KEY] = originalBaseFile;
+    }
+    if (originalUpdatedFile === undefined) {
+      delete updatedFiles[MARKETPLACE_REMOVED_FILE_KEY];
+    } else {
+      updatedFiles[MARKETPLACE_REMOVED_FILE_KEY] = originalUpdatedFile;
     }
   }
 };
@@ -171,20 +183,30 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 version: string;
                 workflowInstanceId: string;
                 state: string;
-                workflowStatus: string;
+                workflowStatus?: string;
+                blockedByVersion?: string;
               }>;
             };
+            const listingId = marketplaceListingId({
+              ownerScope: { kind: "system" },
+              slug: "telegram-test-command",
+            });
             expect(result.publications).toEqual([
               {
-                listingId: marketplaceListingId({
-                  ownerScope: { kind: "system" },
-                  slug: "telegram-test-command",
-                }),
+                listingId,
                 slug: "telegram-test-command",
                 version: "1.0.0",
                 workflowInstanceId: expect.stringMatching(/^marketplace-publish-/u),
                 state: "requested",
                 workflowStatus: "active",
+              },
+              {
+                listingId,
+                slug: "telegram-test-command",
+                version: "1.1.0",
+                workflowInstanceId: expect.stringMatching(/^marketplace-publish-/u),
+                state: "queued",
+                blockedByVersion: "1.0.0",
               },
             ]);
           }),
@@ -205,7 +227,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 slug: "telegram-test-command",
                 publisherName: "Fragno",
                 name: "Telegram test command",
-                latestVersion: "1.0.0",
+                latestVersion: "1.1.0",
                 status: "published",
               });
               const uploadName = marketplaceArtifactUploadName(listingId);
@@ -214,7 +236,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 slug: "telegram-test-command",
                 listingStatus: "published",
                 uploadName,
-                versions: [{ version: "1.0.0", directory: "1.0.0" }],
+                versions: [
+                  { version: "1.1.0", directory: "1.1.0" },
+                  { version: "1.0.0", directory: "1.0.0" },
+                ],
               });
 
               const upload = ctx.runtime.objects.upload.forName(uploadName);
@@ -234,12 +259,17 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               const artifactFiles = files.files.filter(
                 (file) => file.metadata?.__docsDirectoryMarker !== true,
               );
-              expect(artifactFiles).toEqual([
-                expect.objectContaining({
-                  fileKey: "1.0.0/automations/telegram-test-command.workflow.js",
-                  contentType: "text/javascript",
-                }),
-              ]);
+              expect(artifactFiles).toEqual(
+                expect.arrayContaining(
+                  ["1.0.0", "1.1.0"].map((version) =>
+                    expect.objectContaining({
+                      fileKey: `${version}/automations/telegram-test-command.workflow.js`,
+                      contentType: "text/javascript",
+                    }),
+                  ),
+                ),
+              );
+              expect(artifactFiles).toHaveLength(2);
               assert(!files.files.some((file) => file.fileKey === "manifest.json"));
 
               const contentResponse = await upload.fetch(
@@ -271,12 +301,11 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 state: string;
               }>;
             };
-            expect(repeated.publications).toEqual([
-              expect.objectContaining({
-                workflowInstanceId: first.publications[0]?.workflowInstanceId,
-                state: "published",
-              }),
-            ]);
+            expect(repeated.publications).toEqual(
+              first.publications.map(({ workflowInstanceId }) =>
+                expect.objectContaining({ workflowInstanceId, state: "published" }),
+              ),
+            );
           }),
 
           then.assert("published requests do not inspect the artifact files again", async (ctx) => {
@@ -307,11 +336,11 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             );
             assert(replaceResponse.ok);
 
-            await expect(
-              ctx.runtime.objects.automations
-                .forOrg("org-1")
-                .requestStaticMarketplacePublications(),
-            ).resolves.toMatchObject({ publications: [{ state: "published" }] });
+            const result = await ctx.runtime.objects.automations
+              .forOrg("org-1")
+              .requestStaticMarketplacePublications();
+            expect(result.publications).toHaveLength(2);
+            assert(result.publications.every(({ state }) => state === "published"));
           }),
         ],
       }),
@@ -358,13 +387,13 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 listingId,
                 targetScope: { kind: "org", orgId: "org-1" },
               }),
-            ).resolves.toMatchObject({ state: "requested", version: "1.0.0" });
+            ).resolves.toMatchObject({ state: "requested", version: "1.1.0" });
             await expect(
               automations.requestMarketplaceIngestion({
                 listingId,
                 targetScope: { kind: "project", orgId: "org-1", projectId: project.id },
               }),
-            ).resolves.toMatchObject({ state: "requested", version: "1.0.0" });
+            ).resolves.toMatchObject({ state: "requested", version: "1.1.0" });
 
             ctx.vars.projectId = project.id;
           }),
@@ -384,7 +413,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                       ownerScope: { kind: "system" },
                       slug: "telegram-test-command",
                     }),
-                    version: "1.0.0",
+                    version: "1.1.0",
                   }),
                   expect.objectContaining({
                     targetScopeKey: `project:org-1:${String(ctx.vars.projectId)}`,
@@ -392,7 +421,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                       ownerScope: { kind: "system" },
                       slug: "telegram-test-command",
                     }),
-                    version: "1.0.0",
+                    version: "1.1.0",
                   }),
                 ]),
               );
@@ -409,7 +438,9 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 url.searchParams.set("key", "automations/telegram-test-command.workflow.js");
                 const response = await upload.fetch(new Request(url));
                 assert(response.ok);
-                await expect(response.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE);
+                await expect(response.text()).resolves.toBe(
+                  UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
+                );
               }
             },
           ),
@@ -713,10 +744,16 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     );
   });
 
-  test("rejects conflicting organization workspace files without recording ingestion", async () => {
+  test("preserves an existing target file and rejects Marketplace ingestion", async () => {
+    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      targetScope: { kind: "org", orgId: "org-1" },
+      listingId: MARKETPLACE_LISTING_ID,
+      version: "1.1.0",
+    });
+
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: "reject conflicting marketplace ingestion",
+        name: "preserve an existing Marketplace ingestion target file",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then, runner }) => [
           when.codemode.run({
@@ -725,42 +762,165 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             code: "async () => await internal.marketplacePush({})",
             assertToolCalls: ["internal.marketplace.push"],
           }),
-          then.assert("a conflicting destination file is created", async (ctx) => {
+          then.assert("a file already exists at the Marketplace target path", async (ctx) => {
             const upload = ctx.runtime.objects.upload.forOrg("org-1");
             await upload.setAdminConfig({ provider: "database" }, "org-1");
-            const form = new FormData();
-            form.set("provider", "database");
-            form.set("fileKey", "automations/telegram-test-command.workflow.js");
-            form.set("filename", "telegram-test-command.workflow.js");
-            form.set("file", new File(["locally modified"], "telegram-test-command.workflow.js"));
-            const response = await upload.fetch(
-              new Request("https://upload.test/api/upload/files", { method: "POST", body: form }),
-            );
-            assert(response.ok);
-
-            const listingId = marketplaceListingId({
-              ownerScope: { kind: "system" },
-              slug: "telegram-test-command",
+            await writeUploadFile({
+              upload,
+              fileKey: MARKETPLACE_ARTIFACT_FILE_KEY,
+              content: "locally modified",
             });
+
             await expect(
               ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
-                listingId,
+                listingId: MARKETPLACE_LISTING_ID,
                 targetScope: { kind: "org", orgId: "org-1" },
               }),
-            ).resolves.toMatchObject({ state: "requested" });
+            ).resolves.toMatchObject({
+              state: "requested",
+              version: "1.1.0",
+              workflowInstanceId,
+            });
           }),
           runner.drain(),
-          then.assert("the failed workflow leaves no successful ingestion row", async (ctx) => {
-            await expect(
-              ctx.runtime.objects.automations.forOrg("org-1").getMarketplaceIngestion({
-                targetScope: { kind: "org", orgId: "org-1" },
-                listingId: marketplaceListingId({
-                  ownerScope: { kind: "system" },
-                  slug: "telegram-test-command",
-                }),
-              }),
-            ).resolves.toBeNull();
+          then.assert("the ingestion workflow reports the target file conflict", async (ctx) => {
+            const workflows = createWorkflowsRouteCaller({
+              object: ctx.runtime.objects.automations.forOrg("org-1"),
+              scope: { kind: "org", orgId: "org-1" },
+            });
+            const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
+              pathParams: {
+                workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+                instanceId: workflowInstanceId,
+              },
+            });
+            assert(instance.type === "json");
+            expect(instance.data.details).toMatchObject({
+              status: "errored",
+              error: {
+                name: "NonRetryableError",
+                message: MARKETPLACE_ARTIFACT_CONFLICT_MESSAGE,
+              },
+            });
           }),
+          then.assert(
+            "the existing file remains unchanged and is not recorded as installed",
+            async (ctx) => {
+              const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
+              contentUrl.searchParams.set("provider", "database");
+              contentUrl.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
+              const response = await ctx.runtime.objects.upload
+                .forOrg("org-1")
+                .fetch(new Request(contentUrl));
+              assert(response.ok);
+              await expect(response.text()).resolves.toBe("locally modified");
+
+              await expect(
+                ctx.runtime.objects.automations.forOrg("org-1").getMarketplaceIngestion({
+                  targetScope: { kind: "org", orgId: "org-1" },
+                  listingId: MARKETPLACE_LISTING_ID,
+                }),
+              ).resolves.toBeNull();
+            },
+          ),
+        ],
+        options: { allowErroredWorkflows: true },
+      }),
+    );
+  });
+
+  test("rejects a latest-version ingestion when the legacy starter file matches version 1.0.0", async () => {
+    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      targetScope: { kind: "org", orgId: "org-1" },
+      listingId: MARKETPLACE_LISTING_ID,
+      version: "1.1.0",
+    });
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "reject Marketplace ingestion over a legacy starter-seeded version",
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ when, then, runner }) => [
+          when.codemode.run({
+            orgId: "org-1",
+            label: "publish both bundled Marketplace versions",
+            code: "async () => await internal.marketplacePush({})",
+            assertToolCalls: ["internal.marketplace.push"],
+          }),
+          then.assert(
+            "the legacy starter seeded the version 1.0.0 file without an ingestion row",
+            async (ctx) => {
+              const automations = ctx.runtime.objects.automations.forOrg("org-1");
+              const upload = ctx.runtime.objects.upload.forOrg("org-1");
+              await upload.setAdminConfig({ provider: "database" }, "org-1");
+              await writeUploadFile({
+                upload,
+                fileKey: MARKETPLACE_ARTIFACT_FILE_KEY,
+                content: TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
+              });
+              await expect(
+                automations.getMarketplaceIngestion({
+                  targetScope: { kind: "org", orgId: "org-1" },
+                  listingId: MARKETPLACE_LISTING_ID,
+                }),
+              ).resolves.toBeNull();
+
+              await expect(
+                automations.requestMarketplaceIngestion({
+                  listingId: MARKETPLACE_LISTING_ID,
+                  targetScope: { kind: "org", orgId: "org-1" },
+                }),
+              ).resolves.toMatchObject({
+                state: "requested",
+                version: "1.1.0",
+                workflowInstanceId,
+              });
+            },
+          ),
+          runner.drain(),
+          then.assert(
+            "the missing ingestion baseline makes the legacy file conflict",
+            async (ctx) => {
+              const workflows = createWorkflowsRouteCaller({
+                object: ctx.runtime.objects.automations.forOrg("org-1"),
+                scope: { kind: "org", orgId: "org-1" },
+              });
+              const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
+                pathParams: {
+                  workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+                  instanceId: workflowInstanceId,
+                },
+              });
+              assert(instance.type === "json");
+              expect(instance.data.details).toMatchObject({
+                status: "errored",
+                error: {
+                  name: "NonRetryableError",
+                  message: MARKETPLACE_ARTIFACT_CONFLICT_MESSAGE,
+                },
+              });
+            },
+          ),
+          then.assert(
+            "the version 1.0.0 file remains and Marketplace is not installed",
+            async (ctx) => {
+              const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
+              contentUrl.searchParams.set("provider", "database");
+              contentUrl.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
+              const response = await ctx.runtime.objects.upload
+                .forOrg("org-1")
+                .fetch(new Request(contentUrl));
+              assert(response.ok);
+              await expect(response.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE);
+
+              await expect(
+                ctx.runtime.objects.automations.forOrg("org-1").getMarketplaceIngestion({
+                  targetScope: { kind: "org", orgId: "org-1" },
+                  listingId: MARKETPLACE_LISTING_ID,
+                }),
+              ).resolves.toBeNull();
+            },
+          ),
         ],
         options: { allowErroredWorkflows: true },
       }),
@@ -790,12 +950,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           },
           setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
           steps: ({ when, then, runner }) => [
-            then.assert("publication is requested without draining its workflow", async (ctx) => {
-              await expect(
-                ctx.runtime.objects.automations
-                  .forOrg("org-1")
-                  .requestStaticMarketplacePublications(),
-              ).resolves.toMatchObject({ publications: [{ state: "requested" }] });
+            then.assert("version 1.0.0 publication is requested without draining", async (ctx) => {
+              await createMarketplacePublicationWorkflow(ctx, "1.0.0");
             }),
             runner.drain(),
             then.workflow.instance({
@@ -1311,40 +1467,66 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     );
   });
 
-  test("replays a successful publication after its response is lost and a newer version publishes", async () => {
-    await withUpdatedStaticMarketplaceEntry(async () => {
-      let loseFirstPublicationResponse = true;
-      await runBackofficeScenario(
-        defineBackofficeScenario({
-          name: "replay an already successful marketplace publication",
-          objectFactories: {
-            MARKETPLACE: ({ state, env, runtime }) =>
-              new (class extends InMemoryMarketplaceObject {
-                async publishVersion(input: MarketplacePublishVersionInput) {
-                  const result = await super.publishVersion(input);
-                  if (input.version === "1.0.0" && result.ok && loseFirstPublicationResponse) {
-                    loseFirstPublicationResponse = false;
-                    throw new Error("Marketplace publication response was lost.");
-                  }
-                  return result;
+  test("queues the next publication exactly once after replaying a lost publication response", async () => {
+    const currentInstanceId = buildMarketplacePublicationWorkflowInstanceId({
+      listingId: MARKETPLACE_LISTING_ID,
+      version: "1.0.0",
+    });
+    const nextInstanceId = buildMarketplacePublicationWorkflowInstanceId({
+      listingId: MARKETPLACE_LISTING_ID,
+      version: "1.1.0",
+    });
+    const publicationAttempts = new Map<string, number>();
+    let loseFirstPublicationResponse = true;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "replay Marketplace publication before atomically creating its successor",
+        objectFactories: {
+          MARKETPLACE: ({ state, env, runtime }) =>
+            new (class extends InMemoryMarketplaceObject {
+              async publishVersion(input: MarketplacePublishVersionInput) {
+                publicationAttempts.set(
+                  input.version,
+                  (publicationAttempts.get(input.version) ?? 0) + 1,
+                );
+                const result = await super.publishVersion(input);
+                if (input.version === "1.0.0" && result.ok && loseFirstPublicationResponse) {
+                  loseFirstPublicationResponse = false;
+                  throw new Error("Marketplace publication response was lost.");
                 }
-              })({ state, env, runtime }),
-          },
-          setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
-          steps: ({ when, then, runner }) => [
-            then.assert("version 1.0.0 publication is created", async (ctx) => {
-              await createMarketplacePublicationWorkflow(ctx, "1.0.0");
-            }),
-            runner.drain(),
-            then.workflow.instance({
-              workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-              instanceId: buildMarketplacePublicationWorkflowInstanceId({
-                listingId: MARKETPLACE_LISTING_ID,
-                version: "1.0.0",
-              }),
-              status: "waiting",
-            }),
-            then.assert("version 1.0.0 is published despite the lost response", async (ctx) => {
+                return result;
+              }
+            })({ state, env, runtime }),
+        },
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ when, then, runner }) => [
+          then.assert("the catalog requests only the first publication workflow", async (ctx) => {
+            await expect(
+              ctx.runtime.objects.automations
+                .forOrg("org-1")
+                .requestStaticMarketplacePublications(),
+            ).resolves.toMatchObject({
+              publications: [
+                { version: "1.0.0", state: "requested", workflowInstanceId: currentInstanceId },
+                {
+                  version: "1.1.0",
+                  state: "queued",
+                  workflowInstanceId: nextInstanceId,
+                  blockedByVersion: "1.0.0",
+                },
+              ],
+            });
+          }),
+          runner.drain(),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: currentInstanceId,
+            status: "waiting",
+          }),
+          then.assert(
+            "the failed step has published the version without committing its successor",
+            async (ctx) => {
               await expect(
                 ctx.runtime.objects.marketplace
                   .singleton()
@@ -1352,42 +1534,209 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               ).resolves.toMatchObject({
                 versions: [expect.objectContaining({ version: "1.0.0" })],
               });
-            }),
-            then.assert("version 1.1.0 publication is created", async (ctx) => {
-              await createMarketplacePublicationWorkflow(ctx, "1.1.0");
-            }),
-            runner.drain(),
-            then.assert("version 1.1.0 becomes latest before the replay", async (ctx) => {
+
+              const workflows = createWorkflowsRouteCaller({
+                object: ctx.runtime.objects.automations.forOrg("org-1"),
+                scope: { kind: "org", orgId: "org-1" },
+              });
+              const nextInstance = await workflows("GET", "/:workflowName/instances/:instanceId", {
+                pathParams: {
+                  workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+                  instanceId: nextInstanceId,
+                },
+              });
+              assert(nextInstance.type === "error");
+              assert(nextInstance.status === 404);
+            },
+          ),
+          runner.restartObject({
+            binding: "AUTOMATIONS",
+            scope: { kind: "org", orgId: "org-1" },
+          }),
+          when.time.advance("1 s"),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: currentInstanceId,
+            status: "complete",
+          }),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: nextInstanceId,
+            status: "complete",
+          }),
+          then.assert(
+            "the replay commits one successor and the complete version chain",
+            async (ctx) => {
+              const workflows = createWorkflowsRouteCaller({
+                object: ctx.runtime.objects.automations.forOrg("org-1"),
+                scope: { kind: "org", orgId: "org-1" },
+              });
+              const instances = await workflows("GET", "/:workflowName/instances", {
+                pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
+              });
+              assert(instances.type === "json");
+              const instanceIds = (instances.data.instances as MarketplaceWorkflowListEntry[]).map(
+                (instance) => instance.id,
+              );
+              expect(instanceIds.sort()).toEqual([currentInstanceId, nextInstanceId].sort());
+
+              const currentHistory = await workflows(
+                "GET",
+                "/:workflowName/instances/:instanceId/history",
+                {
+                  pathParams: {
+                    workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+                    instanceId: currentInstanceId,
+                  },
+                },
+              );
+              assert(currentHistory.type === "json");
+              expect(
+                (currentHistory.data.steps as MarketplaceWorkflowHistoryStep[]).find(
+                  (historyStep) => historyStep.name === "publish marketplace artifact version",
+                ),
+              ).toMatchObject({ status: "completed", attempts: 2 });
+
+              const nextHistory = await workflows(
+                "GET",
+                "/:workflowName/instances/:instanceId/history",
+                {
+                  pathParams: {
+                    workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+                    instanceId: nextInstanceId,
+                  },
+                },
+              );
+              assert(nextHistory.type === "json");
+              expect(
+                (nextHistory.data.steps as MarketplaceWorkflowHistoryStep[]).find(
+                  (historyStep) => historyStep.name === "publish marketplace artifact version",
+                ),
+              ).toMatchObject({ status: "completed", attempts: 1 });
+
+              expect(Object.fromEntries(publicationAttempts)).toEqual({
+                "1.0.0": 1,
+                "1.1.0": 1,
+              });
               await expect(
                 ctx.runtime.objects.marketplace
                   .singleton()
                   .getPublishedListing({ listingId: MARKETPLACE_LISTING_ID }),
               ).resolves.toMatchObject({ listing: { latestVersion: "1.1.0" } });
-            }),
-            runner.restartObject({
-              binding: "AUTOMATIONS",
-              scope: { kind: "org", orgId: "org-1" },
-            }),
-            when.time.advance("1 s"),
-            then.workflow.instance({
-              workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-              instanceId: buildMarketplacePublicationWorkflowInstanceId({
-                listingId: MARKETPLACE_LISTING_ID,
-                version: "1.0.0",
-              }),
-              status: "complete",
-            }),
-            then.assert("the replay does not promote the older version", async (ctx) => {
-              await expect(
-                ctx.runtime.objects.marketplace
-                  .singleton()
-                  .getPublishedListing({ listingId: MARKETPLACE_LISTING_ID }),
-              ).resolves.toMatchObject({ listing: { latestVersion: "1.1.0" } });
-            }),
-          ],
-        }),
-      );
+            },
+          ),
+        ],
+      }),
+    );
+  });
+
+  test("keeps the chained publication durable while its first child attempt retries", async () => {
+    const currentInstanceId = buildMarketplacePublicationWorkflowInstanceId({
+      listingId: MARKETPLACE_LISTING_ID,
+      version: "1.0.0",
     });
+    const nextInstanceId = buildMarketplacePublicationWorkflowInstanceId({
+      listingId: MARKETPLACE_LISTING_ID,
+      version: "1.1.0",
+    });
+    let rejectFirstNextVersionReservation = true;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "restart after a chained Marketplace publication starts retrying",
+        objectFactories: {
+          MARKETPLACE: ({ state, env, runtime }) =>
+            new (class extends InMemoryMarketplaceObject {
+              async createDraftListing(input: MarketplaceCreateDraftListingInput) {
+                if (input.version === "1.1.0" && rejectFirstNextVersionReservation) {
+                  rejectFirstNextVersionReservation = false;
+                  throw new Error("Temporary next-version reservation failure.");
+                }
+                return await super.createDraftListing(input);
+              }
+            })({ state, env, runtime }),
+        },
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ when, then, runner }) => [
+          then.assert("the catalog requests the version chain", async (ctx) => {
+            await ctx.runtime.objects.automations
+              .forOrg("org-1")
+              .requestStaticMarketplacePublications();
+          }),
+          runner.drain(),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: currentInstanceId,
+            status: "complete",
+          }),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: nextInstanceId,
+            status: "waiting",
+          }),
+          then.assert("the committed handoff exposes one retrying child instance", async (ctx) => {
+            const workflows = createWorkflowsRouteCaller({
+              object: ctx.runtime.objects.automations.forOrg("org-1"),
+              scope: { kind: "org", orgId: "org-1" },
+            });
+            const instances = await workflows("GET", "/:workflowName/instances", {
+              pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
+            });
+            assert(instances.type === "json");
+            const instanceIds = (instances.data.instances as MarketplaceWorkflowListEntry[]).map(
+              (instance) => instance.id,
+            );
+            expect(instanceIds.sort()).toEqual([currentInstanceId, nextInstanceId].sort());
+
+            const history = await workflows("GET", "/:workflowName/instances/:instanceId/history", {
+              pathParams: {
+                workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+                instanceId: nextInstanceId,
+              },
+            });
+            assert(history.type === "json");
+            expect(
+              (history.data.steps as MarketplaceWorkflowHistoryStep[]).find(
+                (historyStep) => historyStep.name === "create marketplace draft listing",
+              ),
+            ).toMatchObject({ status: "waiting", attempts: 1 });
+          }),
+          runner.restartObject({
+            binding: "AUTOMATIONS",
+            scope: { kind: "org", orgId: "org-1" },
+          }),
+          when.time.advance("1 s"),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: nextInstanceId,
+            status: "complete",
+          }),
+          then.assert("the persisted child resumes without another parent handoff", async (ctx) => {
+            const workflows = createWorkflowsRouteCaller({
+              object: ctx.runtime.objects.automations.forOrg("org-1"),
+              scope: { kind: "org", orgId: "org-1" },
+            });
+            const history = await workflows("GET", "/:workflowName/instances/:instanceId/history", {
+              pathParams: {
+                workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+                instanceId: nextInstanceId,
+              },
+            });
+            assert(history.type === "json");
+            expect(
+              (history.data.steps as MarketplaceWorkflowHistoryStep[]).find(
+                (historyStep) => historyStep.name === "create marketplace draft listing",
+              ),
+            ).toMatchObject({ status: "completed", attempts: 2 });
+            await expect(
+              ctx.runtime.objects.marketplace
+                .singleton()
+                .getPublishedListing({ listingId: MARKETPLACE_LISTING_ID }),
+            ).resolves.toMatchObject({ listing: { latestVersion: "1.1.0" } });
+          }),
+        ],
+      }),
+    );
   });
 
   test("replays ingestion after the prepared batch commits but its response is lost", async () => {
@@ -1438,6 +1787,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
                 listingId: MARKETPLACE_LISTING_ID,
+                version: "1.0.0",
                 targetScope: { kind: "org", orgId: "org-1" },
               }),
             ).resolves.toMatchObject({ state: "requested" });
@@ -1483,6 +1833,53 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         ],
       }),
     );
+  });
+
+  test("derives an out-of-date ingestion after a newer version is published", async () => {
+    await withUpdatedStaticMarketplaceEntry(async () => {
+      await runBackofficeScenario(
+        defineBackofficeScenario({
+          name: "observe an out-of-date marketplace ingestion",
+          setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+          steps: ({ then, runner }) => [
+            then.assert("version 1.0.0 publication is created", async (ctx) => {
+              await createMarketplacePublicationWorkflow(ctx, "1.0.0");
+            }),
+            runner.drain(),
+            then.assert("version 1.0.0 is ingested", async (ctx) => {
+              await ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
+                listingId: MARKETPLACE_LISTING_ID,
+                version: "1.0.0",
+                targetScope: { kind: "org", orgId: "org-1" },
+              });
+            }),
+            runner.drain(),
+            then.assert("version 1.1.0 publication is created", async (ctx) => {
+              await createMarketplacePublicationWorkflow(ctx, "1.1.0");
+            }),
+            runner.drain(),
+            then.assert(
+              "the installed version is older than the latest publication",
+              async (ctx) => {
+                const ingestion = await ctx.runtime.objects.automations
+                  .forOrg("org-1")
+                  .getMarketplaceIngestion({
+                    targetScope: { kind: "org", orgId: "org-1" },
+                    listingId: MARKETPLACE_LISTING_ID,
+                  });
+                const latest = await ctx.runtime.objects.marketplace
+                  .singleton()
+                  .getLatestPublishedVersions({ listingIds: [MARKETPLACE_LISTING_ID] });
+
+                expect(ingestion).toMatchObject({ version: "1.0.0" });
+                expect(latest).toEqual({ [MARKETPLACE_LISTING_ID]: "1.1.0" });
+                expect(ingestion?.version).not.toBe(latest[MARKETPLACE_LISTING_ID]);
+              },
+            ),
+          ],
+        }),
+      );
+    });
   });
 
   test("updates files that still match the previously ingested marketplace version", async () => {
@@ -1536,6 +1933,199 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               );
             }),
           ],
+        }),
+      );
+    });
+  });
+
+  test("removes obsolete files and replays an update whose commit response is lost", async () => {
+    await withRemovedFileMarketplaceVersion(async () => {
+      const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+        targetScope: { kind: "org", orgId: "org-1" },
+        listingId: MARKETPLACE_LISTING_ID,
+        version: "1.1.0",
+      });
+      let loseUpgradeCommitResponse = false;
+
+      await runBackofficeScenario(
+        defineBackofficeScenario({
+          name: "replay a marketplace update that removes a file",
+          objectFactories: {
+            UPLOAD: ({ name, state, env, runtime }) => {
+              const destinationObject = name.endsWith("v1:org:org-1");
+              return new (class extends InMemoryUploadObject {
+                async fetch(request: Request): Promise<Response> {
+                  const url = new URL(request.url);
+                  if (
+                    destinationObject &&
+                    request.method === "POST" &&
+                    url.pathname.endsWith("/files/commit-prepared")
+                  ) {
+                    const response = await super.fetch(request);
+                    if (response.ok && loseUpgradeCommitResponse) {
+                      loseUpgradeCommitResponse = false;
+                      throw new Error("Marketplace update commit response was lost.");
+                    }
+                    return response;
+                  }
+                  return await super.fetch(request);
+                }
+              })({ state, env: env as never, runtime });
+            },
+          },
+          setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+          steps: ({ then, runner, when }) => [
+            then.assert("both Marketplace versions are published", async (ctx) => {
+              await createMarketplacePublicationWorkflow(ctx, "1.0.0");
+            }),
+            runner.drain(),
+            then.assert("the updated Marketplace version is published", async (ctx) => {
+              await createMarketplacePublicationWorkflow(ctx, "1.1.0");
+            }),
+            runner.drain(),
+            then.assert("version 1.0.0 is ingested", async (ctx) => {
+              await ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
+                listingId: MARKETPLACE_LISTING_ID,
+                version: "1.0.0",
+                targetScope: { kind: "org", orgId: "org-1" },
+              });
+            }),
+            runner.drain(),
+            then.assert("the obsolete file exists before the update", async (ctx) => {
+              const url = new URL("https://upload.test/api/upload/files/by-key/content");
+              url.searchParams.set("provider", "database");
+              url.searchParams.set("key", MARKETPLACE_REMOVED_FILE_KEY);
+              const response = await ctx.runtime.objects.upload
+                .forOrg("org-1")
+                .fetch(new Request(url));
+              assert(response.ok);
+              await expect(response.text()).resolves.toBe(MARKETPLACE_REMOVED_FILE_SOURCE);
+            }),
+            then.assert(
+              "version 1.1.0 is requested before losing the commit response",
+              async (ctx) => {
+                loseUpgradeCommitResponse = true;
+                await ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
+                  listingId: MARKETPLACE_LISTING_ID,
+                  version: "1.1.0",
+                  targetScope: { kind: "org", orgId: "org-1" },
+                });
+              },
+            ),
+            runner.drain(),
+            then.workflow.instance({
+              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+              instanceId: workflowInstanceId,
+              status: "waiting",
+            }),
+            then.assert("the committed removal is visible before workflow replay", async (ctx) => {
+              const url = new URL("https://upload.test/api/upload/files/by-key/content");
+              url.searchParams.set("provider", "database");
+              url.searchParams.set("key", MARKETPLACE_REMOVED_FILE_KEY);
+              const response = await ctx.runtime.objects.upload
+                .forOrg("org-1")
+                .fetch(new Request(url));
+              assert(response.status === 410);
+              await expect(
+                ctx.runtime.objects.automations.forOrg("org-1").getMarketplaceIngestion({
+                  targetScope: { kind: "org", orgId: "org-1" },
+                  listingId: MARKETPLACE_LISTING_ID,
+                }),
+              ).resolves.toMatchObject({ version: "1.0.0" });
+            }),
+            runner.restartObject({
+              binding: "AUTOMATIONS",
+              scope: { kind: "org", orgId: "org-1" },
+            }),
+            when.time.advance("1 s"),
+            then.workflow.instance({
+              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+              instanceId: workflowInstanceId,
+              status: "complete",
+            }),
+            then.assert("the replay records the fully updated version", async (ctx) => {
+              await expect(
+                ctx.runtime.objects.automations.forOrg("org-1").getMarketplaceIngestion({
+                  targetScope: { kind: "org", orgId: "org-1" },
+                  listingId: MARKETPLACE_LISTING_ID,
+                }),
+              ).resolves.toMatchObject({ version: "1.1.0" });
+            }),
+          ],
+        }),
+      );
+    });
+  });
+
+  test("preserves a locally modified file that a Marketplace update would remove", async () => {
+    await withRemovedFileMarketplaceVersion(async () => {
+      const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+        targetScope: { kind: "org", orgId: "org-1" },
+        listingId: MARKETPLACE_LISTING_ID,
+        version: "1.1.0",
+      });
+
+      await runBackofficeScenario(
+        defineBackofficeScenario({
+          name: "reject removing a locally modified Marketplace file",
+          setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+          steps: ({ then, runner }) => [
+            then.assert("both Marketplace versions are published", async (ctx) => {
+              await createMarketplacePublicationWorkflow(ctx, "1.0.0");
+            }),
+            runner.drain(),
+            then.assert("the updated Marketplace version is published", async (ctx) => {
+              await createMarketplacePublicationWorkflow(ctx, "1.1.0");
+            }),
+            runner.drain(),
+            then.assert("version 1.0.0 is ingested", async (ctx) => {
+              await ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
+                listingId: MARKETPLACE_LISTING_ID,
+                version: "1.0.0",
+                targetScope: { kind: "org", orgId: "org-1" },
+              });
+            }),
+            runner.drain(),
+            then.assert("the obsolete file is locally modified", async (ctx) => {
+              await writeUploadFile({
+                upload: ctx.runtime.objects.upload.forOrg("org-1"),
+                fileKey: MARKETPLACE_REMOVED_FILE_KEY,
+                content: "locally modified and must not be deleted",
+              });
+            }),
+            then.assert("version 1.1.0 update is requested", async (ctx) => {
+              await ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
+                listingId: MARKETPLACE_LISTING_ID,
+                version: "1.1.0",
+                targetScope: { kind: "org", orgId: "org-1" },
+              });
+            }),
+            runner.drain(),
+            then.workflow.instance({
+              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+              instanceId: workflowInstanceId,
+              status: "errored",
+            }),
+            then.assert("the local file and previous ingestion remain unchanged", async (ctx) => {
+              const url = new URL("https://upload.test/api/upload/files/by-key/content");
+              url.searchParams.set("provider", "database");
+              url.searchParams.set("key", MARKETPLACE_REMOVED_FILE_KEY);
+              const response = await ctx.runtime.objects.upload
+                .forOrg("org-1")
+                .fetch(new Request(url));
+              assert(response.ok);
+              await expect(response.text()).resolves.toBe(
+                "locally modified and must not be deleted",
+              );
+              await expect(
+                ctx.runtime.objects.automations.forOrg("org-1").getMarketplaceIngestion({
+                  targetScope: { kind: "org", orgId: "org-1" },
+                  listingId: MARKETPLACE_LISTING_ID,
+                }),
+              ).resolves.toMatchObject({ version: "1.0.0" });
+            }),
+          ],
+          options: { allowErroredWorkflows: true },
         }),
       );
     });
@@ -1859,6 +2449,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("ingestion is requested", async (ctx) => {
             await ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
               listingId: MARKETPLACE_LISTING_ID,
+              version: "1.0.0",
               targetScope: { kind: "org", orgId: "org-1" },
             });
           }),
@@ -1999,6 +2590,13 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                     message: `Marketplace publication workflow ${workflowInstanceId} terminated.`,
                   },
                 },
+                expect.objectContaining({
+                  listingId,
+                  slug: "telegram-test-command",
+                  version: "1.1.0",
+                  state: "queued",
+                  blockedByVersion: "1.0.0",
+                }),
               ],
             });
           }),
@@ -2044,7 +2642,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(marketplace.getPublishedListing({ listingId })).resolves.toBeNull();
             await expect(marketplace.getArtifactManifest({ listingId })).resolves.toMatchObject({
               listingStatus: "archived",
-              versions: [{ version: "1.0.0", directory: "1.0.0" }],
+              versions: [
+                { version: "1.1.0", directory: "1.1.0" },
+                { version: "1.0.0", directory: "1.0.0" },
+              ],
             });
           }),
         ],
