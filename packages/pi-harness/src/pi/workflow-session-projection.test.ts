@@ -325,7 +325,13 @@ describe("projectPiWorkflowSession", () => {
     const stepKey = "do:tool";
     const thinking = fauxAssistantMessage({ type: "thinking", thinking: "plan" }, { timestamp: 1 });
     const toolMessage = fauxAssistantMessage(
-      { type: "toolCall", id: "tool-1", name: "write", arguments: { path: "/tmp/a" } },
+      {
+        type: "toolCall",
+        id: "tool-1",
+        name: "write",
+        arguments: { path: "/tmp/a" },
+        partialJson: '{"path":"/tmp/a"}',
+      } as never,
       { timestamp: 1 },
     );
 
@@ -419,6 +425,7 @@ describe("projectPiWorkflowSession", () => {
     assert(projection.draftAgentMessage?.activity === "running_tools");
     expect(projection.draftAgentMessage?.tools["tool-1"]).toMatchObject({
       name: "write",
+      argsText: '{"path":"/tmp/a"}',
       status: "done",
       partialResult: { progress: 1 },
       result: { ok: false },

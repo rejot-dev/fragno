@@ -24,6 +24,7 @@ export interface DraftTool {
   id: string;
   name: string;
   args: unknown;
+  argsText?: string;
   status: "starting" | "running" | "done";
   partialResult?: unknown;
   result?: unknown;
@@ -37,6 +38,14 @@ export interface DraftAgentMessage {
   tools: Record<string, DraftTool>;
   startedAt: number;
   updatedAt: number;
+}
+
+function draftToolArgumentsText(toolCall: unknown): { argsText?: string } {
+  if (!toolCall || typeof toolCall !== "object" || !("partialJson" in toolCall)) {
+    return {};
+  }
+  const partialJson = toolCall.partialJson;
+  return typeof partialJson === "string" ? { argsText: partialJson } : {};
 }
 
 export type PiWorkflowSessionProjectionState = {
@@ -279,6 +288,7 @@ export const reducePiWorkflowSessionEmission = (
             id: assistantEvent.toolCall.id,
             name: assistantEvent.toolCall.name,
             args: assistantEvent.toolCall.arguments,
+            ...draftToolArgumentsText(assistantEvent.toolCall),
             status: draftAgentMessage.tools[assistantEvent.toolCall.id]?.status ?? "starting",
           };
         }
@@ -337,6 +347,7 @@ export const reducePiWorkflowSessionEmission = (
           id: toolCall.id,
           name: toolCall.name,
           args: toolCall.arguments,
+          ...draftToolArgumentsText(toolCall),
           status: draftAgentMessage.tools[toolCall.id]?.status ?? "starting",
         };
       }
