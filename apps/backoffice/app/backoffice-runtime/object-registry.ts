@@ -48,6 +48,8 @@ import type {
   MarketplaceDraftResult,
   MarketplaceInsertStaticEntriesInput,
   MarketplaceInsertStaticEntriesResult,
+  MarketplaceLatestPublishedVersions,
+  MarketplaceLatestPublishedVersionsInput,
   MarketplaceListingDetail,
   MarketplaceListingPage,
   MarketplaceListingPageInput,
@@ -151,6 +153,9 @@ export type MarketplaceObject = FetchObject &
     getArtifactManifest(
       input: MarketplaceArtifactManifestInput,
     ): Promise<MarketplaceArtifactManifest | null>;
+    getLatestPublishedVersions(
+      input: MarketplaceLatestPublishedVersionsInput,
+    ): Promise<MarketplaceLatestPublishedVersions>;
     listOwnedListings(
       input: MarketplaceOwnedListingPageInput,
     ): Promise<MarketplaceOwnedListingPage>;

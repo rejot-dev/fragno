@@ -110,6 +110,24 @@ describe("marketplace fragment", async () => {
     });
   });
 
+  test("rejects static entries older than the latest published version", async () => {
+    const owner: MarketplaceOwner = {
+      scope: { kind: "system" },
+      publisherName: "Fragno",
+    };
+    const latestEntry = draftInput({
+      owner,
+      slug: "ordered-static-operations-brief",
+      version: "2.0.0",
+    });
+    const olderEntry = { ...latestEntry, version: "1.0.0" };
+
+    await callServices(() => marketplace.services.insertStaticEntries({ entries: [latestEntry] }));
+    await expect(
+      callServices(() => marketplace.services.insertStaticEntries({ entries: [olderEntry] })),
+    ).rejects.toBeInstanceOf(MarketplaceVersionTransitionError);
+  });
+
   test("rejects static entries that collide with unpublished versions", async () => {
     const owner: MarketplaceOwner = {
       scope: { kind: "system" },
@@ -266,6 +284,111 @@ describe("marketplace fragment", async () => {
     });
   });
 
+  test("batch reads the latest published version for owner-qualified listing ids", async () => {
+    const publishedOwner = organizationOwner("org-latest-published");
+    const draftOwner = organizationOwner("org-latest-draft");
+    const publishedInput = draftInput({
+      owner: publishedOwner,
+      slug: "latest-published-automation",
+      metadata: { name: "Latest published automation" },
+    });
+    const draftOnlyInput = draftInput({
+      owner: draftOwner,
+      slug: "latest-draft-automation",
+      metadata: { name: "Latest draft automation" },
+    });
+    const publishedListingId = marketplaceListingId({
+      ownerScope: publishedOwner.scope,
+      slug: publishedInput.slug,
+    });
+    const draftListingId = marketplaceListingId({
+      ownerScope: draftOwner.scope,
+      slug: draftOnlyInput.slug,
+    });
+    const missingListingId = marketplaceListingId({
+      ownerScope: { kind: "system" },
+      slug: "missing-latest-automation",
+    });
+
+    await callServices(() => marketplace.services.createDraftListing(publishedInput));
+    await callServices(() =>
+      marketplace.services.publishVersion({
+        listingId: publishedListingId,
+        version: "1.0.0",
+        owner: publishedOwner,
+      }),
+    );
+    await callServices(() =>
+      marketplace.services.addDraftVersion({
+        listingId: publishedListingId,
+        version: "2.0.0",
+        owner: publishedOwner,
+      }),
+    );
+    await callServices(() =>
+      marketplace.services.publishVersion({
+        listingId: publishedListingId,
+        version: "2.0.0",
+        owner: publishedOwner,
+      }),
+    );
+    await callServices(() => marketplace.services.createDraftListing(draftOnlyInput));
+
+    await expect(
+      callServices(() =>
+        marketplace.services.getLatestPublishedVersions({
+          listingIds: [publishedListingId, draftListingId, missingListingId],
+        }),
+      ),
+    ).resolves.toEqual({
+      [publishedListingId]: "2.0.0",
+      [draftListingId]: null,
+      [missingListingId]: null,
+    });
+  });
+
+  test("fails latest-version reads for incomplete published listings", async () => {
+    const owner = organizationOwner("org-incomplete-latest-version");
+    const input = draftInput({ owner, slug: "incomplete-latest-version" });
+    const listingId = marketplaceListingId({ ownerScope: owner.scope, slug: input.slug });
+
+    await callServices(() => marketplace.services.createDraftListing(input));
+    await callServices(() =>
+      marketplace.services.publishVersion({ listingId, version: input.version, owner }),
+    );
+
+    const listingTableName = testContext.adapter.namingStrategy.tableName(
+      "marketplace_listing",
+      "marketplace",
+    );
+    await testContext.kysely
+      .updateTable(listingTableName)
+      .set({ latestPublishedVersion: null })
+      .where("publisherName", "=", owner.publisherName)
+      .execute();
+
+    try {
+      const incompleteListingError = `Published marketplace listing ${listingId} is incomplete.`;
+      await expect(
+        callServices(() =>
+          marketplace.services.getLatestPublishedVersions({ listingIds: [listingId] }),
+        ),
+      ).rejects.toThrow(incompleteListingError);
+      await expect(
+        callServices(() => marketplace.services.getPublishedListing({ listingId })),
+      ).rejects.toThrow(incompleteListingError);
+      await expect(
+        callServices(() => marketplace.services.getArtifactManifest({ listingId })),
+      ).rejects.toThrow(incompleteListingError);
+    } finally {
+      await testContext.kysely
+        .updateTable(listingTableName)
+        .set({ latestPublishedVersion: input.version })
+        .where("publisherName", "=", owner.publisherName)
+        .execute();
+    }
+  });
+
   test("isolates artifact upload names for owners sharing a listing slug", async () => {
     const slug = "shared-artifact-listing";
     const listings = [organizationOwner("org-artifact-a"), organizationOwner("org-artifact-b")].map(
@@ -343,6 +466,79 @@ describe("marketplace fragment", async () => {
     );
     assert(detail?.listing.latestVersion === "1.1.0");
     expect(detail.versions.map(({ version }) => version)).toEqual(["1.1.0", "1.0.0"]);
+  });
+
+  test("rejects publishing a draft older than the latest release", async () => {
+    const owner = organizationOwner("org-out-of-order-publication");
+    const input = draftInput({ owner, slug: "out-of-order-publication" });
+    const listingId = marketplaceListingId({ ownerScope: owner.scope, slug: input.slug });
+
+    await callServices(() => marketplace.services.createDraftListing(input));
+    await callServices(() =>
+      marketplace.services.addDraftVersion({ listingId, version: "1.1.0", owner }),
+    );
+    await callServices(() =>
+      marketplace.services.publishVersion({ listingId, version: "1.1.0", owner }),
+    );
+    await expect(
+      callServices(() =>
+        marketplace.services.publishVersion({ listingId, version: "1.0.0", owner }),
+      ),
+    ).rejects.toBeInstanceOf(MarketplaceVersionTransitionError);
+
+    await expect(
+      callServices(() => marketplace.services.getPublishedListing({ listingId })),
+    ).resolves.toMatchObject({
+      listing: { latestVersion: "1.1.0" },
+      versions: [expect.objectContaining({ version: "1.1.0" })],
+    });
+  });
+
+  test("reuses an already-published older version without changing the latest release", async () => {
+    const owner = organizationOwner("org-idempotent-older-publication");
+    const input = draftInput({ owner, slug: "idempotent-older-publication" });
+    const listingId = marketplaceListingId({ ownerScope: owner.scope, slug: input.slug });
+
+    await callServices(() => marketplace.services.createDraftListing(input));
+    await callServices(() =>
+      marketplace.services.publishVersion({
+        listingId,
+        version: "1.0.0",
+        owner,
+        artifactDirectory: "1.0.0",
+      }),
+    );
+    await callServices(() =>
+      marketplace.services.addDraftVersion({ listingId, version: "1.1.0", owner }),
+    );
+    await callServices(() =>
+      marketplace.services.publishVersion({
+        listingId,
+        version: "1.1.0",
+        owner,
+        artifactDirectory: "1.1.0",
+      }),
+    );
+
+    await expect(
+      callServices(() =>
+        marketplace.services.publishVersion({
+          listingId,
+          version: "1.0.0",
+          owner,
+          artifactDirectory: "1.0.0",
+        }),
+      ),
+    ).resolves.toMatchObject({ published: false });
+
+    await expect(
+      callServices(() => marketplace.services.getPublishedListing({ listingId })),
+    ).resolves.toMatchObject({ listing: { latestVersion: "1.1.0" } });
+    await expect(
+      callServices(() => marketplace.services.getArtifactManifest({ listingId })),
+    ).resolves.toMatchObject({
+      versions: [{ version: "1.1.0" }, { version: "1.0.0" }],
+    });
   });
 
   test("updates metadata, archives a listing, and restores its latest release", async () => {

@@ -1,4 +1,4 @@
-export const TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = `defineWorkflow(
+const buildTelegramTestCommandWorkflowSource = (replyText: string) => `defineWorkflow(
   { name: "telegram-test-command" },
   async (event, step) => {
     const automationEvent = event.payload.automationEvent;
@@ -14,7 +14,7 @@ export const TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = `defineWorkflow(
     await step.do("send delayed test reply", async () => {
       await telegram.sendMessage({
         chatId,
-        text: "Delayed /test reply after 3 seconds.",
+        text: ${JSON.stringify(replyText)},
         parseMode: "Markdown",
       });
     });
@@ -23,3 +23,11 @@ export const TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = `defineWorkflow(
   },
 );
 `;
+
+export const TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = buildTelegramTestCommandWorkflowSource(
+  "Delayed /test reply after 3 seconds.",
+);
+
+export const TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE = buildTelegramTestCommandWorkflowSource(
+  "Telegram integration verified after a 3 second delay.",
+);

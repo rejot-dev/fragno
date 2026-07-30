@@ -4,6 +4,8 @@ import { isWorkflowStepStartedControlPayload } from "@fragno-dev/workflows/step-
 
 import { and, eq, queryOnce } from "@tanstack/react-db";
 
+import { TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE } from "@/files/content/telegram-test-command";
+
 import type { AutomationEvent } from "./contracts";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -25,6 +27,11 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
+
+const marketplaceTelegramTestWorkspace = () =>
+  backofficeFiles.workspaceStarter({
+    "automations/telegram-test-command.workflow.js": TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
+  });
 
 const customAutomationEvent = ({
   id,
@@ -157,7 +164,7 @@ describe("starter automation router scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "scenario TanStack DB exposes automation workflow state",
-        files: backofficeFiles.workspaceStarter(),
+        files: marketplaceTelegramTestWorkspace(),
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, when }) => [
           when.workflow.createInstance({
@@ -435,7 +442,7 @@ describe("starter automation router scenarios", () => {
       defineBackofficeScenario({
         name: "scenario router updates starter matcher",
 
-        files: backofficeFiles.workspaceStarter(),
+        files: marketplaceTelegramTestWorkspace(),
 
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
@@ -1568,7 +1575,7 @@ describe("starter automation router scenarios", () => {
       defineBackofficeScenario({
         name: "starter Telegram /test waits before sending a reply",
 
-        files: backofficeFiles.workspaceStarter(),
+        files: marketplaceTelegramTestWorkspace(),
 
         fakes: ({ fake }) => ({
           telegram: fake.telegram(),
@@ -1628,7 +1635,7 @@ describe("starter automation router scenarios", () => {
       defineBackofficeScenario({
         name: "telegram-test-command skips non-test Telegram events",
 
-        files: backofficeFiles.workspaceStarter(),
+        files: marketplaceTelegramTestWorkspace(),
 
         fakes: ({ fake }) => ({
           telegram: fake.telegram(),

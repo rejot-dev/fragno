@@ -7,10 +7,7 @@ import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
-import {
-  fetchAutomationAdapterIdentity,
-  fetchAutomationProjects,
-} from "../automations/data.server";
+import { fetchAutomationProjects } from "../automations/data.server";
 import type { Route } from "./+types/scope-layout";
 import type { MarketplaceLayoutContext } from "./layout-context";
 import {
@@ -75,27 +72,8 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     projects: projectsResult.projects,
     user: me.user,
   });
-  const ingestionOrganizations =
-    routeScope.kind === "user"
-      ? organisations
-      : organisations.filter(({ id }) => id === routeScope.orgId);
-  const ingestionCollectionSources = await Promise.all(
-    ingestionOrganizations.map(async (organization) => ({
-      organizationId: organization.id,
-      organizationName: organization.name ?? organization.id,
-      source: {
-        scope: { kind: "org" as const, orgId: organization.id },
-        adapterIdentity: await fetchAutomationAdapterIdentity(request, context, {
-          kind: "org",
-          orgId: organization.id,
-        }),
-      },
-    })),
-  );
-
   return {
     selectedScope,
-    ingestionCollectionSources,
     scopeOptions: createMarketplaceScopeOptions({
       organisations,
       projects: projectsResult.projects,
@@ -131,7 +109,6 @@ export default function BackofficeMarketplaceScopeLayout({
         context={
           {
             selectedScope: loaderData.selectedScope,
-            ingestionCollectionSources: loaderData.ingestionCollectionSources,
           } satisfies MarketplaceLayoutContext
         }
       />

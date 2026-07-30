@@ -111,6 +111,7 @@ beforeEach(() => {
     listing: {
       listingId,
       slug: "telegram-test-command",
+      latestVersion: "2.0.0",
     },
     versions: [],
     nextVersionCursor: null,
@@ -155,9 +156,17 @@ describe("marketplace detail loader", () => {
     assert(!(result instanceof Response));
     assert(result.installationOrganizationId === "org-2");
     expect(result.ingestions).toEqual([
-      expect.objectContaining({ id: "selected-installation", organizationName: "Second Labs" }),
+      expect.objectContaining({
+        id: "selected-installation",
+        organizationName: "Second Labs",
+        latestVersion: "2.0.0",
+        outOfDate: true,
+      }),
     ]);
     expect(forOrgMock).toHaveBeenCalledWith("org-2");
+    expect(listMarketplaceIngestionsMock).toHaveBeenCalledWith({
+      targetScope: { kind: "org", orgId: "org-2" },
+    });
   });
 
   test("uses the selected project's organization as the workflow coordinator", async () => {

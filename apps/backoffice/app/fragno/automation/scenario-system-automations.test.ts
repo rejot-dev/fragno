@@ -178,7 +178,7 @@ describe("system automation scenarios", () => {
           staticFileArtifacts: () => ({}),
         }),
       );
-      const telegramPath = "/workspace/automations/telegram-test-command.workflow.js";
+      const telegramPath = "/workspace/automations/telegram-user-linking.workflow.js";
       await expect(
         memberFs.writeFile(telegramPath, "// edited by org member\n"),
       ).resolves.toBeUndefined();
@@ -355,7 +355,7 @@ describe("system automation scenarios", () => {
             orgId: "org-1",
             path: "/workspace/automations/telegram-user-pi-linking.workflow.js",
           }),
-          then.files.exists({
+          then.files.missing({
             orgId: "org-1",
             path: "/workspace/automations/telegram-test-command.workflow.js",
           }),

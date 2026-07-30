@@ -1,15 +1,12 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { fetchAutomationAdapterIdentityMock, fetchAutomationProjectsMock, getAuthMeMock } =
-  vi.hoisted(() => ({
-    fetchAutomationAdapterIdentityMock: vi.fn(),
-    fetchAutomationProjectsMock: vi.fn(),
-    getAuthMeMock: vi.fn(),
-  }));
+const { fetchAutomationProjectsMock, getAuthMeMock } = vi.hoisted(() => ({
+  fetchAutomationProjectsMock: vi.fn(),
+  getAuthMeMock: vi.fn(),
+}));
 
 vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
 vi.mock("../automations/data.server", () => ({
-  fetchAutomationAdapterIdentity: fetchAutomationAdapterIdentityMock,
   fetchAutomationProjects: fetchAutomationProjectsMock,
 }));
 
@@ -18,7 +15,6 @@ import { loader } from "./scope-layout";
 const requestUrl = "https://example.test/backoffice/marketplace/user/user-1/marketplace";
 
 beforeEach(() => {
-  fetchAutomationAdapterIdentityMock.mockReset();
   fetchAutomationProjectsMock.mockReset();
   getAuthMeMock.mockReset();
 });
@@ -44,7 +40,6 @@ describe("personal Marketplace scope", () => {
       userId: "user-1",
       label: "ada@example.com",
     });
-    expect(result.ingestionCollectionSources).toEqual([]);
     expect(result.scopeOptions).toEqual([
       {
         id: "user:user-1",
@@ -55,7 +50,6 @@ describe("personal Marketplace scope", () => {
       },
     ]);
     expect(fetchAutomationProjectsMock).not.toHaveBeenCalled();
-    expect(fetchAutomationAdapterIdentityMock).not.toHaveBeenCalled();
   });
 
   test("keeps the current listing and query when switching scopes", async () => {
@@ -69,7 +63,6 @@ describe("personal Marketplace scope", () => {
       activeOrganization: { organization: { id: "org-1", name: "Ada Labs" } },
     });
     fetchAutomationProjectsMock.mockResolvedValue({ projects: [], projectsError: null });
-    fetchAutomationAdapterIdentityMock.mockResolvedValue(null);
 
     const result = await loader({
       request: new Request(detailUrl),

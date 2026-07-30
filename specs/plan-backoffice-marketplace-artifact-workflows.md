@@ -399,7 +399,7 @@ state is required.
 Out-of-date status does not require a file scan.
 
 1. List organization-local `marketplace_ingestion` rows, optionally filtered by `targetScopeKey`.
-2. Batch-fetch latest published versions for those slugs from Marketplace.
+2. Batch-fetch latest published versions for those owner-qualified listing IDs from Marketplace.
 3. Compare:
 
 ```ts
@@ -409,7 +409,7 @@ ingestion.version !== marketplace.latestPublishedVersion;
 Add a Marketplace batch read rather than making one RPC per slug:
 
 ```ts
-getLatestPublishedVersions({ slugs }): Promise<Record<string, string | null>>;
+getLatestPublishedVersions({ listingIds }): Promise<Record<string, string | null>>;
 ```
 
 Do not persist an `outdated` boolean. It is a projection of local ingestion version and global
@@ -537,11 +537,11 @@ Acceptance:
 
 Add update visibility without mutating existing copies.
 
-- [ ] Add `getLatestPublishedVersions({ slugs })` to Marketplace.
-- [ ] List Marketplace ingestions from organization Automations, filterable by target.
-- [ ] Join the two reads in Backoffice loaders.
-- [ ] Show ingested version, latest version, and derived out-of-date state.
-- [ ] Test publishing `1.0.0`, ingesting it, publishing `2.0.0`, and observing the old ingestion as
+- [x] Add `getLatestPublishedVersions({ listingIds })` to Marketplace.
+- [x] List Marketplace ingestions from organization Automations, filterable by target.
+- [x] Join the two reads in Backoffice loaders.
+- [x] Show ingested version, latest version, and derived out-of-date state.
+- [x] Test publishing `1.0.0`, ingesting it, publishing `2.0.0`, and observing the old ingestion as
       out of date.
 
 Acceptance:
@@ -555,10 +555,10 @@ Use Upload metadata from the old source, new source, and destination.
 - [x] Extend ingestion requests to update an existing ingestion.
 - [x] Read old and new `artifactDirectory` values from Marketplace.
 - [x] List old and new source directories from Upload.
-- [ ] Plan creates, replacements, no-ops, and removals by checksum.
+- [x] Plan creates, replacements, no-ops, and removals by checksum.
 - [x] Reject locally modified files.
 - [x] Leave the previous ingestion version unchanged if the workflow fails.
-- [ ] Add clean-update, removed-file, local-conflict, and retry scenarios.
+- [x] Add clean-update, removed-file, local-conflict, and retry scenarios.
 
 Acceptance:
 

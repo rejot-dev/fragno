@@ -69,6 +69,7 @@ import type {
 import { MarketplaceListingArchivedError } from "@/fragno/marketplace/definition";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { STATIC_MARKETPLACE_ENTRIES } from "@/fragno/marketplace/static-entries";
+import { compareMarketplaceVersions } from "@/fragno/marketplace/version";
 import { createPiRouteRuntime } from "@/fragno/pi/pi";
 import { createCloudflareSandboxProvider } from "@/sandbox/cloudflare-sandbox-provider";
 import { CLOUDFLARE_SANDBOX_PROVIDER } from "@/sandbox/contracts";
@@ -436,13 +437,55 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     }
 
     await this.#ensureConfigured({ scope });
+    const entries = STATIC_MARKETPLACE_ENTRIES.map((entry) => ({
+      entry,
+      listingId: marketplaceListingId({ ownerScope: entry.owner.scope, slug: entry.slug }),
+    })).sort(
+      (left, right) =>
+        left.listingId.localeCompare(right.listingId) ||
+        compareMarketplaceVersions(left.entry.version, right.entry.version),
+    );
+    const results = new Map<string, MarketplaceStaticPublicationEntryResult>();
+    const blockedListings = new Map<string, string>();
+
+    for (const { entry, listingId } of entries) {
+      const workflowInstanceId = buildMarketplacePublicationWorkflowInstanceId({
+        listingId,
+        version: entry.version,
+      });
+      const blockedByVersion = blockedListings.get(listingId);
+      if (blockedByVersion) {
+        results.set(workflowInstanceId, {
+          listingId,
+          slug: entry.slug,
+          version: entry.version,
+          workflowInstanceId,
+          state: "queued",
+          blockedByVersion,
+        });
+        continue;
+      }
+
+      const result = await this.#requestStaticMarketplaceEntryPublication(entry);
+      results.set(workflowInstanceId, result);
+      if (result.state !== "published") {
+        blockedListings.set(listingId, entry.version);
+      }
+    }
 
     return {
-      publications: await Promise.all(
-        STATIC_MARKETPLACE_ENTRIES.map(({ owner, slug, version }) =>
-          this.#requestStaticMarketplaceEntryPublication({ owner, slug, version }),
-        ),
-      ),
+      publications: STATIC_MARKETPLACE_ENTRIES.map(({ owner, slug, version }) => {
+        const listingId = marketplaceListingId({ ownerScope: owner.scope, slug });
+        const workflowInstanceId = buildMarketplacePublicationWorkflowInstanceId({
+          listingId,
+          version,
+        });
+        const result = results.get(workflowInstanceId);
+        if (!result) {
+          throw new Error(`Marketplace publication result ${workflowInstanceId} is missing.`);
+        }
+        return result;
+      }),
     };
   }
 
@@ -481,6 +524,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
           params: {
             slug: entry.slug,
             version: entry.version,
+            publishNextVersions: true,
           },
         },
       ]),
