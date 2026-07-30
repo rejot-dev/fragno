@@ -39,12 +39,12 @@ const generatedResult = parseBackofficeUiResult({
 });
 
 test("server-renders the minimal Backoffice generated interface", () => {
-  if (!generatedResult) {
+  if (generatedResult.kind !== "valid") {
     throw new Error("Expected generated UI fixture to parse.");
   }
 
   const markup = renderToStaticMarkup(
-    createElement(BackofficeUiRenderer, { ui: generatedResult.$ui }),
+    createElement(BackofficeUiRenderer, { ui: generatedResult.value.$ui }),
   );
 
   expect(markup).toContain("Order summary");
@@ -88,12 +88,12 @@ test("resolves state, template, and conditional props while rendering", () => {
       },
     },
   });
-  if (!dynamicResult) {
+  if (dynamicResult.kind !== "valid") {
     throw new Error("Expected dynamic generated UI fixture to parse.");
   }
 
   const markup = renderToStaticMarkup(
-    createElement(BackofficeUiRenderer, { ui: dynamicResult.$ui }),
+    createElement(BackofficeUiRenderer, { ui: dynamicResult.value.$ui }),
   );
 
   expect(markup).toContain("Live orders");

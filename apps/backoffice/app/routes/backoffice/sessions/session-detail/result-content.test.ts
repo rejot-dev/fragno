@@ -3,6 +3,8 @@ import { describe, expect, test } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { parseBackofficeUiResult } from "@/backoffice-ui/result";
+
 import { ToolResultContent } from "./tool-call";
 
 const rawResult = {
@@ -38,25 +40,41 @@ const toolResult = {
   timestamp: 1,
 } as never;
 
+function renderToolResult({
+  expanded = false,
+  rawValue = rawResult,
+  result = toolResult,
+  useExecCodeModeFormatting = true,
+}: {
+  expanded?: boolean;
+  rawValue?: unknown;
+  result?: typeof toolResult;
+  useExecCodeModeFormatting?: boolean;
+}) {
+  return renderToStaticMarkup(
+    createElement(ToolResultContent, {
+      expanded,
+      hasRawResult: true,
+      parsedResult: parseBackofficeUiResult(rawValue),
+      rawResult: rawValue,
+      result,
+      useExecCodeModeFormatting,
+    }),
+  );
+}
+
 describe("ToolResultContent", () => {
   test("chooses generated UI for an execCodeMode result with a valid $ui sidecar", () => {
-    const markup = renderToStaticMarkup(
-      createElement(ToolResultContent, {
-        expanded: false,
-        hasRawResult: true,
-        rawResult,
-        result: toolResult,
-        useExecCodeModeFormatting: true,
-      }),
-    );
+    const markup = renderToolResult({});
 
     expect(markup).toContain('aria-label="Orders"');
     expect(markup).toContain(">24</p>");
+    expect(markup).toContain("Raw result");
     expect(markup).not.toContain("raw-sidecar-marker");
     expect(markup).not.toContain("log-sidecar-marker");
   });
 
-  test("renders only the returned value when codemode logs are presented separately", () => {
+  test("renders only the returned string when codemode logs are presented separately", () => {
     const ordinaryResult = {
       role: "toolResult",
       toolCallId: "tool-ordinary",
@@ -66,32 +84,61 @@ describe("ToolResultContent", () => {
       isError: false,
       timestamp: 1,
     } as never;
-    const markup = renderToStaticMarkup(
-      createElement(ToolResultContent, {
-        expanded: false,
-        hasRawResult: true,
-        rawResult: "ordinary-value",
-        result: ordinaryResult,
-        useExecCodeModeFormatting: true,
-      }),
-    );
+    const markup = renderToolResult({ rawValue: "ordinary-value", result: ordinaryResult });
 
     expect(markup).not.toContain("log-sidecar-marker");
     expect(markup.match(/ordinary-value/g)).toHaveLength(1);
   });
 
-  test("keeps the complete raw value available when debugging is expanded", () => {
-    const markup = renderToStaticMarkup(
-      createElement(ToolResultContent, {
-        expanded: true,
-        hasRawResult: true,
-        rawResult,
-        result: toolResult,
-        useExecCodeModeFormatting: true,
-      }),
-    );
+  test("preserves ordinary JSON result formatting", () => {
+    const markup = renderToolResult({ rawValue: { status: "ready", count: 3 } });
 
-    expect(markup).toContain("$ui");
-    expect(markup).toContain("total");
+    expect(markup).toContain("&quot;status&quot;: &quot;ready&quot;");
+    expect(markup).toContain("&quot;count&quot;: 3");
+  });
+
+  test("preserves expanded ordinary codemode results", () => {
+    const markup = renderToolResult({ expanded: true, rawValue: { status: "ready" } });
+
+    expect(markup).toContain("max-h-[70vh]");
+    expect(markup).toContain("min-h-64");
+    expect(markup).toContain("&quot;status&quot;: &quot;ready&quot;");
+  });
+
+  test("renders tagged invalid UI as a compact failed notice with raw disclosure", () => {
+    const invalidResult = {
+      total: 24,
+      $ui: { ...rawResult.$ui, version: 2 },
+    };
+    const markup = renderToolResult({ rawValue: invalidResult });
+
+    expect(markup).toContain('role="alert"');
+    expect(markup).toContain("Generated interface unavailable");
+    expect(markup).toContain("Unsupported $ui version");
+    expect(markup).toContain("Raw result");
+  });
+
+  test("preserves non-codemode text and image result blocks", () => {
+    const nonCodemodeResult = {
+      role: "toolResult",
+      toolCallId: "tool-image",
+      toolName: "read",
+      content: [
+        { type: "text", text: "read failed" },
+        { type: "image", mimeType: "image/png", data: "aW1hZ2U=" },
+      ],
+      details: {},
+      isError: true,
+      timestamp: 1,
+    } as never;
+    const markup = renderToolResult({
+      rawValue: undefined,
+      result: nonCodemodeResult,
+      useExecCodeModeFormatting: false,
+    });
+
+    expect(markup).toContain("read failed");
+    expect(markup).toContain('src="data:image/png;base64,aW1hZ2U="');
+    expect(markup).toContain('alt="Message attachment"');
   });
 });
