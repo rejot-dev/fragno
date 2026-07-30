@@ -1,7 +1,9 @@
 import type { DraftTool } from "@fragno-dev/pi-harness/workflow-session-projection";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { useAuiState, type ToolCallMessagePartProps } from "@assistant-ui/react";
+
+import { parseBackofficeUiResult, type BackofficeUiParseResult } from "@/backoffice-ui/result";
 
 import {
   type PiToolCallArtifact,
@@ -20,8 +22,9 @@ import {
 } from "./tool-arguments";
 import { formatEventTimestamp, tapScale } from "./ui";
 
+const ordinaryResultPresentation: BackofficeUiParseResult = { kind: "ordinary" };
+
 export function ToolCallBlock(props: ToolCallMessagePartProps) {
-  const [resultExpanded, setResultExpanded] = useState(false);
   const createdAt = useAuiState((state) => state.message.createdAt);
   const artifact = (props.artifact ?? null) as PiToolCallArtifact | null;
   const draftTool = artifact?.draftTool ?? null;
@@ -40,7 +43,13 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
     props.toolName === "execCodeMode"
       ? getExecCodeModeResultDetails(completedToolResult?.details)
       : null;
-  const canExpandResult = execCodeModeDetails?.hasResult ?? false;
+  const resultPresentation = execCodeModeDetails?.hasResult
+    ? parseBackofficeUiResult(execCodeModeDetails.result)
+    : ordinaryResultPresentation;
+  const hasTaggedGeneratedUi = resultPresentation.kind !== "ordinary";
+  const canExpandOrdinaryResult =
+    (execCodeModeDetails?.hasResult ?? false) && resultPresentation.kind === "ordinary";
+  const [resultExpanded, setResultExpanded] = useState(false);
   const running =
     props.status.type === "running" || Boolean(draftTool && draftTool.status !== "done");
   const status = running
@@ -52,8 +61,47 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
   const displayLabel = loadedSkillName ? "Skill loaded" : props.toolName;
   const displayDetail = loadedSkillName ?? readPath ?? status;
 
+  const completedResultSection = completedToolResult ? (
+    <ToolResultSection
+      label={completedToolResult.isError ? "Error" : "Result"}
+      action={
+        canExpandOrdinaryResult ? (
+          <button
+            type="button"
+            onClick={() => {
+              setResultExpanded((current) => !current);
+            }}
+            className={`inline-flex min-h-10 items-center px-2 text-[10px] font-medium text-[var(--bo-muted)] transition-[color,scale] duration-150 ease-out hover:text-[var(--bo-fg)] ${tapScale}`}
+          >
+            {resultExpanded ? "Hide raw" : "Show raw"}
+          </button>
+        ) : null
+      }
+    >
+      <ToolResultContent
+        expanded={canExpandOrdinaryResult && resultExpanded}
+        hasRawResult={execCodeModeDetails?.hasResult ?? false}
+        parsedResult={resultPresentation}
+        rawResult={execCodeModeDetails?.result}
+        result={completedToolResult}
+        useExecCodeModeFormatting={execCodeModeDetails !== null}
+      />
+    </ToolResultSection>
+  ) : null;
+
+  const partialResult =
+    draftTool?.partialResult !== undefined ? (
+      <ScrollablePre>{formatJson(draftTool.partialResult)}</ScrollablePre>
+    ) : null;
+  const logs =
+    execCodeModeDetails && execCodeModeDetails.logs.length > 0 ? (
+      <ScrollablePre>{execCodeModeDetails.logs.join("\n")}</ScrollablePre>
+    ) : null;
+
   return (
-    <details
+    <ToolCallDetails
+      autoOpen={hasTaggedGeneratedUi}
+      resetKey={props.toolCallId}
       className={`group/tool overflow-hidden border bg-[var(--bo-panel)] ${loadedSkillName ? "border-[color:var(--bo-live)]" : completedToolResult?.isError ? "border-[color:var(--bo-failed)]" : "border-[color:var(--bo-border)]"}`}
     >
       <summary className="grid min-h-11 cursor-pointer list-none grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-3 px-3 marker:hidden">
@@ -77,44 +125,58 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
         </span>
       </summary>
       <div className="space-y-3 border-t border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
-        <ToolArgumentsBlock value={props.args} />
-        {draftTool?.partialResult !== undefined ? (
-          <ToolResultSection label="Live result">
-            <ScrollablePre>{formatJson(draftTool.partialResult)}</ScrollablePre>
-          </ToolResultSection>
-        ) : null}
-        {execCodeModeDetails && execCodeModeDetails.logs.length > 0 ? (
-          <ToolResultSection label="Logs">
-            <ScrollablePre>{execCodeModeDetails.logs.join("\n")}</ScrollablePre>
-          </ToolResultSection>
-        ) : null}
-        {completedToolResult ? (
-          <ToolResultSection
-            label={completedToolResult.isError ? "Error" : "Result"}
-            action={
-              canExpandResult ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setResultExpanded((current) => !current);
-                  }}
-                  className={`inline-flex min-h-10 items-center px-2 text-[10px] font-medium text-[var(--bo-muted)] transition-[color,scale] duration-150 ease-out hover:text-[var(--bo-fg)] ${tapScale}`}
-                >
-                  {resultExpanded ? "Hide raw" : "Show raw"}
-                </button>
-              ) : null
-            }
-          >
-            <ToolResultContent
-              expanded={canExpandResult && resultExpanded}
-              hasRawResult={execCodeModeDetails?.hasResult ?? false}
-              rawResult={execCodeModeDetails?.result}
-              result={completedToolResult}
-              useExecCodeModeFormatting={execCodeModeDetails !== null}
-            />
-          </ToolResultSection>
-        ) : null}
+        {hasTaggedGeneratedUi && completedToolResult ? (
+          <>
+            {completedResultSection}
+            <ToolResultDisclosure label="Code">
+              <ToolArgumentsBlock value={props.args} />
+            </ToolResultDisclosure>
+            {partialResult ? (
+              <ToolResultDisclosure label="Live result">{partialResult}</ToolResultDisclosure>
+            ) : null}
+            {logs ? <ToolResultDisclosure label="Logs">{logs}</ToolResultDisclosure> : null}
+          </>
+        ) : (
+          <>
+            <ToolArgumentsBlock value={props.args} />
+            {partialResult ? (
+              <ToolResultSection label="Live result">{partialResult}</ToolResultSection>
+            ) : null}
+            {logs ? <ToolResultSection label="Logs">{logs}</ToolResultSection> : null}
+            {completedResultSection}
+          </>
+        )}
       </div>
+    </ToolCallDetails>
+  );
+}
+
+export function ToolCallDetails({
+  autoOpen,
+  children,
+  className,
+  resetKey,
+}: {
+  autoOpen: boolean;
+  children?: ReactNode;
+  className: string;
+  resetKey: string;
+}) {
+  const [open, setOpen] = useState(autoOpen);
+
+  useEffect(() => {
+    setOpen(autoOpen);
+  }, [autoOpen, resetKey]);
+
+  return (
+    <details
+      open={open}
+      onToggle={(event) => {
+        setOpen(event.currentTarget.open);
+      }}
+      className={className}
+    >
+      {children}
     </details>
   );
 }
@@ -151,6 +213,23 @@ function ToolResultSection({
   );
 }
 
+function ToolResultDisclosure({ children, label }: { children: ReactNode; label: string }) {
+  return (
+    <details className="group/disclosure border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
+      <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 px-3 marker:hidden">
+        <span className="text-[10px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
+          {label}
+        </span>
+        <span className="text-[10px] font-medium tracking-[0.1em] text-[var(--bo-muted-2)] uppercase">
+          <span className="group-open/disclosure:hidden">View</span>
+          <span className="hidden group-open/disclosure:inline">Hide</span>
+        </span>
+      </summary>
+      <div className="border-t border-[color:var(--bo-border)] p-2">{children}</div>
+    </details>
+  );
+}
+
 function ToolArgumentsBlock({ value }: { value: unknown }) {
   const codeArgument = getCodeArgument(value);
   if (!codeArgument) {
@@ -169,12 +248,14 @@ function ToolArgumentsBlock({ value }: { value: unknown }) {
 export function ToolResultContent({
   expanded,
   hasRawResult,
+  parsedResult,
   rawResult,
   result,
   useExecCodeModeFormatting,
 }: {
   expanded: boolean;
   hasRawResult: boolean;
+  parsedResult: BackofficeUiParseResult;
   rawResult: unknown;
   result: ToolResultMessage;
   useExecCodeModeFormatting: boolean;
@@ -203,7 +284,7 @@ export function ToolResultContent({
   }
 
   return (
-    <ResultContent generatedUiEnabled showRawValue={expanded} value={rawResult}>
+    <ResultContent parsedValue={parsedResult} showRawValue={expanded} value={rawResult}>
       <ScrollablePre>{formatResultValue(rawResult)}</ScrollablePre>
     </ResultContent>
   );

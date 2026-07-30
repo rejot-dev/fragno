@@ -164,10 +164,11 @@ Automated proof:
 The slice is complete when a live Backoffice session can execute a fixture codemode call and render
 its generated metric interface inside the existing tool card.
 
-### - [ ] Slice 2 — Preserve ordinary output and safely reject malformed generated UI
+### - [x] Slice 2 — Preserve ordinary output and safely reject malformed generated UI
 
-**User-visible outcome:** adopting `$ui` does not regress existing codemode output, and invalid
-agent specifications produce a useful fallback rather than breaking the session thread.
+**User-visible outcome:** adopting `$ui` does not regress existing codemode output, valid generated
+interfaces open automatically ahead of debugging details, and invalid agent specifications produce a
+useful fallback rather than breaking the session thread.
 
 Extend the result boundary and presenter:
 
@@ -175,11 +176,16 @@ Extend the result boundary and presenter:
   - valid generated UI;
   - tagged but invalid generated UI;
   - ordinary non-UI output.
+- Automatically open completed tool cards containing valid or invalid tagged generated UI while
+  leaving ordinary tool cards closed by default.
+- Present generated UI or its failure notice before code and logs; keep code, logs, and raw output
+  behind separate disclosures for tagged results.
 - Validate that the root exists and child references resolve.
 - Validate component names against the catalog.
 - Validate component props with their canonical Zod schemas.
 - Reject unsupported actions and event bindings in this first version.
-- Add explicit serialized-byte, element-count, child-count, and depth limits.
+- Add explicit structural limits: 128 elements, 32 children per element, 512 total child references,
+  and 24 levels. Do not impose a serialized-byte limit on generated UI state.
 - Add a local React error boundary around json-render output.
 - Render tagged-but-invalid output as a compact `--bo-failed` notice with:
   - a concise validation message;
@@ -192,9 +198,11 @@ Extend the result boundary and presenter:
 Automated proof:
 
 - Parser tests for ordinary values, unsupported versions, missing roots, dangling children, unknown
-  components, invalid props, and size limits.
+  components, invalid props, structural limits, and large state payloads.
 - Renderer test proving a component exception is contained by the local error boundary.
 - Tool-card tests for ordinary JSON, strings, logs, invalid UI, and non-codemode results.
+- Client rendering tests proving tagged results auto-open, ordinary results remain closed, raw
+  output remains disclosed, and component exceptions render the local fallback.
 - Regression test for the existing expanded codemode result behavior when no `$ui` is present.
 
 The slice is complete when malformed UI cannot blank the thread and all existing result types remain
