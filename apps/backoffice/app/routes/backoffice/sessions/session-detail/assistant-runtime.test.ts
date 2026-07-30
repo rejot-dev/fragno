@@ -79,6 +79,70 @@ describe("createAssistantUiMessages", () => {
     );
   });
 
+  test("keeps the raw execCodeMode result in the tool-call artifact", () => {
+    const rawResult = {
+      total: 24,
+      $ui: {
+        version: 1,
+        state: {},
+        spec: {
+          root: "metric",
+          elements: {
+            metric: {
+              type: "Metric",
+              props: { label: "Orders", value: "24" },
+              children: [],
+            },
+          },
+        },
+      },
+    };
+    const converted = createAssistantUiMessages({
+      draftAgentMessage: null,
+      readyForInput: true,
+      statusText: null,
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "tool-ui",
+              name: "execCodeMode",
+              arguments: { code: "async () => ({})" },
+            },
+          ],
+          timestamp: 1,
+          api: "test",
+          provider: "test",
+          model: "test",
+          usage,
+          stopReason: "toolUse",
+        } as never,
+        {
+          role: "toolResult",
+          toolCallId: "tool-ui",
+          toolName: "execCodeMode",
+          content: [{ type: "text", text: JSON.stringify(rawResult) }],
+          details: { result: rawResult, logs: [] },
+          isError: false,
+          timestamp: 2,
+        } as never,
+      ],
+    });
+
+    const toolPart = Array.isArray(converted[0]?.content)
+      ? converted[0].content.find((part) => part.type === "tool-call")
+      : null;
+    expect(toolPart).toMatchObject({
+      artifact: {
+        completedToolResult: {
+          details: { result: rawResult },
+        },
+      },
+    });
+  });
+
   test("marks only the last visible message as running", () => {
     const converted = createAssistantUiMessages({
       draftAgentMessage: null,

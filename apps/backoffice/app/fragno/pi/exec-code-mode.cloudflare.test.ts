@@ -132,6 +132,61 @@ describe("Pi execCodeMode tool", () => {
     await expect(fs.readFile("/workspace/output.txt")).resolves.toBe("hello from pi");
   });
 
+  test("preserves an immediate generated UI result in details.result", async () => {
+    const tool = await createExecCodeModeTool({});
+
+    const result = await tool.execute("tool-call-ui", {
+      code: `async () => {
+        const total = 24;
+        return {
+          total,
+          $ui: {
+            version: 1,
+            state: { total },
+            spec: {
+              root: "report",
+              elements: {
+                report: {
+                  type: "Stack",
+                  props: { gap: "md" },
+                  children: ["metric"],
+                },
+                metric: {
+                  type: "Metric",
+                  props: { label: "Orders", value: String(total) },
+                  children: [],
+                },
+              },
+            },
+          },
+        };
+      }`,
+    });
+
+    expect((result.details as { result?: unknown }).result).toEqual({
+      total: 24,
+      $ui: {
+        version: 1,
+        state: { total: 24 },
+        spec: {
+          root: "report",
+          elements: {
+            report: {
+              type: "Stack",
+              props: { gap: "md" },
+              children: ["metric"],
+            },
+            metric: {
+              type: "Metric",
+              props: { label: "Orders", value: "24" },
+              children: [],
+            },
+          },
+        },
+      },
+    });
+  });
+
   test("surfaces workflow definitions from execCodeMode", async () => {
     const tool = await createExecCodeModeTool({
       workflowRuntime: {
