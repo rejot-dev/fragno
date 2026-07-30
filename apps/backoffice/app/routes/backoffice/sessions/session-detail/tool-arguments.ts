@@ -30,7 +30,7 @@ export const getCodeArgument = (value: unknown) => {
   return { code, rest };
 };
 
-const getReadPath = (value: unknown) => {
+export const getReadPath = (value: unknown) => {
   if (!isRecord(value) || typeof value.path !== "string") {
     return null;
   }

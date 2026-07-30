@@ -99,7 +99,11 @@ export default function BackofficeOrganisationPiLayout({
 
   return (
     <div
-      className={isSessions ? "flex h-full min-h-0 flex-col gap-4 overflow-hidden" : "space-y-4"}
+      className={
+        isSessions
+          ? "flex min-h-[calc(100dvh-7.25rem)] flex-col gap-2 overflow-hidden sm:min-h-[calc(100dvh-5rem)]"
+          : "space-y-4"
+      }
     >
       <PiWorkspaceHeader
         orgId={orgId}
@@ -107,13 +111,7 @@ export default function BackofficeOrganisationPiLayout({
         organisationOptions={loaderData.organisationOptions}
         activeTab={activeTab}
       />
-      <div
-        className={
-          isSessions
-            ? "flex h-[calc(100dvh-256px)] max-h-[calc(100dvh-256px)] min-h-0 flex-1 flex-col"
-            : undefined
-        }
-      >
+      <div className={isSessions ? "flex min-h-0 flex-1 flex-col" : undefined}>
         <Outlet
           context={{
             scope,

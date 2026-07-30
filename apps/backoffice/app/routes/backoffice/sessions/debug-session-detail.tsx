@@ -3,7 +3,7 @@ import { useOutletContext, useParams } from "react-router";
 
 import { createPiClient } from "@/fragno/pi/pi-client";
 
-import type { PiSessionsOutletContext } from "./sessions";
+import type { PiSessionsOutletContext } from "./session-types";
 
 const stringifyJson = (value: unknown) =>
   JSON.stringify(
