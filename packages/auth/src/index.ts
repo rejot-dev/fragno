@@ -88,7 +88,11 @@ import { serializeCredentialSeedForQuery } from "./session/session-seed";
 import type { Role } from "./types";
 import { emailVerificationRoutesFactory } from "./user/email-verification-routes";
 import { createEmailVerificationServices } from "./user/email-verification-services";
-import { createUserServices, userActionsRoutesFactory } from "./user/user-actions";
+import {
+  createUserServices,
+  userActionsRoutesFactory,
+  type UserAuthorityFacts,
+} from "./user/user-actions";
 import {
   createUserOverviewServices,
   userOverviewRoutesFactory,
@@ -1053,7 +1057,7 @@ export function createAuthFragmentClients(fragnoConfig?: AuthFragmentClientConfi
 }
 
 export type { FragnoRouteConfig } from "@fragno-dev/core/api";
-export type { GetUsersParams, UserResult, SortField, SortOrder };
+export type { GetUsersParams, UserAuthorityFacts, UserResult, SortField, SortOrder };
 export type AuthMeData = Awaited<ReturnType<ReturnType<typeof createAuthFragmentClients>["me"]>>;
 export type {
   AuthHooks,
