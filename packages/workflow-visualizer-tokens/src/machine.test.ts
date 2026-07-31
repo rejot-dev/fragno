@@ -16,7 +16,7 @@ import type {
 import { loadBackofficeAutomationFixtures } from "./test-support/backoffice-automation-fixtures.ts";
 import { tokenizeWorkflowSource } from "./tokenizer.ts";
 
-const AUTOMATIONS = new Map(loadBackofficeAutomationFixtures());
+const AUTOMATIONS = new Map(await loadBackofficeAutomationFixtures());
 
 const EXPECTED_DURABLE_STEPS: Record<string, string[]> = {
   "automations/telegram-user-linking.workflow.js": [
@@ -455,6 +455,137 @@ describe("workflow token state machine", () => {
     );
   });
 
+  it("keeps ternary step calls in explicit alternative branches", () => {
+    const source = `defineWorkflow({ name: "conditional-expression" }, async (event, step) => {
+      const sample = await step.do("sample", async () => ({ value: Math.random() }));
+      const branch = sample.value >= 0.5
+        ? await step.do("conditional-high-branch", async () => ({ branch: "high", readOnly: true }))
+        : await step.do("conditional-low-branch", async () => ({ branch: "low", readOnly: true }));
+      return branch;
+    });`;
+    const snapshot = visualizeWorkflowSource("automations/conditional-expression.ts", source);
+    const condition = snapshot.graph.nodes.find((node) => node.kind === "condition");
+    const branches = snapshot.graph.nodes
+      .filter((node) => node.kind === "branch")
+      .sort((left, right) => left.index - right.index);
+    const highBranch = stepByLabel(snapshot.graph, "conditional-high-branch");
+    const lowBranch = stepByLabel(snapshot.graph, "conditional-low-branch");
+
+    assert(condition?.kind === "condition");
+    expect(condition).toMatchObject({
+      label: "if sample.value >= 0.5",
+      condition: "sample.value >= 0.5",
+      construction: { status: "complete", phase: "complete" },
+      analysis: { status: "unsupported", outcomes: [], annotations: [] },
+    });
+    expect(branches.map((branch) => branch.branchType)).toEqual(["then", "else"]);
+    expect(ancestorLabels(snapshot.graph, highBranch)).toEqual([
+      "then",
+      "if sample.value >= 0.5",
+      "conditional-expression",
+    ]);
+    expect(ancestorLabels(snapshot.graph, lowBranch)).toEqual([
+      "else",
+      "if sample.value >= 0.5",
+      "conditional-expression",
+    ]);
+    assert.equal(
+      source.slice(condition.source.start.offset, condition.source.end.offset),
+      `sample.value >= 0.5
+        ? await step.do("conditional-high-branch", async () => ({ branch: "high", readOnly: true }))
+        : await step.do("conditional-low-branch", async () => ({ branch: "low", readOnly: true }))`,
+    );
+    assert(
+      !snapshot.graph.edges.some(
+        (edge) =>
+          edge.type === "sequence" &&
+          ((edge.from === highBranch.id && edge.to === lowBranch.id) ||
+            (edge.from === lowBranch.id && edge.to === highBranch.id)),
+      ),
+    );
+  });
+
+  it("does not treat TypeScript optional markers as conditional expressions", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/typescript-optionals.workflow.ts",
+      `defineWorkflow({ name: "typescript-optionals" }, async (event, step) => {
+        type OptionalPayload = { value?: string };
+        const normalize = (value?: string) => value ?? "missing";
+        await step.do("after optional markers", async () => normalize(event.payload.value));
+      });`,
+    );
+    const step = stepByLabel(snapshot.graph, "after optional markers");
+
+    expect(snapshot.graph.nodes.filter((node) => node.kind === "condition")).toEqual([]);
+    expect(ancestorLabels(snapshot.graph, step)).toEqual(["typescript-optionals"]);
+  });
+
+  it.each(["as", "satisfies"])(
+    "keeps a multiline TypeScript %s operator attached to its conditional expression",
+    (operator) => {
+      const source = `defineWorkflow({ name: "typescript-${operator}-conditional" }, async (event, step) => {
+        const branch = event.payload
+          ${operator}
+          { ready: boolean }
+          ? await step.do("ready branch", async () => ({ ready: true }))
+          : await step.do("fallback branch", async () => ({ ready: false }));
+      });`;
+      const snapshot = visualizeWorkflowSource(
+        `automations/typescript-${operator}-conditional.workflow.ts`,
+        source,
+      );
+      const condition = snapshot.graph.nodes.find((node) => node.kind === "condition");
+
+      assert(condition?.kind === "condition");
+      const conditionSource = source.slice(
+        condition.source.start.offset,
+        condition.source.end.offset,
+      );
+      assert(conditionSource.startsWith("event.payload"));
+      assert(conditionSource.includes(`\n          ${operator}\n`));
+    },
+  );
+
+  it("keeps incomplete ternary branches structurally usable while tokens arrive", () => {
+    const machine = createWorkflowTokenMachine({
+      path: "automations/incremental-conditional-expression.ts",
+    });
+    const firstChunk = `defineWorkflow({ name: "incremental-conditional-expression" }, async (event, step) => {
+      const branch = event.payload.ready
+        ? await step.do("ready branch", async () => ({ ready: true }))`;
+
+    for (const token of tokenizeWorkflowSource(firstChunk)) {
+      const update = machine.push(token);
+      assertUsableGraph(update.graph.nodes, update.graph.edges);
+    }
+
+    const partial = machine.snapshot().graph;
+    const partialCondition = partial.nodes.find((node) => node.kind === "condition");
+    assert(partialCondition?.kind === "condition");
+    expect(partialCondition.construction).toEqual({ status: "partial", phase: "branches" });
+    expect(ancestorLabels(partial, stepByLabel(partial, "ready branch"))).toEqual([
+      "if event.payload.ready",
+      "incremental-conditional-expression",
+    ]);
+
+    const finalChunk = `
+        : await step.do("fallback branch", async () => ({ ready: false }));
+    });`;
+    for (const token of tokenizeWorkflowSource(finalChunk)) {
+      const update = machine.push(token);
+      assertUsableGraph(update.graph.nodes, update.graph.edges);
+    }
+
+    const finished = machine.finish().graph;
+    expect(finished.nodes.filter((node) => node.kind === "branch")).toHaveLength(2);
+    expect(ancestorLabels(finished, stepByLabel(finished, "fallback branch"))).toEqual([
+      "else",
+      "if event.payload.ready",
+      "incremental-conditional-expression",
+    ]);
+    expect(finished.diagnostics).toEqual([]);
+  });
+
   it("reparents a direct if child when an else branch arrives incrementally", () => {
     const machine = createWorkflowTokenMachine({
       path: "automations/incremental-else.workflow.js",
@@ -565,6 +696,55 @@ describe("workflow token state machine", () => {
     expect(snapshot.graph.edges).toContainEqual(
       expect.objectContaining({ from: step.id, to: terminal.id, type: "sequence" }),
     );
+  });
+
+  it("orders a ternary wrapped by return before its final terminal", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/return-conditional-expression.workflow.ts",
+      `defineWorkflow({ name: "return-conditional-expression" }, async (event, step) => {
+        return event.payload.ready
+          ? await step.do("return ready branch", async () => ({ ready: true }))
+          : await step.do("return fallback branch", async () => ({ ready: false }));
+      });`,
+    );
+    const condition = snapshot.graph.nodes.find((node) => node.kind === "condition");
+    const terminal = snapshot.graph.nodes.find(
+      (node): node is TerminalNode =>
+        node.kind === "terminal" && node.terminalType === "final-return",
+    );
+
+    assert(condition?.kind === "condition");
+    assert(terminal);
+    expect({ conditionOrder: condition.order, terminalOrder: terminal.order }).toEqual({
+      conditionOrder: 0,
+      terminalOrder: 1,
+    });
+    expect(snapshot.graph.edges).toContainEqual(
+      expect.objectContaining({ from: condition.id, to: terminal.id, type: "sequence" }),
+    );
+    expect(snapshot.graph.edges).not.toContainEqual(
+      expect.objectContaining({ from: terminal.id, to: condition.id, type: "sequence" }),
+    );
+    assert(terminal.value === "");
+  });
+
+  it("preserves a return terminal when a ternary has no durable work", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/plain-return-conditional-expression.workflow.ts",
+      `defineWorkflow({ name: "plain-return-conditional-expression" }, async (event, step) => {
+        return event.payload.ready ? { ready: true } : { ready: false };
+      });`,
+    );
+    const terminal = snapshot.graph.nodes.find(
+      (node): node is TerminalNode =>
+        node.kind === "terminal" && node.terminalType === "final-return",
+    );
+
+    expect(snapshot.graph.nodes.filter((node) => node.kind === "condition")).toEqual([]);
+    expect(terminal).toMatchObject({
+      order: 0,
+      value: "event.payload.ready ? { ready: true } : { ready: false }",
+    });
   });
 
   it("does not discover optional-chained methods named defineWorkflow", () => {

@@ -17,7 +17,7 @@ patches.
 - `step.sleepUntil(...)`
 - `step.waitForEvent(...)`
 - Early-return, final-return, and thrown-error terminal nodes
-- Nested `if`, `else`, and `else if` control-flow containers around durable steps
+- Nested `if`, `else`, `else if`, and ternary control-flow containers around durable steps
 - `for (...)` and `while (...)` loop containers
 - `Promise.all(...)`, `Promise.race(...)`, and `Promise.any(...)` parallel branch containers
 - Durable steps nested inside other step callbacks
@@ -35,6 +35,7 @@ constructs are independent `TokenSubmachine` implementations:
 - `StepCallMachine`
 - `ParallelCallMachine`
 - `IfStatementMachine`
+- `ConditionalExpressionMachine`
 - `LoopStatementMachine`
 - `ReturnStatementMachine`
 - `ThrowStatementMachine`
