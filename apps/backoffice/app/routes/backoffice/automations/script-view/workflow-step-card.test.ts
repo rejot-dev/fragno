@@ -26,7 +26,7 @@ const step: StepNode = {
   parentId: "workflow:runtime-tools",
   source,
   meta: {},
-  analysis: { status: "complete", invocations: [] },
+  analysis: { status: "complete", invocations: [], returns: [] },
   construction: { status: "complete", phase: "complete" },
 };
 

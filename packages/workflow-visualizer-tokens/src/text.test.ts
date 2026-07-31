@@ -8,8 +8,8 @@ import {
   renderWorkflowVisualizationText,
 } from "./text.ts";
 
-test("renders the Backoffice automation fixtures for quick inspection", () => {
-  const rendered = loadBackofficeAutomationFixtures()
+test("renders the Backoffice automation fixtures for quick inspection", async () => {
+  const rendered = (await loadBackofficeAutomationFixtures())
     .map(([path, source]) => {
       const snapshot = visualizeWorkflowSource(path, source);
       return `--- ${path} ---\n${renderWorkflowGraphText(snapshot.graph)}`;
@@ -23,11 +23,13 @@ test("renders the Backoffice automation fixtures for quick inspection", () => {
     │  └─ 0. terminal early return not-telegram-start
     │     value: { skipped: true, reason: "not-telegram-start" }
     ├─ 1. do lookup existing telegram user link
+    │  returns: await store.get({ key: "telegram/" + chatId, })
     ├─ 2. if linkedUser?.value
     │  ├─ 0. do send already linked telegram message
     │  └─ 1. terminal early return
     │     value: { linked: true, alreadyLinked: true, userId: linkedUser.value, }
     ├─ 3. do create telegram identity claim
+    │  returns: await otp.createIdentityClaim({ actor: { scope: "external", source: "telegram", type: "chat", id: chatId, }, })
     ├─ 4. do store telegram claim workflow binding
     ├─ 5. do send telegram identity claim link
     ├─ 6. waitForEvent identity-claim-completed
@@ -50,25 +52,38 @@ test("renders the Backoffice automation fixtures for quick inspection", () => {
     │  └─ 0. terminal early return not-telegram-pi-message
     │     value: { skipped: true, reason: "not-telegram-pi-message" }
     ├─ 1. do lookup linked telegram user
+    │  returns: await store.get({ key: "telegram/" + automationActorId, })
     ├─ 2. if !linkedUser
     │  └─ 0. terminal early return telegram-chat-not-linked
     │     value: { skipped: true, reason: "telegram-chat-not-linked" }
     ├─ 3. do lookup default pi agent
+    │  returns: await store.get({ key: "pi/pi-default-agent", })
     ├─ 4. if !defaultAgent
     │  └─ 0. terminal early return missing-default-agent
     │     value: { skipped: true, reason: "missing-default-agent" }
     ├─ 5. do lookup pi session
+    │  returns: await store.get({ key: "telegram-pi-session/" + linkedUser, })
     ├─ 6. do check existing pi session
+    │  return 1: { reusable: false, sessionId: "" }
+    │  return 2: { reusable: false, sessionId: "" }
+    │  return 3: { reusable: true, sessionId }
+    │  return 4: { reusable: false, sessionId: "" }
     ├─ 7. if !reusableSession.reusable
     │  ├─ 0. do create pi session
+    │  │  returns: await pi.createSession({ agent: defaultAgent, name: "Telegram " + chatId, tags: ["telegram", "auto-session"], systemMessage: "IMPORTANT:ALL non-tool call output will AUTOMATICALLY be " + "forwarded to Telegram in Markdown parse mode.", })
     │  └─ 1. do store pi session binding
     ├─ 8. do reply to pi command if needed
+    │  return 1: { sent: false }
+    │  return 2: { sent: true }
     ├─ 9. if commandReply.sent || !text
     │  └─ 0. terminal early return
     │     value: { sessionId: piSession.sessionId }
     ├─ 10. do send telegram typing action
     ├─ 11. do run pi turn
+    │  returns: resp.assistantText
     ├─ 12. do send pi response if needed
+    │  return 1: { sent: false }
+    │  return 2: { sent: true }
     └─ 13. terminal final return
        value: { sessionId: piSession.sessionId }
 
@@ -104,6 +119,7 @@ test("renders the Backoffice automation fixtures for quick inspection", () => {
     │  └─ 0. terminal error project.created event is missing subject.projectId.
     │     value: new Error("project.created event is missing subject.projectId.")
     ├─ 2. do configure project database filesystem
+    │  returns: await internal.projectFilesConfigure({ projectId })
     └─ 3. terminal final return
 
     --- automations/workspace-file-initialization.workflow.js ---
@@ -115,8 +131,11 @@ test("renders the Backoffice automation fixtures for quick inspection", () => {
     │  └─ 0. terminal error organization.created event is missing subject.orgId.
     │     value: new Error("organization.created event is missing subject.orgId.")
     ├─ 2. do configure upload database connection
+    │  returns: { configured: true, id: "upload", provider: "database" }
     ├─ 3. do seed workspace starter files
+    │  returns: await org.internal.filesSeedExecute({})
     ├─ 4. do seed starter automation routes
+    │  returns: await org.internal.automationsRoutesSeedStarter({})
     └─ 5. terminal final return
        value: { ...configured, seeded, automationRoutes }"
   `);

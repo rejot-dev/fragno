@@ -1,9 +1,12 @@
+import { conciseFunctionEndsBefore } from "./function-scope.ts";
 import type {
   BranchNode,
   ConditionNode,
   LoopNode,
   ParallelNode,
+  SourceRange,
   StepNode,
+  StepReturn,
   TerminalNode,
   WorkflowChildNode,
   WorkflowNode,
@@ -501,6 +504,7 @@ export class StepCallMachine implements TokenSubmachine {
       this.#step.analysis = {
         status: "complete",
         invocations: this.#step.analysis.invocations,
+        returns: this.#step.analysis.returns,
       };
       this.#step.construction = { status: "complete", phase: "complete" };
       return "complete";
@@ -609,6 +613,202 @@ interface BranchProgress {
   lastToken?: PositionedWorkflowToken;
   containsStep: boolean;
   abruptCompletionId?: string;
+}
+
+class ReturnExpressionScanner {
+  readonly #source: SourceRange;
+  readonly #statement: PositionedWorkflowToken;
+  readonly #expressionStart: number;
+  readonly #baseDepth: TokenMachineContext["depth"];
+  readonly #onValue: (value: string, token?: PositionedWorkflowToken["token"]) => void;
+  readonly #onComplete: () => void;
+  #lastToken: PositionedWorkflowToken | undefined;
+
+  constructor({
+    source,
+    statement,
+    baseDepth,
+    onValue,
+    onComplete,
+  }: {
+    source: SourceRange;
+    statement: PositionedWorkflowToken;
+    baseDepth: TokenMachineContext["depth"];
+    onValue: (value: string, token?: PositionedWorkflowToken["token"]) => void;
+    onComplete: () => void;
+  }) {
+    this.#source = source;
+    this.#statement = statement;
+    this.#expressionStart = statement.end;
+    this.#baseDepth = { ...baseDepth };
+    this.#onValue = onValue;
+    this.#onComplete = onComplete;
+  }
+
+  consume(
+    positioned: PositionedWorkflowToken,
+    context: TokenMachineContext,
+  ): TokenSubmachineStatus {
+    const value = positioned.token.value;
+    if ((value === ";" || value === "}") && sameDepth(context.depth, this.#baseDepth)) {
+      if (value === ";") {
+        extendSourceRangeToToken(this.#source, positioned);
+      } else {
+        endSourceRangeAtTokenStart(this.#source, positioned);
+      }
+      this.complete(context.source, positioned.start);
+      return "complete";
+    }
+    if (
+      this.#lastToken === undefined &&
+      hasLineTerminatorBetween(this.#statement, positioned, context.source)
+    ) {
+      this.complete(context.source, this.#expressionStart);
+      return "complete";
+    }
+    if (
+      this.#lastToken &&
+      sameDepth(context.depth, this.#baseDepth) &&
+      hasLineTerminatorBetween(this.#lastToken, positioned, context.source) &&
+      tokenCanEndStatement(this.#lastToken.token) &&
+      !tokenContinuesStatement(positioned.token)
+    ) {
+      this.complete(context.source, positioned.start);
+      return "complete";
+    }
+
+    this.#lastToken = positioned;
+    extendSourceRangeToToken(this.#source, positioned);
+    this.#onValue(
+      context.source.slice(this.#expressionStart, positioned.end).trim(),
+      positioned.token,
+    );
+    return "active";
+  }
+
+  finish(context: TokenMachineContext): TokenSubmachineStatus {
+    this.#onValue(context.source.slice(this.#expressionStart).trim());
+    return "active";
+  }
+
+  private complete(source: string, expressionEnd: number): void {
+    this.#onValue(source.slice(this.#expressionStart, expressionEnd).trim());
+    this.#onComplete();
+  }
+}
+
+export class StepReturnStatementMachine implements TokenSubmachine {
+  readonly kind = "return" as const;
+  readonly id: string;
+  readonly parentId: string;
+  readonly #stepReturn: StepReturn;
+  readonly #scanner: ReturnExpressionScanner;
+
+  constructor({
+    id,
+    parentId,
+    stepReturn,
+    statement,
+    baseDepth,
+  }: {
+    id: string;
+    parentId: string;
+    stepReturn: StepReturn;
+    statement: PositionedWorkflowToken;
+    baseDepth: TokenMachineContext["depth"];
+  }) {
+    this.id = id;
+    this.parentId = parentId;
+    this.#stepReturn = stepReturn;
+    this.#scanner = new ReturnExpressionScanner({
+      source: stepReturn.source,
+      statement,
+      baseDepth,
+      onValue: (value) => {
+        stepReturn.value = value;
+      },
+      onComplete: () => {
+        stepReturn.construction = { status: "complete", phase: "complete" };
+      },
+    });
+  }
+
+  get phase(): string {
+    return this.#stepReturn.construction.phase;
+  }
+
+  get source() {
+    return this.#stepReturn.source;
+  }
+
+  consume(
+    positioned: PositionedWorkflowToken,
+    context: TokenMachineContext,
+  ): TokenSubmachineStatus {
+    return this.#scanner.consume(positioned, context);
+  }
+
+  finish(context: TokenMachineContext): TokenSubmachineStatus {
+    return this.#scanner.finish(context);
+  }
+}
+
+export class StepImplicitReturnMachine implements TokenSubmachine {
+  readonly kind = "return" as const;
+  readonly id: string;
+  readonly parentId: string;
+  readonly #stepReturn: StepReturn;
+  readonly #expressionStart: number;
+  readonly #baseDepth: TokenMachineContext["depth"];
+
+  constructor({
+    id,
+    parentId,
+    stepReturn,
+    expressionStart,
+    baseDepth,
+  }: {
+    id: string;
+    parentId: string;
+    stepReturn: StepReturn;
+    expressionStart: number;
+    baseDepth: TokenMachineContext["depth"];
+  }) {
+    this.id = id;
+    this.parentId = parentId;
+    this.#stepReturn = stepReturn;
+    this.#expressionStart = expressionStart;
+    this.#baseDepth = { ...baseDepth };
+  }
+
+  get phase(): string {
+    return this.#stepReturn.construction.phase;
+  }
+
+  get source() {
+    return this.#stepReturn.source;
+  }
+
+  consume(
+    positioned: PositionedWorkflowToken,
+    context: TokenMachineContext,
+  ): TokenSubmachineStatus {
+    if (conciseFunctionEndsBefore(positioned.token.value, context.depth, this.#baseDepth)) {
+      endSourceRangeAtTokenStart(this.#stepReturn.source, positioned);
+      this.#stepReturn.value = context.source.slice(this.#expressionStart, positioned.start).trim();
+      this.#stepReturn.construction = { status: "complete", phase: "complete" };
+      return "complete";
+    }
+
+    extendSourceRangeToToken(this.#stepReturn.source, positioned);
+    this.#stepReturn.value = context.source.slice(this.#expressionStart, positioned.end).trim();
+    return "active";
+  }
+
+  finish(context: TokenMachineContext): TokenSubmachineStatus {
+    this.#stepReturn.value = context.source.slice(this.#expressionStart).trim();
+    return "active";
+  }
 }
 
 export class IfStatementMachine implements TokenSubmachine {
@@ -886,10 +1086,7 @@ export class ReturnStatementMachine implements TokenSubmachine {
   readonly id: string;
   readonly parentId: string;
   readonly #terminal: TerminalNode;
-  readonly #statement: PositionedWorkflowToken;
-  readonly #expressionStart: number;
-  readonly #baseDepth: TokenMachineContext["depth"];
-  #lastToken: PositionedWorkflowToken | undefined;
+  readonly #scanner: ReturnExpressionScanner;
   #reasonState: "reason" | "value" | undefined;
   #delegatesValueToChild = false;
 
@@ -909,9 +1106,23 @@ export class ReturnStatementMachine implements TokenSubmachine {
     this.id = id;
     this.parentId = parentId;
     this.#terminal = terminal;
-    this.#statement = statement;
-    this.#expressionStart = statement.end;
-    this.#baseDepth = { ...baseDepth };
+    this.#scanner = new ReturnExpressionScanner({
+      source: terminal.source,
+      statement,
+      baseDepth,
+      onValue: (value, token) => {
+        if (this.#delegatesValueToChild) {
+          return;
+        }
+        terminal.value = value;
+        if (token) {
+          this.consumeReason(token);
+        }
+      },
+      onComplete: () => {
+        terminal.construction = { status: "complete", phase: "complete" };
+      },
+    });
   }
 
   get phase(): string {
@@ -935,48 +1146,11 @@ export class ReturnStatementMachine implements TokenSubmachine {
     positioned: PositionedWorkflowToken,
     context: TokenMachineContext,
   ): TokenSubmachineStatus {
-    const value = positioned.token.value;
-    if ((value === ";" || value === "}") && sameDepth(context.depth, this.#baseDepth)) {
-      if (value === ";") {
-        extendSourceRangeToToken(this.#terminal.source, positioned);
-      } else {
-        endSourceRangeAtTokenStart(this.#terminal.source, positioned);
-      }
-      this.complete(context.source, positioned.start);
-      return "complete";
-    }
-    if (
-      this.#lastToken === undefined &&
-      hasLineTerminatorBetween(this.#statement, positioned, context.source)
-    ) {
-      this.complete(context.source, this.#expressionStart);
-      return "complete";
-    }
-    if (
-      this.#lastToken &&
-      sameDepth(context.depth, this.#baseDepth) &&
-      hasLineTerminatorBetween(this.#lastToken, positioned, context.source) &&
-      tokenCanEndStatement(this.#lastToken.token) &&
-      !tokenContinuesStatement(positioned.token)
-    ) {
-      this.complete(context.source, positioned.start);
-      return "complete";
-    }
-
-    this.#lastToken = positioned;
-    extendSourceRangeToToken(this.#terminal.source, positioned);
-    if (!this.#delegatesValueToChild) {
-      this.#terminal.value = context.source.slice(this.#expressionStart, positioned.end).trim();
-      this.consumeReason(positioned.token);
-    }
-    return "active";
+    return this.#scanner.consume(positioned, context);
   }
 
   finish(context: TokenMachineContext): TokenSubmachineStatus {
-    if (!this.#delegatesValueToChild) {
-      this.#terminal.value = context.source.slice(this.#expressionStart).trim();
-    }
-    return "active";
+    return this.#scanner.finish(context);
   }
 
   private consumeReason(token: PositionedWorkflowToken["token"]): void {
@@ -997,13 +1171,6 @@ export class ReturnStatementMachine implements TokenSubmachine {
       this.#terminal.label = reason || "early return";
     }
     this.#reasonState = undefined;
-  }
-
-  private complete(source: string, expressionEnd: number): void {
-    if (!this.#delegatesValueToChild) {
-      this.#terminal.value = source.slice(this.#expressionStart, expressionEnd).trim();
-    }
-    this.#terminal.construction = { status: "complete", phase: "complete" };
   }
 }
 

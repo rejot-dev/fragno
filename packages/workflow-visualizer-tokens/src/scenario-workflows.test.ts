@@ -932,6 +932,7 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow step-workflow
       ├─ 0. do compute
+      │  returns: 42
       └─ 1. terminal final return
          value: { value }"
     `);
@@ -942,9 +943,11 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow eventful-workflow
       ├─ 0. do seed
+      │  returns: 3
       ├─ 1. waitForEvent ready
       │  event: ready
       ├─ 2. do sum
+      │  returns: seed + ready.payload.value
       └─ 3. terminal final return
          value: { seed, sum, eventValue: ready.payload.value }"
     `);
@@ -956,6 +959,7 @@ describe("scenario-runner workflow corpus", () => {
       "workflow for-loop-workflow
       ├─ 0. for let index = 0; index < 3; index += 1
       │  └─ 0. do for iteration
+      │     returns: index + 1
       └─ 1. terminal final return
          value: { values }"
     `);
@@ -967,6 +971,7 @@ describe("scenario-runner workflow corpus", () => {
       "workflow while-loop-workflow
       ├─ 0. while index < 3
       │  └─ 0. do while iteration
+      │     returns: index + 1
       └─ 1. terminal final return
          value: { total }"
     `);
@@ -979,8 +984,10 @@ describe("scenario-runner workflow corpus", () => {
       ├─ 0. parallel Promise.all
       │  ├─ branch 1
       │  │  └─ 0. do alpha
+      │  │     returns: "A"
       │  └─ branch 2
       │     └─ 0. do beta
+      │        returns: "B"
       └─ 1. terminal final return
          value: { alpha, beta }"
     `);
@@ -999,6 +1006,7 @@ describe("scenario-runner workflow corpus", () => {
       │  │     event: alpha
       │  └─ branch 2
       │     └─ 0. do beta
+      │        returns: "B"
       └─ 1. terminal final return
          value: { alpha, beta }"
     `);
@@ -1014,8 +1022,10 @@ describe("scenario-runner workflow corpus", () => {
       ├─ 0. parallel Promise.all
       │  ├─ branch 1
       │  │  └─ 0. do alpha
+      │  │     returns: "A"
       │  └─ branch 2
       │     └─ 0. do beta
+      │        returns: "B"
       └─ 1. terminal final return
          value: { alpha, beta }"
     `);
@@ -1031,8 +1041,10 @@ describe("scenario-runner workflow corpus", () => {
       ├─ 0. parallel Promise.all
       │  ├─ branch 1
       │  │  └─ 0. do alpha
+      │  │     returns: "A"
       │  └─ branch 2
       │     └─ 0. do beta
+      │        returns: "B"
       └─ 1. terminal final return
          value: { alpha, beta }"
     `);
@@ -1043,13 +1055,17 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow race-workflow
       ├─ 0. do Promise step
+      │  returns: await Promise.race([ step.do("Promise first race", async () => { await step.sleep("Promise first delay", 1000); return "first"; }), step.do("Promise second race", async () => { return "second"; }), ])
       │  └─ 0. parallel Promise.race
       │     ├─ branch 1
       │     │  └─ 0. do Promise first race
+      │     │     returns: "first"
       │     │     └─ 0. sleep Promise first delay
       │     └─ branch 2
       │        └─ 0. do Promise second race
+      │           returns: "second"
       ├─ 1. do After race
+      │  returns: raceReturn
       └─ 2. terminal final return
          value: { raceReturn, cached }"
     `);
@@ -1060,14 +1076,17 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow race-event-workflow
       ├─ 0. do Promise race
+      │  returns: await Promise.race([ step.do("slow branch", async () => { await step.sleep("slow delay", 1000); return "slow"; }), step.waitForEvent("event branch", { type: "ready" }).then(() => "event"), ])
       │  └─ 0. parallel Promise.race
       │     ├─ branch 1
       │     │  └─ 0. do slow branch
+      │     │     returns: "slow"
       │     │     └─ 0. sleep slow delay
       │     └─ branch 2
       │        └─ 0. waitForEvent event branch
       │           event: ready
       ├─ 1. do After race
+      │  returns: raceReturn
       └─ 2. terminal final return
          value: { raceReturn, cached }"
     `);
@@ -1078,12 +1097,15 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow any-workflow
       ├─ 0. do Promise any
+      │  returns: await Promise.any([ step.do("Promise any first", async () => { await step.sleep("Promise any first delay", 1000); return "first"; }), step.do("Promise any second", async () => { return "second"; }), ])
       │  └─ 0. parallel Promise.any
       │     ├─ branch 1
       │     │  └─ 0. do Promise any first
+      │     │     returns: "first"
       │     │     └─ 0. sleep Promise any first delay
       │     └─ branch 2
       │        └─ 0. do Promise any second
+      │           returns: "second"
       └─ 1. terminal final return
          value: { anyReturn }"
     `);
@@ -1099,6 +1121,7 @@ describe("scenario-runner workflow corpus", () => {
       ├─ 0. waitForEvent ready
       │  event: ready
       ├─ 1. do finish
+      │  returns: "done"
       └─ 2. terminal final return"
     `);
   });
@@ -1111,13 +1134,16 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow scenario-race-event-second-runner-wins
       ├─ 0. do Promise race
+      │  returns: await Promise.race([ step.do("promise sleep branch", async () => { runtime.controls.resolve("sleep:started"); await new Promise((resolve) => setTimeout(resolve, 20)); return "sleep"; }), step.waitForEvent("event branch", { type: "ready" }).then(() => "event"), ])
       │  └─ 0. parallel Promise.race
       │     ├─ branch 1
       │     │  └─ 0. do promise sleep branch
+      │     │     returns: "sleep"
       │     └─ branch 2
       │        └─ 0. waitForEvent event branch
       │           event: ready
       ├─ 1. do After race
+      │  returns: raceReturn
       └─ 2. terminal final return
          value: { raceReturn, cached }"
     `);
@@ -1146,6 +1172,7 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow scenario-stale-runner-occ
       ├─ 0. do racy work
+      │  returns: "committed"
       └─ 1. terminal final return
          value: { value }"
     `);
@@ -1159,7 +1186,9 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow scenario-client-runner-emission-race
       ├─ 0. do racy client message
+      │  returns: runner
       ├─ 1. do shared client message
+      │  returns: "shared"
       └─ 2. terminal final return
          value: { value, shared }"
     `);
@@ -1239,6 +1268,7 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow scenario-concurrent-step-emissions
       ├─ 0. do racy emitter
+      │  returns: \`attempt-\${attempt}\`
       └─ 1. terminal final return
          value: { value }"
     `);
@@ -1290,6 +1320,7 @@ describe("scenario-runner workflow corpus", () => {
       ├─ 0. waitForEvent ready
       │  event: ready
       ├─ 1. do await control
+      │  returns: await runtime.controls.wait<boolean>("control:ready")
       └─ 2. terminal final return
          value: { value }"
     `);
@@ -1300,6 +1331,7 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow fetch-workflow
       ├─ 0. do fetch
+      │  returns: { status: 200, json: { ok: true, source: "fake" } }
       └─ 1. terminal final return
          value: response"
     `);
@@ -1451,14 +1483,17 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow timeout-mutation-workflow
       ├─ 0. do init
+      │  returns: "initialized"
       ├─ 1. waitForEvent approval
       │  event: approval
       │  timeout: 5 minutes
       ├─ 2. do mark-approved
+      │  returns: "approved"
       ├─ 3. terminal final return
       │  value: { finalStatus: "approved" }
       ├─ 4. if err instanceof WaitForEventTimeoutError
       │  ├─ 0. do mark-timed-out
+      │  │  returns: "timed-out"
       │  └─ 1. terminal early return
       │     value: { finalStatus: "timed-out" }
       └─ 5. terminal error
@@ -1500,9 +1535,11 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow history-workflow
       ├─ 0. do seed
+      │  returns: 3
       ├─ 1. waitForEvent ready
       │  event: ready
       ├─ 2. do result
+      │  returns: (ready.payload.ok ? seed + 1 : seed)
       └─ 3. terminal final return
          value: { result }"
     `);
@@ -1565,6 +1602,7 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow mutate-workflow
       ├─ 0. do mutate
+      │  returns: "mutated"
       └─ 1. terminal final return
          value: { result }"
     `);
@@ -1578,6 +1616,7 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow service-call-workflow
       ├─ 0. do call
+      │  returns: "active"
       └─ 1. terminal final return
          value: { ok: true }"
     `);
@@ -1588,6 +1627,7 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow retry-workflow
       ├─ 0. do unstable
+      │  returns: "ok"
       └─ 1. terminal final return
          value: { result }"
     `);
@@ -1601,7 +1641,9 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow scenario-management-retry-workflow
       ├─ 0. do stable
+      │  returns: "stable"
       ├─ 1. do flaky
+      │  returns: "ok"
       └─ 2. terminal final return
          value: { stable, flaky }"
     `);
@@ -1612,6 +1654,7 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow retry-early-workflow
       ├─ 0. do unstable
+      │  returns: "ok"
       └─ 1. terminal final return
          value: { result }"
     `);
@@ -1635,6 +1678,7 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow pause-management-workflow
       ├─ 0. do count
+      │  returns: runs
       └─ 1. terminal final return
          value: { value }"
     `);
@@ -1648,6 +1692,7 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow terminate-management-workflow
       ├─ 0. do count
+      │  returns: runs
       └─ 1. terminal final return
          value: { value }"
     `);
@@ -1672,6 +1717,7 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow batch-workflow
       ├─ 0. do result
+      │  returns: ({ instanceId: event.instanceId, })
       └─ 1. terminal final return
          value: result"
     `);
@@ -1682,6 +1728,7 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow batch-skip-workflow
       ├─ 0. do result
+      │  returns: event.instanceId
       └─ 1. terminal final return
          value: { value }"
     `);
@@ -1692,6 +1739,7 @@ describe("scenario-runner workflow corpus", () => {
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow batch-route-workflow
       ├─ 0. do result
+      │  returns: "ok"
       └─ 1. terminal final return
          value: { value }"
     `);

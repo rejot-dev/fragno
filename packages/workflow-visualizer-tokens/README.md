@@ -22,6 +22,7 @@ patches.
 - `Promise.all(...)`, `Promise.race(...)`, and `Promise.any(...)` parallel branch containers
 - Durable steps nested inside other step callbacks
 - Exact static member calls made directly by durable step callbacks
+- Explicit and concise-arrow return values from `step.do` callbacks
 - Static step labels, durations, event types, timeouts, and guard reasons
 - Exact path, offset, line, and column ranges for every graph node
 - Local `const` reference aliases and equality predicates inside workflow conditions
@@ -61,7 +62,10 @@ The graph is a control-flow tree rather than a flat list with condition annotati
   fallthrough paths;
 - durable steps contain source-ranged call references in `step.analysis.invocations`, allowing a
   separate application-specific linker to identify runtime tools without coupling this package to
-  those tool definitions.
+  those tool definitions;
+- `step.do` nodes contain every direct callback return in `step.analysis.returns`, including whether
+  it used an explicit `return` statement or concise-arrow syntax. Returns from ordinary nested
+  callbacks are excluded, while nested durable steps own their own return values.
 
 The semantic pass deliberately supports a small, exact expression language instead of pretending to
 be a JavaScript or TypeScript checker. It resolves local `const` aliases made from member references

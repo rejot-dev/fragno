@@ -48,9 +48,20 @@ export interface StepInvocation {
   construction: ConstructionState<StepInvocationConstructionPhase>;
 }
 
+export type StepReturnSyntax = "explicit" | "implicit";
+export type StepReturnConstructionPhase = "returning" | "complete";
+
+export interface StepReturn {
+  kind: "return";
+  syntax: StepReturnSyntax;
+  value: string;
+  source: SourceRange;
+  construction: ConstructionState<StepReturnConstructionPhase>;
+}
+
 export type StepAnalysis =
-  | { status: "partial"; invocations: StepInvocation[] }
-  | { status: "complete"; invocations: StepInvocation[] };
+  | { status: "partial"; invocations: StepInvocation[]; returns: StepReturn[] }
+  | { status: "complete"; invocations: StepInvocation[]; returns: StepReturn[] };
 
 export interface StepMeta {
   duration?: string;
@@ -241,7 +252,7 @@ export interface Diagnostic {
 }
 
 export interface WorkflowGraph {
-  version: 3;
+  version: 4;
   nodes: GraphNode[];
   edges: GraphEdge[];
   diagnostics: Diagnostic[];
