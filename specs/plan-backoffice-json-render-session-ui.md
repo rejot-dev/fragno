@@ -216,7 +216,7 @@ Automated proof:
 The slice is complete when malformed UI cannot blank the thread and all existing result types remain
 readable.
 
-### - [ ] Slice 3 — Ship the useful Backoffice presentation catalog
+### - [x] Slice 3 — Ship the useful Backoffice presentation catalog
 
 **User-visible outcome:** the agent can present realistic Backoffice reports, summaries, lists, and
 tables rather than only the minimal metric fixture.
