@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 const {
   getAuthMeMock,
   getPublishedListingMock,
+  getArtifactManifestMock,
   listMarketplaceIngestionsMock,
   requestMarketplaceIngestionMock,
 } = vi.hoisted(() => ({
   getAuthMeMock: vi.fn(),
   getPublishedListingMock: vi.fn(),
+  getArtifactManifestMock: vi.fn(),
   listMarketplaceIngestionsMock: vi.fn(),
   requestMarketplaceIngestionMock: vi.fn(),
 }));
@@ -41,6 +43,7 @@ const automations = {
 const forOrgMock = vi.fn(() => automations);
 const marketplace = {
   getPublishedListing: getPublishedListingMock,
+  getArtifactManifest: getArtifactManifestMock,
 };
 const context = {
   get: () => ({
@@ -103,6 +106,7 @@ const runAction = (input: {
 beforeEach(() => {
   getAuthMeMock.mockReset();
   getPublishedListingMock.mockReset();
+  getArtifactManifestMock.mockReset();
   listMarketplaceIngestionsMock.mockReset();
   requestMarketplaceIngestionMock.mockReset();
   forOrgMock.mockClear();
@@ -117,6 +121,7 @@ beforeEach(() => {
     nextVersionCursor: null,
     hasNextVersionPage: false,
   });
+  getArtifactManifestMock.mockResolvedValue(null);
   listMarketplaceIngestionsMock.mockResolvedValue([]);
   requestMarketplaceIngestionMock.mockResolvedValue({
     listingId,
