@@ -58,7 +58,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   if (!projectOrgId) {
     throw new Response("Publisher scope was not found.", { status: 404 });
   }
-  const projectsResult = await fetchAutomationProjects(request, context, projectOrgId);
+  const projectsResult = await fetchAutomationProjects(context, projectOrgId);
   if (routeScope.kind === "project" && projectsResult.projectsError) {
     throw new Response(projectsResult.projectsError, { status: 502 });
   }

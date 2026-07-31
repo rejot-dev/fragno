@@ -2,9 +2,9 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 import { defineWorkflow, NonRetryableError } from "@fragno-dev/workflows/workflow";
 import { z } from "zod";
 
-import type {
-  BackofficeContextScope,
-  BackofficeExecutionContext,
+import {
+  createBackofficeServiceExecution,
+  type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import type { UploadObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
@@ -470,14 +470,13 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
         },
       );
 
-      const execution: BackofficeExecutionContext = {
-        actor: {
+      const execution = createBackofficeServiceExecution({
+        scope: input.targetScope,
+        service: {
           type: "automation",
           id: `marketplace-ingest:${artifact.listingId}@${artifact.version}`,
-          organizationIds: [organizationId],
         },
-        scope: input.targetScope,
-      };
+      });
       const targetFileSystem = createUploadFileSystem(
         createSystemFilesContext({
           objects: runtime.objects,

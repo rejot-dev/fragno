@@ -60,7 +60,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   }
 
   const projectsResult = projectOrgId
-    ? await fetchAutomationProjects(request, context, projectOrgId)
+    ? await fetchAutomationProjects(context, projectOrgId)
     : { projects: [], projectsError: null };
   if (routeScope.kind === "project" && projectsResult.projectsError) {
     throw new Response(projectsResult.projectsError, { status: 502 });
