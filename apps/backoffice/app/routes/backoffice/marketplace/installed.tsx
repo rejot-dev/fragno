@@ -40,9 +40,9 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   const ingestionOrganizations =
     targetScope.kind === "user"
       ? me.organizations.map(({ organization }) => organization)
-      : me.organizations
-          .map(({ organization }) => organization)
-          .filter((organization) => organization.id === targetScope.orgId);
+      : me.organizations.flatMap(({ organization }) =>
+          organization.id === targetScope.orgId ? [organization] : [],
+        );
   const runtime = context.get(BackofficeWorkerContext).runtime;
   const ingestionPages = await Promise.all(
     ingestionOrganizations.map(async (organization) => ({
@@ -60,15 +60,21 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     })),
   );
   const listingIds = Array.from(new Set(ingestions.map((ingestion) => ingestion.listingId)));
-  const latestPublishedVersions: MarketplaceLatestPublishedVersions = {};
-  const marketplace = runtime.objects.marketplace.singleton();
+  const listingIdBatches: string[][] = [];
   for (let offset = 0; offset < listingIds.length; offset += MARKETPLACE_LATEST_VERSIONS_MAX_IDS) {
-    const listingIdBatch = listingIds.slice(offset, offset + MARKETPLACE_LATEST_VERSIONS_MAX_IDS);
-    Object.assign(
-      latestPublishedVersions,
-      await marketplace.getLatestPublishedVersions({ listingIds: listingIdBatch }),
-    );
+    listingIdBatches.push(listingIds.slice(offset, offset + MARKETPLACE_LATEST_VERSIONS_MAX_IDS));
   }
+
+  const marketplace = runtime.objects.marketplace.singleton();
+  const latestPublishedVersionPages = await Promise.all(
+    listingIdBatches.map((listingIdBatch) =>
+      marketplace.getLatestPublishedVersions({ listingIds: listingIdBatch }),
+    ),
+  );
+  const latestPublishedVersions: MarketplaceLatestPublishedVersions = Object.assign(
+    {},
+    ...latestPublishedVersionPages,
+  );
 
   return {
     ingestions: ingestions.map((ingestion) => {

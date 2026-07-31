@@ -109,6 +109,11 @@ type MarketplaceWorkflowOperation = {
   terminatedErrorName: "MarketplacePublicationTerminated" | "MarketplaceIngestionTerminated";
 };
 
+type StaticMarketplacePublicationRequest = {
+  entry: Pick<MarketplaceStaticArtifactEntry, "owner" | "slug" | "version">;
+  listingId: string;
+};
+
 type ExistingMarketplaceWorkflowState =
   | {
       state: "pending";
@@ -445,31 +450,22 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
         left.listingId.localeCompare(right.listingId) ||
         compareMarketplaceVersions(left.entry.version, right.entry.version),
     );
+    const entriesByListingId = new Map<string, StaticMarketplacePublicationRequest[]>();
+    for (const request of entries) {
+      const listingEntries = entriesByListingId.get(request.listingId) ?? [];
+      listingEntries.push(request);
+      entriesByListingId.set(request.listingId, listingEntries);
+    }
+
+    const publicationGroups = await Promise.all(
+      Array.from(entriesByListingId.values(), (listingEntries) =>
+        this.#requestStaticMarketplaceListingPublications(listingEntries),
+      ),
+    );
     const results = new Map<string, MarketplaceStaticPublicationEntryResult>();
-    const blockedListings = new Map<string, string>();
-
-    for (const { entry, listingId } of entries) {
-      const workflowInstanceId = buildMarketplacePublicationWorkflowInstanceId({
-        listingId,
-        version: entry.version,
-      });
-      const blockedByVersion = blockedListings.get(listingId);
-      if (blockedByVersion) {
-        results.set(workflowInstanceId, {
-          listingId,
-          slug: entry.slug,
-          version: entry.version,
-          workflowInstanceId,
-          state: "queued",
-          blockedByVersion,
-        });
-        continue;
-      }
-
-      const result = await this.#requestStaticMarketplaceEntryPublication(entry);
-      results.set(workflowInstanceId, result);
-      if (result.state !== "published") {
-        blockedListings.set(listingId, entry.version);
+    for (const publicationGroup of publicationGroups) {
+      for (const result of publicationGroup) {
+        results.set(result.workflowInstanceId, result);
       }
     }
 
@@ -487,6 +483,38 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
         return result;
       }),
     };
+  }
+
+  async #requestStaticMarketplaceListingPublications(
+    requests: readonly StaticMarketplacePublicationRequest[],
+  ): Promise<MarketplaceStaticPublicationEntryResult[]> {
+    const [request, ...remainingRequests] = requests;
+    if (!request) {
+      return [];
+    }
+
+    const result = await this.#requestStaticMarketplaceEntryPublication(request.entry);
+    if (result.state !== "published") {
+      return [
+        result,
+        ...remainingRequests.map(({ entry, listingId }) => ({
+          listingId,
+          slug: entry.slug,
+          version: entry.version,
+          workflowInstanceId: buildMarketplacePublicationWorkflowInstanceId({
+            listingId,
+            version: entry.version,
+          }),
+          state: "queued" as const,
+          blockedByVersion: request.entry.version,
+        })),
+      ];
+    }
+
+    return [
+      result,
+      ...(await this.#requestStaticMarketplaceListingPublications(remainingRequests)),
+    ];
   }
 
   async #requestStaticMarketplaceEntryPublication(

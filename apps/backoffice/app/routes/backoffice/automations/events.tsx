@@ -6,7 +6,6 @@ import { and, eq, lt, or, useLiveQuery } from "@tanstack/react-db";
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 
-import type { Route } from "./+types/events";
 import { formatTimestamp } from "./formatting";
 import type { AutomationLayoutContext } from "./layout-context";
 
@@ -317,8 +316,4 @@ export default function BackofficeAutomationEvents() {
       ) : null}
     </section>
   );
-}
-
-export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-  throw error;
 }
