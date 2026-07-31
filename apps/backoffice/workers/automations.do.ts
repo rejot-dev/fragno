@@ -14,6 +14,10 @@ import type {
   BackofficeRpcContext,
 } from "@/backoffice-runtime/object-registry";
 import {
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "@/backoffice-runtime/permissions";
+import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
@@ -47,6 +51,17 @@ import type {
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
+import {
+  bindExternalIdentityInputSchema,
+  getExternalIdentityBindingInputSchema,
+  revokeExternalIdentityInputSchema,
+  type BindExternalIdentityInput,
+  type BindExternalIdentityResult,
+  type GetExternalIdentityBindingInput,
+  type ResolveExternalIdentityResult,
+  type RevokeExternalIdentityInput,
+  type RevokeExternalIdentityResult,
+} from "@/fragno/automation/external-identities";
 import {
   buildMarketplaceIngestionWorkflowInstanceId,
   MARKETPLACE_INGEST_WORKFLOW_NAME,
@@ -393,6 +408,30 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     };
   }
 
+  async #invokeAutomationAction<TResult>({
+    context,
+    operation,
+    resource,
+    execute,
+  }: {
+    context: BackofficeActionRpcContext;
+    operation: BackofficePermissionRequirement;
+    resource: unknown;
+    execute: (runtime: AutomationsRuntime) => Promise<TResult>;
+  }): Promise<TResult> {
+    const scope = this.#requireScope();
+    assertAutomationObjectScope(scope, context.execution.scope);
+    await this.#ensureConfigured({ scope });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await this.#kernel.invoke({
+      execution: context.execution,
+      operation,
+      resource,
+      execute: async () => await execute(runtime),
+    });
+  }
+
   async seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult> {
     const scope = this.#requireScope();
     await this.#ensureConfigured({ scope });
@@ -726,6 +765,80 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     return await this.#host.fetch(request, {
       propagationContext: context.propagationContext,
       requestContext: context.execution,
+    });
+  }
+
+  async bindExternalIdentity(
+    input: BindExternalIdentityInput,
+    context: BackofficeActionRpcContext,
+  ): Promise<BindExternalIdentityResult> {
+    const parsed = bindExternalIdentityInputSchema.parse(input);
+
+    return await this.#invokeAutomationAction({
+      context,
+      operation: BACKOFFICE_PERMISSION.identity.bind,
+      resource: {
+        kind: "external-identity-binding",
+        source: parsed.identity.source,
+        externalType: parsed.identity.type,
+        externalId: parsed.identity.id,
+        userId: parsed.userId,
+      },
+      execute: async (runtime) =>
+        await runtime.automationFragment.callServices(
+          () => runtime.automationFragment.services.bindExternalIdentity(parsed),
+          { propagationContext: context.propagationContext },
+        ),
+    });
+  }
+
+  async revokeExternalIdentity(
+    input: RevokeExternalIdentityInput,
+    context: BackofficeActionRpcContext,
+  ): Promise<RevokeExternalIdentityResult> {
+    const parsed = revokeExternalIdentityInputSchema.parse(input);
+
+    return await this.#invokeAutomationAction({
+      context,
+      operation: BACKOFFICE_PERMISSION.identity.revoke,
+      resource: {
+        kind: "external-identity-binding",
+        source: parsed.identity.source,
+        externalType: parsed.identity.type,
+        externalId: parsed.identity.id,
+        expectedUserId: parsed.expectedUserId,
+        expectedVersion: parsed.expectedVersion,
+      },
+      execute: async (runtime) =>
+        await runtime.automationFragment.callServices(
+          () => runtime.automationFragment.services.revokeExternalIdentity(parsed),
+          { propagationContext: context.propagationContext },
+        ),
+    });
+  }
+
+  async resolveExternalIdentity(
+    input: GetExternalIdentityBindingInput,
+    context: BackofficeActionRpcContext,
+  ): Promise<ResolveExternalIdentityResult> {
+    const parsed = getExternalIdentityBindingInputSchema.parse(input);
+
+    return await this.#invokeAutomationAction({
+      context,
+      operation: BACKOFFICE_PERMISSION.identity.resolve,
+      resource: {
+        kind: "external-identity-binding",
+        source: parsed.identity.source,
+        externalType: parsed.identity.type,
+        externalId: parsed.identity.id,
+      },
+      execute: async (runtime) => {
+        const binding = await runtime.automationFragment.callServices(
+          () => runtime.automationFragment.services.resolveExternalIdentity(parsed),
+          { propagationContext: context.propagationContext },
+        );
+        return binding ? { userId: binding.userId } : null;
+      },
     });
   }
 

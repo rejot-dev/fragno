@@ -16,6 +16,7 @@ import type { AutomationCommandContext, BashAutomationCommandResult } from "./au
 import type { RegisteredApiCommandContext } from "./families/api-runtime";
 import type { AutomationStoreRuntime } from "./families/automations-bindings";
 import type { DurableHooksRuntime } from "./families/automations-durable-hooks";
+import type { AutomationIdentityRuntime } from "./families/automations-identities";
 import type { AutomationRouterRuntime } from "./families/automations-routing";
 import type { AutomationWorkflowRuntime } from "./families/automations-workflow";
 import type { BackofficeCapabilitiesRuntime } from "./families/backoffice-capabilities";
@@ -50,6 +51,7 @@ export type BashHostContext = {
   cloudflare?: { runtime: CloudflareRuntime } | null;
   event?: { runtime: EventRuntime } | null;
   automations: RegisteredAutomationsBashCommandContext | null;
+  identity?: { runtime: AutomationIdentityRuntime } | null;
   workflow?: { runtime: AutomationWorkflowRuntime } | null;
   durableHooks?: { runtime: DurableHooksRuntime } | null;
   internal?: { runtime: InternalRuntime } | null;

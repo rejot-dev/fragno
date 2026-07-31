@@ -4,6 +4,7 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
 import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
+import { createRouteBackedAutomationIdentityRuntime } from "@/fragno/automation/external-identities-route-runtime";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";
@@ -132,6 +133,9 @@ export const createRouteBackedRuntimeContext = ({
         ...createRouteBackedAutomationStoreRuntime({ object: automationsObject, execution }),
         ...createRouteBackedAutomationRouterRuntime({ object: automationsObject }),
       },
+    },
+    identity: {
+      runtime: createRouteBackedAutomationIdentityRuntime({ object: automationsObject, execution }),
     },
     workflow: {
       runtime: createRouteBackedAutomationWorkflowRuntime({ object: automationsObject }),

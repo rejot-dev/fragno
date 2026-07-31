@@ -9,6 +9,7 @@ export const createBackofficeToolContext = (
     backoffice: context.backoffice?.runtime,
     cloudflare: context.cloudflare?.runtime,
     automations: context.automations?.runtime,
+    identity: context.identity?.runtime,
     workflow: context.workflow?.runtime,
     durableHooks: context.durableHooks?.runtime,
     event: context.automation?.runtime ?? context.event?.runtime,

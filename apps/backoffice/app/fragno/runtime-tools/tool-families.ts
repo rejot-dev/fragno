@@ -5,6 +5,10 @@ import {
 } from "./families/automations-bindings";
 import { hooksToolFamily, type DurableHooksRuntime } from "./families/automations-durable-hooks";
 import {
+  automationIdentityToolFamily,
+  type AutomationIdentityRuntime,
+} from "./families/automations-identities";
+import {
   automationRouterToolFamily,
   type AutomationRouterRuntime,
 } from "./families/automations-routing";
@@ -35,6 +39,7 @@ import {
 export type CoreBackofficeRuntimeMap = {
   backoffice?: BackofficeCapabilitiesRuntime;
   automations?: AutomationStoreRuntime & AutomationRouterRuntime;
+  identity?: AutomationIdentityRuntime;
   workflow?: AutomationWorkflowRuntime;
   durableHooks?: DurableHooksRuntime;
   event?: EventRuntime;
@@ -55,6 +60,7 @@ export type CoreBackofficeToolContext = BackofficeToolContext<CoreBackofficeRunt
 export const runtimeToolFamilies = [
   backofficeCapabilitiesToolFamily,
   automationStoreToolFamily,
+  automationIdentityToolFamily,
   automationRouterToolFamily,
   automationWorkflowToolFamily,
   hooksToolFamily,
@@ -77,6 +83,7 @@ export const getAvailableBackofficeRuntimeTools = (context: BackofficeToolContex
 
 const namespaceCapabilityIds = {
   store: "automations",
+  identity: "automations",
   router: "automations",
   workflow: "automations",
   hooks: "automations",

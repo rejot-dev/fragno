@@ -160,5 +160,25 @@ export const automationFragmentSchema = schema("automations", (s) => {
         .addColumn("listingId", column("string"))
         .addColumn("version", column("string"))
         .createIndex("idx_marketplace_ingestion_targetScopeKey_id", ["targetScopeKey", "id"]);
+    })
+    .addTable("external_identity_binding", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("source", column("string"))
+        .addColumn("externalType", column("string"))
+        .addColumn("externalId", column("string"))
+        .addColumn("userId", column("string"))
+        .addColumn("verifiedByClaimId", column("string"))
+        .addColumn("boundAt", column("timestamp"))
+        .addColumn("revokedAt", column("timestamp").nullable());
+    })
+    .addTable("external_identity_claim_consumption", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("bindingId", column("string"))
+        .addColumn("userId", column("string"))
+        .addColumn("acceptedBindingVersion", column("integer"))
+        .addColumn("acceptedAt", column("timestamp"))
+        .createIndex("idx_external_identity_claim_consumption_binding", ["bindingId"]);
     });
 });
