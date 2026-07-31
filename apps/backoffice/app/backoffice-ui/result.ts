@@ -246,9 +246,12 @@ function analyzeChildGraph(spec: Spec) {
     }
   }
 
-  const pendingElementKeys = [...incomingReferenceCount]
-    .filter(([, referenceCount]) => referenceCount === 0)
-    .map(([elementKey]) => elementKey);
+  const pendingElementKeys: string[] = [];
+  for (const [elementKey, referenceCount] of incomingReferenceCount) {
+    if (referenceCount === 0) {
+      pendingElementKeys.push(elementKey);
+    }
+  }
   let processedElementCount = 0;
   let depth = 0;
 
