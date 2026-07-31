@@ -54,8 +54,9 @@ describe("session workspace dependency boundary", () => {
     expect(backofficeCss).toContain("animation-name: bo-session-workspace-enter");
     expect(backofficeCss).toContain(".bo-session-thread-pane");
     expect(backofficeCss).toContain("transition-property: width");
-    expect(backofficeCss).not.toContain("animation-duration: 0.01ms");
-    expect(backofficeCss).not.toContain("transition-duration: 0.01ms");
+    expect(backofficeCss).toContain(':root[data-reduced-motion="reduce"]');
+    expect(backofficeCss).toContain("animation-duration: 0.01ms");
+    expect(backofficeCss).toContain("transition-duration: 0.01ms");
     expect(backofficeCss).not.toContain("transition: all");
   });
 });

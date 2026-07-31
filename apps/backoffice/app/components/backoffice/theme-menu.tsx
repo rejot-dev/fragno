@@ -1,10 +1,14 @@
 import { Menu } from "@base-ui/react/menu";
-import { Check, Monitor, Moon, Sun } from "lucide-react";
+import { Switch } from "@base-ui/react/switch";
+import { Accessibility, Check, Monitor, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
 type ThemeChoice = "light" | "dark" | "system";
+type StoredReducedMotionChoice = "reduce" | "no-preference";
+
+const REDUCED_MOTION_STORAGE_KEY = "reduced-motion";
 
 const THEME_OPTIONS = [
   { value: "light", label: "Light", icon: Sun },
@@ -14,6 +18,14 @@ const THEME_OPTIONS = [
 
 function isThemeChoice(value: unknown): value is ThemeChoice {
   return value === "light" || value === "dark" || value === "system";
+}
+
+function isStoredReducedMotionChoice(value: unknown): value is StoredReducedMotionChoice {
+  return value === "reduce" || value === "no-preference";
+}
+
+function applyReducedMotion(enabled: boolean) {
+  document.documentElement.dataset.reducedMotion = enabled ? "reduce" : "no-preference";
 }
 
 function applyTheme(choice: ThemeChoice) {
@@ -27,6 +39,8 @@ function applyTheme(choice: ThemeChoice) {
 
 export function BackofficeThemeMenu() {
   const [choice, setChoice] = useState<ThemeChoice>("system");
+  const [reducedMotionEnabled, setReducedMotionEnabled] = useState(false);
+  const [followsSystemMotion, setFollowsSystemMotion] = useState(true);
   const [isReady, setIsReady] = useState(false);
 
   const updateTheme = useCallback((nextChoice: ThemeChoice) => {
@@ -43,17 +57,42 @@ export function BackofficeThemeMenu() {
     }
   }, []);
 
+  const updateReducedMotion = useCallback((enabled: boolean) => {
+    setReducedMotionEnabled(enabled);
+    setFollowsSystemMotion(false);
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    applyReducedMotion(enabled);
+    try {
+      window.localStorage.setItem(REDUCED_MOTION_STORAGE_KEY, enabled ? "reduce" : "no-preference");
+    } catch {
+      // Motion persistence is optional when storage is unavailable.
+    }
+  }, []);
+
   useEffect(() => {
     let storedTheme: string | null = null;
+    let storedReducedMotion: string | null = null;
     try {
       storedTheme = window.localStorage.getItem("theme");
+      storedReducedMotion = window.localStorage.getItem(REDUCED_MOTION_STORAGE_KEY);
     } catch {
-      // Fall back to the system theme when storage is unavailable.
+      // Fall back to system appearance preferences when storage is unavailable.
     }
 
     const initialChoice = isThemeChoice(storedTheme) ? storedTheme : "system";
+    const systemReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const initialReducedMotion = isStoredReducedMotionChoice(storedReducedMotion)
+      ? storedReducedMotion === "reduce"
+      : systemReducedMotion;
+
     setChoice(initialChoice);
+    setReducedMotionEnabled(initialReducedMotion);
+    setFollowsSystemMotion(!isStoredReducedMotionChoice(storedReducedMotion));
     applyTheme(initialChoice);
+    applyReducedMotion(initialReducedMotion);
 
     const frame = window.requestAnimationFrame(() => {
       setIsReady(true);
@@ -62,6 +101,21 @@ export function BackofficeThemeMenu() {
       window.cancelAnimationFrame(frame);
     };
   }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const handleSystemMotionChange = (event: MediaQueryListEvent) => {
+      setReducedMotionEnabled(event.matches);
+      applyReducedMotion(event.matches);
+    };
+
+    if (followsSystemMotion) {
+      mediaQuery.addEventListener("change", handleSystemMotionChange);
+    }
+    return () => {
+      mediaQuery.removeEventListener("change", handleSystemMotionChange);
+    };
+  }, [followsSystemMotion]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -107,7 +161,7 @@ export function BackofficeThemeMenu() {
         <Menu.Positioner side="bottom" align="end" sideOffset={8} className="z-50">
           <Menu.Popup
             data-backoffice-root
-            className="bo-popover-surface w-52 origin-top-right bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] transition-[opacity,transform] duration-150 ease-out outline-none data-[ending-style]:-translate-y-1 data-[ending-style]:opacity-0 data-[starting-style]:-translate-y-1 data-[starting-style]:opacity-0"
+            className="bo-popover-surface w-60 origin-top-right bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] transition-[opacity,transform] duration-150 ease-out outline-none data-[ending-style]:-translate-y-1 data-[ending-style]:opacity-0 data-[starting-style]:-translate-y-1 data-[starting-style]:opacity-0"
           >
             <Menu.RadioGroup
               value={choice}
@@ -139,6 +193,22 @@ export function BackofficeThemeMenu() {
                 </Menu.RadioItem>
               ))}
             </Menu.RadioGroup>
+
+            <Menu.Separator className="my-2 h-px bg-[var(--bo-border)]" />
+            <label className="flex min-h-12 items-center gap-3 px-2.5 text-sm text-[var(--bo-muted)] transition-[background-color,color] duration-150 ease-out hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)]">
+              <Accessibility className="size-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                <span className="block">Reduced motion</span>
+              </span>
+              <Switch.Root
+                checked={reducedMotionEnabled}
+                onCheckedChange={updateReducedMotion}
+                aria-label="Reduced motion"
+                className="group inline-flex h-6 w-10 shrink-0 items-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-1 transition-[background-color,border-color] duration-150 data-[checked]:border-[color:var(--bo-accent)] data-[checked]:bg-[var(--bo-accent-bg)]"
+              >
+                <Switch.Thumb className="size-4 bg-[var(--bo-fg)] transition-transform duration-150 group-data-[checked]:translate-x-4" />
+              </Switch.Root>
+            </label>
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>
