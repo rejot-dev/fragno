@@ -519,7 +519,6 @@ describe("starter automation router scenarios", () => {
       await store.set({
         key: "custom/" + automationEvent.id,
         value: automationEvent.payload.kind,
-        actor: automationEvent.actors.initiator,
         category: ["test", "router"],
       });
     });
@@ -693,7 +692,6 @@ describe("starter automation router scenarios", () => {
       await store.set({
         key: "signal/" + signalEvent.payload.key,
         value: signalEvent.payload.value,
-        actor: signalEvent.actors.initiator,
         category: ["test", "router"],
       });
     });

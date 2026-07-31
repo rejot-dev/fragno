@@ -1,7 +1,6 @@
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { UploadObject } from "@/backoffice-runtime/object-registry";
 import type { FilesExplorerSource } from "@/components/backoffice/files-explorer";
 import { createUploadFileCollection } from "@/file-collection/create-upload-file-collection";
@@ -47,9 +46,8 @@ export async function createFilesOverviewCollections({
   context: Readonly<RouterContextProvider>;
   scope: BackofficeContextScope;
 }): Promise<FilesOverviewCollection[]> {
-  const { runtime } = context.get(BackofficeWorkerContext);
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const execution = await requireBackofficeContext(request, context, scope);
-  const kernel = new BackofficeKernel(runtime);
   const rootPaths = filesOverviewRootPathsForScope(execution.scope);
   const collections: FilesOverviewCollection[] = [];
 

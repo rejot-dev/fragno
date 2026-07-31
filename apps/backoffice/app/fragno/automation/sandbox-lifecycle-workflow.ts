@@ -11,7 +11,10 @@ import type { AutomationFragmentConfig, automationFragmentDefinition } from "./d
 import type { SandboxLifecycleWorkflowParams } from "./sandboxes-storage-runtime";
 import { automationFragmentSchema } from "./schema";
 
-type AutomationFragment = InstantiatedFragmentFromDefinition<typeof automationFragmentDefinition>;
+type AutomationFragment = Pick<
+  InstantiatedFragmentFromDefinition<typeof automationFragmentDefinition>,
+  "callServices" | "services"
+>;
 
 type SandboxLifecycleWorkflowConfig = Pick<
   AutomationFragmentConfig,

@@ -31,11 +31,9 @@ export type EventRuntime = {
 type EventToolContext = BackofficeToolContext<{ event?: EventRuntime }>;
 type EventCatalogToolContext = BackofficeToolContext<{ backoffice?: unknown }>;
 
-const eventEmitInputSchema = z.object({
+const eventEmitInputSchema = z.strictObject({
   eventType: z.string().trim().min(1),
   source: z.string().trim().min(1).optional(),
-  externalActorId: z.string().trim().min(1).optional(),
-  actorType: z.string().trim().min(1).optional(),
   subjectUserId: z.string().trim().min(1).optional(),
   payload: z.record(z.string(), z.unknown()).optional(),
   targetScope: backofficeContextScopeSchema.optional(),
@@ -59,8 +57,6 @@ const getEventRuntime = (runtime: EventToolContext["runtimes"]["event"]): EventR
 const parseEventFireArgs = defineCliArgsParser<EventEmitArgs>("events.fire", {
   eventType: { required: true },
   source: {},
-  externalActorId: {},
-  actorType: {},
   subjectUserId: {},
   payload: { kind: "json", option: "payload-json" },
   targetScope: { kind: "json", option: "target-scope-json" },
@@ -94,18 +90,6 @@ const fireEventTool = defineBackofficeRuntimeTool({
             valueRequired: true,
             valueName: "source",
             description: "Event source override. Defaults to current source",
-          },
-          {
-            name: "external-actor-id",
-            valueRequired: true,
-            valueName: "external-actor-id",
-            description: "Actor external id override",
-          },
-          {
-            name: "actor-type",
-            valueRequired: true,
-            valueName: "actor-type",
-            description: "Actor type for emitted event",
           },
           {
             name: "subject-user-id",

@@ -65,7 +65,7 @@ describe("executeCodemodeAutomation", () => {
     );
   });
 
-  test("exposes automation identity tools to codemode automations", async () => {
+  test("exposes domain-only automation store tools to codemode automations", async () => {
     const calls: unknown[] = [];
     const runtime = createRecordingAutomationRuntime(calls);
     const event: AutomationEvent = {
@@ -91,7 +91,6 @@ describe("executeCodemodeAutomation", () => {
         return await store.set({
           key: event.source + "/" + event.payload.chatId,
           value: "user-55",
-          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
         });
       }`,
     });
@@ -105,7 +104,6 @@ describe("executeCodemodeAutomation", () => {
         key: "telegram/chat-123",
         value: "user-55",
         category: [],
-        actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
       },
       commandCalls: [],
       toolCalls: [
@@ -113,8 +111,7 @@ describe("executeCodemodeAutomation", () => {
           providerName: "store",
           toolName: "set",
           toolId: "store.set",
-          inputSummary:
-            '{"key":"telegram/chat-123","value":"user-55","actor":{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}}',
+          inputSummary: '{"key":"telegram/chat-123","value":"user-55"}',
           status: "success",
         },
       ],
@@ -125,7 +122,6 @@ describe("executeCodemodeAutomation", () => {
         {
           key: "telegram/chat-123",
           value: "user-55",
-          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
         },
       ],
     ]);
@@ -338,8 +334,7 @@ describe("executeCodemodeAutomation", () => {
     const bashResult = await executeBashAutomation({
       masterFs: createTestMasterFileSystem({}),
       context,
-      script:
-        'store.set --key telegram/bash-chat --value user-bash --actor \'{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}\'',
+      script: "store.set --key telegram/bash-chat --value user-bash",
     });
     const codemodeResult = await executeCodemodeAutomation({
       env,
@@ -349,7 +344,6 @@ describe("executeCodemodeAutomation", () => {
         return await store.set({
           key: "telegram/codemode-chat",
           value: "user-codemode",
-          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
         });
       }`,
     });
@@ -372,7 +366,6 @@ describe("executeCodemodeAutomation", () => {
         {
           key: "telegram/bash-chat",
           value: "user-bash",
-          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
         },
       ],
       [
@@ -380,7 +373,6 @@ describe("executeCodemodeAutomation", () => {
         {
           key: "telegram/codemode-chat",
           value: "user-codemode",
-          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
         },
       ],
     ]);
@@ -531,7 +523,6 @@ const createRecordingAutomationRuntime = (calls: unknown[]): AutomationRuntime =
       key: input.key,
       value: input.value,
       category: input.category ?? [],
-      actor: input.actor,
     };
   },
   delete: async (input) => {

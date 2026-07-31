@@ -258,21 +258,23 @@ describe("automation runtime tools", () => {
     assert(set.name === "set");
     expect(
       set.inputSchema.parse(
-        set.adapters!.bash!.parse([
-          "--key",
-          "telegram/chat-123",
-          "--value",
-          "user-55",
-          "--actor",
-          '{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}',
-        ]),
+        set.adapters!.bash!.parse(["--key", "telegram/chat-123", "--value", "user-55"]),
       ),
     ).toEqual({
       key: "telegram/chat-123",
       value: "user-55",
-      actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
     });
   });
+
+  test.each(["actor", "actors", "principal", "execution", "propagationContext", "permissions"])(
+    "rejects caller-supplied store %s metadata",
+    (field) => {
+      const [, set] = automationStoreRuntimeTools;
+      expect(() =>
+        set.inputSchema.parse({ key: "ordinary/key", value: "value", [field]: {} }),
+      ).toThrow();
+    },
+  );
 
   test("parse and validate delete input", () => {
     const [, , deleteEntry] = automationStoreRuntimeTools;

@@ -177,7 +177,8 @@ const automationActorMatches = (
   matcher: AutomationActorIdentityMatcher & { role?: "delegate" | "assistant" },
 ) =>
   actor.scope === matcher.scope &&
-  (matcher.source === undefined || actor.source === matcher.source) &&
+  (matcher.source === undefined ||
+    (actor.scope === "external" && actor.source === matcher.source)) &&
   (matcher.type === undefined || actor.type === matcher.type) &&
   (matcher.id === undefined || actor.id === matcher.id) &&
   (matcher.role === undefined || actor.role === matcher.role);

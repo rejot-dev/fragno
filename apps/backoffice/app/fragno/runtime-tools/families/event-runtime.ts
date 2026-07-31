@@ -1,17 +1,10 @@
 import {
   backofficeContextScopesEqual,
   type BackofficeExecutionContext,
-  type BackofficePrincipal,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 
-import {
-  AUTOMATION_SYSTEM_INITIATOR,
-  automationActorsSchema,
-  type AutomationActors,
-  type AutomationInitiatorActor,
-} from "../../automation/actors";
 import type { AutomationEvent } from "../../automation/contracts";
 import type { EventRuntime } from "./event";
 
@@ -24,41 +17,11 @@ export type CreateEventRuntimeOptions = {
   execution: BackofficeExecutionContext;
 };
 
-const automationInitiatorFromPrincipal = (actor: BackofficePrincipal): AutomationInitiatorActor => {
-  if (actor.type === "system") {
-    return AUTOMATION_SYSTEM_INITIATOR;
-  }
-
-  if (actor.type === "user") {
-    return {
-      scope: "internal",
-      type: "user",
-      id: actor.userId,
-      role: "initiator",
-    };
-  }
-
-  return {
-    scope: "internal",
-    type: actor.type,
-    id: actor.id,
-    role: "initiator",
-  };
-};
-
 const normalizeEventPayload = (payload: Record<string, unknown> | undefined) =>
   payload !== null && !Array.isArray(payload) && typeof payload === "object" ? payload : {};
 
 export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRuntime => ({
-  emitEvent: async ({
-    eventType,
-    source,
-    externalActorId,
-    actorType,
-    subjectUserId,
-    payload,
-    targetScope,
-  }) => {
+  emitEvent: async ({ eventType, source, subjectUserId, payload, targetScope }) => {
     const { parentEvent } = options;
     const currentScope = options.execution.scope;
     if (parentEvent && !backofficeContextScopesEqual(parentEvent.scope, currentScope)) {
@@ -73,10 +36,7 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
         targetScope: resolvedTargetScope,
         operation: "automation.forward-event",
       });
-      options.kernel.assertContextAccess({
-        actor: options.execution.actor,
-        scope: resolvedTargetScope,
-      });
+      options.kernel.assertScopedContextAccess(options.execution, resolvedTargetScope);
     }
 
     const targetProject =
@@ -95,33 +55,6 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       throw new Error("events.fire source is required without a parent automation event.");
     }
 
-    const baseActors =
-      parentEvent?.actors ??
-      ({
-        initiator: automationInitiatorFromPrincipal(options.execution.actor),
-        principal: null,
-        delegation: [],
-      } satisfies AutomationActors);
-    const actors = externalActorId
-      ? (() => {
-          if (!actorType) {
-            throw new Error("events.fire actorType is required when externalActorId is provided.");
-          }
-          return automationActorsSchema.parse({
-            ...baseActors,
-            delegation: [
-              ...baseActors.delegation,
-              {
-                scope: "external",
-                source: nextSource,
-                type: actorType,
-                id: externalActorId,
-                role: "delegate",
-              },
-            ],
-          });
-        })()
-      : baseActors;
     const nextEvent: AutomationEvent = {
       id: crypto.randomUUID(),
       scope: resolvedTargetScope,
@@ -129,7 +62,7 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       eventType,
       occurredAt: new Date().toISOString(),
       payload: normalizeEventPayload(payload),
-      actors,
+      actors: options.execution.actors,
       subject:
         resolvedTargetScope.kind === "project"
           ? {

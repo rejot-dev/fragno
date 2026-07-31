@@ -23,7 +23,7 @@ type AutomationFragmentServices = {
   workflows: AutomationWorkflowsService;
 };
 
-export function createAutomationFragment(
+export function createAutomationFragment<TRequestContext = never>(
   config: AutomationFragmentConfig,
   options: FragnoPublicConfigWithDatabase,
   services: AutomationFragmentServices,
@@ -39,6 +39,7 @@ export function createAutomationFragment(
     ])
     .withOptions(options)
     .withServices(services)
+    .withRequestContext<TRequestContext>()
     .build();
 }
 
@@ -75,15 +76,6 @@ export type {
   SandboxInstanceRequestInput,
   SandboxProvider,
 };
-export type {
-  AutomationActor,
-  AutomationActorRole,
-  AutomationActors,
-  AutomationDelegatedActor,
-  AutomationEntityRef,
-  AutomationInitiatorActor,
-  AutomationPrincipalActor,
-} from "./actors";
 export type { AutomationEvent, AutomationEventSubject } from "./contracts";
 
 export type { AutomationRuntimeHostContext, AutomationRuntime } from "./engine/runtime";

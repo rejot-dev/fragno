@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createBackofficeFileSystem } from "@/files/create-file-system";
 import { authorizeAccessTokenForOrganization } from "@/fragno/auth/access-token.server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
@@ -80,8 +79,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const cwd = body.cwd ?? DEFAULT_CWD;
   const timeoutMs = body.timeout ?? DASHBOARD_COMMAND_TIMEOUT_MS;
 
-  const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel(runtime);
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
   const fs = await createBackofficeFileSystem({
     objects: runtime.objects,
@@ -94,12 +92,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     context: createRouteBackedRuntimeContext({
       runtime,
       kernel,
-      execution,
-      defaultActor: {
-        scope: "internal",
-        type: "user",
-        id: auth.principal.user.id,
-      },
+      execution: execution,
     }),
   });
 

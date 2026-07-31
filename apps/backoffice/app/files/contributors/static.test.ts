@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  BACKOFFICE_SYSTEM_ACTORS,
+  createBackofficeUserExecution,
+} from "@/backoffice-runtime/context";
+import {
   STATIC_FILE_CONTENT,
   STATIC_FILE_MOUNT_POINT,
   createSystemFilesContext,
@@ -16,7 +20,7 @@ const createStaticFs = (
   const fs = staticFileContributor.createFileSystem?.(
     createSystemFilesContext({
       execution: {
-        actor: { type: "system", id: "system" },
+        actors: BACKOFFICE_SYSTEM_ACTORS,
         scope: { kind: "org", orgId: "org_123" },
       },
       staticFileArtifacts,

@@ -1,8 +1,6 @@
 import { z } from "zod";
 
-import type { AutomationEntityRef } from "@/fragno/automation/actors";
 import {
-  automationStoreActorSchema,
   automationStoreDeleteResultSchema,
   automationStoreEntrySchema,
   automationStoreListInputSchema,
@@ -42,27 +40,9 @@ export type AutomationStoreRuntime = {
   list: (input: StoreListArgs) => Promise<AutomationStoreEntry[]>;
 };
 
-type AutomationStoreToolContext = BackofficeToolContext<
-  { automations?: AutomationStoreRuntime },
-  { actor?: AutomationEntityRef | null }
->;
-
-const readJsonValueOption = (
-  parsed: ParsedCliTokens,
-  name: string,
-  required = false,
-): StoreSetArgs["actor"] | undefined => {
-  const raw = readStringOption(parsed, name, required);
-  if (typeof raw === "undefined") {
-    return undefined;
-  }
-
-  try {
-    return JSON.parse(raw) as StoreSetArgs["actor"];
-  } catch {
-    throw new Error(`--${name} must be valid JSON`);
-  }
-};
+type AutomationStoreToolContext = BackofficeToolContext<{
+  automations?: AutomationStoreRuntime;
+}>;
 
 const isUnknownArray = (value: unknown): value is unknown[] => Array.isArray(value);
 
@@ -98,15 +78,9 @@ const parseStoreGetArgs = defineCliArgsParser<StoreGetArgs>("store.get", {
   key: { required: true },
 });
 
-type StoreSetCliArgs = Omit<StoreSetArgs, "actor"> & { actor?: StoreSetArgs["actor"] };
-
-const parseStoreSetArgs = defineCliArgsParser<StoreSetCliArgs>("store.set", {
+const parseStoreSetArgs = defineCliArgsParser<StoreSetArgs>("store.set", {
   key: { required: true },
   value: { required: true },
-  actor: {
-    read: (parsed, optionName, required) => readJsonValueOption(parsed, optionName, required),
-    transform: (value): StoreSetArgs["actor"] => automationStoreActorSchema.nullable().parse(value),
-  },
   description: {},
   category: { kind: "stringArray" },
   verification: {
@@ -131,7 +105,6 @@ const formatStoreEntryText = (entry: AutomationStoreEntry) =>
       `value: ${entry.value}`,
       entry.description ? `description: ${entry.description}` : undefined,
       entry.category.length ? `category: ${entry.category.join(", ")}` : undefined,
-      `actor: ${entry.actor ? JSON.stringify(entry.actor) : "null"}`,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -167,7 +140,7 @@ const storeGetTool = defineAutomationStoreTool({
   name: "get",
   description: "Get an automation store entry by key.",
   requiredPermissions: ["read"],
-  inputSchema: z.object({ key: z.string().trim().min(1) }),
+  inputSchema: z.strictObject({ key: z.string().trim().min(1) }),
   outputSchema: automationStoreEntrySchema.nullable(),
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).get(input),
@@ -229,13 +202,6 @@ const storeSetTool = defineAutomationStoreTool({
             description: "Value to store",
           },
           {
-            name: "actor",
-            valueRequired: true,
-            valueName: "json",
-            description:
-              "JSON actor reference for who set this value, or null if unavailable. Defaults to the signed-in dashboard user when available.",
-          },
-          {
             name: "description",
             valueRequired: true,
             valueName: "text",
@@ -254,23 +220,11 @@ const storeSetTool = defineAutomationStoreTool({
             description: "Optional JSON verification list, for example json-schema checks",
           },
         ],
-        examples: [
-          'store.set --key telegram/chat-123 --value user-55 --actor \'{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}\'',
-        ],
+        examples: ["store.set --key telegram/chat-123 --value user-55"],
       },
-      parse: (args) => parseStoreSetArgs(args) as StoreSetArgs,
+      parse: parseStoreSetArgs,
       execute: async ({ input, context, commandOutput }) => {
-        const parsedInput = input as StoreSetCliArgs;
-        const actor = "actor" in parsedInput ? parsedInput.actor : context.defaults?.actor;
-        if (typeof actor === "undefined") {
-          throw new Error(
-            "Missing required option --actor. Dashboard commands provide it automatically; other contexts must pass --actor explicitly.",
-          );
-        }
-        const entry = await getAutomationStoreRuntime(context.runtimes.automations).set({
-          ...parsedInput,
-          actor: actor,
-        });
+        const entry = await getAutomationStoreRuntime(context.runtimes.automations).set(input);
         return commandOutput.format === "json" || commandOutput.print
           ? { data: entry }
           : { stdout: `Stored ${entry.key}\n${formatStoreEntryText(entry)}` };
@@ -328,7 +282,7 @@ const storeDeleteTool = defineAutomationStoreTool({
   name: "delete",
   description: "Delete an automation store entry by key.",
   requiredPermissions: ["modify"],
-  inputSchema: z.object({ key: z.string().trim().min(1) }),
+  inputSchema: z.strictObject({ key: z.string().trim().min(1) }),
   outputSchema: automationStoreDeleteResultSchema.nullable(),
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).delete(input),

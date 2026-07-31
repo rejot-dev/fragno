@@ -1,5 +1,4 @@
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import {
   BackofficeForbiddenError,
   BackofficeKernel,
@@ -28,6 +27,7 @@ import {
 import type {} from "../../runtime-tools/families/otp";
 import { type OtpRuntime } from "../../runtime-tools/families/otp-runtime";
 import type { AutomationEvent } from "../contracts";
+import { createAutomationRuntimeExecution } from "./runtime-execution";
 
 export type AutomationPiBashContext = {
   runtime: PiRuntime;
@@ -71,16 +71,7 @@ export const createAutomationRuntime = ({
 
   if (runtime) {
     const kernel = new BackofficeKernel(runtime);
-    const execution: BackofficeExecutionContext = {
-      actor: {
-        type: "automation",
-        id: `automation:${event.id}`,
-        ...(event.scope.kind === "org" || event.scope.kind === "project"
-          ? { organizationIds: [event.scope.orgId] }
-          : {}),
-      },
-      scope: event.scope,
-    };
+    const execution = createAutomationRuntimeExecution(event);
     const routeBacked = createRouteBackedRuntimeContext({
       runtime,
       kernel,
@@ -114,7 +105,7 @@ export const createAutomationRuntime = ({
   };
 };
 
-export const createAutomationExecutionContext = ({
+export const createAutomationRuntimeHostContext = ({
   event,
   binding,
   idempotencyKey,
@@ -129,16 +120,7 @@ export const createAutomationExecutionContext = ({
   runtimeServices?: BackofficeRuntimeServices;
   pi: AutomationPiBashContext | null;
 }): AutomationRuntimeHostContext => {
-  const execution: BackofficeExecutionContext = {
-    actor: {
-      type: "automation",
-      id: `automation:${event.id}`,
-      ...(event.scope.kind === "org" || event.scope.kind === "project"
-        ? { organizationIds: [event.scope.orgId] }
-        : {}),
-    },
-    scope: event.scope,
-  };
+  const execution = createAutomationRuntimeExecution(event);
 
   const routeBacked = runtimeServices
     ? createRouteBackedRuntimeContext({
@@ -151,8 +133,7 @@ export const createAutomationExecutionContext = ({
 
   return {
     ...(routeBacked ?? {
-      defaultActor: null,
-      backofficeExecution: execution,
+      execution,
       backofficeKernel: new BackofficeKernel({
         authorityResolver: unavailableBackofficeAuthorityResolver,
         kernelObserver: noopBackofficeKernelObserver,

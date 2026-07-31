@@ -9,6 +9,7 @@ import {
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type {
   AutomationsObject,
+  BackofficeActionRpcContext,
   BackofficeObjectRegistry,
   BackofficeRpcContext,
 } from "@/backoffice-runtime/object-registry";
@@ -200,6 +201,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
   readonly #env: AutomationFragmentConfig["env"] | undefined;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
+  readonly #kernel: BackofficeKernel;
   readonly #host: BackofficeFragmentDurableObject<
     AutomationDurableObjectConfig,
     AutomationDurableObjectConfig,
@@ -225,6 +227,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     this.#env = env as AutomationFragmentConfig["env"];
     this.#state = state;
     this.#runtimeServices = runtime;
+    this.#kernel = new BackofficeKernel(runtime);
     this.#getAutomationFileSystem = getAutomationFileSystem;
     this.#host = createBackofficeFragmentDurableObject({
       name: "Automations",
@@ -254,6 +257,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
                 }
               : undefined,
             createPiAutomationContext: this.#createPiAutomationContext.bind(this),
+            kernel: this.#kernel,
             getAutomationFileSystem: async ({ execution, purpose }) => {
               if (this.#getAutomationFileSystem) {
                 return await this.#getAutomationFileSystem({ execution, purpose });
@@ -356,42 +360,8 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     });
   }
 
-  async #ensureConfiguredForRequest(request: Request): Promise<void> {
-    if (this.#host.getConfigured()) {
-      return;
-    }
-
-    const url = new URL(request.url);
-    const scopeKind = url.searchParams.get("scopeKind")?.trim();
-    const orgId = url.searchParams.get("orgId")?.trim();
-    const projectId = url.searchParams.get("projectId")?.trim();
-    const userId = url.searchParams.get("userId")?.trim();
-
-    if (scopeKind === "project" && orgId && projectId) {
-      await this.#ensureConfigured({ scope: { kind: "project", orgId, projectId } });
-      return;
-    }
-
-    if (scopeKind === "user" && userId) {
-      await this.#ensureConfigured({ scope: { kind: "user", userId } });
-      return;
-    }
-
-    if (scopeKind === "system") {
-      await this.#ensureConfigured({ scope: { kind: "system" } });
-      return;
-    }
-
-    if (!orgId) {
-      return;
-    }
-
-    await this.#ensureConfigured({ scope: { kind: "org", orgId } });
-  }
-
   async #createAutomationFileSystem(execution: BackofficeExecutionContext) {
-    const kernel = new BackofficeKernel(this.#runtimeServices);
-    const automationHookObject = kernel.scoped(
+    const automationHookObject = this.#kernel.scoped(
       "AUTOMATIONS",
       execution.scope,
       this.#runtimeServices.objects.automations,
@@ -399,7 +369,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
 
     return createDefaultAutomationFileSystem({
       objects: this.#runtimeServices.objects,
-      kernel,
+      kernel: this.#kernel,
       execution,
       config: this.#runtimeServices.config,
       automationHookQueue: async (opts) =>
@@ -750,6 +720,15 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     );
   }
 
+  async fetchWithContext(request: Request, context: BackofficeActionRpcContext): Promise<Response> {
+    assertAutomationObjectScope(this.#requireScope(), context.execution.scope);
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    return await this.#host.fetch(request, {
+      propagationContext: context.propagationContext,
+      requestContext: context.execution,
+    });
+  }
+
   async triggerIngestEvent(
     event: AutomationEvent,
     context?: BackofficeRpcContext,
@@ -936,7 +915,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
   }
 
   async fetch(request: Request): Promise<Response> {
-    await this.#ensureConfiguredForRequest(request);
+    await this.#ensureConfigured({ scope: this.#requireScope() });
     return await this.#host.fetch(request);
   }
 }

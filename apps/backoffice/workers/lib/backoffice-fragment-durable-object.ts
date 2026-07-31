@@ -1,12 +1,13 @@
 import {
   createFragmentDurableObjectHost,
-  type FragmentDurableObjectFetchContext,
   type FragmentDurableObjectHost,
   type FragmentDurableObjectHostContext,
   type FragmentDurableObjectMount,
   type FragmentDurableObjectRuntimeHostContext,
 } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "@fragno-dev/db/durable-hooks";
+
+import type { FragnoRequestLifecycleContext } from "@fragno-dev/core";
 
 import {
   backofficeContextScopesEqual,
@@ -219,7 +220,7 @@ export type BackofficeFragmentDurableObject<
   /** Process outbox first, then forward the Durable Object alarm to the current durable-hooks dispatcher. */
   alarm: () => Promise<void>;
   /** Fetch through the configured runtime/mounts, including not-configured and scope-bound checks. */
-  fetch: (request: Request, context?: FragmentDurableObjectFetchContext) => Promise<Response>;
+  fetch: (request: Request, context?: FragnoRequestLifecycleContext<unknown>) => Promise<Response>;
   /**
    * Return durable hook accessors for a selected fragment.
    *

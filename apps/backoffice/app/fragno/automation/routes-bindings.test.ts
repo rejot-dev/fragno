@@ -5,6 +5,7 @@ import { getDurableHooksService } from "@fragno-dev/db/durable-hooks";
 import { InMemoryAdapter } from "@fragno-dev/db";
 import { drainDurableHooks } from "@fragno-dev/test";
 
+import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createMasterFileSystem, createSystemFilesContext } from "@/files";
 
@@ -46,7 +47,7 @@ const createAutomation = async (
       automationFileSystem: await createMasterFileSystem(
         createSystemFilesContext({
           execution: {
-            actor: { type: "system", id: "system" },
+            actors: BACKOFFICE_SYSTEM_ACTORS,
             scope: ownerScope,
           },
 
@@ -468,8 +469,11 @@ describe("automation routes /routes", () => {
       eventType: "thing.happened",
       occurredAt: "2026-01-01T00:00:00.000Z",
       payload: {},
-      actor,
-      actors: [actor],
+      actors: {
+        initiator: actor,
+        principal: null,
+        delegation: [],
+      },
       subject: { orgId: "org_123" },
     };
 
@@ -512,7 +516,6 @@ describe("automation routes /routes", () => {
       body: {
         key: "waiter/alpha",
         value: "waiter-1",
-        actor,
       },
     });
     await fragment.callRoute("POST", "/routes", {
@@ -892,7 +895,6 @@ describe("automation routes /store", () => {
       body: {
         key: "telegram/chat-123",
         value: "user-55",
-        actor,
         description: "Telegram chat binding",
         category: ["telegram"],
       },
@@ -911,7 +913,6 @@ describe("automation routes /store", () => {
       body: {
         key: "telegram/chat-123",
         value: "user-55",
-        actor,
         description: "Telegram chat binding",
         category: ["telegram"],
       },
@@ -924,7 +925,6 @@ describe("automation routes /store", () => {
     expect(setResponse.data).toMatchObject({
       key: "telegram/chat-123",
       value: "user-55",
-      actor,
       description: "Telegram chat binding",
       category: ["telegram"],
     });
@@ -935,7 +935,7 @@ describe("automation routes /store", () => {
 
     assert(getResponse.type === "json");
     if (getResponse.type === "json") {
-      expect(getResponse.data).toMatchObject({ key: "telegram/chat-123", value: "user-55", actor });
+      expect(getResponse.data).toMatchObject({ key: "telegram/chat-123", value: "user-55" });
       assert(typeof getResponse.data.createdAt === "string");
       assert(typeof getResponse.data.updatedAt === "string");
     }
@@ -947,9 +947,9 @@ describe("automation routes /store", () => {
     expect(serviceEntry?.updatedAt).toBeInstanceOf(Date);
   });
 
-  test("rejects set without actor", async () => {
+  test("rejects caller-supplied actor attribution", async () => {
     const response = await fragment.callRoute("POST", "/store/set", {
-      body: { key: "telegram/chat-123", value: "user-55" } as never,
+      body: { key: "telegram/chat-123", value: "user-55", actor } as never,
     });
 
     assert(response.type === "error");
@@ -957,19 +957,18 @@ describe("automation routes /store", () => {
 
   test("rejects non-array categories", async () => {
     const response = await fragment.callRoute("POST", "/store/set", {
-      body: { key: "system/default", value: "locked", actor, category: "system" } as never,
+      body: { key: "system/default", value: "locked", category: "system" } as never,
     });
 
     assert(response.type === "error");
   });
 
-  test("reuses the same record on update and tracks the latest actor", async () => {
+  test("reuses the same record on update", async () => {
     const first = await fragment.callRoute("POST", "/store/set", {
-      body: { key: "telegram/chat-123", value: "user-55", actor },
+      body: { key: "telegram/chat-123", value: "user-55" },
     });
-    const secondActor = { scope: "internal", type: "user", id: "user-99" } as const;
     const second = await fragment.callRoute("POST", "/store/set", {
-      body: { key: "telegram/chat-123", value: "user-99", actor: secondActor },
+      body: { key: "telegram/chat-123", value: "user-99" },
     });
 
     assert(first.type === "json");
@@ -978,7 +977,6 @@ describe("automation routes /store", () => {
       expect(first.data.id).toBeDefined();
       expect(second.data.id).toBe(first.data.id);
       assert(second.data.value === "user-99");
-      expect(second.data.actor).toEqual(secondActor);
     }
 
     const getResponse = await fragment.callRoute("GET", "/store/get", {
@@ -996,7 +994,6 @@ describe("automation routes /store", () => {
       body: {
         key: "pi/default-agent",
         value: JSON.stringify({ harness: "h1", model: "m1" }),
-        actor,
         verification: [
           {
             type: "json-schema",
@@ -1024,7 +1021,6 @@ describe("automation routes /store", () => {
       body: {
         key: "pi/default-agent",
         value: JSON.stringify({ harness: "h1" }),
-        actor,
         verification: [
           {
             type: "json-schema",
@@ -1046,7 +1042,6 @@ describe("automation routes /store", () => {
       body: {
         key: "pi/default-agent",
         value: JSON.stringify({ harness: "h1" }),
-        actor,
         verification: [{ type: "json-schema", schema: [] }],
       },
     });
@@ -1056,13 +1051,13 @@ describe("automation routes /store", () => {
 
   test("scans entries by prefix", async () => {
     await fragment.callRoute("POST", "/store/set", {
-      body: { key: "telegram/chat-123", value: "user-55", actor },
+      body: { key: "telegram/chat-123", value: "user-55" },
     });
     await fragment.callRoute("POST", "/store/set", {
-      body: { key: "telegram/chat-456", value: "user-66", actor },
+      body: { key: "telegram/chat-456", value: "user-66" },
     });
     await fragment.callRoute("POST", "/store/set", {
-      body: { key: "pi/default-agent", value: "agent-1", actor },
+      body: { key: "pi/default-agent", value: "agent-1" },
     });
 
     const response = await fragment.callRoute("GET", "/store", {
@@ -1075,13 +1070,12 @@ describe("automation routes /store", () => {
         "telegram/chat-123",
         "telegram/chat-456",
       ]);
-      assert(response.data.every((entry) => entry.actor?.id === actor.id));
     }
   });
 
   test("deletes a store entry", async () => {
     await fragment.callRoute("POST", "/store/set", {
-      body: { key: "telegram/chat-123", value: "user-55", actor },
+      body: { key: "telegram/chat-123", value: "user-55" },
     });
 
     const deleteResponse = await fragment.callRoute("POST", "/store/delete", {
@@ -1099,34 +1093,30 @@ describe("automation routes /store", () => {
     assert(getResponse.type === "error");
   });
 
-  test("returns 403 when deleting a system store entry", async () => {
+  test("allows deleting a categorized store entry", async () => {
     await fragment.callRoute("POST", "/store/set", {
-      body: { key: "system/default", value: "locked", actor, category: ["system"] },
+      body: { key: "system/default", value: "locked", category: ["system"] },
     });
 
     const deleteResponse = await fragment.callRoute("POST", "/store/delete", {
       body: { key: "system/default" },
     });
 
-    assert(deleteResponse.type === "error");
-    if (deleteResponse.type === "error") {
-      assert(deleteResponse.status === 403);
-      assert(deleteResponse.error.code === "STORE_ENTRY_PROTECTED");
-    }
+    assert(deleteResponse.type === "json");
   });
 
-  test("keeps system category on update", async () => {
+  test("replaces categories on update", async () => {
     await fragment.callRoute("POST", "/store/set", {
-      body: { key: "system/default", value: "locked", actor, category: ["system"] },
+      body: { key: "system/default", value: "locked", category: ["system"] },
     });
 
     const updateResponse = await fragment.callRoute("POST", "/store/set", {
-      body: { key: "system/default", value: "updated", actor, category: ["visible"] },
+      body: { key: "system/default", value: "updated", category: ["visible"] },
     });
 
     assert(updateResponse.type === "json");
     if (updateResponse.type === "json") {
-      expect(updateResponse.data.category.sort()).toEqual(["system", "visible"]);
+      expect(updateResponse.data.category).toEqual(["visible"]);
     }
   });
 

@@ -43,8 +43,9 @@ export const systemFileMount: FileMountMetadata = {
 
 const canSeeSystemFileMount = ({ execution }: FilesContext): boolean =>
   execution.scope.kind === "system" ||
-  execution.actor.type === "system" ||
-  (execution.actor.type === "user" && execution.actor.role === "admin");
+  (execution.actors.initiator.scope === "internal" &&
+    execution.actors.initiator.type === "system" &&
+    execution.actors.principal === null);
 
 export const systemFileContributor: FileContributor = {
   ...systemFileMount,

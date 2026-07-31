@@ -32,7 +32,8 @@ Backoffice scenario utilities.
 - Actor and provenance-object types remain owned by the Automations domain.
 - `AutomationEvent.actor` is removed. `AutomationEvent.actors` is the only event provenance field
   and is a structured `AutomationActors` object, not a heterogeneous array.
-- The Backoffice kernel controls the actor object used for actual function and tool calls.
+- The Backoffice kernel validates and authorizes the trusted `BackofficeExecutionContext` used for
+  actual function and tool calls; callers cannot replace or enrich its actor provenance.
 - User-authored workflows cannot supply or override actors, principals, execution context, or trace
   metadata.
 - `store.set` no longer accepts an actor.
@@ -40,8 +41,9 @@ Backoffice scenario utilities.
 - External identity bindings belong to the Automations schema.
 - External identity bindings use a dedicated table, not categorized automation-store entries.
 - Trace propagation and trusted execution propagation are separate concepts. W3C
-  `traceparent`/`tracestate` remain opaque telemetry; actor provenance crosses trusted boundaries
-  only in typed `BackofficeRpcContext` arguments or typed durable-action envelopes.
+  `traceparent`/`tracestate` remain opaque telemetry. `BackofficeRpcContext` carries telemetry only;
+  sensitive RPCs use `BackofficeActionRpcContext`, which additionally requires trusted execution.
+  Actor provenance otherwise crosses durable boundaries only in typed Backoffice-owned envelopes.
 - Production authority resolution is mandatory for sensitive actions. Missing, unavailable, or
   failed resolution denies with a stable reason; observers and tracing never substitute for it.
 - Public HTTP headers and request bodies cannot carry trusted Backoffice execution context. Pi and
@@ -52,18 +54,41 @@ Backoffice scenario utilities.
   principal, even after identity revocation or rebinding.
 - External identity bind and revoke operations execute through `kernel.invoke()` inside the owning
   Automations object; persistence services are not standalone authorization boundaries.
+- Trusted Automations route calls use one generic `fetchWithContext(request, context)` RPC. The
+  route caller carries `BackofficeActionRpcContext` as a separate RPC argument, never as HTTP
+  headers. The Automations object derives operation and resource policy for sensitive routes before
+  executing the ordinary route handler. The scope-aware Automations proxy exposes outbox routes only
+  and cannot forward raw fragment mutation routes. The separate organization workflow proxy forwards
+  directly to the workflows fragment.
+- The Worker constructs one immutable request kernel in `BackofficeWorkerContext`; each Durable
+  Object retains its own kernel. `BackofficeRuntimeServices` contains dependencies, not the kernel.
+- Immediate authenticated user actions trust the role and organization snapshot from the verified
+  Backoffice access token until its 15-minute expiry. System authority requires the token's `admin`
+  role. Executions without token authority, including deferred work and retries, resolve current
+  authority from Auth; actor provenance never grants user authority.
+- User-delegated work retains the user as principal and stops when that user is banned or loses the
+  required membership. Organization-owned automations execute as their own stable automation
+  principal and continue independently of the user who created or configured them. Creator identity
+  is attribution, not runtime authority. Disabling the automation or revoking its grants stops it.
+- Missing principal provenance never implicitly promotes an execution into organization-owned
+  authority. The automation definition or another trusted runtime-owned record must explicitly name
+  its authority mode before execution begins.
 - Scenario tests exercise the same trusted RPC and retry entry points as production. Fakes cannot
   accept context through a channel that production ignores.
 
-## Current problems
+## Baseline problems and remaining debt
 
-### Event actor duplication
+This section records the problems that motivated the plan. Items marked resolved describe historical
+behavior retained for review context; unchecked vertical slices below remain the source of truth for
+outstanding work.
 
-[`AutomationEvent`](../apps/backoffice/app/fragno/automation/contracts.ts) currently contains both
-`actor` and `actors`. Producers and consumers must keep them synchronized, and many workflows read
+### Event actor duplication — resolved in Slice 1
+
+[`AutomationEvent`](../apps/backoffice/app/fragno/automation/contracts.ts) previously contained both
+`actor` and `actors`. Producers and consumers had to keep them synchronized, and many workflows read
 only `event.actor`.
 
-The duplicate field appears in:
+The duplicate field appeared in:
 
 - event persistence in [`schema.ts`](../apps/backoffice/app/fragno/automation/schema.ts);
 - event ingestion in [`definition.ts`](../apps/backoffice/app/fragno/automation/definition.ts);
@@ -75,24 +100,24 @@ The duplicate field appears in:
 - route matchers such as `$.actor.source` in
   [`starter-routing.ts`](../apps/backoffice/app/fragno/automation/content/starter-routing.ts).
 
-### User-controlled attribution
+### User-controlled attribution — resolved in Slice 3
 
-`store.set` accepts `actor` in its public schema and command-line adapter:
+`store.set` previously accepted `actor` in its public schema and command-line adapter:
 
 - [`store.ts`](../apps/backoffice/app/fragno/automation/store.ts)
 - [`automation-types.ts`](../apps/backoffice/app/fragno/runtime-tools/automation-types.ts)
 - [`automations-bindings.ts`](../apps/backoffice/app/fragno/runtime-tools/families/automations-bindings.ts)
 
-A user-authored automation can therefore attribute a write to any user or external actor.
+A user-authored automation could therefore attribute a write to any user or external actor.
 
-### Categories are acting as security metadata
+### Categories acting as security metadata — resolved in Slice 3
 
-The generic store currently protects entries containing the `system` category in
+The generic store previously protected entries containing the `system` category in
 [`bindings-storage-runtime.ts`](../apps/backoffice/app/fragno/automation/bindings-storage-runtime.ts).
-The category itself is supplied by callers. That makes it unsuitable for protecting identity,
-workflow coordination, ownership, or other trusted state.
+The category itself was supplied by callers, making it unsuitable for protecting identity, workflow
+coordination, ownership, or other trusted state.
 
-### Identity binding is stored as user-writable KV state
+### Identity binding remains stored as user-writable KV state
 
 The Telegram starter workflow stores:
 
@@ -104,14 +129,16 @@ inside the generic automation store. The same user-authored workflow performs th
 confirmation. This gives editable automation code control over a security-relevant identity
 association.
 
-### Authorization sees only one synthetic execution actor
+### Single-actor authorization — structurally resolved; authority-mode implementation remains
 
-Workflow execution currently creates a synthetic automation principal in
-[`workflow.ts`](../apps/backoffice/app/fragno/automation/engine/workflow.ts). Tool authorization in
-[`runtime-tools.ts`](../apps/backoffice/app/fragno/runtime-tools/runtime-tools.ts) passes only that
-single actor to [`BackofficeKernel`](../apps/backoffice/app/backoffice-runtime/kernel.ts).
-
-The original Telegram identity and linked user are therefore unavailable to permission policy.
+Workflow and tool execution now carry the complete `BackofficeExecutionContext`, so the initiator,
+principal, and ordered delegation are available to the kernel. The target ownership rule is now
+explicit: user-delegated work preserves the user principal, while organization-owned automations use
+a stable automation principal independent of their creator. The remaining debt is to persist or
+otherwise establish that authority mode at a trusted automation-definition boundary. Until then,
+`createAutomationRuntimeExecution()` still infers automation authority when a non-system event has
+no principal, which must not become the final ownership rule. See **Automation authority ownership**
+under Open decisions.
 
 ## Failure modes this plan must prevent
 
@@ -155,11 +182,20 @@ The canonical provenance representation is an object, not a heterogeneous actor 
 ```ts
 export type AutomationActorRole = "initiator" | "principal" | "delegate" | "assistant";
 
-export type AutomationActor<TRole extends AutomationActorRole> = {
-  scope: "internal" | "external";
-  source?: string;
-  type: string;
-  id: string;
+export type AutomationEntityRef =
+  | {
+      scope: "internal";
+      type: string;
+      id: string;
+    }
+  | {
+      scope: "external";
+      source: string;
+      type: string;
+      id: string;
+    };
+
+export type AutomationActor<TRole extends AutomationActorRole> = AutomationEntityRef & {
   role: TRole;
 };
 
@@ -169,9 +205,10 @@ export type AutomationActors = Readonly<{
   delegation: readonly (AutomationActor<"delegate"> | AutomationActor<"assistant">)[];
 }>;
 
-export type AutomationExecutionContext = {
+export type BackofficeExecutionContext = {
   scope: BackofficeContextScope;
   actors: AutomationActors;
+  userAuthority?: BackofficeVerifiedAccessTokenAuthority;
 };
 ```
 
@@ -183,9 +220,6 @@ and principal access is direct and never requires `find()`, index conventions, o
 actor is an initiator or delegate according to how it participates in the action; there is no
 separate `system` role.
 
-`AutomationEventActor` may be renamed to `AutomationActor` during the breaking migration. Avoid
-compatibility aliases.
-
 ### Actor-object invariants
 
 - `initiator` is always present and has role `initiator`.
@@ -194,6 +228,9 @@ compatibility aliases.
 - A principal can never be hidden in `delegation`.
 - The initiator never changes once execution starts.
 - Actor entries contain durable identity references, not authorization claims.
+- The principal names the runtime authority owner, not necessarily the user who created, installed,
+  configured, or triggered the automation.
+- Internal identities structurally reject `source`; external identities structurally require it.
 - Email addresses, access tokens, organization-membership arrays, and similar claims are not stored
   in the actor object.
 - The same actor identity cannot appear in multiple slots or delegation entries unless a future use
@@ -249,7 +286,7 @@ definitions, and scenario assertions should all use this canonical form.
 
 ## Kernel-controlled execution
 
-The kernel should authorize and instrument complete `AutomationExecutionContext` values.
+The kernel should authorize and instrument complete `BackofficeExecutionContext` values.
 
 Target operation boundary:
 
@@ -273,17 +310,23 @@ await kernel.invoke({
 4. current permission evaluation;
 5. delegate and agent restrictions;
 6. resource-level checks;
-7. action tracing/instrumentation;
-8. propagation-context installation;
-9. invocation of `execute()` exactly once;
-10. backpressure on the exact promise returned by `execute()`;
-11. preservation of its result or error even when an observer detaches or catches it.
+7. action observation/instrumentation;
+8. invocation of `execute()` exactly once;
+9. backpressure on the exact promise returned by `execute()`;
+10. preservation of its result or error even when an observer detaches or catches it.
+
+Propagation context is installed by the Fragno service/RPC or durable-action boundary that owns the
+work. The kernel neither derives trusted execution from tracing nor owns W3C carrier installation.
 
 ### Fail-closed authority contract
 
 Authority resolution is a required production dependency, not optional best-effort enrichment. Every
-sensitive invocation resolves current principal permissions and every delegate/assistant capability
-grant before evaluating resource policy.
+sensitive invocation resolves principal permissions and every delegate/assistant capability grant
+before evaluating resource policy. Immediate authenticated user actions use short-lived authority
+copied from an already verified access token, avoiding an Auth round-trip. Executions without token
+authority perform one current Auth lookup for user existence, banned status, global role, and
+optional organization membership. Expired token authority fails closed and does not fall back to a
+live lookup that could outlive the credential.
 
 The kernel requires a resolver at construction and denies with stable reasons when:
 
@@ -297,9 +340,10 @@ Kernel and production runtime construction require an authority resolver. Constr
 lack an authority source install the explicitly named fail-closed resolver; trusted test/system
 contexts may instead install the explicitly named unrestricted resolver.
 
-A production-wiring test must construct the Cloudflare runtime, revoke organization membership in
-the Auth object, and prove that the next sensitive invocation is denied. An observer paired only
-with the explicit unavailable resolver cannot authorize an action.
+Production-wiring tests must prove that verified access-token authority avoids an Auth RPC, expires
+closed, and is accepted only for its matching user principal. Executions without token authority
+must still prove that a revoked organization membership denies the next sensitive invocation. An
+observer paired only with the explicit unavailable resolver cannot authorize an action.
 
 [`executeBackofficeRuntimeTool()`](../apps/backoffice/app/fragno/runtime-tools/runtime-tools.ts)
 should become a thin adapter that parses tool input and delegates the trusted action boundary to the
@@ -311,7 +355,7 @@ Replace the current `{ actor, scope }` tool context with the complete execution 
 
 ```ts
 export type BackofficeToolContext = {
-  execution: AutomationExecutionContext;
+  execution: BackofficeExecutionContext;
   kernel: BackofficeKernel;
   runtimes: Record<string, unknown>;
   createScopedContext(scope: BackofficeContextScope): BackofficeToolContext;
@@ -351,27 +395,57 @@ metadata fail clearly instead of being silently stripped.
 
 ### Persisted attribution
 
-Recommended target:
+`kv_store` contains mutable scope-owned data and persists no actor or permission attribution. Store
+set/delete authorization occurs in typed Fragment middleware immediately before the normal route
+handler executes. The middleware derives the key resource from validated route input and asks the
+kernel to assert current authority.
 
-```text
-kv_store.createdByActors
-kv_store.updatedByActors
-```
-
-These fields are read-only output populated from the kernel's trusted execution context. They are
-not accepted by store mutation input.
-
-If product requirements do not need per-entry audit attribution, both fields may be omitted. Do not
-retain the current caller-controlled `actor` column.
+If durable per-entry attribution becomes a product requirement, add an explicit append-only audit
+boundary that observes route completion. Do not add `createdByActors`, `updatedByActors`, or another
+mutable provenance field to `kv_store`.
 
 ### Categories
 
 Categories remain user-defined labels for filtering and presentation. They have no authorization
 meaning.
 
-Remove `hasSystemCategory()` and category-based deletion protection after internal state has moved
-out of the generic store. If generic system-owned KV remains necessary, use a separate internal
-store or a kernel-controlled write-policy field that user tools cannot set.
+`hasSystemCategory()` and category-based deletion protection have been removed. Categories cannot
+protect any trusted state that still remains in generic KV; that state is explicit migration debt
+for Slices 4–6. If generic system-owned KV remains necessary, use a separate internal store or a
+kernel-controlled write-policy field that user tools cannot set.
+
+### Mutation boundary
+
+The scoped Automations object exposes one typed `fetchWithContext(request, context)` RPC for trusted
+route calls. The ordinary route caller uses it whenever `BackofficeActionRpcContext` is supplied and
+otherwise uses raw `fetch()`. Execution remains a separate RPC argument and is never serialized into
+request headers.
+
+The trusted route bridge extracts only `traceparent` and optional `tracestate` from the incoming
+request and places them in `BackofficeActionRpcContext`; it does not copy baggage or arbitrary
+headers. `fetchWithContext()` validates that the execution scope matches the object address,
+forwards that W3C propagation as lifecycle metadata, and passes only `BackofficeExecutionContext` as
+application-owned request context. The Automations fragment declares that type with
+`withRequestContext<T>()`, so its handler and middleware retain it through the complete request
+chain. The RPC transport envelope does not leak into Fragment policy code, and execution is never
+serialized into HTTP headers. Typed Fragment middleware matches store set/delete, validates the
+route input, derives `{ kind: "automation-store-entry", key }`, and calls
+`kernel.assertAuthorized()` for `store.modify` before allowing the normal handler to continue.
+Denials preserve the kernel reason as the response code; `authority-unavailable` is HTTP 503 and
+policy/capability denials are HTTP 403. The handler remains the single source of response semantics
+and service mutation behavior.
+
+Raw `fetch()` reaches the same middleware without trusted request context and therefore rejects
+protected store mutation routes. Other routes flow generically through either fetch path without a
+parallel command protocol; each future sensitive route must add explicit typed middleware policy
+before relying on the trusted transport.
+
+The scope-aware Automations catch-all exposes only `/_internal` outbox paths. The removed
+organization-only `/api/automations/:orgId/*` compatibility proxy is not an authorization surface.
+The underlying `/store/set` and `/store/delete` fragment routes remain internal implementation
+surfaces and are not publicly forwarded. The separate `/api/automations-workflows/:orgId/*` route
+forwards directly to the workflows fragment. KV ownership is scope-level: a principal with current
+`store.modify` authority for the scope may change any ordinary key in that scoped store.
 
 ## External identity binding
 
@@ -561,7 +635,16 @@ read-time ownership check is mandatory even when cleanup fails or is delayed.
 
 ### 4. Workflow delegation
 
-Starting the workflow appends a trusted automation delegate:
+Automation definitions establish one trusted authority mode before workflow startup:
+
+```ts
+type AutomationAuthorityMode =
+  | { kind: "delegated-user" }
+  | { kind: "organization-automation"; automationId: string };
+```
+
+`delegated-user` requires an existing internal user principal. Workflow startup preserves that user
+and appends a trusted automation delegate:
 
 ```ts
 const actors = automationActorsSchema.parse({
@@ -570,8 +653,17 @@ const actors = automationActorsSchema.parse({
 });
 ```
 
-The automation ID should use a stable workflow or route execution identifier, not a user-supplied
-name alone.
+`organization-automation` installs the stable automation identity as principal, regardless of who
+created or last configured it. A user who triggered the run remains only the initiator when that
+provenance is relevant; creator identity belongs in audit metadata rather than the authority chain.
+These runs continue if the creator is banned or leaves the organization, but stop when the
+organization automation is disabled or its current grants are revoked.
+
+A missing event principal is not sufficient evidence of organization ownership. Workflow startup
+must reject an absent or incompatible authority mode rather than silently promoting the automation.
+The automation identity must use a stable automation-definition identity, not a user-supplied name,
+event ID, or individual run ID. Trusted system-service execution remains a separate explicit service
+principal and is not inferred through either automation mode.
 
 ### 5. Pi delegation
 
@@ -634,7 +726,7 @@ arguments:
 
 ```ts
 type BackofficeDeferredAction<TPayload, TResource> = {
-  execution: AutomationExecutionContext;
+  execution: BackofficeExecutionContext;
   operation: BackofficePermissionRequirement;
   resource: TResource;
   payload: TPayload;
@@ -678,9 +770,17 @@ principal permissions
 
 Delegation cannot increase authority.
 
-Permissions should be re-evaluated on every sensitive action and durable retry so revocation takes
-effect. Actor objects persist identity references only; stale permission snapshots are not
-persisted.
+Permissions are resolved on every sensitive action. Immediate request execution may reuse the
+verified JWT authority snapshot until its 15-minute expiry; membership, administrator, and ban
+changes therefore take effect for that credential at expiry. Durable retries carry no token
+authority and reevaluate current state before each attempt. Actor objects never persist permission
+snapshots.
+
+For user-delegated execution, that fresh resolution includes the user's active state and membership,
+so banning or removing the user stops the next action. Organization-owned execution resolves the
+stable automation principal and its current grants instead; the creator's later status is
+irrelevant. This prevents organizational infrastructure from accidentally depending on the
+employment or account state of whichever user originally installed it.
 
 Example `telegram.sendChatAction` policy:
 
@@ -694,17 +794,21 @@ Example `telegram.sendChatAction` policy:
 ## Propagation and tracing
 
 Trusted execution context and W3C trace context travel together at some boundaries but remain
-separate typed fields:
+separate concepts and types:
 
 ```ts
-export type BackofficeRpcContext = {
-  execution: AutomationExecutionContext;
-  propagationContext: DurableHookPropagationContext | null;
+export type BackofficeRpcContext = Pick<FragnoExecutionContext, "propagationContext">;
+
+export type BackofficeActionRpcContext = BackofficeRpcContext & {
+  execution: BackofficeExecutionContext;
 };
 ```
 
 Rules:
 
+- `BackofficeRpcContext` is telemetry-only and does not authorize an action.
+- `BackofficeActionRpcContext` is required by sensitive typed RPC calls and adds trusted execution
+  explicitly.
 - `execution` is accepted only from trusted in-process calls, Durable Object RPC arguments, or
   Backoffice-owned durable envelopes.
 - `propagationContext` contains only opaque `traceparent` and optional `tracestate` values.
@@ -867,12 +971,22 @@ Scenario failure snapshots should include:
 
 ## Implementation status
 
-**Status as of July 27, 2026:** Slice 1 is complete. Slice 2 is implemented, and its review fix now
-keeps action completion, results, and errors authoritative when a kernel observer detaches or
-catches the execution promise; the slice remains pending its review gate. A previous all-at-once
-implementation was removed after review exposed trust-boundary and asynchronous-authorization
-mistakes. Its code may be consulted as a prototype, but remaining slices must be implemented
-independently from this plan and must not be replayed wholesale.
+**Status as of July 28, 2026:** Slices 1 and 2 are complete. Slice 3 is implemented and pending its
+review gate. Store, event, and OTP tool inputs now reject caller-authored provenance; mutable KV
+rows no longer persist actor attribution; store mutation requires a current kernel authorization
+check in typed Fragment middleware; and OTP claims derive their target from the trusted external
+initiator. `BackofficeExecutionContext` is now the single execution model across authenticated
+requests, filesystems, tools, and kernel actions; the legacy single-actor context and its conversion
+adapter have been removed. Store mutations now enter through the generic execution-bound
+`fetchWithContext()` route transport, while the scope-aware public Automations proxy exposes only
+outbox routes. The organization-only compatibility proxy has been removed; the workflow proxy
+forwards directly to the workflows fragment. Immediate system-store mutation trusts a verified
+access token's administrator role until token expiry; executions without token authority use the
+current Auth state. Automation runtimes preserve the event actors and add their explicit service
+identity as the principal only when the event has none, or as a delegate when it already has one. A
+previous all-at-once implementation was removed after review exposed trust-boundary and
+asynchronous-authorization mistakes. Its code may be consulted as a prototype, but remaining slices
+must be implemented independently from this plan and must not be replayed wholesale.
 
 No checklist item below is complete until its production path, negative tests, typecheck, and
 focused scenario have landed together. Validation results from the removed prototype do not count as
@@ -916,6 +1030,14 @@ identity storage.
 - [x] Deny absent, throwing, or unavailable resolution with `authority-unavailable`.
 - [x] Resolve principal permissions and delegate/assistant grants for every sensitive invocation.
 - [x] Install the concrete resolver in every Cloudflare and in-memory production-style runtime.
+- [x] Trust role and organization authority from a verified Backoffice access token until expiry,
+      without an Auth round-trip for immediate request actions.
+- [x] Reevaluate current user existence, banned status, global administration, and optional
+      organization membership in one Auth lookup when execution has no token authority.
+- [x] Grant the narrow explicit `system-administrator` role only from an unexpired administrator
+      token or current active-administrator lookup.
+- [x] Construct one request kernel in `BackofficeWorkerContext` and retain one kernel per Durable
+      Object rather than rebuilding equivalent kernels in request helpers.
 - [x] Remove the separate `authorizationPolicy`/`assertAllowed()` path; retain only structural
       context access checks until each sensitive action moves into `kernel.invoke()`.
 - [x] Define one exhaustive namespace-permission catalog and reject wildcard or unknown grants.
@@ -930,6 +1052,11 @@ identity storage.
 - [x] Require a resolver at kernel construction and prove the explicit unavailable resolver denies.
 - [x] Make the resolver throw and prove `execute()` is not called.
 - [x] Revoke organization membership in the real Auth object and deny the next action.
+- [x] Revoke or omit global administration and deny the next system-store mutation without writing.
+- [x] Deny missing and banned users without token authority even when stale ownership, membership,
+      or administrator facts remain.
+- [x] Prove verified access-token authority avoids Auth lookup, rejects principal mismatch, and
+      expires without falling back to current state.
 - [x] Prove an observer cannot substitute for an unavailable authority source.
 - [x] Prove permission grants are concrete catalog entries without wildcard matching.
 - [x] Prove role grants do not automatically inherit newly cataloged permissions.
@@ -946,17 +1073,36 @@ this slice proves fail-closed production wiring.
 
 **Production behavior**
 
-- [ ] Remove actor/context fields from `store.set`, `events.fire`, OTP claims, Bash options, and
+- [x] Remove actor/context fields from `store.set`, `events.fire`, OTP claims, Bash options, and
       generated references.
-- [ ] Make user-authored schemas strict and reject unknown provenance or permission metadata.
-- [ ] Remove caller-controlled `kv_store.actor`; categories remain non-security labels.
-- [ ] Route store mutation through the already fail-closed `kernel.invoke()` boundary.
+- [x] Make user-authored schemas strict and reject unknown provenance or permission metadata.
+- [x] Remove caller-controlled `kv_store.actor`; categories remain non-security labels.
+- [x] Expose one generic Automations `fetchWithContext(request, context)` RPC requiring
+      `BackofficeActionRpcContext` for trusted route execution.
+- [x] Make the ordinary route caller select `fetchWithContext()` whenever trusted execution is
+      supplied, without encoding execution into headers.
+- [x] Pass only trusted `BackofficeExecutionContext` through the Fragment application request
+      context, separately from W3C propagation metadata and the RPC transport envelope.
+- [x] Extract only `traceparent` and optional `tracestate` at the trusted route bridge and propagate
+      them through the Automations RPC without baggage or arbitrary HTTP headers.
+- [x] Reject protected store mutations from raw `fetch()` and derive their operation/resource policy
+      from validated input in typed Fragment middleware.
+- [x] Call `kernel.assertAuthorized()` immediately before allowing the sensitive route handler to
+      continue and preserve stable denial reasons, mapping `authority-unavailable` to HTTP 503.
+- [x] Restrict the scope-aware Automations catch-all to outbox paths and remove the
+      organization-only compatibility proxy so raw store mutation routes are not public
+      authorization boundaries.
 
 **Required tests**
 
-- [ ] Reject `actor`, `actors`, `principal`, execution-context, and propagation options.
-- [ ] Prove store attribution comes only from the trusted kernel observation.
-- [ ] Prove ordinary categorized KV remains writable and deletable.
+- [x] Reject `actor`, `actors`, `principal`, execution-context, and propagation options.
+- [x] Prove mutable KV rows contain no caller-authored or trusted actor attribution.
+- [x] Prove ordinary categorized KV remains writable and deletable.
+- [x] Prove user-scoped automation execution and current system administrators can mutate their
+      scoped store through the same generic `fetchWithContext()` boundary.
+- [x] Deny mismatched scopes and non-administrator system mutations without entering persistence.
+- [x] Prove the scope-aware Automations proxy rejects direct store mutation paths while outbox
+      routes remain available, and prove the separate workflow proxy still forwards workflow routes.
 
 **Review gate:** user workflows have domain arguments only.
 
@@ -985,7 +1131,7 @@ this slice proves fail-closed production wiring.
 
 **Production behavior**
 
-- [ ] Derive OTP claim identity from the trusted external initiator.
+- [x] Derive OTP claim identity from the trusted external initiator.
 - [ ] Persist claim waiters in typed Automations state.
 - [ ] On completion, call the guarded Automations bind RPC before notifying the workflow.
 - [ ] Resolve active bindings at Telegram ingress and set the trusted `principal` slot.
@@ -994,7 +1140,7 @@ this slice proves fail-closed production wiring.
 
 **Required tests**
 
-- [ ] Prove claim creation cannot target another external identity.
+- [x] Prove claim creation cannot target another external identity.
 - [ ] Prove binding precedes workflow notification and retries converge idempotently.
 - [ ] Prove forged principals are discarded.
 - [ ] Prove revocation returns the ingress flow to unlinked behavior.
@@ -1012,7 +1158,8 @@ delegation.
 - [ ] Invalidate stale sessions on identity revoke/rebind when possible; retain the read guard even
       when cleanup is delayed.
 - [ ] Remove identity, waiter, channel-session, and Pi configuration security state from generic KV.
-- [ ] Remove category-based protection after all trusted state has migrated.
+- [x] Remove category-based protection and treat every remaining trusted generic-KV use as migration
+      debt rather than protected state.
 
 **Required tests**
 
@@ -1027,16 +1174,31 @@ delegation.
 
 **Production behavior**
 
-- [ ] Append the automation delegate at workflow startup.
-- [ ] Carry `AutomationExecutionContext` through tool, Bash, codemode, and child-event boundaries.
-- [ ] Use typed `BackofficeRpcContext` with separate `execution` and W3C propagation fields.
+- [ ] Add a trusted automation authority mode to the automation definition or equivalent
+      runtime-owned configuration boundary.
+- [ ] Require user-delegated mode to preserve an existing internal user principal and append the
+      automation as a delegate.
+- [ ] Require organization-owned mode to install a stable automation-definition identity as
+      principal, independent of creator identity.
+- [ ] Reject missing or incompatible authority mode instead of inferring organization ownership from
+      an absent principal.
+- [x] Carry `BackofficeExecutionContext` through tool, Bash, codemode, and child-event boundaries.
+- [x] Define telemetry-only `BackofficeRpcContext` and execution-bearing
+      `BackofficeActionRpcContext` as separate trusted contracts.
 - [ ] Preserve the actor object through durable Backoffice-owned envelopes and retries.
-- [ ] Reject execution or propagation metadata from user-authored workflow input.
+- [x] Reject execution or propagation metadata from user-authored workflow input.
 
 **Required tests**
 
-- [ ] Prove event → workflow → tool → child event retains initiator/principal and ordered
-      delegation.
+- [ ] Prove event → workflow → tool → child event retains initiator/principal and ordered delegation
+      through one complete vertical scenario.
+- [ ] Ban or remove a delegated user before the next action and prove the action is denied.
+- [ ] Ban or remove an organization automation's creator and prove the automation continues under
+      its own principal; then disable it or revoke its grants and prove the next action is denied.
+- [ ] Prove a principal-free event without explicit organization-owned mode cannot acquire
+      automation authority.
+- [x] Prove route-backed tools require the canonical execution context without fallback provenance
+      channels.
 - [ ] Prove explicit trace suppression does not suppress authorization.
 - [ ] Prove a durable retry restores identities but resolves current permissions again.
 
@@ -1089,17 +1251,20 @@ delegation.
 **Production behavior**
 
 - [ ] Apply principal permission, automation grant, agent grant, and resource policy intersection.
-- [ ] Protect identity, routing, configuration, store, Telegram, and Pi actions with stable
-      operation names and denial reasons.
+- [x] Protect store mutations with the stable `store.modify` operation and denial reasons.
+- [ ] Protect identity, routing, configuration, Telegram, and Pi actions with stable operation names
+      and denial reasons.
 - [ ] Restrict unlinked Telegram bootstrap actions to the initiating chat.
-- [ ] Re-evaluate authority for every sensitive action rather than persisting permission snapshots.
+- [ ] Resolve authority for every sensitive action from unexpired verified token evidence or current
+      authoritative state; never persist permission snapshots in actor provenance.
 
 **Required tests**
 
 - [ ] Deny missing principal except documented bootstrap operations.
 - [ ] Deny missing automation and agent grants independently.
 - [ ] Deny cross-chat and cross-scope resource access.
-- [ ] Revoke membership and capabilities between consecutive actions and observe immediate denial.
+- [ ] Revoke membership and capabilities between consecutive non-token/deferred actions and observe
+      immediate denial; prove request-token authority ends at token expiry.
 
 **Review gate:** review one resource policy at a time; do not land a broad wildcard policy as the
 final production grant model.
@@ -1157,13 +1322,44 @@ propagation.
 ### Permission resolution timing
 
 **Decision:** the kernel invokes the required authority resolver for every sensitive operation and
-retry. Missing or failed resolution denies. Permission snapshots are not persisted in actor objects.
+retry. Immediate authenticated user actions may use authority from their verified Backoffice access
+token until its 15-minute expiry. Executions without token authority, especially deferred retries,
+resolve current Auth state. Missing, expired, or failed resolution denies, and actor objects never
+persist permission snapshots.
+
+### Automation authority ownership
+
+**Decision:** every automation definition or equivalent trusted runtime-owned record explicitly
+selects its authority mode. Authority is never inferred solely because an incoming event lacks a
+principal.
+
+- `delegated-user` execution requires an existing internal user principal, preserves that principal,
+  and appends the automation as a delegate. Current user status and membership are rechecked for
+  deferred actions, so banning or removing the user stops subsequent work.
+- `organization-automation` execution installs the stable automation-definition identity as
+  principal. The creator, installer, and last editor are attribution and audit facts only. The
+  automation continues when any of those users are banned or leave, and stops when the automation is
+  disabled, deleted, loses its grants, or loses access through organization policy.
+- Trusted system services use their own explicit service principals. They do not acquire authority
+  through an automation mode.
+
+`createAutomationRuntimeExecution()` currently makes an automation principal when a non-system event
+has no principal. Slice 7 must replace that inference with the explicit mode boundary. An eligible
+internal user trigger may occupy the initiator slot without becoming principal for an
+organization-owned automation. Do not duplicate one user identity into both initiator and principal
+slots, silently treat an external initiator as a principal, or use creator identity as persistent
+runtime authority. Delegation cannot increase whichever principal authority the selected mode
+establishes.
 
 ### System authority
 
-**Recommendation:** replace broad system authority over time with narrowly identified service actors
-and explicit grants. Reserve the unrestricted system actor for infrastructure recovery and migration
-operations.
+**Decision:** an internal user principal receives system permission from an unexpired verified
+Backoffice access token only when its role is `admin`. Executions without token authority consult
+current Auth state and require an active global administrator. The explicit `system-administrator`
+role currently grants only `store.modify`.
+
+Continue replacing broad system authority with narrowly identified service actors and explicit
+grants. Reserve unrestricted system execution for infrastructure recovery and migration operations.
 
 ### External IDs in traces
 
@@ -1208,7 +1404,7 @@ pnpm --filter @fragno-apps/backoffice-rr exec vitest run <slice-test-files>
 
 pnpm exec turbo types:check --filter=@fragno-apps/backoffice-rr --output-logs=errors-only
 pnpm exec turbo build --filter=@fragno-apps/backoffice-rr --output-logs=errors-only
-pnpm run lint:fix
+pnpm run lint:type-aware-fix
 pnpm run format:changed
 git diff --check
 ```
@@ -1223,7 +1419,11 @@ hard to identify.
 
 - [`apps/backoffice/app/backoffice-runtime/context.ts`](../apps/backoffice/app/backoffice-runtime/context.ts)
 - [`apps/backoffice/app/backoffice-runtime/kernel.ts`](../apps/backoffice/app/backoffice-runtime/kernel.ts)
+- [`apps/backoffice/app/backoffice-runtime/authority-resolver.ts`](../apps/backoffice/app/backoffice-runtime/authority-resolver.ts)
+- [`apps/backoffice/app/backoffice-runtime/authority-roles.ts`](../apps/backoffice/app/backoffice-runtime/authority-roles.ts)
+- [`apps/backoffice/app/backoffice-runtime/permissions.ts`](../apps/backoffice/app/backoffice-runtime/permissions.ts)
 - [`apps/backoffice/app/backoffice-runtime/object-registry.ts`](../apps/backoffice/app/backoffice-runtime/object-registry.ts)
+- [`apps/backoffice/app/worker-runtime/router-context.ts`](../apps/backoffice/app/worker-runtime/router-context.ts)
 - [`apps/backoffice/app/fragno/runtime-tools/runtime-tools.ts`](../apps/backoffice/app/fragno/runtime-tools/runtime-tools.ts)
 - [`apps/backoffice/app/fragno/runtime-tools/tool-context.ts`](../apps/backoffice/app/fragno/runtime-tools/tool-context.ts)
 - [`apps/backoffice/app/fragno/runtime-tools/route-backed-runtime-context.ts`](../apps/backoffice/app/fragno/runtime-tools/route-backed-runtime-context.ts)
@@ -1242,7 +1442,12 @@ hard to identify.
 
 - [`apps/backoffice/app/fragno/automation/store.ts`](../apps/backoffice/app/fragno/automation/store.ts)
 - [`apps/backoffice/app/fragno/automation/bindings-storage-runtime.ts`](../apps/backoffice/app/fragno/automation/bindings-storage-runtime.ts)
+- [`apps/backoffice/app/fragno/automation/bindings-route-runtime.ts`](../apps/backoffice/app/fragno/automation/bindings-route-runtime.ts)
+- [`apps/backoffice/app/fragno/automation/route-callers.ts`](../apps/backoffice/app/fragno/automation/route-callers.ts)
 - [`apps/backoffice/app/fragno/runtime-tools/families/automations-bindings.ts`](../apps/backoffice/app/fragno/runtime-tools/families/automations-bindings.ts)
+- [`apps/backoffice/app/routes/api/automations-scoped.ts`](../apps/backoffice/app/routes/api/automations-scoped.ts)
+- [`apps/backoffice/app/routes/api/automations-workflows.ts`](../apps/backoffice/app/routes/api/automations-workflows.ts)
+- [`apps/backoffice/workers/automations.do.ts`](../apps/backoffice/workers/automations.do.ts)
 - [`apps/backoffice/app/files/content/starter-automations.ts`](../apps/backoffice/app/files/content/starter-automations.ts)
 - [`apps/backoffice/app/fragno/otp.ts`](../apps/backoffice/app/fragno/otp.ts)
 - [`apps/backoffice/app/fragno/telegram.ts`](../apps/backoffice/app/fragno/telegram.ts)

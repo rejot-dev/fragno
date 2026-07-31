@@ -2,7 +2,10 @@ import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 import { createFragnoCollection } from "@fragno-dev/tanstack-db-adapter";
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import {
+  createBackofficeSystemExecution,
+  type BackofficeContextScope,
+} from "@/backoffice-runtime/context";
 import type { InMemoryObjectFactoryOverrides } from "@/backoffice-runtime/in-memory-object-factory";
 import {
   createInMemoryBackofficeRuntime,
@@ -50,6 +53,7 @@ import {
 
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { listHookScopes } from "../backoffice-capabilities/backoffice-capabilities";
+import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import { createRouteBackedAutomationStoreRuntime } from "./bindings-route-runtime";
 import type { AutomationEvent } from "./contracts";
 import { createRouteBackedDurableHooksRuntime } from "./durable-hooks-route-runtime";
@@ -438,9 +442,7 @@ type ProjectCreateInput = {
   label?: string;
 };
 
-type CodemodeStoreSetInput = StoreEntryInput & {
-  actor?: unknown;
-};
+type CodemodeStoreSetInput = StoreEntryInput;
 
 type CodemodeWriteFileInput = FileAssertionInput & {
   content: string | Uint8Array;
@@ -1339,11 +1341,16 @@ const createStep = (
   run,
 });
 
-const getStore = (ctx: BackofficeScenarioContext, orgId: string) =>
-  createRouteBackedAutomationStoreRuntime({
+const getStore = (ctx: BackofficeScenarioContext, orgId: string) => {
+  const scope = { kind: "org" as const, orgId };
+  return createRouteBackedAutomationStoreRuntime({
     object: ctx.runtime.objects.automations.forOrg(orgId),
-    scope: { kind: "org", orgId },
+    execution: {
+      scope,
+      actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
+    },
   });
+};
 
 const SYSTEM_WORKFLOW_TARGET_ID = "__system__";
 
@@ -1351,17 +1358,14 @@ const getWorkflow = (ctx: BackofficeScenarioContext, orgId: string) =>
   orgId === SYSTEM_WORKFLOW_TARGET_ID
     ? createRouteBackedAutomationWorkflowRuntime({
         object: ctx.runtime.objects.automations.singleton(),
-        scope: { kind: "system" },
       })
     : createRouteBackedAutomationWorkflowRuntime({
         object: ctx.runtime.objects.automations.forOrg(orgId),
-        scope: { kind: "org", orgId },
       });
 
 const getRouter = (ctx: BackofficeScenarioContext, orgId: string) =>
   createRouteBackedAutomationRouterRuntime({
     object: ctx.runtime.objects.automations.forOrg(orgId),
-    scope: { kind: "org", orgId },
   });
 
 const getHooks = (ctx: BackofficeScenarioContext, orgId: string) =>
@@ -1370,20 +1374,6 @@ const getHooks = (ctx: BackofficeScenarioContext, orgId: string) =>
     config: ctx.runtime.config,
     orgId,
   });
-
-const applyAutomationScopeQuery = (url: URL, scope: BackofficeContextScope) => {
-  url.searchParams.set("scopeKind", scope.kind);
-
-  if (scope.kind === "org" || scope.kind === "project") {
-    url.searchParams.set("orgId", scope.orgId);
-  }
-  if (scope.kind === "project") {
-    url.searchParams.set("projectId", scope.projectId);
-  }
-  if (scope.kind === "user") {
-    url.searchParams.set("userId", scope.userId);
-  }
-};
 
 const automationScopedInternalUrl = (scope: BackofficeContextScope) =>
   `http://scenario.local/api/automations-scoped/${backofficeContextScopeRoutePath(scope)}/_internal`;
@@ -1409,7 +1399,6 @@ const createScenarioAutomationTanStackFetch = (
       `http://scenario.local/api/automations${internalRouteSuffix(requestUrl)}`,
     );
     forwardedUrl.search = requestUrl.search;
-    applyAutomationScopeQuery(forwardedUrl, scope);
 
     const kernel = new BackofficeKernel(runtime.services);
     const automations = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
@@ -1531,7 +1520,7 @@ const getReadableScenarioFileSystem = async (
     return scenarioFs;
   }
 
-  const execution = { actor: createScenarioActor(orgId), scope: { kind: "org" as const, orgId } };
+  const execution = createBackofficeSystemExecution({ kind: "org", orgId });
   const orgFs = await createBackofficeFileSystem({
     objects: ctx.runtime.objects,
     kernel: new BackofficeKernel(ctx.runtime.services),
@@ -1545,19 +1534,12 @@ const getReadableScenarioFileSystem = async (
   return null;
 };
 
-const createScenarioActor = (orgId: string) => ({
-  type: "user" as const,
-  id: "scenario-user",
-  userId: "scenario-user",
-  organizationIds: [orgId],
-});
-
 const getConnectionRuntime = (ctx: BackofficeScenarioContext, orgId: string) =>
   createBackofficeToolContext(
     createRouteBackedRuntimeContext({
       runtime: ctx.runtime.services,
       kernel: new BackofficeKernel(ctx.runtime.services),
-      execution: { actor: createScenarioActor(orgId), scope: { kind: "org", orgId } },
+      execution: createBackofficeSystemExecution({ kind: "org", orgId }),
     }),
   ).runtimes.backoffice;
 
@@ -1645,10 +1627,7 @@ const runScenarioCodemode = async (
   const runtimeContext = createRouteBackedRuntimeContext({
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
-    execution: {
-      actor: createScenarioActor(input.orgId),
-      scope: { kind: "org", orgId: input.orgId },
-    },
+    execution: createBackofficeSystemExecution({ kind: "org", orgId: input.orgId }),
   });
   const toolContext = createBackofficeToolContext(runtimeContext);
   const loader = ctx.runtime.env.LOADER;
@@ -1773,12 +1752,7 @@ const buildCapabilityConfiguredEvent = (input: CapabilityConfiguredInput): Autom
     ...input.payload,
   },
   actors: {
-    initiator: {
-      scope: "internal",
-      type: "capability",
-      id: input.capabilityId,
-      role: "initiator",
-    },
+    initiator: AUTOMATION_SYSTEM_INITIATOR,
     principal: null,
     delegation: [],
   },
@@ -2118,7 +2092,6 @@ const buildStepBuilders = <
             await getStore(ctx, input.orgId).set({
               key: "pi/pi-default-agent",
               value: input.value,
-              actor: null,
               description: "Default Pi agent for automation-created sessions.",
               category: ["pi"],
             });
@@ -2136,7 +2109,6 @@ const buildStepBuilders = <
             await getStore(ctx, input.orgId).set({
               key: input.key,
               value: input.value,
-              actor: null,
             });
           },
         ),
@@ -2210,7 +2182,6 @@ const buildStepBuilders = <
   await store.set(${JSON.stringify({
     key: input.key,
     value: input.value,
-    actor: input.actor ?? null,
   })});
 }`,
               assertToolCalls: ["store.set"],
@@ -2270,7 +2241,6 @@ const buildStepBuilders = <
             await getStore(ctx, input.orgId).set({
               key: input.key,
               value: input.value,
-              actor: null,
             });
           },
         ),
@@ -3552,10 +3522,7 @@ const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unkno
 
     try {
       const scenarioFs = ctx.files.forOrg(orgId);
-      const execution = {
-        actor: createScenarioActor(orgId),
-        scope: { kind: "org" as const, orgId },
-      };
+      const execution = createBackofficeSystemExecution({ kind: "org", orgId });
       const orgFs = await createBackofficeFileSystem({
         objects: ctx.runtime.objects,
         kernel: new BackofficeKernel(ctx.runtime.services),

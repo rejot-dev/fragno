@@ -1,7 +1,6 @@
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createBackofficeFileSystem, type IFileSystem } from "@/files";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
@@ -104,8 +103,7 @@ export const runBackofficeTerminalAction = async ({
   const cwdInput = String(formData.get("cwd") ?? "").trim();
   const cwd = cwdInput || DEFAULT_CWD;
 
-  const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel(runtime);
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const execution = await requireBackofficeContext(request, context, scope);
 
   if (intent === "autocomplete-path") {
@@ -192,12 +190,7 @@ export const runBackofficeTerminalAction = async ({
       context: createRouteBackedRuntimeContext({
         runtime,
         kernel,
-        execution,
-        defaultActor: {
-          scope: "internal",
-          type: "user",
-          id: execution.actor.type === "user" ? execution.actor.userId : execution.actor.id,
-        },
+        execution: execution,
       }),
     });
 

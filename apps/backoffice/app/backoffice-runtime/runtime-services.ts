@@ -143,8 +143,8 @@ export const createCloudflareBackofficeRuntimeServices = (
     adapters: options.databaseScope ? adapters.forScope(options.databaseScope) : adapters,
     config: createCloudflareBackofficeRuntimeConfig(env),
     authorityResolver: createBackofficeAuthorityResolver({
-      hasOrganizationMembership: async (input) =>
-        await objects.auth.singleton().hasOrganizationMembership(input),
+      getUserAuthorityFacts: async (input) =>
+        await objects.auth.singleton().getUserAuthorityFacts(input),
     }),
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
   };

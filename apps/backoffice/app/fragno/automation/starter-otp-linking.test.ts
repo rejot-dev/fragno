@@ -1,5 +1,6 @@
 import { describe, test, vi } from "vitest";
 
+import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import type { AutomationEvent } from "./contracts";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -532,9 +533,17 @@ describe("starter OTP linking automation in memory", () => {
             waitingFor: "identity-claim-completed",
           }),
           then.assert("capture generated OTP id from the claim workflow binding", async (ctx) => {
+            const scope = { kind: "org" as const, orgId: "org-1" };
             const entries = await createRouteBackedAutomationStoreRuntime({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
-              scope: { kind: "org", orgId: "org-1" },
+              execution: {
+                scope,
+                actors: {
+                  initiator: AUTOMATION_SYSTEM_INITIATOR,
+                  principal: null,
+                  delegation: [],
+                },
+              },
             }).list({
               prefix: "telegram/claim-workflow/",
               limit: 10,

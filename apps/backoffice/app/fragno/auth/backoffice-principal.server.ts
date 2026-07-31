@@ -1,40 +1,54 @@
 import type { RouterContextProvider } from "react-router";
 
-import type {
-  BackofficeExecutionContext,
-  BackofficePrincipal,
-  BackofficeContextScope,
+import { resolveBackofficeUserAuthorityRole } from "@/backoffice-runtime/authority-roles";
+import {
+  createBackofficeUserExecution,
+  type BackofficeContextScope,
+  type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 
 import { requireAuthPrincipal, type BackofficeAuthPrincipal } from "./access-token.server";
 
-export const createBackofficePrincipal = (auth: BackofficeAuthPrincipal): BackofficePrincipal => ({
-  type: "user",
-  id: auth.user.id,
-  userId: auth.user.id,
-  email: auth.user.email,
-  role: auth.user.role,
-  activeOrganizationId: auth.auth.activeOrganizationId,
-  organizationIds: auth.auth.sessionContext.organizationIds,
-});
+const assertAuthenticatedUserCanAccessScope = (
+  auth: BackofficeAuthPrincipal,
+  scope: BackofficeContextScope,
+) => {
+  const role = resolveBackofficeUserAuthorityRole(
+    {
+      userId: auth.user.id,
+      role: auth.user.role,
+      organizationIds: auth.auth.sessionContext.organizationIds,
+    },
+    scope,
+  );
+  if (role) {
+    return;
+  }
 
-export const requireBackofficePrincipal = async (
-  request: Request,
-  routerContext: Readonly<RouterContextProvider>,
-): Promise<BackofficePrincipal> =>
-  createBackofficePrincipal(await requireAuthPrincipal(request, routerContext));
+  throw new BackofficeForbiddenError(
+    scope.kind === "system" ? "System context requires an admin user." : "Forbidden",
+  );
+};
 
 export const requireBackofficeContext = async (
   request: Request,
   routerContext: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
 ): Promise<BackofficeExecutionContext> => {
-  const actor = await requireBackofficePrincipal(request, routerContext);
-  new BackofficeKernel(routerContext.get(BackofficeWorkerContext).runtime).assertContextAccess({
-    actor,
+  const auth = await requireAuthPrincipal(request, routerContext);
+  assertAuthenticatedUserCanAccessScope(auth, scope);
+  if (auth.auth.credentialKind !== "jwt" || !auth.auth.expiresAt) {
+    throw new Error("Backoffice execution requires a verified access-token credential.");
+  }
+
+  return createBackofficeUserExecution({
     scope,
+    userId: auth.user.id,
+    verifiedAccessToken: {
+      role: auth.user.role,
+      organizationIds: auth.auth.sessionContext.organizationIds,
+      expiresAt: auth.auth.expiresAt,
+    },
   });
-  return { actor, scope };
 };

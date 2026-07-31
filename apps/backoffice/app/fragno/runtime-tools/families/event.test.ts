@@ -44,10 +44,6 @@ describe("event runtime tools", () => {
           "identity.bound",
           "--source",
           "otp",
-          "--external-actor-id",
-          "chat-123",
-          "--actor-type",
-          "chat",
           "--subject-user-id",
           "user-55",
           "--payload-json",
@@ -57,10 +53,26 @@ describe("event runtime tools", () => {
     ).toEqual({
       eventType: "identity.bound",
       source: "otp",
-      externalActorId: "chat-123",
-      actorType: "chat",
       subjectUserId: "user-55",
       payload: { plan: "basic" },
     });
   });
+
+  test.each(["actor", "actors", "principal", "execution", "propagationContext", "permissions"])(
+    "rejects caller-supplied %s metadata",
+    (field) => {
+      const [emit] = eventRuntimeTools;
+      expect(() => emit.inputSchema.parse({ eventType: "custom.event", [field]: {} })).toThrow();
+    },
+  );
+
+  test.each(["external-actor-id", "actor-type", "execution-context", "propagation-context"])(
+    "rejects removed --%s bash option",
+    (optionName) => {
+      const [emit] = eventRuntimeTools;
+      expect(() =>
+        emit.adapters!.bash!.parse(["--event-type", "custom.event", `--${optionName}`, "value"]),
+      ).toThrow(`does not accept option --${optionName}`);
+    },
+  );
 });

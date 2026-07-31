@@ -1,7 +1,10 @@
 import type { RemoteWorkflowStepHost } from "@fragno-dev/workflows/remote-workflow";
 import type { WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
-import type { BackofficePrincipal } from "@/backoffice-runtime/context";
+import {
+  createBackofficeServiceExecution,
+  createBackofficeSystemExecution,
+} from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
@@ -13,7 +16,7 @@ import {
 } from "@/fragno/codemode/execute";
 import { runBackofficeCodemodeWorkflow } from "@/fragno/codemode/workflow-execute";
 import type { PiCodemodeWorkflowParams } from "@/fragno/pi/pi-codemode-workflow";
-import type { AutomationExecutionContext } from "@/fragno/runtime-tools/automation-host";
+import type { AutomationScriptHostContext } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
@@ -33,7 +36,7 @@ const createCodemodeAutomationRunResult = ({
     toolCalls?: BackofficeRuntimeToolCall[];
     workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
   };
-  context: AutomationExecutionContext;
+  context: AutomationScriptHostContext;
 }): AutomationRunResult<"codemode"> =>
   createAutomationRunResult({
     runtime: "codemode",
@@ -54,7 +57,7 @@ export const executeCodemodeAutomation = async ({
   env,
 }: {
   script: string;
-  context: AutomationExecutionContext;
+  context: AutomationScriptHostContext;
   masterFs: MasterFileSystem;
   env: BackofficeCodemodeEnv;
 }): Promise<AutomationRunResult<"codemode">> => {
@@ -85,7 +88,7 @@ export const executeWorkflowCodemodeAutomation = async ({
   remote,
 }: {
   script: string;
-  context: AutomationExecutionContext;
+  context: AutomationScriptHostContext;
   masterFs: MasterFileSystem;
   env: BackofficeCodemodeEnv;
   workflowEvent: WorkflowEvent<unknown>;
@@ -128,16 +131,13 @@ export const executePiCodemodeWorkflow = async ({
 }): Promise<unknown> => {
   const { scope } = params;
   const scopeKey = backofficeContextScopeSinglePathSegment(scope);
-  const actor: BackofficePrincipal =
+  const execution =
     scope.kind === "system"
-      ? { type: "system", id: `pi-codemode-workflow:${scopeKey}` }
-      : {
-          type: "automation",
-          id: `pi-codemode-workflow:${scopeKey}`,
-          ...(scope.kind === "org" || scope.kind === "project"
-            ? { organizationIds: [scope.orgId] }
-            : {}),
-        };
+      ? createBackofficeSystemExecution(scope)
+      : createBackofficeServiceExecution({
+          scope,
+          service: { type: "automation", id: `pi-codemode-workflow:${scopeKey}` },
+        });
 
   if (!runtime) {
     throw new Error("Pi codemode workflow requires Backoffice runtime services.");
@@ -146,10 +146,7 @@ export const executePiCodemodeWorkflow = async ({
   const runtimeContext = createRouteBackedRuntimeContext({
     runtime,
     kernel: new BackofficeKernel(runtime),
-    execution: {
-      actor,
-      scope,
-    },
+    execution,
   });
   const context = createBackofficeToolContext(runtimeContext);
   const result = await runBackofficeCodemodeWorkflow({

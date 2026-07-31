@@ -19,6 +19,7 @@ const createContext = () => {
   const context = new RouterContextProvider();
   context.set(BackofficeWorkerContext, {
     runtime: {} as never,
+    kernel: {} as never,
     env: { AUTH_ACCESS_TOKEN_SECRET: "test-email-verification-login-secret" } as CloudflareEnv,
     ctx: {} as ExecutionContext,
   });

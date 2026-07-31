@@ -14,32 +14,22 @@ describe("otp runtime tools", () => {
 
     assert(createClaim.name === "createIdentityClaim");
     expect(
-      createClaim.inputSchema.parse(
-        createClaim.adapters!.bash!.parse([
-          "--actor-json",
-          '{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}',
-          "--ttl-minutes",
-          "15",
-        ]),
-      ),
-    ).toEqual({
-      actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
-      ttlMinutes: 15,
-    });
+      createClaim.inputSchema.parse(createClaim.adapters!.bash!.parse(["--ttl-minutes", "15"])),
+    ).toEqual({ ttlMinutes: 15 });
   });
 
-  test("rejects source-less and internal identity claim actors", () => {
-    const [createClaim] = otpRuntimeTools;
+  test.each(["actor", "actors", "principal", "execution", "propagationContext", "permissions"])(
+    "rejects caller-supplied %s metadata",
+    (field) => {
+      const [createClaim] = otpRuntimeTools;
+      expect(() => createClaim.inputSchema.parse({ [field]: {} })).toThrow();
+    },
+  );
 
-    expect(() =>
-      createClaim.inputSchema.parse({
-        actor: { scope: "external", type: "chat", id: "chat-123" },
-      }),
-    ).toThrow();
-    expect(() =>
-      createClaim.inputSchema.parse({
-        actor: { scope: "internal", type: "user", id: "user-123" },
-      }),
-    ).toThrow();
+  test("rejects the removed --actor-json bash option", () => {
+    const [createClaim] = otpRuntimeTools;
+    expect(() => createClaim.adapters!.bash!.parse(["--actor-json", "{}"])).toThrow(
+      "does not accept option --actor-json",
+    );
   });
 });

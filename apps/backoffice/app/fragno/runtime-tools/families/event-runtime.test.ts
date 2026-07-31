@@ -4,6 +4,10 @@ import { InMemoryAdapter } from "@fragno-dev/db";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import {
+  createBackofficeServiceExecution,
+  createBackofficeUserExecution,
+} from "@/backoffice-runtime/context";
+import {
   BackofficeForbiddenError,
   BackofficeKernel,
   noopBackofficeKernelObserver,
@@ -18,6 +22,15 @@ const TEST_KERNEL_RUNTIME = {
   authorityResolver: unavailableBackofficeAuthorityResolver,
   kernelObserver: noopBackofficeKernelObserver,
 };
+
+const userExecution = (scope: AutomationEvent["scope"]) =>
+  createBackofficeUserExecution({ scope, userId: "user-1" });
+
+const automationExecution = (scope: AutomationEvent["scope"]) =>
+  createBackofficeServiceExecution({
+    scope,
+    service: { type: "automation", id: "automation:event-1" },
+  });
 
 const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent => ({
   id: "event-1",
@@ -72,15 +85,10 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: {
-        actor: {
-          type: "user",
-          id: "user-1",
-          userId: "user-1",
-          organizationIds: ["org-1"],
-        },
+      execution: createBackofficeUserExecution({
         scope: { kind: "org", orgId: "org-1" },
-      },
+        userId: "user-1",
+      }),
     });
 
     await expect(
@@ -100,11 +108,16 @@ describe("createEventRuntime.emitEvent", () => {
         actors: {
           initiator: {
             scope: "internal",
-            type: "user",
-            id: "user-1",
+            type: "backoffice",
+            id: "interactive",
             role: "initiator",
           },
-          principal: null,
+          principal: {
+            scope: "internal",
+            type: "user",
+            id: "user-1",
+            role: "principal",
+          },
           delegation: [],
         },
         payload: { ok: true },
@@ -121,39 +134,12 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: {
-        actor: { type: "user", id: "user-1", userId: "user-1", organizationIds: ["org-1"] },
-        scope: { kind: "org", orgId: "org-1" },
-      },
+      execution: userExecution({ kind: "org", orgId: "org-1" }),
     });
 
     await expect(runtime.emitEvent({ eventType: "custom.event" })).rejects.toThrow(
       "events.fire source is required without a parent automation event.",
     );
-  });
-
-  it("requires actorType when overriding the external actor", async () => {
-    const triggerIngestEvent = vi.fn(async () => undefined);
-    const objects = {
-      automations: {
-        forOrg: vi.fn(() => ({ triggerIngestEvent })),
-      },
-    } as unknown as BackofficeObjectRegistry;
-    const event = createEvent();
-    const runtime = createEventRuntime({
-      objects,
-      kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: {
-        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
-        scope: event.scope,
-      },
-      parentEvent: event,
-    });
-
-    await expect(
-      runtime.emitEvent({ eventType: "custom.event", externalActorId: "external-1" }),
-    ).rejects.toThrow("events.fire actorType is required when externalActorId is provided.");
-    expect(triggerIngestEvent).not.toHaveBeenCalled();
   });
 
   it("normalizes array payloads to an empty object", async () => {
@@ -168,10 +154,7 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: {
-        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
-        scope: event.scope,
-      },
+      execution: automationExecution(event.scope),
       parentEvent: event,
     });
 
@@ -233,10 +216,7 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: {
-        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
-        scope: parentEvent.scope,
-      },
+      execution: { scope: parentEvent.scope, actors: parentEvent.actors },
       parentEvent,
     });
 
@@ -260,10 +240,7 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel,
-      execution: {
-        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
-        scope: { kind: "org", orgId: "org-1" },
-      },
+      execution: automationExecution({ kind: "org", orgId: "org-1" }),
       parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
     });
 
@@ -301,10 +278,7 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: {
-        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
-        scope: { kind: "org", orgId: "org-1" },
-      },
+      execution: automationExecution({ kind: "org", orgId: "org-1" }),
       parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
     });
 
@@ -338,10 +312,7 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: {
-        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
-        scope: { kind: "org", orgId: "org-1" },
-      },
+      execution: automationExecution({ kind: "org", orgId: "org-1" }),
       parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
     });
 
@@ -365,10 +336,7 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: {
-        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
-        scope: { kind: "org", orgId: "org-1" },
-      },
+      execution: automationExecution({ kind: "org", orgId: "org-1" }),
       parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
     });
 
@@ -413,10 +381,7 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: {
-        actor: { type: "user", id: "user-1", userId: "user-1", organizationIds: ["org-1"] },
-        scope: { kind: "org", orgId: "org-1" },
-      },
+      execution: userExecution({ kind: "org", orgId: "org-1" }),
     });
 
     await expect(
@@ -456,10 +421,7 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: {
-        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
-        scope: event.scope,
-      },
+      execution: automationExecution(event.scope),
       parentEvent: event,
     });
 

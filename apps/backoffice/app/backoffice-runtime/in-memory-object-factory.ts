@@ -104,8 +104,12 @@ class UnavailableInMemoryDurableObject {
     };
   }
 
-  async hasOrganizationMembership() {
-    return false;
+  async getUserAuthorityFacts() {
+    return {
+      active: false,
+      role: null,
+      organizationMember: false,
+    } as const;
   }
 
   async getAllOrganizations() {

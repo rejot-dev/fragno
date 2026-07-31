@@ -10,14 +10,14 @@ import { formatTimestamp } from "./formatting";
 import type { AutomationLayoutContext } from "./layout-context";
 
 const actorIdentity = (actor: AutomationActor) =>
-  `${actor.scope}:${actor.source ?? ""}:${actor.type}:${actor.id}`;
+  `${actor.scope}:${actor.scope === "external" ? actor.source : ""}:${actor.type}:${actor.id}`;
 
 const formatActor = (actor: AutomationActor | null) => {
   if (!actor) {
     return "—";
   }
 
-  const source = actor.source ? `${actor.source}/` : "";
+  const source = actor.scope === "external" ? `${actor.source}/` : "";
   return `${actor.role} · ${actor.scope}:${source}${actor.type}:${actor.id}`;
 };
 

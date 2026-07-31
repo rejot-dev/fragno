@@ -171,7 +171,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       ? routeScope.orgId
       : (me.activeOrganization?.organization.id ?? organisations[0]?.id ?? null);
   const projectsResult = projectOrgId
-    ? await fetchAutomationProjects(request, context, projectOrgId)
+    ? await fetchAutomationProjects(context, projectOrgId)
     : { projects: [], projectsError: null };
   if (routeScope.kind === "project" && projectsResult.projectsError) {
     throw Response.json(

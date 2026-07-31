@@ -13,7 +13,7 @@ import { createBashHost, type BashHost, type BashHostContext } from "./bash-host
 // Automation execution (bash + codemode)
 // ---------------------------------------------------------------------------
 
-export type AutomationExecutionContext = BashHostContext & {
+export type AutomationScriptHostContext = BashHostContext & {
   automation: NonNullable<BashHostContext["automation"]>;
 };
 
@@ -23,7 +23,7 @@ export const executeBashAutomation = async ({
   masterFs,
 }: {
   script: string;
-  context: AutomationExecutionContext;
+  context: AutomationScriptHostContext;
   masterFs: MasterFileSystem;
 }): Promise<AutomationRunResult<"bash">> => {
   const executionFs = createAutomationExecutionFileSystem({
@@ -58,7 +58,7 @@ export const executeAutomationScript = async ({
 }: {
   engine: AutomationScriptEngine;
   script: string;
-  context: AutomationExecutionContext;
+  context: AutomationScriptHostContext;
   masterFs: MasterFileSystem;
   env?: CloudflareEnv;
 }) => {

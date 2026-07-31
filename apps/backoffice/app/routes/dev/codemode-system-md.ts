@@ -1,4 +1,3 @@
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createBackofficeFileSystem } from "@/files/create-file-system";
 import { authorizeAccessTokenForOrganization } from "@/fragno/auth/access-token.server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
@@ -27,8 +26,7 @@ const readOrgSystemGuidance = async ({
   context: Route.LoaderArgs["context"];
   execution: Awaited<ReturnType<typeof requireBackofficeContext>>;
 }) => {
-  const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel(runtime);
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const fs = await createBackofficeFileSystem({
     objects: runtime.objects,
     kernel,

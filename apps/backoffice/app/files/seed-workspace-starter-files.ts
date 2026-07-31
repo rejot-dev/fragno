@@ -1,3 +1,4 @@
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { WORKSPACE_STARTER_CONTENT } from "@/files/content/starter";
 import { createUploadFileSystem } from "@/files/contributors/upload";
@@ -83,10 +84,7 @@ export const seedWorkspaceStarterFiles = async ({
   const provider = uploadConfig.defaultProvider ?? "database";
   const fileContext = createSystemFilesContext({
     objects,
-    execution: {
-      actor: { type: "system", id: "system" },
-      scope: { kind: "org", orgId },
-    },
+    execution: createBackofficeSystemExecution({ kind: "org", orgId }),
     staticFileArtifacts: () => ({}),
   });
   const fs = createUploadFileSystem(fileContext, {

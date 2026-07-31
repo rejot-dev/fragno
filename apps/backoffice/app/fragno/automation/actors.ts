@@ -1,25 +1,22 @@
 import { z } from "zod";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-
-export type AutomationEntityScope = "internal" | "external";
-
-export type AutomationEntityRef<
-  TScope extends AutomationEntityScope = AutomationEntityScope,
-  TType extends string = string,
-> = {
-  scope: TScope;
-  type: TType;
-  id: string;
-  source?: string;
-};
-
 export type AutomationExternalEntityRef<
   TSource extends string = string,
   TType extends string = string,
-> = AutomationEntityRef<"external", TType> & {
+> = {
+  scope: "external";
   source: TSource;
+  type: TType;
+  id: string;
 };
+
+export type AutomationEntityRef<TType extends string = string> =
+  | {
+      scope: "internal";
+      type: TType;
+      id: string;
+    }
+  | AutomationExternalEntityRef<string, TType>;
 
 export type AutomationActorRole = "initiator" | "principal" | "delegate" | "assistant";
 
@@ -28,53 +25,57 @@ export type AutomationActor<TRole extends AutomationActorRole = AutomationActorR
     role: TRole;
   };
 
-export type AutomationInitiatorActor = AutomationActor<"initiator">;
-export type AutomationPrincipalActor = AutomationActor<"principal">;
-export type AutomationDelegatedActor = AutomationActor<"delegate"> | AutomationActor<"assistant">;
-
 export type AutomationActors = Readonly<{
-  initiator: AutomationInitiatorActor;
-  principal: AutomationPrincipalActor | null;
-  delegation: readonly AutomationDelegatedActor[];
+  initiator: AutomationActor<"initiator">;
+  principal: AutomationActor<"principal"> | null;
+  delegation: readonly (AutomationActor<"delegate"> | AutomationActor<"assistant">)[];
 }>;
 
-export type AutomationExecutionContext = {
-  scope: BackofficeContextScope;
-  actors: AutomationActors;
-};
+const automationInternalEntitySchema = z.strictObject({
+  scope: z.literal("internal"),
+  type: z.string().trim().min(1),
+  id: z.string().trim().min(1),
+});
 
-const createAutomationActorSchema = <TRole extends AutomationActorRole>(role: TRole) =>
-  z.discriminatedUnion("scope", [
-    z.strictObject({
-      scope: z.literal("internal"),
-      type: z.string().trim().min(1),
-      id: z.string().trim().min(1),
-      role: z.literal(role),
-    }),
-    z.strictObject({
-      scope: z.literal("external"),
-      source: z.string().trim().min(1),
-      type: z.string().trim().min(1),
-      id: z.string().trim().min(1),
-      role: z.literal(role),
-    }),
-  ]);
+const automationExternalEntitySchema = z.strictObject({
+  scope: z.literal("external"),
+  source: z.string().trim().min(1),
+  type: z.string().trim().min(1),
+  id: z.string().trim().min(1),
+});
 
-const haveSameAutomationActorIdentity = (left: AutomationEntityRef, right: AutomationEntityRef) =>
+const automationInitiatorActorSchema = z.discriminatedUnion("scope", [
+  automationInternalEntitySchema.extend({ role: z.literal("initiator") }),
+  automationExternalEntitySchema.extend({ role: z.literal("initiator") }),
+]);
+
+const automationPrincipalActorSchema = z.discriminatedUnion("scope", [
+  automationInternalEntitySchema.extend({ role: z.literal("principal") }),
+  automationExternalEntitySchema.extend({ role: z.literal("principal") }),
+]);
+
+const automationDelegateActorSchema = z.discriminatedUnion("scope", [
+  automationInternalEntitySchema.extend({ role: z.literal("delegate") }),
+  automationExternalEntitySchema.extend({ role: z.literal("delegate") }),
+]);
+
+const automationAssistantActorSchema = z.discriminatedUnion("scope", [
+  automationInternalEntitySchema.extend({ role: z.literal("assistant") }),
+  automationExternalEntitySchema.extend({ role: z.literal("assistant") }),
+]);
+
+export const automationEntityRefsEqual = (left: AutomationEntityRef, right: AutomationEntityRef) =>
   left.scope === right.scope &&
-  left.source === right.source &&
   left.type === right.type &&
-  left.id === right.id;
+  left.id === right.id &&
+  (left.scope === "internal" || (right.scope === "external" && left.source === right.source));
 
 export const automationActorsSchema: z.ZodType<AutomationActors> = z
   .strictObject({
-    initiator: createAutomationActorSchema("initiator"),
-    principal: createAutomationActorSchema("principal").nullable(),
+    initiator: automationInitiatorActorSchema,
+    principal: automationPrincipalActorSchema.nullable(),
     delegation: z.array(
-      z.discriminatedUnion("role", [
-        createAutomationActorSchema("delegate"),
-        createAutomationActorSchema("assistant"),
-      ]),
+      z.discriminatedUnion("role", [automationDelegateActorSchema, automationAssistantActorSchema]),
     ),
   })
   .superRefine((actors, context) => {
@@ -87,7 +88,7 @@ export const automationActorsSchema: z.ZodType<AutomationActors> = z
     const hasDuplicateIdentity = actorSequence.some((actor, actorIndex) =>
       actorSequence
         .slice(0, actorIndex)
-        .some((previousActor) => haveSameAutomationActorIdentity(previousActor, actor)),
+        .some((previousActor) => automationEntityRefsEqual(previousActor, actor)),
     );
 
     if (hasDuplicateIdentity) {
@@ -103,4 +104,4 @@ export const AUTOMATION_SYSTEM_INITIATOR = {
   type: "system",
   id: "backoffice",
   role: "initiator",
-} as const satisfies AutomationInitiatorActor;
+} as const satisfies AutomationActors["initiator"];

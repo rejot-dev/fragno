@@ -45,21 +45,13 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
     }
 
     const claim = await step.do("create telegram identity claim", async () => {
-      return await otp.createIdentityClaim({
-        actor: {
-          scope: "external",
-          source: "telegram",
-          type: "chat",
-          id: chatId,
-        },
-      });
+      return await otp.createIdentityClaim({});
     });
 
     await step.do("store telegram claim workflow binding", async () => {
       await store.set({
         key: "telegram/claim-workflow/" + claim.otpId,
         value: workflowInstanceId,
-        actor: automationEvent.actors.initiator,
         description: "Workflow waiting for Telegram identity claim " + claim.otpId,
         category: ["system", "telegram", "otp"],
       });
@@ -96,7 +88,6 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
       await store.set({
         key: completedActor.source + "/" + completedActorId,
         value: subjectUserId,
-        actor: completedActor,
         description: "Backoffice user linked to Telegram chat " + completedActorId,
         category: ["telegram", "identity"],
       });
@@ -207,8 +198,7 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
         await store.set({
           key: "telegram-pi-session/" + linkedUser,
           value: session.id,
-          actor: automationEvent.actors.initiator,
-          description: "Pi session for Telegram chat " + automationActorId,
+            description: "Pi session for Telegram chat " + automationActorId,
           category: ["telegram", "pi"],
         });
       });
@@ -297,7 +287,6 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
       await store.set({
         key: "pi/pi-default-agent",
         value,
-        actor: automationEvent.actors.initiator,
         description: "Default Pi agent for automation-created sessions.",
         category: ["pi"],
       });

@@ -1,8 +1,11 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
-import type { BackofficePrincipal } from "@/backoffice-runtime/context";
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
+import {
+  createBackofficeServiceExecution,
+  createBackofficeSystemExecution,
+} from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { PiObject } from "@/backoffice-runtime/object-registry";
 import {
@@ -290,19 +293,15 @@ export class InMemoryPiObject implements PiObject {
   #createRuntime(config: StoredPiConfig) {
     const { scope } = config;
     const scopeKey = backofficeContextScopeSinglePathSegment(scope);
-    const actor: BackofficePrincipal =
+    const execution =
       scope.kind === "system"
-        ? { type: "system", id: `pi:${scopeKey}` }
-        : {
-            type: "object",
-            id: `pi:${scopeKey}`,
-            ...(scope.kind === "org" || scope.kind === "project"
-              ? { organizationIds: [scope.orgId] }
-              : {}),
-          };
+        ? createBackofficeSystemExecution(scope)
+        : createBackofficeServiceExecution({
+            scope,
+            service: { type: "object", id: `pi:${scopeKey}` },
+          });
 
     const kernel = new BackofficeKernel(this.#runtimeServices);
-    const execution = { actor, scope };
     const sessionFileSystemContext: PiSessionFileSystemContext = {
       scope,
       objects: this.#runtimeServices.objects,
@@ -319,7 +318,6 @@ export class InMemoryPiObject implements PiObject {
         ...createPiCodemodeRuntime(this.#env),
         workflow: createRouteBackedAutomationWorkflowRuntime({
           object: this.#runtimeServices.objects.automations.for(scope),
-          scope,
         }),
       },
       sessionFileSystems: this.#sessionFileSystems,

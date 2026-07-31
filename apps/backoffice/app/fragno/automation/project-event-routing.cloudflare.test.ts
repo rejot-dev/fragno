@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test, vi, assert } from "vitest";
 import { env } from "cloudflare:workers";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
@@ -15,6 +16,7 @@ import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import type { AutomationEvent } from "./contracts";
+import { createAutomationRuntimeExecution } from "./engine/runtime-execution";
 import { createAutomationsRouteCaller } from "./route-callers";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -62,10 +64,7 @@ describe("project automation event routing", () => {
     });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
-    const orgRoutes = createAutomationsRouteCaller({
-      object: orgAutomations,
-      scope: { kind: "org", orgId },
-    });
+    const orgRoutes = createAutomationsRouteCaller({ object: orgAutomations });
     await orgRoutes("POST", "/routes", {
       body: {
         id: "system-project-files-configure",
@@ -149,10 +148,7 @@ describe("project automation event routing", () => {
         authorityResolver: unavailableBackofficeAuthorityResolver,
         kernelObserver: noopBackofficeKernelObserver,
       }),
-      execution: {
-        actor: { type: "automation", id: "automation:org-event-1", organizationIds: [orgId] },
-        scope: event.scope,
-      },
+      execution: createAutomationRuntimeExecution(event),
       parentEvent: event,
     });
 
@@ -170,7 +166,7 @@ describe("project automation event routing", () => {
 
     const workflowsResponse = await projectAutomations.fetch(
       new Request(
-        `https://automations.do/api/automations-workflows/automation-codemode-script/instances?scopeKind=project&orgId=${orgId}&projectId=${projectId}`,
+        "https://automations.do/api/automations-workflows/automation-codemode-script/instances",
       ),
     );
     assert(workflowsResponse.status === 200);
@@ -191,10 +187,7 @@ describe("project automation event routing", () => {
     runtime = await createInMemoryBackofficeRuntime({ env: { LOADER: env.LOADER } });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
-    const orgRoutes = createAutomationsRouteCaller({
-      object: orgAutomations,
-      scope: { kind: "org", orgId },
-    });
+    const orgRoutes = createAutomationsRouteCaller({ object: orgAutomations });
     const createProjectResponse = await orgRoutes("POST", "/projects", {
       body: {
         name: "Mounted Plan",
@@ -245,10 +238,10 @@ describe("project automation event routing", () => {
     const fs = await createMasterFileSystem(
       createSystemFilesContext({
         objects: runtime.objects,
-        execution: {
-          actor: { type: "user", id: "user-1", userId: "user-1", organizationIds: [orgId] },
+        execution: createBackofficeUserExecution({
           scope: { kind: "org", orgId },
-        },
+          userId: "user-1",
+        }),
 
         staticFileArtifacts: () => ({}),
       }),
@@ -260,10 +253,10 @@ describe("project automation event routing", () => {
     const projectFs = await createMasterFileSystem(
       createSystemFilesContext({
         objects: runtime.objects,
-        execution: {
-          actor: { type: "user", id: "user-1", userId: "user-1", organizationIds: [orgId] },
+        execution: createBackofficeUserExecution({
           scope: { kind: "project", orgId, projectId },
-        },
+          userId: "user-1",
+        }),
 
         staticFileArtifacts: () => ({}),
       }),
@@ -276,10 +269,7 @@ describe("project automation event routing", () => {
     runtime = await createInMemoryBackofficeRuntime({ env: { LOADER: env.LOADER } });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
-    const orgRoutes = createAutomationsRouteCaller({
-      object: orgAutomations,
-      scope: { kind: "org", orgId },
-    });
+    const orgRoutes = createAutomationsRouteCaller({ object: orgAutomations });
     const createProjectResponse = await orgRoutes("POST", "/projects", {
       body: {
         name: "Archived Plan",
@@ -314,14 +304,7 @@ describe("project automation event routing", () => {
         authorityResolver: unavailableBackofficeAuthorityResolver,
         kernelObserver: noopBackofficeKernelObserver,
       }),
-      execution: {
-        actor: {
-          type: "automation",
-          id: "automation:org-event-archived",
-          organizationIds: [orgId],
-        },
-        scope: event.scope,
-      },
+      execution: createAutomationRuntimeExecution(event),
       parentEvent: event,
     });
 

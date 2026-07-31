@@ -93,8 +93,9 @@ const createProjectExecution = (
   }
 
   return {
-    actor: ctx.execution.actor,
+    actors: ctx.execution.actors,
     scope: { kind: "project", orgId: ctx.execution.scope.orgId, projectId: project.id },
+    ...(ctx.execution.userAuthority ? { userAuthority: ctx.execution.userAuthority } : {}),
   };
 };
 

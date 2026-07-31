@@ -3,6 +3,8 @@ import { z } from "zod";
 import { defineRoutes } from "@fragno-dev/core";
 import { isUniqueConstraintError } from "@fragno-dev/db";
 
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+
 import { loadAutomationCatalogFromConfig } from "./catalog";
 import { automationFragmentDefinition } from "./definition";
 import {
@@ -23,10 +25,9 @@ export const automationProjectRoutes = defineRoutes(automationFragmentDefinition
           try {
             const orgId = query.get("orgId")?.trim() || undefined;
             const catalog = await loadAutomationCatalogFromConfig(config, {
-              execution: {
-                actor: { type: "system", id: "system" },
-                scope: orgId ? { kind: "org", orgId } : { kind: "system" },
-              },
+              execution: createBackofficeSystemExecution(
+                orgId ? { kind: "org", orgId } : { kind: "system" },
+              ),
               purpose: "route",
             });
             return json(catalog.scripts);

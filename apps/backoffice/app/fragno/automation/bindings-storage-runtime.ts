@@ -7,38 +7,9 @@ import type {
   StoreSetArgs,
 } from "../runtime-tools/automation-types";
 import { automationFragmentSchema } from "./schema";
-import {
-  type AutomationStoreEntry,
-  hasSystemCategory,
-  validateAutomationStoreVerification,
-} from "./store";
-
-export class AutomationStoreProtectedEntryError extends Error {
-  constructor(readonly key: string) {
-    super(`Store entry '${key}' is protected and cannot be deleted.`);
-    this.name = "AutomationStoreProtectedEntryError";
-  }
-}
+import { validateAutomationStoreVerification } from "./store";
 
 type AutomationStoreServiceContext = DatabaseServiceContext<Record<string, never>>;
-
-const mergeCategoryForUpdate = ({
-  existing,
-  nextCategory,
-}: {
-  existing: Pick<AutomationStoreEntry, "category">;
-  nextCategory?: string[];
-}) => {
-  if (typeof nextCategory === "undefined") {
-    return existing.category;
-  }
-
-  if (!hasSystemCategory(existing) || nextCategory.includes("system")) {
-    return nextCategory;
-  }
-
-  return [...nextCategory, "system"];
-};
 
 export const createAutomationStoreServices = (
   defineService: <TService>(
@@ -72,7 +43,7 @@ export const createAutomationStoreServices = (
     },
 
     setStoreEntry(args: StoreSetArgs) {
-      const { key, value, actor, verification } = args;
+      const { key, value, verification } = args;
       validateAutomationStoreVerification({ value, verification });
 
       return this.serviceTx(automationFragmentSchema)
@@ -86,17 +57,13 @@ export const createAutomationStoreServices = (
 
           if (rawExisting) {
             const description = "description" in args ? args.description : rawExisting.description;
-            const category = mergeCategoryForUpdate({
-              existing: { category: rawExisting.category ?? [] },
-              nextCategory: args.category,
-            });
+            const category = args.category ?? rawExisting.category ?? [];
 
             uow.update("kv_store", rawExisting.id, (b) =>
               b
                 .set({
                   key,
                   value,
-                  actor,
                   description: description ?? null,
                   category,
                   updatedAt: now,
@@ -108,7 +75,6 @@ export const createAutomationStoreServices = (
               id: rawExisting.id.valueOf(),
               key,
               value,
-              actor,
               description: description ?? null,
               category,
             };
@@ -119,7 +85,6 @@ export const createAutomationStoreServices = (
           const createdId = uow.create("kv_store", {
             key,
             value,
-            actor,
             description,
             category,
             createdAt: now,
@@ -130,7 +95,6 @@ export const createAutomationStoreServices = (
             id: createdId.valueOf(),
             key,
             value,
-            actor,
             description,
             category,
           };
@@ -148,10 +112,6 @@ export const createAutomationStoreServices = (
         .mutate(({ uow, retrieveResult: [rawExisting] }) => {
           if (!rawExisting) {
             return null;
-          }
-
-          if (hasSystemCategory({ category: rawExisting.category ?? [] })) {
-            throw new AutomationStoreProtectedEntryError(key);
           }
 
           uow.delete("kv_store", rawExisting.id, (b) => b.check());

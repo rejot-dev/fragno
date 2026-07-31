@@ -89,7 +89,7 @@ describe("runtime tool reference generation", () => {
           inputType: "StoreSetInput",
           outputType: "StoreSetOutput",
           bashCommand: "store.set",
-          bashOptions: ["key", "value", "actor", "description", "category", "verification"],
+          bashOptions: ["key", "value", "description", "category", "verification"],
         },
         {
           id: "store.delete",
@@ -127,8 +127,6 @@ describe("runtime tool reference generation", () => {
           bashOptions: [
             "event-type",
             "source",
-            "external-actor-id",
-            "actor-type",
             "subject-user-id",
             "payload-json",
             "target-scope-json",
@@ -202,7 +200,7 @@ describe("runtime tool reference generation", () => {
           inputType: "OtpCreateIdentityClaimInput",
           outputType: "OtpCreateIdentityClaimOutput",
           bashCommand: "otp.identity.create-claim",
-          bashOptions: ["actor-json", "ttl-minutes"],
+          bashOptions: ["ttl-minutes"],
         },
       ],
     },

@@ -355,6 +355,27 @@ const readCliArgsField = <TValue>(
     : (value as TValue);
 };
 
+const standardCliOptionNames = new Set(["help", "print", "format", "json"]);
+
+const assertNoUnknownOptions = <TArgs extends object>(
+  parsed: ParsedCliTokens,
+  commandName: string,
+  fields: CliArgsFieldMap<TArgs>,
+) => {
+  const allowed = new Set(standardCliOptionNames);
+  for (const [propertyName, field] of Object.entries(fields) as Array<
+    [keyof TArgs & string, CliArgsField<TArgs[keyof TArgs]>]
+  >) {
+    allowed.add(field.option ?? camelToKebab(propertyName));
+  }
+
+  for (const optionName of parsed.options.keys()) {
+    if (!allowed.has(optionName)) {
+      throw new Error(`${commandName} does not accept option --${optionName}`);
+    }
+  }
+};
+
 export const defineCliArgsParser =
   <TArgs extends object>(
     commandName: string,
@@ -363,6 +384,7 @@ export const defineCliArgsParser =
   ) =>
   (args: string[]): TArgs =>
     parseNoPositionals(commandName, options.normalizeArgs?.(args) ?? args, (parsed) => {
+      assertNoUnknownOptions(parsed, commandName, fields);
       const result: Partial<TArgs> = {};
       for (const [propertyName, field] of Object.entries(fields) as Array<
         [keyof TArgs & string, CliArgsField<TArgs[keyof TArgs]>]

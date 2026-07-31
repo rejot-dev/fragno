@@ -2,6 +2,7 @@ import { describe, expect, test, assert } from "vitest";
 
 import { Bash, defineCommand } from "just-bash";
 
+import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
 import {
   createSystemFilesContext,
   createUploadFileSystem,
@@ -276,7 +277,7 @@ describe("upload file contributor", () => {
     );
     const context = createSystemFilesContext({
       execution: {
-        actor: { type: "system", id: "system" },
+        actors: BACKOFFICE_SYSTEM_ACTORS,
         scope: { kind: "org", orgId: "acme-org" },
       },
       origin: runtime.baseUrl,
@@ -301,7 +302,7 @@ describe("upload file contributor", () => {
     });
     const context = createSystemFilesContext({
       execution: {
-        actor: { type: "system", id: "system" },
+        actors: BACKOFFICE_SYSTEM_ACTORS,
         scope: { kind: "org", orgId: "acme-org" },
       },
       origin: runtime.baseUrl,
@@ -331,7 +332,7 @@ describe("upload file contributor", () => {
     const runtime = createUploadRuntime({});
     const context = createSystemFilesContext({
       execution: {
-        actor: { type: "system", id: "system" },
+        actors: BACKOFFICE_SYSTEM_ACTORS,
         scope: { kind: "org", orgId: "acme-org" },
       },
       origin: runtime.baseUrl,
@@ -992,7 +993,7 @@ describe("upload file contributor", () => {
       createUploadFileSystem(
         createSystemFilesContext({
           execution: {
-            actor: { type: "system", id: "system" },
+            actors: BACKOFFICE_SYSTEM_ACTORS,
             scope: { kind: "org", orgId: "acme-org" },
           },
           origin: runtime.baseUrl,
@@ -1012,7 +1013,7 @@ describe("upload file contributor", () => {
     const fs = await uploadFileContributor.createFileSystem?.(
       createSystemFilesContext({
         execution: {
-          actor: { type: "system", id: "system" },
+          actors: BACKOFFICE_SYSTEM_ACTORS,
           scope: { kind: "org", orgId: "acme-org" },
         },
         backend: "backoffice",
@@ -1068,7 +1069,7 @@ const createUploadFs = (
   const runtime = createUploadRuntime(seed);
   const context = createSystemFilesContext({
     execution: {
-      actor: { type: "system", id: "system" },
+      actors: BACKOFFICE_SYSTEM_ACTORS,
       scope: { kind: "org", orgId: "acme-org" },
     },
     origin: runtime.baseUrl,

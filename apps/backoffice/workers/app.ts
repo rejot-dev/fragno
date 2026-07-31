@@ -2,6 +2,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import { createRequestHandler, RouterContextProvider } from "react-router";
 import System from "typebox/system";
 
+import { BackofficeKernel } from "../app/backoffice-runtime/kernel";
 import { createCloudflareBackofficeRuntimeServices } from "../app/backoffice-runtime/runtime-services";
 import { BackofficeWorkerContext } from "../app/worker-runtime/router-context";
 import { Api } from "./api.do";
@@ -64,8 +65,10 @@ System.Settings.Set({ useAcceleration: false });
 export default {
   async fetch(request, env, ctx) {
     const context = new RouterContextProvider();
+    const runtime = createCloudflareBackofficeRuntimeServices(env);
     context.set(BackofficeWorkerContext, {
-      runtime: createCloudflareBackofficeRuntimeServices(env),
+      runtime,
+      kernel: new BackofficeKernel(runtime),
       env,
       ctx,
     });
