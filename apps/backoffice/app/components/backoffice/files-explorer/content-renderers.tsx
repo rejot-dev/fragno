@@ -13,7 +13,7 @@ const TextRenderer: FilesContentRenderer = {
   label: "Text preview",
   render(detail) {
     return (
-      <pre className="max-h-[32rem] overflow-auto text-sm leading-6 whitespace-pre-wrap text-[var(--bo-fg)]">
+      <pre className="backoffice-scroll max-h-[32rem] overflow-auto font-mono text-[12px] leading-6 whitespace-pre-wrap text-[var(--bo-fg)]">
         {detail.textContent ?? ""}
       </pre>
     );
@@ -38,7 +38,7 @@ const ImageRenderer: FilesContentRenderer = {
       <img
         src={src}
         alt={detail.node.title}
-        className="max-h-[32rem] max-w-full rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] object-contain"
+        className="max-h-[32rem] max-w-full bg-[var(--bo-panel)] object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
       />
     );
   },
