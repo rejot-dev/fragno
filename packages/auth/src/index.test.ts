@@ -612,10 +612,13 @@ describe("auth-fragment", async () => {
               "authority-user@test.com",
               passwordHash,
               "admin",
+              { id: "authority-user" },
             ),
           ])
           .execute();
       });
+
+      assert(user.id === "authority-user");
 
       const activeFacts = await test.inContext(function () {
         return this.handlerTx()
@@ -629,16 +632,14 @@ describe("auth-fragment", async () => {
         organizationMember: false,
       });
 
-      await test.inContext(function () {
+      const [banResult] = await test.inContext(function () {
         return this.handlerTx()
-          .mutate(({ forSchema }) => {
-            forSchema(authSchema).update("user", user.id, (b) =>
-              b.set({ bannedAt: new Date("2026-07-28T00:00:00.000Z") }),
-            );
-            return true;
-          })
+          .withServiceCalls(() => [
+            fragment.services.setUserBannedAt(user.id, new Date("2026-07-28T00:00:00.000Z")),
+          ])
           .execute();
       });
+      expect(banResult).toEqual({ ok: true });
 
       const bannedFacts = await test.inContext(function () {
         return this.handlerTx()

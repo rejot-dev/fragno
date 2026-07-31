@@ -10,7 +10,7 @@ import {
   sessionCredentialOwnerSelect,
   validateSessionCredentialOwner,
 } from "../session/session-credential-validator";
-import type { Role } from "../types";
+import type { AuthServiceMutationOptions, Role } from "../types";
 import { mapUserSummary } from "../user/summary";
 import { canManageOrganization, isGlobalAdmin, OWNER_ROLE } from "./permissions";
 import type {
@@ -23,7 +23,7 @@ import { DEFAULT_MEMBER_ROLES, normalizeRoleNames, toExternalId } from "./utils"
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
 
-type CreateMemberInput = {
+type CreateMemberInput = AuthServiceMutationOptions & {
   organizationId: string;
   userId: string;
   roles?: readonly string[];
@@ -372,7 +372,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             );
             const actorSummary = actorUser ? mapUserSummary(actorUser) : null;
 
-            if (organization) {
+            if (organization && input.emitHooks !== false) {
               uow.triggerHook("onMemberAdded", {
                 organization,
                 member,
@@ -681,7 +681,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
      */
     updateOrganizationMemberRoles: function (
       this: AuthServiceContext,
-      params: {
+      params: AuthServiceMutationOptions & {
         organizationId: string;
         memberId: string;
         roles: readonly string[];
@@ -797,7 +797,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
               nextRoles,
             );
 
-            if (organization) {
+            if (organization && params.emitHooks !== false) {
               uow.triggerHook("onMemberRolesUpdated", {
                 organization,
                 member: updatedMember,
@@ -819,7 +819,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
      */
     removeOrganizationMember: function (
       this: AuthServiceContext,
-      params: {
+      params: AuthServiceMutationOptions & {
         organizationId: string;
         memberId: string;
         actor: { userId: string; userRole: Role };
@@ -927,7 +927,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
               roles.map((role) => role.role),
             );
 
-            if (organization) {
+            if (organization && params.emitHooks !== false) {
               uow.triggerHook("onMemberRemoved", {
                 organization,
                 member: removedMember,

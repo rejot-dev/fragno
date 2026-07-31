@@ -10,6 +10,7 @@ import {
   createSystemFilesContext,
   staticFileContributor,
   staticFileMount,
+  systemFileContributor,
 } from "@/files";
 
 import type { FileContent } from "../interface";
@@ -64,6 +65,40 @@ describe("static file contributor", () => {
         ...Object.keys(STATIC_FILE_CONTENT).map((path) => `/static/${path}`),
       ]),
     );
+  });
+
+  test("shows system files only through system scope for interactive admins", () => {
+    const systemScopeFileSystem = systemFileContributor.createFileSystem?.(
+      createSystemFilesContext({
+        execution: createBackofficeUserExecution({
+          scope: { kind: "system" },
+          userId: "admin-1",
+          verifiedAccessToken: {
+            role: "admin",
+            organizationIds: ["org-1"],
+            expiresAt: new Date("2027-01-01T00:00:00.000Z"),
+          },
+        }),
+        staticFileArtifacts: () => ({}),
+      }),
+    );
+    const orgScopeFileSystem = systemFileContributor.createFileSystem?.(
+      createSystemFilesContext({
+        execution: createBackofficeUserExecution({
+          scope: { kind: "org", orgId: "org-1" },
+          userId: "admin-1",
+          verifiedAccessToken: {
+            role: "admin",
+            organizationIds: ["org-1"],
+            expiresAt: new Date("2027-01-01T00:00:00.000Z"),
+          },
+        }),
+        staticFileArtifacts: () => ({}),
+      }),
+    );
+
+    expect(systemScopeFileSystem).not.toBeNull();
+    expect(orgScopeFileSystem).toBeNull();
   });
 
   test("does not load codemode artifacts for unrelated static files", async () => {

@@ -83,6 +83,7 @@ describe("organization services", async () => {
       return this.handlerTx()
         .withServiceCalls(() => [
           fragment.services.createOrganization({
+            id: "  acme-organization  ",
             name: "Acme Inc",
             slug: "acme-inc",
             creatorUserId: user.id,
@@ -95,6 +96,7 @@ describe("organization services", async () => {
 
     assert(result.ok);
 
+    assert(result.organization.id === "acme-organization");
     assert(result.organization.slug === "acme-inc");
     expect(result.member.roles).toEqual(["owner", "admin"]);
 
@@ -118,6 +120,28 @@ describe("organization services", async () => {
     });
 
     expect(rolesResult.roles).toEqual(["owner", "admin"]);
+  });
+
+  it("generates an organization id when the optional custom id is blank", async () => {
+    const user = await createUser("blank-organization-id@test.com");
+
+    const [result] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createOrganization({
+            id: "   ",
+            name: "Generated ID Org",
+            slug: "generated-id-org",
+            creatorUserId: user.id,
+            creatorUserRole: user.role,
+          }),
+        ])
+        .execute();
+    });
+
+    assert(result.ok);
+    expect(result.organization.id.trim()).toBe(result.organization.id);
+    expect(result.organization.id).not.toBe("");
   });
 
   it("creates organization from actor context", async () => {
