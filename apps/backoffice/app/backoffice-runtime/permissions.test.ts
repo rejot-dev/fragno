@@ -25,6 +25,9 @@ describe("Backoffice permissions", () => {
     assert(!isBackofficePermissionRequirement({ namespace: "*", permission: "*" }));
     assert(!isBackofficePermissionRequirement({ namespace: "telegram", permission: "unknown" }));
     assert(!isBackofficePermissionRequirement({ namespace: "telegram", permission: "create" }));
+    assert(isBackofficePermissionRequirement({ namespace: "identity", permission: "bind" }));
+    assert(isBackofficePermissionRequirement({ namespace: "identity", permission: "resolve" }));
+    assert(isBackofficePermissionRequirement({ namespace: "identity", permission: "revoke" }));
     assert(isBackofficePermissionRequirement({ namespace: "telegram", permission: "send" }));
   });
 });

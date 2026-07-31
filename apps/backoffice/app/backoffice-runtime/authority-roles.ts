@@ -6,7 +6,12 @@ import type { BackofficeContextScope } from "./context";
 import { BACKOFFICE_PERMISSION, type BackofficePermissionRequirement } from "./permissions";
 
 const USER_AUTHORITY_ROLE_GRANTS = {
-  "system-administrator": [BACKOFFICE_PERMISSION.store.modify],
+  "system-administrator": [
+    BACKOFFICE_PERMISSION.identity.bind,
+    BACKOFFICE_PERMISSION.identity.resolve,
+    BACKOFFICE_PERMISSION.identity.revoke,
+    BACKOFFICE_PERMISSION.store.modify,
+  ],
   "user-owner": [
     BACKOFFICE_PERMISSION.otp.create,
     BACKOFFICE_PERMISSION.store.modify,
@@ -27,6 +32,7 @@ const USER_AUTHORITY_ROLE_GRANTS = {
  */
 const INTERNAL_SERVICE_AUTHORITY_ROLE_GRANTS = {
   automation: [
+    BACKOFFICE_PERMISSION.identity.resolve,
     BACKOFFICE_PERMISSION.otp.create,
     BACKOFFICE_PERMISSION.store.modify,
     BACKOFFICE_PERMISSION.telegram.send,
@@ -42,11 +48,17 @@ const INTERNAL_SERVICE_AUTHORITY_ROLE_GRANTS = {
     BACKOFFICE_PERMISSION.telegram.send,
   ],
   object: [
+    BACKOFFICE_PERMISSION.identity.bind,
+    BACKOFFICE_PERMISSION.identity.resolve,
+    BACKOFFICE_PERMISSION.identity.revoke,
     BACKOFFICE_PERMISSION.otp.create,
     BACKOFFICE_PERMISSION.store.modify,
     BACKOFFICE_PERMISSION.telegram.send,
   ],
   system: [
+    BACKOFFICE_PERMISSION.identity.bind,
+    BACKOFFICE_PERMISSION.identity.resolve,
+    BACKOFFICE_PERMISSION.identity.revoke,
     BACKOFFICE_PERMISSION.otp.create,
     BACKOFFICE_PERMISSION.store.modify,
     BACKOFFICE_PERMISSION.telegram.send,

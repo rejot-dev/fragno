@@ -37,6 +37,14 @@ import type {
 } from "@/fragno/automation";
 import type { AutomationActor } from "@/fragno/automation/actors";
 import type {
+  BindExternalIdentityInput,
+  BindExternalIdentityResult,
+  GetExternalIdentityBindingInput,
+  ResolveExternalIdentityResult,
+  RevokeExternalIdentityInput,
+  RevokeExternalIdentityResult,
+} from "@/fragno/automation/external-identities";
+import type {
   BillingEventInput,
   BillingRecordEventResult,
   BillingTrackerPage,
@@ -218,6 +226,18 @@ export type AutomationsObject = FetchObject &
       input?: MarketplaceIngestionListInput,
     ): Promise<MarketplaceIngestionRecord[]>;
     fetchWithContext(request: Request, context: BackofficeActionRpcContext): Promise<Response>;
+    bindExternalIdentity(
+      input: BindExternalIdentityInput,
+      context: BackofficeActionRpcContext,
+    ): Promise<BindExternalIdentityResult>;
+    revokeExternalIdentity(
+      input: RevokeExternalIdentityInput,
+      context: BackofficeActionRpcContext,
+    ): Promise<RevokeExternalIdentityResult>;
+    resolveExternalIdentity(
+      input: GetExternalIdentityBindingInput,
+      context: BackofficeActionRpcContext,
+    ): Promise<ResolveExternalIdentityResult>;
     listEventDefinitions(): Promise<AutomationEventDefinition[]>;
     getEventDefinition(input: {
       source: string;

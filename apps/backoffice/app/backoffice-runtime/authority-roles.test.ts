@@ -14,19 +14,40 @@ const currentKernelPermissions = [
 ];
 
 describe("Backoffice authority role grants", () => {
-  test("keeps system administration limited to store mutation", () => {
+  test("grants identity administration only to system administrators and trusted objects", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["system-administrator"]).toEqual([
+      BACKOFFICE_PERMISSION.identity.bind,
+      BACKOFFICE_PERMISSION.identity.resolve,
+      BACKOFFICE_PERMISSION.identity.revoke,
       BACKOFFICE_PERMISSION.store.modify,
+    ]);
+    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.object).toEqual([
+      BACKOFFICE_PERMISSION.identity.bind,
+      BACKOFFICE_PERMISSION.identity.resolve,
+      BACKOFFICE_PERMISSION.identity.revoke,
+      ...currentKernelPermissions,
+    ]);
+    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.system).toEqual([
+      BACKOFFICE_PERMISSION.identity.bind,
+      BACKOFFICE_PERMISSION.identity.resolve,
+      BACKOFFICE_PERMISSION.identity.revoke,
+      ...currentKernelPermissions,
     ]);
   });
 
-  test.each(
-    Object.keys(BACKOFFICE_AUTHORITY_ROLE_GRANTS).filter((role) => role !== "system-administrator"),
-  )("%s receives the currently adopted kernel permissions", (role) => {
-    expect(
-      BACKOFFICE_AUTHORITY_ROLE_GRANTS[role as keyof typeof BACKOFFICE_AUTHORITY_ROLE_GRANTS],
-    ).toEqual(currentKernelPermissions);
+  test("allows automations to resolve identity bindings inside workflow logic", () => {
+    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.automation).toEqual([
+      BACKOFFICE_PERMISSION.identity.resolve,
+      ...currentKernelPermissions,
+    ]);
   });
+
+  test.each(["user-owner", "organization-member", "agent", "capability"] as const)(
+    "%s receives the currently adopted workflow permissions",
+    (role) => {
+      expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS[role]).toEqual(currentKernelPermissions);
+    },
+  );
 
   test("does not grant catalog permissions merely because they exist", () => {
     for (const grants of Object.values(BACKOFFICE_AUTHORITY_ROLE_GRANTS)) {

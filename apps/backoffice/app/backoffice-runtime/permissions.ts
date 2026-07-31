@@ -30,6 +30,11 @@ export const BACKOFFICE_PERMISSION = {
   hooks: {
     read: { namespace: "hooks", permission: "read" },
   },
+  identity: {
+    bind: { namespace: "identity", permission: "bind" },
+    resolve: { namespace: "identity", permission: "resolve" },
+    revoke: { namespace: "identity", permission: "revoke" },
+  },
   internal: {
     manage: { namespace: "internal", permission: "manage" },
     read: { namespace: "internal", permission: "read" },
