@@ -250,6 +250,7 @@ export default [
       route("internals", "routes/backoffice/internals/layout.tsx", [
         index("routes/backoffice/internals/index.tsx"),
         route("github", "routes/backoffice/internals/github.tsx"),
+        route("generated-ui", "routes/backoffice/internals/generated-ui.tsx"),
         route("pi", "routes/backoffice/internals/pi.tsx"),
         route("pi/:orgId", "routes/backoffice/internals/pi-layout.tsx", [
           index("routes/backoffice/internals/pi-organisation-index.tsx"),
