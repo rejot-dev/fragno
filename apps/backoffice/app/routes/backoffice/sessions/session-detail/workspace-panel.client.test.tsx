@@ -7,12 +7,12 @@ import { useState } from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { projectWorkflowGraph } from "./workflow-graph-projection";
-import type { SessionWorkspaceTab } from "./workspace-model";
-import { SessionMobileWorkspaceTabs, SessionWorkspacePanel } from "./workspace-panel";
+import type { SessionWorkspaceItem } from "./workspace-model";
+import { SessionWorkspacePanel } from "./workspace-panel";
 
 afterEach(cleanup);
 
-const generatedUiTab = (id: string, label: string, value: string): SessionWorkspaceTab => ({
+const generatedUiItem = (id: string, label: string, value: string): SessionWorkspaceItem => ({
   id,
   label,
   toolCallId: id,
@@ -39,28 +39,11 @@ const generatedUiTab = (id: string, label: string, value: string): SessionWorksp
   },
 });
 
-function MobileTabsHarness({ tabs }: { tabs: SessionWorkspaceTab[] }) {
-  const [selectedTabId, setSelectedTabId] = useState<string | null>(null);
-  return (
-    <SessionMobileWorkspaceTabs
-      tabs={tabs}
-      selectedTabId={selectedTabId}
-      onSelectChat={() => {
-        setSelectedTabId(null);
-      }}
-      onSelectTab={setSelectedTabId}
-    />
-  );
-}
-
-function WorkspaceHarness({ tabs }: { tabs: SessionWorkspaceTab[] }) {
-  const [selectedTabId, setSelectedTabId] = useState(tabs[0]?.id ?? "");
+function WorkspaceHarness({ item }: { item: SessionWorkspaceItem }) {
   const [open, setOpen] = useState(true);
   return open ? (
     <SessionWorkspacePanel
-      tabs={tabs}
-      selectedTabId={selectedTabId}
-      onSelectTab={setSelectedTabId}
+      item={item}
       onClose={() => {
         setOpen(false);
       }}
@@ -70,47 +53,14 @@ function WorkspaceHarness({ tabs }: { tabs: SessionWorkspaceTab[] }) {
   );
 }
 
-describe("SessionMobileWorkspaceTabs", () => {
-  test("puts Chat first and switches between the conversation and interfaces", () => {
-    render(
-      <MobileTabsHarness
-        tabs={[
-          generatedUiTab("generated-ui:first", "Orders", "24"),
-          generatedUiTab("generated-ui:second", "Revenue", "$1,200"),
-        ]}
-      />,
-    );
-
-    const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["Chat", "Orders", "Revenue"]);
-    assert(screen.getByRole("tab", { name: /Chat/i }).getAttribute("aria-selected") === "true");
-
-    fireEvent.keyDown(screen.getByRole("tab", { name: /Chat/i }), { key: "ArrowRight" });
-    assert(screen.getByRole("tab", { name: /Orders/i }).getAttribute("aria-selected") === "true");
-
-    fireEvent.click(screen.getByRole("tab", { name: /Chat/i }));
-    assert(screen.getByRole("tab", { name: /Chat/i }).getAttribute("aria-selected") === "true");
-  });
-});
-
 describe("SessionWorkspacePanel", () => {
-  test("renders the selected generated interface and switches tabs", () => {
-    render(
-      <WorkspaceHarness
-        tabs={[
-          generatedUiTab("generated-ui:first", "Orders", "24"),
-          generatedUiTab("generated-ui:second", "Revenue", "$1,200"),
-        ]}
-      />,
-    );
+  test("renders the selected generated interface without workspace tabs", () => {
+    render(<WorkspaceHarness item={generatedUiItem("generated-ui:first", "Orders", "24")} />);
 
     expect(screen.getByLabelText("Orders")).toBeDefined();
-    expect(screen.queryByLabelText("Revenue")).toBeNull();
-
-    fireEvent.click(screen.getByRole("tab", { name: /Revenue/i }));
-
-    expect(screen.queryByLabelText("Orders")).toBeNull();
-    expect(screen.getByLabelText("Revenue")).toBeDefined();
+    expect(screen.getByText("Generated interface")).toBeDefined();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByRole("tab")).toBeNull();
   });
 
   test("renders workflows through the automation script graph", () => {
@@ -125,18 +75,23 @@ describe("SessionWorkspacePanel", () => {
       throw new Error("Expected workflow projection.");
     }
 
-    render(
+    const { container } = render(
       <WorkspaceHarness
-        tabs={[
-          {
-            id: "workflow-graph:workflow",
-            toolCallId: "workflow",
-            label: "order-workflow",
-            view: { type: "workflow-graph", projection },
-          },
-        ]}
+        item={{
+          id: "workflow-graph:workflow",
+          toolCallId: "workflow",
+          label: "order-workflow",
+          view: { type: "workflow-graph", projection },
+        }}
       />,
     );
+
+    expect(screen.getByText("Building workflow")).toBeDefined();
+    const toolbar = container.querySelector<HTMLElement>("[data-session-workspace-toolbar]");
+    assert(toolbar);
+    expect(within(toolbar).getByRole("group", { name: "Workflow graph detail" })).toBeDefined();
+    expect(within(toolbar).getByRole("group", { name: "Script view" })).toBeDefined();
+    expect(within(toolbar).getByRole("button", { name: "Close session workspace" })).toBeDefined();
 
     const workflowGraph = screen.getByLabelText("Workflow graph");
     expect(within(workflowGraph).getByText("order-workflow")).toBeDefined();
@@ -160,18 +115,8 @@ describe("SessionWorkspacePanel", () => {
     expect(screen.getByLabelText("Workflow graph")).toBeDefined();
   });
 
-  test("supports arrow-key tab navigation and an accessible close action", () => {
-    render(
-      <WorkspaceHarness
-        tabs={[
-          generatedUiTab("generated-ui:first", "Orders", "24"),
-          generatedUiTab("generated-ui:second", "Revenue", "$1,200"),
-        ]}
-      />,
-    );
-
-    fireEvent.keyDown(screen.getByRole("tab", { name: /Orders/i }), { key: "ArrowRight" });
-    assert(screen.getByRole("tab", { name: /Revenue/i }).getAttribute("aria-selected") === "true");
+  test("provides an accessible close action", () => {
+    render(<WorkspaceHarness item={generatedUiItem("generated-ui:first", "Orders", "24")} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Close session workspace" }));
     expect(screen.getByText("Workspace closed")).toBeDefined();

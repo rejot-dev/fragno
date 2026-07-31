@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, test, assert, vi } from "vitest";
+import { afterEach, describe, expect, test, assert } from "vitest";
 
 import { createElement } from "react";
 
@@ -9,7 +9,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 
 import { ResultContent } from "./result-content";
-import { ToolCallDetails, ToolResultContent } from "./tool-call";
+import { ToolCallDetails } from "./tool-call-layout";
+import { ToolResultContent } from "./tool-result-content";
 
 afterEach(cleanup);
 
@@ -53,8 +54,7 @@ describe("ToolCallDetails", () => {
     });
   });
 
-  test("opens a valid generated result through its workspace launcher", () => {
-    const onOpenGeneratedUi = vi.fn();
+  test("keeps a valid generated result out of the tool card", () => {
     const value = {
       $ui: {
         version: 1,
@@ -88,13 +88,11 @@ describe("ToolCallDetails", () => {
           timestamp: 1,
         } as never,
         useExecCodeModeFormatting: true,
-        onOpenGeneratedUi,
       }),
     );
 
     expect(screen.queryByLabelText("Orders")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Open interface" }));
-    expect(onOpenGeneratedUi).toHaveBeenCalledOnce();
+    expect(screen.getByText("Raw result")).toBeDefined();
   });
 
   test("formats and mounts raw output only while its disclosure is open", async () => {
@@ -117,12 +115,15 @@ describe("ToolCallDetails", () => {
     };
 
     const { container } = render(
-      createElement(ResultContent, {
-        children: createElement("p", null, "Ordinary result"),
-        parsedValue: parseBackofficeUiResult(value),
-        showRawValue: false,
-        value,
-      }),
+      createElement(
+        ResultContent,
+        {
+          parsedValue: parseBackofficeUiResult(value),
+          showRawValue: false,
+          value,
+        },
+        createElement("p", null, "Ordinary result"),
+      ),
     );
 
     expect(screen.getByLabelText("Orders")).toBeDefined();

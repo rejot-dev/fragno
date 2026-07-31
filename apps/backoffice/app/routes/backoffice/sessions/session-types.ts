@@ -2,6 +2,10 @@ import type { ReactNode } from "react";
 
 import type { PiHarnessConfig } from "@/fragno/pi/pi-shared";
 
+import type {
+  SessionWorkspaceStateBySession,
+  SessionWorkspaceStateUpdate,
+} from "./session-detail/workspace-model";
 import type { PiLayoutContext } from "./shared";
 
 export type PiCreateSessionActionData = {
@@ -16,4 +20,6 @@ export type PiSessionsOutletContext = {
   harnesses: PiHarnessConfig[];
   basePath: string;
   createSessionPanel?: ReactNode;
+  workspaceStates: SessionWorkspaceStateBySession;
+  updateWorkspaceState: (sessionKey: string, update: SessionWorkspaceStateUpdate) => void;
 };

@@ -50,6 +50,7 @@ export function AssistantMessage({
   );
   const isRunning = useAuiState((state) => state.message.status?.type === "running");
   const isFinalOutput = outputText.length > 0 && !hasToolCalls;
+  const isToolCallOnly = hasToolCalls && outputText.length === 0;
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -65,7 +66,7 @@ export function AssistantMessage({
   };
 
   return (
-    <MessagePrimitive.Root className="group relative mb-9 min-w-0">
+    <MessagePrimitive.Root className={`group relative min-w-0 ${isToolCallOnly ? "mb-3" : "mb-9"}`}>
       {isFinalOutput ? (
         <div className="mb-2 flex items-center gap-2">
           <span className="font-mono text-[10px] font-semibold tracking-[0.12em] text-[var(--bo-fg)] uppercase">

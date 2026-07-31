@@ -11,17 +11,21 @@ import { normalizePiContent, type ToolResultMessage } from "./assistant-runtime"
 import { getExecCodeModeResultDetails } from "./exec-code-mode";
 import { getCodeArgumentSource } from "./tool-arguments";
 import { projectWorkflowGraph } from "./workflow-graph-projection";
-import { generatedUiTabId, type SessionWorkspaceTab, workflowGraphTabId } from "./workspace-model";
+import {
+  generatedUiWorkspaceId,
+  type SessionWorkspaceItem,
+  workflowGraphWorkspaceId,
+} from "./workspace-model";
 
-export function projectSessionWorkspaceTabs({
+export function projectSessionWorkspaceItems({
   draftAgentMessage,
   messages,
 }: {
   draftAgentMessage: DraftAgentMessage | null;
   messages: readonly AgentMessage[];
-}): SessionWorkspaceTab[] {
-  const tabs: SessionWorkspaceTab[] = [];
-  const projectedTabIds = new Set<string>();
+}): SessionWorkspaceItem[] {
+  const items: SessionWorkspaceItem[] = [];
+  const projectedItemIds = new Set<string>();
   const draftTools = Object.values(draftAgentMessage?.tools ?? {});
   const draftToolsByCallId = new Map(draftTools.map((tool) => [tool.id, tool]));
 
@@ -36,8 +40,8 @@ export function projectSessionWorkspaceTabs({
     complete: boolean;
     toolCallId: string;
   }) => {
-    const id = workflowGraphTabId(toolCallId);
-    if (projectedTabIds.has(id)) {
+    const id = workflowGraphWorkspaceId(toolCallId);
+    if (projectedItemIds.has(id)) {
       return;
     }
 
@@ -51,8 +55,8 @@ export function projectSessionWorkspaceTabs({
       return;
     }
 
-    projectedTabIds.add(id);
-    tabs.push({
+    projectedItemIds.add(id);
+    items.push({
       id,
       toolCallId,
       label: projection.title,
@@ -65,8 +69,8 @@ export function projectSessionWorkspaceTabs({
       return;
     }
 
-    const id = generatedUiTabId(resultMessage.toolCallId);
-    if (projectedTabIds.has(id)) {
+    const id = generatedUiWorkspaceId(resultMessage.toolCallId);
+    if (projectedItemIds.has(id)) {
       return;
     }
 
@@ -80,8 +84,8 @@ export function projectSessionWorkspaceTabs({
       return;
     }
 
-    projectedTabIds.add(id);
-    tabs.push({
+    projectedItemIds.add(id);
+    items.push({
       id,
       toolCallId: resultMessage.toolCallId,
       label: "Interface",
@@ -132,12 +136,12 @@ export function projectSessionWorkspaceTabs({
   }
 
   let interfaceIndex = 0;
-  return tabs.map((tab) => {
-    if (tab.view.type !== "generated-ui") {
-      return tab;
+  return items.map((item) => {
+    if (item.view.type !== "generated-ui") {
+      return item;
     }
     interfaceIndex += 1;
-    return { ...tab, label: `Interface ${interfaceIndex}` };
+    return { ...item, label: `Interface ${interfaceIndex}` };
   });
 }
 
