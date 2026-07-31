@@ -68,7 +68,7 @@ import type {
 } from "@/fragno/marketplace/contracts";
 import { MarketplaceListingArchivedError } from "@/fragno/marketplace/definition";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
-import { STATIC_MARKETPLACE_ENTRIES } from "@/fragno/marketplace/static-entries";
+import { listStaticMarketplaceEntries } from "@/fragno/marketplace/static-entries";
 import { compareMarketplaceVersions } from "@/fragno/marketplace/version";
 import { createPiRouteRuntime } from "@/fragno/pi/pi";
 import { createCloudflareSandboxProvider } from "@/sandbox/cloudflare-sandbox-provider";
@@ -442,14 +442,17 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     }
 
     await this.#ensureConfigured({ scope });
-    const entries = STATIC_MARKETPLACE_ENTRIES.map((entry) => ({
-      entry,
-      listingId: marketplaceListingId({ ownerScope: entry.owner.scope, slug: entry.slug }),
-    })).sort(
-      (left, right) =>
-        left.listingId.localeCompare(right.listingId) ||
-        compareMarketplaceVersions(left.entry.version, right.entry.version),
-    );
+    const staticEntries = listStaticMarketplaceEntries();
+    const entries = staticEntries
+      .map((entry) => ({
+        entry,
+        listingId: marketplaceListingId({ ownerScope: entry.owner.scope, slug: entry.slug }),
+      }))
+      .sort(
+        (left, right) =>
+          left.listingId.localeCompare(right.listingId) ||
+          compareMarketplaceVersions(left.entry.version, right.entry.version),
+      );
     const entriesByListingId = new Map<string, StaticMarketplacePublicationRequest[]>();
     for (const request of entries) {
       const listingEntries = entriesByListingId.get(request.listingId) ?? [];
@@ -470,7 +473,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     }
 
     return {
-      publications: STATIC_MARKETPLACE_ENTRIES.map(({ owner, slug, version }) => {
+      publications: staticEntries.map(({ owner, slug, version }) => {
         const listingId = marketplaceListingId({ ownerScope: owner.scope, slug });
         const workflowInstanceId = buildMarketplacePublicationWorkflowInstanceId({
           listingId,

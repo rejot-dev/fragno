@@ -18,10 +18,14 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import {
+  TELEGRAM_TEST_COMMAND_MARKETPLACE_README,
   TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
   TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE,
 } from "@/files/content/telegram-test-command";
-import { marketplaceArtifactUploadName } from "@/fragno/marketplace/artifacts";
+import {
+  MARKETPLACE_LISTING_FILES_DIRECTORY,
+  marketplaceArtifactUploadName,
+} from "@/fragno/marketplace/artifacts";
 import type {
   MarketplaceCreateDraftListingInput,
   MarketplacePublishVersionInput,
@@ -61,7 +65,9 @@ const MARKETPLACE_UNCHANGED_FILE_SOURCE = "# Marketplace\n";
 const MARKETPLACE_REMOVED_FILE_KEY = "prompts/removed-in-next-version.md";
 const MARKETPLACE_REMOVED_FILE_SOURCE = "# Removed in the next Marketplace version\n";
 const UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE;
-const UPDATED_STATIC_MARKETPLACE_ENTRY = STATIC_MARKETPLACE_ENTRIES[1];
+const STATIC_TELEGRAM_TEST_COMMAND = STATIC_MARKETPLACE_ENTRIES[0];
+const BASE_STATIC_MARKETPLACE_VERSION = STATIC_TELEGRAM_TEST_COMMAND.versions[0];
+const UPDATED_STATIC_MARKETPLACE_VERSION = STATIC_TELEGRAM_TEST_COMMAND.versions[1];
 
 type MarketplaceWorkflowListEntry = { id: string };
 type MarketplaceWorkflowHistoryStep = {
@@ -73,8 +79,8 @@ type MarketplaceWorkflowHistoryStep = {
 const withUpdatedStaticMarketplaceEntry = async (run: () => Promise<void>) => await run();
 
 const withTwoFileMarketplaceVersions = async (run: () => Promise<void>) => {
-  const baseFiles = STATIC_MARKETPLACE_ENTRIES[0].files as Record<string, string>;
-  const updatedFiles = UPDATED_STATIC_MARKETPLACE_ENTRY.files as Record<string, string>;
+  const baseFiles = BASE_STATIC_MARKETPLACE_VERSION.files as Record<string, string>;
+  const updatedFiles = UPDATED_STATIC_MARKETPLACE_VERSION.files as Record<string, string>;
   const originalBaseFile = baseFiles[MARKETPLACE_UNCHANGED_FILE_KEY];
   const originalUpdatedFile = updatedFiles[MARKETPLACE_UNCHANGED_FILE_KEY];
   baseFiles[MARKETPLACE_UNCHANGED_FILE_KEY] = MARKETPLACE_UNCHANGED_FILE_SOURCE;
@@ -97,8 +103,8 @@ const withTwoFileMarketplaceVersions = async (run: () => Promise<void>) => {
 };
 
 const withRemovedFileMarketplaceVersion = async (run: () => Promise<void>) => {
-  const baseFiles = STATIC_MARKETPLACE_ENTRIES[0].files as Record<string, string>;
-  const updatedFiles = UPDATED_STATIC_MARKETPLACE_ENTRY.files as Record<string, string>;
+  const baseFiles = BASE_STATIC_MARKETPLACE_VERSION.files as Record<string, string>;
+  const updatedFiles = UPDATED_STATIC_MARKETPLACE_VERSION.files as Record<string, string>;
   const originalBaseFile = baseFiles[MARKETPLACE_REMOVED_FILE_KEY];
   const originalUpdatedFile = updatedFiles[MARKETPLACE_REMOVED_FILE_KEY];
   baseFiles[MARKETPLACE_REMOVED_FILE_KEY] = MARKETPLACE_REMOVED_FILE_SOURCE;
@@ -260,16 +266,22 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 (file) => file.metadata?.__docsDirectoryMarker !== true,
               );
               expect(artifactFiles).toEqual(
-                expect.arrayContaining(
-                  ["1.0.0", "1.1.0"].map((version) =>
+                expect.arrayContaining([
+                  ...["1.0.0", "1.1.0"].map((version) =>
                     expect.objectContaining({
                       fileKey: `${version}/automations/telegram-test-command.workflow.js`,
                       contentType: "text/javascript",
                     }),
                   ),
-                ),
+                  ...["1.0.0", "1.1.0"].map((version) =>
+                    expect.objectContaining({
+                      fileKey: `${version}/${MARKETPLACE_LISTING_FILES_DIRECTORY}/README.md`,
+                      contentType: "text/markdown",
+                    }),
+                  ),
+                ]),
               );
-              expect(artifactFiles).toHaveLength(2);
+              expect(artifactFiles).toHaveLength(4);
               assert(!files.files.some((file) => file.fileKey === "manifest.json"));
 
               const contentResponse = await upload.fetch(
@@ -280,6 +292,16 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               assert(contentResponse.ok);
               await expect(contentResponse.text()).resolves.toBe(
                 TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
+              );
+
+              const readmeResponse = await upload.fetch(
+                new Request(
+                  `https://marketplace.test/api/upload/files/by-key/content?provider=database&key=1.1.0%2F${encodeURIComponent(MARKETPLACE_LISTING_FILES_DIRECTORY)}%2FREADME.md`,
+                ),
+              );
+              assert(readmeResponse.ok);
+              await expect(readmeResponse.text()).resolves.toBe(
+                TELEGRAM_TEST_COMMAND_MARKETPLACE_README,
               );
             },
           ),
@@ -441,6 +463,14 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 await expect(response.text()).resolves.toBe(
                   UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
                 );
+
+                const listingReadmeUrl = new URL(
+                  "https://upload.test/api/upload/files/by-key/content",
+                );
+                listingReadmeUrl.searchParams.set("provider", "database");
+                listingReadmeUrl.searchParams.set("key", "README.md");
+                const listingReadmeResponse = await upload.fetch(new Request(listingReadmeUrl));
+                assert(listingReadmeResponse.status === 404);
               }
             },
           ),
@@ -928,7 +958,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   });
 
   test("replays publication from its durable static entry snapshot after an object restart", async () => {
-    const baseEntryFiles = STATIC_MARKETPLACE_ENTRIES[0].files as Record<string, string>;
+    const baseEntryFiles = BASE_STATIC_MARKETPLACE_VERSION.files as Record<string, string>;
     const originalSource = baseEntryFiles[MARKETPLACE_ARTIFACT_FILE_KEY];
     let rejectReservation = true;
 
@@ -1075,10 +1105,11 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             }),
             status: "complete",
           }),
-          then.assert("creation replay reuses the upload before transferring once", () => {
-            expect(createUploadAttempts).toBe(2);
-            expect(transferUploadAttempts).toBe(1);
-            assert(new Set(uploadIds).size === 1);
+          then.assert("creation replay reuses the upload before transferring each file", () => {
+            expect(createUploadAttempts).toBe(3);
+            expect(transferUploadAttempts).toBe(2);
+            expect(uploadIds[0]).toBe(uploadIds[1]);
+            assert(new Set(uploadIds).size === 2);
           }),
         ],
       }),
@@ -1155,9 +1186,9 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             }),
             status: "complete",
           }),
-          then.assert("only the transfer step is replayed", async (ctx) => {
-            expect(createUploadAttempts).toBe(1);
-            expect(transferUploadAttempts).toBe(2);
+          then.assert("only the failed transfer step is replayed", async (ctx) => {
+            expect(createUploadAttempts).toBe(2);
+            expect(transferUploadAttempts).toBe(3);
 
             const upload = ctx.runtime.objects.upload.forName(
               marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
@@ -1291,7 +1322,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             status: "complete",
           }),
           then.assert("the typed storage failure was retried once", () => {
-            expect(createUploadAttempts).toBe(2);
+            expect(createUploadAttempts).toBe(3);
           }),
         ],
       }),

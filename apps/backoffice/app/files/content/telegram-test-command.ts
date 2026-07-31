@@ -31,3 +31,9 @@ export const TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = buildTelegramTestCommandWor
 export const TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE = buildTelegramTestCommandWorkflowSource(
   "Telegram integration verified after a 3 second delay.",
 );
+
+export const TELEGRAM_TEST_COMMAND_MARKETPLACE_README = `# Telegram test command
+
+This Marketplace item installs a durable workflow that responds to the \`/test\` Telegram command
+after a three-second delay.
+`;
