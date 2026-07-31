@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { PiHarnessConfig } from "@/fragno/pi/pi-shared";
+import type { WorkflowRunCollections } from "@/routes/backoffice/automations/script-view/use-script-workflow-runs";
 
 import type {
   SessionWorkspaceStateBySession,
@@ -22,4 +23,6 @@ export type PiSessionsOutletContext = {
   createSessionPanel?: ReactNode;
   workspaceStates: SessionWorkspaceStateBySession;
   updateWorkspaceState: (sessionKey: string, update: SessionWorkspaceStateUpdate) => void;
+  workflowCollections?: WorkflowRunCollections;
+  workflowCollectionsError: string | null;
 };

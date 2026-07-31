@@ -15,9 +15,13 @@ export type ProgressiveOverflowControlGroup<GroupId extends string> = {
 
 export function ProgressiveOverflowControls<GroupId extends string>({
   groups,
+  measurementBoundary,
+  reservedWidth = 0,
   renderOverflow,
 }: {
   groups: readonly ProgressiveOverflowControlGroup<GroupId>[];
+  measurementBoundary?: HTMLElement | null;
+  reservedWidth?: number;
   renderOverflow: (hiddenGroupIds: ReadonlySet<GroupId>) => ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -47,7 +51,11 @@ export function ProgressiveOverflowControls<GroupId extends string>({
       measuredOverflowWidthRef.current = overflowWidth;
     }
 
-    const availableWidth = container.getBoundingClientRect().width;
+    const boundaryWidth = measurementBoundary?.getBoundingClientRect().width;
+    const availableWidth =
+      boundaryWidth && boundaryWidth > 0
+        ? Math.max(0, boundaryWidth - reservedWidth)
+        : container.getBoundingClientRect().width;
     const measuredGroupWidths = groups.map(({ id }) => measuredGroupWidthsRef.current.get(id) ?? 0);
     const measuredOverflowWidth = measuredOverflowWidthRef.current;
     if (
@@ -59,24 +67,20 @@ export function ProgressiveOverflowControls<GroupId extends string>({
     }
 
     const columnGap = Number.parseFloat(window.getComputedStyle(container).columnGap) || 0;
-    const allGroupsWidth =
-      measuredGroupWidths.reduce((total, width) => total + width, 0) +
-      columnGap * Math.max(0, groups.length - 1);
-
+    let visibleGroupsWidth = measuredGroupWidths.reduce((total, width) => total + width, 0);
+    const allGroupsWidth = visibleGroupsWidth + columnGap * Math.max(0, groups.length - 1);
     const nextHiddenGroupIds = new Set<GroupId>();
     if (allGroupsWidth > availableWidth) {
       const groupsByCollapsePriority = [...groups].sort(
         (left, right) => left.collapsePriority - right.collapsePriority,
       );
+      let visibleGroupCount = groups.length;
       for (const group of groupsByCollapsePriority) {
         nextHiddenGroupIds.add(group.id);
-        const visibleWidths = groups
-          .filter(({ id }) => !nextHiddenGroupIds.has(id))
-          .map(({ id }) => measuredGroupWidthsRef.current.get(id) ?? 0);
+        visibleGroupsWidth -= measuredGroupWidthsRef.current.get(group.id) ?? 0;
+        visibleGroupCount -= 1;
         const requiredWidth =
-          visibleWidths.reduce((total, width) => total + width, 0) +
-          measuredOverflowWidth +
-          columnGap * visibleWidths.length;
+          visibleGroupsWidth + measuredOverflowWidth + columnGap * visibleGroupCount;
         if (requiredWidth <= availableWidth) {
           break;
         }
@@ -85,7 +89,7 @@ export function ProgressiveOverflowControls<GroupId extends string>({
     setHiddenGroupIds((current) =>
       setsEqual(current, nextHiddenGroupIds) ? current : nextHiddenGroupIds,
     );
-  }, [groups]);
+  }, [groups, measurementBoundary, reservedWidth]);
 
   useLayoutEffect(() => {
     measure();
@@ -100,6 +104,9 @@ export function ProgressiveOverflowControls<GroupId extends string>({
 
     const resizeObserver = new ResizeObserver(measure);
     resizeObserver.observe(container);
+    if (measurementBoundary) {
+      resizeObserver.observe(measurementBoundary);
+    }
     for (const element of groupElementsRef.current.values()) {
       resizeObserver.observe(element);
     }
@@ -109,7 +116,7 @@ export function ProgressiveOverflowControls<GroupId extends string>({
     return () => {
       resizeObserver.disconnect();
     };
-  }, [measure]);
+  }, [measure, measurementBoundary]);
 
   const hasOverflow = hiddenGroupIds.size > 0;
   const overflowMeasurementStyle = hasOverflow
@@ -124,7 +131,7 @@ export function ProgressiveOverflowControls<GroupId extends string>({
     <div
       ref={containerRef}
       data-progressive-overflow-controls
-      className="relative flex min-w-0 items-center justify-end gap-2 overflow-hidden"
+      className="relative flex min-w-0 shrink items-center justify-end gap-2 overflow-hidden"
     >
       {groups.map((group) => (
         <div

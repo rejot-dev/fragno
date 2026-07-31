@@ -9,6 +9,7 @@ import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens"
 
 import {
   projectScriptWorkflowRuns,
+  projectWorkflowRun,
   selectScriptWorkflowRun,
   type AutomationWorkflowRun,
   type WorkflowRunEmission,
@@ -70,6 +71,26 @@ describe("automation script workflow run presentation", () => {
     });
 
     expect(runs.map((run) => run.instanceId)).toEqual(["matching"]);
+  });
+
+  it("projects an explicitly selected terminal run for session workflow panels", () => {
+    const run = projectWorkflowRun({
+      visualization,
+      instance: workflowRun({
+        instanceId: "completed-run",
+        status: "complete",
+        workflowSteps: [workflowStep({ status: "completed" })],
+      }),
+    });
+
+    assert(run);
+    assert(run.status === "complete");
+    expect(run.stepStatesByNodeId.get(stepNode("prepare").id)).toEqual({
+      status: "completed",
+      attempts: 1,
+      emissionCount: 0,
+      current: false,
+    });
   });
 
   it("maps durable waiting steps and normalizes sleepUntil to runtime sleep", () => {

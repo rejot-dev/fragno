@@ -27,6 +27,7 @@ import {
   type SessionWorkspaceNavigation,
 } from "./session-detail/workspace-context";
 import {
+  autoOpenNewWorkflowWorkspaceItem,
   createSessionWorkspaceState,
   toggleSessionWorkspaceItem,
 } from "./session-detail/workspace-model";
@@ -132,7 +133,8 @@ function PiSessionDetailView({
   projectionError: string | null;
   instanceStatus: string | null;
 }) {
-  const { workspaceStates, updateWorkspaceState } = useOutletContext<PiSessionsOutletContext>();
+  const { workspaceStates, updateWorkspaceState, workflowCollections, workflowCollectionsError } =
+    useOutletContext<PiSessionsOutletContext>();
   const [displayOptions, setDisplayOptions] = useState({
     showToolCalls: true,
     showThinking: true,
@@ -193,6 +195,12 @@ function PiSessionDetailView({
     () => new Set(workspaceItems.map((item) => item.id)),
     [workspaceItems],
   );
+
+  useEffect(() => {
+    updateWorkspaceState(workspaceStateKey, (current) =>
+      autoOpenNewWorkflowWorkspaceItem(current, workspaceItems),
+    );
+  }, [updateWorkspaceState, workspaceItems, workspaceStateKey]);
 
   const toggleWorkspaceItem = useCallback(
     (itemId: string) => {
@@ -345,6 +353,8 @@ function PiSessionDetailView({
                 <SessionWorkspacePanel
                   key={selectedWorkspaceItem.id}
                   item={selectedWorkspaceItem}
+                  workflowCollections={workflowCollections}
+                  workflowCollectionsError={workflowCollectionsError}
                   onClose={closeWorkspace}
                 />
               ) : null

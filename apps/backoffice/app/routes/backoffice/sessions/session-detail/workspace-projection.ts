@@ -28,16 +28,26 @@ export function projectSessionWorkspaceItems({
   const projectedItemIds = new Set<string>();
   const draftTools = Object.values(draftAgentMessage?.tools ?? {});
   const draftToolsByCallId = new Map(draftTools.map((tool) => [tool.id, tool]));
+  const completedResultsByCallId = new Map(
+    messages.flatMap(
+      (message): Array<[string, ToolResultMessage]> =>
+        message.role === "toolResult" && message.toolName === "execCodeMode"
+          ? [[message.toolCallId, message]]
+          : [],
+    ),
+  );
 
   const appendWorkflowGraph = ({
     args,
     argsText,
     complete,
+    run,
     toolCallId,
   }: {
     args: unknown;
     argsText?: string;
     complete: boolean;
+    run: ReturnType<typeof getExecCodeModeResultDetails>["run"];
     toolCallId: string;
   }) => {
     const id = workflowGraphWorkspaceId(toolCallId);
@@ -60,7 +70,7 @@ export function projectSessionWorkspaceItems({
       id,
       toolCallId,
       label: projection.title,
-      view: { type: "workflow-graph", projection },
+      view: { type: "workflow-graph", projection, run },
     });
   };
 
@@ -104,10 +114,14 @@ export function projectSessionWorkspaceItems({
           continue;
         }
         const draftTool = draftToolsByCallId.get(block.id);
+        const latestResult =
+          (draftTool ? completedDraftToolResult(draftTool) : null) ??
+          completedResultsByCallId.get(block.id);
         appendWorkflowGraph({
           args: draftTool?.args ?? block.arguments,
           argsText: draftTool?.argsText,
           complete: draftTool ? draftTool.status === "done" : true,
+          run: getExecCodeModeResultDetails(latestResult?.details).run,
           toolCallId: block.id,
         });
       }
@@ -123,13 +137,14 @@ export function projectSessionWorkspaceItems({
     if (draftTool.name !== "execCodeMode") {
       continue;
     }
+    const resultMessage = completedDraftToolResult(draftTool);
     appendWorkflowGraph({
       args: draftTool.args,
       argsText: draftTool.argsText,
       complete: draftTool.status === "done",
+      run: getExecCodeModeResultDetails(resultMessage?.details).run,
       toolCallId: draftTool.id,
     });
-    const resultMessage = completedDraftToolResult(draftTool);
     if (resultMessage) {
       appendGeneratedUi(resultMessage);
     }

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 
 import type { WorkflowVisualizationSnapshot } from "@fragno-dev/workflow-visualizer-tokens";
 
-import { eq, or, toArray, useLiveQuery } from "@tanstack/react-db";
+import { and, eq, or, toArray, useLiveQuery } from "@tanstack/react-db";
 
 import { AUTOMATION_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
@@ -13,39 +13,48 @@ import {
   type AutomationWorkflowRun,
 } from "./workflow-run-presentation";
 
-type AutomationWorkflowCollections = Pick<
+export type WorkflowRunCollections = Pick<
   AutomationCollections,
   "workflowInstances" | "workflowSteps" | "workflowStepEmissions"
 >;
 
-export function useScriptWorkflowRuns({
-  absolutePath,
+export type WorkflowRunRecordSelector =
+  | { type: "active-codemode" }
+  | { type: "instance"; workflowName: string; instanceId: string };
+
+export function useWorkflowRunRecords({
   collections,
-  selectedInstanceId,
-  visualization,
+  selector,
 }: {
-  absolutePath: string;
-  collections: AutomationWorkflowCollections;
-  selectedInstanceId?: string | null;
-  visualization: WorkflowVisualizationSnapshot;
+  collections?: WorkflowRunCollections;
+  selector: WorkflowRunRecordSelector | null;
 }) {
-  const hasWorkflowDefinitions = visualization.graph.nodes.some((node) => node.kind === "workflow");
   const runsQuery = useLiveQuery(
     (query) => {
-      if (!hasWorkflowDefinitions) {
+      if (!selector || !collections) {
         return undefined;
       }
 
-      return query
-        .from({ instance: collections.workflowInstances })
-        .where(({ instance }) => eq(instance.workflowName, AUTOMATION_CODEMODE_WORKFLOW))
-        .where(({ instance }) =>
-          or(
-            eq(instance.status, "active"),
-            eq(instance.status, "waiting"),
-            eq(instance.status, "paused"),
-          ),
-        )
+      const instances = query.from({ instance: collections.workflowInstances });
+      const selectedInstances =
+        selector.type === "active-codemode"
+          ? instances
+              .where(({ instance }) => eq(instance.workflowName, AUTOMATION_CODEMODE_WORKFLOW))
+              .where(({ instance }) =>
+                or(
+                  eq(instance.status, "active"),
+                  eq(instance.status, "waiting"),
+                  eq(instance.status, "paused"),
+                ),
+              )
+          : instances.where(({ instance }) =>
+              and(
+                eq(instance.workflowName, selector.workflowName),
+                eq(instance.instanceId, selector.instanceId),
+              ),
+            );
+
+      return selectedInstances
         .orderBy(({ instance }) => instance.updatedAt, "desc")
         .orderBy(({ instance }) => instance.id, "desc")
         .select(({ instance }) => ({
@@ -95,24 +104,16 @@ export function useScriptWorkflowRuns({
         }));
     },
     [
-      collections.workflowInstances,
-      collections.workflowStepEmissions,
-      collections.workflowSteps,
-      hasWorkflowDefinitions,
+      collections?.workflowInstances,
+      collections?.workflowStepEmissions,
+      collections?.workflowSteps,
+      selector?.type,
+      selector?.type === "instance" ? selector.instanceId : null,
+      selector?.type === "instance" ? selector.workflowName : null,
     ],
   );
-  const runs = useMemo(
-    () =>
-      projectScriptWorkflowRuns({
-        absolutePath,
-        visualization,
-        instances: (runsQuery.data ?? []) as AutomationWorkflowRun[],
-      }),
-    [absolutePath, runsQuery.data, visualization],
-  );
-  const selectedRun = selectScriptWorkflowRun(runs, selectedInstanceId);
   const sourceError =
-    hasWorkflowDefinitions && runsQuery.isError
+    collections && selector && runsQuery.isError
       ? (collections.workflowInstances.utils.getLastError() ??
         collections.workflowSteps.utils.getLastError() ??
         collections.workflowStepEmissions.utils.getLastError())
@@ -120,14 +121,47 @@ export function useScriptWorkflowRuns({
   const error =
     sourceError instanceof Error
       ? sourceError.message
-      : hasWorkflowDefinitions && runsQuery.isError
-        ? "Automation workflow synchronization failed."
+      : selector && runsQuery.isError
+        ? "Workflow synchronization failed."
         : null;
 
   return {
-    runs,
-    selectedRun,
+    instances: (runsQuery.data ?? []) as AutomationWorkflowRun[],
     error,
-    isLoading: hasWorkflowDefinitions && !runsQuery.isReady,
+    isLoading: Boolean(selector && collections && !runsQuery.isReady),
+  };
+}
+
+export function useScriptWorkflowRuns({
+  absolutePath,
+  collections,
+  selectedInstanceId,
+  visualization,
+}: {
+  absolutePath: string;
+  collections: WorkflowRunCollections;
+  selectedInstanceId?: string | null;
+  visualization: WorkflowVisualizationSnapshot;
+}) {
+  const hasWorkflowDefinitions = visualization.graph.nodes.some((node) => node.kind === "workflow");
+  const records = useWorkflowRunRecords({
+    collections,
+    selector: hasWorkflowDefinitions ? { type: "active-codemode" } : null,
+  });
+  const runs = useMemo(
+    () =>
+      projectScriptWorkflowRuns({
+        absolutePath,
+        visualization,
+        instances: records.instances,
+      }),
+    [absolutePath, records.instances, visualization],
+  );
+
+  return {
+    runs,
+    selectedRun: selectScriptWorkflowRun(runs, selectedInstanceId),
+    error: records.error,
+    isLoading: records.isLoading,
   };
 }

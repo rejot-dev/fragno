@@ -428,159 +428,192 @@ close/reopen the workspace without disturbing the conversation.
 
 ### - [ ] Slice 6 — Render an inline workflow's terminal UI result
 
+**Implementation audit (July 31, 2026):** the run-handle, scoped live synchronization, graph-status,
+and tool-to-workspace foundations are already implemented. They use organisation-scoped TanStack DB
+live collections instead of per-tab HTTP polling. Terminal output projection and rendering remain.
+
 **User-visible outcome:** an inline `defineWorkflow` started by `execCodeMode` remains attached to
-its automatically constructed workflow tab, shows live status there, and renders its final `$ui`
-output when complete.
+its automatically constructed workflow workspace item, shows live status there, and renders its
+final `$ui` output when complete.
 
 Use the run handle already returned in `completedToolResult.details.run`:
 
-- Define and validate the `{ workflowName, instanceId }` run-handle shape.
-- Attach the run handle to the existing source-derived workflow tab for that tool-call id. The run
-  handle enriches the tab; it does not decide whether the workflow tab exists.
-- Add a session-detail-specific workflow hook, for example in `workflow-result.tsx` or a nearby
-  module.
-- Use the active organisation/scope from the sessions route context to construct workflow requests.
-- Pass the required scope information from `session-detail.tsx` into the workspace without creating
-  hidden globals.
-- Load workflow instance status while its session workspace is mounted and refresh it when the tab
-  is reopened.
-- Poll while the instance is active, waiting, or paused.
-- Stop on complete, errored, or terminated status.
-- Abort requests when the workspace unmounts or the session changes.
-- Treat temporary request failures as retryable presentation state rather than changing the original
-  tool call to failed.
-- Render compact Backoffice workflow status alongside the graph in the workflow tab.
-- Read the terminal output from the instance status response.
-- Pass terminal output through the same `ResultContent` used for immediate results.
-- Render ordinary final values as text/JSON and `$ui` final values through json-render inside the
-  workflow tab.
-- Keep the original tool card as the source/debug surface with an action that selects its workflow
-  tab.
-- Do not present the initial run handle as the workflow's final result.
-- Do not reuse Cadence workflow panels or workbench components.
+- [x] Define and validate the `{ workflowName, instanceId }` run-handle shape.
+- [x] Attach the run handle to the existing source-derived workflow workspace item for that
+      tool-call id. The run handle enriches the item; it does not decide whether the workflow item
+      exists.
+- [x] Add a workflow hook used by session detail. This is implemented as the shared
+      `script-view/use-workflow-run.ts` hook rather than a route-local duplicate.
+- [x] Use the active organisation/scope from the sessions route context to construct workflow data
+      access.
+- [x] Pass the required scope information into the workspace without hidden globals. The sessions
+      workspace passes organisation-scoped workflow collections through outlet context.
+- [x] Load workflow instance status while its session workspace is mounted and refresh it when the
+      workspace item is reopened.
+- [x] Subscribe while the instance is active, waiting, paused, or terminal. This is implemented with
+      TanStack DB live synchronization rather than request polling.
+- [x] Avoid terminal-state polling. There is no per-instance polling loop to continue after
+      complete, errored, or terminated status.
+- [x] Tear down the selected-run query when the workspace unmounts or the session changes through
+      the React live-query lifecycle.
+- [ ] Treat temporary synchronization failures as retryable presentation state and prove recovery. A
+      compact synchronization error is rendered today, but focused recovery coverage is missing.
+- [x] Render compact Backoffice workflow status alongside the graph in the workflow workspace.
+- [ ] Read the terminal output from the synchronized workflow instance.
+- [ ] Pass terminal output through the same `ResultContent` used for immediate results.
+- [ ] Render ordinary final values as text/JSON and `$ui` final values through json-render inside
+      the workflow workspace.
+- [x] Keep the original tool card as the source/debug surface with an action that selects its
+      workflow workspace item.
+- [x] Do not present the initial run handle as the workflow's final output in the workspace.
+- [x] Do not reuse Cadence workflow panels or workbench components.
 
 Automated proof:
 
-- Run-handle parser tests.
-- Tests proving a run handle attaches to, rather than creates, the source-derived workflow tab.
-- Hook tests for active polling, terminal shutdown, unmount abort, reopen refresh, and transient
-  request errors.
-- Workspace rendering tests for active, waiting, completed, errored, and terminated status.
-- Workflow integration test proving a terminal `$ui` result survives status serialization.
-- Rendering test proving the terminal `$ui` result uses the same production presenter as an
-  immediate result.
+- [x] Run-handle parser tests.
+- [x] Tests proving a run handle attaches to, rather than creates, the source-derived workflow item.
+- [ ] Hook tests for the full live-subscription lifecycle: terminal updates, unmount cleanup, reopen
+      refresh, transient errors, and recovery. Exact-run projection has focused coverage already.
+- [ ] Workspace rendering tests for active, waiting, completed, errored, and terminated status.
+- [ ] Workflow integration test proving a terminal `$ui` result survives status serialization.
+- [ ] Rendering test proving the terminal `$ui` result uses the same production presenter as an
+      immediate result.
 
 The slice is complete when a live inline workflow can finish and render its final interface in the
-same workflow tab that appeared while its source was being constructed.
+same workflow workspace item that appeared while its source was being constructed.
 
 ### - [ ] Slice 7 — Render durable UI results from inline workflow steps
 
+**Implementation audit (July 31, 2026):** persisted workflow steps and emissions are already
+live-synchronized and projected into the shared graph. The current query intentionally omits step
+results, maximum attempts, depth, and updated timestamps, and there is no step-row/result UI yet.
+
 **User-visible outcome:** users can inspect generated interfaces returned by individual `step.do`
-operations in the workflow workspace tab while retaining graph context, status, attempts, and
-errors.
+operations in the workflow workspace while retaining graph context, status, attempts, and errors.
 
 Use persisted workflow history rather than introducing a new result channel:
 
-- Extend the session-detail workflow hook to load instance history with status.
-- Project history steps into a route-local view model containing:
-  - step key;
-  - parent step key and depth;
-  - name and type;
-  - status;
-  - attempts and maximum attempts;
-  - error;
-  - timestamps;
-  - result.
-- Connect persisted step state to the existing source-derived graph without making graph existence
-  depend on history or run status.
-- Render steps as compact bordered Backoffice rows in the workflow workspace tab.
-- Show waiting, retrying, errored, and completed states in both graph status and readable step rows.
-- Add an expandable result region for completed steps with non-null results.
-- Pass each step result through the shared `ResultContent` component.
-- Auto-expand the newest completed step whose result contains valid `$ui`.
-- Keep older step results collapsed so long workflows do not overwhelm the workspace.
-- Preserve attempt and error details for debugging.
-- Confirm `$ui` values are replay-safe plain data and round-trip unchanged through step persistence.
-- Confirm downstream workflow code can still consume non-UI fields from the same result object.
+- [ ] Extend the workflow hook/query to load the complete instance history needed by the workspace.
+      Steps and emissions are already loaded with status, but result-bearing fields are incomplete.
+- [ ] Project history steps into a route-local view model containing:
+  - [x] step key;
+  - [ ] parent step key and depth — parent keys are projected, depth is not;
+  - [x] name and type;
+  - [x] status;
+  - [ ] attempts and maximum attempts — attempts are projected, maximum attempts are not;
+  - [x] error;
+  - [ ] timestamps — creation time is projected, update time is not;
+  - [ ] result.
+- [x] Connect persisted step state to the existing source-derived graph without making graph
+      existence depend on history or run status.
+- [ ] Render steps as compact bordered Backoffice rows in the workflow workspace.
+- [ ] Show waiting, retrying, errored, and completed states in both graph status and readable step
+      rows. Graph status is implemented; readable rows are not.
+- [ ] Add an expandable result region for completed steps with non-null results.
+- [ ] Pass each step result through the shared `ResultContent` component.
+- [ ] Auto-expand the newest completed step whose result contains valid `$ui`.
+- [ ] Keep older step results collapsed so long workflows do not overwhelm the workspace.
+- [ ] Preserve complete attempt and error details for debugging in the step rows. The graph already
+      exposes current attempts and error text.
+- [ ] Confirm `$ui` values are replay-safe plain data and round-trip unchanged through step
+      persistence.
+- [ ] Confirm downstream workflow code can still consume non-UI fields from the same result object.
 
 Automated proof:
 
-- History projection tests for ordering, nesting, attempts, errors, and results.
-- Workflow harness test in which a `step.do` returns ordinary data plus `$ui`.
-- Assertion that persisted history contains the unchanged `$ui` value after replay.
-- Assertion that a later step consumes a non-UI field from the same persisted result.
-- Workspace rendering test for a workflow containing ordinary, generated-UI, waiting, and errored
-  step results.
-- Test proving only the newest generated-UI step auto-expands.
-- Test proving history refreshes update graph status without replacing or duplicating the workflow
-  tab.
+- [ ] History projection tests for ordering, nesting, attempts, errors, and results.
+- [ ] Workflow harness test in which a `step.do` returns ordinary data plus `$ui`.
+- [ ] Assertion that persisted history contains the unchanged `$ui` value after replay.
+- [ ] Assertion that a later step consumes a non-UI field from the same persisted result.
+- [ ] Workspace rendering test for a workflow containing ordinary, generated-UI, waiting, and
+      errored step results.
+- [ ] Test proving only the newest generated-UI step auto-expands.
+- [ ] Test proving history refreshes update graph status without replacing or duplicating the
+      workflow workspace item.
 
 The slice is complete when a replayed inline workflow displays its persisted step interface in its
-workflow tab and a later step still uses the durable data returned beside `$ui`.
+workflow workspace and a later step still uses the durable data returned beside `$ui`.
 
 ### - [ ] Slice 8 — Make generated UI results efficient in agent context
+
+**Implementation audit (July 31, 2026):** the full result is already preserved for the client and
+canonical validation is isomorphic, but the server tool still serializes the complete result with
+`JSON.stringify`. Model-context compaction and server-side validation feedback are not implemented.
 
 **User-visible outcome:** large generated specs render in Backoffice without unnecessarily bloating
 the model's next turn, and invalid specs give the agent enough feedback to repair them.
 
 Refine the server-side `execCodeMode` result text while keeping full details for the client:
 
-- Detect a structurally tagged `$ui` result at the codemode tool boundary.
-- Preserve the complete raw value in tool `details.result`.
-- For a valid generated UI, return compact model-facing text that acknowledges the rendered result
-  and includes relevant non-UI fields without serializing the full spec.
-- For an invalid generated UI, return concise validation feedback that identifies the repairable
-  issue.
-- Preserve existing text behavior for ordinary results, errors, and workflow scheduling handles.
-- Avoid coupling the dynamic codemode Worker to React rendering code.
-- Keep canonical validation in an isomorphic module that can run at the server trust boundary and
-  the client presentation boundary.
+- [ ] Detect a structurally tagged `$ui` result at the codemode tool boundary.
+- [x] Preserve the complete raw value in tool `details.result`.
+- [ ] For a valid generated UI, return compact model-facing text that acknowledges the rendered
+      result and includes relevant non-UI fields without serializing the full spec.
+- [ ] For an invalid generated UI, return concise validation feedback that identifies the repairable
+      issue.
+- [x] Preserve existing text behavior for ordinary results, errors, and workflow scheduling handles.
+- [x] Avoid coupling the dynamic codemode Worker to React rendering code.
+- [x] Keep canonical validation in an isomorphic module that can run at the server trust boundary
+      and the client presentation boundary. The server boundary does not call it yet.
 
 Automated proof:
 
-- Tool execution test proving the full `$ui` remains in `details.result`.
-- Tool execution test proving valid generated UI produces compact model-facing text.
-- Tool execution test proving invalid generated UI produces useful validation feedback.
-- Regression tests for ordinary output, errors, logs, and inline workflow scheduling handles.
+- [x] Tool execution test proving the full `$ui` remains in `details.result`.
+- [ ] Tool execution test proving valid generated UI produces compact model-facing text.
+- [ ] Tool execution test proving invalid generated UI produces useful validation feedback.
+- [x] Regression tests for ordinary output, errors, logs, and inline workflow scheduling handles.
 
 The slice is complete when generated specs no longer dominate tool-result text and the agent can
 repair invalid UI from concise feedback.
 
 ### - [ ] Slice 9 — Harden the complete session experience
 
+**Implementation audit (July 31, 2026):** several hardening foundations have landed independently:
+semantic catalog tests, reduced-motion handling, responsive split/drawer layout, structural/data
+limits, stable workspace ids/state, and read-only validation. Final integrated hardening still
+depends on Slices 6–8.
+
 **User-visible outcome:** generated interfaces remain usable across long sessions, narrow layouts,
 large data sets, workflow retries, and rendering failures.
 
 Finish the integrated experience:
 
-- Review generated UI against current Backoffice layout, typography, border, color, and motion
-  conventions.
-- Verify keyboard access for every disclosure and scroll region.
-- Verify heading order, list semantics, table semantics, progress semantics, and readable status
-  labels.
-- Respect reduced-motion preferences.
-- Keep generated UI responsive inside the session workspace on narrow and wide layouts.
-- Bound rendering work for large tables, lists, and deeply nested specs.
-- Ensure session switching and workspace unmounting clean up workflow polling.
-- Ensure reconnecting session projections do not duplicate tabs or workflow requests, reopen a
-  manually closed workspace, or reset the selected tab unexpectedly.
-- Confirm generated UI remains read-only and cannot invoke unregistered actions.
-- Remove obsolete codemode result formatting helpers made redundant by `ResultContent`.
-- Keep unrelated Cadence code unchanged rather than migrating or deleting it as part of this work.
+- [ ] Review the complete immediate, terminal, and step-result UI against current Backoffice layout,
+      typography, border, color, and motion conventions. Immediate UI and the workflow graph already
+      follow these conventions.
+- [ ] Verify keyboard access for every disclosure and scroll region.
+- [x] Verify heading order, list semantics, table semantics, progress semantics, and readable status
+      labels for the current generated-UI catalog.
+- [x] Respect reduced-motion preferences.
+- [x] Keep generated UI responsive inside the current session split/drawer workspace on narrow and
+      wide layouts.
+- [x] Bound rendering work for large tables, lists, and deeply nested specs.
+- [ ] Ensure session switching and workspace unmounting clean up workflow synchronization, with
+      focused cleanup proof. The selected live query is component-scoped, but this is not directly
+      tested.
+- [x] Ensure reconnecting session projections do not duplicate workspace items, reopen a manually
+      closed workspace, or reset the selected item unexpectedly.
+- [x] Confirm generated UI remains read-only and cannot invoke unregistered actions.
+- [ ] Remove obsolete codemode result formatting helpers made redundant by `ResultContent`.
+- [x] Keep unrelated Cadence code unchanged rather than migrating or deleting it as part of this
+      work.
 
 Automated proof:
 
-- Accessibility-focused component tests.
-- Narrow-width, drawer, resize, and overflow rendering tests for representative reports.
-- Cleanup tests for session switching, workspace unmounting, and polling cancellation.
-- Regression test for reconnecting projection data with already completed UI and workflow tabs.
-- Focused session-detail test suite.
-- Focused codemode Cloudflare test suite.
-- Focused workflow persistence/history test suite.
-- `cd apps/backoffice && pnpm run types:check`.
-- `cd apps/backoffice && pnpm run build`.
-- Affected Turborepo build, type-check, and test filters.
-- `pnpm run format:changed`.
+- [x] Accessibility-focused generated-component tests.
+- [ ] Narrow-width, drawer, resize, and overflow rendering tests for representative reports. Split,
+      resize, overflow ownership, and data-limit tests exist, but not one integrated representative
+      report test across widths.
+- [ ] Cleanup tests for session switching, workspace unmounting, and live-query cancellation.
+- [x] Regression tests for reconnecting persisted/draft projection data with existing generated UI
+      and workflow workspace items.
+- [x] Focused session-detail tests exist and the audited subset passes.
+- [x] Focused codemode Cloudflare tests exist and pass.
+- [ ] Focused workflow persistence/history tests for `$ui` terminal and step results.
+- [ ] `cd apps/backoffice && pnpm run types:check`.
+- [ ] `cd apps/backoffice && pnpm run build`.
+- [ ] Affected Turborepo build, type-check, and test filters.
+- [ ] `pnpm run format:changed`.
 
 The slice is complete when the full behavior passes automated verification and manual checks for an
 immediate result, a completed workflow result, a waiting workflow, an errored workflow, and a
@@ -588,28 +621,35 @@ workflow with multiple generated step results.
 
 ## Acceptance criteria
 
-- Generated UI is implemented in the current Backoffice session detail surface and its supporting
-  Backoffice modules.
-- No Cadence component, prompt transcript, companion panel, workflow workbench, or visual token is
-  reused; the session workspace is Backoffice-native.
-- Plain codemode return values keep their existing text/JSON behavior.
-- A valid top-level `$ui` sidecar renders safely in a right-side tabbed session workspace, and its
-  originating `execCodeMode` tool card can select or reopen that tab.
-- Multiple codemode-generated interfaces retain stable, ordered tabs across session projection
-  refreshes.
-- A malformed `$ui` sidecar cannot crash or blank the session thread or workspace.
-- An actual streamed `defineWorkflow(...)` construction creates and incrementally updates a workflow
-  graph tab without requiring an agent-authored result discriminator or sidecar.
-- Inline workflow terminal outputs render through the same result presenter in that workflow tab.
-- Completed inline workflow step results render from persisted workflow history in that workflow
-  tab.
-- Workflow result objects retain ordinary fields for downstream durable dataflow.
-- Generated components follow current Backoffice colors, density, borders, typography, motion, and
-  accessibility conventions.
-- The catalog does not permit arbitrary HTML, styles, scripts, embeds, or network actions.
-- The agent learns the contract from `generating-backoffice-uis`, not from new detailed
-  system-prompt instructions.
-- Runtime validation, React rendering, examples, and the agent skill share one canonical catalog.
-- Opening, closing, resizing, or switching the session workspace does not remount the conversation
-  thread.
-- Every vertical slice has focused automated proof before the next slice begins.
+- [x] Generated UI is implemented in the current Backoffice session detail surface and its
+      supporting Backoffice modules.
+- [x] No Cadence component, prompt transcript, companion panel, workflow workbench, or visual token
+      is reused; the session workspace is Backoffice-native.
+- [x] Plain codemode return values keep their existing text/JSON behavior.
+- [ ] A valid top-level `$ui` sidecar renders safely in a right-side tabbed session workspace, and
+      its originating `execCodeMode` tool card can select or reopen that tab. Safe rendering and
+      tool-driven selection/reopening are implemented, but the current interaction uses one selected
+      workspace item/panel rather than visible workspace tabs.
+- [ ] Multiple codemode-generated interfaces retain stable, ordered tabs across session projection
+      refreshes. Stable ordered workspace items are projected, but visible tabs are not implemented.
+- [x] A malformed `$ui` sidecar cannot crash or blank the session thread or workspace.
+- [x] An actual streamed `defineWorkflow(...)` construction creates and incrementally updates a
+      workflow graph workspace item without requiring an agent-authored result discriminator or
+      sidecar.
+- [ ] Inline workflow terminal outputs render through the same result presenter in that workflow
+      workspace.
+- [ ] Completed inline workflow step results render from persisted workflow history in that workflow
+      workspace.
+- [ ] Workflow result objects retain ordinary fields for downstream durable dataflow. This is true
+      for the contract and immediate results, but the durable `$ui` step-result path is not proven
+      yet.
+- [x] Generated components follow current Backoffice colors, density, borders, typography, motion,
+      and accessibility conventions.
+- [x] The catalog does not permit arbitrary HTML, styles, scripts, embeds, or network actions.
+- [x] The agent learns the contract from `generating-backoffice-uis`, not from new detailed
+      system-prompt instructions.
+- [x] Runtime validation, React rendering, examples, and the agent skill share one canonical
+      catalog.
+- [x] Opening, closing, resizing, or switching the session workspace does not remount the
+      conversation thread.
+- [ ] Every vertical slice has focused automated proof before the next slice begins.

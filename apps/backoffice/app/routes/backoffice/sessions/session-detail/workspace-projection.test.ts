@@ -36,13 +36,13 @@ const assistantToolCall = (id: string, code: string) =>
     timestamp: 1,
   }) as never;
 
-const toolResult = (id: string, result: unknown) =>
+const toolResult = (id: string, result: unknown, details: Record<string, unknown> = {}) =>
   ({
     role: "toolResult",
     toolCallId: id,
     toolName: "execCodeMode",
     content: [{ type: "text", text: "Completed" }],
-    details: { result, logs: [] },
+    details: { result, logs: [], ...details },
     isError: false,
     timestamp: 2,
   }) as never;
@@ -58,7 +58,9 @@ describe("projectSessionWorkspaceItems", () => {
             await step.do("load orders", async () => []);
           });`,
         ),
-        toolResult("workflow-call", generatedUiResult),
+        toolResult("workflow-call", generatedUiResult, {
+          run: { workflowName: "pi-codemode-script", instanceId: "workflow-instance" },
+        }),
         assistantToolCall("ui-call", "async () => ({ total: 24 })"),
         toolResult("ui-call", generatedUiResult),
       ],
@@ -75,6 +77,10 @@ describe("projectSessionWorkspaceItems", () => {
       "Interface 2",
     ]);
     assert(items[0]?.view.type === "workflow-graph");
+    expect(items[0].view.run).toEqual({
+      workflowName: "pi-codemode-script",
+      instanceId: "workflow-instance",
+    });
     expect(items[0].view.projection.visualization.graph.nodes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "workflow", name: "fulfil-orders" }),
@@ -99,7 +105,10 @@ describe("projectSessionWorkspaceItems", () => {
             id: "shared-call",
             name: "execCodeMode",
             args: { code: `defineWorkflow({ name: "new-name" }, async () => {});` },
-            status: "running",
+            status: "done",
+            resultMessage: toolResult("shared-call", generatedUiResult, {
+              run: { workflowName: "pi-codemode-script", instanceId: "draft-run" },
+            }),
           },
         },
       },
@@ -111,6 +120,10 @@ describe("projectSessionWorkspaceItems", () => {
     ]);
     assert(items[0]?.view.type === "workflow-graph");
     assert(items[0].view.projection.title === "new-name");
+    expect(items[0].view.run).toEqual({
+      workflowName: "pi-codemode-script",
+      instanceId: "draft-run",
+    });
   });
 
   test("keeps malformed generated UI in the tool card instead of creating a workspace item", () => {

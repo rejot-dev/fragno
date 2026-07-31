@@ -39,11 +39,18 @@ const generatedUiItem = (id: string, label: string, value: string): SessionWorks
   },
 });
 
-function WorkspaceHarness({ item }: { item: SessionWorkspaceItem }) {
+function WorkspaceHarness({
+  item,
+  workflowCollectionsError,
+}: {
+  item: SessionWorkspaceItem;
+  workflowCollectionsError?: string | null;
+}) {
   const [open, setOpen] = useState(true);
   return open ? (
     <SessionWorkspacePanel
       item={item}
+      workflowCollectionsError={workflowCollectionsError}
       onClose={() => {
         setOpen(false);
       }}
@@ -81,14 +88,19 @@ describe("SessionWorkspacePanel", () => {
           id: "workflow-graph:workflow",
           toolCallId: "workflow",
           label: "order-workflow",
-          view: { type: "workflow-graph", projection },
+          view: {
+            type: "workflow-graph",
+            projection,
+            run: { workflowName: "pi-codemode-script", instanceId: "workflow-instance" },
+          },
         }}
       />,
     );
 
     expect(screen.getByText("Building workflow")).toBeDefined();
     const toolbar = container.querySelector<HTMLElement>("[data-session-workspace-toolbar]");
-    assert(toolbar);
+    const actions = container.querySelector<HTMLElement>("[data-session-workspace-actions]");
+    assert(toolbar && actions);
     expect(within(toolbar).getByRole("group", { name: "Workflow graph detail" })).toBeDefined();
     expect(within(toolbar).getByRole("group", { name: "Script view" })).toBeDefined();
     expect(within(toolbar).getByRole("button", { name: "Close session workspace" })).toBeDefined();
@@ -96,6 +108,10 @@ describe("SessionWorkspacePanel", () => {
     const workflowGraph = screen.getByLabelText("Workflow graph");
     expect(within(workflowGraph).getByText("order-workflow")).toBeDefined();
     expect(within(workflowGraph).getByText("load orders")).toBeDefined();
+    expect(screen.getByText("Live execution")).toBeDefined();
+    expect(screen.getByText(/workflow-instance/)).toBeDefined();
+    expect(screen.queryByText("Synchronization failed")).toBeNull();
+    expect(screen.getByText(/Waiting for run data/)).toBeDefined();
     assert(
       screen.getByRole("button", { name: /^simple$/i }).getAttribute("aria-pressed") === "true",
     );
@@ -113,6 +129,43 @@ describe("SessionWorkspacePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Both$/ }));
     expect(screen.getByLabelText("Script source")).toBeDefined();
     expect(screen.getByLabelText("Workflow graph")).toBeDefined();
+  });
+
+  test("shows genuine workflow synchronization failures", () => {
+    const projection = projectWorkflowGraph({
+      complete: true,
+      toolCallId: "failed-workflow",
+      source: `defineWorkflow({ name: "failed-workflow" }, async (_event, step) => {
+        await step.do("load orders", async () => []);
+      });`,
+    });
+    if (!projection) {
+      throw new Error("Expected workflow projection.");
+    }
+
+    render(
+      <WorkspaceHarness
+        item={{
+          id: "workflow-graph:failed-workflow",
+          toolCallId: "failed-workflow",
+          label: "failed-workflow",
+          view: {
+            type: "workflow-graph",
+            projection,
+            run: { workflowName: "pi-codemode-script", instanceId: "workflow-instance" },
+          },
+        }}
+        workflowCollectionsError="Failed to load workflow synchronization."
+      />,
+    );
+
+    expect(screen.getByText(/Synchronization failed/)).toBeDefined();
+    assert(
+      screen
+        .getByText(/Synchronization failed/)
+        .closest("[data-session-workflow-live-state]")
+        ?.getAttribute("title") === "Failed to load workflow synchronization.",
+    );
   });
 
   test("provides an accessible close action", () => {

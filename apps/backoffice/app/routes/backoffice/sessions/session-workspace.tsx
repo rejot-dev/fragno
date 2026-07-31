@@ -1,9 +1,10 @@
 import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
-import { Suspense, useCallback, useMemo, useState } from "react";
+import { Suspense, use, useCallback, useMemo, useState } from "react";
 import { Outlet, useActionData, useNavigation, useParams } from "react-router";
 
 import { BackofficeSystemState } from "@/components/backoffice";
 import { ClientOnly } from "@/components/client-only";
+import { getAutomationBrowserDatabase } from "@/fragno/automation/tanstack/browser-database";
 import { PI_MODEL_CATALOG, resolvePiHarnesses } from "@/fragno/pi/pi-shared";
 import type { PiSessionListingState } from "@/fragno/pi/tanstack/session-listing";
 import { usePiSessionListing } from "@/fragno/pi/tanstack/use-session-listing";
@@ -17,7 +18,7 @@ import {
 } from "./session-detail/workspace-model";
 import { SessionListSplit } from "./session-list-split";
 import { SessionSidebar } from "./session-sidebar";
-import type { PiCreateSessionActionData } from "./session-types";
+import type { PiCreateSessionActionData, PiSessionsOutletContext } from "./session-types";
 import type { PiLayoutContext } from "./shared";
 
 const PI_SESSIONS_LOADING = <PiSessionsLoading />;
@@ -79,6 +80,10 @@ function SynchronizedPiSessionsWorkspace({
     source,
     workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
   });
+  const automationDatabase = use(getAutomationBrowserDatabase());
+  const workflowCollections = layoutContext.automationPersistenceSource
+    ? automationDatabase.collectionsFor(layoutContext.automationPersistenceSource)
+    : undefined;
 
   if (listingState.status === "synchronizing" && listingState.snapshot.sessions.length === 0) {
     return <PiSessionsLoading />;
@@ -89,6 +94,7 @@ function SynchronizedPiSessionsWorkspace({
       layoutContext={layoutContext}
       source={source}
       listingState={listingState}
+      workflowCollections={workflowCollections}
     />
   );
 }
@@ -97,10 +103,12 @@ function PiSessionsWorkspaceView({
   layoutContext,
   source,
   listingState,
+  workflowCollections,
 }: {
   layoutContext: PiLayoutContext;
   source: NonNullable<PiLayoutContext["persistenceSource"]>;
   listingState: PiSessionListingState;
+  workflowCollections: PiSessionsOutletContext["workflowCollections"];
 }) {
   const actionData = useActionData() as PiCreateSessionActionData | undefined;
   const navigation = useNavigation();
@@ -198,6 +206,8 @@ function PiSessionsWorkspaceView({
           createSessionPanel,
           workspaceStates,
           updateWorkspaceState,
+          workflowCollections,
+          workflowCollectionsError: layoutContext.automationPersistenceError,
         }}
       />
     </SessionListSplit>

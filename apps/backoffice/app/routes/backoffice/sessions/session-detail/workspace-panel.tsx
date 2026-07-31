@@ -12,16 +12,26 @@ import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/wor
 import { useLinkedScrollViewports } from "@/routes/backoffice/automations/script-view/linked-scroll";
 import { ScriptCodeView } from "@/routes/backoffice/automations/script-view/script-code-view";
 import {
-  SCRIPT_VIEW_OPTIONS,
   ScriptViewToggle,
-  WORKFLOW_GRAPH_DETAIL_OPTIONS,
   WorkflowGraphDetailToggle,
 } from "@/routes/backoffice/automations/script-view/script-presentation-controls";
+import {
+  SCRIPT_VIEW_OPTIONS,
+  WORKFLOW_GRAPH_DETAIL_OPTIONS,
+} from "@/routes/backoffice/automations/script-view/script-presentation-options";
 import type {
   ScriptViewMode,
   WorkflowGraphDetailMode,
 } from "@/routes/backoffice/automations/script-view/script-view-mode";
+import {
+  useWorkflowRun,
+  type WorkflowRunCollections,
+} from "@/routes/backoffice/automations/script-view/use-workflow-run";
 import { ScriptWorkflowGraph } from "@/routes/backoffice/automations/script-view/workflow-graph";
+import type {
+  ScriptWorkflowRun,
+  WorkflowRunReference,
+} from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
 import { ResultContent } from "./result-content";
 import { tapScale } from "./ui";
@@ -33,13 +43,20 @@ const EMPTY_RUNTIME_TOOL_CALLS: ReadonlyMap<string, readonly ResolvedWorkflowRun
 
 type WorkflowControlGroupId = "detail" | "view";
 
+const SESSION_WORKSPACE_TOOLBAR_RESERVED_WIDTH = 144;
+
 export function SessionWorkspacePanel({
   item,
+  workflowCollections,
+  workflowCollectionsError,
   onClose,
 }: {
   item: SessionWorkspaceItem;
+  workflowCollections?: WorkflowRunCollections;
+  workflowCollectionsError?: string | null;
   onClose: () => void;
 }) {
+  const [toolbarElement, setToolbarElement] = useState<HTMLElement | null>(null);
   const isGeneratedUi = item.view.type === "generated-ui";
   const [viewMode, setViewMode] = useState<ScriptViewMode>("graph");
   const [detailMode, setDetailMode] = useState<WorkflowGraphDetailMode>("simple");
@@ -58,6 +75,7 @@ export function SessionWorkspacePanel({
       className="flex h-full min-h-0 min-w-0 flex-col border-l border-[color:var(--bo-border)] bg-[var(--bo-panel)]"
     >
       <header
+        ref={setToolbarElement}
         data-session-workspace-toolbar
         className="flex min-h-14 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-1.5"
       >
@@ -73,9 +91,11 @@ export function SessionWorkspacePanel({
           </div>
         </div>
 
-        <div className="flex min-w-0 items-center gap-2">
+        <div data-session-workspace-actions className="flex min-w-0 shrink-0 items-center gap-2">
           {item.view.type === "workflow-graph" ? (
             <ProgressiveOverflowControls
+              measurementBoundary={toolbarElement}
+              reservedWidth={SESSION_WORKSPACE_TOOLBAR_RESERVED_WIDTH}
               groups={
                 [
                   ...(showGraph
@@ -145,6 +165,9 @@ export function SessionWorkspacePanel({
             projection={item.view.projection}
             viewMode={viewMode}
             detailMode={detailMode}
+            runReference={item.view.run}
+            workflowCollections={workflowCollections}
+            workflowCollectionsError={workflowCollectionsError}
             onViewModeChange={setViewMode}
           />
         )}
@@ -178,7 +201,7 @@ function WorkflowPresentationOverflow({
         type="button"
         aria-label="Workflow display options"
         title="Workflow display options"
-        className={`bo-control-surface size-10 shrink-0 items-center justify-center bg-[var(--bo-panel)] text-[var(--bo-muted)] transition-[background-color,color,scale,box-shadow] duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 data-[popup-open]:bg-[var(--bo-accent-bg)] data-[popup-open]:text-[var(--bo-accent-fg)] ${tapScale}`}
+        className={`bo-control-surface inline-flex size-10 shrink-0 items-center justify-center bg-[var(--bo-panel)] text-[var(--bo-muted)] transition-[background-color,color,scale,box-shadow] duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 data-[popup-open]:bg-[var(--bo-accent-bg)] data-[popup-open]:text-[var(--bo-accent-fg)] ${tapScale}`}
       >
         <Ellipsis className="size-4" aria-hidden="true" />
       </Menu.Trigger>
@@ -251,15 +274,75 @@ function WorkflowPresentationOverflow({
   );
 }
 
+function WorkflowLiveStateBar({
+  reference,
+  selectedRun,
+  isLoading,
+  error,
+}: {
+  reference: WorkflowRunReference | null;
+  selectedRun: ScriptWorkflowRun | null;
+  isLoading: boolean;
+  error: string | null;
+}) {
+  if (!reference) {
+    return null;
+  }
+
+  const status = error
+    ? "Synchronization failed"
+    : isLoading
+      ? "Synchronizing…"
+      : selectedRun
+        ? selectedRun.status
+        : "Waiting for run data…";
+  const dotClass = error
+    ? "bg-red-500"
+    : isLoading || selectedRun?.status === "active"
+      ? "animate-pulse bg-[var(--bo-accent)]"
+      : selectedRun?.status === "waiting" || selectedRun?.status === "paused"
+        ? "bg-amber-500"
+        : selectedRun?.status === "complete" || selectedRun?.status === "completed"
+          ? "bg-emerald-500"
+          : selectedRun?.status === "errored" || selectedRun?.status === "terminated"
+            ? "bg-red-500"
+            : "bg-[var(--bo-muted-2)]";
+
+  return (
+    <div
+      data-session-workflow-live-state
+      aria-live="polite"
+      title={error ?? undefined}
+      className="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${dotClass}`} />
+        <span className="text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
+          Live execution
+        </span>
+      </div>
+      <span className="min-w-0 truncate font-mono text-[9px] text-[var(--bo-muted)]">
+        {reference.instanceId} · {status}
+      </span>
+    </div>
+  );
+}
+
 function SessionWorkflowWorkspace({
   projection,
   viewMode,
   detailMode,
+  runReference,
+  workflowCollections,
+  workflowCollectionsError,
   onViewModeChange,
 }: {
   projection: WorkflowGraphProjection;
   viewMode: ScriptViewMode;
   detailMode: WorkflowGraphDetailMode;
+  runReference: WorkflowRunReference | null;
+  workflowCollections?: WorkflowRunCollections;
+  workflowCollectionsError?: string | null;
   onViewModeChange: (viewMode: ScriptViewMode) => void;
 }) {
   const [selectedSource, setSelectedSource] = useState<SourceRange>();
@@ -268,14 +351,27 @@ function SessionWorkflowWorkspace({
   const { codeViewport, graphViewport, suspendCodeScrollLink } = useLinkedScrollViewports(
     viewMode === "split",
   );
+  const workflowRun = useWorkflowRun({
+    collections: workflowCollections,
+    reference: runReference,
+    visualization: projection.visualization,
+  });
 
   return (
-    <div className="h-full min-h-0 bg-[var(--bo-panel)]">
+    <div className="flex h-full min-h-0 flex-col bg-[var(--bo-panel)]">
+      <WorkflowLiveStateBar
+        reference={runReference}
+        selectedRun={workflowRun.selectedRun}
+        isLoading={workflowRun.isLoading}
+        error={
+          workflowRun.error ?? (!workflowCollections ? (workflowCollectionsError ?? null) : null)
+        }
+      />
       <div
         className={
           viewMode === "split"
-            ? "grid h-full min-h-0 grid-rows-2 lg:grid-cols-2 lg:grid-rows-1"
-            : "h-full min-h-0"
+            ? "grid min-h-0 flex-1 grid-rows-2 lg:grid-cols-2 lg:grid-rows-1"
+            : "min-h-0 flex-1"
         }
       >
         {showCode ? (
@@ -293,7 +389,7 @@ function SessionWorkflowWorkspace({
             visualization={projection.visualization}
             detailMode={detailMode}
             runtimeToolCallsByStepId={EMPTY_RUNTIME_TOOL_CALLS}
-            selectedRun={null}
+            selectedRun={workflowRun.selectedRun}
             scrollViewport={graphViewport}
             fillHeight
             onSourceSelect={(source) => {

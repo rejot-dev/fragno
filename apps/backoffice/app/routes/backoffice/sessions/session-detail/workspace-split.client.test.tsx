@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, test, assert } from "vitest";
+import { afterEach, describe, expect, test, vi, assert } from "vitest";
 
 import { useEffect } from "react";
 
@@ -8,8 +8,12 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { SessionWorkspaceSplit } from "./workspace-split";
 
+const bodyCursor = () => document.body.style.cursor;
+const bodyUserSelect = () => document.body.style.userSelect;
+
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   window.localStorage.clear();
 });
 
@@ -71,6 +75,46 @@ describe("SessionWorkspaceSplit", () => {
     expect(mountCount).toBe(1);
     expect(unmountCount).toBe(0);
     expect(screen.getByText("Conversation")).toBeDefined();
+  });
+
+  test("continues without persisted sizing when local storage is unavailable", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("Storage unavailable");
+    });
+
+    expect(() =>
+      render(
+        <SessionWorkspaceSplit
+          storageKey="workspace-storage-test"
+          left={<div>Conversation</div>}
+          right={<div>Workspace</div>}
+        />,
+      ),
+    ).not.toThrow();
+  });
+
+  test("clears drag state when pointer interaction is cancelled or focus is lost", () => {
+    render(
+      <SessionWorkspaceSplit
+        storageKey="workspace-drag-test"
+        left={<div>Conversation</div>}
+        right={<div>Workspace</div>}
+      />,
+    );
+    const separator = screen.getByRole("separator", { name: "Resize session workspace" });
+
+    fireEvent.pointerDown(separator);
+    assert(bodyCursor() === "col-resize");
+    assert(bodyUserSelect() === "none");
+
+    fireEvent.pointerCancel(window);
+    assert(bodyCursor() === "");
+    assert(bodyUserSelect() === "");
+
+    fireEvent.pointerDown(separator);
+    fireEvent.blur(window);
+    assert(bodyCursor() === "");
+    assert(bodyUserSelect() === "");
   });
 
   test("supports keyboard resizing and exposes the current split", () => {

@@ -36,7 +36,11 @@ export function SessionWorkspaceSplit({
   const hasWorkspace = right !== null && right !== undefined;
 
   useEffect(() => {
-    window.localStorage.setItem(storageKey, String(Math.round(threadWidth)));
+    try {
+      window.localStorage.setItem(storageKey, String(Math.round(threadWidth)));
+    } catch {
+      // Workspace sizing persistence is optional when storage is unavailable.
+    }
   }, [storageKey, threadWidth]);
 
   const stopDragging = useCallback(() => {
@@ -65,9 +69,13 @@ export function SessionWorkspaceSplit({
   useEffect(() => {
     window.addEventListener("pointermove", resizeFromPointer);
     window.addEventListener("pointerup", stopDragging);
+    window.addEventListener("pointercancel", stopDragging);
+    window.addEventListener("blur", stopDragging);
     return () => {
       window.removeEventListener("pointermove", resizeFromPointer);
       window.removeEventListener("pointerup", stopDragging);
+      window.removeEventListener("pointercancel", stopDragging);
+      window.removeEventListener("blur", stopDragging);
       stopDragging();
     };
   }, [resizeFromPointer, stopDragging]);

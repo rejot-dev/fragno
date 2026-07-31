@@ -1,4 +1,5 @@
 import type { BackofficeUiResultV1 } from "@/backoffice-ui/result";
+import type { WorkflowRunReference } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
 import type { WorkflowGraphProjection } from "./workflow-graph-projection";
 
@@ -11,6 +12,7 @@ export type GeneratedUiWorkspaceView = {
 export type WorkflowGraphWorkspaceView = {
   type: "workflow-graph";
   projection: WorkflowGraphProjection;
+  run: WorkflowRunReference | null;
 };
 
 export type SessionWorkspaceItem = {
@@ -23,6 +25,7 @@ export type SessionWorkspaceItem = {
 export type SessionWorkspaceState = {
   open: boolean;
   selectedItemId: string | null;
+  observedItemIds?: readonly string[];
 };
 
 export type SessionWorkspaceStateBySession = Readonly<Record<string, SessionWorkspaceState>>;
@@ -49,6 +52,36 @@ export function updateSessionWorkspaceStateBySession(
   return next === current ? states : { ...states, [sessionKey]: next };
 }
 
+export function autoOpenNewWorkflowWorkspaceItem(
+  state: SessionWorkspaceState,
+  items: readonly SessionWorkspaceItem[],
+): SessionWorkspaceState {
+  const observedItemIds = new Set(state.observedItemIds ?? []);
+  let newestWorkflowItem: SessionWorkspaceItem | undefined;
+  let discoveredItem = false;
+
+  for (const item of items) {
+    if (observedItemIds.has(item.id)) {
+      continue;
+    }
+    observedItemIds.add(item.id);
+    discoveredItem = true;
+    if (item.view.type === "workflow-graph") {
+      newestWorkflowItem = item;
+    }
+  }
+
+  if (!discoveredItem) {
+    return state;
+  }
+
+  return {
+    ...state,
+    observedItemIds: [...observedItemIds],
+    ...(newestWorkflowItem ? { open: true, selectedItemId: newestWorkflowItem.id } : {}),
+  };
+}
+
 export function toggleSessionWorkspaceItem(
   state: SessionWorkspaceState,
   itemId: string,
@@ -58,6 +91,7 @@ export function toggleSessionWorkspaceItem(
   }
 
   return {
+    ...state,
     open: true,
     selectedItemId: itemId,
   };
