@@ -25,7 +25,7 @@ const identityClaimActorSchema = z.object({
   id: z.string().trim().min(1),
 });
 
-export const identityClaimPayloadSchema = z.object({
+export const identityClaimPayloadSchema = z.strictObject({
   orgId: z.string().trim().min(1),
   actor: identityClaimActorSchema,
 });

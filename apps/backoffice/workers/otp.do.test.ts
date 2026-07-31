@@ -18,12 +18,18 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import type { DurableUserEmailVerifiedHookPayload } from "@fragno-dev/auth";
+import type { HookContext } from "@fragno-dev/db";
 import type { OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
-import { EMAIL_VERIFICATION_EXPIRY_HOURS, EMAIL_VERIFICATION_TYPE } from "@/fragno/otp";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import {
+  EMAIL_VERIFICATION_EXPIRY_HOURS,
+  EMAIL_VERIFICATION_TYPE,
+  IDENTITY_LINK_TYPE,
+} from "@/fragno/otp";
 
-import { handleEmailVerificationConfirmed } from "./otp.do";
+import { handleEmailVerificationConfirmed, handleIdentityClaimConfirmed } from "./otp.do";
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
 
@@ -50,6 +56,131 @@ const signUp = async (
 
 afterEach(async () => {
   await Promise.all(runtimes.splice(0).map(async (runtime) => await runtime.cleanup()));
+});
+
+describe("OTP identity claim completion", () => {
+  test("binds the identity before notifying its workflow and safely retries notification", async () => {
+    const callOrder: string[] = [];
+    let notificationAttempts = 0;
+    const bindExternalIdentity = vi.fn(async () => {
+      callOrder.push("bind");
+      return {
+        status: "active" as const,
+        outcome: "created" as const,
+        bindingId: "telegram:chat:chat-1",
+        userId: "user-1",
+        version: 0,
+      };
+    });
+    const triggerIngestEvent = vi.fn(async () => {
+      callOrder.push("notify");
+      notificationAttempts += 1;
+      if (notificationAttempts === 1) {
+        throw new Error("notification unavailable");
+      }
+      return { accepted: true as const };
+    });
+    const runtime = {
+      objects: {
+        automations: {
+          for: () => ({ bindExternalIdentity, triggerIngestEvent }),
+        },
+      },
+    } as unknown as BackofficeRuntimeServices;
+    const payload = {
+      id: "otp-1",
+      externalId: "chat-1",
+      type: IDENTITY_LINK_TYPE,
+      code: "ABC12345",
+      confirmedAt: new Date("2026-07-31T10:00:00.000Z"),
+      payload: {
+        orgId: "org-1",
+        actor: {
+          scope: "external",
+          source: "telegram",
+          type: "chat",
+          id: "chat-1",
+        },
+      },
+      confirmationPayload: { subjectUserId: "user-1" },
+    } satisfies OtpConfirmedHookPayload;
+    const context = {
+      hookId: { toString: () => "otp-hook-1" },
+      capturePropagationContext: () => ({ traceId: "trace-1" }),
+    } as unknown as HookContext;
+
+    await expect(handleIdentityClaimConfirmed(runtime, payload, context)).rejects.toThrow(
+      "notification unavailable",
+    );
+    await expect(handleIdentityClaimConfirmed(runtime, payload, context)).resolves.toBeUndefined();
+
+    expect(callOrder).toEqual(["bind", "notify", "bind", "notify"]);
+    expect(bindExternalIdentity).toHaveBeenNthCalledWith(
+      1,
+      {
+        identity: payload.payload.actor,
+        userId: "user-1",
+        verifiedByClaimId: "otp-1",
+      },
+      expect.objectContaining({
+        execution: expect.objectContaining({ scope: { kind: "org", orgId: "org-1" } }),
+      }),
+    );
+    expect(bindExternalIdentity).toHaveBeenNthCalledWith(
+      2,
+      {
+        identity: payload.payload.actor,
+        userId: "user-1",
+        verifiedByClaimId: "otp-1",
+      },
+      expect.any(Object),
+    );
+    expect(triggerIngestEvent).toHaveBeenCalledTimes(2);
+  });
+
+  test("does not notify the workflow when the accepted claim is now revoked", async () => {
+    const bindExternalIdentity = vi.fn(async () => ({
+      status: "revoked" as const,
+      outcome: "unchanged" as const,
+      bindingId: "telegram:chat:chat-1",
+      userId: "user-1",
+      version: 1,
+    }));
+    const triggerIngestEvent = vi.fn();
+    const runtime = {
+      objects: {
+        automations: {
+          for: () => ({ bindExternalIdentity, triggerIngestEvent }),
+        },
+      },
+    } as unknown as BackofficeRuntimeServices;
+    const payload = {
+      id: "otp-1",
+      externalId: "chat-1",
+      type: IDENTITY_LINK_TYPE,
+      code: "ABC12345",
+      confirmedAt: new Date("2026-07-31T10:00:00.000Z"),
+      payload: {
+        orgId: "org-1",
+        actor: {
+          scope: "external",
+          source: "telegram",
+          type: "chat",
+          id: "chat-1",
+        },
+      },
+      confirmationPayload: { subjectUserId: "user-1" },
+    } satisfies OtpConfirmedHookPayload;
+    const context = {
+      hookId: { toString: () => "otp-hook-1" },
+      capturePropagationContext: () => ({ traceId: "trace-1" }),
+    } as unknown as HookContext;
+
+    await expect(handleIdentityClaimConfirmed(runtime, payload, context)).resolves.toBeUndefined();
+
+    expect(bindExternalIdentity).toHaveBeenCalledOnce();
+    expect(triggerIngestEvent).not.toHaveBeenCalled();
+  });
 });
 
 describe("OTP Durable Object email verification", () => {

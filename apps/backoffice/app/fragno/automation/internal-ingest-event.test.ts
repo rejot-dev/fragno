@@ -76,11 +76,6 @@ describe("automation internal ingest scenarios", () => {
             orgId: "org-1",
             botUsername: "fragno_bot",
           }),
-          given.store.entry({
-            orgId: "org-1",
-            key: "telegram/1001",
-            value: "user-1",
-          }),
         ],
 
         steps: ({ when, then }) => [
@@ -105,13 +100,13 @@ describe("automation internal ingest scenarios", () => {
             remoteWorkflowName: "telegram-user-pi-linking",
             instanceId: "telegram-pi-starter-telegram-pi-1",
             status: "complete",
-            output: { skipped: true, reason: "missing-default-agent" },
+            output: { skipped: true, reason: "telegram-chat-not-linked" },
           }),
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-pi-linking",
             instanceId: "telegram-pi-starter-telegram-pi-2",
             status: "complete",
-            output: { skipped: true, reason: "missing-default-agent" },
+            output: { skipped: true, reason: "telegram-chat-not-linked" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],

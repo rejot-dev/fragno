@@ -1,9 +1,13 @@
+import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
+
+import type { UserAuthorityFacts } from "@fragno-dev/auth";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 import { createFragnoCollection } from "@fragno-dev/tanstack-db-adapter";
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
 
 import {
   createBackofficeSystemExecution,
+  createBackofficeUserExecution,
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import type { InMemoryObjectFactoryOverrides } from "@/backoffice-runtime/in-memory-object-factory";
@@ -17,6 +21,7 @@ import type {
   BackofficeObjectAddress,
   BackofficeObjectBindingName,
 } from "@/backoffice-runtime/object-registry";
+import type { BackofficePermissionRequirement } from "@/backoffice-runtime/permissions";
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import {
   createBackofficeFileSystem,
@@ -61,6 +66,24 @@ import { createTestMasterFileSystem } from "./engine/test-master-file-system.tes
 import type { AutomationRouteDefinition } from "./routing";
 import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
 import type { AutomationRouteCreateInput, AutomationRouteUpdateInput } from "./routing-schemas";
+import {
+  getScenarioAuthMemberRoles,
+  normalizeScenarioAuthRoles,
+  removeScenarioAuthMember,
+  setScenarioAuthMemberRoles,
+  setScenarioAuthUserRole,
+  setScenarioAuthUserStatus,
+  setUpScenarioAuthMember,
+  setUpScenarioAuthOrganization,
+  setUpScenarioAuthUser,
+  type ScenarioAuthMemberInput as AuthMemberInput,
+  type ScenarioAuthMemberRemoveInput as AuthMemberRemoveInput,
+  type ScenarioAuthMemberRolesInput as AuthMemberRolesInput,
+  type ScenarioAuthOrganizationInput as AuthOrganizationInput,
+  type ScenarioAuthUserInput as AuthUserInput,
+  type ScenarioAuthUserRoleInput as AuthUserRoleInput,
+  type ScenarioAuthUserStatusInput as AuthUserStatusInput,
+} from "./scenario-auth";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
 type ScenarioVars = Record<string, unknown>;
@@ -318,10 +341,30 @@ export type BackofficeScenarioDefinitionInput<TVars extends ScenarioVars = Scena
 export type BackofficeScenarioDefinition<TVars extends ScenarioVars = ScenarioVars> =
   BackofficeScenarioDefinitionInput<TVars>;
 
+type AuthAuthorityAssertionInput = {
+  userId: string;
+  orgId?: string;
+  expected: UserAuthorityFacts;
+};
+
+type AuthMemberAssertionInput = {
+  orgId: string;
+  userId: string;
+  roles: readonly string[];
+};
+
+type AuthPermissionsAssertionInput = {
+  userId: string;
+  scope: BackofficeContextScope;
+  include?: readonly BackofficePermissionRequirement[];
+  exclude?: readonly BackofficePermissionRequirement[];
+};
+
 type OrganizationExistsInput = {
   id: string;
   name?: string;
   ownerUserId?: string;
+  ownerRoles?: readonly string[];
 };
 
 type TelegramConfiguredInput = {
@@ -396,6 +439,24 @@ type StoreEntryInput = {
   orgId: string;
   key: string;
   value: string;
+};
+
+type IdentityBindingInput = {
+  orgId: string;
+  externalId: string;
+  userId: string;
+  source?: string;
+  externalType?: string;
+  verifiedByClaimId?: string;
+};
+
+type IdentityRevokeInput = {
+  orgId: string;
+  externalId: string;
+  expectedUserId: string;
+  expectedVersion?: number;
+  source?: string;
+  externalType?: string;
 };
 
 type StoreEntriesInput = {
@@ -603,6 +664,11 @@ type RouterRoutesAssertionInput = {
 
 export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = ScenarioVars> = {
   given: {
+    auth: {
+      user(input: AuthUserInput): BackofficeScenarioStep;
+      organization(input: AuthOrganizationInput): BackofficeScenarioStep;
+      member(input: AuthMemberInput): BackofficeScenarioStep;
+    };
     organization: {
       exists(input: OrganizationExistsInput): BackofficeScenarioStep;
     };
@@ -618,6 +684,9 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
     };
     store: {
       entry(input: StoreEntryInput): BackofficeScenarioStep;
+    };
+    identity: {
+      binding(input: IdentityBindingInput): BackofficeScenarioStep;
     };
     router: {
       route(input: RouterCreateRouteInput): BackofficeScenarioStep;
@@ -641,6 +710,10 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
     auth: {
       signUp(input: AuthSignUpInput): BackofficeScenarioStep;
       organizationCreated(input: OrganizationCreatedInput): BackofficeScenarioStep;
+      setUserRole(input: AuthUserRoleInput): BackofficeScenarioStep;
+      setUserStatus(input: AuthUserStatusInput): BackofficeScenarioStep;
+      setMemberRoles(input: AuthMemberRolesInput): BackofficeScenarioStep;
+      removeMember(input: AuthMemberRemoveInput): BackofficeScenarioStep;
     };
     capability: {
       configured: ((input: CapabilityConfiguredInput) => BackofficeScenarioStep) & {
@@ -649,6 +722,9 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
     };
     automation: {
       ingestEvent(input: AutomationEvent): BackofficeScenarioStep;
+    };
+    identity: {
+      revoke(input: IdentityRevokeInput): BackofficeScenarioStep;
     };
     pi: {
       createSession(input: PiCreateStoredSessionInput): BackofficeScenarioStep;
@@ -682,6 +758,11 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
   };
   // oxlint-disable-next-line no-thenable -- `then` is the requested assertion namespace.
   then: {
+    auth: {
+      authority(input: AuthAuthorityAssertionInput): BackofficeScenarioStep;
+      member(input: AuthMemberAssertionInput): BackofficeScenarioStep;
+      permissions(input: AuthPermissionsAssertionInput): BackofficeScenarioStep;
+    };
     telegram: {
       sentMessage(input: TelegramSentMessageInput): BackofficeScenarioStep;
       noMessages(): BackofficeScenarioStep;
@@ -1938,6 +2019,9 @@ const resolveScenarioValue = async <TVars extends ScenarioVars, TValue>(
 const scenarioIdString = (id: unknown): string =>
   typeof id === "object" && id && "externalId" in id ? String(id.externalId) : String(id);
 
+const permissionKey = (permission: BackofficePermissionRequirement) =>
+  `${permission.namespace}:${permission.permission}`;
+
 type ScenarioWorkflowInstance = {
   orgId: string;
   workflowName: string;
@@ -1999,6 +2083,33 @@ const buildStepBuilders = <
   TVars extends ScenarioVars,
 >(): BackofficeScenarioStepBuilders<TVars> => ({
   given: {
+    auth: {
+      user: (input) =>
+        createStep("given", "auth.user", `setup auth user ${input.id}`, async (ctx) => {
+          await setUpScenarioAuthUser(ctx.runtime, input);
+        }),
+      organization: (input) =>
+        createStep(
+          "given",
+          "auth.organization",
+          `setup auth organization ${input.id}`,
+          async (ctx) => {
+            ctx.rememberOrg(input.id);
+            await setUpScenarioAuthOrganization(ctx.runtime, input);
+          },
+          { drain: false },
+        ),
+      member: (input) =>
+        createStep(
+          "given",
+          "auth.member",
+          `setup auth member ${input.userId} in ${input.orgId}`,
+          async (ctx) => {
+            ctx.rememberOrg(input.orgId);
+            await setUpScenarioAuthMember(ctx.runtime, input);
+          },
+        ),
+    },
     organization: {
       exists: (input) =>
         createStep(
@@ -2007,10 +2118,17 @@ const buildStepBuilders = <
           `setup organization ${input.id}`,
           async (ctx) => {
             ctx.rememberOrg(input.id);
+            const ownerUserId = input.ownerUserId ?? "user-1";
+            await setUpScenarioAuthOrganization(ctx.runtime, {
+              id: input.id,
+              name: input.name,
+              ownerUserId,
+              ownerRoles: input.ownerRoles,
+            });
             ctx.vars[`organization:${input.id}`] = {
               id: input.id,
               name: input.name,
-              ownerUserId: input.ownerUserId,
+              ownerUserId,
             };
             await ctx.runtime.objects.automations.forOrg(input.id).seedStarterAutomationRoutes();
           },
@@ -2110,6 +2228,33 @@ const buildStepBuilders = <
               key: input.key,
               value: input.value,
             });
+          },
+        ),
+    },
+    identity: {
+      binding: (input) =>
+        createStep(
+          "given",
+          "identity.binding",
+          `bind ${input.source ?? "telegram"}:${input.externalId} to ${input.userId}`,
+          async (ctx) => {
+            ctx.rememberOrg(input.orgId);
+            const scope = { kind: "org" as const, orgId: input.orgId };
+            await ctx.runtime.objects.automations.for(scope).bindExternalIdentity(
+              {
+                identity: {
+                  scope: "external",
+                  source: input.source ?? "telegram",
+                  type: input.externalType ?? "chat",
+                  id: input.externalId,
+                },
+                userId: input.userId,
+                verifiedByClaimId:
+                  input.verifiedByClaimId ??
+                  `scenario:${input.source ?? "telegram"}:${input.externalId}:${input.userId}`,
+              },
+              { execution: createBackofficeSystemExecution(scope) },
+            );
           },
         ),
     },
@@ -2281,6 +2426,31 @@ const buildStepBuilders = <
           `ingest auth organization.created for ${input.id}`,
           (ctx) => ingestAutomationEvent(ctx, buildOrganizationCreatedEvent(input)),
         ),
+      setUserRole: (input) =>
+        createStep("when", "auth.setUserRole", `set ${input.userId} role to ${input.role}`, (ctx) =>
+          setScenarioAuthUserRole(ctx.runtime, input),
+        ),
+      setUserStatus: (input) =>
+        createStep(
+          "when",
+          "auth.setUserStatus",
+          `set ${input.userId} status to ${input.status}`,
+          (ctx) => setScenarioAuthUserStatus(ctx.runtime, input),
+        ),
+      setMemberRoles: (input) =>
+        createStep(
+          "when",
+          "auth.setMemberRoles",
+          `set ${input.userId} roles in ${input.orgId}`,
+          (ctx) => setScenarioAuthMemberRoles(ctx.runtime, input),
+        ),
+      removeMember: (input) =>
+        createStep(
+          "when",
+          "auth.removeMember",
+          `remove ${input.userId} from ${input.orgId}`,
+          (ctx) => removeScenarioAuthMember(ctx.runtime, input),
+        ),
     },
     capability: {
       configured: Object.assign(
@@ -2309,6 +2479,31 @@ const buildStepBuilders = <
           "automation.ingestEvent",
           `ingest automation event ${input.source}/${input.eventType}`,
           (ctx) => ingestAutomationEvent(ctx, input),
+        ),
+    },
+    identity: {
+      revoke: (input) =>
+        createStep(
+          "when",
+          "identity.revoke",
+          `revoke ${input.source ?? "telegram"}:${input.externalId}`,
+          async (ctx) => {
+            ctx.rememberOrg(input.orgId);
+            const scope = { kind: "org" as const, orgId: input.orgId };
+            await ctx.runtime.objects.automations.for(scope).revokeExternalIdentity(
+              {
+                identity: {
+                  scope: "external",
+                  source: input.source ?? "telegram",
+                  type: input.externalType ?? "chat",
+                  id: input.externalId,
+                },
+                expectedUserId: input.expectedUserId,
+                expectedVersion: input.expectedVersion ?? 0,
+              },
+              { execution: createBackofficeSystemExecution(scope) },
+            );
+          },
         ),
     },
     pi: {
@@ -2540,6 +2735,80 @@ const buildStepBuilders = <
   },
   // eslint-disable-next-line unicorn/no-thenable -- `then` is the requested assertion namespace.
   then: {
+    auth: {
+      authority: (input) =>
+        createStep(
+          "then",
+          "auth.authority",
+          `assert authority for ${input.userId}`,
+          async (ctx) => {
+            const actual = await ctx.runtime.objects.auth.singleton().getUserAuthorityFacts({
+              userId: input.userId,
+              ...(input.orgId ? { organizationId: input.orgId } : {}),
+            });
+            if (
+              actual.active !== input.expected.active ||
+              actual.role !== input.expected.role ||
+              actual.organizationMember !== input.expected.organizationMember
+            ) {
+              throw new Error(
+                `Expected auth authority ${JSON.stringify(input.expected)}, got ${JSON.stringify(actual)}.`,
+              );
+            }
+          },
+        ),
+      member: (input) =>
+        createStep(
+          "then",
+          "auth.member",
+          `assert auth member ${input.userId} in ${input.orgId}`,
+          async (ctx) => {
+            const actual = await getScenarioAuthMemberRoles(ctx.runtime, input);
+            if (!actual) {
+              throw new Error(`Expected ${input.userId} to be a member of ${input.orgId}.`);
+            }
+            const expected = normalizeScenarioAuthRoles(input.roles);
+            if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+              throw new Error(
+                `Expected auth member roles ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}.`,
+              );
+            }
+          },
+        ),
+      permissions: (input) =>
+        createStep(
+          "then",
+          "auth.permissions",
+          `assert permissions for ${input.userId}`,
+          async (ctx) => {
+            const execution = createBackofficeUserExecution({
+              scope: input.scope,
+              userId: input.userId,
+            });
+            const principal = execution.actors.principal;
+            if (!principal) {
+              throw new Error("Scenario user execution did not produce a principal.");
+            }
+            const permissions =
+              await ctx.runtime.services.authorityResolver.resolvePrincipalPermissions({
+                principal,
+                execution,
+              });
+            const actual = new Set(permissions.map(permissionKey));
+            const missing = (input.include ?? []).filter(
+              (permission) => !actual.has(permissionKey(permission)),
+            );
+            const unexpected = (input.exclude ?? []).filter((permission) =>
+              actual.has(permissionKey(permission)),
+            );
+            if (missing.length > 0 || unexpected.length > 0) {
+              throw new Error(
+                `Permission assertion failed: ${JSON.stringify({ missing, unexpected, actual: [...actual] })}.`,
+              );
+            }
+          },
+        ),
+    },
     telegram: {
       sentMessage: (input) =>
         createStep(
