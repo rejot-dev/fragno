@@ -259,7 +259,3 @@ function AutomationKvStoreTable({
     </div>
   );
 }
-
-export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-  throw error;
-}
