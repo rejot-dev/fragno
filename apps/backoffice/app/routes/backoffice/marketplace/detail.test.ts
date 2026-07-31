@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
+
 const {
   getAuthMeMock,
   getPublishedListingMock,
@@ -23,8 +27,8 @@ import {
 } from "@/backoffice-runtime/scope-codec";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 
-import { action, loader } from "./detail";
-import { marketplaceListingRef } from "./navigation";
+import BackofficeMarketplaceDetail, { action, loader, shouldRevalidate } from "./detail";
+import { buildArtifactVersionPath, marketplaceListingRef } from "./navigation";
 
 const listingId = marketplaceListingId({
   ownerScope: { kind: "system" },
@@ -218,6 +222,135 @@ describe("marketplace detail loader", () => {
     expect(forOrgMock).not.toHaveBeenCalled();
   });
 });
+
+describe("marketplace artifact version navigation", () => {
+  test("uses the selected artifact version as the installation release", () => {
+    const selectedMarkup = renderMarketplaceDetail("1.0.0");
+    const fallbackMarkup = renderMarketplaceDetail("3.0.0");
+
+    assert(selectedMarkup.includes('<option value="1.0.0" selected="">1.0.0</option>'));
+    assert(fallbackMarkup.includes('<option value="2.0.0" selected="">2.0.0</option>'));
+  });
+
+  test("retargets the selected artifact path to the next version", () => {
+    const nextPath = buildArtifactVersionPath(
+      "/backoffice/marketplace/example",
+      "?artifactTab=workflows&artifactVersion=1.0.0&artifactPath=%2Fartifact%2F1.0.0%2Fautomations%2Fdaily-report.workflow.js",
+      "1.0.0",
+      "2.0.0",
+    );
+    const nextUrl = new URL(nextPath, "https://example.test");
+
+    assert(nextUrl.searchParams.get("artifactVersion") === "2.0.0");
+    assert(nextUrl.searchParams.get("artifactTab") === "workflows");
+    assert(
+      nextUrl.searchParams.get("artifactPath") ===
+        "/artifact/2.0.0/automations/daily-report.workflow.js",
+    );
+  });
+
+  test("retargets a selected file to the next version", () => {
+    const nextPath = buildArtifactVersionPath(
+      "/backoffice/marketplace/example",
+      "?artifactTab=files&artifactPath=%2Fartifact%2F1.0.0%2Fsrc%2Findex.ts",
+      "1.0.0",
+      "2.0.0",
+    );
+    const nextUrl = new URL(nextPath, "https://example.test");
+
+    assert(nextUrl.searchParams.get("artifactPath") === "/artifact/2.0.0/src/index.ts");
+  });
+
+  test("keeps version-independent artifact paths unchanged", () => {
+    const nextPath = buildArtifactVersionPath(
+      "/backoffice/marketplace/example",
+      "?artifactTab=files&artifactPath=%2Fartifact%2FREADME.md",
+      "1.0.0",
+      "2.0.0",
+    );
+    const nextUrl = new URL(nextPath, "https://example.test");
+
+    assert(nextUrl.searchParams.get("artifactPath") === "/artifact/README.md");
+  });
+});
+
+describe("marketplace detail revalidation", () => {
+  test("uses the default revalidation behavior after form submissions", () => {
+    assert(
+      shouldRevalidate({
+        currentUrl: new URL("https://example.test/marketplace/example?artifactTab=files"),
+        nextUrl: new URL("https://example.test/marketplace/example?artifactTab=files"),
+        formMethod: "POST",
+        defaultShouldRevalidate: true,
+      } as never),
+    );
+  });
+
+  test("skips revalidation when only the artifact selection changes", () => {
+    assert(
+      !shouldRevalidate({
+        currentUrl: new URL(
+          "https://example.test/marketplace/example?artifactTab=files&artifactPath=%2Fartifact%2F1.0.0%2F",
+        ),
+        nextUrl: new URL("https://example.test/marketplace/example?artifactTab=workflows"),
+        defaultShouldRevalidate: true,
+      } as never),
+    );
+  });
+});
+
+function renderMarketplaceDetail(selectedVersion: string): string {
+  const loaderData = {
+    listing: {
+      listingId,
+      slug: "telegram-test-command",
+      name: "Telegram test command",
+      summary: "Run a Telegram command through a published workflow.",
+      description: "A published Marketplace listing used to test release selection.",
+      tags: [],
+      category: "communication",
+      publisherName: "Fragno",
+      status: "published",
+      latestVersion: "2.0.0",
+      publishedAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+    versions: [
+      { version: "2.0.0", publishedAt: "2026-01-01T00:00:00.000Z" },
+      { version: "1.0.0", publishedAt: "2025-01-01T00:00:00.000Z" },
+    ],
+    nextVersionCursor: undefined,
+    hasNextVersionPage: false,
+    manageOrganizationId: null,
+    installationOrganizationId: "org-1",
+    artifactFiles: {
+      state: "ready",
+      tree: [],
+      selectedVersion,
+      defaultPath: `/artifact/${selectedVersion}/`,
+      detailsByPath: {},
+      overviewPath: null,
+    },
+    ingestions: [],
+  };
+  const router = createMemoryRouter(
+    [
+      {
+        element: createElement(Outlet, {
+          context: { selectedScope: { kind: "org", orgId: "org-1", label: "Ada Labs" } },
+        }),
+        children: [
+          {
+            path: "*",
+            element: createElement(BackofficeMarketplaceDetail, { loaderData } as never),
+          },
+        ],
+      },
+    ],
+    { initialEntries: [`/marketplace?artifactVersion=${selectedVersion}`] },
+  );
+  return renderToStaticMarkup(createElement(RouterProvider, { router }));
+}
 
 describe("marketplace ingestion action", () => {
   test("requests ingestion into the organization selected in the route", async () => {

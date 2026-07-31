@@ -34,7 +34,7 @@ export function isUploadExplorerMount(mount: FileMountMetadata): mount is Upload
 export function buildLocalUploadExplorer(
   mounts: readonly UploadExplorerMount[],
   files: readonly UploadFileRecord[],
-  orgId: string,
+  orgId: string | null,
 ): LocalUploadExplorer {
   const nodesByPath = new Map<string, LocalUploadNode>();
   const roots = mounts.map((mount) => {
@@ -170,10 +170,10 @@ function createFolderNode(mount: UploadExplorerMount, path: string): LocalUpload
 function createFileNode(
   mount: UploadExplorerMount,
   file: UploadFileRecord,
-  orgId: string,
+  orgId: string | null,
 ): LocalUploadNode {
   const contentType = resolveUploadContentType(file.fileKey, file.contentType);
-  const previewUrl = buildUploadContentUrl(orgId, file.provider, file.fileKey);
+  const previewUrl = orgId ? buildUploadContentUrl(orgId, file.provider, file.fileKey) : null;
   return {
     explorerNode: {
       kind: "file",
@@ -200,7 +200,7 @@ function createFileNode(
       uploadId: file.uploadId ?? null,
       uploaderId: file.uploaderId ?? null,
       createdAt: file.createdAt ?? null,
-      previewUrl,
+      ...(previewUrl ? { previewUrl } : {}),
     },
     children: [],
   };

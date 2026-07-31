@@ -326,6 +326,7 @@ export type AutomationSubpageTab = {
   label: string;
   to: string;
   disabled?: boolean;
+  onSelect?: () => void;
 };
 
 export function AutomationSubpageTabs({

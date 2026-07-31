@@ -11,6 +11,7 @@ export type OverflowTabRowItem = {
   groupId?: string;
   disabled?: boolean;
   active?: boolean;
+  onSelect?: () => void;
 };
 
 export type OverflowTabRowVariant = "boxed" | "underline";
@@ -155,6 +156,7 @@ export function OverflowTabRow({
                 ) : (
                   <Link
                     to={tab.to}
+                    onClick={tab.onSelect}
                     aria-current={tab.active ? "page" : undefined}
                     className={tabClassName(variant, false, Boolean(tab.active))}
                   >
@@ -214,7 +216,10 @@ export function OverflowTabRow({
                               {tab.label}
                             </Menu.Item>
                           ) : (
-                            <Menu.Item render={<Link to={tab.to} />} className={menuItemClassName}>
+                            <Menu.Item
+                              render={<Link to={tab.to} onClick={tab.onSelect} />}
+                              className={menuItemClassName}
+                            >
                               {tab.label}
                             </Menu.Item>
                           )}

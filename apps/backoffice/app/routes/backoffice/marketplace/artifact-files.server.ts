@@ -1,284 +1,240 @@
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
-import { createUploadFileSystem } from "@/files/contributors/upload";
-import type { FilesExplorerTreeNode } from "@/files/explorer-types";
-import {
-  createPathNotFoundFileSystemError,
-  createReadOnlyFileSystemError,
-  createUnsupportedOperationFileSystemError,
-} from "@/files/fs-errors";
-import {
-  createUnsupportedFileSystem,
-  type BufferEncoding,
-  type IFileSystem,
-  type ReadFileOptions,
-} from "@/files/interface";
-import { MasterFileSystem } from "@/files/master-file-system";
-import {
-  ensureFolderPath,
-  isPathWithin,
-  normalizeAbsolutePath,
-  resolvePath,
-  stripTrailingSlash,
-} from "@/files/normalize-path";
-import { getFilesNodeDetail, listFilesChildren, listFilesTree } from "@/files/service";
-import { createSystemFilesContext } from "@/files/system-context";
+import type { FileMetadata } from "@fragno-dev/upload/types";
+
+import type { BackofficeObjectRegistry, UploadObject } from "@/backoffice-runtime/object-registry";
+import type { FilesNodeDetail } from "@/files/explorer-types";
+import { ensureFolderPath, isPathWithin, normalizeAbsolutePath } from "@/files/normalize-path";
+import { MARKETPLACE_LISTING_FILES_DIRECTORY } from "@/fragno/marketplace/artifacts";
 import type { MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
+import { createUploadRouteCaller, type UploadRouteCaller } from "@/fragno/upload-server";
+import type { UploadFileRecord } from "@/fragno/upload/file-record";
+import {
+  buildLocalUploadExplorer,
+  getLocalUploadDetail,
+  type UploadExplorerMount,
+} from "@/routes/backoffice/files/upload-local-tree";
 
 import {
   MARKETPLACE_ARTIFACT_MOUNT_POINT,
   type MarketplaceArtifactExplorerData,
 } from "./artifact-files-model";
 
-const SOURCE_MOUNT_POINT = "/marketplace-artifact-source";
-const UNKNOWN_MTIME = new Date(0);
+const PAGE_SIZE = "500";
+const ARTIFACT_MOUNT = {
+  id: "marketplace-artifact",
+  kind: "custom",
+  mountPoint: MARKETPLACE_ARTIFACT_MOUNT_POINT,
+  title: "Package contents",
+  readOnly: true,
+  persistence: "persistent",
+  uploadProvider: UPLOAD_PROVIDER_DATABASE,
+  description: "Files published for this Marketplace package.",
+} satisfies UploadExplorerMount;
 
 type PublishedArtifactVersion = MarketplaceArtifactManifest["versions"][number];
-
-type ResolvedArtifactPath =
-  | { kind: "root" }
-  | {
-      kind: "version";
-      sourcePath: string;
-      isVersionRoot: boolean;
-    };
-
-export function createPublishedMarketplaceArtifactFileSystem(
-  source: IFileSystem,
-  versions: readonly PublishedArtifactVersion[],
-): IFileSystem {
-  const versionsByName = new Map(versions.map((version) => [version.version, version]));
-
-  const resolveArtifactPath = (path: string): ResolvedArtifactPath => {
-    const normalizedPath = normalizeAbsolutePath(path);
-    if (normalizedPath === MARKETPLACE_ARTIFACT_MOUNT_POINT) {
-      return { kind: "root" };
-    }
-    if (!isPathWithin(normalizedPath, MARKETPLACE_ARTIFACT_MOUNT_POINT)) {
-      throw createPathNotFoundFileSystemError("resolve", path);
-    }
-
-    const relativePath = normalizedPath.slice(MARKETPLACE_ARTIFACT_MOUNT_POINT.length + 1);
-    const [versionName, ...versionPathSegments] = relativePath.split("/");
-    const version = versionsByName.get(versionName ?? "");
-    if (!version) {
-      throw createPathNotFoundFileSystemError("resolve", path);
-    }
-
-    const versionPath = versionPathSegments.join("/");
-    return {
-      kind: "version",
-      sourcePath: versionPath
-        ? `${SOURCE_MOUNT_POINT}/${version.directory}/${versionPath}`
-        : `${SOURCE_MOUNT_POINT}/${version.directory}`,
-      isVersionRoot: versionPath.length === 0,
-    };
-  };
-
-  const statArtifactPath = async (path: string) => {
-    const resolved = resolveArtifactPath(path);
-    if (resolved.kind === "root" || resolved.isVersionRoot) {
-      return {
-        isFile: false,
-        isDirectory: true,
-        isSymbolicLink: false,
-        mode: 0o555,
-        size: 0,
-        mtime: UNKNOWN_MTIME,
-      };
-    }
-    return source.stat(resolved.sourcePath);
-  };
-
-  return createUnsupportedFileSystem(createReadOnlyFileSystemError, {
-    async readFile(path: string, options?: ReadFileOptions | BufferEncoding) {
-      const resolved = resolveArtifactPath(path);
-      if (resolved.kind === "root" || resolved.isVersionRoot) {
-        throw createUnsupportedOperationFileSystemError("read", path);
-      }
-      return source.readFile(resolved.sourcePath, options);
-    },
-    async readFileBuffer(path: string) {
-      const resolved = resolveArtifactPath(path);
-      if (resolved.kind === "root" || resolved.isVersionRoot) {
-        throw createUnsupportedOperationFileSystemError("read", path);
-      }
-      return source.readFileBuffer(resolved.sourcePath);
-    },
-    async readFileStream(path: string) {
-      const resolved = resolveArtifactPath(path);
-      if (resolved.kind === "root" || resolved.isVersionRoot) {
-        throw createUnsupportedOperationFileSystemError("read stream", path);
-      }
-      if (!source.readFileStream) {
-        throw createUnsupportedOperationFileSystemError("read stream", path);
-      }
-      return source.readFileStream(resolved.sourcePath);
-    },
-    stat: statArtifactPath,
-    async readdir(path: string) {
-      const resolved = resolveArtifactPath(path);
-      if (resolved.kind === "root") {
-        return versions.map((version) => version.version);
-      }
-      return source.readdir(resolved.sourcePath);
-    },
-    async readdirWithFileTypes(path: string) {
-      const resolved = resolveArtifactPath(path);
-      if (resolved.kind === "root") {
-        return versions.map((version) => ({
-          name: version.version,
-          isFile: false,
-          isDirectory: true,
-          isSymbolicLink: false,
-        }));
-      }
-      if (source.readdirWithFileTypes) {
-        return source.readdirWithFileTypes(resolved.sourcePath);
-      }
-      return Promise.all(
-        (await source.readdir(resolved.sourcePath)).map(async (name) => {
-          const stat = await source.stat(resolvePath(resolved.sourcePath, name));
-          return {
-            name,
-            isFile: stat.isFile,
-            isDirectory: stat.isDirectory,
-            isSymbolicLink: stat.isSymbolicLink,
-          };
-        }),
-      );
-    },
-    resolvePath,
-    getAllPaths() {
-      return [
-        MARKETPLACE_ARTIFACT_MOUNT_POINT,
-        ...versions.map((version) => `${MARKETPLACE_ARTIFACT_MOUNT_POINT}/${version.version}`),
-      ];
-    },
-    lstat: statArtifactPath,
-    async realpath(path: string) {
-      await statArtifactPath(path);
-      return stripTrailingSlash(normalizeAbsolutePath(path)) || "/";
-    },
-  });
-}
-
-export async function loadMarketplaceArtifactExplorer(input: {
-  fileSystem: IFileSystem;
-  requestedPath?: string;
-}): Promise<MarketplaceArtifactExplorerData> {
-  const master = new MasterFileSystem({
-    mounts: [
-      {
-        id: "marketplace-artifact",
-        kind: "custom",
-        mountPoint: MARKETPLACE_ARTIFACT_MOUNT_POINT,
-        title: "Published versions",
-        readOnly: true,
-        persistence: "persistent",
-        description: "Files published for every available Marketplace version.",
-        fs: input.fileSystem,
-      },
-    ],
-  });
-  const tree = await listCompleteFilesTree(master);
-  const requestedPath = input.requestedPath
-    ? normalizeMarketplaceArtifactExplorerPath(input.requestedPath)
-    : MARKETPLACE_ARTIFACT_MOUNT_POINT;
-  const selectedDetail = await getFilesNodeDetail(master, requestedPath);
-
-  if (selectedDetail) {
-    return {
-      state: "ready",
-      tree,
-      selectedPath: requestedPath,
-      selectedDetail,
-      loadError: null,
-    };
-  }
-
-  return {
-    state: "ready",
-    tree,
-    selectedPath: MARKETPLACE_ARTIFACT_MOUNT_POINT,
-    selectedDetail: await getFilesNodeDetail(master, MARKETPLACE_ARTIFACT_MOUNT_POINT),
-    loadError: `Artifact path '${requestedPath}' could not be found.`,
-  };
-}
 
 export async function loadPublishedMarketplaceArtifactExplorer(input: {
   manifest: MarketplaceArtifactManifest | null;
   objects: BackofficeObjectRegistry;
   request: Request;
-  requestedPath?: string;
+  requestedVersion?: string;
 }): Promise<MarketplaceArtifactExplorerData> {
-  if (!input.manifest || input.manifest.versions.length === 0) {
-    return {
-      state: "unavailable",
-      message: "This Marketplace listing has no published artifact files.",
-    };
+  if (!isPublishedArtifactManifest(input.manifest)) {
+    return { state: "unavailable", message: "This Marketplace listing has no published files." };
   }
 
   try {
-    const source = createUploadFileSystem(
-      createSystemFilesContext({
-        origin: new URL(input.request.url).origin,
-        request: input.request,
-        objects: input.objects,
-        execution: {
-          actor: { type: "system", id: "marketplace-artifact-reader" },
-          scope: { kind: "system" },
-        },
-        staticFileArtifacts: () => ({}),
-      }),
-      {
-        object: input.objects.upload.forName(input.manifest.uploadName),
-        provider: UPLOAD_PROVIDER_DATABASE,
-        mountPoint: SOURCE_MOUNT_POINT,
-      },
+    const selectedVersion = resolvePublishedVersion(input.manifest, input.requestedVersion);
+    const latestVersion = input.manifest.versions[0];
+    const routes = createUploadRouteCaller(
+      input.objects.upload.forName(input.manifest.uploadName),
+      input.request,
     );
-    const fileSystem = createPublishedMarketplaceArtifactFileSystem(
-      source,
-      input.manifest.versions,
+    const versionPrefix = `${selectedVersion.directory}/`;
+    const listingPrefix = `${latestVersion.directory}/${MARKETPLACE_LISTING_FILES_DIRECTORY}/`;
+    const versionFiles = await listUploadFiles(routes, versionPrefix);
+    const listingFiles =
+      selectedVersion.directory === latestVersion.directory
+        ? versionFiles
+        : await listUploadFiles(routes, listingPrefix);
+    const publishedVersionNames = new Set(input.manifest.versions.map(({ version }) => version));
+    const projectedFiles = [
+      ...projectUploadFiles(listingFiles, listingPrefix).filter(
+        ({ fileKey }) => !publishedVersionNames.has(fileKey.split("/")[0] ?? ""),
+      ),
+      ...projectUploadFiles(
+        versionFiles.filter(
+          ({ fileKey }) =>
+            !fileKey.startsWith(`${versionPrefix}${MARKETPLACE_LISTING_FILES_DIRECTORY}/`),
+        ),
+        versionPrefix,
+        `${selectedVersion.version}/`,
+      ),
+    ];
+    const explorer = buildLocalUploadExplorer([ARTIFACT_MOUNT], projectedFiles, null);
+    const defaultPath = ensureFolderPath(
+      `${MARKETPLACE_ARTIFACT_MOUNT_POINT}/${selectedVersion.version}`,
     );
-    return await loadMarketplaceArtifactExplorer({
-      fileSystem,
-      requestedPath: input.requestedPath,
-    });
+    const detailsByPath: Record<string, FilesNodeDetail> = {};
+    for (const path of explorer.nodesByPath.keys()) {
+      const detail = getLocalUploadDetail(explorer, path, null);
+      if (detail?.node.path === path) {
+        detailsByPath[path] = detail;
+      }
+    }
+
+    return {
+      state: "ready",
+      tree: explorer.roots,
+      selectedVersion: selectedVersion.version,
+      defaultPath,
+      detailsByPath,
+      overviewPath: detailsByPath[`${MARKETPLACE_ARTIFACT_MOUNT_POINT}/README.md`]
+        ? `${MARKETPLACE_ARTIFACT_MOUNT_POINT}/README.md`
+        : null,
+    };
   } catch (error) {
     return {
       state: "error",
-      message:
-        error instanceof Error ? error.message : "Marketplace artifact files could not be loaded.",
+      message: error instanceof Error ? error.message : "Marketplace files could not be loaded.",
     };
   }
 }
 
-async function listCompleteFilesTree(master: MasterFileSystem): Promise<FilesExplorerTreeNode[]> {
-  return Promise.all((await listFilesTree(master)).map((root) => populateTreeNode(master, root)));
-}
-
-async function populateTreeNode(
-  master: MasterFileSystem,
-  node: FilesExplorerTreeNode,
-): Promise<FilesExplorerTreeNode> {
-  if (node.kind === "file") {
-    return node;
+export async function fetchPublishedMarketplaceArtifactFile(input: {
+  manifest: MarketplaceArtifactManifest | null;
+  objects: BackofficeObjectRegistry;
+  request: Request;
+  path: string;
+  requestedVersion?: string;
+}): Promise<Response> {
+  if (!isPublishedArtifactManifest(input.manifest)) {
+    return new Response("Marketplace file is unavailable.", { status: 404 });
   }
 
-  const children = node.children ?? (await listFilesChildren(master, ensureFolderPath(node.path)));
-  return {
-    ...node,
-    children: await Promise.all(
-      children.map((child) => populateTreeNode(master, { ...child, children: undefined })),
-    ),
-  };
+  const normalizedPath = parseMarketplaceArtifactFilePath(input.path);
+  if (!normalizedPath) {
+    return new Response("artifactPath must identify a published Marketplace file.", {
+      status: 400,
+    });
+  }
+
+  const selectedVersion = resolvePublishedVersion(input.manifest, input.requestedVersion);
+  const fileKey = resolveArtifactFileKey(input.manifest, selectedVersion, normalizedPath);
+  if (!fileKey) {
+    return new Response("Marketplace file is unavailable.", { status: 404 });
+  }
+  return fetchUploadFile(
+    input.objects.upload.forName(input.manifest.uploadName),
+    input.request,
+    fileKey,
+  );
 }
 
-function normalizeMarketplaceArtifactExplorerPath(path: string): string {
-  const normalizedPath = normalizeAbsolutePath(path);
-  if (!isPathWithin(normalizedPath, MARKETPLACE_ARTIFACT_MOUNT_POINT)) {
-    throw new Error(`Artifact path must be inside '${MARKETPLACE_ARTIFACT_MOUNT_POINT}'.`);
+function isPublishedArtifactManifest(
+  manifest: MarketplaceArtifactManifest | null,
+): manifest is MarketplaceArtifactManifest {
+  return manifest?.listingStatus === "published" && manifest.versions.length > 0;
+}
+
+async function listUploadFiles(routes: UploadRouteCaller, prefix: string): Promise<FileMetadata[]> {
+  const response = await routes("GET", "/files", {
+    query: {
+      provider: UPLOAD_PROVIDER_DATABASE,
+      prefix,
+      status: "ready",
+      pageSize: PAGE_SIZE,
+    },
+  });
+  if (response.type !== "json" || response.status < 200 || response.status >= 300) {
+    const code = response.type === "error" ? response.error.code : `HTTP_${response.status}`;
+    throw new Error(`Upload file listing failed (${code}).`);
   }
-  return path.endsWith("/") ? ensureFolderPath(normalizedPath) : normalizedPath;
+  if (response.data.hasNextPage) {
+    throw new Error(`Marketplace artifact file listing exceeds the ${PAGE_SIZE}-file limit.`);
+  }
+
+  return response.data.files;
+}
+
+function fetchUploadFile(
+  object: UploadObject,
+  request: Request,
+  fileKey: string,
+): Promise<Response> {
+  const url = new URL("/api/upload/files/by-key/content", request.url);
+  url.searchParams.set("provider", UPLOAD_PROVIDER_DATABASE);
+  url.searchParams.set("key", fileKey);
+  return object.fetch(new Request(url, { headers: request.headers }));
+}
+
+function projectUploadFiles(
+  files: readonly FileMetadata[],
+  sourcePrefix: string,
+  targetPrefix = "",
+): UploadFileRecord[] {
+  return files.flatMap((file): UploadFileRecord[] =>
+    file.fileKey.startsWith(sourcePrefix)
+      ? [
+          {
+            ...file,
+            tags: file.tags ?? undefined,
+            fileKey: `${targetPrefix}${file.fileKey.slice(sourcePrefix.length)}`,
+          },
+        ]
+      : [],
+  );
+}
+
+function resolvePublishedVersion(
+  manifest: MarketplaceArtifactManifest,
+  requestedVersion?: string,
+): PublishedArtifactVersion {
+  const version =
+    manifest.versions.find(({ version }) => version === requestedVersion) ?? manifest.versions[0];
+  if (!version) {
+    throw new Error("Marketplace artifact manifest has no published versions.");
+  }
+  return version;
+}
+
+function parseMarketplaceArtifactFilePath(path: string): string | null {
+  if (path.endsWith("/")) {
+    return null;
+  }
+
+  try {
+    const normalizedPath = normalizeAbsolutePath(path);
+    return normalizedPath !== MARKETPLACE_ARTIFACT_MOUNT_POINT &&
+      isPathWithin(normalizedPath, MARKETPLACE_ARTIFACT_MOUNT_POINT)
+      ? normalizedPath
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveArtifactFileKey(
+  manifest: MarketplaceArtifactManifest,
+  selectedVersion: PublishedArtifactVersion,
+  normalizedPath: string,
+): string | null {
+  const versionRoot = `${MARKETPLACE_ARTIFACT_MOUNT_POINT}/${selectedVersion.version}`;
+  if (isPathWithin(normalizedPath, versionRoot)) {
+    if (normalizedPath === versionRoot) {
+      return null;
+    }
+    const relativePath = normalizedPath.slice(versionRoot.length + 1);
+    if (relativePath.startsWith(`${MARKETPLACE_LISTING_FILES_DIRECTORY}/`)) {
+      return null;
+    }
+    return `${selectedVersion.directory}/${relativePath}`;
+  }
+
+  const relativePath = normalizedPath.slice(MARKETPLACE_ARTIFACT_MOUNT_POINT.length + 1);
+  const topLevelName = relativePath.split("/")[0];
+  if (manifest.versions.some(({ version }) => version === topLevelName)) {
+    return null;
+  }
+  return `${manifest.versions[0].directory}/${MARKETPLACE_LISTING_FILES_DIRECTORY}/${relativePath}`;
 }

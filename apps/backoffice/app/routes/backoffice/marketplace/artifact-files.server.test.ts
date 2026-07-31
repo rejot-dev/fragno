@@ -1,89 +1,301 @@
-import { assert, describe, expect, test } from "vitest";
+import { afterAll, assert, beforeAll, beforeEach, describe, expect, test } from "vitest";
 
-import { createReadOnlyContentFileSystem } from "@/files/contributors/content";
-import type { FilesExplorerTreeNode } from "@/files/explorer-types";
+import { createDatabaseStorageAdapter } from "@fragno-dev/upload/storage/db";
+
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import {
+  createUploadFragment,
+  uploadFragmentDefinition,
+  uploadSchema,
+  type StorageAdapter,
+} from "@fragno-dev/upload";
+
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 
 import {
-  createPublishedMarketplaceArtifactFileSystem,
-  loadMarketplaceArtifactExplorer,
+  fetchPublishedMarketplaceArtifactFile,
+  loadPublishedMarketplaceArtifactExplorer,
 } from "./artifact-files.server";
 
-const SOURCE_MOUNT_POINT = "/marketplace-artifact-source";
+const manifest = {
+  listingId: "system#daily-report",
+  slug: "daily-report",
+  listingStatus: "published" as const,
+  uploadName: "marketplace-test-upload",
+  versions: [
+    { version: "2.0.0", directory: "release-2" },
+    { version: "1.0.0", directory: "1.0.0" },
+  ],
+};
 
-const createArtifactSource = () =>
-  createReadOnlyContentFileSystem(SOURCE_MOUNT_POINT, {
-    "1.0.0/automations/daily-report.workflow.js": "export const version = '1.0.0';",
-    "release-2/automations/daily-report.workflow.js": "export const version = '2.0.0';",
-    "release-2/README.md": "# Version 2",
-    "unpublished-draft/private.txt": "not published",
-  });
+type ArtifactSeedFile = {
+  fileKey: string;
+  contentType: string;
+  content: string;
+};
 
-const publishedVersions = [
-  { version: "2.0.0", directory: "release-2" },
-  { version: "1.0.0", directory: "1.0.0" },
-] as const;
+const files: ArtifactSeedFile[] = [
+  createFile("release-2/.listing/README.md", "text/markdown", "# Package overview"),
+  createFile("release-2/README.md", "text/markdown", "# Version 2"),
+  createFile(
+    "release-2/automations/daily-report.workflow.js",
+    "text/javascript",
+    "defineWorkflow({ name: 'daily' })",
+  ),
+  createFile("release-2/automations/helpers.js", "text/javascript", "export const helper = true"),
+  createFile("1.0.0/README.md", "text/markdown", "# Version 1"),
+  createFile(
+    "1.0.0/automations/old.workflow.js",
+    "text/javascript",
+    "defineWorkflow({ name: 'old' })",
+  ),
+];
 
-describe("Marketplace artifact filesystem", () => {
-  test("shows every published version while hiding unreferenced Upload directories", async () => {
-    const fileSystem = createPublishedMarketplaceArtifactFileSystem(
-      createArtifactSource(),
-      publishedVersions,
-    );
+const schemaExtractionStorage: StorageAdapter = {
+  name: "database",
+  capabilities: {
+    directUpload: false,
+    multipartUpload: false,
+    signedDownload: false,
+    proxyUpload: true,
+  },
+  resolveStorageKey: ({ provider, fileKey }) => `${provider}/${fileKey}`,
+  initUpload: async ({ provider, fileKey }) => ({
+    strategy: "proxy",
+    storageKey: `${provider}/${fileKey}`,
+    expiresAt: new Date("2026-01-01T00:01:00.000Z"),
+  }),
+  deleteObject: async () => {},
+};
 
-    const result = await loadMarketplaceArtifactExplorer({ fileSystem });
+const buildUploadTest = () =>
+  buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "kysely-sqlite" })
+    .withDbRoundtripGuard({ maxRoundtrips: 2 })
+    .withFragmentFactory(
+      "upload",
+      uploadFragmentDefinition,
+      ({ adapter }) =>
+        createUploadFragment(
+          {
+            storage: createDatabaseStorageAdapter({
+              databaseAdapter: adapter,
+              providerName: "database",
+            }),
+          },
+          { databaseAdapter: adapter, mountRoute: "/api/upload" },
+        ),
+      { config: { storage: schemaExtractionStorage } },
+    )
+    .build();
 
-    assert(result.state === "ready");
-    expect(result.tree).toHaveLength(1);
-    expect(result.tree[0]?.children?.map((node) => node.path)).toEqual([
-      "/artifact/1.0.0/",
-      "/artifact/2.0.0/",
-    ]);
+type UploadTest = Awaited<ReturnType<typeof buildUploadTest>>;
 
-    const paths = flattenTreePaths(result.tree);
-    expect(paths).toContain("/artifact/1.0.0/automations/daily-report.workflow.js");
-    expect(paths).toContain("/artifact/2.0.0/README.md");
-    assert(!paths.some((path) => path.includes("unpublished-draft")));
-  });
+let uploadTest: UploadTest;
 
-  test("maps a visible version to its stored artifact directory and reads text through IFileSystem", async () => {
-    const fileSystem = createPublishedMarketplaceArtifactFileSystem(
-      createArtifactSource(),
-      publishedVersions,
-    );
+beforeAll(async () => {
+  uploadTest = await buildUploadTest();
+}, 30_000);
 
-    const result = await loadMarketplaceArtifactExplorer({
-      fileSystem,
-      requestedPath: "/artifact/2.0.0/README.md",
+beforeEach(async () => {
+  await uploadTest.test.resetDatabase();
+});
+
+afterAll(async () => {
+  await uploadTest.test.cleanup();
+});
+
+describe("Marketplace artifact files", () => {
+  test("builds the explorer from Upload metadata without reading file content", async () => {
+    const { objects, requests } = await createUploadObjects();
+    const result = await loadPublishedMarketplaceArtifactExplorer({
+      manifest,
+      objects,
+      request: new Request("https://backoffice.test/marketplace/daily-report"),
+      requestedVersion: "2.0.0",
     });
 
     assert(result.state === "ready");
-    expect(result.selectedDetail).toMatchObject({
-      node: {
-        path: "/artifact/2.0.0/README.md",
-        title: "README.md",
-      },
-      textContent: "# Version 2",
+    expect(flattenTreePaths(result.tree)).toEqual(
+      expect.arrayContaining([
+        "/artifact/README.md",
+        "/artifact/2.0.0/",
+        "/artifact/2.0.0/README.md",
+        "/artifact/2.0.0/automations/daily-report.workflow.js",
+      ]),
+    );
+    expect(flattenTreePaths(result.tree)).not.toEqual(
+      expect.arrayContaining(["/artifact/1.0.0/README.md"]),
+    );
+    assert(result.overviewPath === "/artifact/README.md");
+    assert(result.defaultPath === "/artifact/2.0.0/");
+    assert(result.detailsByPath["/artifact/2.0.0/README.md"]?.textContent === null);
+    expect(result.detailsByPath).toHaveProperty(
+      "/artifact/2.0.0/automations/daily-report.workflow.js",
+    );
+    assert(requests.every(({ pathname }) => pathname === "/api/upload/files"));
+
+    const storedFile = await readStoredFile("release-2/README.md");
+    expect(storedFile).toMatchObject({
+      key: "release-2/README.md",
+      provider: "database",
+      filename: "README.md",
+      status: "ready",
     });
   });
 
-  test("falls back to the artifact root when the selected file does not exist", async () => {
-    const fileSystem = createPublishedMarketplaceArtifactFileSystem(
-      createArtifactSource(),
-      publishedVersions,
+  test("rejects artifact listings that exceed one 500-file request", async () => {
+    const overflowFiles = Array.from({ length: 501 }, (_, index) =>
+      createFile(`release-2/generated/file-${index}.txt`, "text/plain", `${index}`),
     );
-
-    const result = await loadMarketplaceArtifactExplorer({
-      fileSystem,
-      requestedPath: "/artifact/2.0.0/missing.txt",
+    const { objects, requests } = await createUploadObjects({ additionalFiles: overflowFiles });
+    const result = await loadPublishedMarketplaceArtifactExplorer({
+      manifest,
+      objects,
+      request: new Request("https://backoffice.test/marketplace/daily-report"),
+      requestedVersion: "2.0.0",
     });
 
-    assert(result.state === "ready");
-    assert(result.selectedPath === "/artifact");
-    assert(result.selectedDetail?.node.kind === "root");
-    expect(result.loadError).toContain("missing.txt");
+    expect(result).toEqual({
+      state: "error",
+      message: "Marketplace artifact file listing exceeds the 500-file limit.",
+    });
+    assert(requests.length === 1);
+  }, 30_000);
+
+  test("rejects artifact exploration for an unpublished manifest", async () => {
+    const { objects, requests } = await createUploadObjects();
+    const result = await loadPublishedMarketplaceArtifactExplorer({
+      manifest: { ...manifest, listingStatus: "draft" },
+      objects,
+      request: new Request("https://backoffice.test/marketplace/daily-report"),
+      requestedVersion: "2.0.0",
+    });
+
+    expect(result).toEqual({
+      state: "unavailable",
+      message: "This Marketplace listing has no published files.",
+    });
+    assert(requests.length === 0);
+  });
+
+  test("streams one selected file through the lazy content route", async () => {
+    const { objects, requests } = await createUploadObjects();
+    const response = await fetchPublishedMarketplaceArtifactFile({
+      manifest,
+      objects,
+      request: new Request("https://backoffice.test/marketplace/daily-report"),
+      requestedVersion: "2.0.0",
+      path: "/artifact/2.0.0/README.md",
+    });
+
+    assert(response.status === 200);
+    assert(response.headers.get("content-type") === "text/markdown");
+    assert((await response.text()) === "# Version 2");
+    assert(requests.length === 1);
+    assert(requests[0]?.pathname === "/api/upload/files/by-key/content");
+    assert(requests[0]?.searchParams.get("key") === "release-2/README.md");
+  });
+
+  test("rejects invalid file paths before requesting Upload content", async () => {
+    const { objects, requests } = await createUploadObjects();
+    const response = await fetchPublishedMarketplaceArtifactFile({
+      manifest,
+      objects,
+      request: new Request("https://backoffice.test/marketplace/daily-report"),
+      requestedVersion: "2.0.0",
+      path: "/artifact/2.0.0/../private.txt",
+    });
+
+    assert(response.status === 400);
+    assert(requests.length === 0);
+  });
+
+  test("rejects files from an unpublished artifact manifest", async () => {
+    const { objects, requests } = await createUploadObjects();
+    const response = await fetchPublishedMarketplaceArtifactFile({
+      manifest: { ...manifest, listingStatus: "draft" },
+      objects,
+      request: new Request("https://backoffice.test/marketplace/daily-report"),
+      requestedVersion: "2.0.0",
+      path: "/artifact/2.0.0/README.md",
+    });
+
+    assert(response.status === 404);
+    assert(requests.length === 0);
   });
 });
 
-function flattenTreePaths(nodes: readonly FilesExplorerTreeNode[]): string[] {
-  return nodes.flatMap((node) => [node.path, ...flattenTreePaths(node.children ?? [])]);
+async function createUploadObjects(
+  options: { additionalFiles?: readonly ArtifactSeedFile[] } = {},
+): Promise<{
+  objects: BackofficeObjectRegistry;
+  requests: URL[];
+}> {
+  const requests: URL[] = [];
+  const uploadObject = {
+    fetch: async (request: Request) => {
+      requests.push(new URL(request.url));
+      return uploadTest.fragments.upload.fragment.handler(request);
+    },
+  };
+
+  for (const file of [...files, ...(options.additionalFiles ?? [])]) {
+    const form = new FormData();
+    form.set("provider", "database");
+    form.set("fileKey", file.fileKey);
+    form.set(
+      "file",
+      new File([file.content], file.fileKey.split("/").at(-1) ?? "artifact", {
+        type: file.contentType,
+      }),
+    );
+    const response = await uploadObject.fetch(
+      new Request("https://upload.test/api/upload/files", { method: "POST", body: form }),
+    );
+    assert(response.ok);
+    const created = (await response.json()) as { fileKey: string; status: string };
+    expect(created).toMatchObject({ fileKey: file.fileKey, status: "ready" });
+  }
+  requests.length = 0;
+
+  return {
+    requests,
+    objects: {
+      upload: {
+        forName: (name: string) => {
+          expect(name).toBe(manifest.uploadName);
+          return uploadObject;
+        },
+      },
+    } as unknown as BackofficeObjectRegistry,
+  };
+}
+
+async function readStoredFile(fileKey: string) {
+  const fileUow = uploadTest.fragments.upload.db
+    .createUnitOfWork("read-marketplace-artifact-file")
+    .forSchema(uploadSchema)
+    .findFirst("file", (builder) =>
+      builder.whereIndex("idx_file_provider_key", (expression) =>
+        expression.and(expression("provider", "=", "database"), expression("key", "=", fileKey)),
+      ),
+    );
+  await fileUow.executeRetrieve();
+  return (await fileUow.retrievalPhase)[0];
+}
+
+function createFile(fileKey: string, contentType: string, content: string): ArtifactSeedFile {
+  return { fileKey, contentType, content };
+}
+
+function flattenTreePaths(
+  nodes: readonly { path: string; children?: readonly unknown[] }[],
+): string[] {
+  return nodes.flatMap((node) => [
+    node.path,
+    ...flattenTreePaths(
+      (node.children ?? []) as readonly { path: string; children?: readonly unknown[] }[],
+    ),
+  ]);
 }

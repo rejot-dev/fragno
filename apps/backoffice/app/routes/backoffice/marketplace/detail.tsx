@@ -1,11 +1,13 @@
 import {
   Form,
   Link,
+  Outlet,
   redirect,
   useActionData,
   useLocation,
   useNavigation,
   useOutletContext,
+  type ShouldRevalidateFunctionArgs,
 } from "react-router";
 
 import {
@@ -25,10 +27,11 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/detail";
-import { MarketplaceArtifactFiles } from "./artifact-files";
+import type { MarketplaceArtifactExplorerData } from "./artifact-files-model";
 import { loadPublishedMarketplaceArtifactExplorer } from "./artifact-files.server";
 import type { MarketplaceLayoutContext } from "./layout-context";
 import {
+  buildArtifactVersionPath,
   marketplaceListingManagePath,
   marketplaceListingPath,
   marketplaceListingRefSchema,
@@ -50,6 +53,10 @@ type IngestionActionData =
       ok: true;
       result: Exclude<MarketplaceIngestionRequestResult, { state: "failed" }>;
     };
+
+export type MarketplaceArtifactOutletContext = {
+  artifactFiles: MarketplaceArtifactExplorerData;
+};
 
 type MarketplaceInstallationTarget =
   | {
@@ -97,6 +104,25 @@ const resolveMarketplaceInstallationTarget = (
 
   return { state: "ready", organizationId, targetScope };
 };
+
+export function shouldRevalidate({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs): boolean {
+  if (formMethod || currentUrl.pathname !== nextUrl.pathname) {
+    return defaultShouldRevalidate;
+  }
+
+  const currentSearch = new URLSearchParams(currentUrl.search);
+  const nextSearch = new URLSearchParams(nextUrl.search);
+  for (const parameter of ["artifactTab", "artifactPath", "artifactContent"]) {
+    currentSearch.delete(parameter);
+    nextSearch.delete(parameter);
+  }
+  return currentSearch.toString() === nextSearch.toString() ? false : defaultShouldRevalidate;
+}
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
@@ -163,7 +189,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       manifest: artifactManifest,
       objects: runtime.objects,
       request,
-      requestedPath: url.searchParams.get("artifactPath")?.trim() || undefined,
+      requestedVersion: url.searchParams.get("artifactVersion")?.trim() || undefined,
     }),
     installationOrganization
       ? runtime.objects.automations
@@ -256,6 +282,11 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
   const navigation = useNavigation();
   const location = useLocation();
   const search = new URLSearchParams(location.search);
+  const selectedArtifactVersion =
+    artifactFiles.state === "ready" ? artifactFiles.selectedVersion : listing.latestVersion;
+  const installationVersion = versions.some(({ version }) => version === selectedArtifactVersion)
+    ? selectedArtifactVersion
+    : listing.latestVersion;
   const publishedVersionParam = search.get("published");
   const publishedVersion = versions.some(({ version }) => version === publishedVersionParam)
     ? publishedVersionParam
@@ -400,8 +431,9 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
                       Release
                     </span>
                     <select
+                      key={installationVersion}
                       name="version"
-                      defaultValue={listing.latestVersion}
+                      defaultValue={installationVersion}
                       className="mt-2 min-h-11 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 font-mono text-sm text-[var(--bo-fg)] transition-[border-color,box-shadow] duration-150 ease-out outline-none focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20"
                     >
                       {versions.map((version) => (
@@ -446,15 +478,26 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
             <div className="mt-4 space-y-2">
               {versions.map((version) => {
                 const isLatest = version.version === listing.latestVersion;
+                const isSelected = version.version === selectedArtifactVersion;
                 return (
-                  <div
+                  <Link
                     key={version.version}
-                    className="flex items-center justify-between gap-4 bg-[var(--bo-panel-2)] px-3 py-3 shadow-[inset_0_0_0_1px_var(--bo-border)]"
+                    to={buildArtifactVersionPath(
+                      location.pathname,
+                      location.search,
+                      selectedArtifactVersion,
+                      version.version,
+                    )}
+                    preventScrollReset
+                    aria-current={isSelected ? "page" : undefined}
+                    className={
+                      isSelected
+                        ? "flex min-h-14 items-center justify-between gap-4 bg-[var(--bo-accent-bg)] px-3 py-3 text-[var(--bo-fg)] shadow-[inset_0_0_0_1px_var(--bo-accent)] transition-[scale,background-color,box-shadow] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
+                        : "flex min-h-14 items-center justify-between gap-4 bg-[var(--bo-panel-2)] px-3 py-3 text-[var(--bo-fg)] shadow-[inset_0_0_0_1px_var(--bo-border)] transition-[scale,background-color,box-shadow] duration-150 ease-out outline-none hover:bg-[var(--bo-panel)] hover:shadow-[inset_0_0_0_1px_var(--bo-border-strong)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
+                    }
                   >
                     <div className="min-w-0">
-                      <p className="font-mono text-xs font-semibold text-[var(--bo-fg)]">
-                        v{version.version}
-                      </p>
+                      <p className="font-mono text-xs font-semibold">v{version.version}</p>
                       <p className="mt-1 text-[10px] text-[var(--bo-muted-2)]">
                         {formatDate(version.publishedAt)}
                       </p>
@@ -462,7 +505,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
                     {isLatest ? (
                       <BackofficeStatusLight tone="info">Latest</BackofficeStatusLight>
                     ) : null}
-                  </div>
+                  </Link>
                 );
               })}
             </div>
@@ -479,7 +522,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
 
         <div className="min-w-0 space-y-5 2xl:contents 2xl:space-y-0">
           <div className="min-w-0 2xl:col-span-3">
-            <MarketplaceArtifactFiles data={artifactFiles} />
+            <Outlet context={{ artifactFiles } satisfies MarketplaceArtifactOutletContext} />
           </div>
         </div>
       </div>

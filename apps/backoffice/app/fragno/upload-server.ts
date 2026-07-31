@@ -1,3 +1,4 @@
+import { createRouteCaller, type RouteCallerForFragment } from "@fragno-dev/core/api";
 import { createDatabaseStorageAdapter } from "@fragno-dev/upload/storage/db";
 import { AwsClient } from "aws4fetch";
 
@@ -11,6 +12,7 @@ import {
 } from "@fragno-dev/upload";
 
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
+import type { FetchObject } from "@/backoffice-runtime/object-registry";
 
 import {
   UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
@@ -187,3 +189,16 @@ export function createUploadServerForProvider(
 }
 
 export type UploadFragment = ReturnType<typeof createUploadServerForProvider>;
+
+export type UploadRouteCaller = RouteCallerForFragment<UploadFragment>;
+
+export const createUploadRouteCaller = (
+  object: FetchObject,
+  request?: Request,
+): UploadRouteCaller =>
+  createRouteCaller<UploadFragment>({
+    baseUrl: request?.url ?? "https://upload.internal",
+    mountRoute: "/api/upload",
+    baseHeaders: request?.headers,
+    fetch: (routeRequest) => object.fetch(routeRequest),
+  });

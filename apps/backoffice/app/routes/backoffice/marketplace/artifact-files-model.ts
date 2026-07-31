@@ -2,13 +2,24 @@ import type { FilesExplorerTreeNode, FilesNodeDetail } from "@/files/explorer-ty
 
 export const MARKETPLACE_ARTIFACT_MOUNT_POINT = "/artifact";
 
+export type MarketplaceArtifactSelectedContent = {
+  path: string;
+  text: string;
+};
+
+export type MarketplaceArtifactWorkflowSource = {
+  path: string;
+  source: string;
+};
+
 export type MarketplaceArtifactExplorerData =
   | {
       state: "ready";
       tree: FilesExplorerTreeNode[];
-      selectedPath: string;
-      selectedDetail: FilesNodeDetail | null;
-      loadError: string | null;
+      selectedVersion: string;
+      defaultPath: string;
+      detailsByPath: Record<string, FilesNodeDetail>;
+      overviewPath: string | null;
     }
   | {
       state: "unavailable" | "error";

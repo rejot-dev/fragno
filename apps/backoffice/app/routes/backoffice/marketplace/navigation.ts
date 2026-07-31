@@ -44,6 +44,31 @@ export const marketplaceListingRef = (listingId: string): string => {
 export const marketplaceListingPath = (listingId: string, scope: MarketplaceUiScope): string =>
   `${marketplaceScopeTabPath(scope, "marketplace")}/${marketplaceListingRef(listingId)}`;
 
+export function buildArtifactVersionPath(
+  pathname: string,
+  currentSearch: string,
+  currentVersion: string,
+  nextVersion: string,
+): string {
+  const search = new URLSearchParams(currentSearch);
+  search.set("artifactVersion", nextVersion);
+  const currentTab = search.get("artifactTab");
+  if (currentTab !== "files" && currentTab !== "workflows") {
+    search.set("artifactTab", "files");
+  }
+
+  const selectedPath = search.get("artifactPath")?.trim();
+  const currentVersionRoot = `/artifact/${currentVersion}`;
+  if (selectedPath === currentVersionRoot || selectedPath?.startsWith(`${currentVersionRoot}/`)) {
+    search.set(
+      "artifactPath",
+      `/artifact/${nextVersion}${selectedPath.slice(currentVersionRoot.length)}`,
+    );
+  }
+
+  return `${pathname}?${search}`;
+}
+
 export const marketplaceListingManagePath = ({
   listingId,
   organizationId,
