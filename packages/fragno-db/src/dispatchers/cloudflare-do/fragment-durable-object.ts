@@ -1,3 +1,5 @@
+import type { FragnoRequestLifecycleContext } from "@fragno-dev/core";
+
 import { hasDurableHooksConfigured } from "../../hooks/durable-hooks-fragment";
 import { migrate, type AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
 import {
@@ -152,16 +154,10 @@ export type FragmentDurableObjectRuntimeHostContext = {
   ) => TFragment;
 };
 
-export type FragmentDurableObjectFetchContext = {
-  waitUntil?: (promise: Promise<unknown>) => void;
-};
-
-export type FragmentDurableObjectFetchTarget = {
-  handler: (
-    request: Request,
-    context?: FragmentDurableObjectFetchContext,
-  ) => Response | Promise<Response>;
-};
+export type FragmentDurableObjectFetchTarget = Pick<
+  AnyFragnoInstantiatedDatabaseFragment,
+  "handler"
+>;
 
 export type FragmentDurableObjectMountMatchInput = {
   request: Request;
@@ -178,7 +174,7 @@ export type FragmentDurableObjectMount<TRuntime> = {
 
 export type ResolvedFragmentDurableObjectMount = {
   id: string;
-  handle: (context?: FragmentDurableObjectFetchContext) => Promise<Response>;
+  handle: (context?: FragnoRequestLifecycleContext<unknown>) => Promise<Response>;
 };
 
 /** Low-level operations used by the fragment Durable Object host. */
@@ -216,7 +212,7 @@ export type FragmentDurableObjectHost<TSource, TRuntime> = {
   fetch: (
     runtime: TRuntime,
     request: Request,
-    context?: FragmentDurableObjectFetchContext,
+    context?: FragnoRequestLifecycleContext<unknown>,
   ) => Promise<Response>;
   /** Runs the durable-hook alarm handler for the current dispatcher, if hooks are enabled. */
   alarm: () => Promise<void>;

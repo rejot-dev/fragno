@@ -43,6 +43,40 @@ export function createExampleFragmentInstance() {
 }
 ```
 
+## Application Request Context
+
+Direct fragment handlers can receive application-owned context without serializing it into HTTP
+headers. Declare the context type with `withRequestContext<T>()`; the resulting fragment handler and
+middleware retain that type through the complete request chain.
+
+```typescript title="lib/example-fragment-server.ts"
+type ExampleRequestContext = {
+  userId: string;
+};
+
+const fragment = instantiate(exampleFragmentDefinition)
+  .withConfig({})
+  .withRoutes(exampleRoutes)
+  .withOptions({ mountRoute: "/api/example" })
+  .withRequestContext<ExampleRequestContext>()
+  .build()
+  .withMiddleware(async ({ requestContext }, { error }) => {
+    if (!requestContext) {
+      return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
+    }
+
+    // requestContext is ExampleRequestContext here.
+    console.log(requestContext.userId);
+  });
+
+await fragment.handler(request, {
+  requestContext: { userId: "user-1" } satisfies ExampleRequestContext,
+});
+```
+
+Request context is separate from `propagationContext`, which carries telemetry-only W3C tracing
+metadata.
+
 ## Route-specific Usage
 
 `ifMatchesRoute` can be used to execute middleware only for specific routes. It has full type safety

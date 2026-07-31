@@ -23,7 +23,10 @@ export type {
   FragnoExecutionContext,
   FragnoRequestLifecycleContext,
 } from "./api/fragment-instantiator";
-export type { RequestPropagationContext } from "./api/request-context-storage";
+export {
+  extractW3CRequestPropagationContext,
+  type RequestPropagationContext,
+} from "./api/request-propagation-context";
 
 import type {
   IFragmentInstantiationBuilder,
@@ -116,6 +119,7 @@ export function instantiate(_definition: unknown) {
     withRoutes: () => builderStub,
     withOptions: () => builderStub,
     withServices: () => builderStub,
+    withRequestContext: () => builderStub,
     build: () => fragmentStub,
     definition: {},
     routes: [],

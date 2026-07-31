@@ -233,6 +233,35 @@ describe("createFragmentDurableObjectHost", () => {
     expect(calls).toEqual(["fallback"]);
   });
 
+  it("passes propagation and application context to the mounted fragment", async () => {
+    const lifecycleContexts: unknown[] = [];
+    const fragment = createFragmentWithOverrides("test", {
+      handler: async (_request: Request, context: unknown) => {
+        lifecycleContexts.push(context);
+        return new Response("ok");
+      },
+    });
+    const host = createFragmentDurableObjectHost({
+      state: { storage: { setAlarm: async () => {} } },
+      env: {},
+      createRuntime: () => fragment,
+      operations: createRecordingOperations().operations,
+    });
+    const runtime = await host.initialize({});
+    const propagationContext = {
+      traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-1111111111111111-01",
+    };
+    const requestContext = { executionId: "execution-1" };
+
+    const response = await host.fetch(runtime, new Request("https://example.com/test"), {
+      propagationContext,
+      requestContext,
+    });
+
+    assert(response.status === 200);
+    expect(lifecycleContexts).toEqual([{ propagationContext, requestContext }]);
+  });
+
   it("can host fragments inside multi-fragment runtimes", async () => {
     const notifications: HookNotifyContext[] = [];
     const fragment = createFragmentWithOverrides("pi", {

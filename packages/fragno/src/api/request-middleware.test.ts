@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { FragnoApiValidationError } from "./error";
 import { defineFragment } from "./fragment-definition-builder";
-import { instantiate } from "./fragment-instantiator";
+import { instantiate, type FragnoRequestLifecycleContext } from "./fragment-instantiator";
 import { defineRoute } from "./route";
 
 describe("Request Middleware", () => {
@@ -724,6 +724,43 @@ describe("Request Middleware", () => {
       auth: "Bearer middleware-token",
       custom: "middleware-value",
     });
+  });
+
+  test("receives application context separately from request headers", async () => {
+    const fragment = defineFragment("test-lib").build();
+    const routes = [
+      defineRoute({
+        method: "GET",
+        path: "/data",
+        outputSchema: z.object({ ok: z.boolean() }),
+        handler: async (_, { json }) => json({ ok: true }),
+      }),
+    ] as const;
+    const applicationContext = { executionId: "execution-1" };
+    let receivedContext: unknown;
+
+    const instance = instantiate(fragment)
+      .withConfig({})
+      .withRoutes(routes)
+      .withOptions({ mountRoute: "/api" })
+      .withRequestContext<typeof applicationContext>()
+      .build()
+      .withMiddleware(({ requestContext, headers }) => {
+        expectTypeOf(requestContext).toEqualTypeOf<typeof applicationContext | undefined>();
+        receivedContext = requestContext;
+        assert(!headers.has("x-fragno-request-context"));
+      });
+
+    expectTypeOf(instance.handler)
+      .parameter(1)
+      .toEqualTypeOf<FragnoRequestLifecycleContext<typeof applicationContext> | undefined>();
+
+    const response = await instance.handler(new Request("http://localhost/api/data"), {
+      requestContext: applicationContext,
+    });
+
+    assert(response.status === 200);
+    expect(receivedContext).toBe(applicationContext);
   });
 
   test("ifMatchesRoute properly awaits async handlers", async () => {

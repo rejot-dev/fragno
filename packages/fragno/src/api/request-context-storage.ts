@@ -1,18 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
-export type RequestPropagationContext = Readonly<Record<string, string>>;
+import type { RequestPropagationContext } from "./request-propagation-context";
 
-export function extractW3CRequestPropagationContext(
-  headers: Headers,
-): RequestPropagationContext | null {
-  const traceparent = headers.get("traceparent");
-  if (!traceparent) {
-    return null;
-  }
-
-  const tracestate = headers.get("tracestate");
-  return tracestate ? { traceparent, tracestate } : { traceparent };
-}
+export {
+  extractW3CRequestPropagationContext,
+  type RequestPropagationContext,
+} from "./request-propagation-context";
 
 type RequestContext<TRequestStorage> = {
   storage: TRequestStorage;

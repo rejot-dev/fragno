@@ -19,7 +19,10 @@ export {
   type FragnoExecutionContext,
   type FragnoRequestLifecycleContext,
 } from "./api/fragment-instantiator";
-export type { RequestPropagationContext } from "./api/request-context-storage";
+export {
+  extractW3CRequestPropagationContext,
+  type RequestPropagationContext,
+} from "./api/request-propagation-context";
 
 // ============================================================================
 // Core Configuration

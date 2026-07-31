@@ -1,5 +1,6 @@
 ---
 "@fragno-dev/core": patch
+"@fragno-dev/db": patch
 ---
 
-feat: add explicit propagation contexts to request and service execution.
+feat: add typed application request context and trusted W3C propagation extraction.
