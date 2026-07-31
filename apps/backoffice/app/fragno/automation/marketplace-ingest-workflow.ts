@@ -19,7 +19,10 @@ import {
   UploadFileWriteConflictError,
   type PreparedUploadFileWrite,
 } from "@/files/contributors/upload";
-import { normalizeMarketplaceArtifactPath } from "@/fragno/marketplace/artifacts";
+import {
+  MARKETPLACE_LISTING_FILES_DIRECTORY,
+  normalizeMarketplaceArtifactPath,
+} from "@/fragno/marketplace/artifacts";
 import {
   marketplaceListingIdSchema,
   marketplaceVersionSchema,
@@ -379,7 +382,12 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
 
               const pageFiles: MarketplaceIngestionSourceFile[] = [];
               for (const file of response.data.files) {
-                if (file.metadata?.__docsDirectoryMarker === true) {
+                if (
+                  file.metadata?.__docsDirectoryMarker === true ||
+                  file.fileKey.startsWith(
+                    `${artifactPrefix}${MARKETPLACE_LISTING_FILES_DIRECTORY}/`,
+                  )
+                ) {
                   continue;
                 }
                 const checksum = file.checksum;

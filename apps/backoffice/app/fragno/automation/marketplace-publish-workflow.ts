@@ -6,8 +6,9 @@ import { z } from "zod";
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
-  marketplaceArtifactFilePath,
   marketplaceArtifactUploadName,
+  marketplaceListingArtifactFilePath,
+  marketplaceVersionArtifactFilePath,
   prepareMarketplaceArtifactFiles,
 } from "@/fragno/marketplace/artifacts";
 import {
@@ -150,22 +151,31 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
           slug: entry.slug,
         });
         const artifactDirectory = marketplaceVersionSchema.parse(entry.version);
+        const publicationFiles = [
+          ...prepareMarketplaceArtifactFiles(entry.files).map((file) => ({
+            ...file,
+            fileKey: marketplaceVersionArtifactFilePath(artifactDirectory, file.relativePath),
+          })),
+          ...prepareMarketplaceArtifactFiles(entry.listingFiles ?? {}).map((file) => ({
+            ...file,
+            fileKey: marketplaceListingArtifactFilePath(artifactDirectory, file.relativePath),
+          })),
+        ].sort((left, right) => left.fileKey.localeCompare(right.fileKey));
         const files = [];
-        for (const file of prepareMarketplaceArtifactFiles(entry.files)) {
+        for (const file of publicationFiles) {
           const content = TEXT_ENCODER.encode(file.content);
-          const fileKey = marketplaceArtifactFilePath(artifactDirectory, file.relativePath);
           files.push({
             relativePath: file.relativePath,
             content: file.content,
-            fileKey,
+            fileKey: file.fileKey,
             filename: file.relativePath.split("/").at(-1) ?? file.relativePath,
-            contentType: inferMarketplaceArtifactContentType(fileKey),
+            contentType: inferMarketplaceArtifactContentType(file.fileKey),
             sizeBytes: content.byteLength,
             checksum: {
               algo: "sha256" as const,
               value: await sha256Hex(content),
             },
-            stepKey: bytesToHex(TEXT_ENCODER.encode(file.relativePath)),
+            stepKey: bytesToHex(TEXT_ENCODER.encode(file.fileKey)),
           });
         }
 
