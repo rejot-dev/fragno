@@ -1,18 +1,64 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  autoOpenNewWorkflowWorkspaceItem,
   createSessionWorkspaceState,
   generatedUiWorkspaceId,
   toggleSessionWorkspaceItem,
   updateSessionWorkspaceStateBySession,
   workflowGraphWorkspaceId,
+  type SessionWorkspaceItem,
 } from "./workspace-model";
 
+const workspaceItem = (
+  id: string,
+  type: SessionWorkspaceItem["view"]["type"],
+): SessionWorkspaceItem => ({ id, view: { type } }) as SessionWorkspaceItem;
+
 describe("session workspace selection", () => {
-  test("starts closed without selecting newly available information", () => {
+  test("starts closed before workspace information is observed", () => {
     expect(createSessionWorkspaceState()).toEqual({
       open: false,
       selectedItemId: null,
+    });
+  });
+
+  test("automatically opens a newly produced workflow", () => {
+    const interfaceItem = workspaceItem(generatedUiWorkspaceId("tool-call"), "generated-ui");
+    const workflowItem = workspaceItem(workflowGraphWorkspaceId("tool-call"), "workflow-graph");
+
+    expect(
+      autoOpenNewWorkflowWorkspaceItem(createSessionWorkspaceState(), [
+        workflowItem,
+        interfaceItem,
+      ]),
+    ).toEqual({
+      open: true,
+      selectedItemId: workflowItem.id,
+      observedItemIds: [workflowItem.id, interfaceItem.id],
+    });
+  });
+
+  test("does not reopen a workflow after the user closes it", () => {
+    const workflowItem = workspaceItem(workflowGraphWorkspaceId("first"), "workflow-graph");
+    const opened = autoOpenNewWorkflowWorkspaceItem(createSessionWorkspaceState(), [workflowItem]);
+    const closed = { ...opened, open: false };
+
+    expect(autoOpenNewWorkflowWorkspaceItem(closed, [workflowItem])).toBe(closed);
+  });
+
+  test("opens the latest workflow when another codemode workflow is produced", () => {
+    const firstWorkflow = workspaceItem(workflowGraphWorkspaceId("first"), "workflow-graph");
+    const secondWorkflow = workspaceItem(workflowGraphWorkspaceId("second"), "workflow-graph");
+    const firstOpened = autoOpenNewWorkflowWorkspaceItem(createSessionWorkspaceState(), [
+      firstWorkflow,
+    ]);
+    const firstClosed = { ...firstOpened, open: false };
+
+    expect(autoOpenNewWorkflowWorkspaceItem(firstClosed, [firstWorkflow, secondWorkflow])).toEqual({
+      open: true,
+      selectedItemId: secondWorkflow.id,
+      observedItemIds: [firstWorkflow.id, secondWorkflow.id],
     });
   });
 

@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { Outlet } from "react-router";
 
 import { getAuthMe } from "@/fragno/auth/auth-server";
+import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
 import type { PiConfigState } from "@/fragno/pi/pi-shared";
 
+import { fetchAutomationAdapterIdentity } from "../automations/data.server";
 import { createOrganisationScopeOptions } from "../integrations/scope";
 import { throwOrganisationNotFound } from "../route-errors";
 import type { Route } from "./+types/organisation-layout";
@@ -30,13 +32,31 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const { configState, configError } = await fetchPiConfig(context, scope);
   let persistenceSource: PiLayoutContext["persistenceSource"] = null;
   let persistenceError: string | null = null;
+  let automationPersistenceSource: AutomationCollectionSource | null = null;
+  let automationPersistenceError: string | null = null;
   if (configState?.configured) {
-    try {
-      const adapterIdentity = await fetchPiAdapterIdentity(request, context, scope);
-      persistenceSource = { scope, adapterIdentity };
-    } catch (error) {
+    const [piAdapterIdentity, automationAdapterIdentity] = await Promise.allSettled([
+      fetchPiAdapterIdentity(request, context, scope),
+      fetchAutomationAdapterIdentity(request, context, scope),
+    ]);
+    if (piAdapterIdentity.status === "fulfilled") {
+      persistenceSource = { scope, adapterIdentity: piAdapterIdentity.value };
+    } else {
       persistenceError =
-        error instanceof Error ? error.message : "Failed to load Pi session persistence.";
+        piAdapterIdentity.reason instanceof Error
+          ? piAdapterIdentity.reason.message
+          : "Failed to load Pi session persistence.";
+    }
+    if (automationAdapterIdentity.status === "fulfilled") {
+      automationPersistenceSource = {
+        scope,
+        adapterIdentity: automationAdapterIdentity.value,
+      };
+    } else {
+      automationPersistenceError =
+        automationAdapterIdentity.reason instanceof Error
+          ? automationAdapterIdentity.reason.message
+          : "Failed to load workflow synchronization.";
     }
   }
 
@@ -46,6 +66,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     organisationOptions: createOrganisationScopeOptions(me.organizations),
     persistenceSource,
     persistenceError,
+    automationPersistenceSource,
+    automationPersistenceError,
     configState,
     configError,
   };
@@ -69,6 +91,8 @@ export default function BackofficeOrganisationPiLayout({
     organisation,
     persistenceSource,
     persistenceError,
+    automationPersistenceSource,
+    automationPersistenceError,
     configState: initialConfigState,
     configError: initialConfigError,
   } = loaderData;
@@ -117,6 +141,8 @@ export default function BackofficeOrganisationPiLayout({
             scope,
             persistenceSource,
             persistenceError,
+            automationPersistenceSource,
+            automationPersistenceError,
             configState,
             configError,
             setConfigState,

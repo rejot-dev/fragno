@@ -53,6 +53,11 @@ export type WorkflowStepRunState = {
   current: boolean;
 };
 
+export type WorkflowRunReference = {
+  workflowName: string;
+  instanceId: string;
+};
+
 export type ScriptWorkflowRun = {
   id: string;
   instanceId: string;
@@ -88,28 +93,45 @@ export function projectScriptWorkflowRuns({
         return [];
       }
 
-      return [
-        {
-          id: instance.id,
-          instanceId: instance.instanceId,
-          workflowName,
-          status: instance.status,
-          createdAt: instance.createdAt,
-          updatedAt: instance.updatedAt,
-          stepStatesByNodeId: projectWorkflowStepStates({
-            visualization,
-            workflowName,
-            steps: instance.workflowSteps,
-            emissions: instance.workflowStepEmissions,
-          }),
-        },
-      ];
+      const run = projectWorkflowRun({ visualization, instance });
+      return run ? [run] : [];
     })
     .sort(
       (left, right) =>
         timestamp(right.updatedAt) - timestamp(left.updatedAt) ||
         right.instanceId.localeCompare(left.instanceId),
     );
+}
+
+export function projectWorkflowRun({
+  visualization,
+  instance,
+}: {
+  visualization: WorkflowVisualizationSnapshot;
+  instance: AutomationWorkflowRun;
+}): ScriptWorkflowRun | null {
+  const workflowName = instance.remoteWorkflowName;
+  const workflowExists = visualization.graph.nodes.some(
+    (node) => node.kind === "workflow" && node.name === workflowName,
+  );
+  if (!workflowName || !workflowExists) {
+    return null;
+  }
+
+  return {
+    id: instance.id,
+    instanceId: instance.instanceId,
+    workflowName,
+    status: instance.status,
+    createdAt: instance.createdAt,
+    updatedAt: instance.updatedAt,
+    stepStatesByNodeId: projectWorkflowStepStates({
+      visualization,
+      workflowName,
+      steps: instance.workflowSteps,
+      emissions: instance.workflowStepEmissions,
+    }),
+  };
 }
 
 export function selectScriptWorkflowRun(

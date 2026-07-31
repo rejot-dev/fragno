@@ -9,6 +9,7 @@ import {
   type BackofficeOrganisationScopeOption,
 } from "@/components/backoffice/organisation-scope-menu";
 import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
+import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
 import type { PiConfigState } from "@/fragno/pi/pi-shared";
 import type { PiCollectionSource } from "@/fragno/pi/tanstack/browser-database";
 
@@ -22,6 +23,8 @@ export type PiLayoutContext = {
   scope: Extract<BackofficeContextScope, { kind: "org" }>;
   persistenceSource: PiCollectionSource | null;
   persistenceError: string | null;
+  automationPersistenceSource: AutomationCollectionSource | null;
+  automationPersistenceError: string | null;
   configState: PiConfigState | null;
   configError: string | null;
   setConfigState: Dispatch<SetStateAction<PiConfigState | null>>;
