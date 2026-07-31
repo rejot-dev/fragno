@@ -25,6 +25,14 @@ function internalDestinations(hasOrganization: boolean): InternalDestination[] {
       to: "/backoffice/internals/github",
     },
     {
+      id: "generated-ui",
+      name: "Generated UI",
+      description:
+        "Preview every component and semantic variant in the production codemode presentation catalog.",
+      status: "Available",
+      to: "/backoffice/internals/generated-ui",
+    },
+    {
       id: "pi",
       name: "Pi",
       description: "Inspect Pi harnesses and manage organisation-scoped provider configuration.",
