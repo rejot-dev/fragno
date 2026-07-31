@@ -593,14 +593,78 @@ describe("auth-fragment", async () => {
           .execute();
       });
 
-      const updated = await test.inContext(function () {
+      const updatedFacts = await test.inContext(function () {
         return this.handlerTx()
-          .withServiceCalls(() => [fragment.services.getUserByEmail(email)])
-          .transform(({ serviceResult: [result] }) => result)
+          .withServiceCalls(() => [fragment.services.getUserAuthorityFacts({ userId: user.id })])
+          .transform(({ serviceResult: [facts] }) => facts)
           .execute();
       });
 
-      assert(updated?.role === "admin");
+      assert(updatedFacts.role === "admin");
+    });
+
+    it("getUserAuthorityFacts - reports current active and banned user state", async () => {
+      const passwordHash = await hashPassword("authoritypassword123");
+      const [user] = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.createUserUnvalidated(
+              "authority-user@test.com",
+              passwordHash,
+              "admin",
+            ),
+          ])
+          .execute();
+      });
+
+      const activeFacts = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [fragment.services.getUserAuthorityFacts({ userId: user.id })])
+          .transform(({ serviceResult: [facts] }) => facts)
+          .execute();
+      });
+      expect(activeFacts).toEqual({
+        active: true,
+        role: "admin",
+        organizationMember: false,
+      });
+
+      await test.inContext(function () {
+        return this.handlerTx()
+          .mutate(({ forSchema }) => {
+            forSchema(authSchema).update("user", user.id, (b) =>
+              b.set({ bannedAt: new Date("2026-07-28T00:00:00.000Z") }),
+            );
+            return true;
+          })
+          .execute();
+      });
+
+      const bannedFacts = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [fragment.services.getUserAuthorityFacts({ userId: user.id })])
+          .transform(({ serviceResult: [facts] }) => facts)
+          .execute();
+      });
+      expect(bannedFacts).toEqual({
+        active: false,
+        role: "admin",
+        organizationMember: false,
+      });
+
+      const missingFacts = await test.inContext(function () {
+        return this.handlerTx()
+          .withServiceCalls(() => [
+            fragment.services.getUserAuthorityFacts({ userId: "missing-user" }),
+          ])
+          .transform(({ serviceResult: [facts] }) => facts)
+          .execute();
+      });
+      expect(missingFacts).toEqual({
+        active: false,
+        role: null,
+        organizationMember: false,
+      });
     });
 
     it("updateUserPassword - updates password hash", async () => {

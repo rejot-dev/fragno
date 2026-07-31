@@ -74,6 +74,12 @@ type UserWithCredentialSeedMembers = {
   userOrganizationMembers?: CredentialSeedMemberRow | CredentialSeedMemberRow[] | null;
 };
 
+export type UserAuthorityFacts = Readonly<{
+  active: boolean;
+  role: "user" | "admin" | null;
+  organizationMember: boolean;
+}>;
+
 const collectCredentialSeedMembers = (rows: UserWithCredentialSeedMembers[]) => {
   return rows.flatMap((user) =>
     normalizeMany(user.userOrganizationMembers).map((member) => ({
@@ -189,6 +195,53 @@ export function createUserServices(
                 emailVerifiedAt: user.emailVerifiedAt ?? null,
               }
             : null,
+        )
+        .build();
+    },
+    /**
+     * Resolve the current user state used by external authorization systems.
+     *
+     * The optional membership lookup is performed in the same retrieval round trip as the user
+     * lookup. Missing and banned users are inactive regardless of stale role or membership rows.
+     */
+    getUserAuthorityFacts: function (
+      this: AuthServiceContext,
+      input: { userId: string; organizationId?: string },
+    ) {
+      const organizationId = input.organizationId;
+      if (!organizationId) {
+        return this.serviceTx(authSchema)
+          .retrieve((uow) =>
+            uow.findFirst("user", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", input.userId)),
+            ),
+          )
+          .transformRetrieve(
+            ([user]): UserAuthorityFacts => ({
+              active: Boolean(user && !user.bannedAt),
+              role: user ? normalizeRole(user.role) : null,
+              organizationMember: false,
+            }),
+          )
+          .build();
+      }
+
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow
+            .findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", input.userId)))
+            .findFirst("organizationMember", (b) =>
+              b.whereIndex("idx_org_member_org_user", (eb) =>
+                eb.and(eb("organizationId", "=", organizationId), eb("userId", "=", input.userId)),
+              ),
+            ),
+        )
+        .transformRetrieve(
+          ([user, member]): UserAuthorityFacts => ({
+            active: Boolean(user && !user.bannedAt),
+            role: user ? normalizeRole(user.role) : null,
+            organizationMember: Boolean(member),
+          }),
         )
         .build();
     },
