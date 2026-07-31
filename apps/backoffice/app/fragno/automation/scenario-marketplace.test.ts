@@ -133,7 +133,6 @@ const createMarketplacePublicationWorkflow = async (
   });
   const workflows = createWorkflowsRouteCaller({
     object: ctx.runtime.objects.automations.forOrg("org-1"),
-    scope: { kind: "org", orgId: "org-1" },
   });
   const created = await workflows("POST", "/:workflowName/instances", {
     pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
@@ -808,7 +807,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("the ingestion workflow reports the target file conflict", async (ctx) => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
-              scope: { kind: "org", orgId: "org-1" },
             });
             const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
               pathParams: {
@@ -905,7 +903,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             async (ctx) => {
               const workflows = createWorkflowsRouteCaller({
                 object: ctx.runtime.objects.automations.forOrg("org-1"),
-                scope: { kind: "org", orgId: "org-1" },
               });
               const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
                 pathParams: {
@@ -1560,7 +1557,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
               const workflows = createWorkflowsRouteCaller({
                 object: ctx.runtime.objects.automations.forOrg("org-1"),
-                scope: { kind: "org", orgId: "org-1" },
               });
               const nextInstance = await workflows("GET", "/:workflowName/instances/:instanceId", {
                 pathParams: {
@@ -1592,7 +1588,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             async (ctx) => {
               const workflows = createWorkflowsRouteCaller({
                 object: ctx.runtime.objects.automations.forOrg("org-1"),
-                scope: { kind: "org", orgId: "org-1" },
               });
               const instances = await workflows("GET", "/:workflowName/instances", {
                 pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
@@ -1700,7 +1695,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("the committed handoff exposes one retrying child instance", async (ctx) => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
-              scope: { kind: "org", orgId: "org-1" },
             });
             const instances = await workflows("GET", "/:workflowName/instances", {
               pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
@@ -1737,7 +1731,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("the persisted child resumes without another parent handoff", async (ctx) => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
-              scope: { kind: "org", orgId: "org-1" },
             });
             const history = await workflows("GET", "/:workflowName/instances/:instanceId/history", {
               pathParams: {
@@ -2512,7 +2505,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("invalid publication and ingestion params are rejected", async (ctx) => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
-              scope: { kind: "org", orgId: "org-1" },
             });
             const invalidPublication = await workflows("POST", "/:workflowName/instances", {
               pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
@@ -2561,7 +2553,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("an existing publication workflow is terminated", async (ctx) => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
-              scope: { kind: "org", orgId: "org-1" },
             });
             const created = await workflows("POST", "/:workflowName/instances", {
               pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },

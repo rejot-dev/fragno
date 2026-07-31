@@ -2,6 +2,7 @@ import { Braces, CircleDot, GitBranch } from "lucide-react";
 import type { ReactNode } from "react";
 
 import type {
+  AutomationActorMatcher,
   AutomationEventMatcher,
   AutomationRouteScopeTemplate,
   AutomationWorkflowEventTarget,
@@ -116,6 +117,40 @@ const matcherValueLabel = (value: unknown) => {
   return serialized ?? String(value);
 };
 
+const actorMatcherRows = (matcher: AutomationActorMatcher) => [
+  { label: "Participation", value: matcher.participation },
+  { label: "Scope", value: matcher.scope },
+  ...(matcher.source ? [{ label: "Source", value: matcher.source }] : []),
+  ...(matcher.type ? [{ label: "Type", value: matcher.type }] : []),
+  ...(matcher.id ? [{ label: "ID", value: matcher.id }] : []),
+  ...("role" in matcher && matcher.role ? [{ label: "Role", value: matcher.role }] : []),
+];
+
+function ActorMatcherNode({ matcher }: { matcher: AutomationActorMatcher }) {
+  return (
+    <div className="py-1.5">
+      <div className="flex items-baseline gap-2">
+        <span className="shrink-0 bg-sky-500/10 px-1.5 py-0.5 text-[8px] font-semibold tracking-[0.14em] text-sky-700 uppercase dark:text-sky-300">
+          actor
+        </span>
+        <p className="text-[10px] text-[var(--bo-muted)]">
+          Match trusted actor provenance structurally
+        </p>
+      </div>
+      <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 border-l border-sky-500/25 pl-3">
+        {actorMatcherRows(matcher).map((row) => (
+          <div key={row.label} className="flex items-baseline gap-1.5">
+            <dt className="text-[8px] tracking-[0.12em] text-[var(--bo-muted-2)] uppercase">
+              {row.label}
+            </dt>
+            <dd className="font-mono text-[10px] text-[var(--bo-fg)]">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 function MatcherBranch({
   operator,
   description,
@@ -203,6 +238,9 @@ function MatcherNode({ matcher }: { matcher: AutomationEventMatcher }) {
         <MatcherNode matcher={matcher.not} />
       </MatcherBranch>
     );
+  }
+  if ("actor" in matcher) {
+    return <ActorMatcherNode matcher={matcher.actor} />;
   }
 
   return (
