@@ -2,6 +2,7 @@ import { type ActivatedFunctionScope, WorkflowFunctionScopeTracker } from "./fun
 import type {
   ConditionAnalysis,
   ConditionNode,
+  DelimiterDepth,
   Diagnostic,
   GraphEdge,
   GraphPatch,
@@ -39,6 +40,7 @@ import {
   TokenSubmachineRuntime,
 } from "./state-machine.ts";
 import {
+  ConditionalExpressionMachine,
   IfStatementMachine,
   LoopStatementMachine,
   ParallelCallMachine,
@@ -49,6 +51,7 @@ import {
   ThrowStatementMachine,
   type WorkflowBuilder,
   WorkflowDefinitionMachine,
+  isConditionalExpressionMachine,
   isIfStatementMachine,
   isLoopStatementMachine,
   isParallelCallMachine,
@@ -73,6 +76,12 @@ interface PendingReturnStatement {
   positioned: PositionedWorkflowToken;
   context: TokenMachineContext;
   target: PendingReturnTarget;
+}
+
+interface PendingConditionalExpression {
+  questionMark: PositionedWorkflowToken;
+  context: TokenMachineContext;
+  workflowMachine: WorkflowDefinitionMachine;
 }
 
 export interface CreateWorkflowTokenMachineOptions {
@@ -117,6 +126,7 @@ export function createWorkflowTokenMachine({
   const activeStepInvocations: ActiveStepInvocation[] = [];
   const runtime = new TokenSubmachineRuntime();
   let pendingReturnStatement: PendingReturnStatement | undefined;
+  let pendingConditionalExpression: PendingConditionalExpression | undefined;
   const listeners = new Set<(patch: GraphPatch) => void>();
 
   function push(token: WorkflowToken): WorkflowMachineUpdate {
@@ -157,6 +167,7 @@ export function createWorkflowTokenMachine({
 
   function finish(): WorkflowMachineUpdate {
     finished = true;
+    pendingConditionalExpression = undefined;
     resolvePendingReturnStatement();
     runtime.finish(machineContext());
     return commit();
@@ -186,6 +197,7 @@ export function createWorkflowTokenMachine({
 
   function processSignificantToken(positioned: PositionedWorkflowToken): void {
     const context = machineContext();
+    resolvePendingConditionalExpression(positioned);
     resolvePendingReturnStatement(positioned);
     consumeActiveStepInvocations(positioned, context);
     runtime.consume(positioned, context);
@@ -203,6 +215,17 @@ export function createWorkflowTokenMachine({
       rememberPendingReturnStatement(positioned, context, workflowMachine, functionScopes);
     } else if (positioned.token.value === "throw" && !functionScopes?.isNestedFunction()) {
       discoverThrow(positioned, context);
+    }
+    if (
+      positioned.token.value === "?" &&
+      workflowMachine &&
+      (functionScopes?.allowsWorkflowConstructDiscovery() ?? true)
+    ) {
+      pendingConditionalExpression = {
+        questionMark: positioned,
+        context: { source: context.source, depth: { ...context.depth } },
+        workflowMachine,
+      };
     }
     if (
       positioned.token.value === "(" &&
@@ -225,6 +248,16 @@ export function createWorkflowTokenMachine({
       activeStepCallId: runtime.findLast(isStepCallMachine)?.id,
     });
     updateDelimiterDepth(positioned.token.value);
+  }
+
+  function resolvePendingConditionalExpression(nextToken: PositionedWorkflowToken): void {
+    const pending = pendingConditionalExpression;
+    pendingConditionalExpression = undefined;
+    if (!pending || !tokenCanStartConditionalConsequent(nextToken.token)) {
+      return;
+    }
+
+    discoverConditionalExpression(pending.questionMark, pending.context, pending.workflowMachine);
   }
 
   function rememberPendingReturnStatement(
@@ -648,6 +681,7 @@ export function createWorkflowTokenMachine({
     moveBeforeWrappingReturn(workflowMachine.workflow, parallel);
     for (const condition of conditions) {
       condition.markContainsStep();
+      moveBeforeWrappingReturn(workflowMachine.workflow, condition.condition);
     }
     runtime.add(
       new ParallelCallMachine({
@@ -655,6 +689,62 @@ export function createWorkflowTokenMachine({
         parallel,
         parentId: conditions.at(-1)?.id ?? parentId,
         openParentheses: context.depth.parentheses + 1,
+      }),
+    );
+  }
+
+  function discoverConditionalExpression(
+    questionMark: PositionedWorkflowToken,
+    context: TokenMachineContext,
+    workflowMachine: WorkflowDefinitionMachine | undefined,
+  ): void {
+    if (!workflowMachine) {
+      return;
+    }
+
+    const conditionStart = conditionalExpressionStart(
+      significantTokens.slice(0, -1),
+      context.depth,
+    );
+    if (!conditionStart) {
+      return;
+    }
+
+    const conditionExpression = source.slice(conditionStart.start, questionMark.start).trim();
+    if (!conditionExpression) {
+      return;
+    }
+
+    const enclosingCondition = activeConditionMachines(workflowMachine.workflow).at(-1);
+    const parentId = activeContainerId(workflowMachine.workflow) ?? workflowMachine.id;
+    const ordinal = nextNodeOrdinal(workflowMachine.workflow);
+    const condition: ConditionNode = {
+      id: `${workflowMachine.id}/condition#${ordinal}`,
+      kind: "condition",
+      label: `if ${conditionExpression.replace(/\s+/gu, " ")}`,
+      condition: conditionExpression,
+      workflowName: workflowMachine.workflow.node.name,
+      order: nextChildOrder(workflowMachine.workflow, parentId),
+      sourceOrder: ordinal,
+      parentId,
+      source: sourceRangeFromToken(path, conditionStart),
+      construction: { status: "partial", phase: "branches" },
+      analysis: { status: "partial", outcomes: [], annotations: [] },
+    };
+    extendSourceRangeToToken(condition.source, questionMark);
+    workflowMachine.workflow.children.push(condition);
+    moveBeforeWrappingReturn(workflowMachine.workflow, condition, false);
+    for (const activeCondition of activeConditionMachines(workflowMachine.workflow)) {
+      if (isConditionalExpressionMachine(activeCondition)) {
+        activeCondition.markNestedConditional(context.depth);
+      }
+    }
+    runtime.add(
+      new ConditionalExpressionMachine({
+        condition,
+        parentId: enclosingCondition?.id ?? parentId,
+        workflow: workflowMachine.workflow,
+        baseDepth: context.depth,
       }),
     );
   }
@@ -713,6 +803,7 @@ export function createWorkflowTokenMachine({
     moveBeforeWrappingReturn(workflowMachine.workflow, step);
     for (const condition of conditions) {
       condition.markContainsStep();
+      moveBeforeWrappingReturn(workflowMachine.workflow, condition.condition);
     }
 
     runtime.add(
@@ -798,7 +889,8 @@ export function createWorkflowTokenMachine({
 
   function moveBeforeWrappingReturn(
     workflow: WorkflowBuilder,
-    node: ParallelNode | StepNode,
+    node: ConditionNode | ParallelNode | StepNode,
+    delegatesReturnValue = true,
   ): void {
     const returnMachine = runtime.findLast(
       (machine): machine is ReturnStatementMachine =>
@@ -807,10 +899,14 @@ export function createWorkflowTokenMachine({
     if (!returnMachine || returnMachine.terminal.parentId !== node.parentId) {
       return;
     }
-    const terminalOrder = returnMachine.terminal.order;
-    returnMachine.terminal.order = node.order;
-    node.order = terminalOrder;
-    returnMachine.markDelegatedValue();
+    if (node.order > returnMachine.terminal.order) {
+      const terminalOrder = returnMachine.terminal.order;
+      returnMachine.terminal.order = node.order;
+      node.order = terminalOrder;
+    }
+    if (delegatesReturnValue) {
+      returnMachine.markDelegatedValue();
+    }
   }
 
   function nextNodeOrdinal(workflow: WorkflowBuilder): number {
@@ -836,9 +932,14 @@ export function createWorkflowTokenMachine({
     return runtime.all(isLoopStatementMachine).filter((loop) => loop.workflow === workflow);
   }
 
-  function activeConditionMachines(workflow: WorkflowBuilder): IfStatementMachine[] {
+  function activeConditionMachines(
+    workflow: WorkflowBuilder,
+  ): Array<IfStatementMachine | ConditionalExpressionMachine> {
     return runtime
-      .all(isIfStatementMachine)
+      .all(
+        (machine): machine is IfStatementMachine | ConditionalExpressionMachine =>
+          isIfStatementMachine(machine) || isConditionalExpressionMachine(machine),
+      )
       .filter(
         (condition) =>
           condition.workflow === workflow && condition.activeBranchCondition() !== undefined,
@@ -853,10 +954,12 @@ export function createWorkflowTokenMachine({
         | StepCallMachine
         | ParallelCallMachine
         | IfStatementMachine
+        | ConditionalExpressionMachine
         | LoopStatementMachine =>
         (isStepCallMachine(machine) && workflow.children.includes(machine.step)) ||
         (isParallelCallMachine(machine) && workflow.children.includes(machine.parallel)) ||
         (isIfStatementMachine(machine) && machine.workflow === workflow) ||
+        (isConditionalExpressionMachine(machine) && machine.workflow === workflow) ||
         (isLoopStatementMachine(machine) && machine.workflow === workflow),
     );
     if (container && isStepCallMachine(container)) {
@@ -865,7 +968,10 @@ export function createWorkflowTokenMachine({
     if (container && isParallelCallMachine(container)) {
       return container.activeContainerId();
     }
-    if (container && isIfStatementMachine(container)) {
+    if (
+      container &&
+      (isIfStatementMachine(container) || isConditionalExpressionMachine(container))
+    ) {
       return container.activeContainerId();
     }
     return container && isLoopStatementMachine(container)
@@ -1112,6 +1218,178 @@ export function createWorkflowTokenMachine({
       };
     },
   };
+}
+
+const INVALID_CONDITIONAL_CONSEQUENT_STARTS = new Set([":", ",", ";", ")", "]", "}", "=", "=>"]);
+
+function tokenCanStartConditionalConsequent(token: WorkflowToken): boolean {
+  return !INVALID_CONDITIONAL_CONSEQUENT_STARTS.has(token.value);
+}
+
+const CONDITIONAL_EXPRESSION_BOUNDARIES = new Set([
+  ";",
+  ",",
+  "=",
+  "=>",
+  ":",
+  "?",
+  "return",
+  "throw",
+  "yield",
+]);
+
+function conditionalExpressionStart(
+  significantTokens: PositionedWorkflowToken[],
+  baseDepth: DelimiterDepth,
+): PositionedWorkflowToken | undefined {
+  let candidateIndex = 0;
+  let depth: DelimiterDepth = { parentheses: 0, braces: 0, brackets: 0 };
+
+  for (let index = 0; index < significantTokens.length; index += 1) {
+    const positioned = significantTokens[index];
+    if (!positioned) {
+      continue;
+    }
+    const before = { ...depth };
+    updateDepth(depth, positioned.token.value);
+
+    if (opensCurrentExpression(positioned.token.value, depth, baseDepth)) {
+      candidateIndex = index + 1;
+      continue;
+    }
+    if (
+      sameDelimiterDepth(before, baseDepth) &&
+      CONDITIONAL_EXPRESSION_BOUNDARIES.has(positioned.token.value)
+    ) {
+      candidateIndex = index + 1;
+      continue;
+    }
+
+    const next = significantTokens[index + 1];
+    if (
+      next &&
+      sameDelimiterDepth(depth, baseDepth) &&
+      positioned.endLine < next.line &&
+      tokenCanEndExpressionStatement(positioned.token) &&
+      !tokenContinuesExpression(next.token)
+    ) {
+      candidateIndex = index + 1;
+    }
+  }
+
+  return significantTokens[candidateIndex];
+}
+
+function opensCurrentExpression(
+  value: string,
+  depth: DelimiterDepth,
+  baseDepth: DelimiterDepth,
+): boolean {
+  return (value === "(" || value === "[" || value === "{") && sameDelimiterDepth(depth, baseDepth);
+}
+
+function updateDepth(depth: DelimiterDepth, value: string): void {
+  if (value === "(") {
+    depth.parentheses += 1;
+  } else if (value === ")") {
+    depth.parentheses = Math.max(0, depth.parentheses - 1);
+  } else if (value === "{") {
+    depth.braces += 1;
+  } else if (value === "}") {
+    depth.braces = Math.max(0, depth.braces - 1);
+  } else if (value === "[") {
+    depth.brackets += 1;
+  } else if (value === "]") {
+    depth.brackets = Math.max(0, depth.brackets - 1);
+  }
+}
+
+function sameDelimiterDepth(left: DelimiterDepth, right: DelimiterDepth): boolean {
+  return (
+    left.parentheses === right.parentheses &&
+    left.braces === right.braces &&
+    left.brackets === right.brackets
+  );
+}
+
+const NON_EXPRESSION_ENDING_KEYWORDS = new Set([
+  "as",
+  "await",
+  "case",
+  "const",
+  "delete",
+  "do",
+  "else",
+  "in",
+  "instanceof",
+  "let",
+  "new",
+  "return",
+  "satisfies",
+  "throw",
+  "typeof",
+  "var",
+  "void",
+  "yield",
+]);
+
+function tokenCanEndExpressionStatement(token: WorkflowToken): boolean {
+  if (token.type === "IdentifierName") {
+    return !NON_EXPRESSION_ENDING_KEYWORDS.has(token.value);
+  }
+  return (
+    token.type === "NumericLiteral" ||
+    token.type === "StringLiteral" ||
+    token.type === "NoSubstitutionTemplate" ||
+    token.type === "TemplateTail" ||
+    token.type === "RegularExpressionLiteral" ||
+    token.value === ")" ||
+    token.value === "]" ||
+    token.value === "}" ||
+    token.value === "++" ||
+    token.value === "--"
+  );
+}
+
+const EXPRESSION_CONTINUATION_TOKENS = new Set([
+  ".",
+  "?.",
+  "(",
+  "[",
+  "+",
+  "-",
+  "*",
+  "/",
+  "%",
+  "**",
+  "&&",
+  "||",
+  "??",
+  "?",
+  ":",
+  ",",
+  "=",
+  "=>",
+  "==",
+  "===",
+  "!=",
+  "!==",
+  "<",
+  "<=",
+  ">",
+  ">=",
+  "in",
+  "instanceof",
+  "as",
+  "satisfies",
+]);
+
+function tokenContinuesExpression(token: WorkflowToken): boolean {
+  return (
+    EXPRESSION_CONTINUATION_TOKENS.has(token.value) ||
+    token.type === "NoSubstitutionTemplate" ||
+    token.type === "TemplateHead"
+  );
 }
 
 function directStaticMemberCall(

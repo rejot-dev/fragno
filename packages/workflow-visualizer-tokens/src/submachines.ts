@@ -603,6 +603,12 @@ type IfPhase =
   | "alternate"
   | "alternate-statement";
 
+type ConditionalExpressionPhase =
+  | "consequent-pending"
+  | "consequent"
+  | "alternate-pending"
+  | "alternate";
+
 type IfBranch = "consequent" | "alternate";
 
 interface BranchProgress {
@@ -808,6 +814,212 @@ export class StepImplicitReturnMachine implements TokenSubmachine {
   finish(context: TokenMachineContext): TokenSubmachineStatus {
     this.#stepReturn.value = context.source.slice(this.#expressionStart).trim();
     return "active";
+  }
+}
+
+export class ConditionalExpressionMachine implements TokenSubmachine {
+  readonly kind = "condition" as const;
+  readonly parentId: string;
+  readonly workflow: WorkflowBuilder;
+  readonly #conditionNode: ConditionNode;
+  readonly #baseDepth: TokenMachineContext["depth"];
+  readonly #consequent: BranchProgress = { containsStep: false };
+  readonly #alternate: BranchProgress = { containsStep: false };
+  #phase: ConditionalExpressionPhase = "consequent-pending";
+  #nestedConditionalDepth = 0;
+
+  constructor({
+    condition,
+    parentId,
+    workflow,
+    baseDepth,
+  }: {
+    condition: ConditionNode;
+    parentId: string;
+    workflow: WorkflowBuilder;
+    baseDepth: TokenMachineContext["depth"];
+  }) {
+    this.#conditionNode = condition;
+    this.parentId = parentId;
+    this.workflow = workflow;
+    this.#baseDepth = { ...baseDepth };
+  }
+
+  get id(): string {
+    return this.#conditionNode.id;
+  }
+
+  get phase(): string {
+    return this.#phase;
+  }
+
+  get source() {
+    return this.#conditionNode.source;
+  }
+
+  get condition(): ConditionNode {
+    return this.#conditionNode;
+  }
+
+  activeContainerId(): string {
+    return this.activeBranch()?.node?.id ?? this.#conditionNode.id;
+  }
+
+  activeBranchCondition(): string | undefined {
+    if (this.#phase === "consequent") {
+      return this.#conditionNode.condition;
+    }
+    if (this.#phase === "alternate") {
+      return this.#conditionNode.condition ? `!(${this.#conditionNode.condition})` : "else";
+    }
+    return undefined;
+  }
+
+  markContainsStep(): void {
+    const branch = this.activeBranch();
+    if (branch) {
+      branch.containsStep = true;
+    }
+  }
+
+  markNestedConditional(baseDepth: TokenMachineContext["depth"]): void {
+    if (sameDepth(baseDepth, this.#baseDepth)) {
+      this.#nestedConditionalDepth += 1;
+    }
+  }
+
+  markAbruptCompletion(nodeId: string): void {
+    const branch = this.activeBranch();
+    if (branch) {
+      branch.abruptCompletionId = nodeId;
+    }
+  }
+
+  consume(
+    positioned: PositionedWorkflowToken,
+    context: TokenMachineContext,
+  ): TokenSubmachineStatus {
+    const value = positioned.token.value;
+
+    if (this.#phase === "consequent-pending") {
+      extendSourceRangeToToken(this.#conditionNode.source, positioned);
+      this.startBranch("consequent", positioned);
+      this.#phase = "consequent";
+      return "active";
+    }
+
+    if (this.#phase === "alternate-pending") {
+      extendSourceRangeToToken(this.#conditionNode.source, positioned);
+      this.startBranch("alternate", positioned);
+      this.#phase = "alternate";
+      return "active";
+    }
+
+    const branch = this.activeBranch();
+    if (!branch) {
+      return "active";
+    }
+
+    if (sameDepth(context.depth, this.#baseDepth) && value === ":") {
+      if (this.#nestedConditionalDepth > 0) {
+        this.#nestedConditionalDepth -= 1;
+        this.extendBranchSource(branch, positioned);
+        return "active";
+      }
+
+      if (this.#phase === "consequent") {
+        extendSourceRangeToToken(this.#conditionNode.source, positioned);
+        this.completeBranchBefore(branch, positioned);
+        this.#phase = "alternate-pending";
+        return "active";
+      }
+
+      this.completeBranchBefore(branch, positioned);
+      return this.completeCondition();
+    }
+
+    if (
+      this.#phase === "alternate" &&
+      conditionalExpressionEndsBefore(positioned, branch, context, this.#baseDepth)
+    ) {
+      this.completeBranchBefore(branch, positioned);
+      return this.completeCondition();
+    }
+
+    this.extendBranchSource(branch, positioned);
+    branch.lastToken = positioned;
+    return "active";
+  }
+
+  private startBranch(branchName: IfBranch, positioned: PositionedWorkflowToken): void {
+    const branch = branchName === "consequent" ? this.#consequent : this.#alternate;
+    const isConsequent = branchName === "consequent";
+    const sourceOrder = this.workflow.nextNodeOrdinal;
+    this.workflow.nextNodeOrdinal += 1;
+    branch.node = {
+      id: `${this.#conditionNode.id}/${isConsequent ? "then" : "else"}`,
+      kind: "branch",
+      label: isConsequent ? "then" : "else",
+      branchType: isConsequent ? "then" : "else",
+      index: isConsequent ? 0 : 1,
+      workflowName: this.workflow.node.name,
+      order: isConsequent ? 0 : 1,
+      sourceOrder,
+      parentId: this.#conditionNode.id,
+      source: sourceRangeFromToken(this.#conditionNode.source.path, positioned),
+      construction: { status: "partial", phase: "body" },
+    };
+    branch.lastToken = positioned;
+    this.workflow.children.push(branch.node);
+  }
+
+  private extendBranchSource(branch: BranchProgress, positioned: PositionedWorkflowToken): void {
+    extendSourceRangeToToken(this.#conditionNode.source, positioned);
+    if (branch.node) {
+      extendSourceRangeToToken(branch.node.source, positioned);
+    }
+  }
+
+  private completeBranchBefore(branch: BranchProgress, positioned: PositionedWorkflowToken): void {
+    if (branch.node) {
+      endSourceRangeAtTokenStart(branch.node.source, positioned);
+      branch.node.construction = { status: "complete", phase: "complete" };
+    }
+  }
+
+  private completeCondition(): TokenSubmachineStatus {
+    const hasWorkflowContent = [this.#consequent, this.#alternate].some(
+      (branch) => branch.containsStep || branch.abruptCompletionId !== undefined,
+    );
+    if (hasWorkflowContent) {
+      this.#conditionNode.construction = { status: "complete", phase: "complete" };
+    } else {
+      const removedIds = new Set([
+        this.#conditionNode.id,
+        this.#consequent.node?.id,
+        this.#alternate.node?.id,
+      ]);
+      for (const sibling of this.workflow.children) {
+        if (
+          sibling.parentId === this.#conditionNode.parentId &&
+          sibling.order > this.#conditionNode.order
+        ) {
+          sibling.order -= 1;
+        }
+      }
+      this.workflow.children = this.workflow.children.filter((node) => !removedIds.has(node.id));
+    }
+    return "complete";
+  }
+
+  private activeBranch(): BranchProgress | undefined {
+    if (this.#phase === "consequent") {
+      return this.#consequent;
+    }
+    if (this.#phase === "alternate") {
+      return this.#alternate;
+    }
+    return undefined;
   }
 }
 
@@ -1267,6 +1479,12 @@ export function isStepCallMachine(machine: TokenSubmachine): machine is StepCall
   return machine instanceof StepCallMachine;
 }
 
+export function isConditionalExpressionMachine(
+  machine: TokenSubmachine,
+): machine is ConditionalExpressionMachine {
+  return machine instanceof ConditionalExpressionMachine;
+}
+
 export function isIfStatementMachine(machine: TokenSubmachine): machine is IfStatementMachine {
   return machine instanceof IfStatementMachine;
 }
@@ -1407,6 +1625,51 @@ function statementEndsBefore(
   }
   return (
     hasLineTerminatorBetween(previous, positioned, context.source) &&
+    !tokenContinuesStatement(positioned.token)
+  );
+}
+
+function conditionalExpressionEndsBefore(
+  positioned: PositionedWorkflowToken,
+  branch: BranchProgress,
+  context: TokenMachineContext,
+  baseDepth: TokenMachineContext["depth"],
+): boolean {
+  const value = positioned.token.value;
+  if ((value === ";" || value === ",") && sameDepth(context.depth, baseDepth)) {
+    return true;
+  }
+  if (
+    value === ")" &&
+    context.depth.parentheses === baseDepth.parentheses &&
+    context.depth.braces === baseDepth.braces &&
+    context.depth.brackets === baseDepth.brackets
+  ) {
+    return true;
+  }
+  if (
+    value === "]" &&
+    context.depth.brackets === baseDepth.brackets &&
+    context.depth.parentheses <= baseDepth.parentheses &&
+    context.depth.braces === baseDepth.braces
+  ) {
+    return true;
+  }
+  if (
+    value === "}" &&
+    context.depth.braces === baseDepth.braces &&
+    context.depth.parentheses <= baseDepth.parentheses &&
+    context.depth.brackets <= baseDepth.brackets
+  ) {
+    return true;
+  }
+
+  const previous = branch.lastToken;
+  return (
+    previous !== undefined &&
+    sameDepth(context.depth, baseDepth) &&
+    hasLineTerminatorBetween(previous, positioned, context.source) &&
+    tokenCanEndStatement(previous.token) &&
     !tokenContinuesStatement(positioned.token)
   );
 }
