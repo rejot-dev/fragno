@@ -289,6 +289,10 @@ export class InMemoryAuthObject implements AuthObject {
     return createDurableHookRepository(() => this.#ensureFragment());
   }
 
+  getFragment(): AuthFragment {
+    return this.#ensureFragment();
+  }
+
   async verifyUserEmail(input: VerifyUserEmailInput): Promise<VerifyUserEmailResult> {
     const fragment = this.#ensureFragment();
     return await fragment.callServices(() => fragment.services.verifyUserEmail(input));

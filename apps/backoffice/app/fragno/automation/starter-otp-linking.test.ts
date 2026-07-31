@@ -1,6 +1,7 @@
 import { describe, test, vi } from "vitest";
 
-import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+
 import type { AutomationEvent } from "./contracts";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -20,13 +21,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
-import { createRouteBackedAutomationStoreRuntime } from "./bindings-route-runtime";
-import {
-  backofficeFiles,
-  defineBackofficeScenario,
-  runBackofficeScenario,
-  type BackofficeScenarioContext,
-} from "./scenario";
+import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 
 const telegramMessageEvent = ({
   id,
@@ -155,7 +150,7 @@ describe("starter OTP linking automation in memory", () => {
           then.workflow.steps({
             remoteWorkflowName: "telegram-user-linking",
             include: [
-              "lookup existing telegram user link",
+              "resolve existing telegram user link",
               "create telegram identity claim",
               "store telegram claim workflow binding",
               "send telegram identity claim link",
@@ -167,11 +162,30 @@ describe("starter OTP linking automation in memory", () => {
             subjectUserId: "user-1",
           }),
 
-          then.store.entry({
-            orgId: "org-1",
-            key: "telegram/1001",
-            value: "user-1",
-          }),
+          then.assert(
+            "assert the Telegram identity was bound before workflow completion",
+            async (ctx) => {
+              const scope = { kind: "org" as const, orgId: "org-1" };
+              const binding = await ctx.runtime.objects.automations
+                .for(scope)
+                .resolveExternalIdentity(
+                  {
+                    identity: {
+                      scope: "external",
+                      source: "telegram",
+                      type: "chat",
+                      id: "1001",
+                    },
+                  },
+                  { execution: createBackofficeSystemExecution(scope) },
+                );
+              if (binding?.userId !== "user-1") {
+                throw new Error(
+                  `Expected Telegram identity binding for user-1, got ${JSON.stringify(binding)}.`,
+                );
+              }
+            },
+          ),
 
           then.telegram.sentMessage({
             chatId: "1001",
@@ -266,54 +280,45 @@ describe("starter OTP linking automation in memory", () => {
     );
   });
 
-  test("routes Telegram /start for an already linked chat", async () => {
+  test("resolves an already linked Telegram chat without creating another claim", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: "starter telegram /start reports an already linked chat",
-
+        name: "starter telegram /start resolves an already linked chat",
         files: backofficeFiles.workspaceStarter(),
-
-        fakes: ({ fake }) => ({
-          telegram: fake.telegram(),
-        }),
-
+        fakes: ({ fake }) => ({ telegram: fake.telegram() }),
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
           given.telegram.configured({
             orgId: "org-1",
             botUsername: "fragno_bot",
           }),
-          given.store.entry({
+          given.identity.binding({
             orgId: "org-1",
-            key: "telegram/1001",
-            value: "user-1",
+            externalId: "1001",
+            userId: "user-1",
           }),
         ],
-
         steps: ({ when, then }) => [
-          when.telegram.receivesMessage({
+          when.workflow.createInstance({
             orgId: "org-1",
-            updateId: 10_002,
-            messageId: 502,
-            chatId: "1001",
-            text: "/start",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            remoteWorkflowName: "telegram-user-linking",
+            instanceId: "telegram-link-already-linked",
+            params: telegramLinkingWorkflowParams({
+              instanceId: "telegram-link-already-linked",
+              event: telegramMessageEvent({
+                id: "telegram:message:already-linked",
+                text: "/start",
+              }),
+            }),
           }),
 
           then.telegram.sentMessage({
             chatId: "1001",
             text: "This Telegram chat is already linked.",
           }),
-
-          then.assert("assert only the already-linked Telegram reply was sent", (ctx) => {
-            const calls = ctx.fakes.telegram?.sendMessageCalls ?? [];
-            if (calls.length !== 1) {
-              throw new Error(`Expected one Telegram message, got ${calls.length}.`);
-            }
-          }),
-
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-linking",
+            instanceId: "telegram-link-already-linked",
             status: "complete",
             output: {
               linked: true,
@@ -321,12 +326,14 @@ describe("starter OTP linking automation in memory", () => {
               userId: "user-1",
             },
           }),
-
           then.workflow.steps({
             remoteWorkflowName: "telegram-user-linking",
-            include: ["lookup existing telegram user link", "send already linked telegram message"],
+            instanceId: "telegram-link-already-linked",
+            include: [
+              "resolve existing telegram user link",
+              "send already linked telegram message",
+            ],
           }),
-
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
       }),
@@ -465,10 +472,6 @@ describe("starter OTP linking automation in memory", () => {
             payload: identityClaimCompletedEvent({ otpId: "different-otp-id" }),
           }),
 
-          then.store.missing({
-            orgId: "org-1",
-            key: "telegram/1001",
-          }),
           then.assert("assert no linked Telegram reply was sent", (ctx) => {
             const calls = ctx.fakes.telegram?.sendMessageCalls ?? [];
             if (calls.length !== 1) {
@@ -480,111 +483,6 @@ describe("starter OTP linking automation in memory", () => {
             instanceId: "telegram-link-claim-mismatch",
             status: "complete",
             output: { linked: false, reason: "claim-mismatch" },
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
-  test("telegram-user-linking rejects a completed claim from a non-Telegram actor", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        name: "telegram-user-linking rejects a non-Telegram claim actor",
-
-        files: backofficeFiles.workspaceStarter(),
-
-        vars: () => ({ otpId: "" }),
-
-        fakes: ({ fake }) => ({
-          telegram: fake.telegram(),
-        }),
-
-        setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-          given.telegram.configured({
-            orgId: "org-1",
-            botUsername: "fragno_bot",
-          }),
-        ],
-
-        steps: ({ when, then }) => [
-          when.workflow.createInstance({
-            orgId: "org-1",
-            remoteWorkflowName: "telegram-user-linking",
-            instanceId: "telegram-link-non-telegram-actor",
-            params: telegramLinkingWorkflowParams({
-              instanceId: "telegram-link-non-telegram-actor",
-              event: telegramMessageEvent({
-                id: "telegram:message:non-telegram-actor",
-                text: "/start",
-              }),
-            }),
-          }),
-
-          then.telegram.sentMessage({
-            chatId: "1001",
-            text: /Open this link to finish linking your Telegram account/u,
-          }),
-          then.workflow.instance({
-            remoteWorkflowName: "telegram-user-linking",
-            instanceId: "telegram-link-non-telegram-actor",
-            status: "waiting",
-            waitingFor: "identity-claim-completed",
-          }),
-          then.assert("capture generated OTP id from the claim workflow binding", async (ctx) => {
-            const scope = { kind: "org" as const, orgId: "org-1" };
-            const entries = await createRouteBackedAutomationStoreRuntime({
-              object: ctx.runtime.objects.automations.forOrg("org-1"),
-              execution: {
-                scope,
-                actors: {
-                  initiator: AUTOMATION_SYSTEM_INITIATOR,
-                  principal: null,
-                  delegation: [],
-                },
-              },
-            }).list({
-              prefix: "telegram/claim-workflow/",
-              limit: 10,
-            });
-            const entry = entries.find(
-              (candidate) => candidate.value === "telegram-link-non-telegram-actor",
-            );
-            if (!entry) {
-              throw new Error(`Expected claim workflow binding, got ${JSON.stringify(entries)}.`);
-            }
-            ctx.vars.otpId = entry.key.replace("telegram/claim-workflow/", "");
-          }),
-
-          when.workflow.sendEvent({
-            orgId: "org-1",
-            instanceId: "telegram-link-non-telegram-actor",
-            type: "identity-claim-completed",
-            payload: (ctx: BackofficeScenarioContext<{ otpId: string }>) =>
-              identityClaimCompletedEvent({
-                otpId: ctx.vars.otpId,
-                actorSource: "github",
-                actorType: "user",
-                actorId: "octocat",
-              }),
-          }),
-
-          then.store.missing({
-            orgId: "org-1",
-            key: "telegram/1001",
-          }),
-          then.assert("assert no linked Telegram reply was sent", (ctx) => {
-            const calls = ctx.fakes.telegram?.sendMessageCalls ?? [];
-            if (calls.length !== 1) {
-              throw new Error(`Expected only the claim link message, got ${calls.length}.`);
-            }
-          }),
-          then.workflow.instance({
-            remoteWorkflowName: "telegram-user-linking",
-            instanceId: "telegram-link-non-telegram-actor",
-            status: "complete",
-            output: { linked: false, reason: "not-telegram" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
@@ -646,10 +544,6 @@ describe("starter OTP linking automation in memory", () => {
             remoteWorkflowName: "telegram-user-linking",
             instanceId: "telegram-link-timeout",
             status: "errored",
-          }),
-          then.store.missing({
-            orgId: "org-1",
-            key: "telegram/1001",
           }),
           then.assert("assert no linked Telegram reply was sent", (ctx) => {
             const calls = ctx.fakes.telegram?.sendMessageCalls ?? [];

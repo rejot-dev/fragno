@@ -22,13 +22,25 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
       return { skipped: true, reason: "not-telegram-start" };
     }
 
-    const linkedUser = await step.do("lookup existing telegram user link", async () => {
-      return await store.get({
-        key: "telegram/" + chatId,
+    const telegramActor = automationEvent.actors.initiator;
+    if (
+      telegramActor.scope !== "external" ||
+      telegramActor.source !== "telegram" ||
+      telegramActor.type !== "chat" ||
+      telegramActor.id !== chatId
+    ) {
+      return { skipped: true, reason: "invalid-telegram-actor" };
+    }
+
+    const linkedIdentity = await step.do("resolve existing telegram user link", async () => {
+      return await identity.resolveExternal({
+        source: "telegram",
+        type: "chat",
+        id: chatId,
       });
     });
 
-    if (linkedUser?.value) {
+    if (linkedIdentity) {
       await step.do("send already linked telegram message", async () => {
         await telegram.sendMessage({
           chatId,
@@ -40,7 +52,7 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
       return {
         linked: true,
         alreadyLinked: true,
-        userId: linkedUser.value,
+        userId: linkedIdentity.userId,
       };
     }
 
@@ -80,22 +92,17 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
       return { linked: false, reason: "claim-mismatch" };
     }
 
-    if (completedActor.source !== "telegram") {
-      return { linked: false, reason: "not-telegram" };
+    if (
+      completedActor.source !== "telegram" ||
+      completedActor.type !== "chat" ||
+      completedActorId !== chatId
+    ) {
+      return { linked: false, reason: "identity-mismatch" };
     }
-
-    await step.do("bind telegram user", async () => {
-      await store.set({
-        key: completedActor.source + "/" + completedActorId,
-        value: subjectUserId,
-        description: "Backoffice user linked to Telegram chat " + completedActorId,
-        category: ["telegram", "identity"],
-      });
-    });
 
     await step.do("send telegram user linked message", async () => {
       await telegram.sendMessage({
-        chatId: completedActorId,
+        chatId,
         text: "Your Telegram chat is now linked.",
         parseMode: "Markdown",
       });
@@ -112,7 +119,6 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
 
     const text = automationEvent.payload.text ?? "";
     const chatId = automationEvent.payload.chatId;
-    const automationActorId = automationEvent.actors.initiator.id;
 
     if (
       automationEvent.source !== "telegram" ||
@@ -122,16 +128,27 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
       return { skipped: true, reason: "not-telegram-pi-message" };
     }
 
-    const linkedBinding = await step.do("lookup linked telegram user", async () => {
-      return await store.get({
-        key: "telegram/" + automationActorId,
+    const telegramActor = automationEvent.actors.initiator;
+    if (
+      telegramActor.scope !== "external" ||
+      telegramActor.source !== "telegram" ||
+      telegramActor.type !== "chat" ||
+      telegramActor.id !== chatId
+    ) {
+      return { skipped: true, reason: "invalid-telegram-actor" };
+    }
+
+    const linkedIdentity = await step.do("resolve linked telegram user", async () => {
+      return await identity.resolveExternal({
+        source: "telegram",
+        type: "chat",
+        id: chatId,
       });
     });
-    const linkedUser = linkedBinding?.value ?? "";
-
-    if (!linkedUser) {
+    if (!linkedIdentity) {
       return { skipped: true, reason: "telegram-chat-not-linked" };
     }
+    const linkedUser = linkedIdentity.userId;
 
     const defaultAgentBinding = await step.do("lookup default pi agent", async () => {
       return await store.get({
@@ -198,7 +215,7 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
         await store.set({
           key: "telegram-pi-session/" + linkedUser,
           value: session.id,
-            description: "Pi session for Telegram chat " + automationActorId,
+          description: "Pi session for Telegram chat " + chatId,
           category: ["telegram", "pi"],
         });
       });

@@ -64,14 +64,18 @@ describe("automation content", () => {
     );
 
     expect(unsupportedNestedProviderCalls).toEqual([]);
+    expect(workflow).toContain("identity.resolveExternal(");
     expect(workflow).toContain("otp.createIdentityClaim(");
-    expect(workflow).toContain("store.get(");
+    expect(workflow).toContain("telegram/claim-workflow/");
+    expect(workflow).not.toContain('key: "telegram/" + chatId');
     expect(workflow).toContain("claim.url");
     expect(workflow).toContain("claim.otpId");
     expect(workflow).toContain("Open this link to finish linking your Telegram account:");
     expect(workflow).toContain("completedEvent.subject.userId");
     expect(workflow).toContain("completedOtpId !== claim.otpId");
     expect(workflow).toContain("store.set(");
+    expect(workflow).not.toContain("automationEvent.actors.principal");
+    expect(workflow).not.toContain("bind telegram user");
   });
 
   test("DB starter routes start user-editable workflows", () => {

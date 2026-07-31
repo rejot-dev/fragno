@@ -4,6 +4,7 @@ import { isWorkflowStepStartedControlPayload } from "@fragno-dev/workflows/step-
 
 import { and, eq, queryOnce } from "@tanstack/react-db";
 
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE } from "@/files/content/telegram-test-command";
 
 import type { AutomationEvent } from "./contracts";
@@ -253,7 +254,6 @@ describe("starter automation router scenarios", () => {
           then.assert("assert live step controls synchronize", async (ctx) => {
             const workflow = createRouteBackedAutomationWorkflowRuntime({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
-              scope: { kind: "org", orgId: "org-1" },
             });
             await workflow.createInstance({
               workflowName: "automation-codemode-script",
@@ -810,7 +810,7 @@ describe("starter automation router scenarios", () => {
     );
   });
 
-  test("Telegram /pi creates a Pi session for a linked chat", async () => {
+  test("Telegram /pi creates a Pi session for an authorized linked chat", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "starter Telegram /pi creates a Pi session",
@@ -828,14 +828,30 @@ describe("starter automation router scenarios", () => {
             orgId: "org-1",
             botUsername: "fragno_bot",
           }),
-          given.store.entry({
+          given.identity.binding({
             orgId: "org-1",
-            key: "telegram/1001",
-            value: "user-1",
+            externalId: "1001",
+            userId: "user-1",
           }),
         ],
 
         steps: ({ when, then }) => [
+          then.auth.authority({
+            userId: "user-1",
+            orgId: "org-1",
+            expected: {
+              active: true,
+              role: "user",
+              organizationMember: true,
+            },
+          }),
+          then.auth.permissions({
+            userId: "user-1",
+            scope: { kind: "org", orgId: "org-1" },
+            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            exclude: [BACKOFFICE_PERMISSION.identity.bind],
+          }),
+
           when.capability.configured.pi({
             orgId: "org-1",
             harnessId: "default",
@@ -900,10 +916,10 @@ describe("starter automation router scenarios", () => {
             orgId: "org-1",
             botUsername: "fragno_bot",
           }),
-          given.store.entry({
+          given.identity.binding({
             orgId: "org-1",
-            key: "telegram/1001",
-            value: "user-1",
+            externalId: "1001",
+            userId: "user-1",
           }),
         ],
 
@@ -928,6 +944,60 @@ describe("starter automation router scenarios", () => {
             remoteWorkflowName: "telegram-user-pi-linking",
             status: "complete",
             output: { skipped: true, reason: "missing-default-agent" },
+          }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
+  test("Telegram identity revocation returns the Pi workflow to unlinked behavior", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "revoked Telegram identity is unlinked in the Pi workflow",
+        files: backofficeFiles.workspaceStarter(),
+        fakes: ({ fake }) => ({
+          telegram: fake.telegram(),
+          pi: fake.pi(),
+        }),
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.telegram.configured({
+            orgId: "org-1",
+            botUsername: "fragno_bot",
+          }),
+          given.identity.binding({
+            orgId: "org-1",
+            externalId: "1001",
+            userId: "user-1",
+          }),
+        ],
+        steps: ({ when, then }) => [
+          when.identity.revoke({
+            orgId: "org-1",
+            externalId: "1001",
+            expectedUserId: "user-1",
+          }),
+          when.telegram.receivesMessage({
+            orgId: "org-1",
+            updateId: 20_005,
+            messageId: 605,
+            chatId: "1001",
+            text: "/pi",
+            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+          }),
+
+          then.telegram.noMessages(),
+          then.assert("assert Pi was not called after identity revocation", (ctx) => {
+            const calls = ctx.fakes.pi?.createSessionCalls ?? [];
+            if (calls.length !== 0) {
+              throw new Error(`Expected no Pi session creation, got ${calls.length}.`);
+            }
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "telegram-user-pi-linking",
+            status: "complete",
+            output: { skipped: true, reason: "telegram-chat-not-linked" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
@@ -1203,10 +1273,10 @@ describe("starter automation router scenarios", () => {
             orgId: "org-1",
             value: "default::openai::gpt-5-mini",
           }),
-          given.store.entry({
+          given.identity.binding({
             orgId: "org-1",
-            key: "telegram/1001",
-            value: "user-1",
+            externalId: "1001",
+            userId: "user-1",
           }),
         ],
 
@@ -1243,10 +1313,7 @@ describe("starter automation router scenarios", () => {
           then.store.entries({
             orgId: "org-1",
             prefix: "telegram",
-            include: [
-              { key: "telegram/1001", value: "user-1" },
-              { key: "telegram-pi-session/user-1", value: "pi-session-1" },
-            ],
+            include: [{ key: "telegram-pi-session/user-1", value: "pi-session-1" }],
           }),
           then.telegram.sentChatAction({
             chatId: "1001",
@@ -1294,10 +1361,10 @@ describe("starter automation router scenarios", () => {
             orgId: "org-1",
             value: "default::openai::gpt-5-mini",
           }),
-          given.store.entry({
+          given.identity.binding({
             orgId: "org-1",
-            key: "telegram/1001",
-            value: "user-1",
+            externalId: "1001",
+            userId: "user-1",
           }),
         ],
 
@@ -1372,10 +1439,10 @@ describe("starter automation router scenarios", () => {
             orgId: "org-1",
             value: "default::openai::gpt-5-mini",
           }),
-          given.store.entry({
+          given.identity.binding({
             orgId: "org-1",
-            key: "telegram/1001",
-            value: "user-1",
+            externalId: "1001",
+            userId: "user-1",
           }),
           given.store.entry({
             orgId: "org-1",
@@ -1449,10 +1516,10 @@ describe("starter automation router scenarios", () => {
               orgId: "org-1",
               value: "default::openai::gpt-5-mini",
             }),
-            given.store.entry({
+            given.identity.binding({
               orgId: "org-1",
-              key: "telegram/1001",
-              value: "user-1",
+              externalId: "1001",
+              userId: "user-1",
             }),
           ],
 
@@ -1528,10 +1595,10 @@ describe("starter automation router scenarios", () => {
             orgId: "org-1",
             value: "default::openai::gpt-5-mini",
           }),
-          given.store.entry({
+          given.identity.binding({
             orgId: "org-1",
-            key: "telegram/1001",
-            value: "user-1",
+            externalId: "1001",
+            userId: "user-1",
           }),
         ],
 

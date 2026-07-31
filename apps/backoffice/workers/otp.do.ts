@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { HookContext } from "@fragno-dev/db";
 import type { OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
+import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
 import type { OtpObject } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
@@ -170,7 +171,7 @@ export const handleEmailVerificationConfirmed = async (
   }
 };
 
-const handleIdentityClaimConfirmed = async (
+export const handleIdentityClaimConfirmed = async (
   runtime: BackofficeRuntimeServices,
   payload: OtpConfirmedHookPayload,
   context: HookContext,
@@ -199,8 +200,30 @@ const handleIdentityClaimConfirmed = async (
 
   const claim = claimResult.data;
   const confirmation = confirmationResult.data;
+  const scope = { kind: "org" as const, orgId: claim.orgId };
+  const automations = runtime.objects.automations.for(scope);
+  const propagationContext = context.capturePropagationContext();
 
-  await runtime.objects.automations.forOrg(claim.orgId).triggerIngestEvent(
+  const bindingResult = await automations.bindExternalIdentity(
+    {
+      identity: claim.actor,
+      userId: confirmation.subjectUserId,
+      verifiedByClaimId: payload.id,
+    },
+    {
+      execution: createBackofficeServiceExecution({
+        scope,
+        service: { type: "object", id: "otp" },
+      }),
+      propagationContext,
+    },
+  );
+
+  if (bindingResult.status !== "active") {
+    return;
+  }
+
+  await automations.triggerIngestEvent(
     buildIdentityClaimCompletedAutomationEvent({
       orgId: claim.orgId,
       userId: confirmation.subjectUserId,
@@ -208,7 +231,7 @@ const handleIdentityClaimConfirmed = async (
       claim,
       eventId: context.hookId.toString(),
     }),
-    { propagationContext: context.capturePropagationContext() },
+    { propagationContext },
   );
 };
 

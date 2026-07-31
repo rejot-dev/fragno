@@ -8,8 +8,8 @@ A Telegram action should remain attributable through this complete flow:
 
 ```text
 Telegram chat
-  -> resolved Backoffice user
   -> automation workflow
+  -> resolved Backoffice user
   -> Pi session/agent
   -> runtime tool call
   -> Durable Object RPC
@@ -38,8 +38,8 @@ Backoffice scenario utilities.
   metadata.
 - `store.set` no longer accepts an actor.
 - Store categories are labels, not authorization or protection mechanisms.
-- External identity bindings belong to the Automations schema.
-- External identity bindings use a dedicated table, not categorized automation-store entries.
+- External identity bindings belong to one dedicated Automations table. Domain workflows keep their
+  own claim-to-workflow correlation as ordinary orchestration state.
 - Trace propagation and trusted execution propagation are separate concepts. W3C
   `traceparent`/`tracestate` remain opaque telemetry. `BackofficeRpcContext` carries telemetry only;
   sensitive RPCs use `BackofficeActionRpcContext`, which additionally requires trusted execution.
@@ -50,10 +50,13 @@ Backoffice scenario utilities.
   other internal boundaries use explicit Durable Object RPC methods that accept typed context.
 - Deferred external effects are reauthorized immediately before every attempt, including retries.
   Enqueue authorization alone never authorizes the later side effect.
-- External channel-session bindings are readable only when their `userId` matches the current
-  principal, even after identity revocation or rebinding.
-- External identity bind and revoke operations execute through `kernel.invoke()` inside the owning
-  Automations object; persistence services are not standalone authorization boundaries.
+- Automation-defined Pi session routing state carries no authority. Session IDs are identifiers, not
+  capabilities; every Pi session read, turn, or mutation authorizes the referenced session from the
+  trusted execution context, even when automation state is stale after identity revocation or
+  rebinding.
+- External identity bind, active-resolution, and revoke operations execute through `kernel.invoke()`
+  inside the owning Automations object; persistence services are not standalone authorization
+  boundaries.
 - Trusted Automations route calls use one generic `fetchWithContext(request, context)` RPC. The
   route caller carries `BackofficeActionRpcContext` as a separate RPC argument, never as HTTP
   headers. The Automations object derives operation and resource policy for sensitive routes before
@@ -151,9 +154,10 @@ These are acceptance constraints, not implementation details that may be deferre
 2. **Pi provenance cannot use a public header.** Production and fake Pi objects consume execution
    context through the same trusted internal RPC. Public `fetch()` neither trusts nor forwards
    `x-backoffice-execution-context` or an equivalent actor header.
-3. **Channel sessions are principal-owned.** Resolving a session binding requires the current
-   principal and returns a binding only when `binding.userId === principal.id`. Rebinding an
-   external identity never exposes the previous user's session.
+3. **Session routing never grants session access.** Automations may select and persist arbitrary Pi
+   session IDs according to their own routing semantics. Every Pi session read, turn, or mutation
+   authorizes the referenced session from trusted execution context, so stale routing state after an
+   external identity rebind cannot expose the previous principal's session.
 4. **Deferred Telegram delivery is a fresh authorization attempt.** Every send/edit attempt restores
    its typed execution envelope and wraps the external API call in `kernel.invoke()`. Revocation
    after enqueue prevents delivery.
@@ -410,9 +414,11 @@ Categories remain user-defined labels for filtering and presentation. They have 
 meaning.
 
 `hasSystemCategory()` and category-based deletion protection have been removed. Categories cannot
-protect any trusted state that still remains in generic KV; that state is explicit migration debt
-for Slices 4–6. If generic system-owned KV remains necessary, use a separate internal store or a
-kernel-controlled write-policy field that user tools cannot set.
+protect trusted state. External identity bindings therefore live outside generic KV.
+Claim-to-workflow correlation, Pi session routing, and default-agent selection may remain in generic
+KV because those values carry no authority; authorization occurs when the referenced identity,
+workflow, Pi resource, or agent is used. If other generic system-owned KV remains necessary, use a
+separate internal store or a kernel-controlled write-policy field that user tools cannot set.
 
 ### Mutation boundary
 
@@ -449,14 +455,14 @@ forwards directly to the workflows fragment. KV ownership is scope-level: a prin
 
 ## External identity binding
 
-Identity bindings belong to
-[`automationFragmentSchema`](../apps/backoffice/app/fragno/automation/schema.ts) because they are
-resolved while ingesting and executing scoped automation events.
+An identity binding is a small trusted aggregate: an external identity resolves to one Backoffice
+user, and changing it changes runtime authority. The dedicated table keeps that aggregate outside
+the generic store API while retaining a KV-like implementation.
 
-Each Automations Durable Object is already physically scoped, so the initial table does not need an
-`orgId` column.
-
-Suggested table:
+Each Automations Durable Object is already physically scoped. The binding row ID is the
+deterministic encoded `source/type/id` tuple, so it is also the external-identity lookup key. A
+separate consumption row records every accepted verified claim, including claims accepted while the
+binding was already active and unchanged:
 
 ```ts
 .addTable("external_identity_binding", (t) =>
@@ -468,49 +474,54 @@ Suggested table:
     .addColumn("userId", column("string"))
     .addColumn("verifiedByClaimId", column("string"))
     .addColumn("boundAt", column("timestamp"))
-    .addColumn("revokedAt", column("timestamp").nullable())
-    .addColumn("updatedAt", column("timestamp"))
-    .createIndex(
-      "idx_external_identity_binding_external",
-      ["source", "externalType", "externalId"],
-      { unique: true },
-    )
-    .createIndex("idx_external_identity_binding_user", ["userId"])
-    .createIndex("idx_external_identity_binding_claim", ["verifiedByClaimId"], {
-      unique: true,
-    }),
+    .addColumn("revokedAt", column("timestamp").nullable()),
+)
+.addTable("external_identity_claim_consumption", (t) =>
+  t
+    .addColumn("id", idColumn())
+    .addColumn("bindingId", column("string"))
+    .addColumn("userId", column("string"))
+    .addColumn("acceptedBindingVersion", column("integer"))
+    .addColumn("acceptedAt", column("timestamp")),
 )
 ```
 
-### Binding invariants
+The application maps `revokedAt: null` and a concrete `revokedAt` into distinct active and revoked
+binding types. Fragno's built-in row `_version`, exposed through `FragnoId.version`, is the binding
+version used for stale-command protection. All persisted timestamps use the Automations database's
+`uow.now()`.
 
-- Binding creation is idempotent by verified claim ID.
-- An active external identity cannot silently move to another user.
-- Repeating the same verified binding succeeds idempotently.
-- A conflicting user requires an explicit revoke/rebind operation.
-- Revoked bindings do not resolve a principal.
-- All timestamps use database time.
-- User-authored tools have no create/update/delete access to this table.
+### Binding transitions
 
-### Internal services
+- Binding a missing identity creates an active binding and consumes the verified claim atomically.
+- Repeating a bind for the same active user consumes a new claim even though the binding remains
+  unchanged.
+- Retrying any consumed claim never mutates the binding again.
+- Binding an active identity to another user returns a conflict.
+- Revocation requires the expected current user and built-in Fragno binding version.
+- Repeating a revocation against an already revoked row returns unchanged success.
+- A stale revocation conflicts when the binding is active at a newer version, even when it belongs
+  to the same user.
+- Binding a revoked identity with a new verified claim reactivates it for the requested user.
+- A consumed claim returns revoked or superseded when its accepted binding version is no longer
+  current.
+- OTP completion notifies workflows only when the resulting binding remains active.
+- Resolution returns only active bindings.
 
-Add persistence-focused services:
+The persistence surface contains four operations:
 
 ```ts
 getExternalIdentityBinding(input);
-bindExternalIdentity(input);
-revokeExternalIdentityBinding(input);
 resolveExternalIdentity(input);
+bindExternalIdentity(input);
+revokeExternalIdentity(input);
 ```
 
-Persistence-focused services may implement the database mutation, but callers cannot invoke them as
-the security boundary. The owning Automations Durable Object exposes typed bind/revoke RPCs that
-require `BackofficeActionRpcContext` and call `kernel.invoke()` before entering the service.
-
-OTP completion, administrative revocation, and future rebind flows all call those guarded object
-methods rather than `fragment.services.bindExternalIdentity()` directly. The kernel observer wraps
-the actual mutation exactly once, providing both authorization observation and the append-only audit
-insertion point. `store.set` cannot create identity bindings.
+The owning Automations Durable Object exposes typed bind, resolve-active, and revoke RPCs requiring
+`BackofficeActionRpcContext`. Each RPC calls `kernel.invoke()` around the exact persistence
+operation. OTP completion, automation workflow identity resolution, administrative revocation, and
+rebind flows use those object methods. The kernel observer is the single authorization-observation
+and future audit insertion point.
 
 ## Trusted identity-claim flow
 
@@ -547,25 +558,10 @@ user-authored workflow is notified only after the binding succeeds.
 
 ### Waiting-workflow correlation
 
-The current `telegram/claim-workflow/<otpId>` store entry is internal coordination state. It should
-not remain protected by a category.
-
-Recommended target: add an internal `identity_claim_waiter` table to the Automations schema:
-
-```text
-claimId
-workflowName
-workflowInstanceId
-external source/type/id
-createdAt
-completedAt
-```
-
-The kernel-owned OTP runtime registers the waiter after creating the claim. OTP completion resolves
-and consumes it when sending the workflow event.
-
-The claim creation and waiter registration cross Durable Objects and cannot be atomic. Both
-operations must therefore be idempotent, and workflow-step retry must safely converge on one waiter.
+The domain workflow stores `otpId -> workflowInstanceId` in the automation store before exposing the
+claim URL. After binding succeeds, OTP completion emits the ordinary completion event with the
+verified claim ID. The automation route resolves that correlation and notifies the waiting workflow.
+The correlation controls orchestration only; it is not an identity or authorization boundary.
 
 ## Telegram-to-Pi execution flow
 
@@ -587,51 +583,51 @@ const actors: AutomationActors = {
 };
 ```
 
-The kernel resolves no principal. Policy grants only narrow bootstrap operations, such as creating
-an identity claim for this initiator and sending a response to the same chat.
+Telegram ingress does not resolve or install an internal principal. It only records the trusted
+external initiator. The domain workflow decides whether it needs an internal identity and may use
+the guarded `identity.resolveExternal()` runtime tool to query the active binding.
 
 ### 2. Identity confirmation
 
-The confirmed claim records this trusted provenance:
-
-```ts
-const actors: AutomationActors = {
-  initiator: telegramInitiator,
-  principal: linkedUserPrincipal,
-  delegation: [],
-};
-```
-
-The completion event may also use `subject.userId` because the user is the entity affected by the
-identity-link event. Actor participation and event subject remain separate concepts.
+The confirmed claim keeps the external Telegram identity as its initiator and records the linked
+Backoffice user as `subject.userId`. The OTP hook binds the identity before publishing this event,
+but it does not install that user as the event principal. Actor participation and event subject
+remain separate concepts.
 
 ### 3. Future Telegram message
 
-Before persisting or routing a Telegram event, the kernel resolves the external identity binding.
-The event enters Automations with:
+Telegram continues to emit only the external initiator with `principal: null`. A workflow that needs
+the corresponding Backoffice user resolves the active binding explicitly:
 
 ```ts
-const actors: AutomationActors = {
-  initiator: telegramInitiator,
-  principal: linkedUserPrincipal,
-  delegation: [],
-};
+const linkedIdentity = await identity.resolveExternal({
+  source: "telegram",
+  type: "chat",
+  id: chatId,
+});
 ```
 
-Callers cannot submit their own principal actor. Any principal present on an untrusted inbound event
-is discarded and resolved again from the binding table.
+This keeps application identity policy in workflow code instead of the Telegram capability object.
+The resolution RPC remains guarded by the kernel, and callers cannot inject a principal into the
+Telegram event.
 
-Channel-session lookup is a separate security-sensitive read. It receives the current trusted
-execution context, requires a principal, and returns a session only when the stored binding belongs
-to that principal:
+Pi session selection remains automation-defined behavior. The starter automation currently chooses
+one reusable session per linked principal with a key such as `telegram-pi-session/<principalId>`,
+but another automation may choose a session per chat, thread, workflow instance, organization, or
+message, or may intentionally share a session. Each automation's workflow logic and state keys
+define its session reuse cardinality.
 
-```ts
-const binding = await getExternalChannelSessionBinding(channel);
-return binding?.userId === execution.actors.principal?.id ? binding : null;
-```
+Automation state may therefore store a Pi session ID in ordinary KV or workflow state. That lookup
+is not an authorization boundary and does not grant access to the referenced session. Every
+`pi.getSession`, `pi.runTurn`, and future Pi session mutation receives trusted execution context and
+authorizes the actual session resource before returning data, running tools, or changing state.
+Session IDs are identifiers rather than capabilities.
 
-Identity revoke/rebind should invalidate stale channel-session bindings when practical, but this
-read-time ownership check is mandatory even when cleanup fails or is delayed.
+Identity revoke/rebind does not need to atomically clean up automation routing state for security. A
+stale mapping may still produce the previous session ID, but the next Pi operation runs under the
+newly resolved principal and must deny access unless the Pi session's own ownership or sharing
+policy allows it. Automations may replace stale mappings for correctness or user experience after
+that denial.
 
 ### 4. Workflow delegation
 
@@ -835,7 +831,7 @@ backoffice.authorization.outcome
 backoffice.authorization.reason
 ```
 
-Do not include actor IDs, principal IDs, external-channel IDs, resource IDs, emails, tokens,
+Do not include actor IDs, principal IDs, external-identity IDs, resource IDs, emails, tokens,
 prompts, tool arguments, or arbitrary payloads. Durable-hook attempt spans remain generic and
 include only hook namespace/name, attempt metadata, status, and whether W3C propagation exists.
 
@@ -950,8 +946,8 @@ globals, session creation metadata, or other channels absent from production.
 Add contract tests that run against both production-style and in-memory object adapters for:
 
 - Pi per-turn context RPC;
-- Automations identity bind/revoke RPC;
-- principal-owned channel-session lookup;
+- Automations identity bind/resolve/revoke RPC;
+- Pi session resource authorization for automation-supplied session IDs;
 - deferred Telegram attempt authorization.
 
 A scenario assertion is not sufficient proof when its fake bypasses the production acquisition
@@ -1110,65 +1106,76 @@ this slice proves fail-closed production wiring.
 
 **Production behavior**
 
-- [ ] Add the `external_identity_binding` table and persistence-focused services.
-- [ ] Enforce idempotent claims, explicit conflict, revoke, and rebind semantics.
-- [ ] Expose bind/revoke only as Automations object RPCs requiring `BackofficeActionRpcContext`.
-- [ ] Call `kernel.invoke()` inside the Automations object and wrap the actual database mutation.
-- [ ] Reserve the kernel observer as the append-only audit insertion point.
-- [ ] Keep persistence services inaccessible as standalone authorization boundaries.
+- [x] Add the single `external_identity_binding` table with a deterministic external-identity ID.
+- [x] Add get, resolve, bind, and revoke persistence operations.
+- [x] Enforce the active, conflict, revoke, and reactivation transitions defined above.
+- [x] Expose bind and revoke as Automations object RPCs requiring `BackofficeActionRpcContext`.
+- [x] Call `kernel.invoke()` inside the Automations object around the exact database mutation.
+- [x] Use the kernel observer as the authorization-observation and future audit insertion point.
 
 **Required tests**
 
-- [ ] Cover active, repeated, conflicting, revoked, and rebound bindings.
-- [ ] Call the object RPC and observe one authorized bind/revoke action.
-- [ ] Deny a mutation and prove the persistence service is not entered.
-- [ ] Add a regression test preventing OTP or another worker from calling the mutation service
-      directly.
+- [x] Cover create, repeated bind, conflicting user, revoke, repeated revoke, and reactivation.
+- [x] Prove an old bind claim cannot reactivate a revoked or rebound identity.
+- [x] Prove a delayed revoke cannot revoke a binding now owned by another user.
+- [x] Call each object RPC and observe one authorized action around one persistence operation.
+- [x] Deny each mutation and prove persistence is not entered.
 
 **Review gate:** accept identity ownership and mutation authorization before changing OTP.
 
-### Slice 5: Trusted OTP completion and Telegram principal enrichment
+### Slice 5: Trusted OTP completion and workflow-owned identity resolution
 
 **Production behavior**
 
 - [x] Derive OTP claim identity from the trusted external initiator.
-- [ ] Persist claim waiters in typed Automations state.
-- [ ] On completion, call the guarded Automations bind RPC before notifying the workflow.
-- [ ] Resolve active bindings at Telegram ingress and set the trusted `principal` slot.
-- [ ] Discard supplied principal/delegate actors at untrusted ingress.
-- [ ] Keep unlinked actors restricted to explicit same-chat bootstrap actions.
+- [x] Persist claim-to-workflow correlation in the domain workflow before exposing the claim URL.
+- [x] On completion, call the guarded Automations bind RPC before notifying the workflow.
+- [x] Resolve active bindings explicitly from domain workflow logic.
+- [x] Discard supplied principal/delegate actors at untrusted ingress.
+- [x] Keep unlinked actors restricted to explicit same-chat bootstrap actions.
 
 **Required tests**
 
 - [x] Prove claim creation cannot target another external identity.
-- [ ] Prove binding precedes workflow notification and retries converge idempotently.
-- [ ] Prove forged principals are discarded.
-- [ ] Prove revocation returns the ingress flow to unlinked behavior.
+- [x] Prove binding precedes workflow notification and retries converge idempotently.
+- [x] Prove forged principals are discarded.
+- [x] Prove revocation returns the ingress flow to unlinked behavior.
 
 **Review gate:** accept the complete identity acquisition path before session reuse or Pi
 delegation.
 
-### Slice 6: Principal-owned channel sessions and trusted routing state
+### Slice 6: Automation-defined Pi routing and session resource authorization
 
 **Production behavior**
 
-- [ ] Add typed `external_channel_session_binding` and Pi configuration state.
-- [ ] Require trusted execution context for channel-session reads and writes.
-- [ ] Return a session only when `binding.userId` equals the current principal ID.
-- [ ] Invalidate stale sessions on identity revoke/rebind when possible; retain the read guard even
-      when cleanup is delayed.
-- [ ] Remove identity, waiter, channel-session, and Pi configuration security state from generic KV.
-- [x] Remove category-based protection and treat every remaining trusted generic-KV use as migration
-      debt rather than protected state.
+- [ ] Keep Pi session selection and routing cardinality in automation code and ordinary automation
+      state, with each automation's workflow logic and state keys defining its reuse behavior.
+- [ ] Keep default-agent selection in automation-controlled configuration; selecting an agent never
+      grants permission to create a session with or delegate to that agent.
+- [ ] Treat session IDs as identifiers rather than capabilities.
+- [ ] Establish session ownership or sharing policy from trusted execution when a Pi session is
+      created, independently of the automation key used to find it later.
+- [ ] Require trusted execution context and resource authorization for every Pi session read, turn,
+      and mutation before returning session data, running tools, or changing state.
+- [ ] Preserve the current starter automation's per-principal reuse behavior as its own explicit KV
+      keying strategy without making that behavior a platform invariant.
+- [x] Remove category-based protection; ordinary routing and default-agent configuration values
+      carry no authority and need no category-based security semantics.
 
 **Required tests**
 
-- [ ] Prove the owning principal can resume a session.
-- [ ] Revoke and rebind the external identity to another user and hide the old session.
-- [ ] Prove an unlinked actor and a mismatched principal receive no binding.
-- [ ] Prove user workflows cannot mutate trusted routing/configuration through generic store tools.
+- [ ] Prove the starter automation can resume the session selected by its per-principal KV key.
+- [ ] Prove an automation can choose a different keying strategy without a Backoffice schema or
+      authorization change.
+- [ ] Revoke and rebind an external identity while stale automation state still points at the old
+      session; prove the next Pi operation denies before exposing data or running tools.
+- [ ] Supply another principal's session ID directly through user-authored routing state and prove
+      the real Pi boundary denies it.
+- [ ] Prove automation-controlled default-agent selection cannot exceed current principal,
+      automation, agent, or resource grants.
 
-**Review gate:** no starter workflow may reuse a session until ownership is proven at read time.
+**Review gate:** no Pi operation may treat a session ID, routing key, or default-agent value as
+runtime authority.
 
 ### Slice 7: Workflow and runtime-tool provenance propagation
 
@@ -1252,8 +1259,9 @@ delegation.
 
 - [ ] Apply principal permission, automation grant, agent grant, and resource policy intersection.
 - [x] Protect store mutations with the stable `store.modify` operation and denial reasons.
-- [ ] Protect identity, routing, configuration, Telegram, and Pi actions with stable operation names
-      and denial reasons.
+- [ ] Protect identity mutations, Telegram actions, Pi session resources, and Pi agent use with
+      stable operation names and denial reasons. Automation routing and default-agent values remain
+      ordinary inputs whose referenced resources are authorized when used.
 - [ ] Restrict unlinked Telegram bootstrap actions to the initiating chat.
 - [ ] Resolve authority for every sensitive action from unexpired verified token evidence or current
       authoritative state; never persist permission snapshots in actor provenance.
@@ -1275,10 +1283,11 @@ final production grant model.
 
 - [ ] Add Cloudflare kernel spans from typed action observations.
 - [ ] Keep durable-hook spans generic; never inspect arbitrary payloads for actors.
-- [ ] Omit actor, principal, external-channel, and resource IDs from trace attributes.
+- [ ] Omit actor, principal, external-identity, and resource IDs from trace attributes.
 - [ ] Keep tracing optional and authorization-independent.
-- [ ] Add append-only audit records for identity/routing/configuration mutations and sensitive
-      denials if the audit decision remains in scope.
+- [ ] Add append-only audit records for external identity mutations and sensitive denials if the
+      audit decision remains in scope. Automation routing and default-agent KV mutations remain
+      ordinary store actions.
 
 **Required tests**
 
@@ -1299,18 +1308,26 @@ the kernel action boundary instead of duplicating actor provenance on mutable us
 entries. If durable audit requirements require persistence, add an append-only audit record rather
 than reintroducing attribution fields on `kv_store`.
 
-### Telegram-to-Pi session binding
+### Automation-defined Telegram-to-Pi routing
 
-**Decision:** Telegram-to-Pi routing uses the typed `external_channel_session_binding` Automations
-table. Every read receives trusted execution context and requires
-`binding.userId === currentPrincipal.id`; matching only the external channel key is insufficient. No
-generic KV entry grants session access.
+**Decision:** Session reuse cardinality belongs to automation behavior. The starter automation
+currently stores a session ID under a per-principal key, while another automation may choose
+per-chat, per-thread, per-run, shared, or no reuse. The automation's workflow logic and state keys
+fully express that routing policy.
 
-### Default Pi agent configuration
+Automation routing state may remain in generic KV or workflow state because it carries no authority.
+A session ID is an identifier, not a capability. Every Pi session read, turn, or mutation authorizes
+the referenced session from trusted execution context against the session's own ownership or sharing
+policy. A stale mapping after identity revoke/rebind may identify the previous session, but cannot
+expose it to the new principal unless that session was independently shared with them.
 
-**Decision:** the default Pi agent uses the typed `pi_default_agent_configuration` Automations
-table. Capability/system execution configures it through a dedicated resource-aware tool; it is no
-longer user KV.
+### Default Pi agent selection
+
+**Decision:** default-agent selection is automation-defined configuration and may remain in generic
+KV. An automation may use the starter default, select another agent, or derive one from its own
+event and configuration. The selected agent value grants nothing: Pi session creation and turns must
+evaluate current principal permission, automation grants, agent grants, and resource policy before
+using it.
 
 ### Execution-context module boundary
 
@@ -1363,18 +1380,19 @@ grants. Reserve unrestricted system execution for infrastructure recovery and mi
 
 ### External IDs in traces
 
-**Decision:** kernel and durable-hook spans omit actor, principal, external-channel, and resource
+**Decision:** kernel and durable-hook spans omit actor, principal, external-identity, and resource
 IDs. Kernel spans may retain safe operation, scope-kind, actor-count, actor-role, and status
 attributes. Generic durable-hook spans do not inspect domain payloads to derive actor attributes.
 
 ### Audit log scope
 
 **Decision:** append-only durable audit records are required for external identity bind/revoke
-operations, trusted channel-session binding changes, trusted Pi configuration changes, and denied
-security-sensitive authorization decisions if durable audit remains in this project's scope.
-Successful ordinary reads and user-owned KV mutations remain trace-only unless a product-specific
-compliance requirement promotes them. The audit schema remains separate from sampled trace spans and
-mutable domain rows; kernel action observation is its insertion point.
+operations and denied security-sensitive authorization decisions if durable audit remains in this
+project's scope. Automation-defined session-routing and default-agent changes are ordinary KV
+mutations and remain trace-only unless a product-specific compliance requirement promotes them.
+Successful ordinary reads and other user-owned KV mutations remain trace-only. The audit schema
+remains separate from sampled trace spans and mutable domain rows; kernel action observation is its
+insertion point.
 
 ## Validation per slice
 
