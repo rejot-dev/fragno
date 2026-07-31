@@ -47,7 +47,10 @@ export default [
         index("routes/backoffice/marketplace/scope-index.tsx"),
         route("marketplace", "routes/backoffice/marketplace/marketplace-view.tsx", [
           index("routes/backoffice/marketplace/browse.tsx"),
-          route(":listingRef", "routes/backoffice/marketplace/detail.tsx"),
+          route(":listingRef/artifact-file", "routes/backoffice/marketplace/artifact-file.ts"),
+          route(":listingRef", "routes/backoffice/marketplace/detail.tsx", [
+            index("routes/backoffice/marketplace/artifact-selection.tsx"),
+          ]),
         ]),
         route("installed", "routes/backoffice/marketplace/installed.tsx"),
         route("my-listings", "routes/backoffice/marketplace/my-listings.tsx"),

@@ -7,12 +7,22 @@ import type { FilesExplorerTreeNode, FilesNodeDetail } from "@/files";
 import { BackofficeSystemState } from "../system-state";
 import { resolveFilesContentRenderer } from "./content-renderers";
 
+const PUBLIC_FILE_METADATA_FIELDS = [
+  "provider",
+  "filename",
+  "status",
+  "visibility",
+  "createdAt",
+  "previewUrl",
+] as const;
+
 export type FilesExplorerViewProps = {
   tree: readonly FilesExplorerTreeNode[];
   selectedPath: string | null;
   selectedDetail: FilesNodeDetail | null;
   loadError: string | null;
   buildNodeTo: (path: string) => To;
+  onNodeSelect?: (node: FilesExplorerTreeNode) => void;
   buildDownloadHref?: (path: string) => string | null;
   treeLabel?: string;
   treeAriaLabel?: string;
@@ -28,6 +38,7 @@ export function FilesExplorerView({
   selectedDetail,
   loadError,
   buildNodeTo,
+  onNodeSelect,
   buildDownloadHref,
   treeLabel = "File tree",
   treeAriaLabel = "Files explorer",
@@ -69,6 +80,7 @@ export function FilesExplorerView({
                   node={node}
                   selectedPath={selectedPath}
                   buildNodeTo={buildNodeTo}
+                  onNodeSelect={onNodeSelect}
                   rootIcon={rootIcon}
                   depth={0}
                 />
@@ -117,6 +129,12 @@ function FilesNodeDetailPanel({
   const Heading = getHeadingComponent(headingLevel);
   const DetailIcon =
     detail.node.kind === "root" ? RootIcon : detail.node.kind === "folder" ? Folder : FileIcon;
+  const displayedMetadata = Object.fromEntries(
+    PUBLIC_FILE_METADATA_FIELDS.flatMap((field) => {
+      const value = detail.metadata?.[field];
+      return value === undefined ? [] : [[field, value]];
+    }),
+  );
 
   return (
     <section className="min-h-full p-4 md:p-5">
@@ -175,13 +193,13 @@ function FilesNodeDetailPanel({
         ))}
       </dl>
 
-      {detail.metadata && Object.keys(detail.metadata).length > 0 ? (
+      {Object.keys(displayedMetadata).length > 0 ? (
         <div className="mt-5">
           <p className="font-mono text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
             Metadata
           </p>
           <pre className="backoffice-scroll mt-3 max-h-72 overflow-auto bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] leading-5 text-[var(--bo-muted)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
-            {JSON.stringify(detail.metadata, null, 2)}
+            {JSON.stringify(displayedMetadata, null, 2)}
           </pre>
         </div>
       ) : null}
@@ -227,12 +245,14 @@ function FilesTreeNodeRow({
   node,
   selectedPath,
   buildNodeTo,
+  onNodeSelect,
   rootIcon: RootIcon,
   depth,
 }: {
   node: FilesExplorerTreeNode;
   selectedPath: string | null;
   buildNodeTo: (path: string) => To;
+  onNodeSelect?: (node: FilesExplorerTreeNode) => void;
   rootIcon: LucideIcon;
   depth: number;
 }) {
@@ -243,6 +263,7 @@ function FilesTreeNodeRow({
     <div>
       <Link
         to={buildNodeTo(node.path)}
+        onClick={() => onNodeSelect?.(node)}
         preventScrollReset
         aria-current={isSelected ? "page" : undefined}
         className={
@@ -267,6 +288,7 @@ function FilesTreeNodeRow({
               node={child}
               selectedPath={selectedPath}
               buildNodeTo={buildNodeTo}
+              onNodeSelect={onNodeSelect}
               rootIcon={RootIcon}
               depth={depth + 1}
             />

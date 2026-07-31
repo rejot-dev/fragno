@@ -70,6 +70,41 @@ describe("FilesExplorerView", () => {
     assert(!markup.includes("Download"));
   });
 
+  test("renders only public file metadata", () => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <FilesExplorerView
+          tree={tree}
+          selectedPath={fileNode.path}
+          selectedDetail={{
+            ...selectedDetail,
+            metadata: {
+              provider: "database",
+              filename: "README.md",
+              status: "ready",
+              visibility: "public",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              previewUrl: "/preview/README.md",
+              fileKey: "internal/README.md",
+              uploadId: "upload-internal",
+              uploaderId: "user-internal",
+              customInternalValue: "hidden",
+            },
+          }}
+          loadError={null}
+          buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
+        />
+      </MemoryRouter>,
+    );
+
+    assert(markup.includes("database"));
+    assert(markup.includes("/preview/README.md"));
+    assert(!markup.includes("internal/README.md"));
+    assert(!markup.includes("upload-internal"));
+    assert(!markup.includes("user-internal"));
+    assert(!markup.includes("customInternalValue"));
+  });
+
   test("renders downloads only when the caller supplies a download route", () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
