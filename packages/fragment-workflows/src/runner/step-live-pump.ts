@@ -19,6 +19,7 @@ import {
   type WorkflowEventActor,
 } from "../system-events";
 import type { WorkflowStepEvent } from "../workflow";
+import { buildFailedStepEmissionFlushDiagnostics } from "./step-live-pump-diagnostics";
 import type { WorkflowEventRecord } from "./types";
 
 const WORKFLOW_STEP_EMISSION_PUMP_INTERVAL_MS = 100;
@@ -92,9 +93,13 @@ export type WorkflowStepLivePumpOptions = {
   instanceId: string;
 };
 
+type FailedStepEmissionFlushContext<TOutEmission> = StepEmissionFlushContext<TOutEmission>;
+
 export function createWorkflowStepLivePump<TOutEmission = unknown, TInEvent = unknown>(
   options: WorkflowStepLivePumpOptions,
 ): WorkflowStepLivePump<TOutEmission, TInEvent> {
+  let failedFlushContext: FailedStepEmissionFlushContext<TOutEmission> | undefined;
+
   return new BufferedDatabasePump<
     TOutEmission,
     StepEmissionScopeMeta,
@@ -105,16 +110,31 @@ export function createWorkflowStepLivePump<TOutEmission = unknown, TInEvent = un
     handlerTx: options.handlerTx,
     intervalMs: WORKFLOW_STEP_EMISSION_PUMP_INTERVAL_MS,
     onError: (error) => {
-      console.error("[step-live-pump] flush failed", error);
+      console.error(
+        "[step-live-pump] flush failed",
+        buildFailedStepEmissionFlushDiagnostics({
+          workflowName: options.workflowName,
+          instanceId: options.instanceId,
+          context: failedFlushContext,
+        }),
+        error,
+      );
+      failedFlushContext = undefined;
     },
-    flush: (context: StepEmissionFlushContext<TOutEmission>) =>
-      writeWorkflowStepEmissionFlush<TOutEmission, TInEvent>({
-        handlerTx: context.handlerTx,
-        workflowName: options.workflowName,
-        instanceId: options.instanceId,
-        scopes: context.scopes,
-        batch: context.batch,
-      }),
+    flush: async (context: StepEmissionFlushContext<TOutEmission>) => {
+      try {
+        return await writeWorkflowStepEmissionFlush<TOutEmission, TInEvent>({
+          handlerTx: context.handlerTx,
+          workflowName: options.workflowName,
+          instanceId: options.instanceId,
+          scopes: context.scopes,
+          batch: context.batch,
+        });
+      } catch (error) {
+        failedFlushContext = context;
+        throw error;
+      }
+    },
     cursorForObservedItem: (item) => item.id,
     resolveScopeMeta: ({ key, meta }) => {
       if (!meta) {
