@@ -1,10 +1,16 @@
+import { useEffect, useState } from "react";
+
 import type { SourceRange, StepNode } from "@fragno-dev/workflow-visualizer-tokens";
 
+import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 
 import { GraphBadge } from "./graph-badge";
 import { SourceLocationButton } from "./source-location-button";
+import { WorkflowGeneratedUi } from "./workflow-generated-ui";
 import type { WorkflowStepRunState } from "./workflow-run-presentation";
+
+const COMPLETION_HIGHLIGHT_DURATION_MS = 2_000;
 
 export function WorkflowStepCard({
   step,
@@ -18,9 +24,11 @@ export function WorkflowStepCard({
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   const details = workflowStepDetails(step);
-  const runPresentation = workflowStepRunPresentation(runState);
+  const recentlyCompleted = useRecentWorkflowStepCompletion(runState);
+  const runPresentation = workflowStepRunPresentation(runState, recentlyCompleted);
   return (
     <div
+      data-workflow-step-card
       aria-current={runState?.current ? "step" : undefined}
       className={`border p-3 ${runPresentation.surfaceClass}`}
     >
@@ -32,7 +40,9 @@ export function WorkflowStepCard({
           <p className="mt-1 text-sm font-medium text-[var(--bo-fg)]">{step.label}</p>
         </div>
         <div className="flex items-center gap-2">
-          {runState ? <WorkflowStepRunBadge state={runState} /> : null}
+          {runState && runPresentation.showBadge ? (
+            <WorkflowStepRunBadge state={runState} presentation={runPresentation} />
+          ) : null}
           <SourceLocationButton source={step.source} onSelect={onSourceSelect} />
           {step.construction.status === "partial" ? (
             <GraphBadge label={step.construction.phase} tone="warning" />
@@ -53,12 +63,34 @@ export function WorkflowStepCard({
           ))}
         </div>
       ) : null}
+
+      <WorkflowStepGeneratedUi state={runState} />
     </div>
   );
 }
 
-function WorkflowStepRunBadge({ state }: { state: WorkflowStepRunState }) {
-  const presentation = workflowStepRunPresentation(state);
+function WorkflowStepGeneratedUi({ state }: { state?: WorkflowStepRunState }) {
+  if (state?.status !== "completed" || parseBackofficeUiResult(state.result).kind === "ordinary") {
+    return null;
+  }
+
+  return (
+    <div
+      data-workflow-step-generated-ui
+      className="mt-3 border-t border-[color:var(--bo-border)] pt-3"
+    >
+      <WorkflowGeneratedUi value={state.result} />
+    </div>
+  );
+}
+
+function WorkflowStepRunBadge({
+  state,
+  presentation,
+}: {
+  state: WorkflowStepRunState;
+  presentation: WorkflowStepRunPresentation;
+}) {
   const attempts = state.attempts > 1 ? ` · attempt ${state.attempts}` : "";
   const emissions =
     state.emissionCount > 0
@@ -83,19 +115,26 @@ function WorkflowStepRunBadge({ state }: { state: WorkflowStepRunState }) {
   );
 }
 
-function workflowStepRunPresentation(state?: WorkflowStepRunState) {
+type WorkflowStepRunPresentation = {
+  label: string;
+  showBadge: boolean;
+  surfaceClass: string;
+  badgeClass: string;
+  dotClass: string;
+};
+
+function workflowStepRunPresentation(
+  state: WorkflowStepRunState | undefined,
+  recentlyCompleted: boolean,
+): WorkflowStepRunPresentation {
   if (!state) {
-    return {
-      label: "",
-      surfaceClass: "border-[color:var(--bo-border)] bg-[var(--bo-panel)]",
-      badgeClass: "",
-      dotClass: "",
-    };
+    return neutralWorkflowStepRunPresentation();
   }
 
-  if (state.status === "active" || state.status === "running") {
+  if (state.status === "active") {
     return {
       label: "Running",
+      showBadge: true,
       surfaceClass:
         "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] shadow-[0_0_0_1px_var(--bo-accent)]",
       badgeClass: "border-[color:var(--bo-accent)] bg-[var(--bo-panel)] text-[var(--bo-accent-fg)]",
@@ -105,37 +144,85 @@ function workflowStepRunPresentation(state?: WorkflowStepRunState) {
 
   if (state.status === "waiting") {
     return {
-      label: "Waiting",
+      label: state.attempts > 1 ? "Retrying" : "Waiting",
+      showBadge: true,
       surfaceClass: "border-amber-500/55 bg-amber-500/8 shadow-[0_0_0_1px_rgb(245_158_11_/_0.2)]",
       badgeClass: "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200",
       dotClass: "bg-amber-500",
     };
   }
 
-  if (state.status === "errored" || state.status === "failed") {
+  if (state.status === "errored") {
     return {
       label: "Errored",
+      showBadge: true,
       surfaceClass: "border-red-500/45 bg-red-500/8",
       badgeClass: "border-red-500/35 bg-red-500/10 text-red-800 dark:text-red-200",
       dotClass: "bg-red-500",
     };
   }
 
-  if (state.status === "completed" || state.status === "complete") {
+  if (state.status === "completed") {
+    if (!recentlyCompleted) {
+      return neutralWorkflowStepRunPresentation();
+    }
+
     return {
       label: "Complete",
+      showBadge: true,
       surfaceClass: "border-emerald-500/35 bg-emerald-500/5",
       badgeClass: "border-emerald-500/30 bg-emerald-500/8 text-emerald-800 dark:text-emerald-200",
       dotClass: "bg-emerald-500",
     };
   }
 
+  return neutralWorkflowStepRunPresentation();
+}
+
+function neutralWorkflowStepRunPresentation(): WorkflowStepRunPresentation {
   return {
-    label: state.status,
-    surfaceClass: "border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)]",
-    badgeClass: "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]",
-    dotClass: "bg-[var(--bo-muted)]",
+    label: "",
+    showBadge: false,
+    surfaceClass: "border-[color:var(--bo-border)] bg-[var(--bo-panel)]",
+    badgeClass: "",
+    dotClass: "",
   };
+}
+
+function useRecentWorkflowStepCompletion(state?: WorkflowStepRunState): boolean {
+  const [, refreshCompletionState] = useState(0);
+  const completionExpiresAt = workflowStepCompletionExpiresAt(state);
+  const recentlyCompleted = completionExpiresAt > Date.now();
+
+  useEffect(() => {
+    if (!recentlyCompleted) {
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(
+      () => {
+        refreshCompletionState((version) => version + 1);
+      },
+      Math.max(0, completionExpiresAt - Date.now()),
+    );
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [completionExpiresAt, recentlyCompleted]);
+
+  return recentlyCompleted;
+}
+
+function workflowStepCompletionExpiresAt(state?: WorkflowStepRunState): number {
+  if (!state?.completedAt || state.status !== "completed") {
+    return 0;
+  }
+
+  const completedAt =
+    state.completedAt instanceof Date
+      ? state.completedAt.valueOf()
+      : new Date(state.completedAt).valueOf();
+  return Number.isFinite(completedAt) ? completedAt + COMPLETION_HIGHLIGHT_DURATION_MS : 0;
 }
 
 function WorkflowCardDetails({

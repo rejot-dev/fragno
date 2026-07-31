@@ -429,8 +429,9 @@ close/reopen the workspace without disturbing the conversation.
 ### - [ ] Slice 6 — Render an inline workflow's terminal UI result
 
 **Implementation audit (July 31, 2026):** the run-handle, scoped live synchronization, graph-status,
-and tool-to-workspace foundations are already implemented. They use organisation-scoped TanStack DB
-live collections instead of per-tab HTTP polling. Terminal output projection and rendering remain.
+and tool-to-workspace foundations are implemented with organisation-scoped TanStack DB live
+collections instead of per-tab HTTP polling. Terminal output is projected and generated `$ui`
+renders in the graph; ordinary terminal output presentation remains.
 
 **User-visible outcome:** an inline `defineWorkflow` started by `execCodeMode` remains attached to
 its automatically constructed workflow workspace item, shows live status there, and renders its
@@ -459,10 +460,11 @@ Use the run handle already returned in `completedToolResult.details.run`:
 - [ ] Treat temporary synchronization failures as retryable presentation state and prove recovery. A
       compact synchronization error is rendered today, but focused recovery coverage is missing.
 - [x] Render compact Backoffice workflow status alongside the graph in the workflow workspace.
-- [ ] Read the terminal output from the synchronized workflow instance.
-- [ ] Pass terminal output through the same `ResultContent` used for immediate results.
-- [ ] Render ordinary final values as text/JSON and `$ui` final values through json-render inside
-      the workflow workspace.
+- [x] Read the terminal output from the synchronized workflow instance.
+- [x] Pass terminal `$ui` through the same canonical parser and Backoffice renderer used for
+      immediate and step results.
+- [ ] Render ordinary final values as text/JSON inside the workflow workspace.
+- [x] Render `$ui` final values through json-render inside the workflow workspace.
 - [x] Keep the original tool card as the source/debug surface with an action that selects its
       workflow workspace item.
 - [x] Do not present the initial run handle as the workflow's final output in the workspace.
@@ -476,63 +478,58 @@ Automated proof:
       refresh, transient errors, and recovery. Exact-run projection has focused coverage already.
 - [ ] Workspace rendering tests for active, waiting, completed, errored, and terminated status.
 - [ ] Workflow integration test proving a terminal `$ui` result survives status serialization.
-- [ ] Rendering test proving the terminal `$ui` result uses the same production presenter as an
-      immediate result.
+- [x] Rendering test proving terminal `$ui` uses the production Backoffice renderer.
 
 The slice is complete when a live inline workflow can finish and render its final interface in the
 same workflow workspace item that appeared while its source was being constructed.
 
-### - [ ] Slice 7 — Render durable UI results from inline workflow steps
+### - [x] Slice 7 — Render durable UI results from inline workflow steps
 
-**Implementation audit (July 31, 2026):** persisted workflow steps and emissions are already
-live-synchronized and projected into the shared graph. The current query intentionally omits step
-results, maximum attempts, depth, and updated timestamps, and there is no step-row/result UI yet.
+**Implemented July 31, 2026:** the existing live workflow-step projection carries each persisted
+result onto its matching source-derived graph node. A valid generated interface renders directly
+inside that step card; no separate history panel, result rows, expansion model, or raw-result UI is
+introduced.
 
-**User-visible outcome:** users can inspect generated interfaces returned by individual `step.do`
-operations in the workflow workspace while retaining graph context, status, attempts, and errors.
+**User-visible outcome:** generated interfaces returned by `step.do` appear inline where that step
+is already shown in the live workflow execution.
 
-Use persisted workflow history rather than introducing a new result channel:
+Use the already synchronized persisted workflow steps rather than introducing a new result channel
+or history layer:
 
-- [ ] Extend the workflow hook/query to load the complete instance history needed by the workspace.
-      Steps and emissions are already loaded with status, but result-bearing fields are incomplete.
-- [ ] Project history steps into a route-local view model containing:
-  - [x] step key;
-  - [ ] parent step key and depth — parent keys are projected, depth is not;
-  - [x] name and type;
-  - [x] status;
-  - [ ] attempts and maximum attempts — attempts are projected, maximum attempts are not;
-  - [x] error;
-  - [ ] timestamps — creation time is projected, update time is not;
-  - [ ] result.
-- [x] Connect persisted step state to the existing source-derived graph without making graph
+- [x] Add the persisted step result to the existing workflow hook/query.
+- [x] Connect each persisted result to its matching source-derived graph node without making graph
       existence depend on history or run status.
-- [ ] Render steps as compact bordered Backoffice rows in the workflow workspace.
-- [ ] Show waiting, retrying, errored, and completed states in both graph status and readable step
-      rows. Graph status is implemented; readable rows are not.
-- [ ] Add an expandable result region for completed steps with non-null results.
-- [ ] Pass each step result through the shared `ResultContent` component.
-- [ ] Auto-expand the newest completed step whose result contains valid `$ui`.
-- [ ] Keep older step results collapsed so long workflows do not overwhelm the workspace.
-- [ ] Preserve complete attempt and error details for debugging in the step rows. The graph already
-      exposes current attempts and error text.
-- [ ] Confirm `$ui` values are replay-safe plain data and round-trip unchanged through step
+- [x] Keep waiting, retrying, errored, and completed status presentation on the existing step card.
+- [x] Remove the green completion surface and `Complete` badge two seconds after the persisted
+      completion timestamp while leaving any generated interface inline.
+- [x] Validate a completed step result with `parseBackofficeUiResult` at the presentation boundary.
+- [x] Render valid `$ui` directly inside the matching live-execution step card.
+- [x] Do not render ordinary step results, separate result rows, disclosure controls, or raw JSON.
+- [x] Render invalid or failed generated interfaces as a compact inline failure without raw data.
+- [x] Add a `UI` graph-detail mode beside `Simple` and `Verbose` that shows only generated-UI step
+      results and generated terminal output.
+- [x] Confirm `$ui` values are replay-safe plain data and round-trip unchanged through step
       persistence.
-- [ ] Confirm downstream workflow code can still consume non-UI fields from the same result object.
+- [x] Confirm downstream workflow code can still consume non-UI fields from the same result object.
+- [x] Teach `generating-backoffice-uis` that the same contract may be returned from replay-safe
+      `step.do` callbacks and that downstream code consumes ordinary sibling fields.
 
 Automated proof:
 
-- [ ] History projection tests for ordering, nesting, attempts, errors, and results.
-- [ ] Workflow harness test in which a `step.do` returns ordinary data plus `$ui`.
-- [ ] Assertion that persisted history contains the unchanged `$ui` value after replay.
-- [ ] Assertion that a later step consumes a non-UI field from the same persisted result.
-- [ ] Workspace rendering test for a workflow containing ordinary, generated-UI, waiting, and
-      errored step results.
-- [ ] Test proving only the newest generated-UI step auto-expands.
-- [ ] Test proving history refreshes update graph status without replacing or duplicating the
-      workflow workspace item.
+- [x] Step projection test proving a persisted result reaches its matching graph node.
+- [x] Workflow-step card test proving valid `$ui` renders inline without raw-result controls.
+- [x] Timer test proving completion emphasis disappears after two seconds.
+- [x] Graph rendering tests for terminal `$ui` and UI-only result filtering.
+- [x] Workflow harness test in which a `step.do` returns ordinary data plus `$ui`.
+- [x] Assertion that persisted step data contains the unchanged `$ui` value after replay.
+- [x] Assertion that a later step consumes a non-UI field from the same persisted result.
+- [x] Skill contract test covering durable generated-UI step results and ordinary sibling fields.
+- [x] Existing workspace projection and live-run tests prove run updates do not replace or duplicate
+      the source-derived workflow workspace item.
 
-The slice is complete when a replayed inline workflow displays its persisted step interface in its
-workflow workspace and a later step still uses the durable data returned beside `$ui`.
+The slice is complete when a replayed inline workflow displays its persisted interface inside the
+matching live-execution step card and a later step still uses the durable data returned beside
+`$ui`.
 
 ### - [ ] Slice 8 — Make generated UI results efficient in agent context
 
@@ -609,11 +606,12 @@ Automated proof:
       and workflow workspace items.
 - [x] Focused session-detail tests exist and the audited subset passes.
 - [x] Focused codemode Cloudflare tests exist and pass.
-- [ ] Focused workflow persistence/history tests for `$ui` terminal and step results.
-- [ ] `cd apps/backoffice && pnpm run types:check`.
-- [ ] `cd apps/backoffice && pnpm run build`.
+- [ ] Focused workflow persistence/history tests for `$ui` terminal and step results. Step-result
+      replay and persistence are covered; terminal output remains.
+- [x] `cd apps/backoffice && pnpm run types:check`.
+- [x] `cd apps/backoffice && pnpm run build`.
 - [ ] Affected Turborepo build, type-check, and test filters.
-- [ ] `pnpm run format:changed`.
+- [x] `pnpm run format:changed`.
 
 The slice is complete when the full behavior passes automated verification and manual checks for an
 immediate result, a completed workflow result, a waiting workflow, an errored workflow, and a
@@ -638,11 +636,10 @@ workflow with multiple generated step results.
       sidecar.
 - [ ] Inline workflow terminal outputs render through the same result presenter in that workflow
       workspace.
-- [ ] Completed inline workflow step results render from persisted workflow history in that workflow
+- [x] Completed inline workflow step results render from persisted workflow steps in that workflow
       workspace.
-- [ ] Workflow result objects retain ordinary fields for downstream durable dataflow. This is true
-      for the contract and immediate results, but the durable `$ui` step-result path is not proven
-      yet.
+- [x] Workflow result objects retain ordinary fields for downstream durable dataflow, including
+      across workflow replay.
 - [x] Generated components follow current Backoffice colors, density, borders, typography, motion,
       and accessibility conventions.
 - [x] The catalog does not permit arbitrary HTML, styles, scripts, embeds, or network actions.

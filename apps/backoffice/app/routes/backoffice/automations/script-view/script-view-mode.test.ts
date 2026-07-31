@@ -20,6 +20,7 @@ test("reads supported script view modes and defaults invalid values to code", ()
 test("reads workflow graph detail modes and defaults invalid values to simple", () => {
   assert(workflowGraphDetailModeFromSearchParam("simple") === "simple");
   assert(workflowGraphDetailModeFromSearchParam("verbose") === "verbose");
+  assert(workflowGraphDetailModeFromSearchParam("ui") === "ui");
   assert(workflowGraphDetailModeFromSearchParam("unknown") === "simple");
   assert(workflowGraphDetailModeFromSearchParam(null) === "simple");
 });

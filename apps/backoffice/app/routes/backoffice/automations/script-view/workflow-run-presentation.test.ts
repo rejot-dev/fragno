@@ -79,17 +79,46 @@ describe("automation script workflow run presentation", () => {
       instance: workflowRun({
         instanceId: "completed-run",
         status: "complete",
+        output: { summary: "done" },
         workflowSteps: [workflowStep({ status: "completed" })],
       }),
     });
 
     assert(run);
     assert(run.status === "complete");
+    expect(run.output).toEqual({ summary: "done" });
     expect(run.stepStatesByNodeId.get(stepNode("prepare").id)).toEqual({
       status: "completed",
       attempts: 1,
+      completedAt: "2026-07-24T10:00:00.000Z",
       emissionCount: 0,
       current: false,
+    });
+  });
+
+  it("projects a durable result onto its source-derived step", () => {
+    const generatedResult = {
+      recordId: "record-1",
+      $ui: { version: 1, state: {}, spec: { root: "report", elements: {} } },
+    };
+    const run = projectWorkflowRun({
+      visualization,
+      instance: workflowRun({
+        workflowSteps: [
+          workflowStep({
+            id: "finalize",
+            name: "finalize",
+            stepKey: "do:finalize",
+            result: generatedResult,
+          }),
+        ],
+      }),
+    });
+
+    assert(run);
+    expect(run.stepStatesByNodeId.get(stepNode("finalize").id)).toMatchObject({
+      status: "completed",
+      result: generatedResult,
     });
   });
 
@@ -205,6 +234,7 @@ describe("automation script workflow run presentation", () => {
     expect(runs[0]?.stepStatesByNodeId.get(stepNode("prepare").id)).toEqual({
       status: "completed",
       attempts: 1,
+      completedAt: "2026-07-24T10:00:00.000Z",
       emissionCount: 1,
       current: false,
     });
@@ -289,6 +319,7 @@ describe("automation script workflow run presentation", () => {
     expect(runs[0]?.stepStatesByNodeId.get(stepNode("prepare").id)).toEqual({
       status: "completed",
       attempts: 1,
+      completedAt: "2026-07-24T10:00:00.000Z",
       emissionCount: 0,
       current: false,
     });
@@ -490,6 +521,7 @@ function workflowRun(overrides: Partial<AutomationWorkflowRun> = {}): Automation
     remoteWorkflowName: "demo",
     status: "active",
     params: { workflowScriptPath: absolutePath },
+    output: null,
     createdAt: "2026-07-24T09:00:00.000Z",
     updatedAt: "2026-07-24T10:00:00.000Z",
     workflowSteps: [],
@@ -509,9 +541,11 @@ function workflowStep(
     type: "do",
     status: "completed",
     attempts: 1,
+    result: null,
     errorName: null,
     errorMessage: null,
     createdAt: "2026-07-24T10:00:00.000Z",
+    updatedAt: "2026-07-24T10:00:00.000Z",
     ...overrides,
   };
 }

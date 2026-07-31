@@ -10,17 +10,22 @@ const ACTIVE_WORKFLOW_STATUSES = new Set(["active", "waiting", "paused"]);
 
 type WorkflowRunTimestamp = Date | string;
 
+type PersistedWorkflowStepStatus = "waiting" | "completed" | "errored";
+export type WorkflowStepRunStatus = PersistedWorkflowStepStatus | "active";
+
 export type WorkflowRunStep = {
   id: string;
   stepKey: string;
   parentStepKey: string | null;
   name: string;
   type: string;
-  status: string;
+  status: PersistedWorkflowStepStatus;
   attempts: number;
+  result: unknown;
   errorName: string | null;
   errorMessage: string | null;
   createdAt: WorkflowRunTimestamp;
+  updatedAt: WorkflowRunTimestamp;
 };
 
 export type WorkflowRunEmission = {
@@ -39,6 +44,7 @@ export type AutomationWorkflowRun = {
   remoteWorkflowName: string | null;
   status: string;
   params: unknown;
+  output: unknown;
   createdAt: WorkflowRunTimestamp;
   updatedAt: WorkflowRunTimestamp;
   workflowSteps: readonly WorkflowRunStep[];
@@ -46,8 +52,10 @@ export type AutomationWorkflowRun = {
 };
 
 export type WorkflowStepRunState = {
-  status: string;
+  status: WorkflowStepRunStatus;
   attempts: number;
+  completedAt?: WorkflowRunTimestamp;
+  result?: unknown;
   error?: string;
   emissionCount: number;
   current: boolean;
@@ -63,6 +71,7 @@ export type ScriptWorkflowRun = {
   instanceId: string;
   workflowName: string;
   status: string;
+  output: unknown;
   createdAt: WorkflowRunTimestamp;
   updatedAt: WorkflowRunTimestamp;
   stepStatesByNodeId: Map<string, WorkflowStepRunState>;
@@ -123,6 +132,7 @@ export function projectWorkflowRun({
     instanceId: instance.instanceId,
     workflowName,
     status: instance.status,
+    output: instance.output,
     createdAt: instance.createdAt,
     updatedAt: instance.updatedAt,
     stepStatesByNodeId: projectWorkflowStepStates({
@@ -165,10 +175,13 @@ function projectWorkflowStepStates({
     }
 
     nodeIdByStepKey.set(step.stepKey, nodeId);
+    const error = workflowStepError(step);
     stepStatesByNodeId.set(nodeId, {
       status: step.status,
       attempts: step.attempts,
-      error: workflowStepError(step),
+      ...(step.status === "completed" ? { completedAt: step.updatedAt } : {}),
+      ...(step.result !== null && step.result !== undefined ? { result: step.result } : {}),
+      ...(error ? { error } : {}),
       emissionCount: 0,
       current:
         step.status === "waiting" && !hasTerminalWorkflowStepAncestor(step.stepKey, stepsByKey),
@@ -200,9 +213,14 @@ function projectWorkflowStepStates({
       continue;
     }
 
+    const status = activity.active ? "active" : (existing?.status ?? "active");
     stepStatesByNodeId.set(nodeId, {
-      status: activity.active ? "active" : (existing?.status ?? "active"),
+      status,
       attempts: existing?.attempts ?? 1,
+      ...(status === "completed" && existing?.completedAt
+        ? { completedAt: existing.completedAt }
+        : {}),
+      ...(existing?.result !== undefined ? { result: existing.result } : {}),
       ...(existing?.error ? { error: existing.error } : {}),
       emissionCount: activity.userEmissionCount,
       current: activity.active || existing?.current === true,
@@ -212,7 +230,10 @@ function projectWorkflowStepStates({
   return stepStatesByNodeId;
 }
 
-const TERMINAL_WORKFLOW_STEP_STATUSES = new Set(["completed", "errored"]);
+const TERMINAL_WORKFLOW_STEP_STATUSES = new Set<PersistedWorkflowStepStatus>([
+  "completed",
+  "errored",
+]);
 
 type WorkflowStepNodeIndex = {
   nodeIdsByScopeAndIdentity: Map<string, string[]>;

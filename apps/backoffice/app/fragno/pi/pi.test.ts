@@ -220,7 +220,7 @@ describe("Backoffice Pi skills", () => {
       location: "/static/skills/generating-backoffice-uis/SKILL.md",
       directory: "/static/skills/generating-backoffice-uis",
     });
-    expect(skills["generating-backoffice-uis"]?.description).toContain("visual summaries");
+    expect(skills["generating-backoffice-uis"]?.body).toContain("## Result contract");
   });
 
   test("reflects skills from the mounted virtual filesystem", async () => {

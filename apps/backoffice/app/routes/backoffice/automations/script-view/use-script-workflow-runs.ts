@@ -63,6 +63,7 @@ export function useWorkflowRunRecords({
           remoteWorkflowName: instance.remoteWorkflowName,
           status: instance.status,
           params: instance.params,
+          output: instance.output,
           createdAt: instance.createdAt,
           updatedAt: instance.updatedAt,
           workflowSteps: toArray(
@@ -79,9 +80,11 @@ export function useWorkflowRunRecords({
                 type: step.type,
                 status: step.status,
                 attempts: step.attempts,
+                result: step.result,
                 errorName: step.errorName,
                 errorMessage: step.errorMessage,
                 createdAt: step.createdAt,
+                updatedAt: step.updatedAt,
               })),
           ),
           workflowStepEmissions: toArray(

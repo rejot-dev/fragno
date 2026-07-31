@@ -52,6 +52,7 @@ test("server-renders the minimal Backoffice generated interface", () => {
   expect(markup).toContain('aria-label="Orders"');
   expect(markup).toContain(">24</p>");
   expect(markup).toContain("--bo-panel");
+  expect(markup).not.toContain("border-l-2 border-[color:var(--bo-accent)]");
 });
 
 test("resolves state, template, and conditional props while rendering", () => {

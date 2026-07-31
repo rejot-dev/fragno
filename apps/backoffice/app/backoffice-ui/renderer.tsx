@@ -31,7 +31,7 @@ export class BackofficeUiErrorBoundary extends Component<
 
 export function BackofficeUiRenderer({ ui }: { ui: BackofficeUiResultV1["$ui"] }) {
   return (
-    <div className="w-full max-w-3xl min-w-0 border-l-2 border-[color:var(--bo-accent)] pl-3">
+    <div className="w-full max-w-3xl min-w-0">
       <JSONUIProvider registry={backofficeUiRegistry} initialState={ui.state}>
         <Renderer spec={ui.spec} registry={backofficeUiRegistry} />
       </JSONUIProvider>

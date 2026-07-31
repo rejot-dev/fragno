@@ -138,16 +138,13 @@ export function ScriptSourcePanel({
             runtimeToolCallsByStepId={runtimeToolCallsByStepId}
             selectedRun={workflowRuns.selectedRun}
             scrollViewport={graphViewport}
-            onSourceSelect={(selectedRange) => {
-              setSelectedSource(selectedRange);
-              if (viewMode === "graph") {
-                setSearchParams(
-                  (currentSearchParams) =>
-                    searchParamsWithScriptViewMode(currentSearchParams, "split"),
-                  { preventScrollReset: true, replace: true },
-                );
-              }
-            }}
+            onSourceSelect={
+              viewMode === "split"
+                ? (selectedRange) => {
+                    setSelectedSource(selectedRange);
+                  }
+                : undefined
+            }
           />
         ) : null}
       </div>

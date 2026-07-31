@@ -168,7 +168,6 @@ export function SessionWorkspacePanel({
             runReference={item.view.run}
             workflowCollections={workflowCollections}
             workflowCollectionsError={workflowCollectionsError}
-            onViewModeChange={setViewMode}
           />
         )}
       </section>
@@ -335,7 +334,6 @@ function SessionWorkflowWorkspace({
   runReference,
   workflowCollections,
   workflowCollectionsError,
-  onViewModeChange,
 }: {
   projection: WorkflowGraphProjection;
   viewMode: ScriptViewMode;
@@ -343,7 +341,6 @@ function SessionWorkflowWorkspace({
   runReference: WorkflowRunReference | null;
   workflowCollections?: WorkflowRunCollections;
   workflowCollectionsError?: string | null;
-  onViewModeChange: (viewMode: ScriptViewMode) => void;
 }) {
   const [selectedSource, setSelectedSource] = useState<SourceRange>();
   const showCode = viewMode === "code" || viewMode === "split";
@@ -392,12 +389,13 @@ function SessionWorkflowWorkspace({
             selectedRun={workflowRun.selectedRun}
             scrollViewport={graphViewport}
             fillHeight
-            onSourceSelect={(source) => {
-              setSelectedSource(source);
-              if (viewMode === "graph") {
-                onViewModeChange("split");
-              }
-            }}
+            onSourceSelect={
+              viewMode === "split"
+                ? (source) => {
+                    setSelectedSource(source);
+                  }
+                : undefined
+            }
           />
         ) : null}
       </div>

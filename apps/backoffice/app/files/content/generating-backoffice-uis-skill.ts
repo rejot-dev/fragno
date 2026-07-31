@@ -1,12 +1,73 @@
 import { backofficeUiComponentDefinitions } from "@/backoffice-ui/catalog";
-import { formatJsonSchemaFields, zodSchemaToJsonSchema } from "@/lib/zod/zod-formatter";
+import {
+  jsonSchemaToTypeScript,
+  type JsonSchemaObject,
+  zodSchemaToJsonSchema,
+} from "@/lib/zod/zod-formatter";
 
 import type { FileContent } from "../interface";
+
+type ConstrainedJsonSchema = JsonSchemaObject & {
+  minLength?: number;
+  maxLength?: number;
+  minimum?: number;
+  maximum?: number;
+  minItems?: number;
+  maxItems?: number;
+};
+
+function describeRange(minimum: number | undefined, maximum: number | undefined, unit: string) {
+  if (minimum !== undefined && maximum !== undefined) {
+    return `${minimum}-${maximum} ${unit}`;
+  }
+  if (minimum !== undefined) {
+    return `at least ${minimum} ${unit}`;
+  }
+  if (maximum !== undefined) {
+    return `at most ${maximum} ${unit}`;
+  }
+  return undefined;
+}
+
+function collectSchemaLimits(schema: JsonSchemaObject, path: string): string[] {
+  const constrainedSchema = schema as ConstrainedJsonSchema;
+  const limits = [
+    describeRange(constrainedSchema.minLength, constrainedSchema.maxLength, "characters"),
+    describeRange(constrainedSchema.minimum, constrainedSchema.maximum, "numeric value"),
+    describeRange(constrainedSchema.minItems, constrainedSchema.maxItems, "items"),
+  ].filter((limit): limit is string => Boolean(limit));
+  const lines = limits.length > 0 ? [`${path}: ${limits.join(", ")}`] : [];
+
+  for (const [propertyName, propertySchema] of Object.entries(schema.properties ?? {})) {
+    lines.push(...collectSchemaLimits(propertySchema, `${path}.${propertyName}`));
+  }
+
+  if (schema.items && !Array.isArray(schema.items)) {
+    lines.push(...collectSchemaLimits(schema.items, `${path}[]`));
+  }
+
+  if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
+    lines.push(...collectSchemaLimits(schema.additionalProperties, `${path}.*`));
+  }
+
+  return lines;
+}
 
 export function renderComponentReference() {
   return Object.entries(backofficeUiComponentDefinitions)
     .map(([name, definition]) => {
-      const props = formatJsonSchemaFields(zodSchemaToJsonSchema(definition.props, "input"));
+      const propsSchema = zodSchemaToJsonSchema(definition.props, "input");
+      if (!propsSchema) {
+        throw new Error(`Expected ${name} to define a props schema.`);
+      }
+
+      const propsType = jsonSchemaToTypeScript(propsSchema);
+      const propLimits = Object.entries(propsSchema.properties ?? {}).flatMap(
+        ([propertyName, propertySchema]) => collectSchemaLimits(propertySchema, propertyName),
+      );
+      const limitsReference = propLimits.length
+        ? `\n\nLimits:\n${propLimits.map((limit) => `- ${limit}`).join("\n")}`
+        : "";
       const children = (definition.slots as readonly string[]).includes("default")
         ? "May contain child element ids."
         : "Must use an empty children array.";
@@ -15,11 +76,11 @@ export function renderComponentReference() {
 
 ${definition.description}
 
-Props:
+Props type:
 
-\`\`\`text
-${props}
-\`\`\`
+\`\`\`ts
+${propsType}
+\`\`\`${limitsReference}
 
 Children: ${children}
 
@@ -34,24 +95,40 @@ ${JSON.stringify(definition.example, null, 2)}
 
 const generatingBackofficeUisSkill = `---
 name: generating-backoffice-uis
-description: "Visualize retrieved Backoffice data as dashboards, reports, tables, metrics, or visual summaries."
+description: "Visualize Backoffice data in immediate codemode results, durable workflow steps, or final workflow output."
 ---
 
 # Generating Backoffice UIs
 
-Produce one immediate, grounded visual result from an \`async () => ...\` codemode call.
-
 ## Steps
 
-1. **Ground.** Read the relevant live provider declarations and capability skills, then retrieve the Backoffice data. Represent missing information explicitly as unavailable. Complete this step when every operational value, record, status, and identifier planned for display traces to retrieved output; fabricated values and placeholder records fail this criterion.
-2. **Compose.** Derive the presentation from that output, preserve useful source records and summaries beside \`$ui\`, and use the production catalog. Complete this step when every spec invariant and component contract below passes a self-check.
-3. **Return.** Return one object matching the result contract and treat the rendered interface as the primary answer. Complete this step when \`$ui\` is valid, useful ordinary fields remain available to later code, and follow-up prose adds only conclusions that the interface cannot show clearly.
+1. **Ground.** Read the relevant live provider declarations and capability skills before any required retrieval. Use retrieved, input, or persisted data already available to the current return path; retrieve only source data that is still missing. Represent unavailable information explicitly. Complete this step when every displayed operational value, record, status, and identifier traces to retrieved, input, or persisted output.
+2. **Compose.** Derive the presentation from the grounded output, preserve source records and summaries needed by the user or later code beside \`$ui\`, and use the production catalog. Complete this step when every used component matches its exact props type and limits, every spec invariant holds, and every applicable workflow branch rule has been checked.
+3. **Return.** Return one object matching the result contract and let the rendered interface carry the presentation. Complete this step when the object has its own \`$ui\` field with \`version: 1\`, every value consumed later remains an ordinary sibling field, and follow-up prose does not restate rendered fields.
 
 ## Result contract
 
 The immediate result must have an own top-level \`$ui\` field with \`version: 1\`:
 
 \`\`\`ts
+type StateVisibilityCondition = {
+  $state: string;
+  eq?: unknown;
+  neq?: unknown;
+  gt?: number | { $state: string };
+  gte?: number | { $state: string };
+  lt?: number | { $state: string };
+  lte?: number | { $state: string };
+  not?: true;
+};
+
+type VisibilityCondition =
+  | boolean
+  | StateVisibilityCondition
+  | StateVisibilityCondition[]
+  | { $and: VisibilityCondition[] }
+  | { $or: VisibilityCondition[] };
+
 type BackofficeUiResult = {
   [ordinaryField: string]: unknown;
   $ui: {
@@ -63,7 +140,7 @@ type BackofficeUiResult = {
         type: CatalogComponentName;
         props: Record<string, unknown>;
         children: string[];
-        visible?: boolean | VisibilityCondition;
+        visible?: VisibilityCondition;
       }>;
     };
   };
@@ -71,6 +148,15 @@ type BackofficeUiResult = {
 \`\`\`
 
 Ordinary sibling fields remain part of the result. Preserve retrieved records, identifiers, and calculated summaries there when they remain useful to the user or later code.
+
+## Durable workflow branch
+
+When returning \`$ui\` from \`step.do\` or from a workflow's final output:
+
+1. Read \`/static/skills/workflows/SKILL.md\` and satisfy its complete replay gate.
+2. Read \`/static/skills/generating-backoffice-uis/WORKFLOWS.md\` for the UI-specific persistence, dataflow, and rendering contract.
+
+Complete this branch only when both references have been applied.
 
 ## Spec invariants
 
@@ -80,7 +166,8 @@ The installed json-render shape is a flat element graph:
 - Every child names an element in the same \`elements\` record.
 - Every element contains exactly \`type\`, \`props\`, and \`children\`, plus optional \`visible\`; \`on\`, \`watch\`, \`repeat\`, actions, event bindings, and other fields are invalid.
 - Component and prop names are case-sensitive and must match the production catalog; unsupported names are invalid.
-- A prop may use \`{ "$state": "/path" }\` to read a value from \`$ui.state\`.
+- A top-level component prop may use \`{ "$state": "/path" }\` to read a value from \`$ui.state\`. Expressions cannot be nested inside array items or object fields; put the complete array or object in state and reference it from the whole prop instead.
+- \`visible\` may be a boolean or a state visibility condition. A state condition uses exactly one of \`eq\`, \`neq\`, \`gt\`, \`gte\`, \`lt\`, or \`lte\`; omitting the comparison checks truthiness. \`not: true\` inverts it. Arrays and \`$and\` are AND; \`$or\` is OR.
 - Every root and child reference resolves, and the child graph is acyclic.
 - The graph stays within 128 elements, 32 children per element, 512 total child references, and 24 levels of depth.
 
@@ -149,7 +236,7 @@ async () => {
 
 ## Production component catalog
 
-This reference comes from the definitions used by runtime validation and rendering.
+This reference comes from the definitions used by runtime validation and rendering. Props are strict: use only the fields shown by each props type and satisfy every listed limit.
 
 ${renderComponentReference()}
 
@@ -159,6 +246,53 @@ ${renderComponentReference()}
 - **Primary answer:** let the rendered interface carry the presentation. A large Markdown table or other restatement is invalid.
 `;
 
+const generatingBackofficeUisWorkflowReference = `# Durable Workflow UI Results
+
+This reference contains only the \`$ui\` behavior specific to durable workflow results.
+
+## Result behavior
+
+- A \`step.do\` callback may return the same \`BackofficeUiResult\` contract as an immediate codemode call. The complete serializable result is persisted, while its \`$ui\` interface renders inline in the matching completed step.
+- Keep every identifier and value needed by later steps as an ordinary sibling field beside \`$ui\`.
+- Consume later values from the resolved step result's ordinary fields. \`$ui.state\` is presentation state, not the workflow's durable dataflow API.
+- Ordinary sibling fields remain durable data and are not presented as raw-result UI.
+- Returning the same result from the workflow function renders it as the final output. The workflow workspace's \`UI\` mode shows only steps and final output containing \`$ui\`.
+
+## Example
+
+\`\`\`js
+const report = await step.do("build order report", async () => {
+  const orders = await ordersApi.list({ status: "open" });
+
+  return {
+    orderIds: orders.map((order) => order.id),
+    orderCount: orders.length,
+    $ui: {
+      version: 1,
+      state: { orderCount: String(orders.length) },
+      spec: {
+        root: "metric",
+        elements: {
+          metric: {
+            type: "Metric",
+            props: { label: "Open orders", value: { $state: "/orderCount" } },
+            children: [],
+          },
+        },
+      },
+    },
+  };
+});
+
+await step.do("process reported orders", async () => {
+  return await processOrders(report.orderIds);
+});
+
+return report;
+\`\`\`
+`;
+
 export const GENERATING_BACKOFFICE_UIS_SKILL_CONTENT = {
   "skills/generating-backoffice-uis/SKILL.md": generatingBackofficeUisSkill,
+  "skills/generating-backoffice-uis/WORKFLOWS.md": generatingBackofficeUisWorkflowReference,
 } satisfies Record<string, FileContent>;

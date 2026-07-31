@@ -115,7 +115,9 @@ describe("SessionWorkspacePanel", () => {
     assert(
       screen.getByRole("button", { name: /^simple$/i }).getAttribute("aria-pressed") === "true",
     );
+    expect(screen.getByRole("button", { name: /^UI$/ })).toBeDefined();
     assert(screen.getByRole("button", { name: /^Graph$/ }).getAttribute("aria-pressed") === "true");
+    expect(container.querySelectorAll('button[title^="Show "]')).toHaveLength(0);
 
     fireEvent.click(screen.getByRole("button", { name: /^verbose$/i }));
     assert(
@@ -129,6 +131,7 @@ describe("SessionWorkspacePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Both$/ }));
     expect(screen.getByLabelText("Script source")).toBeDefined();
     expect(screen.getByLabelText("Workflow graph")).toBeDefined();
+    expect(container.querySelectorAll('button[title^="Show "]').length).toBeGreaterThan(0);
   });
 
   test("shows genuine workflow synchronization failures", () => {

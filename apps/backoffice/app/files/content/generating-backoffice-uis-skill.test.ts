@@ -12,9 +12,14 @@ import { STATIC_FILE_CONTENT } from "./static";
 
 const staticContent = STATIC_FILE_CONTENT as Record<string, FileContent>;
 const skill = GENERATING_BACKOFFICE_UIS_SKILL_CONTENT["skills/generating-backoffice-uis/SKILL.md"];
+const workflowReference =
+  GENERATING_BACKOFFICE_UIS_SKILL_CONTENT["skills/generating-backoffice-uis/WORKFLOWS.md"];
 
 if (typeof skill !== "string") {
   throw new Error("Expected the generated Backoffice UI skill to contain text.");
+}
+if (typeof workflowReference !== "string") {
+  throw new Error("Expected the generated Backoffice UI workflow reference to contain text.");
 }
 
 type EventCatalogEntry = {
@@ -96,9 +101,18 @@ describe("generating Backoffice UIs skill", () => {
   test("renders the production skill from the canonical catalog", () => {
     expect(skill).toContain("name: generating-backoffice-uis");
     expect(skill).toContain("## Result contract");
+    expect(skill).toContain("## Durable workflow branch");
+    expect(skill).toContain("/static/skills/workflows/SKILL.md");
+    expect(skill).toContain("/static/skills/generating-backoffice-uis/WORKFLOWS.md");
+    expect(staticContent["skills/generating-backoffice-uis/WORKFLOWS.md"]).toBe(workflowReference);
     expect(skill).toContain("## Spec invariants");
+    expect(skill).toContain("type StateVisibilityCondition");
     expect(skill).toContain("## Production component catalog");
+    expect(skill).toContain("Props type:");
+    expect(skill).toContain("- columns: 1-12 items");
+    expect(skill).toContain("- rows[].*: at most 2000 characters");
     expect(skill).toContain("Raw HTML, scripts, iframes, embeds, arbitrary URLs");
+    expect(skill).toContain("Expressions cannot be nested inside array items or object fields");
 
     for (const [name, definition] of Object.entries(backofficeUiComponentDefinitions)) {
       expect(skill).toContain(`### \`${name}\``);
@@ -107,9 +121,14 @@ describe("generating Backoffice UIs skill", () => {
     }
   });
 
-  test("renders every canonical component in declaration order", () => {
+  test("renders exact nested prop types for every canonical component", () => {
     const reference = renderComponentReference();
     const componentNames = Object.keys(backofficeUiComponentDefinitions);
+
+    expect(reference).not.toContain("object[]");
+    expect(reference).toContain("detail?: string;");
+    expect(reference).toContain("[key: string]: string;");
+    expect(reference).toContain("- items[].title: 1-200 characters");
 
     expect(componentNames).toEqual([
       "Stack",
@@ -165,6 +184,43 @@ describe("generating Backoffice UIs skill", () => {
     assert(backofficeUiCatalog.validate(parsedResult.value.$ui.spec).success);
     expect(parsedResult.value.summary).toEqual({ eventTypeCount: 2, sourceCount: 2 });
     expect(parsedResult.value.eventCatalog).toHaveLength(2);
+  });
+
+  test("discloses UI-specific durable workflow guidance without forking workflow rules", () => {
+    expect(skill).toContain("/static/skills/workflows/SKILL.md");
+    expect(skill).toContain("/static/skills/generating-backoffice-uis/WORKFLOWS.md");
+    expect(skill).not.toContain("Keep external calls, time reads");
+    expect(skill).not.toContain("do not rebuild state from local mutation");
+
+    expect(workflowReference).toContain('step.do("build order report"');
+    expect(workflowReference).toContain("Keep every identifier and value needed by later steps");
+    expect(workflowReference).toContain("not the workflow's durable dataflow API");
+    expect(workflowReference).toContain("renders it as the final output");
+    expect(workflowReference).toContain("return report;");
+
+    const stepResult = {
+      orderIds: ["order-1", "order-2"],
+      orderCount: 2,
+      $ui: {
+        version: 1,
+        state: { orderCount: "2" },
+        spec: {
+          root: "metric",
+          elements: {
+            metric: {
+              type: "Metric",
+              props: { label: "Open orders", value: { $state: "/orderCount" } },
+              children: [],
+            },
+          },
+        },
+      },
+    };
+    const parsedResult = parseBackofficeUiResult(stepResult);
+
+    assert(parsedResult.kind === "valid");
+    expect(parsedResult.value.orderIds).toEqual(["order-1", "order-2"]);
+    assert.equal(parsedResult.value.orderCount, 2);
   });
 
   test("keeps detailed UI authoring guidance out of the static system prompt", () => {

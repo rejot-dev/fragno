@@ -18,17 +18,20 @@ import type {
   ParallelNode,
   SourceRange,
   SpecificEventGuardAnnotation,
+  StepNode,
   TerminalNode,
   WorkflowChildNode,
   WorkflowVisualizationSnapshot,
 } from "@fragno-dev/workflow-visualizer-tokens";
 
+import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 
 import { GraphBadge } from "./graph-badge";
 import type { LinkedScrollViewport } from "./linked-scroll";
 import type { WorkflowGraphDetailMode } from "./script-view-mode";
 import { SourceLocationButton } from "./source-location-button";
+import { WorkflowGeneratedUi } from "./workflow-generated-ui";
 import {
   countRenderedWorkflowSteps,
   createWorkflowGraphPresentation,
@@ -116,14 +119,26 @@ export function ScriptWorkflowGraph({
                   </div>
                 </div>
 
-                <WorkflowChildTree
-                  parentId={workflow.id}
-                  childrenByParent={presentation.childrenByParent}
-                  detailMode={detailMode}
-                  runtimeToolCallsByStepId={runtimeToolCallsByStepId}
-                  stepStatesByNodeId={workflowRun?.stepStatesByNodeId}
-                  onSourceSelect={onSourceSelect}
-                />
+                {detailMode === "ui" ? (
+                  <WorkflowUiResults
+                    workflowId={workflow.id}
+                    childrenByParent={presentation.childrenByParent}
+                    run={workflowRun}
+                    onSourceSelect={onSourceSelect}
+                  />
+                ) : (
+                  <>
+                    <WorkflowChildTree
+                      parentId={workflow.id}
+                      childrenByParent={presentation.childrenByParent}
+                      detailMode={detailMode}
+                      runtimeToolCallsByStepId={runtimeToolCallsByStepId}
+                      stepStatesByNodeId={workflowRun?.stepStatesByNodeId}
+                      onSourceSelect={onSourceSelect}
+                    />
+                    <WorkflowFinalOutput run={workflowRun} />
+                  </>
+                )}
               </section>
             );
           })}
@@ -133,6 +148,88 @@ export function ScriptWorkflowGraph({
       <WorkflowDiagnostics visualization={visualization} />
     </div>
   );
+}
+
+function WorkflowUiResults({
+  workflowId,
+  childrenByParent,
+  run,
+  onSourceSelect,
+}: {
+  workflowId: string;
+  childrenByParent: Map<string, WorkflowChildNode[]>;
+  run?: ScriptWorkflowRun;
+  onSourceSelect?: (source: SourceRange) => void;
+}) {
+  const uiSteps = collectWorkflowUiSteps(workflowId, childrenByParent, run?.stepStatesByNodeId);
+  const hasFinalOutput = workflowRunHasGeneratedUiOutput(run);
+
+  if (uiSteps.length === 0 && !hasFinalOutput) {
+    return (
+      <p className="mt-3 border border-dashed border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3 text-xs text-[var(--bo-muted)]">
+        No generated UI results yet.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-3">
+      {uiSteps.map((step) => (
+        <WorkflowStepCard
+          key={step.id}
+          step={step}
+          runState={run?.stepStatesByNodeId.get(step.id)}
+          onSourceSelect={onSourceSelect}
+        />
+      ))}
+      <WorkflowFinalOutput run={run} />
+    </div>
+  );
+}
+
+function collectWorkflowUiSteps(
+  parentId: string,
+  childrenByParent: Map<string, WorkflowChildNode[]>,
+  stepStatesByNodeId?: ReadonlyMap<string, WorkflowStepRunState>,
+): StepNode[] {
+  return (childrenByParent.get(parentId) ?? []).flatMap((child) => {
+    const nestedUiSteps = collectWorkflowUiSteps(child.id, childrenByParent, stepStatesByNodeId);
+    if (child.kind !== "step") {
+      return nestedUiSteps;
+    }
+
+    const runState = stepStatesByNodeId?.get(child.id);
+    return runState?.status === "completed" &&
+      parseBackofficeUiResult(runState.result).kind !== "ordinary"
+      ? [child, ...nestedUiSteps]
+      : nestedUiSteps;
+  });
+}
+
+function WorkflowFinalOutput({ run }: { run?: ScriptWorkflowRun }) {
+  if (!workflowRunHasGeneratedUiOutput(run)) {
+    return null;
+  }
+
+  return (
+    <div
+      data-workflow-final-output
+      className="mt-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3"
+    >
+      <p className="text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
+        Final output
+      </p>
+      <div className="mt-3 border-t border-[color:var(--bo-border)] pt-3">
+        <WorkflowGeneratedUi value={run.output} />
+      </div>
+    </div>
+  );
+}
+
+function workflowRunHasGeneratedUiOutput(
+  run: ScriptWorkflowRun | undefined,
+): run is ScriptWorkflowRun {
+  return run?.status === "complete" && parseBackofficeUiResult(run.output).kind !== "ordinary";
 }
 
 function WorkflowEventGuard({
