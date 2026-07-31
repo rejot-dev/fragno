@@ -41,6 +41,8 @@ export const systemFileMount: FileMountMetadata = {
   description: "Admin-only system-scope filesystem for system automations and metadata.",
 };
 
+// Interactive admins enter through system scope; principal-free system work may mount these files
+// while operating within a narrower organization or project scope.
 const canSeeSystemFileMount = ({ execution }: FilesContext): boolean =>
   execution.scope.kind === "system" ||
   (execution.actors.initiator.scope === "internal" &&

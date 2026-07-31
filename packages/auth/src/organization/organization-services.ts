@@ -10,7 +10,7 @@ import {
   sessionCredentialOwnerSelect,
   validateSessionCredentialOwner,
 } from "../session/session-credential-validator";
-import type { Role } from "../types";
+import type { AuthServiceMutationOptions, Role } from "../types";
 import { mapUserSummary } from "../user/summary";
 import { canDeleteOrganization, canManageOrganization, isGlobalAdmin } from "./permissions";
 import type { Organization, OrganizationConfig, OrganizationMember } from "./types";
@@ -23,7 +23,8 @@ import {
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
 
-type CreateOrganizationInput = {
+type CreateOrganizationInput = AuthServiceMutationOptions & {
+  id?: string;
   name: string;
   slug: string;
   creatorUserId: string;
@@ -190,6 +191,11 @@ const resolveInternalId = (value: unknown): string | bigint | undefined => {
   return undefined;
 };
 
+const normalizeOptionalOrganizationId = (id: string | undefined): string | undefined => {
+  const normalizedId = id?.trim();
+  return normalizedId || undefined;
+};
+
 const normalizeMany = <T>(value: T | T[] | null | undefined): T[] => {
   if (!value) {
     return [];
@@ -235,6 +241,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions) 
     principal?.auth.credentialKind === "session" ? principal.auth.credentialId : null;
 
   const createOrganization = function (this: AuthServiceContext, input: CreateOrganizationInput) {
+    const normalizedOrganizationId = normalizeOptionalOrganizationId(input.id);
     const normalizedSlug = normalizeOrganizationSlug(input.slug);
     if (!normalizedSlug) {
       return this.serviceTx(authSchema)
@@ -288,6 +295,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions) 
         }
 
         const organizationId = uow.create("organization", {
+          ...(normalizedOrganizationId ? { id: normalizedOrganizationId } : {}),
           name: input.name,
           slug: normalizedSlug,
           logoUrl: input.logoUrl ?? null,
@@ -350,15 +358,17 @@ export function createOrganizationServices(options: OrganizationServiceOptions) 
             })
           : null;
 
-        uow.triggerHook("onOrganizationCreated", {
-          organization,
-          actor: actorSummary,
-        });
-        uow.triggerHook("onMemberAdded", {
-          organization,
-          member,
-          actor: actorSummary,
-        });
+        if (input.emitHooks !== false) {
+          uow.triggerHook("onOrganizationCreated", {
+            organization,
+            actor: actorSummary,
+          });
+          uow.triggerHook("onMemberAdded", {
+            organization,
+            member,
+            actor: actorSummary,
+          });
+        }
 
         return {
           ok: true as const,
@@ -652,6 +662,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions) 
         metadata?: Record<string, unknown> | null;
       },
       actor: { userId: string; userRole: Role },
+      mutationOptions?: AuthServiceMutationOptions,
     ) {
       const nextSlug = patch.slug ? normalizeOrganizationSlug(patch.slug) : undefined;
       if (patch.slug && !nextSlug) {
@@ -757,10 +768,12 @@ export function createOrganizationServices(options: OrganizationServiceOptions) 
                 })
               : null;
 
-            uow.triggerHook("onOrganizationUpdated", {
-              organization,
-              actor: actorSummary,
-            });
+            if (mutationOptions?.emitHooks !== false) {
+              uow.triggerHook("onOrganizationUpdated", {
+                organization,
+                actor: actorSummary,
+              });
+            }
 
             return {
               ok: true as const,

@@ -37,6 +37,21 @@ export default {
         ],
         rules: ["react-doctor/async-await-in-loop"],
       },
+      {
+        // Authorization gates intentionally short-circuit in declaration order.
+        files: ["app/backoffice-runtime/kernel.ts", "app/fragno/runtime-tools/runtime-tools.ts"],
+        rules: ["react-doctor/async-await-in-loop"],
+      },
+      {
+        // Upload configuration must commit before filesystem construction reads it.
+        files: ["app/fragno/runtime-tools/families/internal.ts"],
+        rules: ["react-doctor/server-sequential-independent-await"],
+      },
+      {
+        // This test deliberately models the lossy JSON persistence boundary used by durable data.
+        files: ["app/fragno/automation/scenario-pi-boundary.test.ts"],
+        rules: ["react-doctor/no-json-parse-stringify-clone"],
+      },
     ],
   },
 };

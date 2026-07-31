@@ -1176,4 +1176,4 @@ export {
   writeDefaultOrganizationId,
 };
 
-export type { Role };
+export type { AuthServiceMutationOptions, Role } from "./types";

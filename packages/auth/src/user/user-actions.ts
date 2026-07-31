@@ -25,6 +25,7 @@ import {
   validateSessionCredentialOwner,
 } from "../session/session-credential-validator";
 import { resolveCredentialSeedFromMembers, credentialSeedSchema } from "../session/session-seed";
+import type { AuthServiceMutationOptions } from "../types";
 import {
   createAutoOrganization,
   resolveAutoOrganizationInput,
@@ -115,7 +116,11 @@ export function createUserServices(
     email: string,
     passwordHash: string,
     role: "user" | "admin" = "user",
-    autoCreateOptions?: AutoCreateOrganizationOptions,
+    createOptions?: AutoCreateOrganizationOptions &
+      AuthServiceMutationOptions & {
+        id?: string;
+        bannedAt?: Date | null;
+      },
   ) {
     const normalizedEmail = normalizeAuthEmail(email);
 
@@ -123,39 +128,43 @@ export function createUserServices(
       .mutate(({ uow }) => {
         const resolvedRole = resolveCreateUserRole(normalizedEmail, role);
         const id = uow.create("user", {
+          ...(createOptions?.id ? { id: createOptions.id } : {}),
           email: normalizedEmail,
           passwordHash,
           role: resolvedRole,
+          bannedAt: createOptions?.bannedAt ?? null,
         });
         const userSummary = mapUserSummary({
           id: id.valueOf(),
           email: normalizedEmail,
           role: resolvedRole,
-          bannedAt: null,
+          bannedAt: createOptions?.bannedAt ?? null,
         });
 
         const autoOrganization = createAutoOrganization(uow, {
           userId: id.valueOf(),
           email: normalizedEmail,
-          options: autoCreateOptions ?? options,
+          options: createOptions ?? options,
         });
 
-        uow.triggerHook("onUserCreated", {
-          user: userSummary,
-          actor: null,
-          emailVerifiedAt: null,
-        });
+        if (createOptions?.emitHooks !== false) {
+          uow.triggerHook("onUserCreated", {
+            user: userSummary,
+            actor: null,
+            emailVerifiedAt: null,
+          });
 
-        if (autoOrganization) {
-          uow.triggerHook("onOrganizationCreated", {
-            organization: autoOrganization.organization,
-            actor: userSummary,
-          });
-          uow.triggerHook("onMemberAdded", {
-            organization: autoOrganization.organization,
-            member: autoOrganization.member,
-            actor: userSummary,
-          });
+          if (autoOrganization) {
+            uow.triggerHook("onOrganizationCreated", {
+              organization: autoOrganization.organization,
+              actor: userSummary,
+            });
+            uow.triggerHook("onMemberAdded", {
+              organization: autoOrganization.organization,
+              member: autoOrganization.member,
+              actor: userSummary,
+            });
+          }
         }
 
         return {
@@ -248,7 +257,12 @@ export function createUserServices(
     /**
      * Set a user's role without actor or credential checks.
      */
-    setUserRole: function (this: AuthServiceContext, userId: string, role: "user" | "admin") {
+    setUserRole: function (
+      this: AuthServiceContext,
+      userId: string,
+      role: "user" | "admin",
+      mutationOptions?: AuthServiceMutationOptions,
+    ) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow.findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
@@ -256,7 +270,7 @@ export function createUserServices(
         .mutate(({ uow, retrieveResult: [user] }) => {
           uow.update("user", userId, (b) => b.set({ role }));
 
-          if (user) {
+          if (user && mutationOptions?.emitHooks !== false) {
             uow.triggerHook("onUserRoleUpdated", {
               user: mapUserSummary({
                 id: userId,
@@ -268,6 +282,24 @@ export function createUserServices(
             });
           }
           return { success: true };
+        })
+        .build();
+    },
+    /**
+     * Set whether a user is banned without credential checks.
+     */
+    setUserBannedAt: function (this: AuthServiceContext, userId: string, bannedAt: Date | null) {
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+        )
+        .mutate(({ uow, retrieveResult: [user] }) => {
+          if (!user) {
+            return { ok: false as const, code: "user_not_found" as const };
+          }
+
+          uow.update("user", user.id, (b) => b.set({ bannedAt }).check());
+          return { ok: true as const };
         })
         .build();
     },
