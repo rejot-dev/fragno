@@ -10,6 +10,7 @@ import { usePiSessionListing } from "@/fragno/pi/tanstack/use-session-listing";
 
 import { MobileSessionStrip } from "./mobile-session-strip";
 import { NewSessionComposer } from "./new-session-composer";
+import { SessionListSplit } from "./session-list-split";
 import { SessionSidebar } from "./session-sidebar";
 import type { PiCreateSessionActionData } from "./session-types";
 import type { PiLayoutContext } from "./shared";
@@ -150,37 +151,39 @@ function PiSessionsWorkspaceView({
   );
 
   return (
-    <section className="bo-fragment-surface flex h-full min-h-0 flex-1 flex-col overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)] lg:flex-row">
-      <MobileSessionStrip
-        basePath={basePath}
-        selectedSessionId={sessionId ?? null}
-        selectedWorkflowName={workflowName ?? null}
-        sessions={sessions}
-        workflowStatuses={workflowStatuses}
-        onNewChat={startNewSession}
-      />
-
-      <SessionSidebar
-        basePath={basePath}
-        listingError={listingError}
-        selectedSessionId={sessionId ?? null}
-        selectedWorkflowName={workflowName ?? null}
-        sessions={sessions}
-        workflowStatuses={workflowStatuses}
-        onNewChat={startNewSession}
-      />
-
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bo-panel)]">
-        <Outlet
-          context={{
-            scope,
-            persistenceSource: source,
-            harnesses,
-            basePath,
-            createSessionPanel,
-          }}
+    <SessionListSplit
+      storageKey={`backoffice:pi-session-list-width:${scope.orgId}`}
+      mobileNavigation={
+        <MobileSessionStrip
+          basePath={basePath}
+          selectedSessionId={sessionId ?? null}
+          selectedWorkflowName={workflowName ?? null}
+          sessions={sessions}
+          workflowStatuses={workflowStatuses}
+          onNewChat={startNewSession}
         />
-      </main>
-    </section>
+      }
+      sidebar={
+        <SessionSidebar
+          basePath={basePath}
+          listingError={listingError}
+          selectedSessionId={sessionId ?? null}
+          selectedWorkflowName={workflowName ?? null}
+          sessions={sessions}
+          workflowStatuses={workflowStatuses}
+          onNewChat={startNewSession}
+        />
+      }
+    >
+      <Outlet
+        context={{
+          scope,
+          persistenceSource: source,
+          harnesses,
+          basePath,
+          createSessionPanel,
+        }}
+      />
+    </SessionListSplit>
   );
 }

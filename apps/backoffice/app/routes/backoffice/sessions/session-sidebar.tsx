@@ -25,7 +25,7 @@ export function SessionSidebar({
   onNewChat,
 }: SessionSidebarProps) {
   return (
-    <aside className="hidden min-h-0 w-72 flex-none flex-col border-r border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] lg:flex">
+    <aside className="flex h-full min-h-0 w-full flex-col bg-[var(--bo-panel-2)]">
       <div className="border-b border-[color:var(--bo-border)] p-3">
         <Link
           to={basePath}
