@@ -158,7 +158,9 @@ export type AnyFragnoInstantiatedDatabaseFragment = FragnoInstantiatedFragment<
   DatabaseHandlerContext,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any,
-  FragnoPublicConfigWithDatabase
+  FragnoPublicConfigWithDatabase,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any
 >;
 
 /**

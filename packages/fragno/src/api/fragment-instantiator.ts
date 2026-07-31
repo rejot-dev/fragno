@@ -70,8 +70,9 @@ export type FragnoExecutionContext = {
   propagationContext?: RequestPropagationContext | null;
 };
 
-export type FragnoRequestLifecycleContext = FragnoExecutionContext & {
+export type FragnoRequestLifecycleContext<TRequestContext = never> = FragnoExecutionContext & {
   waitUntil?: (promise: Promise<unknown>) => void;
+  requestContext?: TRequestContext;
 };
 
 type InternalRoutePrefix = "/_internal";
@@ -224,6 +225,8 @@ export type AnyFragnoInstantiatedFragment = FragnoInstantiatedFragment<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any
 >;
 
@@ -257,7 +260,8 @@ export class FragnoInstantiatedFragment<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage = {},
   TOptions extends FragnoPublicConfig = FragnoPublicConfig,
-> implements IFragnoInstantiatedFragment {
+  TRequestContext = never,
+> implements IFragnoInstantiatedFragment<TRequestContext> {
   readonly [instantiatedFragmentFakeSymbol] = instantiatedFragmentFakeSymbol;
 
   // Private fields
@@ -267,7 +271,7 @@ export class FragnoInstantiatedFragment<
   readonly #services: TServices;
   readonly #mountRoute: string;
   readonly #router: ReturnType<typeof createRouter>;
-  #middlewareHandler?: FragnoMiddlewareCallback<TRoutes, TDeps, TServices>;
+  #middlewareHandler?: FragnoMiddlewareCallback<TRoutes, TDeps, TServices, TRequestContext>;
   readonly #serviceThisContext?: TServiceThisContext; // Context for services (may have restricted capabilities)
   readonly #handlerThisContext?: THandlerThisContext; // Context for handlers (full capabilities)
   readonly #contextStorage: RequestContextStorage<TRequestStorage>;
@@ -351,7 +355,9 @@ export class FragnoInstantiatedFragment<
    * Add middleware to this fragment.
    * Middleware can inspect and modify requests before they reach handlers.
    */
-  withMiddleware(handler: FragnoMiddlewareCallback<TRoutes, TDeps, TServices>): this {
+  withMiddleware(
+    handler: FragnoMiddlewareCallback<TRoutes, TDeps, TServices, TRequestContext>,
+  ): this {
     if (this.#middlewareHandler) {
       throw new Error("Middleware already set");
     }
@@ -368,19 +374,19 @@ export class FragnoInstantiatedFragment<
     callback: () => T,
     source?: RequestSource,
     routeInfo?: RequestRouteInfo,
-    lifecycleContext?: FragnoRequestLifecycleContext,
+    lifecycleContext?: FragnoRequestLifecycleContext<unknown>,
   ): T;
   #withRequestStorage<T>(
     callback: () => Promise<T>,
     source?: RequestSource,
     routeInfo?: RequestRouteInfo,
-    lifecycleContext?: FragnoRequestLifecycleContext,
+    lifecycleContext?: FragnoRequestLifecycleContext<unknown>,
   ): Promise<T>;
   #withRequestStorage<T>(
     callback: () => T | Promise<T>,
     source: RequestSource = "context",
     routeInfo?: RequestRouteInfo,
-    lifecycleContext?: FragnoRequestLifecycleContext,
+    lifecycleContext?: FragnoRequestLifecycleContext<unknown>,
   ): T | Promise<T> {
     if (!this.#serviceThisContext && !this.#handlerThisContext) {
       // No request context configured - just run callback directly
@@ -559,7 +565,10 @@ export class FragnoInstantiatedFragment<
    * Main request handler for this fragment.
    * Handles routing, middleware, and error handling.
    */
-  async handler(req: Request, lifecycleContext?: FragnoRequestLifecycleContext): Promise<Response> {
+  async handler(
+    req: Request,
+    lifecycleContext?: FragnoRequestLifecycleContext<TRequestContext>,
+  ): Promise<Response> {
     const url = new URL(req.url);
     const pathname = url.pathname;
 
@@ -688,7 +697,7 @@ export class FragnoInstantiatedFragment<
       mountRoute: this.#mountRoute,
       fullPath: fullRoutePath,
     };
-    const requestLifecycleContext: FragnoRequestLifecycleContext = {
+    const requestLifecycleContext: FragnoRequestLifecycleContext<TRequestContext> = {
       ...lifecycleContext,
       propagationContext:
         lifecycleContext?.propagationContext === undefined
@@ -699,7 +708,12 @@ export class FragnoInstantiatedFragment<
     // Execute middleware and handler
     const executeRequest = async (): Promise<Response> => {
       // Parent middleware execution
-      const middlewareResult = await this.#executeMiddleware(req, route, requestState);
+      const middlewareResult = await this.#executeMiddleware(
+        req,
+        route,
+        requestState,
+        requestLifecycleContext.requestContext,
+      );
       if (middlewareResult !== undefined) {
         return middlewareResult;
       }
@@ -835,51 +849,31 @@ export class FragnoInstantiatedFragment<
     req: Request,
     route: ReturnType<typeof findRoute>,
     requestState: MutableRequestState,
+    requestContext: TRequestContext | undefined,
   ): Promise<Response | undefined> {
     if (!route) {
       return undefined;
     }
 
     const { path } = route.data as AnyFragnoRouteConfig;
-    return FragnoInstantiatedFragment.#runMiddlewareForFragment(this, {
-      req,
-      method: req.method as HTTPMethod,
-      path,
-      requestState,
-    });
-  }
-
-  static async #runMiddlewareForFragment(
-    fragment: AnyFragnoInstantiatedFragment,
-    options: {
-      req: Request;
-      method: HTTPMethod;
-      path: string;
-      requestState: MutableRequestState;
-      routes?: readonly AnyFragnoRouteConfig[];
-    },
-  ): Promise<Response | undefined> {
-    if (!fragment.#middlewareHandler) {
+    if (!this.#middlewareHandler) {
       return undefined;
     }
 
-    const middlewareInputContext = new RequestMiddlewareInputContext(
-      (options.routes ?? fragment.#routes) as readonly AnyFragnoRouteConfig[],
+    const middlewareInputContext = new RequestMiddlewareInputContext<TRoutes, TRequestContext>(
+      this.#routes,
       {
-        method: options.method,
-        path: options.path,
-        request: options.req,
-        state: options.requestState,
+        method: req.method as HTTPMethod,
+        path,
+        request: req,
+        state: requestState,
+        requestContext,
       },
     );
-
-    const middlewareOutputContext = new RequestMiddlewareOutputContext(
-      fragment.#deps,
-      fragment.#services,
-    );
+    const middlewareOutputContext = new RequestMiddlewareOutputContext(this.#deps, this.#services);
 
     try {
-      const middlewareResult = await fragment.#middlewareHandler(
+      const middlewareResult = await this.#middlewareHandler(
         middlewareInputContext,
         middlewareOutputContext,
       );
@@ -910,7 +904,7 @@ export class FragnoInstantiatedFragment<
     route: ReturnType<typeof findRoute>,
     requestState: MutableRequestState,
     rawBody?: string,
-    lifecycleContext?: FragnoRequestLifecycleContext,
+    lifecycleContext?: FragnoRequestLifecycleContext<TRequestContext>,
   ): Promise<Response> {
     if (!route) {
       return Response.json({ error: "Route not found", code: "ROUTE_NOT_FOUND" }, { status: 404 });
@@ -1244,7 +1238,7 @@ export function instantiateFragment<
  * Interface that defines the public API for a fragment instantiation builder.
  * Used to ensure consistency between real implementations and stubs.
  */
-interface IFragmentInstantiationBuilder {
+interface IFragmentInstantiationBuilder<TRequestContext = never> {
   /**
    * Get the fragment definition
    */
@@ -1294,14 +1288,17 @@ interface IFragmentInstantiationBuilder {
   /**
    * Build and return the instantiated fragment
    */
-  build(): IFragnoInstantiatedFragment;
+  build(): IFragnoInstantiatedFragment<TRequestContext>;
+
+  /** Declare the application-owned context accepted by the fragment request handler. */
+  withRequestContext<TNewRequestContext>(): IFragmentInstantiationBuilder<TNewRequestContext>;
 }
 
 /**
  * Interface that defines the public API for an instantiated fragment.
  * Used to ensure consistency between real implementations and stubs.
  */
-interface IFragnoInstantiatedFragment {
+interface IFragnoInstantiatedFragment<TRequestContext = never> {
   readonly [instantiatedFragmentFakeSymbol]: typeof instantiatedFragmentFakeSymbol;
 
   get name(): string;
@@ -1326,7 +1323,10 @@ interface IFragnoInstantiatedFragment {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlersFor(framework: FullstackFrameworks): any;
 
-  handler(req: Request, lifecycleContext?: FragnoRequestLifecycleContext): Promise<Response>;
+  handler(
+    req: Request,
+    lifecycleContext?: FragnoRequestLifecycleContext<TRequestContext>,
+  ): Promise<Response>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   callRoute(method: HTTPMethod, path: string, inputOptions?: any): Promise<any>;
@@ -1352,7 +1352,8 @@ export class FragmentInstantiationBuilder<
   TRequestStorage,
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
   TInternalRoutes extends readonly AnyRouteOrFactory[],
-> implements IFragmentInstantiationBuilder {
+  TRequestContext = never,
+> implements IFragmentInstantiationBuilder<TRequestContext> {
   readonly #definition: FragmentDefinition<
     TConfig,
     TOptions,
@@ -1456,9 +1457,13 @@ export class FragmentInstantiationBuilder<
     THandlerThisContext,
     TRequestStorage,
     TNewRoutes,
-    TInternalRoutes
+    TInternalRoutes,
+    TRequestContext
   > {
-    const newBuilder = new FragmentInstantiationBuilder(this.#definition, routes);
+    const newBuilder = new FragmentInstantiationBuilder(
+      this.#definition,
+      routes,
+    ).withRequestContext<TRequestContext>();
     // Preserve config, options, and services from the current instance
     newBuilder.#config = this.#config;
     newBuilder.#options = this.#options;
@@ -1483,6 +1488,42 @@ export class FragmentInstantiationBuilder<
   }
 
   /**
+   * Declare the application-owned context supplied separately to each request.
+   * This is a type-only operation; the caller provides the value to handler().
+   */
+  withRequestContext<TNewRequestContext>(): FragmentInstantiationBuilder<
+    TConfig,
+    TOptions,
+    TDeps,
+    TBaseServices,
+    TServices,
+    TServiceDependencies,
+    TPrivateServices,
+    TServiceThisContext,
+    THandlerThisContext,
+    TRequestStorage,
+    TRoutesOrFactories,
+    TInternalRoutes,
+    TNewRequestContext
+  > {
+    return this as unknown as FragmentInstantiationBuilder<
+      TConfig,
+      TOptions,
+      TDeps,
+      TBaseServices,
+      TServices,
+      TServiceDependencies,
+      TPrivateServices,
+      TServiceThisContext,
+      THandlerThisContext,
+      TRequestStorage,
+      TRoutesOrFactories,
+      TInternalRoutes,
+      TNewRequestContext
+    >;
+  }
+
+  /**
    * Build and return the instantiated fragment
    */
   build(): FragnoInstantiatedFragment<
@@ -1492,7 +1533,8 @@ export class FragmentInstantiationBuilder<
     TServiceThisContext,
     THandlerThisContext,
     TRequestStorage,
-    TOptions
+    TOptions,
+    TRequestContext
   > {
     // This variable is set by the frango-cli when extracting database schemas
     const dryRun = process.env["FRAGNO_INIT_DRY_RUN"] === "true";
@@ -1504,7 +1546,16 @@ export class FragmentInstantiationBuilder<
       this.#options ?? ({} as TOptions),
       this.#services,
       { dryRun },
-    );
+    ) as unknown as FragnoInstantiatedFragment<
+      RoutesWithInternal<FlattenRouteFactories<TRoutesOrFactories>, TInternalRoutes>,
+      TDeps,
+      BoundServices<TBaseServices & TServices>,
+      TServiceThisContext,
+      THandlerThisContext,
+      TRequestStorage,
+      TOptions,
+      TRequestContext
+    >;
   }
 }
 

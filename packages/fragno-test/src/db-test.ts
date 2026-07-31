@@ -62,9 +62,11 @@ type FragmentFactoryResult =
       any, // eslint-disable-line @typescript-eslint/no-explicit-any
       any, // eslint-disable-line @typescript-eslint/no-explicit-any
       any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
       any // eslint-disable-line @typescript-eslint/no-explicit-any
     >
   | FragnoInstantiatedFragment<
+      any, // eslint-disable-line @typescript-eslint/no-explicit-any
       any, // eslint-disable-line @typescript-eslint/no-explicit-any
       any, // eslint-disable-line @typescript-eslint/no-explicit-any
       any, // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -87,6 +89,7 @@ type HandlerThisContextFromFactoryResult<T> =
     infer THandlerThisContext,
     any, // eslint-disable-line @typescript-eslint/no-explicit-any
     any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
     any // eslint-disable-line @typescript-eslint/no-explicit-any
   >
     ? THandlerThisContext
@@ -96,6 +99,7 @@ type HandlerThisContextFromFactoryResult<T> =
           any, // eslint-disable-line @typescript-eslint/no-explicit-any
           any, // eslint-disable-line @typescript-eslint/no-explicit-any
           infer THandlerThisContext,
+          any, // eslint-disable-line @typescript-eslint/no-explicit-any
           any, // eslint-disable-line @typescript-eslint/no-explicit-any
           any // eslint-disable-line @typescript-eslint/no-explicit-any
         >
@@ -115,7 +119,8 @@ type FragmentResultFromFactoryResult<T> =
     infer THandlerThisContext,
     infer TRequestStorage,
     infer TRoutesOrFactories,
-    any // eslint-disable-line @typescript-eslint/no-explicit-any
+    any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    infer TRequestContext
   >
     ? FragmentResult<
         TDeps,
@@ -123,7 +128,8 @@ type FragmentResultFromFactoryResult<T> =
         TServiceThisContext,
         THandlerThisContext,
         TRequestStorage,
-        FlattenRouteFactories<TRoutesOrFactories>
+        FlattenRouteFactories<TRoutesOrFactories>,
+        TRequestContext
       >
     : T extends FragnoInstantiatedFragment<
           infer TRoutes,
@@ -132,7 +138,8 @@ type FragmentResultFromFactoryResult<T> =
           infer TServiceThisContext,
           infer THandlerThisContext,
           infer TRequestStorage,
-          any // eslint-disable-line @typescript-eslint/no-explicit-any
+          any, // eslint-disable-line @typescript-eslint/no-explicit-any
+          infer TRequestContext
         >
       ? FragmentResult<
           TDeps,
@@ -140,7 +147,8 @@ type FragmentResultFromFactoryResult<T> =
           TServiceThisContext,
           THandlerThisContext,
           TRequestStorage,
-          TRoutes
+          TRoutes,
+          TRequestContext
         >
       : never;
 
@@ -152,6 +160,7 @@ interface FragmentResult<
   THandlerThisContext extends RequestThisContext,
   TRequestStorage,
   TRoutes extends readonly any[], // eslint-disable-line @typescript-eslint/no-explicit-any
+  TRequestContext,
 > {
   fragment: FragnoInstantiatedFragment<
     TRoutes,
@@ -159,7 +168,9 @@ interface FragmentResult<
     TServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage
+    TRequestStorage,
+    FragnoPublicConfig,
+    TRequestContext
   >;
   services: TServices;
   deps: TDeps;
@@ -169,7 +180,9 @@ interface FragmentResult<
     TServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage
+    TRequestStorage,
+    FragnoPublicConfig,
+    TRequestContext
   >["callRoute"];
   db: TestDb;
 }
@@ -181,11 +194,13 @@ export type AnyFragmentResult = FragmentResult<
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
   any // eslint-disable-line @typescript-eslint/no-explicit-any
 >;
 
 // Safe: Catch-all for any fragment builder config type
 type AnyFragmentBuilderConfig = FragmentBuilderConfig<
+  any, // eslint-disable-line @typescript-eslint/no-explicit-any
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
   any, // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -216,6 +231,7 @@ interface FragmentBuilderConfig<
   TRequestStorage,
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
   TInternalRoutes extends readonly AnyRouteOrFactory[],
+  TRequestContext,
 > {
   kind: "builder";
   definition: FragmentDefinition<
@@ -243,7 +259,8 @@ interface FragmentBuilderConfig<
     THandlerThisContext,
     TRequestStorage,
     TRoutesOrFactories,
-    TInternalRoutes
+    TInternalRoutes,
+    TRequestContext
   >;
   migrateToVersion?: number;
 }
@@ -378,6 +395,7 @@ export class DatabaseFragmentsTestBuilder<
     TRequestStorage,
     TRoutesOrFactories extends readonly AnyRouteOrFactory[],
     TInternalRoutes extends readonly AnyRouteOrFactory[],
+    TRequestContext,
   >(
     name: TName,
     builder: FragmentInstantiationBuilder<
@@ -392,7 +410,8 @@ export class DatabaseFragmentsTestBuilder<
       THandlerThisContext,
       TRequestStorage,
       TRoutesOrFactories,
-      TInternalRoutes
+      TInternalRoutes,
+      TRequestContext
     >,
     options?: {
       migrateToVersion?: number;
@@ -405,7 +424,8 @@ export class DatabaseFragmentsTestBuilder<
         TServiceThisContext,
         THandlerThisContext,
         TRequestStorage,
-        FlattenRouteFactories<TRoutesOrFactories>
+        FlattenRouteFactories<TRoutesOrFactories>,
+        TRequestContext
       >;
     },
     TAdapter,

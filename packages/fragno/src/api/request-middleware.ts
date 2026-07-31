@@ -12,16 +12,18 @@ export type FragnoMiddlewareCallback<
   TRoutes extends readonly AnyFragnoRouteConfig[],
   TDeps,
   TServices extends Record<string, unknown>,
+  TRequestContext = never,
 > = (
-  inputContext: RequestMiddlewareInputContext<TRoutes>,
+  inputContext: RequestMiddlewareInputContext<TRoutes, TRequestContext>,
   outputContext: RequestMiddlewareOutputContext<TDeps, TServices>,
 ) => Promise<Response | undefined> | Response | undefined;
 
-export interface RequestMiddlewareOptions {
+export interface RequestMiddlewareOptions<TRequestContext = never> {
   path: string;
   method: HTTPMethod;
   request: Request;
   state: MutableRequestState;
+  requestContext?: TRequestContext;
 }
 
 export class RequestMiddlewareOutputContext<
@@ -46,12 +48,15 @@ export class RequestMiddlewareOutputContext<
   }
 }
 
-export class RequestMiddlewareInputContext<const TRoutes extends readonly AnyFragnoRouteConfig[]> {
-  readonly #options: RequestMiddlewareOptions;
+export class RequestMiddlewareInputContext<
+  const TRoutes extends readonly AnyFragnoRouteConfig[],
+  TRequestContext = never,
+> {
+  readonly #options: RequestMiddlewareOptions<TRequestContext>;
   readonly #route: TRoutes[number];
   readonly #state: MutableRequestState;
 
-  constructor(routes: TRoutes, options: RequestMiddlewareOptions) {
+  constructor(routes: TRoutes, options: RequestMiddlewareOptions<TRequestContext>) {
     this.#options = options;
     this.#state = options.state;
 
@@ -84,6 +89,11 @@ export class RequestMiddlewareInputContext<const TRoutes extends readonly AnyFra
 
   get headers(): Headers {
     return this.#state.headers;
+  }
+
+  /** Application-owned context supplied directly to the fragment request handler. */
+  get requestContext(): TRequestContext | undefined {
+    return this.#options.requestContext;
   }
 
   get inputSchema(): StandardSchemaV1 | undefined {
