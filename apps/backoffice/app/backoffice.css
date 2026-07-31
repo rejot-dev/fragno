@@ -255,9 +255,29 @@
   }
 }
 
+:root[data-reduced-motion="reduce"] [data-backoffice-root],
+:root[data-reduced-motion="reduce"] [data-backoffice-root]::before,
+:root[data-reduced-motion="reduce"] [data-backoffice-root]::after,
+:root[data-reduced-motion="reduce"] [data-backoffice-root] *,
+:root[data-reduced-motion="reduce"] [data-backoffice-root] *::before,
+:root[data-reduced-motion="reduce"] [data-backoffice-root] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+  transition-duration: 0.01ms !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .bo-fragment-mark[data-animated] > span {
-    animation: none;
+  :root:not([data-reduced-motion]) [data-backoffice-root],
+  :root:not([data-reduced-motion]) [data-backoffice-root]::before,
+  :root:not([data-reduced-motion]) [data-backoffice-root]::after,
+  :root:not([data-reduced-motion]) [data-backoffice-root] *,
+  :root:not([data-reduced-motion]) [data-backoffice-root] *::before,
+  :root:not([data-reduced-motion]) [data-backoffice-root] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
