@@ -1,5 +1,5 @@
 import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useCallback, useMemo, useState } from "react";
 import { Outlet, useActionData, useNavigation, useParams } from "react-router";
 
 import { BackofficeSystemState } from "@/components/backoffice";
@@ -10,6 +10,11 @@ import { usePiSessionListing } from "@/fragno/pi/tanstack/use-session-listing";
 
 import { MobileSessionStrip } from "./mobile-session-strip";
 import { NewSessionComposer } from "./new-session-composer";
+import {
+  updateSessionWorkspaceStateBySession,
+  type SessionWorkspaceStateBySession,
+  type SessionWorkspaceStateUpdate,
+} from "./session-detail/workspace-model";
 import { SessionListSplit } from "./session-list-split";
 import { SessionSidebar } from "./session-sidebar";
 import type { PiCreateSessionActionData } from "./session-types";
@@ -116,6 +121,15 @@ function PiSessionsWorkspaceView({
   const [preferredHarnessId, setPreferredHarnessId] = useState("");
   const [preferredModelOption, setPreferredModelOption] = useState("");
   const [draftPrompt, setDraftPrompt] = useState("");
+  const [workspaceStates, setWorkspaceStates] = useState<SessionWorkspaceStateBySession>({});
+  const updateWorkspaceState = useCallback(
+    (sessionKey: string, update: SessionWorkspaceStateUpdate) => {
+      setWorkspaceStates((current) =>
+        updateSessionWorkspaceStateBySession(current, sessionKey, update),
+      );
+    },
+    [],
+  );
 
   const selectedHarnessId = harnesses.some((harness) => harness.id === preferredHarnessId)
     ? preferredHarnessId
@@ -182,6 +196,8 @@ function PiSessionsWorkspaceView({
           harnesses,
           basePath,
           createSessionPanel,
+          workspaceStates,
+          updateWorkspaceState,
         }}
       />
     </SessionListSplit>

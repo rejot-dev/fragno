@@ -3,7 +3,7 @@ import type { ComponentType } from "react";
 
 import type { ScriptViewMode, WorkflowGraphDetailMode } from "./script-view-mode";
 
-const SCRIPT_VIEW_OPTIONS: Array<{
+export const SCRIPT_VIEW_OPTIONS: Array<{
   mode: ScriptViewMode;
   label: string;
   icon: ComponentType<{ className?: string }>;
@@ -11,6 +11,14 @@ const SCRIPT_VIEW_OPTIONS: Array<{
   { mode: "code", label: "Code", icon: Code2 },
   { mode: "graph", label: "Graph", icon: WorkflowIcon },
   { mode: "split", label: "Both", icon: Columns2 },
+];
+
+export const WORKFLOW_GRAPH_DETAIL_OPTIONS: Array<{
+  mode: WorkflowGraphDetailMode;
+  label: string;
+}> = [
+  { mode: "simple", label: "Simple" },
+  { mode: "verbose", label: "Verbose" },
 ];
 
 export function ScriptViewToggle({
@@ -57,7 +65,7 @@ export function WorkflowGraphDetailToggle({
       aria-label="Workflow graph detail"
       className="flex shrink-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-0.5"
     >
-      {(["simple", "verbose"] as const).map((mode) => (
+      {WORKFLOW_GRAPH_DETAIL_OPTIONS.map(({ mode, label }) => (
         <button
           key={mode}
           type="button"
@@ -67,7 +75,7 @@ export function WorkflowGraphDetailToggle({
           }}
           className={segmentedToggleButtonClass(detailMode === mode)}
         >
-          {mode}
+          {label}
         </button>
       ))}
     </div>

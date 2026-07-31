@@ -13,7 +13,7 @@ export type WorkflowGraphWorkspaceView = {
   projection: WorkflowGraphProjection;
 };
 
-export type SessionWorkspaceTab = {
+export type SessionWorkspaceItem = {
   id: string;
   toolCallId: string;
   label: string;
@@ -22,66 +22,43 @@ export type SessionWorkspaceTab = {
 
 export type SessionWorkspaceState = {
   open: boolean;
-  selectedTabId: string | null;
-  knownTabIds: string[];
+  selectedItemId: string | null;
 };
 
-export const generatedUiTabId = (toolCallId: string) => `generated-ui:${toolCallId}`;
-export const workflowGraphTabId = (toolCallId: string) => `workflow-graph:${toolCallId}`;
+export type SessionWorkspaceStateBySession = Readonly<Record<string, SessionWorkspaceState>>;
+export type SessionWorkspaceStateUpdate = (current: SessionWorkspaceState) => SessionWorkspaceState;
 
-export function createSessionWorkspaceState(
-  tabs: readonly SessionWorkspaceTab[],
-): SessionWorkspaceState {
+export const generatedUiWorkspaceId = (toolCallId: string) => `generated-ui:${toolCallId}`;
+export const workflowGraphWorkspaceId = (toolCallId: string) => `workflow-graph:${toolCallId}`;
+
+export function createSessionWorkspaceState(): SessionWorkspaceState {
   return {
-    open: tabs.length > 0,
-    selectedTabId: tabs.at(-1)?.id ?? null,
-    knownTabIds: tabs.map((tab) => tab.id),
+    open: false,
+    selectedItemId: null,
   };
 }
 
-export function reconcileSessionWorkspaceState(
-  state: SessionWorkspaceState,
-  tabs: readonly SessionWorkspaceTab[],
-): SessionWorkspaceState {
-  const previouslyKnownTabIds = new Set(state.knownTabIds);
-  const knownTabIds = [...state.knownTabIds];
-  let newestTab: SessionWorkspaceTab | undefined;
+export function updateSessionWorkspaceStateBySession(
+  states: SessionWorkspaceStateBySession,
+  sessionKey: string,
+  update: SessionWorkspaceStateUpdate,
+): SessionWorkspaceStateBySession {
+  const current = states[sessionKey] ?? createSessionWorkspaceState();
+  const next = update(current);
 
-  for (const tab of tabs) {
-    if (previouslyKnownTabIds.has(tab.id)) {
-      continue;
-    }
-    previouslyKnownTabIds.add(tab.id);
-    knownTabIds.push(tab.id);
-    newestTab = tab;
-  }
-
-  const selectedTabStillExists = tabs.some((tab) => tab.id === state.selectedTabId);
-  const nextState: SessionWorkspaceState = newestTab
-    ? {
-        open: true,
-        selectedTabId: newestTab.id,
-        knownTabIds,
-      }
-    : {
-        open: state.open,
-        selectedTabId: selectedTabStillExists
-          ? state.selectedTabId
-          : (tabs.at(-1)?.id ?? state.selectedTabId),
-        knownTabIds,
-      };
-
-  return sessionWorkspaceStatesEqual(state, nextState) ? state : nextState;
+  return next === current ? states : { ...states, [sessionKey]: next };
 }
 
-function sessionWorkspaceStatesEqual(
-  current: SessionWorkspaceState,
-  next: SessionWorkspaceState,
-): boolean {
-  return (
-    current.open === next.open &&
-    current.selectedTabId === next.selectedTabId &&
-    current.knownTabIds.length === next.knownTabIds.length &&
-    current.knownTabIds.every((tabId, index) => tabId === next.knownTabIds[index])
-  );
+export function toggleSessionWorkspaceItem(
+  state: SessionWorkspaceState,
+  itemId: string,
+): SessionWorkspaceState {
+  if (state.open && state.selectedItemId === itemId) {
+    return { ...state, open: false };
+  }
+
+  return {
+    open: true,
+    selectedItemId: itemId,
+  };
 }

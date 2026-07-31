@@ -12,7 +12,7 @@ export function ResultContent({
   showRawValue,
   value,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   parsedValue: BackofficeUiParseResult;
   showRawValue: boolean;
   value: unknown;

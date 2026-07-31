@@ -2,100 +2,70 @@ import { describe, expect, test } from "vitest";
 
 import {
   createSessionWorkspaceState,
-  generatedUiTabId,
-  reconcileSessionWorkspaceState,
-  type SessionWorkspaceTab,
+  generatedUiWorkspaceId,
+  toggleSessionWorkspaceItem,
+  updateSessionWorkspaceStateBySession,
+  workflowGraphWorkspaceId,
 } from "./workspace-model";
 
-const tab = (id: string): SessionWorkspaceTab => ({
-  id,
-  toolCallId: id,
-  label: id,
-  view: {
-    type: "generated-ui",
-    rawValue: {},
-    result: {
-      $ui: {
-        version: 1,
-        state: {},
-        spec: {
-          root: "text",
-          elements: {
-            text: { type: "Text", props: { text: id }, children: [] },
-          },
-        },
-      },
-    } as never,
-  },
-});
-
-describe("session workspace state", () => {
-  test("opens the latest tab when entering a session with existing output", () => {
-    const tabs = [tab(generatedUiTabId("first")), tab(generatedUiTabId("second"))];
-
-    expect(createSessionWorkspaceState(tabs)).toEqual({
-      open: true,
-      selectedTabId: generatedUiTabId("second"),
-      knownTabIds: tabs.map((entry) => entry.id),
-    });
-  });
-
-  test("respects manual closure across content refreshes without replacing unchanged state", () => {
-    const tabs = [tab(generatedUiTabId("first"))];
-    const closed = { ...createSessionWorkspaceState(tabs), open: false };
-
-    expect(reconcileSessionWorkspaceState(closed, tabs)).toBe(closed);
-  });
-
-  test("does not treat tabs returning after a projection gap as new", () => {
-    const firstTab = tab(generatedUiTabId("first"));
-    const closed = { ...createSessionWorkspaceState([firstTab]), open: false };
-
-    const gapState = reconcileSessionWorkspaceState(closed, []);
-    expect(gapState).toBe(closed);
-    expect(reconcileSessionWorkspaceState(gapState, [firstTab])).toBe(closed);
-  });
-
-  test("reopens and selects only a genuinely new tab", () => {
-    const firstTab = tab(generatedUiTabId("first"));
-    const secondTab = tab(generatedUiTabId("second"));
-    const closed = { ...createSessionWorkspaceState([firstTab]), open: false };
-
-    expect(reconcileSessionWorkspaceState(closed, [firstTab, secondTab])).toEqual({
-      open: true,
-      selectedTabId: secondTab.id,
-      knownTabIds: [firstTab.id, secondTab.id],
-    });
-  });
-
-  test("keeps observed tab ids when the current projection contains only a subset", () => {
-    const firstTab = tab(generatedUiTabId("first"));
-    const secondTab = tab(generatedUiTabId("second"));
-    const thirdTab = tab(generatedUiTabId("third"));
-    const state = {
-      ...createSessionWorkspaceState([firstTab, secondTab]),
+describe("session workspace selection", () => {
+  test("starts closed without selecting newly available information", () => {
+    expect(createSessionWorkspaceState()).toEqual({
       open: false,
-    };
-
-    expect(reconcileSessionWorkspaceState(state, [secondTab, thirdTab])).toEqual({
-      open: true,
-      selectedTabId: thirdTab.id,
-      knownTabIds: [firstTab.id, secondTab.id, thirdTab.id],
+      selectedItemId: null,
     });
   });
 
-  test("preserves explicit selection while known tabs update", () => {
-    const firstTab = tab(generatedUiTabId("first"));
-    const secondTab = tab(generatedUiTabId("second"));
-    const state = {
-      open: true,
-      selectedTabId: firstTab.id,
-      knownTabIds: [firstTab.id, secondTab.id],
-    };
+  test("keeps independent workspace state for each session in memory", () => {
+    const firstSessionId = "session-a";
+    const secondSessionId = "session-b";
+    const itemId = generatedUiWorkspaceId("interface");
+    const states = updateSessionWorkspaceStateBySession({}, firstSessionId, (current) =>
+      toggleSessionWorkspaceItem(current, itemId),
+    );
 
-    expect(reconcileSessionWorkspaceState(state, [firstTab, secondTab])).toMatchObject({
-      open: true,
-      selectedTabId: firstTab.id,
+    expect(states[firstSessionId]).toEqual({ open: true, selectedItemId: itemId });
+    expect(states[secondSessionId] ?? createSessionWorkspaceState()).toEqual({
+      open: false,
+      selectedItemId: null,
     });
+  });
+
+  test("opens the panel for the selected tool information", () => {
+    const itemId = workflowGraphWorkspaceId("workflow");
+
+    expect(toggleSessionWorkspaceItem(createSessionWorkspaceState(), itemId)).toEqual({
+      open: true,
+      selectedItemId: itemId,
+    });
+  });
+
+  test("switches the open panel when different information is selected", () => {
+    const workflowId = workflowGraphWorkspaceId("workflow");
+    const interfaceId = generatedUiWorkspaceId("interface");
+    const workflowSelected = toggleSessionWorkspaceItem(createSessionWorkspaceState(), workflowId);
+
+    expect(toggleSessionWorkspaceItem(workflowSelected, interfaceId)).toEqual({
+      open: true,
+      selectedItemId: interfaceId,
+    });
+  });
+
+  test("closes the panel when its current selector is pressed again", () => {
+    const itemId = generatedUiWorkspaceId("interface");
+    const selected = toggleSessionWorkspaceItem(createSessionWorkspaceState(), itemId);
+
+    expect(toggleSessionWorkspaceItem(selected, itemId)).toEqual({
+      open: false,
+      selectedItemId: itemId,
+    });
+  });
+
+  test("reopens the previously selected information", () => {
+    const itemId = generatedUiWorkspaceId("interface");
+    const selected = toggleSessionWorkspaceItem(createSessionWorkspaceState(), itemId);
+    const closed = toggleSessionWorkspaceItem(selected, itemId);
+
+    expect(toggleSessionWorkspaceItem(closed, itemId)).toEqual(selected);
   });
 });

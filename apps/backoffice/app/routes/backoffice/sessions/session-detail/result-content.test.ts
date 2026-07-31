@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 
-import { ToolResultContent } from "./tool-call";
+import { ToolResultContent } from "./tool-result-content";
 
 const rawResult = {
   total: 24,
@@ -59,17 +59,16 @@ function renderToolResult({
       rawResult: rawValue,
       result,
       useExecCodeModeFormatting,
-      onOpenGeneratedUi: () => undefined,
     }),
   );
 }
 
 describe("ToolResultContent", () => {
-  test("moves valid generated UI out of the tool card and keeps a workspace launcher", () => {
+  test("moves valid generated UI out of the tool card", () => {
     const markup = renderToolResult({});
 
     expect(markup).not.toContain("Generated interface ready");
-    expect(markup).toContain("Open interface");
+    expect(markup).not.toContain("Open interface");
     expect(markup).toContain("Raw result");
     expect(markup).not.toContain('aria-label="Orders"');
     expect(markup).not.toContain(">24</p>");

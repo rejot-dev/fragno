@@ -1,8 +1,8 @@
 import { assert, describe, expect, test } from "vitest";
 
 import { projectWorkflowGraph } from "./workflow-graph-projection";
-import { generatedUiTabId, workflowGraphTabId } from "./workspace-model";
-import { projectSessionWorkspaceTabs } from "./workspace-projection";
+import { generatedUiWorkspaceId, workflowGraphWorkspaceId } from "./workspace-model";
+import { projectSessionWorkspaceItems } from "./workspace-projection";
 
 const generatedUiResult = {
   total: 24,
@@ -47,9 +47,9 @@ const toolResult = (id: string, result: unknown) =>
     timestamp: 2,
   }) as never;
 
-describe("projectSessionWorkspaceTabs", () => {
+describe("projectSessionWorkspaceItems", () => {
   test("projects workflow construction and multiple generated interfaces in session order", () => {
-    const tabs = projectSessionWorkspaceTabs({
+    const items = projectSessionWorkspaceItems({
       draftAgentMessage: null,
       messages: [
         assistantToolCall(
@@ -64,14 +64,18 @@ describe("projectSessionWorkspaceTabs", () => {
       ],
     });
 
-    expect(tabs.map((tab) => tab.id)).toEqual([
-      workflowGraphTabId("workflow-call"),
-      generatedUiTabId("workflow-call"),
-      generatedUiTabId("ui-call"),
+    expect(items.map((item) => item.id)).toEqual([
+      workflowGraphWorkspaceId("workflow-call"),
+      generatedUiWorkspaceId("workflow-call"),
+      generatedUiWorkspaceId("ui-call"),
     ]);
-    expect(tabs.map((tab) => tab.label)).toEqual(["fulfil-orders", "Interface 1", "Interface 2"]);
-    assert(tabs[0]?.view.type === "workflow-graph");
-    expect(tabs[0].view.projection.visualization.graph.nodes).toEqual(
+    expect(items.map((item) => item.label)).toEqual([
+      "fulfil-orders",
+      "Interface 1",
+      "Interface 2",
+    ]);
+    assert(items[0]?.view.type === "workflow-graph");
+    expect(items[0].view.projection.visualization.graph.nodes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "workflow", name: "fulfil-orders" }),
         expect.objectContaining({ kind: "step", label: "load orders" }),
@@ -80,7 +84,7 @@ describe("projectSessionWorkspaceTabs", () => {
   });
 
   test("deduplicates persisted and draft versions of the same tool call", () => {
-    const tabs = projectSessionWorkspaceTabs({
+    const items = projectSessionWorkspaceItems({
       messages: [
         assistantToolCall("shared-call", `defineWorkflow({ name: "old-name" }, async () => {});`),
         toolResult("shared-call", generatedUiResult),
@@ -101,16 +105,16 @@ describe("projectSessionWorkspaceTabs", () => {
       },
     });
 
-    expect(tabs.map((tab) => tab.id)).toEqual([
-      workflowGraphTabId("shared-call"),
-      generatedUiTabId("shared-call"),
+    expect(items.map((item) => item.id)).toEqual([
+      workflowGraphWorkspaceId("shared-call"),
+      generatedUiWorkspaceId("shared-call"),
     ]);
-    assert(tabs[0]?.view.type === "workflow-graph");
-    assert(tabs[0].view.projection.title === "new-name");
+    assert(items[0]?.view.type === "workflow-graph");
+    assert(items[0].view.projection.title === "new-name");
   });
 
-  test("keeps malformed generated UI in the tool card instead of creating a tab", () => {
-    const tabs = projectSessionWorkspaceTabs({
+  test("keeps malformed generated UI in the tool card instead of creating a workspace item", () => {
+    const items = projectSessionWorkspaceItems({
       draftAgentMessage: null,
       messages: [
         assistantToolCall("invalid-ui", "async () => ({})"),
@@ -121,11 +125,11 @@ describe("projectSessionWorkspaceTabs", () => {
       ],
     });
 
-    expect(tabs).toEqual([]);
+    expect(items).toEqual([]);
   });
 
   test("projects a workflow from draft tool arguments before execution completes", () => {
-    const tabs = projectSessionWorkspaceTabs({
+    const items = projectSessionWorkspaceItems({
       messages: [],
       draftAgentMessage: {
         activity: "tool_calling",
@@ -145,10 +149,10 @@ describe("projectSessionWorkspaceTabs", () => {
       },
     });
 
-    expect(tabs).toHaveLength(1);
-    assert(tabs[0]?.view.type === "workflow-graph");
-    assert(tabs[0].view.projection.status === "constructing");
-    expect(tabs[0].view.projection.visualization.graph.nodes).toEqual(
+    expect(items).toHaveLength(1);
+    assert(items[0]?.view.type === "workflow-graph");
+    assert(items[0].view.projection.status === "constructing");
+    expect(items[0].view.projection.visualization.graph.nodes).toEqual(
       expect.arrayContaining([expect.objectContaining({ kind: "workflow" })]),
     );
   });

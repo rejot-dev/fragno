@@ -28,13 +28,10 @@ import {
 } from "./session-detail/workspace-context";
 import {
   createSessionWorkspaceState,
-  reconcileSessionWorkspaceState,
+  toggleSessionWorkspaceItem,
 } from "./session-detail/workspace-model";
-import {
-  SessionMobileWorkspaceTabs,
-  SessionWorkspacePanel,
-} from "./session-detail/workspace-panel";
-import { projectSessionWorkspaceTabs } from "./session-detail/workspace-projection";
+import { SessionWorkspacePanel } from "./session-detail/workspace-panel";
+import { projectSessionWorkspaceItems } from "./session-detail/workspace-projection";
 import { SessionWorkspaceSplit } from "./session-detail/workspace-split";
 import type { PiSessionsOutletContext } from "./session-types";
 
@@ -54,7 +51,7 @@ export default function BackofficeOrganisationPiSessionDetail() {
 
   return (
     <SynchronizedPiSessionDetail
-      key={`${workflowName}:${sessionId}`}
+      key={`${scope.orgId}:${workflowName}:${sessionId}`}
       scope={scope}
       source={persistenceSource}
       workflowName={workflowName}
@@ -135,6 +132,7 @@ function PiSessionDetailView({
   projectionError: string | null;
   instanceStatus: string | null;
 }) {
+  const { workspaceStates, updateWorkspaceState } = useOutletContext<PiSessionsOutletContext>();
   const [displayOptions, setDisplayOptions] = useState({
     showToolCalls: true,
     showThinking: true,
@@ -179,47 +177,49 @@ function PiSessionDetailView({
       }),
     [messages, projection.draftAgentMessage, projection.readyForInput, statusText],
   );
-  const workspaceTabs = useMemo(
+  const workspaceItems = useMemo(
     () =>
-      projectSessionWorkspaceTabs({
+      projectSessionWorkspaceItems({
         draftAgentMessage: projection.draftAgentMessage,
         messages,
       }),
     [messages, projection.draftAgentMessage],
   );
-  const [workspaceState, setWorkspaceState] = useState(() =>
-    createSessionWorkspaceState(workspaceTabs),
-  );
-  const workspaceTabIds = useMemo(
-    () => new Set(workspaceTabs.map((tab) => tab.id)),
-    [workspaceTabs],
+  const workspaceStateKey = [scope.orgId, session.workflowName, session.id]
+    .map(encodeURIComponent)
+    .join(":");
+  const workspaceState = workspaceStates[workspaceStateKey] ?? createSessionWorkspaceState();
+  const workspaceItemIds = useMemo(
+    () => new Set(workspaceItems.map((item) => item.id)),
+    [workspaceItems],
   );
 
-  useEffect(() => {
-    setWorkspaceState((current) => reconcileSessionWorkspaceState(current, workspaceTabs));
-  }, [workspaceTabs]);
-
-  const openWorkspaceTab = useCallback(
-    (tabId: string) => {
-      if (!workspaceTabIds.has(tabId)) {
+  const toggleWorkspaceItem = useCallback(
+    (itemId: string) => {
+      if (!workspaceItemIds.has(itemId)) {
         return;
       }
-      setWorkspaceState((current) => ({ ...current, open: true, selectedTabId: tabId }));
+      updateWorkspaceState(workspaceStateKey, (current) =>
+        toggleSessionWorkspaceItem(current, itemId),
+      );
     },
-    [workspaceTabIds],
+    [updateWorkspaceState, workspaceItemIds, workspaceStateKey],
   );
   const closeWorkspace = useCallback(() => {
-    setWorkspaceState((current) => ({ ...current, open: false }));
-  }, []);
+    updateWorkspaceState(workspaceStateKey, (current) => ({ ...current, open: false }));
+  }, [updateWorkspaceState, workspaceStateKey]);
+
   const workspaceNavigation = useMemo<SessionWorkspaceNavigation>(
     () => ({
-      hasTab: (tabId) => workspaceTabIds.has(tabId),
-      openTab: openWorkspaceTab,
+      hasItem: (itemId) => workspaceItemIds.has(itemId),
+      isItemSelected: (itemId) => workspaceState.open && workspaceState.selectedItemId === itemId,
+      toggleItem: toggleWorkspaceItem,
     }),
-    [openWorkspaceTab, workspaceTabIds],
+    [toggleWorkspaceItem, workspaceItemIds, workspaceState.open, workspaceState.selectedItemId],
   );
-  const selectedWorkspaceTab =
-    workspaceTabs.find((tab) => tab.id === workspaceState.selectedTabId) ?? workspaceTabs.at(-1);
+  const selectedWorkspaceItem = workspaceItems.find(
+    (item) => item.id === workspaceState.selectedItemId,
+  );
 
   const handleSend = useCallback(
     async (message: AppendMessage) => {
@@ -320,15 +320,6 @@ function PiSessionDetailView({
           </div>
         ) : null}
 
-        {workspaceTabs.length > 0 ? (
-          <SessionMobileWorkspaceTabs
-            tabs={workspaceTabs}
-            selectedTabId={workspaceState.open ? (selectedWorkspaceTab?.id ?? null) : null}
-            onSelectChat={closeWorkspace}
-            onSelectTab={openWorkspaceTab}
-          />
-        ) : null}
-
         <SessionWorkspaceNavigationProvider value={workspaceNavigation}>
           <SessionWorkspaceSplit
             storageKey={`backoffice:pi-session-workspace:${scope.orgId}`}
@@ -350,12 +341,11 @@ function PiSessionDetailView({
               />
             }
             right={
-              workspaceState.open && selectedWorkspaceTab ? (
+              workspaceState.open && selectedWorkspaceItem ? (
                 <SessionWorkspacePanel
-                  tabs={workspaceTabs}
-                  selectedTabId={selectedWorkspaceTab.id}
+                  key={selectedWorkspaceItem.id}
+                  item={selectedWorkspaceItem}
                   onClose={closeWorkspace}
-                  onSelectTab={openWorkspaceTab}
                 />
               ) : null
             }

@@ -1,8 +1,9 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 export type SessionWorkspaceNavigation = {
-  hasTab: (tabId: string) => boolean;
-  openTab: (tabId: string) => void;
+  hasItem: (itemId: string) => boolean;
+  isItemSelected: (itemId: string) => boolean;
+  toggleItem: (itemId: string) => void;
 };
 
 const SessionWorkspaceNavigationContext = createContext<SessionWorkspaceNavigation | null>(null);
