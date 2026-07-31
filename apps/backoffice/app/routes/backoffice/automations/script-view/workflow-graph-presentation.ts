@@ -35,7 +35,7 @@ export function workflowTerminalDetails(
   detailMode: WorkflowGraphDetailMode,
 ): WorkflowTerminalDetails {
   const label = !isDefaultTerminalLabel(terminal) ? terminal.label : undefined;
-  if (detailMode === "simple") {
+  if (detailMode !== "verbose") {
     return terminal.terminalType !== "final-return" && label ? { label } : {};
   }
 

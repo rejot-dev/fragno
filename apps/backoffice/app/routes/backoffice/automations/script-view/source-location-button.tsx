@@ -9,13 +9,11 @@ export function SourceLocationButton({
   source: SourceRange;
   onSelect?: (source: SourceRange) => void;
 }) {
-  const label = sourceLocationLabel(source);
   if (!onSelect) {
-    return (
-      <span className="font-mono text-[9px] text-[var(--bo-muted-2)] tabular-nums">{label}</span>
-    );
+    return null;
   }
 
+  const label = sourceLocationLabel(source);
   return (
     <button
       type="button"

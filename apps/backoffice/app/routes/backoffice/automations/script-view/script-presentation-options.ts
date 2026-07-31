@@ -19,4 +19,5 @@ export const WORKFLOW_GRAPH_DETAIL_OPTIONS: Array<{
 }> = [
   { mode: "simple", label: "Simple" },
   { mode: "verbose", label: "Verbose" },
+  { mode: "ui", label: "UI" },
 ];

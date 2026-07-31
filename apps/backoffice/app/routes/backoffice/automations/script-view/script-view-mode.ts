@@ -1,5 +1,5 @@
 export type ScriptViewMode = "code" | "graph" | "split";
-export type WorkflowGraphDetailMode = "simple" | "verbose";
+export type WorkflowGraphDetailMode = "simple" | "verbose" | "ui";
 
 export interface ScriptPresentation {
   viewMode: ScriptViewMode;
@@ -23,7 +23,7 @@ export function scriptViewModeFromSearchParam(value: string | null): ScriptViewM
 export function workflowGraphDetailModeFromSearchParam(
   value: string | null,
 ): WorkflowGraphDetailMode {
-  return value === "verbose" ? "verbose" : "simple";
+  return value === "verbose" || value === "ui" ? value : "simple";
 }
 
 export function searchParamsWithScriptViewMode(
