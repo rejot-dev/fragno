@@ -28,6 +28,10 @@ import type { CompiledQuery, Dialect } from "../../sql-driver/sql-driver";
 import type { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import type { DriverConfig } from "./driver-config";
 import { createColdKysely } from "./migration/cold-kysely";
+import {
+  buildOutboxInsertDiagnostics,
+  type OutboxInsertDiagnosticContext,
+} from "./outbox-insert-diagnostics";
 import { ResultInterpreter } from "./result-interpreter";
 
 export interface ExecutorOptions {
@@ -95,6 +99,7 @@ export async function executeMutation(
 
   const outboxPlan = outboxOperations.length > 0 ? buildOutboxPlan(outboxOperations) : null;
   const shouldWriteOutbox = outboxEnabled && outboxPlan !== null && outboxPlan.drafts.length > 0;
+  let failedOutboxInsert: OutboxInsertDiagnosticContext | undefined;
 
   try {
     await adapter.transaction(async (tx) => {
@@ -196,13 +201,23 @@ export async function executeMutation(
           uowId,
           mutations: payload.mutations,
         });
+        const outboxRowId = createId();
+        failedOutboxInsert = {
+          id: outboxRowId,
+          versionstamp,
+          uowId,
+          payload,
+          payloadSerialized,
+          refMap,
+        };
         await insertOutboxRow(tx, driverConfig, {
-          id: createId(),
+          id: outboxRowId,
           versionstamp,
           uowId,
           payload: payloadSerialized,
           refMap,
         });
+        failedOutboxInsert = undefined;
       }
     });
 
@@ -217,6 +232,14 @@ export async function executeMutation(
     const normalizedError = driverConfig.normalizeError(error);
     if (isRetryableDatabaseError(normalizedError)) {
       return { success: false };
+    }
+
+    if (failedOutboxInsert) {
+      console.error(
+        "[fragno-db] outbox insert failed",
+        buildOutboxInsertDiagnostics(failedOutboxInsert),
+        normalizedError,
+      );
     }
 
     // Other database errors should be normalized and thrown for callers to map.

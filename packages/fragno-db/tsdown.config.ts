@@ -25,6 +25,7 @@ export default defineConfig([
       "./src/query/cursor.ts",
       "./src/db-fragment-definition-builder.ts",
       "./src/buffered-pump.ts",
+      "./src/diagnostics/value-shape.ts",
       "./src/dispatchers/node/index.ts",
       "./src/dispatchers/cloudflare-do/index.ts",
       "./src/dispatchers/cloudflare-do/fragment-durable-object.ts",

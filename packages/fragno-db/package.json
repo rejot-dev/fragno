@@ -98,6 +98,10 @@
       "types": "./dist/buffered-pump.d.ts",
       "default": "./dist/buffered-pump.js"
     },
+    "./diagnostics/value-shape": {
+      "types": "./dist/diagnostics/value-shape.d.ts",
+      "default": "./dist/diagnostics/value-shape.js"
+    },
     "./dispatchers/node": {
       "types": "./dist/dispatchers/node/index.d.ts",
       "default": "./dist/dispatchers/node/index.js"
