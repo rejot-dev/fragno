@@ -32,20 +32,33 @@ interface PendingArrowScope extends FunctionScopeRole {
   bindings: Map<string, BindingKind>;
 }
 
+interface PendingMethodScope {
+  parameterParentheses: number;
+  parametersComplete: boolean;
+}
+
+export type ActivatedFunctionScope =
+  | { boundary: "block"; durableStepCallId?: string }
+  | { boundary: "expression"; baseDepth: DelimiterDepth; durableStepCallId?: string };
+
 /** Tracks which tokens execute in the workflow callback or an explicitly durable step callback. */
 export class WorkflowFunctionScopeTracker {
   readonly #activeScopes: ActiveFunctionScope[] = [];
   readonly #pendingFunctions: PendingFunctionScope[] = [];
+  readonly #pendingMethods: PendingMethodScope[] = [];
   readonly #workflowBindings = new Map<string, BindingKind>();
   #pendingArrow: PendingArrowScope | undefined;
 
-  beforeToken(positioned: PositionedWorkflowToken, context: TokenMachineContext): void {
+  beforeToken(
+    positioned: PositionedWorkflowToken,
+    context: TokenMachineContext,
+  ): ActivatedFunctionScope | undefined {
     this.completeConciseScopesBefore(positioned, context.depth);
 
     if (this.#pendingArrow) {
       const pending = this.#pendingArrow;
       this.#pendingArrow = undefined;
-      this.#activeScopes.push(
+      const activeScope: ActiveFunctionScope =
         positioned.token.value === "{"
           ? {
               ...pending,
@@ -56,8 +69,22 @@ export class WorkflowFunctionScopeTracker {
               ...pending,
               boundary: "expression",
               baseDepth: { ...pending.baseDepth },
-            },
-      );
+            };
+      this.#activeScopes.push(activeScope);
+      return activeScope.boundary === "expression"
+        ? {
+            boundary: "expression",
+            baseDepth: { ...activeScope.baseDepth },
+            ...(activeScope.durableStepCallId
+              ? { durableStepCallId: activeScope.durableStepCallId }
+              : {}),
+          }
+        : {
+            boundary: "block",
+            ...(activeScope.durableStepCallId
+              ? { durableStepCallId: activeScope.durableStepCallId }
+              : {}),
+          };
     }
 
     const pendingFunction = this.#pendingFunctions.at(-1);
@@ -68,7 +95,27 @@ export class WorkflowFunctionScopeTracker {
         boundary: "block",
         bodyBraces: context.depth.braces + 1,
       });
+      return {
+        boundary: "block",
+        ...(pendingFunction.durableStepCallId
+          ? { durableStepCallId: pendingFunction.durableStepCallId }
+          : {}),
+      };
     }
+
+    while (this.#pendingMethods.at(-1)?.parametersComplete) {
+      this.#pendingMethods.pop();
+      if (positioned.token.value === "{") {
+        this.#activeScopes.push({
+          boundary: "block",
+          bodyBraces: context.depth.braces + 1,
+          bindings: new Map(),
+        });
+        return { boundary: "block" };
+      }
+    }
+
+    return undefined;
   }
 
   afterToken({
@@ -94,6 +141,7 @@ export class WorkflowFunctionScopeTracker {
     }
 
     this.consumePendingFunctionHeader(positioned, context.depth);
+    this.consumePendingMethodHeader(positioned, context.depth);
 
     if (positioned.token.value === "=>") {
       this.#pendingArrow = {
@@ -102,6 +150,13 @@ export class WorkflowFunctionScopeTracker {
         bindings: possibleArrowParameterBindings(previousTokens),
       };
       return;
+    }
+
+    if (positioned.token.value === "(" && possibleMethodParameterList(previousTokens)) {
+      this.#pendingMethods.push({
+        parameterParentheses: context.depth.parentheses + 1,
+        parametersComplete: false,
+      });
     }
 
     this.rememberLocalBinding(positioned, previousTokens.at(-1));
@@ -197,6 +252,21 @@ export class WorkflowFunctionScopeTracker {
     }
   }
 
+  private consumePendingMethodHeader(
+    positioned: PositionedWorkflowToken,
+    depth: DelimiterDepth,
+  ): void {
+    const pending = this.#pendingMethods.at(-1);
+    if (
+      pending &&
+      !pending.parametersComplete &&
+      positioned.token.value === ")" &&
+      depth.parentheses === pending.parameterParentheses
+    ) {
+      pending.parametersComplete = true;
+    }
+  }
+
   private rememberLocalBinding(
     positioned: PositionedWorkflowToken,
     previous: PositionedWorkflowToken | undefined,
@@ -256,7 +326,7 @@ export class WorkflowFunctionScopeTracker {
   }
 }
 
-function conciseFunctionEndsBefore(
+export function conciseFunctionEndsBefore(
   tokenValue: string,
   depth: DelimiterDepth,
   baseDepth: DelimiterDepth,
@@ -344,4 +414,60 @@ function rememberPossibleBinding(
   if (positioned.token.type === "IdentifierName") {
     bindings.set(positioned.token.value, "local");
   }
+}
+
+const NON_METHOD_PARAMETER_HEADS = new Set([
+  "catch",
+  "for",
+  "function",
+  "if",
+  "switch",
+  "while",
+  "with",
+]);
+
+function possibleMethodParameterList(previousTokens: PositionedWorkflowToken[]): boolean {
+  const methodName = previousTokens.at(-1);
+  if (!methodName) {
+    return false;
+  }
+
+  if (methodName.token.type === "IdentifierName") {
+    if (NON_METHOD_PARAMETER_HEADS.has(methodName.token.value)) {
+      return false;
+    }
+    const precedingValue = previousTokens.at(-2)?.token.value;
+    return precedingValue !== "." && precedingValue !== "?." && precedingValue !== "function";
+  }
+
+  if (methodName.token.value !== "]") {
+    return false;
+  }
+
+  let bracketDepth = 1;
+  for (let index = previousTokens.length - 2; index >= 0; index -= 1) {
+    const value = previousTokens[index]?.token.value;
+    if (value === "]") {
+      bracketDepth += 1;
+    } else if (value === "[") {
+      bracketDepth -= 1;
+      if (bracketDepth === 0) {
+        const precedingValue = previousTokens[index - 1]?.token.value;
+        return (
+          precedingValue === undefined ||
+          precedingValue === "{" ||
+          precedingValue === "}" ||
+          precedingValue === "," ||
+          precedingValue === ";" ||
+          precedingValue === "*" ||
+          precedingValue === "async" ||
+          precedingValue === "get" ||
+          precedingValue === "set" ||
+          precedingValue === "static"
+        );
+      }
+    }
+  }
+
+  return false;
 }

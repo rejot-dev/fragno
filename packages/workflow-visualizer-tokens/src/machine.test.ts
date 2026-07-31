@@ -57,7 +57,7 @@ describe("workflow token state machine", () => {
 
     for (const token of tokenizeWorkflowSource(source)) {
       const update = machine.push(token);
-      assert(update.graph.version === 3);
+      assert(update.graph.version === 4);
       assert(update.state.sourceLength === machine.source().length);
       assertUsableGraph(update.graph.nodes, update.graph.edges);
     }
@@ -783,6 +783,273 @@ describe("workflow token state machine", () => {
     expect(snapshot.graph.nodes.filter((node) => node.kind === "terminal")).toEqual([]);
   });
 
+  it("captures explicit and implicit step.do callback return values", () => {
+    const source = `defineWorkflow({ name: "workspace-smoke-test" }, async (event, step) => {
+      const randomValue = await step.do("generate-random-value", async () => {
+        return Math.floor(Math.random() * 100);
+      });
+
+      const inputSummary = await step.do("inspect-input", async () => {
+        const payload = event.payload;
+        return {
+          hasPayload: payload !== undefined && payload !== null,
+          payloadType: Array.isArray(payload) ? "array" : typeof payload,
+        };
+      });
+
+      const classification = await step.do("classify-random-value", async () => {
+        return randomValue % 2 === 0 ? "even" : "odd";
+      });
+
+      let branchResult;
+      if (randomValue >= 50) {
+        branchResult = await step.do("high-value-branch", async () => ({
+          branch: "high",
+          threshold: 50,
+        }));
+      } else {
+        branchResult = await step.do("low-value-branch", async () => ({
+          branch: "low",
+          threshold: 50,
+        }));
+      }
+
+      const finalSummary = await step.do("assemble-summary", async () => ({
+        randomValue,
+        classification,
+        branch: branchResult.branch,
+        input: inputSummary,
+      }));
+
+      return {
+        workflow: "workspace-smoke-test",
+        status: "complete",
+        summary: finalSummary,
+      };
+    })`;
+    const snapshot = visualizeWorkflowSource("automations/workspace-smoke-test.ts", source);
+
+    expect(
+      snapshot.graph.nodes
+        .filter((node): node is StepNode => node.kind === "step")
+        .map((step) => ({
+          label: step.label,
+          returns: step.analysis.returns.map(({ syntax, value }) => ({ syntax, value })),
+        })),
+    ).toEqual([
+      {
+        label: "generate-random-value",
+        returns: [{ syntax: "explicit", value: "Math.floor(Math.random() * 100)" }],
+      },
+      {
+        label: "inspect-input",
+        returns: [
+          {
+            syntax: "explicit",
+            value:
+              '{\n          hasPayload: payload !== undefined && payload !== null,\n          payloadType: Array.isArray(payload) ? "array" : typeof payload,\n        }',
+          },
+        ],
+      },
+      {
+        label: "classify-random-value",
+        returns: [
+          {
+            syntax: "explicit",
+            value: 'randomValue % 2 === 0 ? "even" : "odd"',
+          },
+        ],
+      },
+      {
+        label: "high-value-branch",
+        returns: [
+          {
+            syntax: "implicit",
+            value: '({\n          branch: "high",\n          threshold: 50,\n        })',
+          },
+        ],
+      },
+      {
+        label: "low-value-branch",
+        returns: [
+          {
+            syntax: "implicit",
+            value: '({\n          branch: "low",\n          threshold: 50,\n        })',
+          },
+        ],
+      },
+      {
+        label: "assemble-summary",
+        returns: [
+          {
+            syntax: "implicit",
+            value:
+              "({\n        randomValue,\n        classification,\n        branch: branchResult.branch,\n        input: inputSummary,\n      })",
+          },
+        ],
+      },
+    ]);
+
+    for (const step of snapshot.graph.nodes.filter(
+      (node): node is StepNode => node.kind === "step",
+    )) {
+      for (const stepReturn of step.analysis.returns) {
+        expect(source.slice(stepReturn.source.start.offset, stepReturn.source.end.offset)).toBe(
+          stepReturn.syntax === "explicit" ? `return ${stepReturn.value};` : stepReturn.value,
+        );
+        expect(stepReturn.construction).toEqual({ status: "complete", phase: "complete" });
+      }
+    }
+  });
+
+  it("keeps an unfinished concise step return observable", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/partial-step-return.ts",
+      `defineWorkflow({ name: "partial-step-return" }, async (event, step) => {
+        await step.do("draft", async () => ({ value: event.payload`,
+      { finish: false },
+    );
+    const step = stepByLabel(snapshot.graph, "draft");
+
+    expect(step.analysis.returns).toEqual([
+      expect.objectContaining({
+        syntax: "implicit",
+        value: "({ value: event.payload",
+        construction: { status: "partial", phase: "returning" },
+      }),
+    ]);
+  });
+
+  it("keeps returns from nested ordinary callbacks out of step return analysis", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/nested-step-returns.ts",
+      `defineWorkflow({ name: "nested-step-returns" }, async (event, step) => {
+        await step.do("outer", async () => {
+          event.payload.items.map((item) => {
+            return item.value;
+          });
+          return await step.do("inner", async () => ({ ok: true }));
+        });
+      });`,
+    );
+
+    expect(
+      snapshot.graph.nodes
+        .filter((node): node is StepNode => node.kind === "step")
+        .map((step) => ({
+          label: step.label,
+          returns: step.analysis.returns.map(({ syntax, value }) => ({ syntax, value })),
+        })),
+    ).toEqual([
+      {
+        label: "outer",
+        returns: [
+          {
+            syntax: "explicit",
+            value: 'await step.do("inner", async () => ({ ok: true }))',
+          },
+        ],
+      },
+      {
+        label: "inner",
+        returns: [{ syntax: "implicit", value: "({ ok: true })" }],
+      },
+    ]);
+  });
+
+  it("does not treat return-named members or properties as explicit step returns", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/return-named-expressions.ts",
+      `defineWorkflow({ name: "return-named-expressions" }, async (event, step) => {
+        await step.do("member return", async () => iterator.return());
+        await step.do("property return", async () => ({ return: 1 }));
+      });`,
+    );
+
+    expect(
+      snapshot.graph.nodes
+        .filter((node): node is StepNode => node.kind === "step")
+        .map((step) => ({
+          label: step.label,
+          returns: step.analysis.returns.map(({ syntax, value }) => ({ syntax, value })),
+        })),
+    ).toEqual([
+      {
+        label: "member return",
+        returns: [{ syntax: "implicit", value: "iterator.return()" }],
+      },
+      {
+        label: "property return",
+        returns: [{ syntax: "implicit", value: "({ return: 1 })" }],
+      },
+    ]);
+    expect(
+      snapshot.state.activeConstructs.filter((construct) => construct.kind === "return"),
+    ).toEqual([]);
+  });
+
+  it("keeps returns from nested object and class methods out of step return analysis", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/method-step-returns.ts",
+      `defineWorkflow({ name: "method-step-returns" }, async (event, step) => {
+        await step.do("method scopes", async () => {
+          const helper = {
+            run() { return 1; },
+            async load() { return 2; },
+            ["computed"]() { return 3; },
+          };
+          class Worker {
+            run() { return 4; }
+          }
+          return helper.run();
+        });
+      });`,
+    );
+
+    expect(stepByLabel(snapshot.graph, "method scopes").analysis.returns).toEqual([
+      expect.objectContaining({
+        syntax: "explicit",
+        value: "helper.run()",
+        construction: { status: "complete", phase: "complete" },
+      }),
+    ]);
+  });
+
+  it("applies return ASI consistently to workflows and durable step callbacks", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/return-asi.ts",
+      `defineWorkflow({ name: "return-asi" }, async (event, step) => {
+        await step.do("ASI step", async () => {
+          return
+          { ok: true };
+        });
+        return
+        { ok: true };
+      });`,
+    );
+
+    expect(stepByLabel(snapshot.graph, "ASI step").analysis.returns).toEqual([
+      expect.objectContaining({
+        syntax: "explicit",
+        value: "",
+        construction: { status: "complete", phase: "complete" },
+      }),
+    ]);
+    expect(snapshot.graph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "terminal",
+          terminalType: "final-return",
+          value: "",
+          construction: { status: "complete", phase: "complete" },
+        }),
+      ]),
+    );
+    expect(
+      snapshot.state.activeConstructs.filter((construct) => construct.kind === "return"),
+    ).toEqual([]);
+  });
+
   it("records direct call references in the durable step that executes them", () => {
     const source = `defineWorkflow({ name: "step-invocations" }, async (event, step) => {
       await step.do("outer", async () => {
@@ -957,7 +1224,7 @@ describe("workflow token state machine", () => {
     }
 
     const snapshot = machine.finish();
-    expect(snapshot.graph).toEqual({ version: 3, nodes: [], edges: [], diagnostics: [] });
+    expect(snapshot.graph).toEqual({ version: 4, nodes: [], edges: [], diagnostics: [] });
     expect(snapshot.state).toMatchObject({ status: "finished", activeConstructs: [] });
     assert(renderWorkflowVisualizationText(snapshot) === "(no workflows)");
   });

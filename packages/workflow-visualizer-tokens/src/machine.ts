@@ -1,4 +1,4 @@
-import { WorkflowFunctionScopeTracker } from "./function-scope.ts";
+import { type ActivatedFunctionScope, WorkflowFunctionScopeTracker } from "./function-scope.ts";
 import type {
   ConditionAnalysis,
   ConditionNode,
@@ -15,6 +15,7 @@ import type {
   StepInvocation,
   StepMeta,
   StepNode,
+  StepReturn,
   StepType,
   TerminalNode,
   TerminalType,
@@ -43,6 +44,8 @@ import {
   ParallelCallMachine,
   ReturnStatementMachine,
   StepCallMachine,
+  StepImplicitReturnMachine,
+  StepReturnStatementMachine,
   ThrowStatementMachine,
   type WorkflowBuilder,
   WorkflowDefinitionMachine,
@@ -62,6 +65,14 @@ const STEP_METHODS = new Set<StepType>(["do", "sleep", "sleepUntil", "waitForEve
 interface ActiveStepInvocation {
   invocation: StepInvocation;
   openParentheses: number;
+}
+
+type PendingReturnTarget = { kind: "step"; stepCallId: string } | { kind: "workflow" };
+
+interface PendingReturnStatement {
+  positioned: PositionedWorkflowToken;
+  context: TokenMachineContext;
+  target: PendingReturnTarget;
 }
 
 export interface CreateWorkflowTokenMachineOptions {
@@ -105,6 +116,7 @@ export function createWorkflowTokenMachine({
   const functionScopesByWorkflowId = new Map<string, WorkflowFunctionScopeTracker>();
   const activeStepInvocations: ActiveStepInvocation[] = [];
   const runtime = new TokenSubmachineRuntime();
+  let pendingReturnStatement: PendingReturnStatement | undefined;
   const listeners = new Set<(patch: GraphPatch) => void>();
 
   function push(token: WorkflowToken): WorkflowMachineUpdate {
@@ -145,6 +157,7 @@ export function createWorkflowTokenMachine({
 
   function finish(): WorkflowMachineUpdate {
     finished = true;
+    resolvePendingReturnStatement();
     runtime.finish(machineContext());
     return commit();
   }
@@ -173,6 +186,7 @@ export function createWorkflowTokenMachine({
 
   function processSignificantToken(positioned: PositionedWorkflowToken): void {
     const context = machineContext();
+    resolvePendingReturnStatement(positioned);
     consumeActiveStepInvocations(positioned, context);
     runtime.consume(positioned, context);
 
@@ -180,14 +194,15 @@ export function createWorkflowTokenMachine({
     const functionScopes = workflowMachine
       ? functionScopesByWorkflowId.get(workflowMachine.id)
       : undefined;
-    functionScopes?.beforeToken(positioned, context);
+    const activatedFunctionScope = functionScopes?.beforeToken(positioned, context);
+    if (activatedFunctionScope) {
+      discoverImplicitStepReturn(positioned, activatedFunctionScope);
+    }
 
-    if (!functionScopes?.isNestedFunction()) {
-      if (positioned.token.value === "return") {
-        discoverReturn(positioned, context);
-      } else if (positioned.token.value === "throw") {
-        discoverThrow(positioned, context);
-      }
+    if (positioned.token.value === "return") {
+      rememberPendingReturnStatement(positioned, context, workflowMachine, functionScopes);
+    } else if (positioned.token.value === "throw" && !functionScopes?.isNestedFunction()) {
+      discoverThrow(positioned, context);
     }
     if (
       positioned.token.value === "(" &&
@@ -210,6 +225,48 @@ export function createWorkflowTokenMachine({
       activeStepCallId: runtime.findLast(isStepCallMachine)?.id,
     });
     updateDelimiterDepth(positioned.token.value);
+  }
+
+  function rememberPendingReturnStatement(
+    positioned: PositionedWorkflowToken,
+    context: TokenMachineContext,
+    workflowMachine: WorkflowDefinitionMachine | undefined,
+    functionScopes: WorkflowFunctionScopeTracker | undefined,
+  ): void {
+    const previousValue = significantTokens.at(-1)?.token.value;
+    if (previousValue === "." || previousValue === "?." || !workflowMachine) {
+      return;
+    }
+
+    const stepCallId = functionScopes?.directDurableStepCallId();
+    const target: PendingReturnTarget | undefined = stepCallId
+      ? { kind: "step", stepCallId }
+      : functionScopes?.isNestedFunction()
+        ? undefined
+        : { kind: "workflow" };
+    if (!target) {
+      return;
+    }
+
+    pendingReturnStatement = {
+      positioned,
+      context: { source: context.source, depth: { ...context.depth } },
+      target,
+    };
+  }
+
+  function resolvePendingReturnStatement(nextToken?: PositionedWorkflowToken): void {
+    const pending = pendingReturnStatement;
+    pendingReturnStatement = undefined;
+    if (!pending || nextToken?.token.value === ":") {
+      return;
+    }
+
+    if (pending.target.kind === "step") {
+      discoverExplicitStepReturn(pending.positioned, pending.context, pending.target.stepCallId);
+    } else {
+      discoverReturn(pending.positioned, pending.context);
+    }
   }
 
   function consumeActiveStepInvocations(
@@ -272,6 +329,90 @@ export function createWorkflowTokenMachine({
       invocation,
       openParentheses: context.depth.parentheses + 1,
     });
+  }
+
+  function discoverImplicitStepReturn(
+    positioned: PositionedWorkflowToken,
+    activatedScope: ActivatedFunctionScope,
+  ): void {
+    if (activatedScope.boundary !== "expression" || !activatedScope.durableStepCallId) {
+      return;
+    }
+    const step = stepById(activatedScope.durableStepCallId);
+    if (step?.stepType !== "do") {
+      return;
+    }
+
+    const stepReturn = createStepReturn({
+      step,
+      syntax: "implicit",
+      source: sourceRangeFromToken(path, positioned),
+      value: source.slice(positioned.start, positioned.end).trim(),
+    });
+    runtime.add(
+      new StepImplicitReturnMachine({
+        id: `${step.id}/return#${step.analysis.returns.length - 1}`,
+        parentId: step.id,
+        stepReturn,
+        expressionStart: positioned.start,
+        baseDepth: activatedScope.baseDepth,
+      }),
+    );
+  }
+
+  function discoverExplicitStepReturn(
+    positioned: PositionedWorkflowToken,
+    context: TokenMachineContext,
+    stepCallId: string,
+  ): void {
+    const step = stepById(stepCallId);
+    if (step?.stepType !== "do") {
+      return;
+    }
+
+    const stepReturn = createStepReturn({
+      step,
+      syntax: "explicit",
+      source: sourceRangeFromToken(path, positioned),
+      value: "",
+    });
+    runtime.add(
+      new StepReturnStatementMachine({
+        id: `${step.id}/return#${step.analysis.returns.length - 1}`,
+        parentId: step.id,
+        stepReturn,
+        statement: positioned,
+        baseDepth: context.depth,
+      }),
+    );
+  }
+
+  function createStepReturn({
+    step,
+    syntax,
+    source: returnSource,
+    value,
+  }: {
+    step: StepNode;
+    syntax: StepReturn["syntax"];
+    source: SourceRange;
+    value: string;
+  }): StepReturn {
+    const stepReturn: StepReturn = {
+      kind: "return",
+      syntax,
+      value,
+      source: returnSource,
+      construction: { status: "partial", phase: "returning" },
+    };
+    step.analysis.returns.push(stepReturn);
+    return stepReturn;
+  }
+
+  function stepById(stepId: string): StepNode | undefined {
+    return workflows
+      .flatMap((workflow) => workflow.children)
+      .find((node): node is StepNode => node.kind === "step" && node.id === stepId);
   }
 
   function discoverReturn(positioned: PositionedWorkflowToken, context: TokenMachineContext): void {
@@ -615,7 +756,7 @@ export function createWorkflowTokenMachine({
       parentId,
       source,
       meta,
-      analysis: { status: "partial", invocations: [] },
+      analysis: { status: "partial", invocations: [], returns: [] },
       construction: { status: "partial", phase },
     };
     workflow.children.push(step);
@@ -828,7 +969,7 @@ export function createWorkflowTokenMachine({
     }
 
     return {
-      version: 3,
+      version: 4,
       nodes,
       edges,
       diagnostics: materializeDiagnostics(),
@@ -1174,7 +1315,7 @@ function positionAfterText(
 }
 
 function emptyGraph(): WorkflowGraph {
-  return { version: 3, nodes: [], edges: [], diagnostics: [] };
+  return { version: 4, nodes: [], edges: [], diagnostics: [] };
 }
 
 function cloneNode<T extends WorkflowNode | WorkflowChildNode>(node: T): T {
@@ -1190,6 +1331,11 @@ function cloneNode<T extends WorkflowNode | WorkflowChildNode>(node: T): T {
           callee: { ...invocation.callee, path: [...invocation.callee.path] },
           source: cloneSourceRange(invocation.source),
           construction: { ...invocation.construction },
+        })),
+        returns: node.analysis.returns.map((stepReturn) => ({
+          ...stepReturn,
+          source: cloneSourceRange(stepReturn.source),
+          construction: { ...stepReturn.construction },
         })),
       },
       construction: { ...node.construction },
@@ -1255,7 +1401,7 @@ function cloneDiagnostic(diagnostic: Diagnostic): Diagnostic {
 
 function cloneGraph(graph: WorkflowGraph): WorkflowGraph {
   return {
-    version: 3,
+    version: 4,
     nodes: graph.nodes.map(cloneNode),
     edges: graph.edges.map((edge) => ({ ...edge })),
     diagnostics: graph.diagnostics.map(cloneDiagnostic),

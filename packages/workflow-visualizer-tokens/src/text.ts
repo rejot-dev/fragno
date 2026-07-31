@@ -134,6 +134,11 @@ function appendStepDetails(lines: string[], indent: string, step: StepNode): voi
     step.meta.until ? ["until", step.meta.until] : undefined,
     step.meta.eventType ? ["event", step.meta.eventType] : undefined,
     step.meta.timeout ? ["timeout", step.meta.timeout] : undefined,
+    ...step.analysis.returns.map((stepReturn, index): [string, string] | undefined =>
+      stepReturn.value
+        ? [step.analysis.returns.length === 1 ? "returns" : `return ${index + 1}`, stepReturn.value]
+        : undefined,
+    ),
   ].filter((detail): detail is [string, string] => detail !== undefined);
 
   for (const [name, value] of details) {
