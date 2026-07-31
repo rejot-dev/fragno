@@ -1,12 +1,11 @@
-import { resolveActorFilePrincipal, type FilePrincipal } from "@/files/permissions";
-import {
-  automationActorsSchema,
-  type AutomationExecutionContext,
-} from "@/fragno/automation/actors";
+import { resolveExecutionFilePrincipal, type FilePrincipal } from "@/files/permissions";
+import { automationActorsSchema } from "@/fragno/automation/actors";
 
 import type { BackofficeAuthorityResolver } from "./authority-resolver";
+import { resolveBackofficeInternalServiceAuthorityRole } from "./authority-roles";
 import {
   backofficeContextScopesEqual,
+  backofficeVerifiedAccessTokenAuthoritySchema,
   type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "./context";
@@ -17,7 +16,7 @@ import { BACKOFFICE_PERMISSION, type BackofficePermissionRequirement } from "./p
 import { backofficeScopeSinglePathSegment } from "./scope-codec";
 
 export type BackofficeKernelAction = {
-  execution: AutomationExecutionContext;
+  execution: BackofficeExecutionContext;
   operation: BackofficePermissionRequirement;
   resource?: unknown;
 };
@@ -33,7 +32,7 @@ export const noopBackofficeKernelObserver: BackofficeKernelObserver = {
   },
 };
 
-export type BackofficeKernelRuntime = {
+type BackofficeKernelRuntime = {
   authorityResolver: BackofficeAuthorityResolver;
   kernelObserver: BackofficeKernelObserver;
 };
@@ -87,83 +86,17 @@ export class BackofficeKernel {
     this.#observer = runtime.kernelObserver;
   }
 
+  async assertAuthorized(action: BackofficeKernelAction): Promise<void> {
+    await this.#authorize(action);
+  }
+
   async invoke<T>({
     execution,
     operation,
     resource,
     execute,
   }: BackofficeKernelAction & { execute: () => Promise<T> }): Promise<T> {
-    const parsedScope = backofficeContextScopeSchema.safeParse(execution.scope);
-    const parsedActors = automationActorsSchema.safeParse(execution.actors);
-    if (!parsedScope.success || !parsedActors.success) {
-      throw new BackofficeForbiddenError(
-        "Automation execution context is invalid.",
-        "context-access-denied",
-      );
-    }
-
-    const trustedExecution: AutomationExecutionContext = {
-      scope: parsedScope.data,
-      actors: parsedActors.data,
-    };
-
-    const authorityResolver = this.#authorityResolver;
-    this.#assertAutomationContextAccess(trustedExecution);
-
-    const principal = trustedExecution.actors.principal;
-    if (principal) {
-      let permissions: readonly BackofficePermissionRequirement[];
-      try {
-        permissions = await authorityResolver.resolvePrincipalPermissions({
-          principal,
-          execution: trustedExecution,
-        });
-      } catch {
-        throw new BackofficeForbiddenError(
-          "Backoffice authority resolution is unavailable.",
-          "authority-unavailable",
-        );
-      }
-
-      if (!permissions.some((grant) => backofficePermissionsEqual(grant, operation))) {
-        throw new BackofficeForbiddenError(
-          "The current principal does not have the required permission.",
-          "principal-permission-denied",
-        );
-      }
-    } else if (!this.#isTrustedSystemExecution(trustedExecution)) {
-      if (!this.#isAllowedBootstrapAction(trustedExecution, operation, resource)) {
-        throw new BackofficeForbiddenError(
-          "This action requires current principal authority.",
-          "principal-permission-denied",
-        );
-      }
-    }
-
-    // TODO: Express this ordered authorization chain without triggering async-await-in-loop.
-    for (const actor of trustedExecution.actors.delegation) {
-      let grants: readonly BackofficePermissionRequirement[];
-      try {
-        grants = await authorityResolver.resolveActorCapabilityGrants({
-          actor,
-          execution: trustedExecution,
-        });
-      } catch {
-        throw new BackofficeForbiddenError(
-          "Backoffice authority resolution is unavailable.",
-          "authority-unavailable",
-        );
-      }
-
-      if (!grants.some((grant) => backofficePermissionsEqual(grant, operation))) {
-        throw new BackofficeForbiddenError(
-          "A delegated actor does not have the required capability grant.",
-          "actor-capability-denied",
-        );
-      }
-    }
-
-    const action = { execution: trustedExecution, operation, resource };
+    const action = await this.#authorize({ execution, operation, resource });
     let observerActive = true;
     let observerFailure: { error: unknown } | null = null;
     const observedExecution: { promise: Promise<T> | null } = { promise: null };
@@ -207,30 +140,139 @@ export class BackofficeKernel {
     return result;
   }
 
-  #assertAutomationContextAccess(execution: AutomationExecutionContext) {
-    if (execution.scope.kind === "system" && !this.#isTrustedSystemExecution(execution)) {
+  async #authorize({
+    execution,
+    operation,
+    resource,
+  }: BackofficeKernelAction): Promise<BackofficeKernelAction> {
+    const trustedExecution = this.#parseExecutionContext(execution);
+    const principal = trustedExecution.actors.principal;
+
+    if (principal) {
+      let permissions: readonly BackofficePermissionRequirement[];
+      try {
+        permissions = await this.#authorityResolver.resolvePrincipalPermissions({
+          principal,
+          execution: trustedExecution,
+        });
+      } catch {
+        throw new BackofficeForbiddenError(
+          "Backoffice authority resolution is unavailable.",
+          "authority-unavailable",
+        );
+      }
+
+      if (!permissions.some((grant) => backofficePermissionsEqual(grant, operation))) {
+        throw new BackofficeForbiddenError(
+          "The current principal does not have the required permission.",
+          "principal-permission-denied",
+        );
+      }
+    } else if (
+      !this.#isTrustedSystemExecution(trustedExecution) &&
+      !this.#isAllowedBootstrapAction(trustedExecution, operation, resource)
+    ) {
       throw new BackofficeForbiddenError(
-        "System context requires a trusted system initiator.",
+        "This action requires current principal authority.",
+        "principal-permission-denied",
+      );
+    }
+
+    // TODO: Express this ordered authorization chain without triggering async-await-in-loop.
+    for (const actor of trustedExecution.actors.delegation) {
+      let grants: readonly BackofficePermissionRequirement[];
+      try {
+        grants = await this.#authorityResolver.resolveActorCapabilityGrants({
+          actor,
+          execution: trustedExecution,
+        });
+      } catch {
+        throw new BackofficeForbiddenError(
+          "Backoffice authority resolution is unavailable.",
+          "authority-unavailable",
+        );
+      }
+
+      if (!grants.some((grant) => backofficePermissionsEqual(grant, operation))) {
+        throw new BackofficeForbiddenError(
+          "A delegated actor does not have the required capability grant.",
+          "actor-capability-denied",
+        );
+      }
+    }
+
+    return { execution: trustedExecution, operation, resource };
+  }
+
+  #parseExecutionContext(execution: BackofficeExecutionContext): BackofficeExecutionContext {
+    const parsedScope = backofficeContextScopeSchema.safeParse(execution.scope);
+    const parsedActors = automationActorsSchema.safeParse(execution.actors);
+    const parsedUserAuthority = execution.userAuthority
+      ? backofficeVerifiedAccessTokenAuthoritySchema.safeParse(execution.userAuthority)
+      : { success: true as const, data: undefined };
+    if (!parsedScope.success || !parsedActors.success || !parsedUserAuthority.success) {
+      throw new BackofficeForbiddenError(
+        "Backoffice execution context is invalid.",
+        "context-access-denied",
+      );
+    }
+
+    const trustedExecution = {
+      scope: parsedScope.data,
+      actors: parsedActors.data,
+      ...(parsedUserAuthority.data ? { userAuthority: parsedUserAuthority.data } : {}),
+    } satisfies BackofficeExecutionContext;
+    this.#assertExecutionContextAccess(trustedExecution);
+    return trustedExecution;
+  }
+
+  #assertExecutionContextAccess(execution: BackofficeExecutionContext) {
+    const principal = execution.actors.principal;
+    const hasInternalUserPrincipal = principal?.scope === "internal" && principal.type === "user";
+
+    if (
+      execution.userAuthority &&
+      (!hasInternalUserPrincipal || execution.userAuthority.userId !== principal.id)
+    ) {
+      throw new BackofficeForbiddenError(
+        "Verified user authority does not match the execution principal.",
+        "context-access-denied",
+      );
+    }
+
+    if (
+      execution.scope.kind === "system" &&
+      !this.#isTrustedSystemExecution(execution) &&
+      !hasInternalUserPrincipal
+    ) {
+      throw new BackofficeForbiddenError(
+        "System context requires trusted system execution or an internal user principal.",
         "context-access-denied",
       );
     }
 
     if (
       execution.scope.kind === "user" &&
-      execution.actors.principal &&
+      execution.actors.principal?.scope === "internal" &&
+      execution.actors.principal.type === "user" &&
       execution.actors.principal.id !== execution.scope.userId
     ) {
       throw new BackofficeForbiddenError("Forbidden", "context-access-denied");
     }
   }
 
-  #isTrustedSystemExecution(execution: AutomationExecutionContext) {
-    const { initiator } = execution.actors;
-    return initiator.scope === "internal" && initiator.type === "system";
+  #isTrustedSystemExecution(execution: BackofficeExecutionContext) {
+    const { initiator, principal, delegation } = execution.actors;
+    return (
+      initiator.scope === "internal" &&
+      initiator.type === "system" &&
+      principal === null &&
+      delegation.every((actor) => resolveBackofficeInternalServiceAuthorityRole(actor) !== null)
+    );
   }
 
   #isAllowedBootstrapAction(
-    execution: AutomationExecutionContext,
+    execution: BackofficeExecutionContext,
     operation: BackofficePermissionRequirement,
     resource: unknown,
   ) {
@@ -262,27 +304,6 @@ export class BackofficeKernel {
     );
   }
 
-  assertContextAccess({ actor, scope }: BackofficeExecutionContext) {
-    if (actor.type === "system") {
-      return;
-    }
-    if (scope.kind === "system") {
-      if (actor.type === "user" && actor.role === "admin") {
-        return;
-      }
-      throw new BackofficeForbiddenError("System context requires an admin or system actor.");
-    }
-    if (
-      (scope.kind === "org" || scope.kind === "project") &&
-      !actor.organizationIds?.includes(scope.orgId)
-    ) {
-      throw new BackofficeForbiddenError("Forbidden");
-    }
-    if (scope.kind === "user" && actor.type === "user" && actor.userId !== scope.userId) {
-      throw new BackofficeForbiddenError("Forbidden");
-    }
-  }
-
   assertObjectAvailable(binding: BackofficeObjectBindingName, scope: BackofficeContextScope) {
     const physicalScope = objectScopeKind(scope);
     const allowed = backofficeObjectScopePolicy[binding];
@@ -293,9 +314,74 @@ export class BackofficeKernel {
     }
   }
 
-  resolveFilePrincipal(context: BackofficeExecutionContext): FilePrincipal {
-    this.assertContextAccess(context);
-    return resolveActorFilePrincipal(context);
+  resolveFilePrincipal(execution: BackofficeExecutionContext): FilePrincipal {
+    const trustedExecution = this.#parseExecutionContext(execution);
+    if (!trustedExecution.actors.principal && !this.#isTrustedSystemExecution(trustedExecution)) {
+      throw new BackofficeForbiddenError(
+        "Filesystem access requires an internal principal or trusted system execution.",
+        "context-access-denied",
+      );
+    }
+
+    const filePrincipal = resolveExecutionFilePrincipal(trustedExecution);
+    if (!filePrincipal) {
+      throw new BackofficeForbiddenError(
+        "Filesystem access requires an internal principal or trusted system execution.",
+        "context-access-denied",
+      );
+    }
+    return filePrincipal;
+  }
+
+  assertScopedContextAccess(
+    execution: BackofficeExecutionContext,
+    targetScope: BackofficeContextScope,
+  ) {
+    const ownerScope = execution.scope;
+    if (
+      backofficeContextScopesEqual(ownerScope, targetScope) ||
+      this.#isTrustedSystemExecution(execution)
+    ) {
+      return;
+    }
+
+    const principal = execution.actors.principal;
+    if (
+      ownerScope.kind === "system" &&
+      principal !== null &&
+      resolveBackofficeInternalServiceAuthorityRole(principal) !== null
+    ) {
+      return;
+    }
+
+    if (ownerScope.kind === "org") {
+      const targetsOwnerOrganization =
+        targetScope.kind === "org" && targetScope.orgId === ownerScope.orgId;
+      const targetsProjectInOwnerOrganization =
+        targetScope.kind === "project" && targetScope.orgId === ownerScope.orgId;
+
+      if (targetsOwnerOrganization || targetsProjectInOwnerOrganization) {
+        return;
+      }
+
+      if (targetScope.kind === "user" && principal !== null) {
+        const targetsAuthenticatedUser =
+          principal.scope === "internal" &&
+          principal.type === "user" &&
+          principal.id === targetScope.userId;
+        const internalServiceCanEnterUserScope =
+          resolveBackofficeInternalServiceAuthorityRole(principal) !== null;
+
+        if (targetsAuthenticatedUser || internalServiceCanEnterUserScope) {
+          return;
+        }
+      }
+    }
+
+    throw new BackofficeForbiddenError(
+      "The execution cannot access the requested Backoffice context.",
+      "context-access-denied",
+    );
   }
 
   async assertScopeAllowedByOwner({

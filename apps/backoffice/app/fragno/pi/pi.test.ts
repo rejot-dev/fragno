@@ -3,6 +3,7 @@ import { describe, expect, test, vi, assert } from "vitest";
 import { InMemoryAdapter } from "@fragno-dev/db";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import * as files from "@/files";
@@ -661,15 +662,10 @@ const createContext = (
       kernelObserver: noopBackofficeKernelObserver,
     }),
     runtimeConfig: testRuntimeConfig,
-    execution: {
-      actor: {
-        type: "user",
-        id: "test-user",
-        userId: "test-user",
-        organizationIds: ["acme-org"],
-      },
+    execution: createBackofficeUserExecution({
       scope: { kind: "org", orgId: "acme-org" },
-    },
+      userId: "test-user",
+    }),
   };
 };
 

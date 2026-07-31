@@ -164,14 +164,15 @@ const createBackofficeScopedCodemodeProvider = ({
   fns: {
     callScoped: async (rawInput: unknown) => {
       const input = rawInput as ScopedCodemodeCallInput;
-      const scope = input.scope.kind === "current" ? context.scope : input.scope;
+      const currentScope = context.execution.scope;
+      const scope = input.scope.kind === "current" ? currentScope : input.scope;
       if (scope.kind === "project" && !scope.orgId) {
-        if (context.scope.kind !== "org" && context.scope.kind !== "project") {
+        if (currentScope.kind !== "org" && currentScope.kind !== "project") {
           throw new Error("Project scoped codemode handles require a current org context.");
         }
         return await callScopedTool(
           input,
-          context.createScopedContext({ ...scope, orgId: context.scope.orgId }),
+          context.createScopedContext({ ...scope, orgId: currentScope.orgId }),
           families,
           toolCalls,
         );

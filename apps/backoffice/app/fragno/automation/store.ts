@@ -2,7 +2,10 @@ import { z } from "zod";
 
 import { Validator, type Schema } from "@cfworker/json-schema";
 
-import type { AutomationEntityRef } from "./actors";
+export const AUTOMATION_STORE_ROUTE_PATHS = {
+  set: "/store/set",
+  delete: "/store/delete",
+} as const;
 
 const idSchema = z.preprocess((value) => {
   if (typeof value === "string") {
@@ -32,15 +35,6 @@ const normalizeStringList = (value: unknown) => {
   ];
 };
 
-export const automationStoreActorSchema: z.ZodType<AutomationEntityRef> = z
-  .object({
-    scope: z.enum(["internal", "external"]),
-    type: z.string().trim().min(1),
-    id: z.string().trim().min(1),
-    source: z.string().trim().min(1).optional(),
-  })
-  .catchall(z.unknown());
-
 const automationStoreCategorySchema = z.preprocess(
   normalizeStringList,
   z.array(z.string().trim().min(1)),
@@ -59,18 +53,21 @@ export const automationStoreVerificationSchema = z.array(
   ]),
 );
 
-export const automationStoreSetInputSchema = z.object({
+export const automationStoreSetInputSchema = z.strictObject({
   key: z.string().trim().min(1),
   value: z.string(),
-  actor: automationStoreActorSchema.nullable(),
   description: z.string().trim().min(1).nullable().optional(),
   category: automationStoreCategoryInputSchema.optional(),
   verification: automationStoreVerificationSchema.optional(),
 });
 
-export const automationStoreListInputSchema = z.object({
+export const automationStoreListInputSchema = z.strictObject({
   prefix: z.string().optional(),
   limit: z.number().int().positive().max(500).optional(),
+});
+
+export const automationStoreDeleteInputSchema = z.strictObject({
+  key: z.string().trim().min(1),
 });
 
 const automationStoreValueShape = {
@@ -78,7 +75,6 @@ const automationStoreValueShape = {
   value: z.string(),
   description: z.string().nullable().optional(),
   category: automationStoreCategorySchema,
-  actor: z.preprocess((value) => value ?? null, automationStoreActorSchema.nullable()),
 };
 
 export const automationStoreEntrySchema = z.object({
@@ -167,6 +163,3 @@ export const validateAutomationStoreVerification = ({
     }
   }
 };
-
-export const hasSystemCategory = (entry: Pick<AutomationStoreEntry, "category">) =>
-  entry.category.includes("system");

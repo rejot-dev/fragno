@@ -2,8 +2,10 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 
 import type { WorkflowsFragment } from "@fragno-dev/workflows";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
+import type {
+  AutomationsObject,
+  BackofficeActionRpcContext,
+} from "@/backoffice-runtime/object-registry";
 
 import type { createAutomationFragment } from "./index";
 
@@ -11,31 +13,16 @@ type AutomationFragment = ReturnType<typeof createAutomationFragment>;
 
 type CreateAutomationsRouteCallerOptions = {
   object: AutomationsObject;
-  scope?: BackofficeContextScope;
+  context?: BackofficeActionRpcContext;
 };
 
-const applyScopeQuery = (url: URL, scope: BackofficeContextScope) => {
-  url.searchParams.set("scopeKind", scope.kind);
-  if (scope.kind === "org" || scope.kind === "project") {
-    url.searchParams.set("orgId", scope.orgId);
-  }
-  if (scope.kind === "project") {
-    url.searchParams.set("projectId", scope.projectId);
-  }
-  if (scope.kind === "user") {
-    url.searchParams.set("userId", scope.userId);
-  }
-};
+export const isAutomationOutboxPath = (path: string) =>
+  path === "/_internal" || path.startsWith("/_internal/");
 
 const createAutomationsDoFetch =
-  ({ object, scope }: CreateAutomationsRouteCallerOptions) =>
-  async (outboundRequest: Request) => {
-    const url = new URL(outboundRequest.url);
-    if (scope) {
-      applyScopeQuery(url, scope);
-    }
-    return object.fetch(new Request(url.toString(), outboundRequest));
-  };
+  ({ object, context }: CreateAutomationsRouteCallerOptions) =>
+  (request: Request) =>
+    context ? object.fetchWithContext(request, context) : object.fetch(request);
 
 export const createAutomationsRouteCaller = (
   options: CreateAutomationsRouteCallerOptions,

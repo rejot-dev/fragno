@@ -21,7 +21,6 @@ describe("createBackofficeBashCommands", () => {
   test("routes generated bash commands through semantic runtime tools", async () => {
     const calls: unknown[] = [];
     const commandCallsResult: { command: string; output: string; exitCode: number }[] = [];
-    const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
     const automationsRuntime: RegisteredAutomationsRuntime = {
       ...createUnavailableAutomationRouterRuntime(),
       get: async (input) => {
@@ -31,7 +30,6 @@ describe("createBackofficeBashCommands", () => {
           key: input.key,
           value: "user-55",
           category: [],
-          actor,
         };
       },
       set: async (input) => {
@@ -41,7 +39,6 @@ describe("createBackofficeBashCommands", () => {
           key: input.key,
           value: input.value,
           category: input.category ?? [],
-          actor: input.actor,
         };
       },
       delete: async (input) => {
@@ -50,7 +47,7 @@ describe("createBackofficeBashCommands", () => {
       },
       list: async (input) => {
         calls.push(["list", input]);
-        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [], actor }];
+        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [] }];
       },
     };
 
@@ -68,28 +65,19 @@ describe("createBackofficeBashCommands", () => {
     await expect(
       bash.exec("store.get --key telegram/chat-123 --print value"),
     ).resolves.toMatchObject({ stdout: "user-55\n", exitCode: 0 });
-
     await expect(
-      bash.exec(
-        'store.set --key telegram/chat-123 --value user-55 --actor \'{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}\' --format json',
-      ),
+      bash.exec("store.set --key telegram/chat-123 --value user-55 --format json"),
     ).resolves.toMatchObject({ exitCode: 0 });
-
     await expect(
       bash.exec("store.delete --key telegram/chat-123 --format json"),
-    ).resolves.toMatchObject({
-      exitCode: 0,
-    });
-
+    ).resolves.toMatchObject({ exitCode: 0 });
     await expect(
       bash.exec("store.list --prefix telegram/ --limit 10 --format json"),
-    ).resolves.toMatchObject({
-      exitCode: 0,
-    });
+    ).resolves.toMatchObject({ exitCode: 0 });
 
     expect(calls).toEqual([
       ["get", { key: "telegram/chat-123" }],
-      ["set", { key: "telegram/chat-123", value: "user-55", actor }],
+      ["set", { key: "telegram/chat-123", value: "user-55" }],
       ["delete", { key: "telegram/chat-123" }],
       ["list", { prefix: "telegram/", limit: 10 }],
     ]);
@@ -101,33 +89,24 @@ describe("createBackofficeBashCommands", () => {
     ]);
   });
 
-  test("uses the default actor for store.set when --actor is omitted", async () => {
+  test("accepts store.set without caller-authored provenance", async () => {
     const calls: unknown[] = [];
-    const actor = { scope: "internal", type: "user", id: "user-1" } as const;
     const automationsRuntime: RegisteredAutomationsRuntime = {
       ...createUnavailableAutomationRouterRuntime(),
       get: async () => null,
       set: async (input) => {
         calls.push(["set", input]);
-        return {
-          id: input.key,
-          key: input.key,
-          value: input.value,
-          category: [],
-          actor: input.actor,
-        };
+        return { id: input.key, key: input.key, value: input.value, category: [] };
       },
       delete: async () => null,
       list: async () => [],
     };
-
     const bash = new Bash({
       fs: new InMemoryFs(),
       customCommands: createBackofficeBashCommands({
         tools: automationStoreRuntimeTools,
         context: createTrustedSystemBackofficeToolContext({
           runtimes: { automations: automationsRuntime },
-          defaults: { actor },
         }),
         commandCallsResult: [],
       }),
@@ -136,11 +115,17 @@ describe("createBackofficeBashCommands", () => {
     await expect(
       bash.exec("store.set --key dashboard/example --value configured --format json"),
     ).resolves.toMatchObject({ exitCode: 0 });
-
-    expect(calls).toEqual([["set", { key: "dashboard/example", value: "configured", actor }]]);
+    expect(calls).toEqual([["set", { key: "dashboard/example", value: "configured" }]]);
   });
 
-  test("requires store.set --actor when no default actor is available", async () => {
+  test.each([
+    "actor",
+    "actors",
+    "principal",
+    "execution-context",
+    "propagation-context",
+    "permissions",
+  ])("rejects caller-supplied --%s metadata", async (optionName) => {
     const automationsRuntime: RegisteredAutomationsRuntime = {
       ...createUnavailableAutomationRouterRuntime(),
       get: async () => null,
@@ -150,7 +135,6 @@ describe("createBackofficeBashCommands", () => {
       delete: async () => null,
       list: async () => [],
     };
-
     const bash = new Bash({
       fs: new InMemoryFs(),
       customCommands: createBackofficeBashCommands({
@@ -163,10 +147,10 @@ describe("createBackofficeBashCommands", () => {
     });
 
     await expect(
-      bash.exec("store.set --key dashboard/example --value configured"),
+      bash.exec(`store.set --key dashboard/example --value configured --${optionName} '{}'`),
     ).resolves.toMatchObject({
       exitCode: 1,
-      stderr: expect.stringContaining("Missing required option --actor"),
+      stderr: expect.stringContaining(`does not accept option --${optionName}`),
     });
   });
 

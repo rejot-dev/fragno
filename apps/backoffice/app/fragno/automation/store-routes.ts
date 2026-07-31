@@ -2,10 +2,11 @@ import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
-import { AutomationStoreProtectedEntryError } from "./bindings-storage-runtime";
 import { automationFragmentDefinition } from "./definition";
 import {
+  AUTOMATION_STORE_ROUTE_PATHS,
   AutomationStoreVerificationError,
+  automationStoreDeleteInputSchema,
   automationStoreDeleteResultSchema,
   automationStoreEntrySchema,
   automationStoreListInputSchema,
@@ -60,7 +61,6 @@ export const automationStoreRoutes = defineRoutes(automationFragmentDefinition).
               value: entry.value,
               description: entry.description,
               category: entry.category ?? [],
-              actor: entry.actor,
               createdAt: entry.createdAt.toISOString(),
               updatedAt: entry.updatedAt.toISOString(),
             })),
@@ -96,7 +96,6 @@ export const automationStoreRoutes = defineRoutes(automationFragmentDefinition).
                   value: entry.value,
                   description: entry.description,
                   category: entry.category ?? [],
-                  actor: entry.actor,
                   createdAt: entry.createdAt.toISOString(),
                   updatedAt: entry.updatedAt.toISOString(),
                 }
@@ -119,7 +118,7 @@ export const automationStoreRoutes = defineRoutes(automationFragmentDefinition).
     }),
     defineRoute({
       method: "POST",
-      path: "/store/set",
+      path: AUTOMATION_STORE_ROUTE_PATHS.set,
       inputSchema: automationStoreSetInputSchema,
       outputSchema: automationStoreSetResultSchema,
       handler: async function ({ input }, { json, error }) {
@@ -146,31 +145,15 @@ export const automationStoreRoutes = defineRoutes(automationFragmentDefinition).
     }),
     defineRoute({
       method: "POST",
-      path: "/store/delete",
-      inputSchema: z.object({
-        key: z.string().trim().min(1),
-      }),
+      path: AUTOMATION_STORE_ROUTE_PATHS.delete,
+      inputSchema: automationStoreDeleteInputSchema,
       outputSchema: automationStoreDeleteResultSchema,
       handler: async function ({ input }, { json, error }) {
         const payload = await input.valid();
-        let result;
-        try {
-          result = await this.handlerTx()
-            .withServiceCalls(() => [services.deleteStoreEntry(payload)] as const)
-            .transform(({ serviceResult: [serviceResult] }) => serviceResult)
-            .execute();
-        } catch (cause) {
-          if (cause instanceof AutomationStoreProtectedEntryError) {
-            return error(
-              {
-                message: cause.message,
-                code: "STORE_ENTRY_PROTECTED",
-              },
-              403,
-            );
-          }
-          throw cause;
-        }
+        const result = await this.handlerTx()
+          .withServiceCalls(() => [services.deleteStoreEntry(payload)] as const)
+          .transform(({ serviceResult: [serviceResult] }) => serviceResult)
+          .execute();
 
         if (!result) {
           return error(

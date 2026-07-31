@@ -9,25 +9,11 @@ import {
 
 import { useLiveQuery } from "@tanstack/react-db";
 
-import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import type { AutomationEntityRef } from "@/fragno/automation/actors";
-
 import type { Route } from "./+types/store";
 import { deleteAutomationStoreEntry } from "./data.server";
 import { formatTimestamp } from "./formatting";
 import type { AutomationLayoutContext } from "./layout-context";
 import { automationScopeFromRouteParams } from "./scope";
-
-type AutomationStoreEntry = {
-  id: string;
-  key: string;
-  value: string;
-  description?: string | null;
-  category: string[];
-  actor: AutomationEntityRef | null;
-  createdAt?: string | Date | null;
-  updatedAt?: string | Date | null;
-};
 
 type StoreActionData = {
   ok: boolean;
@@ -55,8 +41,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
 
   const scope = automationScopeFromRouteParams(params);
-  await requireBackofficeContext(request, context, scope);
-
   const result = await deleteAutomationStoreEntry(request, context, scope, key);
 
   if (!result.ok) {
@@ -73,15 +57,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     key,
   } satisfies StoreActionData;
 }
-
-const formatActor = (actor: AutomationStoreEntry["actor"]) => {
-  if (!actor) {
-    return "—";
-  }
-
-  const source = actor.source ? `${actor.source}/` : "";
-  return `${actor.scope}:${source}${actor.type}:${actor.id}`;
-};
 
 export default function BackofficeOrganisationAutomationStore() {
   const { collections } = useOutletContext<AutomationLayoutContext>();
@@ -187,9 +162,6 @@ function AutomationKvStoreTable({
               Category
             </th>
             <th scope="col" className="px-3 py-2">
-              Actor
-            </th>
-            <th scope="col" className="px-3 py-2">
               Created
             </th>
             <th scope="col" className="px-3 py-2">
@@ -204,7 +176,6 @@ function AutomationKvStoreTable({
           {entries.map((entry) => {
             const categories = entry.category ?? [];
             const isSubmitting = pendingKey === entry.key;
-            const isSystemEntry = categories.includes("system");
 
             return (
               <tr key={entry.id} className="text-[var(--bo-muted)]">
@@ -229,27 +200,20 @@ function AutomationKvStoreTable({
                       : "—"}
                   </div>
                 </td>
-                <td className="px-3 py-3 align-top">
-                  <span className="font-mono text-xs text-[var(--bo-fg)]">
-                    {formatActor(entry.actor)}
-                  </span>
-                </td>
                 <td className="px-3 py-3 align-top">{formatTimestamp(entry.createdAt)}</td>
                 <td className="px-3 py-3 align-top">{formatTimestamp(entry.updatedAt)}</td>
                 <td className="px-3 py-3 text-right align-top">
-                  {isSystemEntry ? null : (
-                    <Form method="post" className="inline-flex">
-                      <input type="hidden" name="intent" value="delete-store-entry" />
-                      <input type="hidden" name="key" value={entry.key} />
-                      <button
-                        type="submit"
-                        disabled={isSubmitting}
-                        className="border border-red-400/40 bg-red-500/8 px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-red-700 uppercase transition-colors hover:border-red-400/60 hover:bg-red-500/12 disabled:cursor-not-allowed disabled:opacity-60 dark:text-red-200"
-                      >
-                        {isSubmitting ? "Deleting…" : "Delete"}
-                      </button>
-                    </Form>
-                  )}
+                  <Form method="post" className="inline-flex">
+                    <input type="hidden" name="intent" value="delete-store-entry" />
+                    <input type="hidden" name="key" value={entry.key} />
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="border border-red-400/40 bg-red-500/8 px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-red-700 uppercase transition-colors hover:border-red-400/60 hover:bg-red-500/12 disabled:cursor-not-allowed disabled:opacity-60 dark:text-red-200"
+                    >
+                      {isSubmitting ? "Deleting…" : "Delete"}
+                    </button>
+                  </Form>
                 </td>
               </tr>
             );

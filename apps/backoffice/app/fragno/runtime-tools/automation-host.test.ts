@@ -29,7 +29,6 @@ const createAutomationsRuntime = () => ({
     value: "user-1",
     status: "linked",
     category: [],
-    actor: automationStoreActor,
   }),
   set: async (input: StoreSetArgs & { source?: string }) => ({
     id: input.key,
@@ -38,19 +37,18 @@ const createAutomationsRuntime = () => ({
     value: input.value,
     status: "linked",
     category: [],
-    actor: input.actor ?? automationStoreActor,
   }),
   delete: async ({ key }: Record<string, string>) => ({ ok: true as const, key }),
   list: async () => [],
 });
 
 const createOtpRuntime = (): OtpRuntime => ({
-  createClaim: async ({ actor }) => ({
-    url: `https://example.com/${actor.source}/${actor.id}`,
-    externalId: actor.id,
+  createClaim: async () => ({
+    url: `https://example.com/${automationStoreActor.source}/${automationStoreActor.id}`,
+    externalId: automationStoreActor.id,
     otpId: "otp_123456",
     code: "123456",
-    actor,
+    actor: automationStoreActor,
   }),
 });
 

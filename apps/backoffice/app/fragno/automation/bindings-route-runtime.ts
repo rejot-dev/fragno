@@ -1,4 +1,4 @@
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
 
 import type { AutomationStoreRuntime } from "../runtime-tools/families/automations-bindings";
@@ -6,12 +6,12 @@ import { createAutomationsRouteCaller } from "./route-callers";
 
 export const createRouteBackedAutomationStoreRuntime = ({
   object,
-  scope,
+  execution,
 }: {
   object: AutomationsObject;
-  scope?: BackofficeContextScope;
+  execution: BackofficeExecutionContext;
 }): AutomationStoreRuntime => {
-  const callRoute = createAutomationsRouteCaller({ object, scope });
+  const callRoute = createAutomationsRouteCaller({ object, context: { execution } });
 
   return {
     get: async ({ key }) => {

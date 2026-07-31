@@ -322,7 +322,6 @@ export default [
       "routes/api/automations-scoped-workflows.ts",
     ),
     route("automations-scoped/:scopeKind/:scopeId/*", "routes/api/automations-scoped.ts"),
-    route("automations/:orgId/*", "routes/api/automations.ts"),
     route("automations-workflows/:orgId/*", "routes/api/automations-workflows.ts"),
     route("marketplace/*", "routes/api/marketplace.ts"),
   ]),

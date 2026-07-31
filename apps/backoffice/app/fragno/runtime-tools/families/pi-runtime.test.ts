@@ -155,13 +155,6 @@ const createPiRuntime = (overrides: Partial<PiRuntime> = {}): PiRuntime => ({
   ...overrides,
 });
 
-const automationStoreActor = {
-  scope: "external",
-  source: "telegram",
-  type: "chat",
-  id: "actor-1",
-} as const;
-
 const createAutomationStoreRuntime = (): RegisteredAutomationsRuntime => ({
   ...createUnavailableAutomationRouterRuntime(),
   get: async ({ key }) => {
@@ -173,20 +166,16 @@ const createAutomationStoreRuntime = (): RegisteredAutomationsRuntime => ({
       key,
       value: "user-1",
       category: [],
-      actor: automationStoreActor,
     };
   },
-  set: async ({ key, value, actor }) => ({
+  set: async ({ key, value }) => ({
     id: key,
     key,
     value,
     category: [],
-    actor,
   }),
   delete: async ({ key }) => ({ ok: true, key }),
-  list: async ({ prefix }) => [
-    { key: `${prefix}actor-1`, value: "user-1", category: [], actor: automationStoreActor },
-  ],
+  list: async ({ prefix }) => [{ key: `${prefix}actor-1`, value: "user-1", category: [] }],
 });
 
 const createPiHost = (piRuntime: PiRuntime = createPiRuntime()) => {
@@ -219,12 +208,10 @@ const withTimeout = async <T>(promise: Promise<T>, message: string, ms = 1_000):
 describe("pi bash command registration", () => {
   it("formats store.set results as text, JSON, and printed fields", async () => {
     const { bash } = createPiHost();
-    const actor = `'{"scope":"internal","type":"user","id":"user-1"}'`;
-
     const result = await bash.exec(
-      `store.set --key text --value one --actor ${actor}\n` +
-        `store.set --key json --value two --actor ${actor} --format json\n` +
-        `store.set --key print --value three --actor ${actor} --print value`,
+      "store.set --key text --value one\n" +
+        "store.set --key json --value two --format json\n" +
+        "store.set --key print --value three --print value",
     );
 
     assert(result.exitCode === 0);
@@ -235,7 +222,6 @@ describe("pi bash command registration", () => {
         key: "json",
         value: "two",
         category: [],
-        actor: { scope: "internal", type: "user", id: "user-1" },
       }),
     );
     assert(result.stdout?.trim().endsWith("three"));
@@ -249,7 +235,7 @@ describe("pi bash command registration", () => {
     const result = await bash.exec(
       'session_id="$(pi.session.create --agent assistant --name support --tag urgent --print id)"\n' +
         'user_id="$(store.get --key telegram/actor-1 --print value)"\n' +
-        'store.set --key telegram/actor-2 --value "$user_id" --actor \'{"scope":"internal","type":"user","id":"user-1"}\' >/dev/null\n' +
+        'store.set --key telegram/actor-2 --value "$user_id" >/dev/null\n' +
         'list_id="$(pi.session.list --limit 1 --print 0.id)"\n' +
         'pi.session.get --session-id "$session_id" --print id >/dev/null\n' +
         'pi.session.turn --session-id "$session_id" --text "hello" --print assistantText',
@@ -270,8 +256,7 @@ describe("pi bash command registration", () => {
       },
       {
         command: "store.set",
-        output:
-          'Stored telegram/actor-2\nkey: telegram/actor-2\nvalue: user-1\nactor: {"scope":"internal","type":"user","id":"user-1"}',
+        output: "Stored telegram/actor-2\nkey: telegram/actor-2\nvalue: user-1",
         exitCode: 0,
       },
       {

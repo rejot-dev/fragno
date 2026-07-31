@@ -115,7 +115,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  const projectsResult = await fetchAutomationProjects(request, context, activeOrgId);
+  const projectsResult = await fetchAutomationProjects(context, activeOrgId);
   if (params.scopeKind === "project" && projectsResult.projectsError) {
     throw Response.json(
       {
@@ -228,7 +228,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     return { ok: false, message: "Project name is required." } satisfies ProjectActionData;
   }
 
-  const result = await createAutomationProject(request, context, orgId, {
+  const result = await createAutomationProject(context, orgId, {
     name,
     description: nullableText(formData.get("description")),
     createdByUserId: me.user.id,

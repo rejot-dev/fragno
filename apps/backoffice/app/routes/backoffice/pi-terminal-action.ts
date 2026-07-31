@@ -11,7 +11,6 @@
 
 import type { RouterContextProvider } from "react-router";
 
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { IFileSystem } from "@/files";
 import { createBackofficeFileSystem } from "@/files/create-file-system";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
@@ -164,8 +163,7 @@ const handlePathAutocomplete = async ({
   }
 
   try {
-    const { runtime } = context.get(BackofficeWorkerContext);
-    const kernel = new BackofficeKernel(runtime);
+    const { runtime, kernel } = context.get(BackofficeWorkerContext);
     const execution = await requireBackofficeContext(request, context, {
       kind: "org",
       orgId: activeOrg.id,
@@ -217,20 +215,17 @@ const resolveHelpCommandSpecs = async ({
   context,
   request,
   activeOrg,
-  userId,
 }: {
   context: TerminalActionContext;
   request: Request;
   activeOrg: ActiveOrg;
-  userId: string;
 }): Promise<DashboardCommandSpec[]> => {
   if (!activeOrg) {
     return PI_TERMINAL_COMMAND_SPECS;
   }
 
   try {
-    const { runtime } = context.get(BackofficeWorkerContext);
-    const kernel = new BackofficeKernel(runtime);
+    const { runtime, kernel } = context.get(BackofficeWorkerContext);
     const execution = await requireBackofficeContext(request, context, {
       kind: "org",
       orgId: activeOrg.id,
@@ -238,8 +233,7 @@ const resolveHelpCommandSpecs = async ({
     const runtimeContext = createRouteBackedRuntimeContext({
       runtime,
       kernel,
-      execution,
-      defaultActor: { scope: "internal", type: "user", id: userId },
+      execution: execution,
     });
     return getAvailablePiTerminalCommandSpecs(createBackofficeToolContext(runtimeContext));
   } catch {
@@ -257,20 +251,18 @@ const getTerminalHelpOutput = async ({
   context,
   request,
   activeOrg,
-  userId,
 }: {
   command: string;
   context: TerminalActionContext;
   request: Request;
   activeOrg: ActiveOrg;
-  userId: string;
 }): Promise<string | null> => {
   const invocation = parseHelpInvocation(command);
   if (!invocation) {
     return null;
   }
 
-  const specs = await resolveHelpCommandSpecs({ context, request, activeOrg, userId });
+  const specs = await resolveHelpCommandSpecs({ context, request, activeOrg });
 
   if (!invocation.commandName) {
     return formatPiTerminalHelp(specs);
@@ -287,13 +279,11 @@ const handleRunCommand = async ({
   request,
   context,
   activeOrg,
-  userId,
 }: {
   formData: FormData;
   request: Request;
   context: TerminalActionContext;
   activeOrg: ActiveOrg;
-  userId: string;
 }): Promise<DashboardCommandResult> => {
   const command = String(formData.get("command") ?? "").trim();
   const cwdInput = String(formData.get("cwd") ?? "").trim();
@@ -314,7 +304,7 @@ const handleRunCommand = async ({
     return failure("No command provided.");
   }
 
-  const helpOutput = await getTerminalHelpOutput({ command, context, request, activeOrg, userId });
+  const helpOutput = await getTerminalHelpOutput({ command, context, request, activeOrg });
   if (helpOutput !== null) {
     return {
       intent: "run-command",
@@ -335,8 +325,7 @@ const handleRunCommand = async ({
   }
 
   try {
-    const { runtime } = context.get(BackofficeWorkerContext);
-    const kernel = new BackofficeKernel(runtime);
+    const { runtime, kernel } = context.get(BackofficeWorkerContext);
     const execution = await requireBackofficeContext(request, context, {
       kind: "org",
       orgId: activeOrg.id,
@@ -352,8 +341,7 @@ const handleRunCommand = async ({
       context: createRouteBackedRuntimeContext({
         runtime,
         kernel,
-        execution,
-        defaultActor: { scope: "internal", type: "user", id: userId },
+        execution: execution,
       }),
     });
 
@@ -413,7 +401,6 @@ export type HandlePiTerminalActionArgs = {
   request: Request;
   context: TerminalActionContext;
   activeOrg: ActiveOrg;
-  userId: string;
 };
 
 /**
@@ -425,7 +412,6 @@ export async function handlePiTerminalAction({
   request,
   context,
   activeOrg,
-  userId,
 }: HandlePiTerminalActionArgs): Promise<DashboardTerminalActionResult> {
   const intent = String(formData.get("intent") ?? "run-command");
 
@@ -433,5 +419,5 @@ export async function handlePiTerminalAction({
     return handlePathAutocomplete({ formData, request, context, activeOrg });
   }
 
-  return handleRunCommand({ formData, request, context, activeOrg, userId });
+  return handleRunCommand({ formData, request, context, activeOrg });
 }

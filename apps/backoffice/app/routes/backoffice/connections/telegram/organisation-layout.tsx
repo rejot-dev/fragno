@@ -42,7 +42,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     me.activeOrganization?.organization.id ??
     me.organizations[0]?.organization.id;
   const projectsResult = projectOrgId
-    ? await fetchAutomationProjects(request, context, projectOrgId)
+    ? await fetchAutomationProjects(context, projectOrgId)
     : { projects: [], projectsError: null };
   const scopeOptions = createIntegrationScopeSwitchOptions({
     me,

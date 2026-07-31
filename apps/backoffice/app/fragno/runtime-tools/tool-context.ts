@@ -4,7 +4,6 @@ import type { CoreBackofficeToolContext } from "./tool-families";
 export const createBackofficeToolContext = (
   context: BashHostContext,
 ): CoreBackofficeToolContext => {
-  const execution = context.backofficeExecution;
   const kernel = context.backofficeKernel;
   const runtimes = {
     backoffice: context.backoffice?.runtime,
@@ -25,9 +24,7 @@ export const createBackofficeToolContext = (
   };
 
   return {
-    defaults: { actor: context.defaultActor },
-    actor: execution.actor,
-    scope: execution.scope,
+    execution: context.execution,
     kernel,
     createScopedContext: (scope) =>
       createBackofficeToolContext(context.createBackofficeScopedContext(scope)),

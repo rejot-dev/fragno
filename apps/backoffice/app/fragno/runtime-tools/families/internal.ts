@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { FileSystemError } from "@/files/fs-errors";
@@ -148,10 +149,7 @@ export const createInternalRuntime = ({
       const fs = await createMasterFileSystem(
         createSystemFilesContext({
           objects,
-          execution: {
-            actor: { type: "system", id: "backoffice-project-files" },
-            scope: { kind: "project", orgId, projectId },
-          },
+          execution: createBackofficeSystemExecution({ kind: "project", orgId, projectId }),
           staticFileArtifacts: () => ({}),
         }),
       );

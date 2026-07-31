@@ -62,6 +62,47 @@ class RecordingKernelObserver implements BackofficeKernelObserver {
   }
 }
 
+describe("BackofficeKernel.assertAuthorized", () => {
+  test("resolves current authority without running the action observer", async () => {
+    const resolvePrincipalPermissions = vi.fn(async () => [operation]);
+    const resolveActorCapabilityGrants = vi.fn(async () => [operation]);
+    const observer = new RecordingKernelObserver();
+    const kernel = new BackofficeKernel({
+      authorityResolver: {
+        resolvePrincipalPermissions,
+        resolveActorCapabilityGrants,
+      },
+      kernelObserver: observer,
+    });
+
+    await expect(
+      kernel.assertAuthorized({ execution: linkedExecution, operation }),
+    ).resolves.toBeUndefined();
+
+    expect(resolvePrincipalPermissions).toHaveBeenCalledOnce();
+    expect(resolveActorCapabilityGrants).toHaveBeenCalledTimes(2);
+    expect(observer.actions).toEqual([]);
+  });
+
+  test("fails closed when current authority does not grant the operation", async () => {
+    const kernel = new BackofficeKernel({
+      authorityResolver: {
+        async resolvePrincipalPermissions() {
+          return [];
+        },
+        async resolveActorCapabilityGrants() {
+          return [operation];
+        },
+      },
+      kernelObserver: noopBackofficeKernelObserver,
+    });
+
+    await expect(
+      kernel.assertAuthorized({ execution: linkedExecution, operation }),
+    ).rejects.toMatchObject({ reason: "principal-permission-denied" });
+  });
+});
+
 describe("BackofficeKernel.invoke", () => {
   test("denies sensitive actions when the configured authority source is unavailable", async () => {
     const execute = vi.fn(async () => "sent");
@@ -96,6 +137,39 @@ describe("BackofficeKernel.invoke", () => {
         },
         kernelObserver: noopBackofficeKernelObserver,
       }).invoke({ execution: malformedExecution, operation, execute }),
+    ).rejects.toMatchObject({ reason: "context-access-denied" });
+
+    expect(resolvePrincipalPermissions).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  test("rejects access-token authority for a different execution principal", async () => {
+    const resolvePrincipalPermissions = vi.fn(async () => [operation]);
+    const execute = vi.fn(async () => "sent");
+
+    await expect(
+      new BackofficeKernel({
+        authorityResolver: {
+          resolvePrincipalPermissions,
+          async resolveActorCapabilityGrants() {
+            return [operation];
+          },
+        },
+        kernelObserver: noopBackofficeKernelObserver,
+      }).invoke({
+        execution: {
+          ...linkedExecution,
+          userAuthority: {
+            kind: "verified-access-token",
+            userId: "user-2",
+            role: "user",
+            organizationIds: ["org-1"],
+            expiresAtEpochMs: Date.now() + 60_000,
+          },
+        },
+        operation,
+        execute,
+      }),
     ).rejects.toMatchObject({ reason: "context-access-denied" });
 
     expect(resolvePrincipalPermissions).not.toHaveBeenCalled();
@@ -165,6 +239,48 @@ describe("BackofficeKernel.invoke", () => {
     await expect(kernel.invoke({ execution: linkedExecution, operation, execute })).resolves.toBe(
       "sent",
     );
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
+  test("lets a system-scoped user reach current authority resolution", async () => {
+    const resolvePrincipalPermissions = vi.fn(async () => [operation]);
+    const execute = vi.fn(async () => "sent");
+    const kernel = new BackofficeKernel({
+      authorityResolver: {
+        resolvePrincipalPermissions,
+        async resolveActorCapabilityGrants() {
+          return [];
+        },
+      },
+      kernelObserver: noopBackofficeKernelObserver,
+    });
+
+    await expect(
+      kernel.invoke({
+        execution: {
+          scope: { kind: "system" },
+          actors: {
+            initiator: {
+              scope: "internal",
+              type: "backoffice",
+              id: "interactive",
+              role: "initiator",
+            },
+            principal: {
+              scope: "internal",
+              type: "user",
+              id: "admin-1",
+              role: "principal",
+            },
+            delegation: [],
+          },
+        },
+        operation,
+        execute,
+      }),
+    ).resolves.toBe("sent");
+
+    expect(resolvePrincipalPermissions).toHaveBeenCalledOnce();
     expect(execute).toHaveBeenCalledOnce();
   });
 
@@ -318,6 +434,169 @@ describe("BackofficeKernel.invoke", () => {
         execute: async () => "sent",
       }),
     ).rejects.toMatchObject({ reason: "principal-permission-denied" });
+  });
+});
+
+describe("BackofficeKernel.resolveFilePrincipal", () => {
+  test("rejects principal-free execution with external delegation", () => {
+    expect(() =>
+      scopeKernel.resolveFilePrincipal({
+        scope: { kind: "org", orgId: "org-1" },
+        actors: {
+          initiator: {
+            scope: "internal",
+            type: "system",
+            id: "backoffice",
+            role: "initiator",
+          },
+          principal: null,
+          delegation: [
+            {
+              scope: "external",
+              source: "telegram",
+              type: "chat",
+              id: "chat-1",
+              role: "delegate",
+            },
+          ],
+        },
+      }),
+    ).toThrow(BackofficeForbiddenError);
+  });
+});
+
+describe("BackofficeKernel.assertScopedContextAccess", () => {
+  test("limits a user execution to its organization and own user scope", () => {
+    expect(() =>
+      scopeKernel.assertScopedContextAccess(linkedExecution, {
+        kind: "project",
+        orgId: "org-1",
+        projectId: "project-1",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      scopeKernel.assertScopedContextAccess(linkedExecution, {
+        kind: "user",
+        userId: "user-1",
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      scopeKernel.assertScopedContextAccess(linkedExecution, {
+        kind: "user",
+        userId: "user-2",
+      }),
+    ).toThrow(BackofficeForbiddenError);
+    expect(() =>
+      scopeKernel.assertScopedContextAccess(linkedExecution, {
+        kind: "org",
+        orgId: "org-2",
+      }),
+    ).toThrow(BackofficeForbiddenError);
+  });
+
+  test("does not turn a system-initiated service principal into unrestricted system access", () => {
+    const serviceExecution = {
+      scope: { kind: "org", orgId: "org-1" } as const,
+      actors: {
+        initiator: {
+          scope: "internal" as const,
+          type: "system",
+          id: "backoffice",
+          role: "initiator" as const,
+        },
+        principal: {
+          scope: "internal" as const,
+          type: "automation",
+          id: "automation-1",
+          role: "principal" as const,
+        },
+        delegation: [],
+      },
+    };
+
+    expect(() =>
+      scopeKernel.assertScopedContextAccess(serviceExecution, {
+        kind: "org",
+        orgId: "org-2",
+      }),
+    ).toThrow(BackofficeForbiddenError);
+  });
+
+  test("does not treat a system initiator with external delegation as trusted system execution", () => {
+    expect(() =>
+      scopeKernel.assertScopedContextAccess(
+        {
+          scope: { kind: "system" },
+          actors: {
+            initiator: {
+              scope: "internal",
+              type: "system",
+              id: "backoffice",
+              role: "initiator",
+            },
+            principal: null,
+            delegation: [
+              {
+                scope: "external",
+                source: "telegram",
+                type: "chat",
+                id: "chat-1",
+                role: "delegate",
+              },
+            ],
+          },
+        },
+        { kind: "org", orgId: "org-1" },
+      ),
+    ).toThrow(BackofficeForbiddenError);
+  });
+
+  test("allows a system-scoped service principal to enter a concrete scope", () => {
+    expect(() =>
+      scopeKernel.assertScopedContextAccess(
+        {
+          scope: { kind: "system" },
+          actors: {
+            initiator: {
+              scope: "internal",
+              type: "user",
+              id: "user-1",
+              role: "initiator",
+            },
+            principal: {
+              scope: "internal",
+              type: "automation",
+              id: "automation-1",
+              role: "principal",
+            },
+            delegation: [],
+          },
+        },
+        { kind: "org", orgId: "org-1" },
+      ),
+    ).not.toThrow();
+  });
+
+  test("allows principal-free trusted system execution to enter any scope", () => {
+    expect(() =>
+      scopeKernel.assertScopedContextAccess(
+        {
+          scope: { kind: "system" },
+          actors: {
+            initiator: {
+              scope: "internal",
+              type: "system",
+              id: "backoffice",
+              role: "initiator",
+            },
+            principal: null,
+            delegation: [],
+          },
+        },
+        { kind: "org", orgId: "org-1" },
+      ),
+    ).not.toThrow();
   });
 });
 

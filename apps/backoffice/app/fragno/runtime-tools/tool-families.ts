@@ -1,5 +1,3 @@
-import type { AutomationEntityRef } from "@/fragno/automation/actors";
-
 import { apiToolFamily, type ApiRuntime } from "./families/api";
 import {
   automationStoreToolFamily,
@@ -52,10 +50,7 @@ export type CoreBackofficeRuntimeMap = {
   telegram?: TelegramRuntime;
 };
 
-export type CoreBackofficeToolContext = BackofficeToolContext<
-  CoreBackofficeRuntimeMap,
-  { actor?: AutomationEntityRef | null }
->;
+export type CoreBackofficeToolContext = BackofficeToolContext<CoreBackofficeRuntimeMap>;
 
 export const runtimeToolFamilies = [
   backofficeCapabilitiesToolFamily,

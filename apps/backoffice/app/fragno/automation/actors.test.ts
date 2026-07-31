@@ -1,10 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import {
-  automationActorsSchema,
-  type AutomationInitiatorActor,
-  type AutomationPrincipalActor,
-} from "./actors";
+import { automationActorsSchema, type AutomationActors } from "./actors";
 
 const telegramInitiator = {
   scope: "external",
@@ -12,14 +8,14 @@ const telegramInitiator = {
   type: "chat",
   id: "1001",
   role: "initiator",
-} as const satisfies AutomationInitiatorActor;
+} as const satisfies AutomationActors["initiator"];
 
 const userPrincipal = {
   scope: "internal",
   type: "user",
   id: "user-1",
   role: "principal",
-} as const satisfies AutomationPrincipalActor;
+} as const satisfies NonNullable<AutomationActors["principal"]>;
 
 describe("AutomationActors", () => {
   test("accepts unlinked, linked, and delegated provenance", () => {

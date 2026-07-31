@@ -8,6 +8,7 @@ import { InMemoryFs } from "just-bash";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
@@ -77,15 +78,10 @@ const createPiSessionFileSystemContext = () => ({
     kernelObserver: noopBackofficeKernelObserver,
   }),
   runtimeConfig: testRuntimeConfig,
-  execution: {
-    actor: {
-      type: "user" as const,
-      id: "test-user",
-      userId: "test-user",
-      organizationIds: ["org-1"],
-    },
-    scope: { kind: "org" as const, orgId: "org-1" },
-  },
+  execution: createBackofficeUserExecution({
+    scope: { kind: "org", orgId: "org-1" },
+    userId: "test-user",
+  }),
 });
 
 describe("Pi execCodeMode tool", () => {
@@ -485,7 +481,6 @@ describe("Pi execCodeMode tool", () => {
 
   test("calls automation identity domain tools through codemode", async () => {
     const calls: unknown[] = [];
-    const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
     const automationsRuntime: RegisteredAutomationsRuntime = {
       ...createUnavailableAutomationRouterRuntime(),
       get: async (input) => {
@@ -495,7 +490,6 @@ describe("Pi execCodeMode tool", () => {
           key: input.key,
           value: "user-55",
           category: [],
-          actor,
         };
       },
       set: async (input) => {
@@ -505,7 +499,6 @@ describe("Pi execCodeMode tool", () => {
           key: input.key,
           value: input.value,
           category: input.category ?? [],
-          actor: input.actor,
         };
       },
       delete: async (input) => {
@@ -514,7 +507,7 @@ describe("Pi execCodeMode tool", () => {
       },
       list: async (input) => {
         calls.push(["list", input]);
-        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [], actor }];
+        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [] }];
       },
     };
 
@@ -528,7 +521,6 @@ describe("Pi execCodeMode tool", () => {
         return await store.set({
           key: "telegram/chat-456",
           value: existing.value,
-          actor: existing.actor,
         });
       }`,
     });
@@ -543,13 +535,12 @@ describe("Pi execCodeMode tool", () => {
           inputSummary: '{"key":"telegram/chat-123"}',
           status: "success",
           resultSummary:
-            '{"id":"telegram/chat-123","key":"telegram/chat-123","value":"user-55","category":[],"actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
+            '{"id":"telegram/chat-123","key":"telegram/chat-123","value":"user-55","category":[]}',
         },
         {
           providerName: "store",
           toolName: "set",
-          inputSummary:
-            '{"key":"telegram/chat-456","value":"user-55","actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
+          inputSummary: '{"key":"telegram/chat-456","value":"user-55"}',
           status: "success",
         },
       ],
@@ -561,17 +552,16 @@ describe("Pi execCodeMode tool", () => {
     }
     assert(
       content.text ===
-        '{"id":"telegram/chat-456","key":"telegram/chat-456","value":"user-55","category":[],"actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
+        '{"id":"telegram/chat-456","key":"telegram/chat-456","value":"user-55","category":[]}',
     );
     expect(calls).toEqual([
       ["get", { key: "telegram/chat-123" }],
-      ["set", { key: "telegram/chat-456", value: "user-55", actor }],
+      ["set", { key: "telegram/chat-456", value: "user-55" }],
     ]);
   });
 
   test("rejects domain tool validation errors so the agent records a failed tool result", async () => {
     const calls: unknown[] = [];
-    const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
     const automationsRuntime: RegisteredAutomationsRuntime = {
       ...createUnavailableAutomationRouterRuntime(),
       get: async (input) => {
@@ -585,7 +575,6 @@ describe("Pi execCodeMode tool", () => {
           key: input.key,
           value: input.value,
           category: input.category ?? [],
-          actor: input.actor,
         };
       },
       delete: async (input) => {
@@ -594,7 +583,7 @@ describe("Pi execCodeMode tool", () => {
       },
       list: async (input) => {
         calls.push(["list", input]);
-        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [], actor }];
+        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [] }];
       },
     };
 

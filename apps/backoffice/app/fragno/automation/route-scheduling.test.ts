@@ -3,6 +3,7 @@ import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 import { getDurableHooksService, InMemoryAdapter } from "@fragno-dev/db";
 import { drainDurableHooks } from "@fragno-dev/test";
 
+import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
 import { createMasterFileSystem, createSystemFilesContext } from "@/files";
 
 import type { AutomationWorkflowsService } from "./definition";
@@ -35,7 +36,7 @@ const createAutomation = async ({
       automationFileSystem: await createMasterFileSystem(
         createSystemFilesContext({
           execution: {
-            actor: { type: "system", id: "system" },
+            actors: BACKOFFICE_SYSTEM_ACTORS,
             scope: { kind: "org", orgId: "org_123" },
           },
           staticFileArtifacts: () => ({}),

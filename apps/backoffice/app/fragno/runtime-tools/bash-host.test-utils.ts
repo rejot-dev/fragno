@@ -9,12 +9,18 @@ const EMPTY_BASH_HOST_KERNEL = new BackofficeKernel({
 });
 
 export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
-  defaultActor: null,
-  backofficeExecution: { actor: { type: "system", id: "system" }, scope: { kind: "system" } },
+  execution: {
+    scope: { kind: "system" },
+    actors: {
+      initiator: { scope: "internal", type: "system", id: "backoffice", role: "initiator" },
+      principal: null,
+      delegation: [],
+    },
+  },
   backofficeKernel: EMPTY_BASH_HOST_KERNEL,
   createBackofficeScopedContext: (scope) => ({
     ...EMPTY_BASH_HOST_CONTEXT,
-    backofficeExecution: { actor: { type: "system", id: "system" }, scope },
+    execution: { ...EMPTY_BASH_HOST_CONTEXT.execution, scope },
   }),
   backoffice: null,
   automation: null,

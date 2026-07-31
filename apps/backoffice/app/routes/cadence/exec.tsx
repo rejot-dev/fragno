@@ -105,7 +105,6 @@ export async function action({ request, context }: Route.ActionArgs) {
     request,
     context,
     activeOrg,
-    userId: me.user.id,
   });
 }
 

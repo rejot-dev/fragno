@@ -9,10 +9,17 @@ import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools
 import { AUTOMATION_SYSTEM_INITIATOR } from "../actors";
 import type { AutomationEvent } from "../contracts";
 import {
-  createAutomationExecutionContext as createRuntimeAutomationExecutionContext,
   createAutomationRuntime as createRouteBackedAutomationRuntime,
+  createAutomationRuntimeHostContext,
   type AutomationRuntime,
 } from "./runtime";
+
+const claimActor = {
+  scope: "external" as const,
+  source: "telegram",
+  type: "chat",
+  id: "chat-123",
+};
 
 const runtime: AutomationRuntime = {
   ...createUnavailableAutomationRouterRuntime(),
@@ -22,16 +29,15 @@ const runtime: AutomationRuntime = {
     key: input.key,
     value: input.value,
     category: input.category ?? [],
-    actor: input.actor,
   }),
   delete: async (input) => ({ ok: true, key: input.key }),
   list: async () => [],
-  createClaim: async (input) => ({
-    url: `https://example.com/${input.actor.id}`,
+  createClaim: async () => ({
+    url: `https://example.com/${claimActor.id}`,
     otpId: "otp-123",
-    externalId: input.actor.id,
+    externalId: claimActor.id,
     code: "123456",
-    actor: input.actor,
+    actor: claimActor,
   }),
   emitEvent: async (input) => ({
     accepted: true,
@@ -73,14 +79,14 @@ const createDeferred = <T = void>() => {
   return { promise, resolve, reject };
 };
 
-const createTestAutomationExecutionContext = ({
+const createTestAutomationScriptHostContext = ({
   event,
   runtime: automationRuntime,
 }: {
   event: AutomationEvent;
   runtime: AutomationRuntime;
 }) =>
-  createRuntimeAutomationExecutionContext({
+  createAutomationRuntimeHostContext({
     event,
     binding: {
       source: event.source,
@@ -130,7 +136,7 @@ describe("bash command runner", () => {
       masterFs: new MasterFileSystem({
         mounts: [],
       }),
-      context: createRuntimeAutomationExecutionContext({
+      context: createAutomationRuntimeHostContext({
         event,
         binding: {
           source: "telegram",
@@ -164,7 +170,7 @@ describe("bash command runner", () => {
       masterFs: new MasterFileSystem({
         mounts: [],
       }),
-      context: createRuntimeAutomationExecutionContext({
+      context: createAutomationRuntimeHostContext({
         event,
         binding: { source: "telegram", eventType: "message.received", scriptId: "s-dev" },
         idempotencyKey: "idem-dev",
@@ -196,7 +202,7 @@ describe("bash command runner", () => {
     await executeBashAutomation({
       script: "echo ok",
       masterFs,
-      context: createRuntimeAutomationExecutionContext({
+      context: createAutomationRuntimeHostContext({
         event,
         binding: { source: "telegram", eventType: "message.received", scriptId: "s-cleanup" },
         idempotencyKey: "idem-cleanup",
@@ -236,7 +242,7 @@ describe("bash command runner", () => {
       script:
         'events.fire --event-type overlap.wait --source test >/dev/null\nprintf "run-a=%s\\n" "$(cat /context/event.json)"',
       masterFs,
-      context: createTestAutomationExecutionContext({
+      context: createTestAutomationScriptHostContext({
         event: firstEvent,
         runtime: createAutomationRuntime({
           emitEvent: async (input) => {
@@ -262,7 +268,7 @@ describe("bash command runner", () => {
         "events.fire --event-type overlap.read --source test >/dev/null\n" +
         'printf "after=%s\\n" "$(cat /context/event.json)"',
       masterFs,
-      context: createTestAutomationExecutionContext({
+      context: createTestAutomationScriptHostContext({
         event: secondEvent,
         runtime: createAutomationRuntime(),
       }),
@@ -308,7 +314,7 @@ describe("bash command runner", () => {
       script:
         "events.fire --event-type cleanup.wait-a --source test >/dev/null\necho first-run-complete",
       masterFs,
-      context: createTestAutomationExecutionContext({
+      context: createTestAutomationScriptHostContext({
         event: firstEvent,
         runtime: createAutomationRuntime({
           emitEvent: async (input) => {
@@ -336,7 +342,7 @@ describe("bash command runner", () => {
         "echo kept >/dev/null\n" +
         'printf "after=%s\\n" "$(cat /context/event.json)"',
       masterFs,
-      context: createTestAutomationExecutionContext({
+      context: createTestAutomationScriptHostContext({
         event: secondEvent,
         runtime: createAutomationRuntime({
           emitEvent: async (input) => {
@@ -401,7 +407,7 @@ describe("bash command runner", () => {
     await executeBashAutomation({
       script: "echo ok",
       masterFs,
-      context: createRuntimeAutomationExecutionContext({
+      context: createAutomationRuntimeHostContext({
         event,
         binding: { source: "telegram", eventType: "message.received", scriptId: "s-edev" },
         idempotencyKey: "idem-edev",

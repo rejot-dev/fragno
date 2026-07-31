@@ -4,12 +4,17 @@ import { env } from "cloudflare:workers";
 import { InMemoryFs } from "just-bash";
 
 import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import {
+  createBackofficeSystemExecution,
+  createBackofficeUserExecution,
+} from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry, McpObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
+import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import type { RegisteredAutomationsRuntime } from "@/fragno/runtime-tools/bash-host";
@@ -79,7 +84,6 @@ describe("runBackofficeCodemode", () => {
 
   test("calls automation identity tools through codemode providers", async () => {
     const calls: unknown[] = [];
-    const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
     const automationsRuntime: RegisteredAutomationsRuntime = {
       ...createUnavailableAutomationRouterRuntime(),
       get: async (input) => {
@@ -89,7 +93,6 @@ describe("runBackofficeCodemode", () => {
           key: input.key,
           value: "user-55",
           category: [],
-          actor,
         };
       },
       set: async (input) => {
@@ -99,7 +102,6 @@ describe("runBackofficeCodemode", () => {
           key: input.key,
           value: input.value,
           category: input.category ?? [],
-          actor: input.actor,
         };
       },
       delete: async (input) => {
@@ -108,7 +110,7 @@ describe("runBackofficeCodemode", () => {
       },
       list: async (input) => {
         calls.push(["list", input]);
-        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [], actor }];
+        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [] }];
       },
     };
 
@@ -124,7 +126,6 @@ describe("runBackofficeCodemode", () => {
         const bound = await store.set({
           key: "telegram/chat-456",
           value: existing.value,
-          actor: existing.actor,
         });
         return { existing, bound };
       }`,
@@ -137,19 +138,17 @@ describe("runBackofficeCodemode", () => {
         key: "telegram/chat-123",
         value: "user-55",
         category: [],
-        actor,
       },
       bound: {
         id: "telegram/chat-456",
         key: "telegram/chat-456",
         value: "user-55",
         category: [],
-        actor,
       },
     });
     expect(calls).toEqual([
       ["get", { key: "telegram/chat-123" }],
-      ["set", { key: "telegram/chat-456", value: "user-55", actor }],
+      ["set", { key: "telegram/chat-456", value: "user-55" }],
     ]);
     expect(result.toolCalls).toMatchObject([
       {
@@ -159,14 +158,13 @@ describe("runBackofficeCodemode", () => {
         inputSummary: '{"key":"telegram/chat-123"}',
         status: "success",
         resultSummary:
-          '{"id":"telegram/chat-123","key":"telegram/chat-123","value":"user-55","category":[],"actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
+          '{"id":"telegram/chat-123","key":"telegram/chat-123","value":"user-55","category":[]}',
       },
       {
         providerName: "store",
         toolName: "set",
         toolId: "store.set",
-        inputSummary:
-          '{"key":"telegram/chat-456","value":"user-55","actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
+        inputSummary: '{"key":"telegram/chat-456","value":"user-55"}',
         status: "success",
       },
     ]);
@@ -224,15 +222,21 @@ describe("runBackofficeCodemode", () => {
 
   test("calls otp tools through codemode providers", async () => {
     const calls: unknown[] = [];
+    const actor = {
+      scope: "external" as const,
+      source: "telegram",
+      type: "chat",
+      id: "chat-123",
+    };
     const otpRuntime: OtpRuntime = {
       createClaim: async (input) => {
         calls.push(["createClaim", input]);
         return {
-          url: `https://example.com/claim/${input.actor.id}`,
+          url: `https://example.com/claim/${actor.id}`,
           otpId: "otp-123",
-          externalId: input.actor.id,
+          externalId: actor.id,
           code: "123456",
-          actor: input.actor,
+          actor,
           type: "identity",
         };
       },
@@ -244,10 +248,7 @@ describe("runBackofficeCodemode", () => {
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { otp: otpRuntime } }),
       code: `async () => {
-        return await otp.createIdentityClaim({
-          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
-          ttlMinutes: 15,
-        });
+        return await otp.createIdentityClaim({ ttlMinutes: 15 });
       }`,
     });
 
@@ -260,15 +261,7 @@ describe("runBackofficeCodemode", () => {
       actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
       type: "identity",
     });
-    expect(calls).toEqual([
-      [
-        "createClaim",
-        {
-          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
-          ttlMinutes: 15,
-        },
-      ],
-    ]);
+    expect(calls).toEqual([["createClaim", { ttlMinutes: 15 }]]);
     expect(result.toolCalls).toMatchObject([
       {
         providerName: "otp",
@@ -496,7 +489,6 @@ describe("runBackofficeCodemode", () => {
 
   test("rejects invalid runtime tool input before calling the runtime", async () => {
     const calls: unknown[] = [];
-    const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
     const automationsRuntime: RegisteredAutomationsRuntime = {
       ...createUnavailableAutomationRouterRuntime(),
       get: async (input) => {
@@ -510,7 +502,6 @@ describe("runBackofficeCodemode", () => {
           key: input.key,
           value: input.value,
           category: input.category ?? [],
-          actor: input.actor,
         };
       },
       delete: async (input) => {
@@ -519,7 +510,7 @@ describe("runBackofficeCodemode", () => {
       },
       list: async (input) => {
         calls.push(["list", input]);
-        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [], actor }];
+        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [] }];
       },
     };
 
@@ -562,9 +553,7 @@ describe("runBackofficeCodemode", () => {
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { otp: otpRuntime } }),
       code: `async () => {
-        return await otp.createIdentityClaim({
-          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
-        });
+        return await otp.createIdentityClaim({});
       }`,
     });
 
@@ -587,15 +576,10 @@ describe("runBackofficeCodemode", () => {
     const routeContext = createRouteBackedRuntimeContext({
       runtime,
       kernel,
-      execution: {
-        actor: {
-          type: "user",
-          id: "user-1",
-          userId: "user-1",
-          organizationIds: ["org-1"],
-        },
+      execution: createBackofficeUserExecution({
         scope: { kind: "org", orgId: "org-1" },
-      },
+        userId: "user-1",
+      }),
     });
     const context = createBackofficeToolContext(routeContext);
 
@@ -646,15 +630,10 @@ describe("runBackofficeCodemode", () => {
       const routeContext = createRouteBackedRuntimeContext({
         runtime: runtime.services,
         kernel: new BackofficeKernel(runtime.services),
-        execution: {
-          actor: {
-            type: "user",
-            id: "user-1",
-            userId: "user-1",
-            organizationIds: ["org-1"],
-          },
+        execution: createBackofficeUserExecution({
           scope: { kind: "org", orgId: "org-1" },
-        },
+          userId: "user-1",
+        }),
       });
 
       const result = await runBackofficeCodemode({
@@ -698,15 +677,7 @@ describe("runBackofficeCodemode", () => {
       const routeContext = createRouteBackedRuntimeContext({
         runtime: runtime.services,
         kernel,
-        execution: {
-          actor: {
-            type: "user",
-            id: "user-1",
-            userId: "user-1",
-            organizationIds: ["org-1"],
-          },
-          scope: { kind: "org", orgId: "org-1" },
-        },
+        execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
       });
 
       const result = await runBackofficeCodemode({
@@ -718,12 +689,10 @@ describe("runBackofficeCodemode", () => {
           await context.project("project-1").store.set({
             key: "project-key",
             value: "from-project",
-            actor: { scope: "internal", type: "system", id: "test" },
           });
           await context.current.store.set({
             key: "org-key",
             value: "from-org",
-            actor: { scope: "internal", type: "system", id: "test" },
           });
           return {
             project: await context.project("project-1").store.get({ key: "project-key" }),
@@ -738,13 +707,21 @@ describe("runBackofficeCodemode", () => {
         org: { key: "org-key", value: "from-org" },
       });
 
+      const projectScope = { kind: "project" as const, orgId: "org-1", projectId: "project-1" };
+      const orgScope = { kind: "org" as const, orgId: "org-1" };
       const projectStore = createRouteBackedAutomationStoreRuntime({
         object: runtime.objects.automations.forProject({ orgId: "org-1", projectId: "project-1" }),
-        scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+        execution: {
+          scope: projectScope,
+          actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
+        },
       });
       const orgStore = createRouteBackedAutomationStoreRuntime({
         object: runtime.objects.automations.forOrg("org-1"),
-        scope: { kind: "org", orgId: "org-1" },
+        execution: {
+          scope: orgScope,
+          actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
+        },
       });
       await expect(projectStore.get({ key: "project-key" })).resolves.toMatchObject({
         value: "from-project",

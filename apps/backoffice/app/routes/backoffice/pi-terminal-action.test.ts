@@ -19,7 +19,6 @@ const runCommand = (command: string) => {
       },
     } as unknown as Readonly<RouterContextProvider>,
     activeOrg: null,
-    userId: "user-1",
   });
 };
 

@@ -28,7 +28,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const organisations = me.organizations.map((entry) => entry.organization);
   const projectsResult =
     parsedScope.kind === "project" || parsedScope.kind === "org"
-      ? await fetchAutomationProjects(request, context, parsedScope.orgId)
+      ? await fetchAutomationProjects(context, parsedScope.orgId)
       : { projects: [], projectsError: null };
 
   if (parsedScope.kind === "project" && projectsResult.projectsError) {

@@ -35,8 +35,8 @@ Hook scope: \`otp\`.
 `,
     tools: `# OTP tools
 
-OTP tools can create short-lived identity claim URLs for external actors.
+OTP tools can create short-lived identity claim URLs for trusted external initiators.
 
-Use codemode first. Call \`otp.createIdentityClaim({ actor, ttlMinutes })\` to create a claim URL.
+Use codemode first. Call \`otp.createIdentityClaim({ ttlMinutes })\` to create a claim URL.
 `,
   });

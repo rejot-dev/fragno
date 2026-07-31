@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
 import { createSystemFilesContext, type IFileSystem } from "@/files";
 import { createFilesTestObjectRegistry } from "@/files/test-object-registry";
 
@@ -174,7 +175,7 @@ describe("resend file contributor", () => {
     const resolved = resendFileContributor.createFileSystem?.(
       createSystemFilesContext({
         execution: {
-          actor: { type: "system", id: "system" },
+          actors: BACKOFFICE_SYSTEM_ACTORS,
           scope: { kind: "org", orgId: "org_123" },
         },
 
@@ -189,7 +190,7 @@ describe("resend file contributor", () => {
     const resolved = await resendFileContributor.createFileSystem?.(
       createSystemFilesContext({
         execution: {
-          actor: { type: "system", id: "system" },
+          actors: BACKOFFICE_SYSTEM_ACTORS,
           scope: { kind: "org", orgId: "org_123" },
         },
         objects: createFilesTestObjectRegistry({
@@ -216,7 +217,7 @@ describe("resend file contributor", () => {
     const resolved = await resendFileContributor.createFileSystem?.(
       createSystemFilesContext({
         execution: {
-          actor: { type: "system", id: "system" },
+          actors: BACKOFFICE_SYSTEM_ACTORS,
           scope: { kind: "org", orgId: "org_123" },
         },
         objects: createFilesTestObjectRegistry({
@@ -256,7 +257,7 @@ describe("resend file contributor", () => {
     const resolved = await resendFileContributor.createFileSystem?.(
       createSystemFilesContext({
         execution: {
-          actor: { type: "system", id: "system" },
+          actors: BACKOFFICE_SYSTEM_ACTORS,
           scope: { kind: "org", orgId: "org_123" },
         },
         backend: "pi",

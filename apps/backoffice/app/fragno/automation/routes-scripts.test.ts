@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, assert } from "vitest";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
 
+import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
 import {
   createMasterFileSystem,
   createSystemFilesContext,
@@ -48,7 +49,7 @@ describe("automation routes /scripts", () => {
       automationFileSystem: await createMasterFileSystem(
         createSystemFilesContext({
           execution: {
-            actor: { type: "system", id: "system" },
+            actors: BACKOFFICE_SYSTEM_ACTORS,
             scope: { kind: "org", orgId: "org_123" },
           },
 

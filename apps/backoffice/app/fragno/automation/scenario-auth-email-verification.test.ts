@@ -2,6 +2,8 @@ import { assert, describe, expect, test, vi } from "vitest";
 
 import { RouterContextProvider } from "react-router";
 
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
     constructor(_state: unknown, _env: unknown) {}
@@ -162,6 +164,7 @@ const createScenarioRouterContext = (ctx: BackofficeScenarioContext) => {
   const routerContext = new RouterContextProvider();
   routerContext.set(BackofficeWorkerContext, {
     runtime: ctx.runtime.services,
+    kernel: new BackofficeKernel(ctx.runtime.services),
     env: ctx.runtime.env as unknown as CloudflareEnv,
     ctx: {} as ExecutionContext,
   });

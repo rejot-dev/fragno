@@ -1,6 +1,5 @@
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 
-import type { AutomationEntityRef, AutomationExternalEntityRef } from "../automation/actors";
 import type { AutomationEvent } from "../automation/contracts";
 import type { AutomationCommandCallResult } from "../automation/run-result";
 
@@ -20,7 +19,6 @@ export type AutomationCommandExecutionResult<TData = unknown> = {
 };
 
 export type IdentityCreateClaimArgs = {
-  actor: AutomationExternalEntityRef;
   ttlMinutes?: number;
 };
 
@@ -36,7 +34,6 @@ export type StoreVerification = {
 export type StoreSetArgs = {
   key: string;
   value: string;
-  actor: AutomationEntityRef | null;
   description?: string | null;
   category?: string[];
   verification?: StoreVerification[];
@@ -54,8 +51,6 @@ export type StoreDeleteArgs = {
 export type EventEmitArgs = {
   eventType: string;
   source?: string;
-  externalActorId?: string;
-  actorType?: string;
   subjectUserId?: string;
   payload?: Record<string, unknown>;
   targetScope?: BackofficeContextScope;

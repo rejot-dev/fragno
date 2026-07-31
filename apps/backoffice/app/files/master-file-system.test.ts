@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, test, assert } from "vitest";
 import { InMemoryFs } from "just-bash";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import {
+  BACKOFFICE_SYSTEM_ACTORS,
+  createBackofficeUserExecution,
+} from "@/backoffice-runtime/context";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 
 import { getBuiltInFileContributors } from "./contributors";
@@ -15,7 +19,7 @@ import { emptyStaticFileArtifacts, type FileContributor, type FilesContext } fro
 
 const context = createSystemFilesContext({
   execution: {
-    actor: { type: "system", id: "system" },
+    actors: BACKOFFICE_SYSTEM_ACTORS,
     scope: { kind: "org", orgId: "org_123" },
   },
   backend: "backoffice",
@@ -74,7 +78,7 @@ describe("createMasterFileSystem", () => {
   test("supports system execution scope for non-object-backed mounts", async () => {
     const resolved = await createTestMasterFileSystem({
       ...context,
-      execution: { actor: { type: "system", id: "system" }, scope: { kind: "system" } },
+      execution: { actors: BACKOFFICE_SYSTEM_ACTORS, scope: { kind: "system" } },
     });
 
     expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual([
@@ -330,15 +334,10 @@ describe("createMasterFileSystem", () => {
     });
     registerFileContributor(contributor);
 
-    const execution = {
-      actor: {
-        type: "user" as const,
-        id: "user-1",
-        userId: "user-1",
-        organizationIds: ["org_123"],
-      },
-      scope: { kind: "org" as const, orgId: "org_123" },
-    };
+    const execution = createBackofficeUserExecution({
+      scope: { kind: "org", orgId: "org_123" },
+      userId: "user-1",
+    });
     const kernel = new BackofficeKernel({
       authorityResolver: unavailableBackofficeAuthorityResolver,
       kernelObserver: noopBackofficeKernelObserver,

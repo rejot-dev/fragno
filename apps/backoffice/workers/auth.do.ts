@@ -8,6 +8,7 @@ import type {
   Organization,
   OrganizationHookPayload,
   OrganizationHooks,
+  UserAuthorityFacts,
   UserSummary,
   BeforeCreateUserHook,
   VerifyUserEmailInput,
@@ -314,15 +315,12 @@ export class InMemoryAuthObject implements AuthObject {
     return { status: "rejected", reason: result.code };
   }
 
-  async hasOrganizationMembership(input: {
-    organizationId: string;
+  async getUserAuthorityFacts(input: {
     userId: string;
-  }): Promise<boolean> {
+    organizationId?: string;
+  }): Promise<UserAuthorityFacts> {
     const fragment = this.#ensureFragment();
-    const member = await fragment.callServices(() =>
-      fragment.services.getOrganizationMemberByUser(input),
-    );
-    return member !== null;
+    return await fragment.callServices(() => fragment.services.getUserAuthorityFacts(input));
   }
 
   async getAllOrganizations(): Promise<Organization[]> {
@@ -400,11 +398,11 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
     return await this.#object.issueVerifiedEmailCredential(input);
   }
 
-  async hasOrganizationMembership(input: {
-    organizationId: string;
+  async getUserAuthorityFacts(input: {
     userId: string;
-  }): Promise<boolean> {
-    return await this.#object.hasOrganizationMembership(input);
+    organizationId?: string;
+  }): Promise<UserAuthorityFacts> {
+    return await this.#object.getUserAuthorityFacts(input);
   }
 
   async getAllOrganizations(): Promise<Organization[]> {

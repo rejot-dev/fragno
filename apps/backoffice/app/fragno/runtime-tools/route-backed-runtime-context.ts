@@ -2,7 +2,6 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
-import type { AutomationEntityRef } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
 import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
@@ -40,7 +39,6 @@ export type RouteBackedRuntimeContextOptions = {
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
   pi?: { runtime: PiRuntime } | null;
-  defaultActor?: AutomationEntityRef | null;
 };
 
 const unavailableMessage = (family: string, execution: BackofficeExecutionContext) =>
@@ -81,9 +79,7 @@ export const createRouteBackedRuntimeContext = ({
   kernel,
   execution,
   pi,
-  defaultActor,
 }: RouteBackedRuntimeContextOptions): InteractiveBashCommandContext => {
-  kernel.assertContextAccess(execution);
   const org = ownerOrgScope(execution);
   const selectedOrg = selectedOrgScope(execution);
   const automationsObject = kernel.scoped(
@@ -93,16 +89,20 @@ export const createRouteBackedRuntimeContext = ({
   );
 
   return {
-    defaultActor: defaultActor ?? null,
-    backofficeExecution: execution,
+    execution,
     backofficeKernel: kernel,
-    createBackofficeScopedContext: (scope) =>
-      createRouteBackedRuntimeContext({
+    createBackofficeScopedContext: (scope) => {
+      kernel.assertScopedContextAccess(execution, scope);
+      return createRouteBackedRuntimeContext({
         runtime,
         kernel,
-        execution: { actor: execution.actor, scope },
-        defaultActor,
-      }),
+        execution: {
+          actors: execution.actors,
+          scope,
+          ...(execution.userAuthority ? { userAuthority: execution.userAuthority } : {}),
+        },
+      });
+    },
     backoffice: isBackofficeRoutableScope(execution.scope)
       ? {
           runtime: createBackofficeCapabilitiesRuntime({
@@ -129,21 +129,12 @@ export const createRouteBackedRuntimeContext = ({
     },
     automations: {
       runtime: {
-        ...createRouteBackedAutomationStoreRuntime({
-          object: automationsObject,
-          scope: execution.scope,
-        }),
-        ...createRouteBackedAutomationRouterRuntime({
-          object: automationsObject,
-          scope: execution.scope,
-        }),
+        ...createRouteBackedAutomationStoreRuntime({ object: automationsObject, execution }),
+        ...createRouteBackedAutomationRouterRuntime({ object: automationsObject }),
       },
     },
     workflow: {
-      runtime: createRouteBackedAutomationWorkflowRuntime({
-        object: automationsObject,
-        scope: execution.scope,
-      }),
+      runtime: createRouteBackedAutomationWorkflowRuntime({ object: automationsObject }),
     },
     durableHooks: org
       ? {
@@ -186,6 +177,8 @@ export const createRouteBackedRuntimeContext = ({
             object: kernel.scoped("OTP", execution.scope, runtime.objects.otp),
             config: runtime.config,
             orgId: selectedOrg.orgId,
+            kernel,
+            execution,
           })
         : createUnavailableOtpRuntime(unavailableMessage("OTP", execution)),
     },

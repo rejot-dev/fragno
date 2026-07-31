@@ -9,7 +9,12 @@ import type { Reson8 } from "workers/reson8.do";
 import type { TelegramAdminConfigResponse } from "workers/telegram.do";
 import type { Upload } from "workers/upload.do";
 
-import type { Organization, VerifyUserEmailInput, VerifyUserEmailResult } from "@fragno-dev/auth";
+import type {
+  Organization,
+  UserAuthorityFacts,
+  VerifyUserEmailInput,
+  VerifyUserEmailResult,
+} from "@fragno-dev/auth";
 import type { FragnoExecutionContext } from "@fragno-dev/core";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
@@ -68,9 +73,13 @@ import type {
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import type { SandboxInstanceStatus } from "@/sandbox/contracts";
 
-import type { BackofficeContextScope } from "./context";
+import type { BackofficeContextScope, BackofficeExecutionContext } from "./context";
 
 export type BackofficeRpcContext = Pick<FragnoExecutionContext, "propagationContext">;
+
+export type BackofficeActionRpcContext = BackofficeRpcContext & {
+  execution: BackofficeExecutionContext;
+};
 
 export type FetchObject = {
   fetch(request: Request): Promise<Response>;
@@ -118,7 +127,10 @@ export type AuthObject = FetchObject &
       | { status: "issued"; credentialToken: string }
       | { status: "rejected"; reason: "user_not_found" | "user_banned" }
     >;
-    hasOrganizationMembership(input: { organizationId: string; userId: string }): Promise<boolean>;
+    getUserAuthorityFacts(input: {
+      userId: string;
+      organizationId?: string;
+    }): Promise<UserAuthorityFacts>;
     getAllOrganizations(): Promise<Organization[]>;
     hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean>;
     getDevOrganizations(): Promise<
@@ -205,6 +217,7 @@ export type AutomationsObject = FetchObject &
     listMarketplaceIngestions(
       input?: MarketplaceIngestionListInput,
     ): Promise<MarketplaceIngestionRecord[]>;
+    fetchWithContext(request: Request, context: BackofficeActionRpcContext): Promise<Response>;
     listEventDefinitions(): Promise<AutomationEventDefinition[]>;
     getEventDefinition(input: {
       source: string;

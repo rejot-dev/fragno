@@ -1,6 +1,5 @@
 import type { RouterContextProvider } from "react-router";
 
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   backofficeContextScopeFromSinglePathSegment,
   backofficeContextScopeSinglePathSegment,
@@ -40,8 +39,7 @@ export async function forwardScopedPiRequest({
   }
   await requireBackofficeContext(request, context, scope);
 
-  const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel(runtime);
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const piObject = kernel.scoped("PI", scope, runtime.objects.pi);
   const suffix = params["*"] ? `/${params["*"]}` : "";
   const url = new URL(request.url);

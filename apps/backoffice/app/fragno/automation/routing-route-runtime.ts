@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
 import {
   automationRouteSchema,
@@ -17,12 +16,10 @@ const raiseRouteError = (status: number, message: string): never => {
 
 export const createRouteBackedAutomationRouterRuntime = ({
   object,
-  scope,
 }: {
   object: AutomationsObject;
-  scope?: BackofficeContextScope;
 }): AutomationRouterRuntime => {
-  const callRoute = createAutomationsRouteCaller({ object, scope });
+  const callRoute = createAutomationsRouteCaller({ object });
 
   return {
     listRoutes: async () => {

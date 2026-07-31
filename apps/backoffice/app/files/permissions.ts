@@ -1,7 +1,7 @@
 import {
   backofficeContextScopesEqual,
   type BackofficeContextScope,
-  type BackofficePrincipal,
+  type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 
 import { createPermissionDeniedFileSystemError } from "./fs-errors";
@@ -97,14 +97,16 @@ export const getScopePrimaryFileGroup = (scope: BackofficeContextScope): FileGro
   throw new Error("Unsupported Backoffice context scope kind.");
 };
 
-export const resolveActorFilePrincipal = ({
-  actor,
+export const resolveExecutionFilePrincipal = ({
+  actors,
   scope,
-}: {
-  actor: BackofficePrincipal;
-  scope: BackofficeContextScope;
-}): FilePrincipal => {
-  if (actor.type === "system") {
+}: BackofficeExecutionContext): FilePrincipal | null => {
+  const principal = actors.principal;
+  if (!principal) {
+    if (actors.initiator.scope !== "internal" || actors.initiator.type !== "system") {
+      return null;
+    }
+
     const primaryGroup = getScopePrimaryFileGroup(scope);
     return {
       subject: ROOT_FILE_PRINCIPAL.subject,
@@ -115,35 +117,44 @@ export const resolveActorFilePrincipal = ({
     };
   }
 
-  if (actor.type === "user") {
-    const userGroup: FileGroup = { kind: "user", userId: actor.userId };
-    if (scope.kind === "org") {
+  if (principal.scope !== "internal") {
+    return null;
+  }
+
+  if (principal.type === "user") {
+    const userGroup: FileGroup = { kind: "user", userId: principal.id };
+    if (scope.kind === "org" || scope.kind === "project") {
       const orgGroup: FileGroup = { kind: "org", orgId: scope.orgId };
       return {
-        subject: { kind: "user", userId: actor.userId },
+        subject: { kind: "user", userId: principal.id },
         primaryGroup: orgGroup,
         groups: [orgGroup, userGroup],
       };
     }
 
     return {
-      subject: { kind: "user", userId: actor.userId },
+      subject: { kind: "user", userId: principal.id },
       primaryGroup: userGroup,
       groups: [userGroup],
     };
   }
 
   const primaryGroup = getScopePrimaryFileGroup(scope);
-  if (actor.type === "automation") {
+  if (principal.type === "automation") {
     return {
-      subject: { kind: "automation", automationId: actor.id, scope },
+      subject: { kind: "automation", automationId: principal.id, scope },
       primaryGroup,
       groups: [primaryGroup],
     };
   }
 
   return {
-    subject: { kind: "object", objectType: "backoffice-object", objectId: actor.id, scope },
+    subject: {
+      kind: "object",
+      objectType: "backoffice-object",
+      objectId: principal.id,
+      scope,
+    },
     primaryGroup,
     groups: [primaryGroup],
   };

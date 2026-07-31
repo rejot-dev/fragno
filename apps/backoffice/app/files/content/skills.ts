@@ -142,7 +142,7 @@ export const GENERAL_SKILL_CONTENT: Record<string, FileContent> = {
 
    For \`send_workflow_event\`, omit \`workflowName\` because the fixed automation workflow host handles it, and set \`remoteWorkflowName\` to the saved \`defineWorkflow\` name that owns the target instance. Use \`{ kind: "instance_id", template }\` when the event can render the workflow instance id directly. Use \`{ kind: "stored_instance_id", keyTemplate }\` when a prior run stored the instance id under a rendered store key. **Complete when** every required artifact has been created or updated successfully.
 
-5. Use the automation store only for small durable coordination values. Values are strings, structured values use \`JSON.stringify\`, and keys are stable and namespaced. When writing from a saved workflow, supply \`event.actors.initiator\` to \`store.set\`. Reserve the \`system\` category for protected entries that users must not delete. Use \`verification\` for JSON text that must satisfy a schema.
+5. Use the automation store only for small durable coordination values. Values are strings, structured values use \`JSON.stringify\`, and keys are stable and namespaced. Store inputs contain domain data only; trusted execution provenance is recorded by the kernel. Categories are ordinary labels. Use \`verification\` for JSON text that must satisfy a schema.
 
 6. Re-read the completed route with \`router.get({ id })\` and \`state.readFile(workflowScriptPath)\` when saved. Run \`connections.verify({ id })\` for external providers. **Complete only when** the route trigger, action, workflow name, file path, and connection status all line up end to end.
 

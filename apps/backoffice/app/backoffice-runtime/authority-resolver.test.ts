@@ -1,15 +1,26 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
-import type { AutomationExecutionContext } from "@/fragno/automation/actors";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 
 import {
   createBackofficeAuthorityResolver,
-  type BackofficeMembershipDirectory,
+  type BackofficeIdentityDirectory,
 } from "./authority-resolver";
 import { BACKOFFICE_AUTHORITY_ROLE_GRANTS } from "./authority-roles";
 
-class MemoryMembershipDirectory implements BackofficeMembershipDirectory {
+class MemoryIdentityDirectory implements BackofficeIdentityDirectory {
+  lookupCount = 0;
+  readonly #activeUsers = new Set<string>();
   readonly #memberships = new Set<string>();
+  readonly #systemAdministrators = new Set<string>();
+
+  activate(userId: string) {
+    this.#activeUsers.add(userId);
+  }
+
+  ban(userId: string) {
+    this.#activeUsers.delete(userId);
+  }
 
   add(organizationId: string, userId: string) {
     this.#memberships.add(`${organizationId}:${userId}`);
@@ -19,8 +30,23 @@ class MemoryMembershipDirectory implements BackofficeMembershipDirectory {
     this.#memberships.delete(`${organizationId}:${userId}`);
   }
 
-  async hasOrganizationMembership(input: { organizationId: string; userId: string }) {
-    return this.#memberships.has(`${input.organizationId}:${input.userId}`);
+  grantSystemAdministration(userId: string) {
+    this.#systemAdministrators.add(userId);
+  }
+
+  revokeSystemAdministration(userId: string) {
+    this.#systemAdministrators.delete(userId);
+  }
+
+  async getUserAuthorityFacts(input: { userId: string; organizationId?: string }) {
+    this.lookupCount += 1;
+    return {
+      active: this.#activeUsers.has(input.userId),
+      role: this.#systemAdministrators.has(input.userId) ? ("admin" as const) : ("user" as const),
+      organizationMember: input.organizationId
+        ? this.#memberships.has(`${input.organizationId}:${input.userId}`)
+        : false,
+    };
   }
 }
 
@@ -31,7 +57,7 @@ const principal = {
   role: "principal" as const,
 };
 
-const organizationExecution: AutomationExecutionContext = {
+const organizationExecution: BackofficeExecutionContext = {
   scope: { kind: "org", orgId: "org-1" },
   actors: {
     initiator: {
@@ -47,11 +73,81 @@ const organizationExecution: AutomationExecutionContext = {
 };
 
 describe("createBackofficeAuthorityResolver", () => {
-  test("re-evaluates current organization membership", async () => {
-    const memberships = new MemoryMembershipDirectory();
-    const resolver = createBackofficeAuthorityResolver(memberships);
+  test("trusts verified access-token authority without an identity lookup", async () => {
+    const identities = new MemoryIdentityDirectory();
+    const resolver = createBackofficeAuthorityResolver(identities, { now: () => 1_000 });
+    const accessTokenAuthority = {
+      kind: "verified-access-token" as const,
+      userId: principal.id,
+      role: "admin" as const,
+      organizationIds: ["org-1"],
+      expiresAtEpochMs: 2_000,
+    };
 
-    memberships.add("org-1", "user-1");
+    await expect(
+      resolver.resolvePrincipalPermissions({
+        principal,
+        execution: {
+          ...organizationExecution,
+          userAuthority: accessTokenAuthority,
+        },
+      }),
+    ).resolves.toEqual(BACKOFFICE_AUTHORITY_ROLE_GRANTS["organization-member"]);
+    await expect(
+      resolver.resolvePrincipalPermissions({
+        principal,
+        execution: {
+          ...organizationExecution,
+          scope: { kind: "user", userId: principal.id },
+          userAuthority: accessTokenAuthority,
+        },
+      }),
+    ).resolves.toEqual(BACKOFFICE_AUTHORITY_ROLE_GRANTS["user-owner"]);
+    await expect(
+      resolver.resolvePrincipalPermissions({
+        principal,
+        execution: {
+          ...organizationExecution,
+          scope: { kind: "system" },
+          userAuthority: accessTokenAuthority,
+        },
+      }),
+    ).resolves.toEqual(BACKOFFICE_AUTHORITY_ROLE_GRANTS["system-administrator"]);
+
+    assert(identities.lookupCount === 0);
+  });
+
+  test("denies expired access-token authority without falling back to current identity state", async () => {
+    const identities = new MemoryIdentityDirectory();
+    identities.activate(principal.id);
+    identities.add("org-1", principal.id);
+    const resolver = createBackofficeAuthorityResolver(identities, { now: () => 2_000 });
+
+    await expect(
+      resolver.resolvePrincipalPermissions({
+        principal,
+        execution: {
+          ...organizationExecution,
+          userAuthority: {
+            kind: "verified-access-token",
+            userId: principal.id,
+            role: "user",
+            organizationIds: ["org-1"],
+            expiresAtEpochMs: 2_000,
+          },
+        },
+      }),
+    ).resolves.toEqual([]);
+
+    assert(identities.lookupCount === 0);
+  });
+
+  test("re-evaluates current organization membership without access-token authority", async () => {
+    const identities = new MemoryIdentityDirectory();
+    const resolver = createBackofficeAuthorityResolver(identities);
+
+    identities.activate("user-1");
+    identities.add("org-1", "user-1");
     await expect(
       resolver.resolvePrincipalPermissions({
         principal,
@@ -59,7 +155,7 @@ describe("createBackofficeAuthorityResolver", () => {
       }),
     ).resolves.toEqual(BACKOFFICE_AUTHORITY_ROLE_GRANTS["organization-member"]);
 
-    memberships.remove("org-1", "user-1");
+    identities.remove("org-1", "user-1");
     await expect(
       resolver.resolvePrincipalPermissions({
         principal,
@@ -68,8 +164,10 @@ describe("createBackofficeAuthorityResolver", () => {
     ).resolves.toEqual([]);
   });
 
-  test("grants user-scope authority only to that user", async () => {
-    const resolver = createBackofficeAuthorityResolver(new MemoryMembershipDirectory());
+  test("grants user-scope authority only to an active matching user", async () => {
+    const identities = new MemoryIdentityDirectory();
+    identities.activate("user-1");
+    const resolver = createBackofficeAuthorityResolver(identities);
 
     await expect(
       resolver.resolvePrincipalPermissions({
@@ -92,8 +190,119 @@ describe("createBackofficeAuthorityResolver", () => {
     ).resolves.toEqual([]);
   });
 
+  test("re-evaluates current system administration", async () => {
+    const identities = new MemoryIdentityDirectory();
+    const resolver = createBackofficeAuthorityResolver(identities);
+    const systemExecution: BackofficeExecutionContext = {
+      scope: { kind: "system" },
+      actors: {
+        initiator: {
+          scope: "internal",
+          type: "backoffice",
+          id: "interactive",
+          role: "initiator",
+        },
+        principal,
+        delegation: [],
+      },
+    };
+
+    identities.activate(principal.id);
+    identities.grantSystemAdministration(principal.id);
+    await expect(
+      resolver.resolvePrincipalPermissions({ principal, execution: systemExecution }),
+    ).resolves.toEqual(BACKOFFICE_AUTHORITY_ROLE_GRANTS["system-administrator"]);
+
+    identities.revokeSystemAdministration(principal.id);
+    await expect(
+      resolver.resolvePrincipalPermissions({ principal, execution: systemExecution }),
+    ).resolves.toEqual([]);
+  });
+
+  test("denies missing and banned users even when stale authority facts remain", async () => {
+    const identities = new MemoryIdentityDirectory();
+    const resolver = createBackofficeAuthorityResolver(identities);
+
+    identities.add("org-1", principal.id);
+    identities.grantSystemAdministration(principal.id);
+
+    await expect(
+      resolver.resolvePrincipalPermissions({ principal, execution: organizationExecution }),
+    ).resolves.toEqual([]);
+
+    identities.activate(principal.id);
+    identities.ban(principal.id);
+
+    await expect(
+      resolver.resolvePrincipalPermissions({
+        principal,
+        execution: {
+          scope: { kind: "user", userId: principal.id },
+          actors: organizationExecution.actors,
+        },
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      resolver.resolvePrincipalPermissions({
+        principal,
+        execution: {
+          scope: { kind: "system" },
+          actors: organizationExecution.actors,
+        },
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      resolver.resolvePrincipalPermissions({ principal, execution: organizationExecution }),
+    ).resolves.toEqual([]);
+  });
+
+  test("re-evaluates a ban after authority was granted", async () => {
+    const identities = new MemoryIdentityDirectory();
+    const resolver = createBackofficeAuthorityResolver(identities);
+    identities.activate(principal.id);
+    identities.add("org-1", principal.id);
+
+    await expect(
+      resolver.resolvePrincipalPermissions({ principal, execution: organizationExecution }),
+    ).resolves.toEqual(BACKOFFICE_AUTHORITY_ROLE_GRANTS["organization-member"]);
+
+    identities.ban(principal.id);
+    await expect(
+      resolver.resolvePrincipalPermissions({ principal, execution: organizationExecution }),
+    ).resolves.toEqual([]);
+  });
+
+  test("grants explicit roles to trusted internal service principals", async () => {
+    const resolver = createBackofficeAuthorityResolver(new MemoryIdentityDirectory());
+    const automationPrincipal = {
+      scope: "internal" as const,
+      type: "automation",
+      id: "automation-1",
+      role: "principal" as const,
+    };
+
+    await expect(
+      resolver.resolvePrincipalPermissions({
+        principal: automationPrincipal,
+        execution: {
+          scope: organizationExecution.scope,
+          actors: {
+            initiator: {
+              scope: "internal",
+              type: "system",
+              id: "backoffice",
+              role: "initiator",
+            },
+            principal: automationPrincipal,
+            delegation: [],
+          },
+        },
+      }),
+    ).resolves.toEqual(BACKOFFICE_AUTHORITY_ROLE_GRANTS.automation);
+  });
+
   test("grants capabilities only to trusted internal runtime actors", async () => {
-    const resolver = createBackofficeAuthorityResolver(new MemoryMembershipDirectory());
+    const resolver = createBackofficeAuthorityResolver(new MemoryIdentityDirectory());
 
     await expect(
       resolver.resolveActorCapabilityGrants({

@@ -8,10 +8,8 @@
  * can highlight what is running / done / errored.
  *
  * No server imports — this runs in the browser. The endpoints are reached through
- * the `/api/automations-workflows/:orgId/*` catch-all (forwarded to the Automations
- * Durable Object's *workflows* fragment, where `pi-codemode-script` is registered).
- * Note the `-workflows` mount: the bare `/api/automations/:orgId/*` catch-all targets
- * the automation fragment, which does not expose workflow instance endpoints.
+ * the `/api/automations-workflows/:orgId/*` catch-all, which forwards directly to the
+ * Automations Durable Object's workflows fragment where `pi-codemode-script` is registered.
  */
 
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";

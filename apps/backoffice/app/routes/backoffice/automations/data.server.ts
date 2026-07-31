@@ -1,9 +1,10 @@
-import { createRouteCaller } from "@fragno-dev/core/api";
 import { createFetchFragnoOutboxTransport } from "@fragno-dev/tanstack-db-adapter/transport";
 import type { RouterContextProvider } from "react-router";
 
+import { extractW3CRequestPropagationContext } from "@fragno-dev/core";
+
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import { createBackofficeFileSystem } from "@/files";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import {
@@ -11,15 +12,12 @@ import {
   listAutomationWorkspaceScripts,
   readAutomationWorkspaceScript,
   type AutomationWorkspaceScriptEntry,
-  type createAutomationFragment,
 } from "@/fragno/automation";
 import { writeAutomationScript } from "@/fragno/automation/authoring";
+import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import {
-  booleanActionResultFromCaughtError,
-  booleanActionResultFromRouteResponse,
-} from "../action-result";
+import { booleanActionResultFromCaughtError } from "../action-result";
 import type {
   AutomationProjectRecord,
   AutomationScriptRecord,
@@ -31,31 +29,17 @@ import {
   isAutomationScriptLayerVisibleInScope,
 } from "./script-records";
 
-type AutomationFragment = ReturnType<typeof createAutomationFragment>;
-
 const formatErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
 const isSuccessStatus = (status: number) => status >= 200 && status < 300;
 
-const scopeOrgId = (scope: BackofficeContextScope) => {
-  if (scope.kind === "org" || scope.kind === "project") {
-    return scope.orgId;
+const rethrowHttpResponseOrForbiddenError = (error: unknown) => {
+  if (error instanceof Response) {
+    throw error;
   }
-  return undefined;
-};
-
-const applyAutomationScopeQuery = (url: URL, scope: BackofficeContextScope) => {
-  const orgId = scopeOrgId(scope);
-  url.searchParams.set("scopeKind", scope.kind);
-  if (orgId) {
-    url.searchParams.set("orgId", orgId);
-  }
-  if (scope.kind === "project") {
-    url.searchParams.set("projectId", scope.projectId);
-  }
-  if (scope.kind === "user") {
-    url.searchParams.set("userId", scope.userId);
+  if (error instanceof BackofficeForbiddenError) {
+    throw new Response(error.message, { status: 403 });
   }
 };
 
@@ -63,27 +47,8 @@ const getScopedAutomationsObject = (
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
 ) => {
-  const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel(runtime);
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
   return kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
-};
-
-const createAutomationsRouteCaller = (
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
-) => {
-  const automationsDo = getScopedAutomationsObject(context, scope);
-  return createRouteCaller<AutomationFragment>({
-    baseUrl: request.url,
-    mountRoute: "/api/automations",
-    baseHeaders: request.headers,
-    fetch: async (outboundRequest) => {
-      const url = new URL(outboundRequest.url);
-      applyAutomationScopeQuery(url, scope);
-      return automationsDo.fetch(new Request(url.toString(), outboundRequest));
-    },
-  });
 };
 
 export async function fetchAutomationAdapterIdentity(
@@ -95,12 +60,10 @@ export async function fetchAutomationAdapterIdentity(
   const url = new URL(request.url);
   url.pathname = "/api/automations/_internal";
   url.search = "";
-  applyAutomationScopeQuery(url, scope);
 
   const transport = createFetchFragnoOutboxTransport({
     internalUrl: url,
-    fetch: (input, init) =>
-      automationsDo.fetch(new Request(input, { ...init, headers: request.headers })),
+    fetch: (input, init) => automationsDo.fetch(new Request(input, init)),
   });
 
   return transport.getAdapterIdentity({ signal: request.signal });
@@ -123,8 +86,7 @@ const createBackofficeAutomationFileSystem = async ({
   context: Readonly<RouterContextProvider>;
   scope: BackofficeContextScope;
 }) => {
-  const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel(runtime);
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const execution = await requireBackofficeContext(request, context, scope);
   return createBackofficeFileSystem({
     objects: runtime.objects,
@@ -273,7 +235,6 @@ export async function loadAutomationScriptSource({
 }
 
 export async function fetchAutomationProjects(
-  request: Request,
   context: Readonly<RouterContextProvider>,
   orgId: string,
 ): Promise<{
@@ -281,7 +242,9 @@ export async function fetchAutomationProjects(
   projectsError: string | null;
 }> {
   try {
-    const callRoute = createAutomationsRouteCaller(request, context, { kind: "org", orgId });
+    const callRoute = createAutomationsRouteCaller({
+      object: getScopedAutomationsObject(context, { kind: "org", orgId }),
+    });
     const response = await callRoute("GET", "/projects");
 
     if (response.type === "json" && isSuccessStatus(response.status)) {
@@ -311,7 +274,6 @@ export async function fetchAutomationProjects(
 }
 
 export async function createAutomationProject(
-  request: Request,
   context: Readonly<RouterContextProvider>,
   orgId: string,
   input: {
@@ -322,7 +284,9 @@ export async function createAutomationProject(
   },
 ): Promise<{ project: AutomationProjectRecord | null; error: string | null }> {
   try {
-    const callRoute = createAutomationsRouteCaller(request, context, { kind: "org", orgId });
+    const callRoute = createAutomationsRouteCaller({
+      object: getScopedAutomationsObject(context, { kind: "org", orgId }),
+    });
     const response = await callRoute("POST", "/projects", { body: input });
 
     if (response.type === "json" && isSuccessStatus(response.status)) {
@@ -352,17 +316,30 @@ export async function deleteAutomationStoreEntry(
   error: string | null;
 }> {
   try {
-    const callRoute = createAutomationsRouteCaller(request, context, scope);
-    const response = await callRoute("POST", "/store/delete", {
-      body: { key },
+    const { runtime, kernel } = context.get(BackofficeWorkerContext);
+    const execution = await requireBackofficeContext(request, context, scope);
+    const automations = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
+    const callRoute = createAutomationsRouteCaller({
+      object: automations,
+      context: {
+        execution,
+        propagationContext: extractW3CRequestPropagationContext(request.headers),
+      },
     });
+    const response = await callRoute("POST", "/store/delete", { body: { key } });
 
-    return booleanActionResultFromRouteResponse({
-      response,
-      failureMessage: "Failed to delete automation store entry",
-      requireSuccessStatus: true,
-    });
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return { ok: true, error: null };
+    }
+    if (response.type === "error") {
+      if (response.status === 401 || response.status === 403 || response.status === 503) {
+        throw Response.json(response.error, { status: response.status });
+      }
+      return { ok: false, error: response.error.message };
+    }
+    return { ok: false, error: `Failed to delete automation store entry (${response.status}).` };
   } catch (error) {
+    rethrowHttpResponseOrForbiddenError(error);
     return booleanActionResultFromCaughtError(error, "Failed to delete automation store entry.");
   }
 }

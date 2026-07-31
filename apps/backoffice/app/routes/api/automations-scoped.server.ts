@@ -1,8 +1,8 @@
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import { isAutomationOutboxPath } from "@/fragno/automation/route-callers";
 import { automationScopeFromRouteParams } from "@/routes/backoffice/automations/scope";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -40,14 +40,19 @@ export const forwardToScopedAutomationsFragment = async ({
   const scope = automationScopeFromRouteParams(params);
   await requireBackofficeContext(request, context, scope);
 
-  const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel(runtime);
+  const suffix = params["*"] ? `/${params["*"]}` : "";
+  if (mountRoute === "/api/automations" && !isAutomationOutboxPath(suffix)) {
+    return new Response("Not Found", { status: 404 });
+  }
+
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const automationsDo = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
 
   const url = new URL(request.url);
-  const suffix = params["*"] ? `/${params["*"]}` : "";
   url.pathname = `${mountRoute}${suffix}`;
-  applyAutomationScopeQuery(url, scope);
+  if (mountRoute === "/api/automations-workflows") {
+    applyAutomationScopeQuery(url, scope);
+  }
 
   return await automationsDo.fetch(new Request(url.toString(), request));
 };

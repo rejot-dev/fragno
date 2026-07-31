@@ -2,9 +2,9 @@ import { defineCommand } from "just-bash";
 import type { z } from "zod";
 
 import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
-import {
-  type BackofficeContextScope,
-  type BackofficePrincipal,
+import type {
+  BackofficeContextScope,
+  BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import {
@@ -12,6 +12,7 @@ import {
   type BackofficePermission,
   type BackofficePermissionNamespace,
 } from "@/backoffice-runtime/permissions";
+import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import type { BackofficeCapabilityId } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type { ToolProvider } from "@/fragno/codemode/codemode-executor";
 import type {
@@ -33,37 +34,34 @@ import {
 
 export type BackofficeToolContext<
   TRuntimes extends Record<string, unknown> = Record<string, unknown>,
-  TDefaults extends Record<string, unknown> = Record<string, unknown>,
 > = {
   runtimes: TRuntimes;
-  defaults?: TDefaults;
-  actor: BackofficePrincipal;
-  scope: BackofficeContextScope;
+  execution: BackofficeExecutionContext;
   kernel: BackofficeKernel;
-  createScopedContext(scope: BackofficeContextScope): BackofficeToolContext<TRuntimes, TDefaults>;
+  createScopedContext(scope: BackofficeContextScope): BackofficeToolContext<TRuntimes>;
 };
 
 export const createTrustedSystemBackofficeToolContext = <
   TRuntimes extends Record<string, unknown> = Record<string, unknown>,
-  TDefaults extends Record<string, unknown> = Record<string, unknown>,
 >({
   runtimes,
-  defaults,
 }: {
   runtimes: TRuntimes;
-  defaults?: TDefaults;
-}): BackofficeToolContext<TRuntimes, TDefaults> => {
+}): BackofficeToolContext<TRuntimes> => {
   const kernel = new BackofficeKernel({
     authorityResolver: unrestrictedBackofficeAuthorityResolver,
     kernelObserver: noopBackofficeKernelObserver,
   });
-  const createContext = (
-    scope: BackofficeContextScope,
-  ): BackofficeToolContext<TRuntimes, TDefaults> => ({
+  const createContext = (scope: BackofficeContextScope): BackofficeToolContext<TRuntimes> => ({
     runtimes,
-    ...(typeof defaults === "undefined" ? {} : { defaults }),
-    actor: { type: "system", id: "system" },
-    scope,
+    execution: {
+      scope,
+      actors: {
+        initiator: AUTOMATION_SYSTEM_INITIATOR,
+        principal: null,
+        delegation: [],
+      },
+    },
     kernel,
     createScopedContext: createContext,
   });
@@ -252,17 +250,12 @@ const summarizeToolValue = (value: unknown) => {
   return summary.length > 500 ? `${summary.slice(0, 497)}...` : summary;
 };
 
-const assertBackofficeRuntimeToolContextAccess = (context: BackofficeToolContext) => {
-  context.kernel.assertContextAccess({ actor: context.actor, scope: context.scope });
-};
-
 export const executeBackofficeRuntimeTool = async (
   tool: AnyBackofficeRuntimeTool,
   input: unknown,
   context: BackofficeToolContext,
 ): Promise<unknown> => {
   const parsedInput = tool.inputSchema.parse(input);
-  assertBackofficeRuntimeToolContextAccess(context);
   const output = await tool.execute(parsedInput, context);
   return tool.outputSchema.parse(output);
 };
@@ -358,7 +351,6 @@ export const createBackofficeBashCommands = ({
           : readOutputOptions(parsed);
         let rawResult: unknown;
         if (bash.execute) {
-          assertBackofficeRuntimeToolContextAccess(context);
           rawResult = await bash.execute({
             input,
             args,

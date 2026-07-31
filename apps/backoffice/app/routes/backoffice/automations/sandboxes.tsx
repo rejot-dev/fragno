@@ -805,7 +805,7 @@ async function requireSandboxScopeAccess({
   }
 
   if (scope.kind === "project") {
-    const projectsResult = await fetchAutomationProjects(request, context, scope.orgId);
+    const projectsResult = await fetchAutomationProjects(context, scope.orgId);
     if (projectsResult.projectsError) {
       throw Response.json(
         {

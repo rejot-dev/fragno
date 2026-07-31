@@ -1,31 +1,34 @@
-import type {
-  AutomationDelegatedActor,
-  AutomationExecutionContext,
-  AutomationPrincipalActor,
-} from "@/fragno/automation/actors";
+import type { Role, UserAuthorityFacts } from "@fragno-dev/auth";
 
-import { getBackofficeAuthorityRoleGrants, type BackofficeAuthorityRole } from "./authority-roles";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import type { AutomationActors } from "@/fragno/automation/actors";
+
+import {
+  getBackofficeAuthorityRoleGrants,
+  resolveBackofficeInternalServiceAuthorityRole,
+  resolveBackofficeUserAuthorityRole,
+} from "./authority-roles";
 import {
   allBackofficePermissionRequirements,
   type BackofficePermissionRequirement,
 } from "./permissions";
 
 /**
- * Resolves the current authority of the identities named by trusted automation provenance.
+ * Resolves the current authority of the identities named by trusted Backoffice provenance.
  *
- * The kernel calls this resolver for every sensitive invocation. Implementations must consult
- * current authoritative state rather than treating the event's actor provenance as proof of
- * permission. Throwing means authority could not be established and causes the kernel to deny the
- * action as `authority-unavailable`.
+ * The kernel calls this resolver for every sensitive invocation. Implementations may trust
+ * unexpired authority from a verified access token or consult current authoritative state when no
+ * token authority exists. Event actor provenance is never proof of permission. Throwing means
+ * authority could not be established and causes the kernel to deny as `authority-unavailable`.
  */
 export type BackofficeAuthorityResolver = {
   /**
-   * Returns the permissions currently held by the human or service principal on this execution
-   * scope. An empty result means the principal has no authority for the requested action.
+   * Returns the permissions recognized for the human or service principal on this execution scope.
+   * An empty result means the principal has no authority for the requested action.
    */
   resolvePrincipalPermissions(input: {
-    principal: AutomationPrincipalActor;
-    execution: AutomationExecutionContext;
+    principal: NonNullable<AutomationActors["principal"]>;
+    execution: BackofficeExecutionContext;
   }): Promise<readonly BackofficePermissionRequirement[]>;
 
   /**
@@ -34,74 +37,115 @@ export type BackofficeAuthorityResolver = {
    * so delegation can restrict authority but cannot increase the principal's authority.
    */
   resolveActorCapabilityGrants(input: {
-    actor: AutomationDelegatedActor;
-    execution: AutomationExecutionContext;
+    actor: AutomationActors["delegation"][number];
+    execution: BackofficeExecutionContext;
   }): Promise<readonly BackofficePermissionRequirement[]>;
 };
 
-/** The production identity lookup used to reevaluate organization membership on each action. */
-export type BackofficeMembershipDirectory = {
-  hasOrganizationMembership(input: { organizationId: string; userId: string }): Promise<boolean>;
+/** The production identity lookup used when execution has no verified access-token authority. */
+export type BackofficeIdentityDirectory = {
+  getUserAuthorityFacts(input: {
+    userId: string;
+    organizationId?: string;
+  }): Promise<UserAuthorityFacts>;
 };
 
 const noPermissions = [] as const satisfies readonly BackofficePermissionRequirement[];
 
-const resolveDelegatedActorAuthorityRole = (
-  actor: AutomationDelegatedActor,
-): BackofficeAuthorityRole | null => {
-  if (actor.scope !== "internal") {
-    return null;
+type CreateBackofficeAuthorityResolverOptions = {
+  now?: () => number;
+};
+
+const resolveUserAuthorityPermissions = (
+  authority: Readonly<{
+    userId: string;
+    role: Role;
+    organizationIds: readonly string[];
+  }>,
+  execution: BackofficeExecutionContext,
+): readonly BackofficePermissionRequirement[] => {
+  const role = resolveBackofficeUserAuthorityRole(authority, execution.scope);
+  return role ? getBackofficeAuthorityRoleGrants(role) : noPermissions;
+};
+
+const resolveVerifiedAccessTokenPermissions = ({
+  principal,
+  execution,
+  now,
+}: {
+  principal: NonNullable<AutomationActors["principal"]>;
+  execution: BackofficeExecutionContext;
+  now: number;
+}): readonly BackofficePermissionRequirement[] => {
+  const authority = execution.userAuthority;
+  if (!authority || authority.userId !== principal.id || authority.expiresAtEpochMs <= now) {
+    return noPermissions;
   }
 
-  switch (actor.type) {
-    case "automation":
-    case "agent":
-    case "capability":
-    case "object":
-    case "system":
-      return actor.type;
-    default:
-      return null;
-  }
+  return resolveUserAuthorityPermissions(authority, execution);
 };
 
 /**
- * Resolves current authority from production-owned identity sources.
+ * Resolves authority from verified access-token claims or current production identity state.
  *
- * Organization and project authority is intentionally derived from the current Auth membership on
- * every call. Membership and trusted runtime actor types resolve to explicit Backoffice roles; each
- * role grants only the finite permissions listed in `authority-roles.ts`.
+ * Immediate user-request actions trust the role and organization snapshot in the verified JWT until
+ * its expiry, avoiding an Auth round-trip for each sensitive action. Deferred executions carry no
+ * token authority and instead reevaluate current user state through the identity directory. Trusted
+ * runtime actor types resolve to explicit roles with only the finite grants in `authority-roles.ts`.
  */
 export const createBackofficeAuthorityResolver = (
-  memberships: BackofficeMembershipDirectory,
-): BackofficeAuthorityResolver => ({
-  async resolvePrincipalPermissions({ principal, execution }) {
-    if (principal.scope !== "internal" || principal.type !== "user") {
-      return noPermissions;
-    }
+  identities: BackofficeIdentityDirectory,
+  options: CreateBackofficeAuthorityResolverOptions = {},
+): BackofficeAuthorityResolver => {
+  const now = options.now ?? Date.now;
 
-    if (execution.scope.kind === "user") {
-      return execution.scope.userId === principal.id
-        ? getBackofficeAuthorityRoleGrants("user-owner")
-        : noPermissions;
-    }
+  return {
+    async resolvePrincipalPermissions({ principal, execution }) {
+      const serviceRole = resolveBackofficeInternalServiceAuthorityRole(principal);
+      if (serviceRole) {
+        return getBackofficeAuthorityRoleGrants(serviceRole);
+      }
 
-    if (execution.scope.kind !== "org" && execution.scope.kind !== "project") {
-      return noPermissions;
-    }
+      if (principal.scope !== "internal" || principal.type !== "user") {
+        return noPermissions;
+      }
 
-    const isMember = await memberships.hasOrganizationMembership({
-      organizationId: execution.scope.orgId,
-      userId: principal.id,
-    });
-    return isMember ? getBackofficeAuthorityRoleGrants("organization-member") : noPermissions;
-  },
+      if (execution.userAuthority) {
+        return resolveVerifiedAccessTokenPermissions({
+          principal,
+          execution,
+          now: now(),
+        });
+      }
 
-  async resolveActorCapabilityGrants({ actor }) {
-    const role = resolveDelegatedActorAuthorityRole(actor);
-    return role ? getBackofficeAuthorityRoleGrants(role) : noPermissions;
-  },
-});
+      const organizationId =
+        execution.scope.kind === "org" || execution.scope.kind === "project"
+          ? execution.scope.orgId
+          : undefined;
+      const currentUser = await identities.getUserAuthorityFacts({
+        userId: principal.id,
+        ...(organizationId ? { organizationId } : {}),
+      });
+      if (!currentUser.active || !currentUser.role) {
+        return noPermissions;
+      }
+
+      return resolveUserAuthorityPermissions(
+        {
+          userId: principal.id,
+          role: currentUser.role,
+          organizationIds: organizationId && currentUser.organizationMember ? [organizationId] : [],
+        },
+        execution,
+      );
+    },
+
+    async resolveActorCapabilityGrants({ actor }) {
+      const role = resolveBackofficeInternalServiceAuthorityRole(actor);
+      return role ? getBackofficeAuthorityRoleGrants(role) : noPermissions;
+    },
+  };
+};
 
 /**
  * Explicitly denies all sensitive actions because no authority source is available.

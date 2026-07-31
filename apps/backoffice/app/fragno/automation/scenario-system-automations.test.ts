@@ -2,6 +2,10 @@ import { describe, expect, test, vi, assert } from "vitest";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import {
+  BACKOFFICE_SYSTEM_ACTORS,
+  createBackofficeUserExecution,
+} from "@/backoffice-runtime/context";
+import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
@@ -121,7 +125,6 @@ describe("system automation scenarios", () => {
 
       const workflow = createRouteBackedAutomationWorkflowRuntime({
         object: runtime.objects.automations.singleton(),
-        scope: { kind: "system" },
       });
       const listInstances = workflow.listInstances;
       if (!listInstances) {
@@ -135,7 +138,7 @@ describe("system automation scenarios", () => {
       assert(instances.instances[0]!.details.status === "complete");
 
       const systemExecution = {
-        actor: { type: "system" as const, id: "system" },
+        actors: BACKOFFICE_SYSTEM_ACTORS,
         scope: { kind: "org" as const, orgId },
       };
       const fs = await createBackofficeFileSystem({
@@ -159,17 +162,10 @@ describe("system automation scenarios", () => {
       const memberFs = await createMasterFileSystem(
         createSystemFilesContext({
           objects: runtime.objects,
-          execution: {
-            actor: {
-              type: "user",
-              id: "user-1",
-              userId: "user-1",
-              email: "ada@example.com",
-              role: "user",
-              organizationIds: [orgId],
-            },
+          execution: createBackofficeUserExecution({
             scope: { kind: "org", orgId },
-          },
+            userId: "user-1",
+          }),
           staticFileArtifacts: () => ({}),
         }),
       );
@@ -233,7 +229,7 @@ describe("system automation scenarios", () => {
               createSystemFilesContext({
                 objects: ctx.runtime.objects,
                 execution: {
-                  actor: { type: "system", id: "system" },
+                  actors: BACKOFFICE_SYSTEM_ACTORS,
                   scope: { kind: "org", orgId: "org-1" },
                 },
                 staticFileArtifacts: () => ({}),
@@ -299,7 +295,6 @@ describe("system automation scenarios", () => {
           then.assert("workspace initialization workflow runs in system scope", async (ctx) => {
             const systemWorkflow = createRouteBackedAutomationWorkflowRuntime({
               object: ctx.runtime.objects.automations.singleton(),
-              scope: { kind: "system" },
             });
             const systemInstances = await systemWorkflow.listInstances?.({
               workflowName: "automation-codemode-script",
@@ -367,16 +362,10 @@ describe("system automation scenarios", () => {
                 authorityResolver: unavailableBackofficeAuthorityResolver,
                 kernelObserver: noopBackofficeKernelObserver,
               });
-              const execution = {
-                actor: {
-                  scope: "internal" as const,
-                  type: "user" as const,
-                  id: "scenario-user",
-                  userId: "scenario-user",
-                  organizationIds: [orgId],
-                },
-                scope: { kind: "org" as const, orgId },
-              };
+              const execution = createBackofficeUserExecution({
+                scope: { kind: "org", orgId },
+                userId: "scenario-user",
+              });
               const fs = await createBackofficeFileSystem({
                 objects: ctx.runtime.objects,
                 kernel,
@@ -389,7 +378,6 @@ describe("system automation scenarios", () => {
                   runtime: ctx.runtime.services,
                   kernel,
                   execution,
-                  defaultActor: execution.actor,
                 }),
               });
 

@@ -44,7 +44,6 @@ describe("Backoffice codemode scenarios", () => {
   await store.set({
     key: "foo",
     value: "bar",
-    actor: null,
   });
 
   await state.writeFile("/workspace/codemode-output.txt", "codemode wrote this");
@@ -89,13 +88,11 @@ describe("Backoffice codemode scenarios", () => {
   await context.current.store.set({
     key: "scoped/current",
     value: "from-current",
-    actor: null,
   });
 
   await context.org("org-1").store.set({
     key: "scoped/org",
     value: "from-org",
-    actor: null,
   });
 }`,
             assertToolCalls: ["current:store.set", "org:store.set"],
@@ -153,35 +150,37 @@ describe("Backoffice codemode scenarios", () => {
     );
   });
 
-  test("rejects scoped codemode against a different organisation", async () => {
-    await expect(
-      runBackofficeScenario(
-        defineBackofficeScenario({
-          name: "codemode rejects writing state into another org through scoped context",
+  test("lets the explicitly trusted scenario shell arrange another organisation", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "trusted scenario codemode writes state through a scoped context",
 
-          files: backofficeFiles.workspaceStarter(),
+        files: backofficeFiles.workspaceStarter(),
 
-          setup: ({ given }) => [
-            given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-            given.organization.exists({ id: "org-2", name: "Grace Labs" }),
-          ],
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.organization.exists({ id: "org-2", name: "Grace Labs" }),
+        ],
 
-          steps: ({ when }) => [
-            when.codemode.run({
-              orgId: "org-1",
-              label: "write store entry into org-2 from org-1 codemode",
-              code: `async () => {
+        steps: ({ when, then }) => [
+          when.codemode.run({
+            orgId: "org-1",
+            label: "write store entry into org-2 from trusted scenario codemode",
+            code: `async () => {
   await context.org("org-2").store.set({
     key: "scoped/foreign-org",
     value: "from-org-1-codemode",
-    actor: null,
   });
 }`,
-            }),
-          ],
-        }),
-      ),
-    ).rejects.toThrow("Forbidden");
+          }),
+          then.store.entry({
+            orgId: "org-2",
+            key: "scoped/foreign-org",
+            value: "from-org-1-codemode",
+          }),
+        ],
+      }),
+    );
   });
 
   test("uses codemode setup helpers while keeping setup intent explicit", async () => {

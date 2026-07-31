@@ -6,7 +6,14 @@ import {
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
+import {
+  BackofficeForbiddenError,
+  BackofficeKernel,
+  type BackofficeAuthorizationDenialReason,
+} from "@/backoffice-runtime/kernel";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { createAutomationFragment, type AutomationFragmentConfig } from "@/fragno/automation";
 import {
   defineAutomationCodemodeWorkflow,
@@ -18,9 +25,21 @@ import { defineMarketplacePublishWorkflow } from "./marketplace-publish-workflow
 import { defineSandboxLifecycleWorkflow } from "./sandbox-lifecycle-workflow";
 import { SANDBOX_LIFECYCLE_WORKFLOW_NAME } from "./sandboxes-storage-runtime";
 
+type AutomationFragmentWithExecutionContext = ReturnType<
+  typeof createAutomationFragment<BackofficeExecutionContext>
+>;
+
+const AUTOMATIONS_AUTHORIZATION_STATUS_BY_REASON = {
+  "authority-unavailable": 503,
+  "principal-permission-denied": 403,
+  "actor-capability-denied": 403,
+  "context-access-denied": 403,
+  "policy-denied": 403,
+} as const satisfies Record<BackofficeAuthorizationDenialReason, 403 | 503>;
+
 export type AutomationsRuntime = {
   workflowsFragment: ReturnType<typeof createWorkflowsFragment>;
-  automationFragment: ReturnType<typeof createAutomationFragment>;
+  automationFragment: AutomationFragmentWithExecutionContext;
   dispatcher: DurableHooksDispatcherDurableObjectHandler | null;
 };
 
@@ -41,12 +60,12 @@ export const createAutomationsRuntime = (
     | "getAutomationFileSystem"
     | "ownerScope"
     | "sandboxProviders"
-  >,
+  > & { kernel: BackofficeKernel },
 ) => {
   const databaseAdapter = runtime.adapters.createAdapter({
     kind: "automations",
   });
-  let automationFragment: ReturnType<typeof createAutomationFragment> | undefined;
+  let automationFragment: AutomationFragmentWithExecutionContext | undefined;
   const workflowsFragment = createWorkflowsFragment(
     {
       workflows: {
@@ -90,7 +109,7 @@ export const createAutomationsRuntime = (
       outbox: { enabled: true },
     },
   );
-  automationFragment = createAutomationFragment(
+  automationFragment = createAutomationFragment<BackofficeExecutionContext>(
     {
       env: config.env,
       runtime: config.runtime,
@@ -108,7 +127,54 @@ export const createAutomationsRuntime = (
     {
       workflows: workflowsFragment.services,
     },
-  );
+  ).withMiddleware(async function authorizeAutomationStoreMutations(
+    { ifMatchesRoute, requestContext },
+    { error },
+  ) {
+    const authorizeStoreMutation = async (readInput: () => Promise<{ key: string }>) => {
+      if (!requestContext) {
+        return error(
+          {
+            message: "Automations store mutation requires trusted action context.",
+            code: "AUTOMATIONS_ACTION_CONTEXT_REQUIRED",
+          },
+          403,
+        );
+      }
+
+      const { key } = await readInput();
+      try {
+        await config.kernel.assertAuthorized({
+          execution: requestContext,
+          operation: BACKOFFICE_PERMISSION.store.modify,
+          resource: { kind: "automation-store-entry", key },
+        });
+        return undefined;
+      } catch (cause) {
+        if (cause instanceof BackofficeForbiddenError) {
+          return error(
+            {
+              message: cause.message,
+              code: cause.reason,
+            },
+            AUTOMATIONS_AUTHORIZATION_STATUS_BY_REASON[cause.reason],
+          );
+        }
+        throw cause;
+      }
+    };
+
+    const setResponse = await ifMatchesRoute("POST", "/store/set", async ({ input }) =>
+      authorizeStoreMutation(input.valid),
+    );
+    if (setResponse) {
+      return setResponse;
+    }
+
+    return await ifMatchesRoute("POST", "/store/delete", async ({ input }) =>
+      authorizeStoreMutation(input.valid),
+    );
+  });
 
   return {
     workflowsFragment,
@@ -119,7 +185,7 @@ export const createAutomationsRuntime = (
 
 export const createAutomationsDispatcher = (
   workflowsFragment: ReturnType<typeof createWorkflowsFragment>,
-  automationFragment: ReturnType<typeof createAutomationFragment>,
+  automationFragment: AutomationFragmentWithExecutionContext,
   state: DurableObjectState,
   env: CloudflareEnv,
 ): DurableHooksDispatcherDurableObjectHandler => {

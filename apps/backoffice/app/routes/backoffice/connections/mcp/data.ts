@@ -2,7 +2,6 @@ import { createRouteCaller, type RouteCallerForFragment } from "@fragno-dev/core
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   isBackofficeRoutableScope,
   type BackofficeRoutableScope,
@@ -110,8 +109,7 @@ export const getMcpObjectForScope = (
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
 ) => {
-  const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel(runtime);
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
   return kernel.scoped("MCP", requireMcpOwnerScope(scope), runtime.objects.mcp);
 };
 
