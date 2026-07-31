@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { SessionResizeHandle } from "../session-resize-handle";
+
 const DEFAULT_THREAD_WIDTH = 54;
 const MIN_THREAD_WIDTH = 32;
 const MIN_WORKSPACE_WIDTH = 34;
@@ -116,15 +118,13 @@ export function SessionWorkspaceSplit({
 
       {hasWorkspace ? (
         <>
-          <div
-            role="separator"
-            aria-label="Resize session workspace"
-            aria-orientation="vertical"
-            aria-valuemin={MIN_THREAD_WIDTH}
-            aria-valuemax={100 - MIN_WORKSPACE_WIDTH}
-            aria-valuenow={Math.round(threadWidth)}
-            aria-valuetext={`Conversation ${Math.round(threadWidth)} percent, workspace ${Math.round(100 - threadWidth)} percent`}
-            tabIndex={0}
+          <SessionResizeHandle
+            label="Resize session workspace"
+            min={MIN_THREAD_WIDTH}
+            max={100 - MIN_WORKSPACE_WIDTH}
+            value={threadWidth}
+            valueText={`Conversation ${Math.round(threadWidth)} percent, workspace ${Math.round(100 - threadWidth)} percent`}
+            visibleFrom="md"
             onDoubleClick={() => {
               setThreadWidth(DEFAULT_THREAD_WIDTH);
             }}
@@ -133,10 +133,7 @@ export function SessionWorkspaceSplit({
               event.preventDefault();
               startDragging();
             }}
-            className="group relative z-30 hidden h-full w-px shrink-0 cursor-col-resize bg-[var(--bo-border-strong)] outline-none focus-visible:bg-[var(--bo-accent)] md:block"
-          >
-            <span className="absolute inset-y-0 -left-5 w-10 bg-transparent transition-[background-color] duration-150 group-hover:bg-[color:var(--bo-accent-bg)]/45" />
-          </div>
+          />
           <div className="bo-session-workspace-drawer absolute inset-0 z-40 h-full min-h-0 min-w-0 overflow-hidden bg-[var(--bo-panel)] shadow-[var(--bo-popover-shadow)] md:static md:z-auto md:flex-1 md:shadow-none">
             {right}
           </div>
