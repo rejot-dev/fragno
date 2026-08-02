@@ -8,6 +8,8 @@ import {
 } from "../../fragments/internal-fragment";
 import type { NamingResolver } from "../../naming/sql-naming";
 import {
+  type OutboxMutation,
+  type OutboxPayload,
   type OutboxRefLookup,
   type OutboxRefMap,
   encodeVersionstamp,
@@ -1336,13 +1338,7 @@ const insertOutboxMutationRows = (
   payload: {
     entryVersionstamp: string;
     uowId: string;
-    mutations: {
-      versionstamp: string;
-      schema: string;
-      table: string;
-      externalId: string;
-      op: string;
-    }[];
+    mutations: OutboxMutation[];
   },
 ): Array<() => void> => {
   if (payload.mutations.length === 0) {
@@ -1373,6 +1369,7 @@ const insertOutboxMutationRows = (
           table: mutation.table,
           externalId: mutation.externalId,
           op: mutation.op,
+          payload: superjson.serialize(mutation),
         },
         generatedExternalId: options.idGenerator(),
       };
@@ -1674,7 +1671,10 @@ export const createInMemoryUowExecutor = (
         const payload = finalizeOutboxPayload(outboxPlan, outboxReservation.version, {
           now: outboxReservation.now,
         });
-        const payloadSerialized = superjson.serialize(payload);
+        const entryPayloadSerialized = superjson.serialize({
+          version: payload.version,
+          mutations: [],
+        } satisfies OutboxPayload);
         const versionstamp = versionstampToHex(encodeVersionstamp(outboxReservation.version, 0));
         rollbackActions.push(
           ...insertOutboxMutationRows(store, options, resolverFactory, {
@@ -1686,7 +1686,7 @@ export const createInMemoryUowExecutor = (
         const rollback = insertOutboxRow(store, options, resolverFactory, {
           versionstamp,
           uowId,
-          payload: payloadSerialized,
+          payload: entryPayloadSerialized,
           refMap,
         });
         rollbackActions.push(rollback);

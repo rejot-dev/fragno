@@ -151,7 +151,9 @@ describe("generatePrismaSchema", () => {
         createdAt DateTime @default(now())
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
+        payload Json
         @@index([entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_entf896150d")
+        @@index([entryVersionstamp, mutationVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_entea64c823")
         @@index([schema, table, externalId, entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_key16922fb2")
         @@index([uowId], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_uowa7a0749c")
         @@map("fragno_db_outbox_mutations")
@@ -301,7 +303,9 @@ describe("generatePrismaSchema", () => {
         createdAt Int @default(dbgenerated("CURRENT_TIMESTAMP"))
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
+        payload Json
         @@index([entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_entf896150d")
+        @@index([entryVersionstamp, mutationVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_entea64c823")
         @@index([schema, table, externalId, entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_key16922fb2")
         @@index([uowId], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_uowa7a0749c")
         @@map("fragno_db_outbox_mutations")
@@ -456,7 +460,9 @@ describe("generatePrismaSchema", () => {
         createdAt DateTime @default(now())
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
+        payload Json @db.Json
         @@index([entryVersionstamp], map: "idx_outbox_mutations_entry")
+        @@index([entryVersionstamp, mutationVersionstamp], map: "idx_outbox_mutations_entry_order")
         @@index([schema, table, externalId, entryVersionstamp], map: "idx_outbox_mutations_key")
         @@index([uowId], map: "idx_outbox_mutations_uow")
         @@map("fragno_db_outbox_mutations")

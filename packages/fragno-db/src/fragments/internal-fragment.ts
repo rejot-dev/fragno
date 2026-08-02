@@ -1,3 +1,5 @@
+import superjson, { type SuperJSONResult } from "superjson";
+
 import { FragmentDefinitionBuilder } from "@fragno-dev/core";
 import type { InstantiatedFragmentFromDefinition } from "@fragno-dev/core";
 
@@ -10,6 +12,7 @@ import {
   type ImplicitDatabaseDependencies,
 } from "../db-fragment-definition-builder";
 import { isHookStatus, type DurableHookPropagationContext, type HookStatus } from "../hooks/hooks";
+import type { OutboxMutation, OutboxPayload } from "../outbox/outbox";
 import type { Cursor } from "../query/cursor";
 import { dbNow, type DbNow } from "../query/db-now";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
@@ -590,7 +593,15 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               if (limit !== undefined) {
                 builder = builder.pageSize(limit);
               }
-              return builder;
+
+              return builder.joinMany("mutations", "fragno_db_outbox_mutations", (mutations) =>
+                mutations
+                  .onIndex("idx_outbox_mutations_entry_order", (eb) =>
+                    eb("entryVersionstamp", "=", eb.parent("versionstamp")),
+                  )
+                  .orderByIndex("idx_outbox_mutations_entry_order", "asc")
+                  .select(["payload"]),
+              );
             }),
           )
           .transformRetrieve(([entries]) =>
@@ -598,7 +609,12 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               id: entry.id,
               versionstamp: entry.versionstamp,
               uowId: entry.uowId,
-              payload: entry.payload,
+              payload: superjson.serialize({
+                version: 1,
+                mutations: entry.mutations.map((row) =>
+                  superjson.deserialize<OutboxMutation>(row.payload as SuperJSONResult),
+                ),
+              } satisfies OutboxPayload),
               refMap: entry.refMap ?? undefined,
               createdAt: entry.createdAt,
             })),
