@@ -10,6 +10,8 @@ import { createId } from "../../id";
 import { type SqlNamingStrategy } from "../../naming/sql-naming";
 import {
   type OutboxConfig,
+  type OutboxMutation,
+  type OutboxPayload,
   type OutboxRefLookup,
   type OutboxRefMap,
   encodeVersionstamp,
@@ -188,7 +190,10 @@ export async function executeMutation(
         const payload = finalizeOutboxPayload(outboxPlan, outboxReservation.version, {
           now: outboxReservation.now,
         });
-        const payloadSerialized = superjson.serialize(payload);
+        const entryPayloadSerialized = superjson.serialize({
+          version: payload.version,
+          mutations: [],
+        } satisfies OutboxPayload);
         const versionstamp = versionstampToHex(encodeVersionstamp(outboxReservation.version, 0));
 
         await insertOutboxMutationRows(tx, driverConfig, {
@@ -200,7 +205,7 @@ export async function executeMutation(
           id: createId(),
           versionstamp,
           uowId,
-          payload: payloadSerialized,
+          payload: entryPayloadSerialized,
           refMap,
         });
       }
@@ -462,13 +467,7 @@ async function insertOutboxMutationRows(
   options: {
     entryVersionstamp: string;
     uowId: string;
-    mutations: {
-      versionstamp: string;
-      schema: string;
-      table: string;
-      externalId: string;
-      op: string;
-    }[];
+    mutations: OutboxMutation[];
   },
 ): Promise<void> {
   if (options.mutations.length === 0) {
@@ -489,6 +488,7 @@ async function insertOutboxMutationRows(
       table: mutation.table,
       externalId: mutation.externalId,
       op: mutation.op,
+      payload: superjson.serialize(mutation),
     };
     const serializedValues: Record<string, unknown> = {};
 

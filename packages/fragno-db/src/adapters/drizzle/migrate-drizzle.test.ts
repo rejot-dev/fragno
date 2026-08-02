@@ -174,6 +174,7 @@ describe("generateSchema and migrate", () => {
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
+      \t"payload" json NOT NULL,
       	CONSTRAINT "fragno_db_outbox_mutations_id_unique" UNIQUE("id")
       );
 
@@ -278,6 +279,7 @@ describe("generateSchema and migrate", () => {
       CREATE INDEX "idx_outbox_mutations_entry" ON "fragno_db_outbox_mutations" USING btree ("entryVersionstamp");
       CREATE INDEX "idx_outbox_mutations_key" ON "fragno_db_outbox_mutations" USING btree ("schema","table","externalId","entryVersionstamp");
       CREATE INDEX "idx_outbox_mutations_uow" ON "fragno_db_outbox_mutations" USING btree ("uowId");
+      CREATE INDEX "idx_outbox_mutations_entry_order" ON "fragno_db_outbox_mutations" USING btree ("entryVersionstamp","mutationVersionstamp");
       CREATE UNIQUE INDEX "idx_sync_request_id" ON "fragno_db_sync_requests" USING btree ("requestId");
       CREATE UNIQUE INDEX "idx_users_email" ON "test"."users" USING btree ("email");
       CREATE INDEX "idx_users_name" ON "test"."users" USING btree ("name");
