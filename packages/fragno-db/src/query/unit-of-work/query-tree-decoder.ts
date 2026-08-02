@@ -83,6 +83,28 @@ const decodeNodeColumns = (
   return decodeResult(columnOnlyRow, table, driverConfig, sqliteStorageMode, resolver);
 };
 
+type MySQLOrderedJoinManyItem = [ordinal: number, row: Record<string, unknown>];
+
+const restoreMySQLJoinManyOrderInPlace = (items: unknown[]): MySQLOrderedJoinManyItem[] => {
+  const orderedItems = items as MySQLOrderedJoinManyItem[];
+
+  // JSON_ARRAYAGG normally leaves the ordinals already or nearly ordered. Insertion sort keeps that
+  // common case linear, with the remaining work proportional to the number of inversions.
+  for (let index = 1; index < orderedItems.length; index++) {
+    const current = orderedItems[index];
+    let position = index;
+
+    while (position > 0 && orderedItems[position - 1][0] > current[0]) {
+      orderedItems[position] = orderedItems[position - 1]!;
+      position--;
+    }
+
+    orderedItems[position] = current;
+  }
+
+  return orderedItems;
+};
+
 const decodeChildNode = (
   value: unknown,
   node: CompiledQueryTreeChildNode,
@@ -100,9 +122,16 @@ const decodeChildNode = (
       return [];
     }
 
-    return parsed.map((item) =>
+    const hasMySQLOrderOrdinal =
+      driverConfig.databaseType === "mysql" && node.orderByIndex !== undefined;
+    const items = hasMySQLOrderOrdinal ? restoreMySQLJoinManyOrderInPlace(parsed) : parsed;
+
+    return items.map((item) =>
       decodeQueryTreeRow(
-        item as Record<string, unknown>,
+        (hasMySQLOrderOrdinal ? (item as MySQLOrderedJoinManyItem)[1] : item) as Record<
+          string,
+          unknown
+        >,
         node,
         driverConfig,
         sqliteStorageMode,
