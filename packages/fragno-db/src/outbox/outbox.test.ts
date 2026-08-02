@@ -165,6 +165,7 @@ async function listOutboxMutations(internalFragment: InternalFragmentInstance): 
     table: string;
     externalId: string;
     op: string;
+    payload: unknown;
   }>
 > {
   return internalFragment.inContext(async function (this: DatabaseRequestContext) {
@@ -412,6 +413,7 @@ describe("Fragno DB Outbox", () => {
       expect(mutationRow.table).toBe(mutation.table);
       expect(mutationRow.externalId).toBe(mutation.externalId);
       expect(mutationRow.op).toBe(mutation.op);
+      expect(superjson.deserialize(mutationRow.payload as SuperJSONResult)).toEqual(mutation);
     }
 
     await cleanup();

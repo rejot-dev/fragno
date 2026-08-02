@@ -92,7 +92,13 @@ export const internalSchema = schema("fragno_internal", (s) => {
     .alterTable("fragno_hooks", (t) =>
       t.createIndex("idx_namespace_created_at", ["namespace", "createdAt", "id"]),
     )
-    .alterTable("fragno_hooks", (t) =>
-      t.addColumn("propagationContext", column("json").nullable()),
+    .alterTable("fragno_hooks", (t) => t.addColumn("propagationContext", column("json").nullable()))
+    .alterTable("fragno_db_outbox_mutations", (t) =>
+      t
+        .addColumn("payload", column("json"))
+        .createIndex("idx_outbox_mutations_entry_order", [
+          "entryVersionstamp",
+          "mutationVersionstamp",
+        ]),
     );
 });
