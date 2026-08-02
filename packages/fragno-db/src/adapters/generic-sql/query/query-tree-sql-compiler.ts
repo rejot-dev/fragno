@@ -1,4 +1,4 @@
-import type { CompiledQuery, SelectQueryBuilder, Kysely } from "kysely";
+import type { CompiledQuery, RawBuilder, SelectQueryBuilder, Kysely } from "kysely";
 import { sql } from "kysely";
 
 import type { NamingResolver } from "../../../naming/sql-naming";
@@ -6,6 +6,7 @@ import type { Condition } from "../../../query/condition-builder";
 import type {
   CompiledQueryTreeChildNode,
   CompiledQueryTreeRootNode,
+  QueryTreeOrderBy,
 } from "../../../query/unit-of-work/query-tree";
 import { getQueryTreeSelectedColumnNames } from "../../../query/unit-of-work/query-tree";
 import type { AnyColumn, AnyTable } from "../../../schema/create";
@@ -151,10 +152,23 @@ export class QueryTreeSQLCompiler {
       depth,
       readTracking,
     );
+    let projectedItem = jsonObject;
+    if (
+      this.#driverConfig.databaseType === "mysql" &&
+      child.cardinality === "many" &&
+      child.orderByIndex
+    ) {
+      projectedItem = this.#projectMySQLOrderedJoinManyItem(
+        jsonObject,
+        child.table,
+        child.orderByIndex,
+        childAlias,
+      );
+    }
 
     let childQuery = this.#db
       .selectFrom(`${this.#getTableName(child.table)} as ${childAlias}`)
-      .select(jsonObject.as(CHILD_JSON_COLUMN_ALIAS));
+      .select(projectedItem.as(CHILD_JSON_COLUMN_ALIAS));
 
     const onIndex = child.onIndex;
     if (onIndex) {
@@ -199,6 +213,24 @@ export class QueryTreeSQLCompiler {
     }
 
     return this.#wrapJsonArrayAggValue(childQuery);
+  }
+
+  #projectMySQLOrderedJoinManyItem(
+    jsonObject: RawBuilder<unknown>,
+    childTable: AnyTable,
+    orderByIndex: QueryTreeOrderBy,
+    childAlias: string,
+  ): RawBuilder<unknown> {
+    const orderExpressions = this.#resolveOrderByColumns(childTable, orderByIndex.indexName).map(
+      (column) => {
+        const reference = sql.ref(`${childAlias}.${this.#getColumnName(childTable, column.name)}`);
+        return orderByIndex.direction === "desc" ? sql`${reference} desc` : sql`${reference} asc`;
+      },
+    );
+
+    // JSON_ARRAYAGG can discard the child query order. The ordinal lets the decoder restore the
+    // database-defined order without requiring ordering columns in the public child projection.
+    return sql`json_array(row_number() over (order by ${sql.join(orderExpressions)}), ${jsonObject})`;
   }
 
   #buildJsonObjectExpression(

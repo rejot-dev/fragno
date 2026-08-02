@@ -1991,6 +1991,49 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
       }
     });
 
+    it("preserves child joinMany ordering without pagination", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const create = createSuiteUnitOfWork(adapter, "create-unpaginated-ordered-child-joins");
+        create.create("users", {
+          id: "unpaginated-ordered-child-user",
+          name: "Unpaginated Ordered Child",
+          email: "unpaginated-ordered-child@example.com",
+          age: 1,
+        });
+        for (const suffix of ["a", "b", "c"] as const) {
+          create.create("emails", {
+            id: `unpaginated-ordered-child-email-${suffix}`,
+            user_id: "unpaginated-ordered-child-user",
+            email: `unpaginated-ordered-child-${suffix}@example.com`,
+            is_primary: false,
+          });
+        }
+        await create.executeMutations();
+
+        const [users] = await createSuiteUnitOfWork(adapter, "read-unpaginated-ordered-child-joins")
+          .find("users", (b) =>
+            b
+              .whereIndex("primary", (eb) => eb("id", "=", "unpaginated-ordered-child-user"))
+              .joinMany("emails", "emails", (emails) =>
+                emails
+                  .onIndex("emails_user_idx", (eb) => eb("user_id", "=", eb.parent("id")))
+                  .select(["id"])
+                  .orderByIndex("emails_email_idx", "desc"),
+              ),
+          )
+          .executeRetrieve();
+
+        expect(users[0]?.emails.map((email) => email.id.externalId)).toEqual([
+          "unpaginated-ordered-child-email-c",
+          "unpaginated-ordered-child-email-b",
+          "unpaginated-ordered-child-email-a",
+        ]);
+      } finally {
+        await close?.();
+      }
+    });
+
     it("filters child joinMany relations with child whereIndex constants", async () => {
       const { adapter, close } = await createContext();
       try {
