@@ -1,11 +1,14 @@
-import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import { Suspense, use, useCallback, useMemo, useState } from "react";
 import { Outlet, useActionData, useNavigation, useParams } from "react-router";
 
 import { BackofficeSystemState } from "@/components/backoffice";
 import { ClientOnly } from "@/components/client-only";
 import { getAutomationBrowserDatabase } from "@/fragno/automation/tanstack/browser-database";
-import { PI_MODEL_CATALOG, resolvePiHarnesses } from "@/fragno/pi/pi-shared";
+import {
+  BACKOFFICE_PI_WORKFLOW_NAME,
+  PI_MODEL_CATALOG,
+  resolvePiHarnesses,
+} from "@/fragno/pi/pi-shared";
 import type { PiSessionListingState } from "@/fragno/pi/tanstack/session-listing";
 import { usePiSessionListing } from "@/fragno/pi/tanstack/use-session-listing";
 
@@ -78,7 +81,7 @@ function SynchronizedPiSessionsWorkspace({
 }) {
   const listingState = usePiSessionListing({
     source,
-    workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
+    workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
   });
   const automationDatabase = use(getAutomationBrowserDatabase());
   const workflowCollections = layoutContext.automationPersistenceSource

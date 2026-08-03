@@ -6,6 +6,10 @@ import type { DatabaseRequestContext } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
 import { workflowsSchema } from "../schema";
+import {
+  createWorkflowEventConsumedControlPayload,
+  isWorkflowEventConsumedControlPayload,
+} from "../step-emission-control";
 import { createWorkflowsTestHarness, type WorkflowsTestHarness } from "../test";
 import { defineWorkflow, type WorkflowEnqueuedHookPayload } from "../workflow";
 import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./step-live-pump";
@@ -609,6 +613,214 @@ describe("WorkflowStepLivePump", () => {
     } finally {
       releaseStep.resolve();
       await tick;
+    }
+  });
+
+  test("durably suppresses a consumed event from another live pump", async () => {
+    const stepEntered = deferred();
+    const releaseStep = deferred();
+    const consumedEvent = deferred<string>();
+
+    const workflow = defineWorkflow<
+      "step-live-pump-durable-consumption-workflow",
+      undefined,
+      { ok: true }
+    >({ name: "step-live-pump-durable-consumption-workflow" }, async (_event, step) => {
+      await step.do("interactive", async (tx) => {
+        tx.onEvent("command", (event) => {
+          event.consume();
+          consumedEvent.resolve(event.id);
+        });
+        stepEntered.resolve();
+        await releaseStep.promise;
+      });
+      return { ok: true };
+    });
+
+    const stepEmissions = createStepEmissions();
+    const competingStepEmissions = createStepEmissions();
+    const harness = await createWorkflowsTestHarness({
+      workflows: { EMISSION_BUS: workflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      fragmentConfig: { stepEmissions },
+    });
+
+    const instanceId = await harness.createInstance("EMISSION_BUS");
+    const instance = await readInstance(harness);
+    const competingBus = harness.fragment.inContext(function () {
+      return openBus(competingStepEmissions, {
+        handlerTx: this.handlerTx,
+        workflowName: "step-live-pump-durable-consumption-workflow",
+        instanceId,
+      });
+    });
+
+    const tick = harness.tick(buildPayload(instance, "create"));
+    let competingScope: ReturnType<typeof competingBus.openScope> | undefined;
+    try {
+      await stepEntered.promise;
+      await sendEventAndFlush(harness, {
+        workflowName: "step-live-pump-durable-consumption-workflow",
+        instanceId,
+        event: { type: "command", payload: { command: "continue" } },
+      });
+
+      const eventId = await consumedEvent.promise;
+      const emissionBus = stepEmissions.get(
+        workflowStepLivePumpKey("step-live-pump-durable-consumption-workflow", instanceId),
+      );
+      expect(emissionBus).toBeTruthy();
+      await flushBus(harness, emissionBus!);
+
+      const rows = await readStepEmissionRows(
+        harness,
+        "step-live-pump-durable-consumption-workflow",
+        instanceId,
+      );
+      const consumptionEmission = rows.find(
+        (row) =>
+          row.actor === "system" &&
+          isWorkflowEventConsumedControlPayload(row.payload) &&
+          row.payload.eventId === eventId,
+      );
+      expect(consumptionEmission).toBeTruthy();
+
+      const competingEventConsumptions = new Map();
+      competingScope = competingBus.openScope(consumptionEmission!.stepKey, {
+        stepKey: consumptionEmission!.stepKey,
+        executionId: "competing-execution",
+        epoch: "competing-epoch",
+        eventConsumptions: competingEventConsumptions,
+        queueEventConsumption: (event) => {
+          competingEventConsumptions.set(event.id.toString(), event);
+        },
+        isEventConsumptionQueued: (event) => competingEventConsumptions.has(event.id.toString()),
+      });
+      competingScope.meta.eventTypeCounts.set("command", 1);
+      const competingDeliveries: unknown[] = [];
+      competingScope.onDelivery((event) => {
+        competingDeliveries.push(event.payload);
+      });
+
+      await flushBus(harness, competingBus);
+      expect(competingDeliveries).toEqual([]);
+      await harness.fragment.inContext(async function () {
+        await competingScope!.flushAndClose();
+      });
+      competingScope = undefined;
+      competingBus.stop();
+    } finally {
+      if (competingScope) {
+        await harness.fragment.inContext(async function () {
+          await competingScope!.flushAndClose();
+        });
+      }
+      competingBus.stop();
+      releaseStep.resolve();
+      await tick;
+      await drainDurableHooks(harness.fragment);
+    }
+  });
+
+  test("does not let a losing execution consumption marker suppress event delivery", async () => {
+    const workflow = defineWorkflow(
+      { name: "step-live-pump-losing-consumption-workflow" },
+      async () => ({ ok: true }),
+    );
+    const stepEmissions = createStepEmissions();
+    const harness = await createWorkflowsTestHarness({
+      workflows: { EMISSION_BUS: workflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      fragmentConfig: { stepEmissions },
+    });
+
+    const instanceId = await harness.createInstance("EMISSION_BUS");
+    const instance = await readInstance(harness);
+    const seedUow = harness.db
+      .createUnitOfWork("seed-losing-consumption")
+      .forSchema(workflowsSchema);
+    seedUow.create("workflow_step", {
+      instanceRef: instance.id,
+      stepKey: "do:contested",
+      committedByExecutionId: "winning-execution",
+      name: "contested",
+      type: "do",
+      status: "completed",
+      attempts: 1,
+      maxAttempts: 1,
+      timeoutMs: null,
+      nextRetryAt: null,
+      wakeAt: null,
+      waitEventType: null,
+      result: null,
+      errorName: null,
+      errorMessage: null,
+    });
+    const eventId = seedUow.create("workflow_event", {
+      instanceRef: instance.id,
+      actor: "user",
+      type: "command",
+      payload: { command: "continue" },
+      deliveredAt: null,
+      consumedByStepKey: null,
+    });
+    seedUow.create("workflow_step_emission", {
+      instanceRef: instance.id,
+      stepKey: "do:contested",
+      executionId: "losing-execution",
+      epoch: "losing-contested-epoch",
+      sequence: 0,
+      actor: "user",
+      payload: { phase: "contested" },
+    });
+    seedUow.create("workflow_step_emission", {
+      instanceRef: instance.id,
+      stepKey: "do:downstream",
+      executionId: "losing-execution",
+      epoch: "losing-downstream-epoch",
+      sequence: 1,
+      actor: "system",
+      payload: createWorkflowEventConsumedControlPayload(eventId.toString()),
+    });
+    const { success } = await seedUow.executeMutations();
+    assert(success);
+
+    const bus = harness.fragment.inContext(function () {
+      return openBus(stepEmissions, {
+        handlerTx: this.handlerTx,
+        workflowName: "step-live-pump-losing-consumption-workflow",
+        instanceId,
+      });
+    });
+    const eventConsumptions = new Map();
+    const scope = bus.openScope("do:active", {
+      stepKey: "do:active",
+      executionId: "active-execution",
+      epoch: "active-epoch",
+      eventConsumptions,
+      queueEventConsumption: (event) => {
+        eventConsumptions.set(event.id.toString(), event);
+      },
+      isEventConsumptionQueued: (event) => eventConsumptions.has(event.id.toString()),
+    });
+    scope.meta.eventTypeCounts.set("command", 1);
+    const deliveries: unknown[] = [];
+    scope.onDelivery((event) => {
+      deliveries.push(event.payload);
+    });
+
+    try {
+      await flushBus(harness, bus);
+      expect(deliveries).toEqual([{ command: "continue" }]);
+    } finally {
+      await harness.fragment.inContext(async function () {
+        await scope.flushAndClose();
+      });
+      bus.stop();
     }
   });
 

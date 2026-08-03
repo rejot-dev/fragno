@@ -1,4 +1,8 @@
-import type { PiSession, PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
+import {
+  projectPiSessionFromWorkflowInstance,
+  type PiSession,
+  type PiWorkflowStatus,
+} from "@fragno-dev/pi-harness/types";
 
 import { eq, type InitialQueryBuilder } from "@tanstack/react-db";
 
@@ -15,12 +19,11 @@ const PI_WORKFLOW_STATUSES = new Set<string>([
 
 type PiSessionListingRow = {
   sessionId: string;
-  name: string | null;
-  agent: string;
   workflowName: string;
+  params: unknown;
   createdAt: Date;
   updatedAt: Date;
-  workflowStatus: string | null | undefined;
+  workflowStatus: string;
 };
 
 export type PiSessionListingSnapshot = {
@@ -33,8 +36,8 @@ export type PiSessionListingState =
   | { status: "ready"; snapshot: PiSessionListingSnapshot }
   | { status: "error"; snapshot: PiSessionListingSnapshot; error: string };
 
-const toPiWorkflowStatus = (status: string | null | undefined): PiWorkflowStatus | null =>
-  status && PI_WORKFLOW_STATUSES.has(status) ? (status as PiWorkflowStatus) : null;
+const toPiWorkflowStatus = (status: string): PiWorkflowStatus | null =>
+  PI_WORKFLOW_STATUSES.has(status) ? (status as PiWorkflowStatus) : null;
 
 export function buildPiSessionListingQuery(
   query: InitialQueryBuilder,
@@ -43,46 +46,46 @@ export function buildPiSessionListingQuery(
     workflowName,
     limit,
   }: {
-    collections: Pick<PiCollections, "sessions" | "workflowInstances">;
+    collections: Pick<PiCollections, "workflowInstances">;
     workflowName: string;
     limit: number;
   },
 ) {
   return query
-    .from({ session: collections.sessions })
-    .leftJoin({ workflow: collections.workflowInstances }, ({ session, workflow }) =>
-      eq(session.id, workflow.id),
-    )
-    .where(({ session }) => eq(session.workflowName, workflowName))
-    .orderBy(({ session }) => session.createdAt, "desc")
-    .orderBy(({ session }) => session.id, "desc")
+    .from({ instance: collections.workflowInstances })
+    .where(({ instance }) => eq(instance.workflowName, workflowName))
+    .orderBy(({ instance }) => instance.createdAt, "desc")
+    .orderBy(({ instance }) => instance.id, "desc")
     .limit(limit)
-    .select(({ session, workflow }) => ({
-      sessionId: session.sessionId,
-      name: session.name,
-      agent: session.agent,
-      workflowName: session.workflowName,
-      createdAt: session.createdAt,
-      updatedAt: session.updatedAt,
-      workflowStatus: workflow?.status,
+    .select(({ instance }) => ({
+      sessionId: instance.instanceId,
+      workflowName: instance.workflowName,
+      params: instance.params,
+      createdAt: instance.createdAt,
+      updatedAt: instance.updatedAt,
+      workflowStatus: instance.status,
     }));
 }
 
 export function projectPiSessionListingRows(
   rows: readonly PiSessionListingRow[],
 ): PiSessionListingSnapshot {
-  const sessions = rows.map(
-    (row): PiSession => ({
+  const sessions: PiSession[] = [];
+  const workflowStatuses: Record<string, PiWorkflowStatus | null> = {};
+
+  for (const row of rows) {
+    const session = projectPiSessionFromWorkflowInstance({
       id: row.sessionId,
-      name: row.name,
-      agent: row.agent,
       workflowName: row.workflowName,
+      params: row.params,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-    }),
-  );
-  const workflowStatuses: Record<string, PiWorkflowStatus | null> = {};
-  for (const row of rows) {
+    });
+    if (!session) {
+      continue;
+    }
+
+    sessions.push(session);
     workflowStatuses[row.sessionId] = toPiWorkflowStatus(row.workflowStatus);
   }
 

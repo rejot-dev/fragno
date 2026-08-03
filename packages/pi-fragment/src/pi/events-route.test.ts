@@ -350,6 +350,7 @@ describe("pi-fragment /events route", () => {
     uow.create("workflow_step", {
       instanceRef,
       stepKey,
+      committedByExecutionId: "fixture-execution",
       parentStepKey: null,
       depth: 0,
       name: "command-0-prompt",
@@ -368,6 +369,7 @@ describe("pi-fragment /events route", () => {
     uow.create("workflow_step_emission", {
       instanceRef,
       stepKey,
+      executionId: "fixture-execution",
       epoch: "epoch-waiting-step",
       sequence: 0,
       actor: "user",

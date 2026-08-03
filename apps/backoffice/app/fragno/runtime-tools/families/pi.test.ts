@@ -12,7 +12,7 @@ const createRuntime = (): PiRuntime =>
       id: "session-1",
       name: name ?? null,
       status: "waiting",
-      agent,
+      metadata: { agentName: agent },
       workflowName: "interactive-chat-workflow",
       createdAt: new Date("2026-06-03T00:00:00.000Z"),
       updatedAt: new Date("2026-06-03T00:00:00.000Z"),
@@ -23,7 +23,7 @@ const createRuntime = (): PiRuntime =>
         id: "session-1",
         name: null,
         status: "waiting",
-        agent: "assistant",
+        metadata: { agentName: "assistant" },
         workflowName: "interactive-chat-workflow",
         createdAt: new Date("2026-06-03T00:00:00.000Z"),
         updatedAt: new Date("2026-06-03T00:00:00.000Z"),
@@ -44,7 +44,7 @@ const createSessionDetail = (sessionId: string) => ({
   workflowName: "interactive-chat-workflow",
   createdAt: new Date("2026-06-03T00:00:00.000Z"),
   updatedAt: new Date("2026-06-03T00:00:00.000Z"),
-  agentName: "assistant",
+  metadata: { agentName: "assistant" },
   workflow: { status: "waiting" },
   agent: { state: { messages: [] }, completedStepKeys: [] },
 });
@@ -95,7 +95,7 @@ describe("pi runtime tools", () => {
         id: "session-1",
         name: name ?? null,
         status: "waiting",
-        agent,
+        metadata: { agentName: agent },
         workflowName: "interactive-chat-workflow",
         createdAt: "2026-06-03T00:00:00.000Z",
         updatedAt: new Date("2026-06-03T00:01:00.000Z"),
@@ -112,7 +112,7 @@ describe("pi runtime tools", () => {
       id: "session-1",
       name: "Support",
       status: "waiting",
-      agent: "assistant",
+      metadata: { agentName: "assistant" },
       workflowName: "interactive-chat-workflow",
       createdAt: "2026-06-03T00:00:00.000Z",
       updatedAt: "2026-06-03T00:01:00.000Z",
@@ -143,7 +143,7 @@ describe("pi runtime tools", () => {
       createSession: vi.fn(async ({ agent, name }) => ({
         id: "session-1",
         name: name ?? null,
-        agent,
+        metadata: { agentName: agent },
         workflowName: "interactive-chat-workflow",
         createdAt: new Date("2026-06-03T00:00:00.000Z"),
         updatedAt: new Date("2026-06-03T00:00:00.000Z"),
@@ -158,7 +158,7 @@ describe("pi runtime tools", () => {
       createSession.execute({ agent: "assistant", name: "Support" }, context),
     ).resolves.toMatchObject({
       id: "session-1",
-      agent: "assistant",
+      metadata: { agentName: "assistant" },
       name: "Support",
     });
     expect(runtime.createSession).toHaveBeenCalledWith({ agent: "assistant", name: "Support" });

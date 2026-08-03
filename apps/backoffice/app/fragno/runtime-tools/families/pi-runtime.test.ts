@@ -86,7 +86,7 @@ const createPiRuntime = (overrides: Partial<PiRuntime> = {}): PiRuntime => ({
       agent,
       workflowName: "interactive-chat-workflow",
       steeringMode: steeringMode ?? "one-at-a-time",
-      metadata: metadata ?? null,
+      metadata: { ...metadata, agentName: agent },
       tags: tags ?? [],
       createdAt: now,
       updatedAt: now,
@@ -459,7 +459,6 @@ describe("pi bash command registration", () => {
         id: "session-1",
         name: "support",
         status: "waiting",
-        agent: "assistant",
         workflowName: "interactive-chat-workflow",
         steeringMode: "one-at-a-time",
         metadata: { source: "test" },
@@ -470,7 +469,6 @@ describe("pi bash command registration", () => {
     const jsonLine = outputLines[1]?.replace(/^json=/, "");
     expect(JSON.parse(jsonLine ?? "null")).toMatchObject({
       id: "session-1",
-      agent: "assistant",
       workflowName: "interactive-chat-workflow",
       name: "support",
       steeringMode: "one-at-a-time",
@@ -794,12 +792,11 @@ describe("createPiRouteRuntime", () => {
               return new Response(
                 JSON.stringify({
                   id: "session-2",
-                  agent: "assistant",
                   workflowName: "interactive-chat-workflow",
                   status: "waiting",
                   name: "route-session",
                   steeringMode: "all",
-                  metadata: { team: "beta" },
+                  metadata: { team: "beta", agentName: "default::openai::gpt-5-mini" },
                   tags: ["priority"],
                   createdAt: now.toISOString(),
                   updatedAt: now.toISOString(),
@@ -816,7 +813,6 @@ describe("createPiRouteRuntime", () => {
               return new Response(
                 JSON.stringify({
                   id: "session-2",
-                  agentName: "assistant",
                   workflowName: "interactive-chat-workflow",
                   agent: {
                     state: { messages: [] },
@@ -825,7 +821,7 @@ describe("createPiRouteRuntime", () => {
                   status: "waiting",
                   name: "route-session",
                   steeringMode: "all",
-                  metadata: { team: "beta" },
+                  metadata: { team: "beta", agentName: "default::openai::gpt-5-mini" },
                   tags: ["priority"],
                   createdAt: now.toISOString(),
                   updatedAt: now.toISOString(),
@@ -844,12 +840,11 @@ describe("createPiRouteRuntime", () => {
                 JSON.stringify([
                   {
                     id: "session-2",
-                    agent: "assistant",
                     workflowName: "interactive-chat-workflow",
                     status: "waiting",
                     name: "route-session",
                     steeringMode: "all",
-                    metadata: { team: "beta" },
+                    metadata: { team: "beta", agentName: "default::openai::gpt-5-mini" },
                     tags: ["priority"],
                     createdAt: now.toISOString(),
                     updatedAt: now.toISOString(),
@@ -914,27 +909,25 @@ describe("createPiRouteRuntime", () => {
     expect(created).toMatchObject({
       id: "session-2",
       name: "route-session",
-      agent: "assistant",
       workflowName: "interactive-chat-workflow",
       steeringMode: "all",
-      metadata: { team: "beta" },
+      metadata: { team: "beta", agentName: "default::openai::gpt-5-mini" },
       tags: ["priority"],
     });
     expect(loaded).toMatchObject({
       id: "session-2",
       workflow: { status: "waiting" },
-      agentName: "assistant",
+      metadata: { team: "beta", agentName: "default::openai::gpt-5-mini" },
       workflowName: "interactive-chat-workflow",
     });
     expect(sessions).toEqual([
       {
         id: "session-2",
-        agent: "assistant",
         workflowName: "interactive-chat-workflow",
         status: "waiting",
         name: "route-session",
         steeringMode: "all",
-        metadata: { team: "beta" },
+        metadata: { team: "beta", agentName: "default::openai::gpt-5-mini" },
         tags: ["priority"],
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
@@ -961,9 +954,11 @@ describe("createPiRouteRuntime", () => {
         method: "POST",
         body: {
           name: "route-session",
-          input: {
-            harnessName: "default::openai::gpt-5-mini",
+          metadata: {
+            agentName: "default::openai::gpt-5-mini",
+            team: "beta",
           },
+          input: {},
         },
       },
       {

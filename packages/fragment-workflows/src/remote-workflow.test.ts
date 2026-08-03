@@ -42,6 +42,7 @@ const createTxProxy = (txId) => ({
     await request("tx.emit", { txId, payload });
   },
   previousEmissions: async () => await request("tx.previousEmissions", { txId }),
+  previousConsumedEvents: async () => await request("tx.previousConsumedEvents", { txId }),
   workflowServiceCalls: async (factory) => {
     await request("tx.workflowServiceCalls", { txId, operations: factory() });
   },

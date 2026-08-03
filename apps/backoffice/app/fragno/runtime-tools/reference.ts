@@ -249,14 +249,25 @@ type WorkflowStepWorkflowOperation =
       remoteWorkflowName?: string | null;
     };
 
+type WorkflowStepConsumedEvent<TPayload = unknown> = {
+  id: string;
+  type: string;
+  payload: Readonly<TPayload>;
+  timestamp: Date;
+};
+
 type WorkflowStepConsumeTx = {
-  /** Persist an outbound workflow-authored step emission. */
+  /** Queue an outbound workflow-authored emission for the step-emission pump to persist. */
   emit(payload: unknown): void;
   /** Emissions for this step that were already persisted before the current attempt started. */
   previousEmissions(): Promise<WorkflowStepEmission[]>;
 };
 
 type WorkflowStepTx = WorkflowStepConsumeTx & {
+  /** Events durably acknowledged by this step before the current attempt started. */
+  previousConsumedEvents<TPayload = unknown>(): Promise<
+    WorkflowStepConsumedEvent<TPayload>[]
+  >;
   /** Queue workflow database operations that commit if the enclosing step succeeds. */
   workflowServiceCalls(factory: () => readonly WorkflowStepWorkflowOperation[]): void;
   /** Observe durable workflow events while this step is active. */

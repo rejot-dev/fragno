@@ -8,22 +8,16 @@ import {
 } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
-  registerApiProvider,
-  unregisterApiProviders,
   type Api,
   type AssistantMessage,
-  type AssistantMessageEventStream,
-  type Context,
   type Model,
-  type SimpleStreamOptions,
-  type StreamOptions,
 } from "@earendil-works/pi-ai";
 
-import { NoOpExecutionEnv } from "./execution-env";
 import {
   createWorkflowBackedSessionEntryIdAllocator,
   WorkflowBackedSessionStorage,
 } from "./session-storage";
+import { createModelsForStreamFn } from "./test-models";
 
 const metadata = { id: "session-1", createdAt: "2026-06-24T00:00:00.000Z" };
 const entryIds = (prefix: string, startIndex = 0) =>
@@ -154,6 +148,28 @@ describe("WorkflowBackedSessionStorage", () => {
     expect(appended.map((entry) => entry.id)).toEqual([firstId, secondId]);
   });
 
+  it("reads entry pages using Pi session cursor semantics", async () => {
+    const entries: SessionTreeEntry[] = ["first", "second", "third"].map((id, index) => ({
+      type: "custom",
+      id,
+      parentId: index === 0 ? null : ["first", "second"][index - 1]!,
+      timestamp: `2026-06-24T00:00:0${index + 1}.000Z`,
+      customType: "test",
+    }));
+    const storage = new WorkflowBackedSessionStorage({
+      metadata,
+      entries,
+      entryIds: entryIds("cursor"),
+    });
+
+    await expect(storage.getEntries({ afterEntrySeq: 1, limit: 1 })).resolves.toMatchObject([
+      { id: "second" },
+    ]);
+    await expect(storage.getEntries({ afterEntrySeq: 2 })).resolves.toMatchObject([
+      { id: "third" },
+    ]);
+  });
+
   it("records leaf moves as durable leaf entries", async () => {
     const storage = new WorkflowBackedSessionStorage({ metadata, entryIds: entryIds("leaf") });
     await storage.appendEntry({
@@ -191,8 +207,8 @@ describe("WorkflowBackedSessionStorage", () => {
     });
     const session = new Session(storage);
     const harness = new AgentHarness({
-      env: new NoOpExecutionEnv(),
       model: mockModel,
+      models: createModelsForStreamFn(mockModel, createTextStreamFn("unused")),
       session,
     });
 
@@ -249,34 +265,16 @@ appended:
       },
     });
     const session = new Session(storage);
-    const sourceId = "session-storage-proof-provider";
     const proofStream = createTextStreamFn("stop");
-    registerApiProvider(
-      {
-        api: mockModel.api,
-        stream: proofStream as unknown as (
-          model: Model<Api>,
-          context: Context,
-          options?: StreamOptions,
-        ) => AssistantMessageEventStream,
-        streamSimple: proofStream as unknown as (
-          model: Model<Api>,
-          context: Context,
-          options?: SimpleStreamOptions,
-        ) => AssistantMessageEventStream,
-      },
-      sourceId,
-    );
     const harness = new AgentHarness({
-      env: new NoOpExecutionEnv(),
       model: mockModel,
+      models: createModelsForStreamFn(mockModel, proofStream),
       session,
     });
 
     const before = await prettySession(storage, appended);
     const result = await harness.navigateTree("parent-entry");
     await harness.prompt("hello");
-    unregisterApiProviders(sourceId);
     const after = await prettySession(storage, appended);
     const activeMessages = (await session.buildContext()).messages.map(
       (message) => `${message.role}:${messageText(message)}`,

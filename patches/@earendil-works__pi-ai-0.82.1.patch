@@ -1,0 +1,256 @@
+diff --git a/dist/env-api-keys.js b/dist/env-api-keys.js
+index 942d630..2ed8909 100644
+--- a/dist/env-api-keys.js
++++ b/dist/env-api-keys.js
+@@ -14,8 +14,12 @@ const dynamicImport = (specifier) => import(__rewriteRelativeImportExtension(spe
+ const NODE_FS_SPECIFIER = "node:" + "fs";
+ const NODE_OS_SPECIFIER = "node:" + "os";
+ const NODE_PATH_SPECIFIER = "node:" + "path";
+-// Eagerly load in Node.js/Bun environment only
+-if (typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
++const isWorkersRuntime = typeof WebSocketPair !== "undefined" ||
++    (typeof navigator !== "undefined" &&
++        typeof navigator.userAgent === "string" &&
++        navigator.userAgent.includes("Cloudflare-Workers"));
++// Eagerly load in Node.js/Bun environment only (avoid Workers' node:* import failures)
++if (!isWorkersRuntime && typeof process !== "undefined" && (process.versions?.node || process.versions?.bun)) {
+     dynamicImport(NODE_FS_SPECIFIER).then((m) => {
+         _existsSync = m.existsSync;
+     });
+diff --git a/dist/utils/json-parse.js b/dist/utils/json-parse.js
+index 82e105c..9da7f23 100644
+--- a/dist/utils/json-parse.js
++++ b/dist/utils/json-parse.js
+@@ -1,4 +1,231 @@
+-import { parse as partialParse } from "partial-json";
++// Vendored from partial-json-parser-js (MIT) to avoid importing the CJS `partial-json`
++// package in ESM-only runtimes such as Cloudflare Workers.
++const STR = 0b000000001;
++const NUM = 0b000000010;
++const ARR = 0b000000100;
++const OBJ = 0b000001000;
++const NULL = 0b000010000;
++const BOOL = 0b000100000;
++const NAN = 0b001000000;
++const INFINITY = 0b010000000;
++const _INFINITY = 0b100000000;
++const INF = INFINITY | _INFINITY;
++const SPECIAL = NULL | BOOL | INF | NAN;
++const ATOM = STR | NUM | SPECIAL;
++const COLLECTION = ARR | OBJ;
++const ALL = ATOM | COLLECTION;
++const Allow = {
++    STR,
++    NUM,
++    ARR,
++    OBJ,
++    NULL,
++    BOOL,
++    NAN,
++    INFINITY,
++    _INFINITY,
++    INF,
++    SPECIAL,
++    ATOM,
++    COLLECTION,
++    ALL,
++};
++class PartialJSON extends Error {
++}
++class MalformedJSON extends Error {
++}
++function partialParse(jsonString, allowPartial = Allow.ALL) {
++    if (typeof jsonString !== "string") {
++        throw new TypeError(`expecting str, got ${typeof jsonString}`);
++    }
++    if (!jsonString.trim()) {
++        throw new Error(`${jsonString} is empty`);
++    }
++    return parsePartialJsonValue(jsonString.trim(), allowPartial);
++}
++const parsePartialJsonValue = (jsonString, allow) => {
++    const length = jsonString.length;
++    let index = 0;
++    const markPartialJSON = (msg) => {
++        throw new PartialJSON(`${msg} at position ${index}`);
++    };
++    const throwMalformedError = (msg) => {
++        throw new MalformedJSON(`${msg} at position ${index}`);
++    };
++    const parseAny = () => {
++        skipBlank();
++        if (index >= length)
++            markPartialJSON("Unexpected end of input");
++        if (jsonString[index] === '"')
++            return parseStr();
++        if (jsonString[index] === "{")
++            return parseObj();
++        if (jsonString[index] === "[")
++            return parseArr();
++        if (jsonString.substring(index, index + 4) === "null" ||
++            (Allow.NULL & allow && length - index < 4 && "null".startsWith(jsonString.substring(index)))) {
++            index += 4;
++            return null;
++        }
++        if (jsonString.substring(index, index + 4) === "true" ||
++            (Allow.BOOL & allow && length - index < 4 && "true".startsWith(jsonString.substring(index)))) {
++            index += 4;
++            return true;
++        }
++        if (jsonString.substring(index, index + 5) === "false" ||
++            (Allow.BOOL & allow && length - index < 5 && "false".startsWith(jsonString.substring(index)))) {
++            index += 5;
++            return false;
++        }
++        if (jsonString.substring(index, index + 8) === "Infinity" ||
++            (Allow.INFINITY & allow &&
++                length - index < 8 &&
++                "Infinity".startsWith(jsonString.substring(index)))) {
++            index += 8;
++            return Infinity;
++        }
++        if (jsonString.substring(index, index + 9) === "-Infinity" ||
++            (Allow._INFINITY & allow &&
++                1 < length - index &&
++                length - index < 9 &&
++                "-Infinity".startsWith(jsonString.substring(index)))) {
++            index += 9;
++            return -Infinity;
++        }
++        if (jsonString.substring(index, index + 3) === "NaN" ||
++            (Allow.NAN & allow && length - index < 3 && "NaN".startsWith(jsonString.substring(index)))) {
++            index += 3;
++            return NaN;
++        }
++        return parseNum();
++    };
++    const parseStr = () => {
++        const start = index;
++        let escape = false;
++        index++;
++        while (index < length && (jsonString[index] !== '"' || (escape && jsonString[index - 1] === "\\"))) {
++            escape = jsonString[index] === "\\" ? !escape : false;
++            index++;
++        }
++        if (jsonString.charAt(index) == '"') {
++            try {
++                return JSON.parse(jsonString.substring(start, ++index - Number(escape)));
++            }
++            catch (error) {
++                throwMalformedError(String(error));
++            }
++        }
++        else if (Allow.STR & allow) {
++            try {
++                return JSON.parse(jsonString.substring(start, index - Number(escape)) + '"');
++            }
++            catch {
++                return JSON.parse(jsonString.substring(start, jsonString.lastIndexOf("\\")) + '"');
++            }
++        }
++        markPartialJSON("Unterminated string literal");
++    };
++    const parseObj = () => {
++        index++;
++        skipBlank();
++        const obj = {};
++        try {
++            while (jsonString[index] !== "}") {
++                skipBlank();
++                if (index >= length && Allow.OBJ & allow)
++                    return obj;
++                const key = parseStr();
++                skipBlank();
++                index++;
++                try {
++                    const value = parseAny();
++                    obj[key] = value;
++                }
++                catch (error) {
++                    if (Allow.OBJ & allow)
++                        return obj;
++                    else
++                        throw error;
++                }
++                skipBlank();
++                if (jsonString[index] === ",")
++                    index++;
++            }
++        }
++        catch {
++            if (Allow.OBJ & allow)
++                return obj;
++            else
++                markPartialJSON("Expected '}' at end of object");
++        }
++        index++;
++        return obj;
++    };
++    const parseArr = () => {
++        index++;
++        const arr = [];
++        try {
++            while (jsonString[index] !== "]") {
++                arr.push(parseAny());
++                skipBlank();
++                if (jsonString[index] === ",") {
++                    index++;
++                }
++            }
++        }
++        catch {
++            if (Allow.ARR & allow) {
++                return arr;
++            }
++            markPartialJSON("Expected ']' at end of array");
++        }
++        index++;
++        return arr;
++    };
++    const parseNum = () => {
++        if (index === 0) {
++            if (jsonString === "-")
++                throwMalformedError("Not sure what '-' is");
++            try {
++                return JSON.parse(jsonString);
++            }
++            catch (error) {
++                if (Allow.NUM & allow)
++                    try {
++                        return JSON.parse(jsonString.substring(0, jsonString.lastIndexOf("e")));
++                    }
++                    catch { }
++                throwMalformedError(String(error));
++            }
++        }
++        const start = index;
++        if (jsonString[index] === "-")
++            index++;
++        while (jsonString[index] && ",]}".indexOf(jsonString[index]) === -1)
++            index++;
++        if (index == length && !(Allow.NUM & allow))
++            markPartialJSON("Unterminated number literal");
++        try {
++            return JSON.parse(jsonString.substring(start, index));
++        }
++        catch (error) {
++            if (jsonString.substring(start, index) === "-")
++                markPartialJSON("Not sure what '-' is");
++            try {
++                return JSON.parse(jsonString.substring(start, jsonString.lastIndexOf("e")));
++            }
++            catch {
++                throwMalformedError(String(error));
++            }
++        }
++    };
++    const skipBlank = () => {
++        while (index < length && " \n\r\t".includes(jsonString[index])) {
++            index++;
++        }
++    };
++    return parseAny();
++};
+ const VALID_JSON_ESCAPES = new Set(['"', "\\", "/", "b", "f", "n", "r", "t", "u"]);
+ function isControlCharacter(char) {
+     const codePoint = char.codePointAt(0);

@@ -1253,7 +1253,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("concurrent clients attached to separate runners observe their runner's racy step emissions", async () => {
+  test("concurrent clients present the first racy stream and converge on the committed execution", async () => {
     const runtime = createWorkflowsTestRuntime();
     let invocationCount = 0;
 
@@ -1404,7 +1404,9 @@ describe("Workflows Runner (Scenario DSL)", () => {
             ),
             stores.secondCurrentStep.waitFor(
               (state) =>
-                !state.loading && hasPayloadMessage(state.data, "second", "second:started"),
+                !state.loading &&
+                hasPayloadMessage(state.data, "first", "first:started") &&
+                !hasPayloadMessage(state.data, "second", "second:started"),
               {
                 storeAs: "secondMessages",
                 select: (state) => state.data,
@@ -1435,8 +1437,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
             stores.firstCurrentStep.waitFor(
               (state) =>
                 !state.loading &&
-                hasStepControl(state.data, "do:shared client message", "step-started") &&
-                hasPayloadMessage(state.data, "second", "shared:started"),
+                hasPayloadMessage(state.data, "first", "first:started") &&
+                !hasPayloadMessage(state.data, "second", "shared:started"),
               {
                 storeAs: "firstSharedMessages",
                 select: (state) => state.data,
@@ -1445,8 +1447,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
             stores.secondCurrentStep.waitFor(
               (state) =>
                 !state.loading &&
-                hasStepControl(state.data, "do:shared client message", "step-started") &&
-                hasPayloadMessage(state.data, "second", "shared:started"),
+                hasPayloadMessage(state.data, "first", "first:started") &&
+                !hasPayloadMessage(state.data, "second", "shared:started"),
               {
                 storeAs: "secondSharedMessages",
                 select: (state) => state.data,
@@ -1459,35 +1461,47 @@ describe("Workflows Runner (Scenario DSL)", () => {
                     stepKey: "do:racy client message",
                     payload: { runner: "first", message: "first:started" },
                   }),
+                ]),
+              );
+              expect(ctx.vars.firstSharedMessages).not.toEqual(
+                expect.arrayContaining([
                   expect.objectContaining({
-                    stepKey: "do:shared client message",
-                    actor: "system",
-                    payload: { control: "step-started" },
-                  }),
-                  expect.objectContaining({
-                    stepKey: "do:shared client message",
-                    actor: "user",
-                    payload: { runner: "second", message: "shared:started" },
+                    executionId: expect.any(String),
+                    payload: expect.objectContaining({ runner: "second" }),
                   }),
                 ]),
               );
               expect(ctx.vars.secondSharedMessages).toEqual(
                 expect.arrayContaining([
                   expect.objectContaining({
-                    stepKey: "do:shared client message",
-                    actor: "system",
-                    payload: { control: "step-started" },
+                    stepKey: "do:racy client message",
+                    payload: { runner: "first", message: "first:started" },
                   }),
+                ]),
+              );
+              expect(ctx.vars.secondSharedMessages).not.toEqual(
+                expect.arrayContaining([
                   expect.objectContaining({
-                    stepKey: "do:shared client message",
-                    actor: "user",
-                    payload: { runner: "second", message: "shared:started" },
+                    executionId: expect.any(String),
+                    payload: expect.objectContaining({ runner: "second" }),
                   }),
                 ]),
               );
             }),
             workflow.read({
-              read: (ctx) => ctx.state.getEmissions("CLIENT_EMIT", "client-emission-race-1"),
+              read: async (ctx) => {
+                for (let attempt = 0; attempt < 50; attempt += 1) {
+                  const emissions = await ctx.state.getEmissions(
+                    "CLIENT_EMIT",
+                    "client-emission-race-1",
+                  );
+                  if (hasPayloadMessage(emissions, "second", "shared:started")) {
+                    return emissions;
+                  }
+                  await new Promise((resolve) => setTimeout(resolve, 10));
+                }
+                return await ctx.state.getEmissions("CLIENT_EMIT", "client-emission-race-1");
+              },
               assert: (emissions) => {
                 expect(emissions).toEqual(
                   expect.arrayContaining([
@@ -1537,11 +1551,27 @@ describe("Workflows Runner (Scenario DSL)", () => {
               }),
             ]),
           );
+          expect(ctx.vars.firstCommittedMessages).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                stepKey: "do:racy client message",
+                payload: { runner: "second", message: "second:finished" },
+              }),
+            ]),
+          );
           expect(ctx.vars.firstCommittedMessages).not.toEqual(
             expect.arrayContaining([
               expect.objectContaining({
                 stepKey: "do:racy client message",
                 payload: { runner: "first", message: "first:started" },
+              }),
+            ]),
+          );
+          expect(ctx.vars.secondCommittedMessages).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                stepKey: "do:racy client message",
+                payload: { runner: "second", message: "second:finished" },
               }),
             ]),
           );
@@ -1587,7 +1617,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
           expect(ctx.vars.secondMessages).toEqual(
             expect.arrayContaining([
               expect.objectContaining({
-                payload: { runner: "second", message: "second:started" },
+                payload: { runner: "first", message: "first:started" },
               }),
             ]),
           );
@@ -1595,8 +1625,161 @@ describe("Workflows Runner (Scenario DSL)", () => {
             expect.arrayContaining([expect.objectContaining({ payload: { runner: "second" } })]),
           );
           expect(ctx.vars.secondMessages).not.toEqual(
-            expect.arrayContaining([expect.objectContaining({ payload: { runner: "first" } })]),
+            expect.arrayContaining([expect.objectContaining({ payload: { runner: "second" } })]),
           );
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("client retracts downstream emissions after their execution loses an earlier step", async () => {
+    const runtime = createWorkflowsTestRuntime();
+    let invocationCount = 0;
+
+    const DownstreamLoserWorkflow = defineWorkflow(
+      { name: "scenario-client-downstream-loser" },
+      async (_event, step) => {
+        const runner = await step.do("contested", async (tx) => {
+          invocationCount += 1;
+          const currentRunner = invocationCount === 1 ? "first" : "second";
+          tx.emit({ runner: currentRunner, message: `${currentRunner}:contested` });
+          runtime.controls.resolve(`${currentRunner}:contested`);
+          if (currentRunner === "second") {
+            await runtime.controls.wait("second:release");
+          }
+          return currentRunner;
+        });
+
+        if (runner === "first") {
+          await step.do("first-only downstream", async (tx) => {
+            tx.emit({ runner, message: "first:downstream" });
+            runtime.controls.resolve("first:downstream");
+            await runtime.controls.wait("first:release");
+          });
+        }
+
+        return { runner };
+      },
+    );
+
+    const workflows = { DOWNSTREAM_LOSER: DownstreamLoserWorkflow };
+    const hasMessage = (
+      emissions: readonly { payload: unknown }[] | undefined,
+      runner: string,
+      message: string,
+    ) =>
+      Boolean(
+        emissions?.some(
+          (emission) =>
+            typeof emission.payload === "object" &&
+            emission.payload !== null &&
+            "runner" in emission.payload &&
+            "message" in emission.payload &&
+            emission.payload.runner === runner &&
+            emission.payload.message === message,
+        ),
+      );
+
+    const scenario = defineScenario({
+      name: "scenario-client-downstream-loser",
+      workflows,
+      vars() {
+        return {
+          firstTick: 0,
+          secondTick: 0,
+          beforeCommit: undefined as readonly { payload: unknown }[] | undefined,
+          afterCommit: undefined as readonly { payload: unknown }[] | undefined,
+        };
+      },
+      runners: ["first", "second", "observer"],
+      harness: { runtime },
+      clients: ({ clientConfig }) => ({
+        observer: createWorkflowsClient(clientConfig("workflows", { runner: "observer" })),
+      }),
+      stores: ({ clients }) => ({
+        currentStep: () =>
+          clients.observer.useCurrentStepEmissions({
+            path: {
+              workflowName: "scenario-client-downstream-loser",
+              instanceId: "downstream-loser-1",
+            },
+          }),
+      }),
+      steps: ({ workflow, runners, concurrent, stores }) => [
+        workflow.create({ workflow: "DOWNSTREAM_LOSER", id: "downstream-loser-1" }),
+        concurrent({
+          first: [
+            runners.first.tick({
+              workflow: "DOWNSTREAM_LOSER",
+              instanceId: "downstream-loser-1",
+              reason: "create",
+              storeAs: "firstTick",
+            }),
+          ],
+          second: [
+            runners.second.waitForControl({ key: "first:downstream" }),
+            runners.second.tick({
+              workflow: "DOWNSTREAM_LOSER",
+              instanceId: "downstream-loser-1",
+              reason: "create",
+              storeAs: "secondTick",
+            }),
+            runners.second.resolveControl({ key: "second:committed" }),
+          ],
+          observer: [
+            runners.observer.waitForControl({ key: "first:downstream" }),
+            stores.currentStep.waitFor(
+              (state) =>
+                !state.loading &&
+                hasMessage(state.data, "first", "first:contested") &&
+                hasMessage(state.data, "first", "first:downstream"),
+              {
+                storeAs: "beforeCommit",
+                select: (state) => state.data,
+              },
+            ),
+            runners.observer.waitForControl({ key: "second:contested" }),
+            runners.observer.resolveControl({ key: "second:release" }),
+            runners.observer.waitForControl({ key: "second:committed" }),
+            stores.currentStep.waitFor(
+              (state) =>
+                !state.loading &&
+                hasMessage(state.data, "second", "second:contested") &&
+                !hasMessage(state.data, "first", "first:contested") &&
+                !hasMessage(state.data, "first", "first:downstream"),
+              {
+                storeAs: "afterCommit",
+                select: (state) => state.data,
+              },
+            ),
+            runners.observer.resolveControl({ key: "first:release" }),
+          ],
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getEmissions("DOWNSTREAM_LOSER", "downstream-loser-1"),
+          assert: (emissions) => {
+            assert(hasMessage(emissions, "first", "first:downstream"));
+          },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getSteps("DOWNSTREAM_LOSER", "downstream-loser-1"),
+          assert: (steps) => {
+            expect(steps).toHaveLength(1);
+            expect(steps[0]).toMatchObject({
+              stepKey: "do:contested",
+              status: "completed",
+              result: "second",
+            });
+          },
+        }),
+        workflow.assert((ctx) => {
+          assert(hasMessage(ctx.vars.beforeCommit, "first", "first:downstream"));
+          assert(hasMessage(ctx.vars.afterCommit, "second", "second:contested"));
+          assert(!hasMessage(ctx.vars.afterCommit, "first", "first:downstream"));
+          assert(ctx.vars.firstTick === 0);
+          assert(ctx.vars.secondTick === 1);
         }),
       ],
     });
@@ -3445,6 +3628,66 @@ describe("Workflows Runner (Scenario DSL)", () => {
             expect(secondEvent).toMatchObject({
               consumedByStepKey: "waitForEvent:second",
             });
+          },
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("preserves submission order when events have the same creation timestamp", async () => {
+    const SameTimestampEventOrderWorkflow = defineWorkflow(
+      { name: "same-timestamp-event-order-workflow" },
+      async (_event, step) => {
+        const first = await step.waitForEvent<{ value: number }>("first", { type: "ready" });
+        const second = await step.waitForEvent<{ value: number }>("second", { type: "ready" });
+        return { first: first.payload.value, second: second.payload.value };
+      },
+    );
+
+    const workflows = { SAME_TIMESTAMP_EVENT_ORDER: SameTimestampEventOrderWorkflow };
+    const sharedTimestamp = new Date("2026-08-02T12:00:00.000Z");
+
+    const scenario = defineScenario({
+      name: "same-timestamp-event-submission-order",
+      workflows,
+      steps: ({ workflow, runner }) => [
+        workflow.create({
+          workflow: "SAME_TIMESTAMP_EVENT_ORDER",
+          id: "same-timestamp-event-order-1",
+        }),
+        runner.tick({
+          workflow: "SAME_TIMESTAMP_EVENT_ORDER",
+          instanceId: "same-timestamp-event-order-1",
+          reason: "create",
+        }),
+        workflow.event({
+          workflow: "SAME_TIMESTAMP_EVENT_ORDER",
+          instanceId: "same-timestamp-event-order-1",
+          event: { id: "z-first-submitted", type: "ready", payload: { value: 1 } },
+          timestamp: sharedTimestamp,
+        }),
+        workflow.event({
+          workflow: "SAME_TIMESTAMP_EVENT_ORDER",
+          instanceId: "same-timestamp-event-order-1",
+          event: { id: "a-second-submitted", type: "ready", payload: { value: 2 } },
+          timestamp: sharedTimestamp,
+        }),
+        runner.tick({
+          workflow: "SAME_TIMESTAMP_EVENT_ORDER",
+          instanceId: "same-timestamp-event-order-1",
+          reason: "event",
+        }),
+        workflow.read({
+          read: (ctx) =>
+            ctx.state.getStatus(
+              SameTimestampEventOrderWorkflow.name,
+              "same-timestamp-event-order-1",
+            ),
+          assert: (status) => {
+            assert(status.status === "complete");
+            expect(status.output).toEqual({ first: 1, second: 2 });
           },
         }),
       ],

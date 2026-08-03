@@ -37,9 +37,7 @@ export default defineConfig([
     entry: [
       "./src/pi/definition.ts",
       "./src/pi/factory.ts",
-      "./src/pi/harness/commands.ts",
-      "./src/pi/harness/execution-env.ts",
-      "./src/pi/harness/run-pi-harness-step.ts",
+      "./src/pi/harness/pi-operation-completed.ts",
       "./src/pi/harness/session-storage.ts",
       "./src/pi/pi-jsonl-export.ts",
       "./src/pi/route-schemas.ts",
@@ -48,6 +46,7 @@ export default defineConfig([
       "./src/pi/types.ts",
       "./src/pi/workflow-session-projection.ts",
       "./src/pi/workflows/interactive-chat-workflow.ts",
+      "./src/pi/workflows/workflow-agent-harness.ts",
       "./src/routes.ts",
       "./src/schema.ts",
     ],

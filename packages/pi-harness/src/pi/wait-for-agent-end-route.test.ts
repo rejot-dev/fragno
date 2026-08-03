@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, assert } from "vitest";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 
-import { buildHarness, createAssistantMessage, createEnv, mockModel } from "./pi-test-utils";
+import { createModelsForStreamFn } from "./harness/test-models";
+import { buildHarness, createAssistantMessage, mockModel } from "./pi-test-utils";
 import type { PiFragmentConfig } from "./types";
 import { createInteractiveChatWorkflow } from "./workflows/interactive-chat-workflow";
 
@@ -109,13 +110,10 @@ describe("pi-harness wait-for-agent-end route", () => {
 
   const setupHarness = async (streamFn: StreamFn) => {
     interactiveChatWorkflow = createInteractiveChatWorkflow({
-      harnesses: {
-        default: {
-          env: createEnv(),
-          systemPrompt: "You are helpful.",
-          model: mockModel,
-          streamFn,
-        },
+      options: {
+        systemPrompt: "You are helpful.",
+        model: mockModel,
+        models: createModelsForStreamFn(mockModel, streamFn),
       },
     });
     const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
@@ -136,7 +134,7 @@ describe("pi-harness wait-for-agent-end route", () => {
     const response = assertJson(
       await harness.fragments.pi.callRoute("POST", "/workflows/:workflowName/sessions", {
         pathParams: { workflowName: interactiveChatWorkflow.name },
-        body: { name: "Pi Session", input: { harnessName: "default" } },
+        body: { name: "Pi Session", input: { profileName: "default" } },
       }),
     );
     const sessionId = response.data.id as string;
@@ -199,6 +197,80 @@ describe("pi-harness wait-for-agent-end route", () => {
     ]);
     expect(response.data.agent.completedStepKeys).toEqual(expect.any(Array));
     expect(response.data.agent).not.toHaveProperty("events");
+  });
+
+  it("waits for a live agent_end from the interactive chat workflow", async () => {
+    await harness.test.cleanup();
+    const interactiveChatWorkflow = createInteractiveChatWorkflow({
+      name: "interactive-chat-wait-for-agent-end",
+      options: {
+        systemPrompt: "You are helpful.",
+        model: mockModel,
+        models: createModelsForStreamFn(
+          mockModel,
+          createPausedTextStreamFn("new chat final", releaseAssistant.promise),
+        ),
+      },
+    });
+    harness = await buildHarness(
+      { workflows: [interactiveChatWorkflow] },
+      { autoTickHooks: false },
+    );
+
+    const createResponse = assertJson(
+      await harness.fragments.pi.callRoute("POST", "/workflows/:workflowName/sessions", {
+        pathParams: { workflowName: interactiveChatWorkflow.name },
+        body: { name: "New Pi Session", input: { profileName: "default" } },
+      }),
+    );
+    const sessionId = createResponse.data.id as string;
+    await harness.workflows.getStatus(interactiveChatWorkflow.name, sessionId);
+    await harness.workflows.runUntilIdle(
+      {
+        workflowName: interactiveChatWorkflow.name,
+        instanceId: sessionId,
+        reason: "create",
+      },
+      { maxTicks: 1 },
+    );
+
+    let waitSettled = false;
+    const wait = harness.fragments.pi
+      .callRoute("GET", "/workflows/:workflowName/sessions/:sessionId/wait-for-agent-end", {
+        pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
+        query: { timeoutMs: "2000" },
+      })
+      .then((response) => {
+        waitSettled = true;
+        return response;
+      });
+    await harness.fragments.pi.callRoute(
+      "POST",
+      "/workflows/:workflowName/sessions/:sessionId/command",
+      {
+        pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
+        body: { kind: "prompt", input: { text: "hello new chat" } },
+      },
+    );
+    const run = harness.workflows.runUntilIdle(
+      {
+        workflowName: interactiveChatWorkflow.name,
+        instanceId: sessionId,
+        reason: "event",
+      },
+      { maxTicks: 1 },
+    );
+
+    await sleep(20);
+    assert(!waitSettled);
+    releaseAssistant.resolve();
+    await run;
+
+    const response = assertJson(await withTimeout(wait, "Timed out waiting for new agent_end."));
+    expect(textMessages(response.data.agent.state.messages, "user")).toEqual(["hello new chat"]);
+    expect(textMessages(response.data.agent.state.messages, "assistant")).toEqual([
+      "new chat final",
+    ]);
   });
 
   it("uses GET query params and times out when no live agent_end is observed", async () => {

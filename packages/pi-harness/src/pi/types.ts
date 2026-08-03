@@ -1,13 +1,14 @@
 import type { StandardSchemaV1 } from "@fragno-dev/core/api";
 import type { InstanceStatus, WorkflowRegistryEntry } from "@fragno-dev/workflows/workflow";
 import type { Static, TSchema as TypeBoxSchema } from "typebox";
+import { z } from "zod";
 
 import type { HookContext } from "@fragno-dev/db";
 
 import type { AgentMessage, AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
-import type { PiHarnessOperation } from "./harness/run-pi-harness-step";
+import type { PiHarnessOperation } from "./workflows/workflow-agent-harness";
 
 export type PiLoggerConfig = {
   enabled?: boolean;
@@ -16,20 +17,86 @@ export type PiLoggerConfig = {
 
 export type PiWorkflowStatus = InstanceStatus["status"];
 
+export type PiSessionMetadata = Record<string, unknown>;
+
 export type PiSession = {
   id: string;
   name: string | null;
-  agent: string;
+  metadata: PiSessionMetadata | null;
   workflowName: string;
   createdAt: Date;
   updatedAt: Date;
+};
+
+const piSessionWorkflowParamsSchema = z.object({
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  __piSession: z.object({
+    name: z.string().nullable(),
+  }),
+});
+
+export class PiSessionDataUnavailableError extends Error {
+  readonly code = "PI_SESSION_DATA_UNAVAILABLE";
+
+  constructor(
+    readonly workflowName: string,
+    readonly sessionId: string,
+  ) {
+    super(`Workflow ${workflowName}/${sessionId} does not contain Pi session data.`);
+    this.name = "PiSessionDataUnavailableError";
+  }
+}
+
+export class PiSessionDataIntegrityError extends Error {
+  readonly code = "PI_SESSION_DATA_INTEGRITY_ERROR";
+
+  constructor(
+    readonly workflowName: string,
+    readonly sessionId: string,
+    cause: unknown,
+  ) {
+    super(`Persisted Pi session data for ${workflowName}/${sessionId} is invalid.`, { cause });
+    this.name = "PiSessionDataIntegrityError";
+  }
+}
+
+export const projectPiSessionFromWorkflowInstance = (instance: {
+  id: string;
+  workflowName: string;
+  params: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}): PiSession | null => {
+  const persistedParams = instance.params;
+  if (
+    typeof persistedParams !== "object" ||
+    persistedParams === null ||
+    Array.isArray(persistedParams) ||
+    !Object.hasOwn(persistedParams, "__piSession")
+  ) {
+    return null;
+  }
+
+  const params = piSessionWorkflowParamsSchema.safeParse(persistedParams);
+  if (!params.success) {
+    throw new PiSessionDataIntegrityError(instance.workflowName, instance.id, params.error);
+  }
+
+  return {
+    id: instance.id,
+    name: params.data.__piSession.name,
+    metadata: params.data.metadata ?? null,
+    workflowName: instance.workflowName,
+    createdAt: instance.createdAt,
+    updatedAt: instance.updatedAt,
+  };
 };
 
 export type PiOperationCompletedHookPayload = {
   actor: unknown;
   workflowName: string;
   sessionId: string;
-  agentName: string;
+  metadata: PiSessionMetadata | null;
   stepName: string;
   operationId: string;
   operation: PiHarnessOperation["kind"];
@@ -55,6 +122,9 @@ export type PiOperationCompletedHookPayload = {
   usage: AssistantMessage["usage"];
 };
 
+/** Maximum total Base64 characters persisted in one Pi command event. */
+export const MAX_PI_COMMAND_IMAGE_DATA_LENGTH = 8 * 1024 * 1024;
+
 export type PiPromptInput = {
   text: string;
   images?: Array<{ type: "image"; data: string; mimeType: string }>;
@@ -62,18 +132,18 @@ export type PiPromptInput = {
 
 export type PiSessionCommandPayload =
   | { commandId: string; kind: "prompt"; input: PiPromptInput }
+  | { commandId: string; kind: "skill"; input: { name: string; additionalInstructions?: string } }
+  | { commandId: string; kind: "promptFromTemplate"; input: { name: string; args?: string[] } }
   | { commandId: string; kind: "abort"; reason?: string }
   | { commandId: string; kind: "steer"; input: PiPromptInput }
-  | { commandId: string; kind: "followUp"; input: PiPromptInput }
-  | { commandId: string; kind: "nextTurn"; input: PiPromptInput };
+  | { commandId: string; kind: "followUp"; input: PiPromptInput };
 
 export type PiAgentStateSnapshot = {
   messages: AgentMessage[];
   errorMessage?: string;
 };
 
-export type PiSessionDetail = Omit<PiSession, "agent"> & {
-  agentName: string;
+export type PiSessionDetail = PiSession & {
   workflow: {
     status: PiWorkflowStatus;
     error?: { name: string; message: string };

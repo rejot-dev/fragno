@@ -91,6 +91,7 @@ const workflowEmissionMutation = (
   externalId: string,
   sequence: number,
   payload: unknown,
+  options: { executionId?: string; stepKey?: string } = {},
 ): LofiMutation => ({
   op: "create",
   schema: schemaName,
@@ -99,7 +100,8 @@ const workflowEmissionMutation = (
   versionstamp: `emission-${sequence}`,
   values: {
     instanceRef,
-    stepKey: "do:agent-turn-1",
+    stepKey: options.stepKey ?? "do:agent-turn-1",
+    executionId: options.executionId ?? "execution-1",
     epoch: "epoch-1",
     sequence,
     actor: "user",
@@ -124,6 +126,7 @@ const workflowStepMutation = (
     stepKey?: string;
     createdAt?: Date;
     entries?: readonly SessionTreeEntry[];
+    committedByExecutionId?: string;
   } = {},
 ): LofiMutation => ({
   op: "create",
@@ -139,6 +142,7 @@ const workflowStepMutation = (
     name: "agent-turn-1",
     type: "do",
     status: "completed",
+    committedByExecutionId: options.committedByExecutionId ?? "execution-1",
     attempts: 1,
     maxAttempts: 1,
     timeoutMs: null,
@@ -299,6 +303,65 @@ describe("createSessionProjectionDataStore", () => {
         ),
     ).toEqual([]);
     assert(runtime.$revision.get() === 1);
+    unsubscribe();
+  });
+
+  it("removes speculative downstream emissions from a losing execution", async () => {
+    const entry = outboxEntry([
+      workflowInstanceMutation(),
+      workflowEmissionMutation(
+        "losing-contested",
+        0,
+        {
+          kind: "harness-event",
+          event: { type: "message_start", message: assistantMessage("") },
+        },
+        { executionId: "losing-execution" },
+      ),
+      workflowEmissionMutation(
+        "losing-downstream",
+        1,
+        {
+          kind: "harness-message-update",
+          update: {
+            type: "message_update",
+            assistantMessageEvent: {
+              type: "text_delta",
+              contentIndex: 0,
+              delta: "discarded",
+            },
+          },
+        },
+        { executionId: "losing-execution", stepKey: "do:speculative-downstream" },
+      ),
+      workflowStepMutation("winner committed", "002", {
+        committedByExecutionId: "winning-execution",
+      }),
+    ]);
+    const adapter = new IndexedDbAdapter({
+      dbName: "pi-harness-losing-execution-projection-test",
+      endpointName: "pi-harness-test",
+      schemas: [{ schema: workflowsSchema }],
+    });
+    const runtime = createLofiRuntime({
+      endpointName: "pi-harness-test",
+      adapter,
+      outboxUrl: "https://example.com/outbox",
+      ephemeralTables: [piWorkflowStepEmissionEphemeralTable],
+      fetch: (async (input) => {
+        const url = new URL(typeof input === "string" ? input : input.toString());
+        return new Response(
+          JSON.stringify(url.searchParams.has("afterVersionstamp") ? [] : [entry]),
+        );
+      }) as typeof fetch,
+    });
+    const store = createSessionProjectionDataStore(runtime, workflowName, sessionId);
+    const unsubscribe = store.subscribe(() => undefined);
+
+    const state = await storeStateMatching(store, (current) => current.synced);
+
+    expect(state.data.state.messages.map(messageText)).toEqual(["winner committed"]);
+    expect(state.data.draftAgentMessage).toBeNull();
     unsubscribe();
   });
 

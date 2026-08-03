@@ -1,4 +1,7 @@
-import { projectWorkflowStepExecutionActivity } from "@fragno-dev/workflows/step-emission-control";
+import {
+  projectWorkflowStepExecutionActivity,
+  selectCanonicalWorkflowStepEmissions,
+} from "@fragno-dev/workflows/step-emission-control";
 import { parseStepKey, ROOT_STEP_SCOPE } from "@fragno-dev/workflows/step-identity";
 
 import type {
@@ -20,6 +23,7 @@ export type WorkflowRunStep = {
   name: string;
   type: string;
   status: PersistedWorkflowStepStatus;
+  committedByExecutionId: string;
   attempts: number;
   result: unknown;
   errorName: string | null;
@@ -32,6 +36,7 @@ export type WorkflowRunEmission = {
   id: string;
   actor: string;
   stepKey: string;
+  executionId: string;
   epoch: string;
   sequence: number;
   payload: unknown;
@@ -188,8 +193,9 @@ function projectWorkflowStepStates({
     });
   }
 
+  const canonicalEmissions = selectCanonicalWorkflowStepEmissions({ steps, emissions });
   const activityByNodeId = new Map<string, { active: boolean; userEmissionCount: number }>();
-  for (const activity of projectWorkflowStepExecutionActivity(emissions)) {
+  for (const activity of projectWorkflowStepExecutionActivity(canonicalEmissions)) {
     const nodeId =
       nodeIdByStepKey.get(activity.stepKey) ??
       workflowStepNodeIdFromKey(activity.stepKey, stepNodeIndex);

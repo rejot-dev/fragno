@@ -1,5 +1,3 @@
-import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
-
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 import { createFragnoCollection } from "@fragno-dev/tanstack-db-adapter";
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
@@ -34,6 +32,7 @@ import {
 } from "@/fragno/codemode/execute";
 import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
 import { createPiCollections, type PiCollections } from "@/fragno/pi/tanstack/collections";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -418,7 +417,7 @@ type PiConfiguredInput = {
 type PiCreateStoredSessionInput = {
   orgId: string;
   workflowName?: string;
-  harnessName?: string;
+  agentName?: string;
   name?: string;
   captureSessionIdAs?: string;
 };
@@ -884,7 +883,7 @@ const createFakePiApi = (
     id: session.id,
     name: session.name,
     status: session.status,
-    agentName: session.agent,
+    metadata: { agentName: session.agent },
     workflowName: session.workflowName,
     workflow: { status: session.status },
     agent: {
@@ -932,18 +931,18 @@ const createFakePiApi = (
       const pathname = url.pathname;
       const sessionMatch =
         /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/([^/]+))?$/u.exec(pathname);
-      const workflowName = sessionMatch?.[1] ?? "interactive-chat-workflow";
+      const workflowName = sessionMatch?.[1] ?? BACKOFFICE_PI_WORKFLOW_NAME;
       const sessionId = sessionMatch?.[2] ?? "";
       const suffix = sessionMatch?.[3] ?? "";
 
       if (request.method === "POST" && pathname === `/api/pi/workflows/${workflowName}/sessions`) {
         const body = (await request.json()) as {
           name?: string | null;
-          input?: { agentName?: string; harnessName?: string; systemPrompt?: string };
+          metadata?: { agentName?: string };
+          input?: { systemPrompt?: string };
         };
         const id = `pi-session-${sessions.size + 1}`;
-        const agent =
-          body.input?.harnessName ?? body.input?.agentName ?? "default::openai::gpt-5-mini";
+        const agent = body.metadata?.agentName ?? "default::openai::gpt-5-mini";
         const session: FakePiSession = {
           id,
           name: body.name ?? null,
@@ -961,7 +960,14 @@ const createFakePiApi = (
           sessionId: id,
           ...(body.input?.systemPrompt ? { systemMessage: body.input.systemPrompt } : {}),
         });
-        return Response.json(session);
+        return Response.json({
+          id: session.id,
+          name: session.name,
+          metadata: { agentName: session.agent },
+          workflowName: session.workflowName,
+          createdAt: session.createdAt,
+          updatedAt: session.updatedAt,
+        });
       }
 
       if (request.method === "GET" && pathname === `/api/pi/workflows/${workflowName}/sessions`) {
@@ -2356,7 +2362,7 @@ const buildStepBuilders = <
             }
             ctx.rememberOrg(input.orgId);
             const scope = { kind: "org" as const, orgId: input.orgId };
-            const workflowName = input.workflowName ?? INTERACTIVE_CHAT_WORKFLOW_NAME;
+            const workflowName = input.workflowName ?? BACKOFFICE_PI_WORKFLOW_NAME;
             const url = new URL(
               `http://scenario.local/api/pi/workflows/${encodeURIComponent(workflowName)}/sessions`,
             );
@@ -2367,9 +2373,10 @@ const buildStepBuilders = <
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify({
                   name: input.name,
-                  input: {
-                    harnessName: input.harnessName ?? "default::openai::gpt-5.6-luna",
+                  metadata: {
+                    agentName: input.agentName ?? "default::openai::gpt-5.6-luna",
                   },
+                  input: {},
                 }),
               }),
             );

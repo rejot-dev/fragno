@@ -63,6 +63,14 @@ class WorkflowStepTxTarget extends RpcTarget {
     return await this.#tx.previousEmissions();
   }
 
+  async previousConsumedEvents() {
+    const previousConsumedEvents = (this.#tx as Partial<WorkflowStepTx>).previousConsumedEvents;
+    if (!previousConsumedEvents) {
+      return unsupportedRemoteTxFeature("PREVIOUS_CONSUMED_EVENTS");
+    }
+    return await previousConsumedEvents();
+  }
+
   workflowServiceCalls(operations: readonly WorkflowStepWorkflowOperation[]): void {
     const workflowServiceCalls = (this.#tx as Partial<WorkflowStepTx>).workflowServiceCalls;
     if (!workflowServiceCalls) {

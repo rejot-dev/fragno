@@ -5,6 +5,7 @@ import {
   type PiWorkflowSessionProjectionState,
   type PiWorkflowSessionProjectionStep,
 } from "@fragno-dev/pi-harness/workflow-session-projection";
+import { selectCanonicalWorkflowStepEmissions } from "@fragno-dev/workflows/step-emission-control";
 
 type PiWorkflowInstanceProjectionRow = {
   status: string;
@@ -14,12 +15,16 @@ type PiWorkflowStepProjectionRow = {
   stepKey: string;
   type: string;
   status: string;
+  committedByExecutionId: string;
   waitEventType: string | null;
   result: unknown;
 };
 
 type PiWorkflowStepEmissionProjectionRow = {
+  actor: string;
   stepKey: string;
+  executionId: string;
+  epoch: string;
   payload: unknown;
   createdAt: Date;
 };
@@ -43,6 +48,10 @@ export function projectPiSessionCollectionRows({
     return emptyPiWorkflowSessionProjectionState();
   }
 
+  const canonicalEmissions = selectCanonicalWorkflowStepEmissions({
+    steps: workflowSteps,
+    emissions: workflowStepEmissions,
+  });
   const projection = projectPiWorkflowSession({
     workflowName,
     sessionId,
@@ -54,7 +63,7 @@ export function projectPiSessionCollectionRows({
       waitEventType: step.waitEventType,
       result: step.result as PiWorkflowSessionProjectionStep["result"],
     })),
-    workflowStepEmissions: workflowStepEmissions.map((emission) => ({
+    workflowStepEmissions: canonicalEmissions.map((emission) => ({
       stepKey: emission.stepKey,
       payload: emission.payload as PiWorkflowSessionProjectionEmission["payload"],
       createdAt: emission.createdAt,

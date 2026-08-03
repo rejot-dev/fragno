@@ -1,6 +1,6 @@
 import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
+import type { MutationOperation } from "@fragno-dev/db/mutation-recorder";
 import type { AnySchema } from "@fragno-dev/db/schema";
-import type { MutationOperation } from "@fragno-dev/db/unit-of-work";
 
 import {
   instantiate,
@@ -307,6 +307,7 @@ export type RecordWorkflowStepRunForTestOptions<TOutput = unknown> = {
   }) => Promise<void> | void;
   stepEmissions?: BufferedPumpRegistry<WorkflowStepLivePump>;
   workflowsByName?: ReadonlyMap<string, WorkflowRegistryEntry>;
+  createExecutionId?: () => string;
   createEpoch?: () => string;
   schemas?: readonly { schema: AnySchema; namespace: string | null }[];
 };
@@ -422,6 +423,7 @@ export async function recordWorkflowStepRunForTest<TOutput = unknown>(
     initialRows.stepEmissions,
   );
   let epoch = 0;
+  const executionId = options.createExecutionId?.() ?? "test-execution-1";
   const stepEmissions = options.stepEmissions ?? new BufferedPumpRegistry<WorkflowStepLivePump>();
   const step = new RunnerStep({
     state,
@@ -429,6 +431,7 @@ export async function recordWorkflowStepRunForTest<TOutput = unknown>(
     workflowName: options.workflowName,
     instanceId: options.instanceId,
     handlerTx,
+    executionId,
     createEpoch: options.createEpoch ?? (() => `test-epoch-${(epoch += 1)}`),
     stepEmissions,
     workflowsByName: new Map(options.workflowsByName ?? []),
@@ -455,7 +458,7 @@ export async function recordWorkflowStepRunForTest<TOutput = unknown>(
         idempotencyKey: ctx.idempotencyKey,
         triggerHook: () => undefined,
       } as unknown as IUnitOfWork;
-      applyRunnerMutations(uow, state, new Map(options.workflowsByName ?? []));
+      applyRunnerMutations(uow, state, new Map(options.workflowsByName ?? []), executionId);
       applyOutcome(uow, instance, outcome);
     })
     .execute();
@@ -745,6 +748,8 @@ export async function createWorkflowsTestHarness<
         busHandlerTx: handlerTx,
         workflows,
         workflowsByName,
+        createExecutionId: () => runtime.random.uuid(),
+        createEpoch: () => runtime.random.uuid(),
         stepEmissions,
         payload: { ...completePayload(payload), timestamp: clock.now() },
       });

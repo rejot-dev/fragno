@@ -35,8 +35,8 @@ describe("Pi collection source", () => {
 
     assert.notEqual(left.resourceKey, right.resourceKey);
     assert.notEqual(
-      left.collectionId("pi-harness.session"),
-      right.collectionId("pi-harness.session"),
+      left.collectionId("workflows.workflow_instance"),
+      right.collectionId("workflows.workflow_instance"),
     );
   });
 });

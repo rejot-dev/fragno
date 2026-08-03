@@ -54,7 +54,7 @@ export const createPiOperationBillingEvent = (input: {
       idempotencyKey: input.idempotencyKey,
       workflowName: input.payload.workflowName,
       sessionId: input.payload.sessionId,
-      agentName: input.payload.agentName,
+      sessionMetadata: input.payload.metadata,
       stepName: input.payload.stepName,
       operationId: input.payload.operationId,
       operation: input.payload.operation,

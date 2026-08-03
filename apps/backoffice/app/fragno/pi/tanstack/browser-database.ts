@@ -11,7 +11,7 @@ import { createPiCollections, type PiCollections, type PiCollectionTarget } from
 
 const PI_DATABASE_NAME = "fragno-backoffice-pi.sqlite";
 const PI_DATABASE_COORDINATOR_NAME = "fragno-backoffice-pi";
-const PI_COLLECTION_SCHEMA_VERSION = 1;
+const PI_COLLECTION_SCHEMA_VERSION = 2;
 
 export type PiCollectionSource = {
   scope: BackofficeContextScope;

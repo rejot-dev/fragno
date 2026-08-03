@@ -15,8 +15,15 @@ There is intentionally no `createPi()` or `definePiWorkflow(...)` builder in
 `@fragno-dev/pi-harness`.
 
 ```ts
+import { AgentHarness } from "@earendil-works/pi-agent-core";
 import { createPiHarness, createPiWorkflows } from "@fragno-dev/pi-harness/factory";
-import { createAgentLoop } from "@fragno-dev/pi-harness/harness/commands";
+import { piSessionCommandPayloadSchema } from "@fragno-dev/pi-harness/route-schemas";
+import {
+  applyWorkflowAgentHarnessStepResult,
+  createPiHarnessSessionState,
+  restoreWorkflowBackedSession,
+  withWorkflowAgentHarness,
+} from "@fragno-dev/pi-harness/workflows/workflow-agent-harness";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 import { defineWorkflow } from "@fragno-dev/workflows/workflow";
 import { z } from "zod";
@@ -24,19 +31,75 @@ import { z } from "zod";
 const supportWorkflow = defineWorkflow(
   { name: "support", schema: z.object({ topic: z.string() }) },
   async (event, step) => {
-    const loop = createAgentLoop(step, {
-      env,
-      workflowName: "support",
-      sessionId: event.instanceId,
-      agentName: "support",
-      model,
-      systemPrompt: "You are a helpful support agent.",
-      tools: [searchTool],
+    let state = createPiHarnessSessionState({
+      metadata: { id: event.instanceId, createdAt: event.timestamp.toISOString() },
     });
 
-    await loop.runStep("initial", { kind: "prompt", args: [`Help with ${event.payload.topic}`] });
+    const initialResult = await step.do("initial", async (tx) => {
+      const {
+        session,
+        storage,
+        options: restoredOptions,
+      } = restoreWorkflowBackedSession({
+        operationId: `${supportWorkflow.name}:${event.instanceId}:initial`,
+        state,
+        previousEmissions: await tx.previousEmissions(),
+        models,
+      });
+      const harness = new AgentHarness({
+        models,
+        model,
+        systemPrompt: "You are a helpful support agent.",
+        tools: [searchTool],
+        ...restoredOptions,
+      });
+
+      return await withWorkflowAgentHarness({
+        session,
+        storage,
+        harness,
+        tx,
+        runDurableStep: () => harness.prompt(`Help with ${event.payload.topic}`),
+      });
+    });
+    state = applyWorkflowAgentHarnessStepResult(state, initialResult);
+
     while (true) {
-      await loop.waitForCommandAndRunStep();
+      const commandEvent = await step.waitForEvent("wait-command", {
+        type: "command",
+        timeout: "7 days",
+      });
+      const command = piSessionCommandPayloadSchema.parse(commandEvent.payload);
+      if (command.kind !== "prompt") continue;
+
+      const result = await step.do(`command:${command.commandId}`, async (tx) => {
+        const {
+          session,
+          storage,
+          options: restoredOptions,
+        } = restoreWorkflowBackedSession({
+          operationId: `${supportWorkflow.name}:${event.instanceId}:command:${command.commandId}`,
+          state,
+          previousEmissions: await tx.previousEmissions(),
+          models,
+        });
+        const harness = new AgentHarness({
+          models,
+          model,
+          systemPrompt: "You are a helpful support agent.",
+          tools: [searchTool],
+          ...restoredOptions,
+        });
+
+        return await withWorkflowAgentHarness({
+          session,
+          storage,
+          harness,
+          tx,
+          runDurableStep: () => harness.prompt(command.input.text),
+        });
+      });
+      state = applyWorkflowAgentHarnessStepResult(state, result);
     }
   },
 );
@@ -54,32 +117,26 @@ Create sessions by selecting the workflow and passing schema-validated input.
 }
 ```
 
-## Lower-level harness steps
+## Direct harness operations
 
-Use `runPiHarnessStep(...)` directly when the workflow wants full control over operation names,
-committed entries, active tools, or non-prompt operations such as compaction and tree navigation.
+Inside each `step.do(...)`, restore the workflow-backed Pi session, create a real `AgentHarness`,
+and call its APIs directly. This gives the workflow full control over operation names, active tools,
+skills, prompt templates, compaction, and tree navigation.
+
+To stop a prompt after a particular tool result, register the normal Pi harness hook before invoking
+the prompt:
 
 ```ts
-import {
-  runPiHarnessStep,
-  createPiHarnessSessionState,
-} from "@fragno-dev/pi-harness/harness/run-pi-harness-step";
+harness.on("tool_result", (result) =>
+  result.toolName === "classify_request" ? { terminate: true } : undefined,
+);
 
-const state = createPiHarnessSessionState();
-const result = await runPiHarnessStep(step, "classify", {
-  env,
-  workflowName: "triage",
-  sessionId: event.instanceId,
-  agentName: "triage",
-  model,
-  tools: [classifyRequest],
-  activeToolNames: ["classify_request"],
-  committedEntries: state.entries,
-  operation: {
-    kind: "prompt",
-    args: [event.payload.request],
-    stopOnTools: ["classify_request"],
-  },
+return await withWorkflowAgentHarness({
+  session,
+  storage,
+  harness,
+  tx,
+  runDurableStep: () => harness.prompt(event.payload.request),
 });
 ```
 

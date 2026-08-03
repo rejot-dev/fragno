@@ -111,7 +111,12 @@ export function AssistantMessage({
         </MessagePrimitive.GroupedParts>
       </div>
 
-      {metadata.errorMessage ? (
+      {metadata.stopReason === "aborted" ? (
+        <p className="mt-3 inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-muted-2)]">
+          <span className="size-1.5 rounded-full bg-[var(--bo-muted-2)]" />
+          Response stopped
+        </p>
+      ) : metadata.errorMessage ? (
         <p className="mt-3 border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 py-2 text-xs text-pretty text-[var(--bo-failed)]">
           {metadata.errorMessage}
         </p>

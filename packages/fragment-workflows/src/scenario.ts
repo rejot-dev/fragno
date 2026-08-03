@@ -1957,6 +1957,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
           name: string;
           type: string;
           status: string;
+          committedByExecutionId: string;
           attempts: number;
           maxAttempts: number;
           timeoutMs: number | null;
@@ -1977,6 +1978,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
         name: row.name,
         type: row.type,
         status: row.status,
+        committedByExecutionId: row.committedByExecutionId,
         attempts: row.attempts,
         maxAttempts: row.maxAttempts,
         timeoutMs: row.timeoutMs,
@@ -2009,6 +2011,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
         emissionsRows as Array<{
           id: { toString(): string };
           stepKey: string;
+          executionId: string;
           epoch: string;
           sequence: number;
           actor: WorkflowEventActor;
@@ -2018,6 +2021,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
       ).map((row) => ({
         id: row.id.toString(),
         stepKey: row.stepKey,
+        executionId: row.executionId,
         epoch: row.epoch,
         sequence: row.sequence,
         actor: row.actor,

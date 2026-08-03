@@ -13,6 +13,10 @@ import type {
   RemoteWorkflowStepSuspendReason,
 } from "../remote-workflow";
 import {
+  isWorkflowEventConsumedControlPayload,
+  selectWorkflowStepReplayEpochs,
+} from "../step-emission-control";
+import {
   buildNestedStepKey,
   buildStepKey,
   ROOT_STEP_SCOPE,
@@ -23,6 +27,7 @@ import { parseDurationMs } from "../utils";
 import type {
   AnyTxResult,
   WorkflowDuration,
+  WorkflowStepConsumedEvent,
   WorkflowStepEmission,
   WorkflowStepEmissionsCleanupHookPayload,
   WorkflowStep,
@@ -65,6 +70,7 @@ type RunnerStepOptions = {
   workflowName: string;
   instanceId: string;
   handlerTx: DatabaseRequestContext["handlerTx"];
+  executionId: string;
   createEpoch: () => string;
   stepEmissions?: WorkflowStepLivePumpRegistry;
   workflowsByName: Map<string, WorkflowRegistryEntry>;
@@ -100,12 +106,8 @@ function stripDelayFields<T extends Record<string, unknown>>(data: T): T {
   return rest as T;
 }
 
-/**
- * Treat both "complete" and "completed" as terminal step statuses.
- * Bigger picture: keeps runner compatible with existing persisted values.
- */
 function isCompletedStatus(status?: string | null): boolean {
-  return status === "completed" || status === "complete";
+  return status === "completed";
 }
 
 /**
@@ -159,6 +161,7 @@ export class RunnerStep implements WorkflowStep {
   readonly #workflowName: string;
   readonly #instanceId: string;
   readonly #handlerTx: DatabaseRequestContext["handlerTx"];
+  readonly #executionId: string;
   readonly #createEpoch: () => string;
   readonly #stepEmissions: WorkflowStepLivePumpRegistry;
   readonly #workflowsByName: Map<string, WorkflowRegistryEntry>;
@@ -169,6 +172,7 @@ export class RunnerStep implements WorkflowStep {
     this.#workflowName = options.workflowName;
     this.#instanceId = options.instanceId;
     this.#handlerTx = options.handlerTx;
+    this.#executionId = options.executionId;
     this.#createEpoch = options.createEpoch;
     this.#stepEmissions = options.stepEmissions ?? new BufferedPumpRegistry<WorkflowStepLivePump>();
     this.#workflowsByName = options.workflowsByName;
@@ -203,13 +207,19 @@ export class RunnerStep implements WorkflowStep {
   }
 
   #previousEmissionsFor(stepKey: string): WorkflowStepEmission[] {
-    return this.#state.stepEmissions.flatMap((emission) =>
-      emission.stepKey === stepKey
+    const stepEmissions = this.#state.stepEmissions.filter(
+      (emission) => emission.stepKey === stepKey,
+    );
+    const selectedEpoch = selectWorkflowStepReplayEpochs(stepEmissions).get(stepKey);
+
+    return stepEmissions.flatMap((emission) =>
+      !selectedEpoch || emission.epoch === selectedEpoch
         ? [
             {
               id: emission.id.toString(),
               actor: emission.actor,
               stepKey: emission.stepKey,
+              executionId: emission.executionId,
               epoch: emission.epoch,
               sequence: emission.sequence,
               payload: emission.payload,
@@ -218,6 +228,37 @@ export class RunnerStep implements WorkflowStep {
           ]
         : [],
     );
+  }
+
+  #previousConsumedEventsFor<TPayload>(stepKey: string): WorkflowStepConsumedEvent<TPayload>[] {
+    const consumedEventIds = new Set(
+      this.#state.stepEmissions.flatMap((emission) =>
+        emission.stepKey === stepKey &&
+        isSystemEventActor(emission.actor) &&
+        isWorkflowEventConsumedControlPayload(emission.payload)
+          ? [emission.payload.eventId]
+          : [],
+      ),
+    );
+    const consumedEvents = this.#state.events
+      .filter((event) => consumedEventIds.has(event.id.toString()))
+      .sort((left, right) => {
+        const timestampDifference = left.createdAt.getTime() - right.createdAt.getTime();
+        return timestampDifference !== 0
+          ? timestampDifference
+          : left.id.toString().localeCompare(right.id.toString());
+      });
+
+    if (consumedEvents.length !== consumedEventIds.size) {
+      throw new Error("WORKFLOW_CONSUMED_EVENT_NOT_FOUND");
+    }
+
+    return consumedEvents.map((event) => ({
+      id: event.id.toString(),
+      type: event.type,
+      payload: (event.payload ?? null) as Readonly<TPayload>,
+      timestamp: event.createdAt,
+    }));
   }
 
   #prepareWaitingDraft(
@@ -414,6 +455,7 @@ export class RunnerStep implements WorkflowStep {
       pendingEventConsumptions.set(event.id.toString(), event);
     };
     const isEventConsumptionQueued = (event: WorkflowEventRecord) =>
+      pendingEventConsumptions.has(event.id.toString()) ||
       Boolean(this.#state.mutations.eventUpdates.get(event.id.toString())?.data.consumedByStepKey);
     const livePumpHandle = this.#stepEmissions.getOrCreate(
       workflowStepLivePumpKey(this.#workflowName, this.#instanceId),
@@ -427,7 +469,9 @@ export class RunnerStep implements WorkflowStep {
     livePumpHandle.pump.setHandlerTx(this.#handlerTx);
     const emissionScope = livePumpHandle.pump.openScope(identity.stepKey, {
       stepKey: identity.stepKey,
+      executionId: this.#executionId,
       epoch: this.#createEpoch(),
+      eventConsumptions: pendingEventConsumptions,
       queueEventConsumption,
       isEventConsumptionQueued,
     });
@@ -499,6 +543,7 @@ export class RunnerStep implements WorkflowStep {
       txQueue.commitSuccess();
       for (const event of pendingEventConsumptions.values()) {
         this.#queueEventUpdate(event, { consumedByStepKey: identity.stepKey });
+        event.consumedByStepKey = identity.stepKey;
       }
       this.#upsertStep(stepKey, {
         name,
@@ -748,7 +793,9 @@ export class RunnerStep implements WorkflowStep {
       livePumpHandle.pump.setHandlerTx(this.#handlerTx);
       const emissionScope = livePumpHandle.pump.openScope(stepKey, {
         stepKey,
+        executionId: this.#executionId,
         epoch: this.#createEpoch(),
+        eventConsumptions: new Map(),
         queueEventConsumption: () => {},
         isEventConsumptionQueued: () => false,
       });
@@ -917,6 +964,8 @@ export class RunnerStep implements WorkflowStep {
       },
       emit: () => {},
       previousEmissions: async () => this.#previousEmissionsFor(identity.stepKey),
+      previousConsumedEvents: async <TPayload>() =>
+        this.#previousConsumedEventsFor<TPayload>(identity.stepKey),
       onEvent: () => () => {},
       workflowServiceCalls: (factory) => {
         const operations = factory();

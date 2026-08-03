@@ -51,14 +51,13 @@ const sessionBaseOutputSchema = z.object({
   id: z.string(),
   name: z.string().nullable(),
   status: z.enum(PI_SESSION_STATUSES).optional(),
-  agent: z.string(),
+  metadata: z.record(z.string(), z.unknown()).nullable(),
   workflowName: z.string(),
   createdAt: isoDateTimeOutputSchema,
   updatedAt: isoDateTimeOutputSchema,
 });
 
-const sessionDetailBaseOutputSchema = sessionBaseOutputSchema.omit({ agent: true }).extend({
-  agentName: z.string(),
+const sessionDetailBaseOutputSchema = sessionBaseOutputSchema.extend({
   workflow: workflowStatusOutputSchema,
   agent: z.object({
     state: piAgentStateSnapshotOutputSchema,
@@ -70,7 +69,7 @@ const sessionCreateInputSchema = z.object({
   agent: z.string().trim().min(1),
   name: z.string().trim().min(1).optional(),
   systemMessage: z.string().trim().min(1).optional(),
-  metadata: z.unknown().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   tags: z.array(z.string().trim().min(1)).optional(),
   steeringMode: z.enum(["all", "one-at-a-time"]).optional(),
 });
@@ -92,7 +91,6 @@ const sessionTurnInputSchema = z.object({
 });
 
 const sessionExtraOutputSchema = {
-  metadata: z.unknown().optional(),
   tags: z.array(z.string()).optional(),
   steeringMode: z.enum(["all", "one-at-a-time"]).optional(),
 };

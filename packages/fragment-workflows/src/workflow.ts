@@ -14,6 +14,7 @@ export type WorkflowDuration = string | number;
 /** Event delivered to a workflow instance run. */
 export type WorkflowEvent<T> = {
   payload: Readonly<T>;
+  /** Stable workflow instance creation time across retries and restarts. */
   timestamp: Date;
   instanceId: string;
 };
@@ -48,7 +49,12 @@ export type WorkflowStepEvent<TPayload = unknown> = {
   type: string;
   payload: Readonly<TPayload>;
   timestamp: Date;
-  /** Queue this durable event for consumption if the enclosing step completes successfully. */
+  /**
+   * Queue an acknowledgement of this event.
+   *
+   * The acknowledgement becomes durable when the step-emission pump next flushes. Until then,
+   * and during concurrent delivery races, the event may be delivered again.
+   */
   consume(): void;
 };
 
@@ -56,10 +62,18 @@ export type WorkflowStepEventHandler<TPayload = unknown> = (
   event: WorkflowStepEvent<TPayload>,
 ) => void | Promise<void>;
 
+export type WorkflowStepConsumedEvent<TPayload = unknown> = {
+  id: string;
+  type: string;
+  payload: Readonly<TPayload>;
+  timestamp: Date;
+};
+
 export type WorkflowStepEmission<TPayload = unknown> = {
   id: string;
   actor: WorkflowEventActor;
   stepKey: string;
+  executionId: string;
   epoch: string;
   sequence: number;
   payload: TPayload;
@@ -77,13 +91,15 @@ export type WorkflowStepWorkflowOperation = {
 export type WorkflowStepConsumeTx<THooks extends HooksMap = HooksMap> = {
   serviceCalls: (factory: () => readonly AnyTxResult[]) => void;
   mutate: (fn: (ctx: HandlerTxContext<THooks>) => void) => void;
-  /** Persist an outbound workflow-authored step emission. */
+  /** Queue an outbound workflow-authored emission for the step-emission pump to persist. */
   emit: (payload: unknown) => void;
   /** Emissions for this step that were already persisted before the current attempt started. */
   previousEmissions: () => Promise<WorkflowStepEmission[]>;
 };
 
 export type WorkflowStepTx<THooks extends HooksMap = HooksMap> = WorkflowStepConsumeTx<THooks> & {
+  /** Events durably acknowledged by this step before the current attempt started. */
+  previousConsumedEvents: <TPayload = unknown>() => Promise<WorkflowStepConsumedEvent<TPayload>[]>;
   workflowServiceCalls: (factory: () => readonly WorkflowStepWorkflowOperation[]) => void;
   onTerminalError: {
     /**
@@ -95,7 +111,7 @@ export type WorkflowStepTx<THooks extends HooksMap = HooksMap> = WorkflowStepCon
   };
   /**
    * Observe durable workflow events of an exact type while this step is active.
-   * Handlers may replay on retry; event.consume() commits only when this step completes.
+   * Handlers may receive an event more than once until event.consume() is durably flushed.
    */
   onEvent: (type: string, handler: WorkflowStepEventHandler) => () => void;
 };
@@ -405,6 +421,42 @@ export type WorkflowEntryFromName<
 
 /** Map of binding keys to workflow definitions. */
 export type WorkflowsRegistry = Record<string, WorkflowRegistryEntry>;
+
+/** A configured workflow name could not be resolved. */
+export class WorkflowNotFoundError extends Error {
+  readonly code = "WORKFLOW_NOT_FOUND";
+
+  constructor(readonly workflowName: string) {
+    super("WORKFLOW_NOT_FOUND");
+    this.name = "WorkflowNotFoundError";
+  }
+}
+
+/** Workflow parameters failed the workflow's runtime schema. */
+export class WorkflowParamsInvalidError extends Error {
+  readonly code = "WORKFLOW_PARAMS_INVALID";
+
+  constructor(
+    readonly workflowName: string,
+    readonly issues: unknown,
+  ) {
+    super("WORKFLOW_PARAMS_INVALID");
+    this.name = "WorkflowParamsInvalidError";
+  }
+}
+
+/** A persisted workflow instance could not be found in its workflow scope. */
+export class WorkflowInstanceNotFoundError extends Error {
+  readonly code = "INSTANCE_NOT_FOUND";
+
+  constructor(
+    readonly workflowName: string,
+    readonly instanceId: string,
+  ) {
+    super("INSTANCE_NOT_FOUND");
+    this.name = "WorkflowInstanceNotFoundError";
+  }
+}
 
 /** Error type that bypasses automatic retries. */
 export class NonRetryableError extends Error {

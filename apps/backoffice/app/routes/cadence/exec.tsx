@@ -6,6 +6,7 @@ import { CodemodeWorkflowPanel } from "@/components/cadence/prompt/codemode-work
 import { WorkflowPanel } from "@/components/cadence/prompt/workflow-panel";
 import { ResizableSplit } from "@/components/cadence/resizable-split";
 import { getAuthMe } from "@/fragno/auth/auth-server";
+import { piSessionAgentName } from "@/fragno/pi/pi-shared";
 import type { CadenceLayoutContext } from "@/layouts/cadence-layout";
 import { cn } from "@/lib/utils";
 import { handlePiTerminalAction } from "@/routes/backoffice/pi-terminal-action";
@@ -67,7 +68,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         name: session.name,
         status,
         workflowName: session.workflowName,
-        agentName: session.agent,
+        agentName: piSessionAgentName(session.metadata) ?? session.workflowName,
         updatedAt: session.updatedAt,
       };
     }),

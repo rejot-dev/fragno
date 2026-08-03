@@ -1,12 +1,12 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { createPiHarness } from "@fragno-dev/pi-harness/factory";
 import type { PiSession, PiSessionDetail, PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
-import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import { createFetchFragnoOutboxTransport } from "@fragno-dev/tanstack-db-adapter/transport";
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
 import type { PiConfigState, PiThinkingLevel } from "@/fragno/pi/pi-shared";
 import { getPiDurableObject } from "@/worker-runtime/durable-objects";
 
@@ -107,7 +107,7 @@ export async function fetchPiSessions(
     const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, requestedLimit));
 
     const response = await callRoute("GET", "/workflows/:workflowName/sessions", {
-      pathParams: { workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME },
+      pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME },
       query: { limit: String(limit) },
     });
 
@@ -170,8 +170,8 @@ export async function createPiSession(
   scope: BackofficeContextScope,
   payload: {
     workflowName?: string;
+    metadata: { agentName: string };
     input: {
-      harnessName: string;
       systemPrompt?: string;
       thinkingLevel?: PiThinkingLevel;
     };
@@ -180,7 +180,7 @@ export async function createPiSession(
 ): Promise<PiCreateSessionResult> {
   try {
     const callRoute = createPiRouteCaller(request, context, scope);
-    const { workflowName = INTERACTIVE_CHAT_WORKFLOW_NAME, ...body } = payload;
+    const { workflowName = BACKOFFICE_PI_WORKFLOW_NAME, ...body } = payload;
     const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
       pathParams: { workflowName },
       body: {
@@ -220,7 +220,7 @@ export async function sendPiSessionMessage(
   sessionId: string,
   payload: {
     text: string;
-    commandKind?: "followUp" | "steer";
+    commandKind?: "prompt" | "followUp" | "steer";
   },
 ): Promise<PiSendMessageResult> {
   try {
@@ -230,7 +230,7 @@ export async function sendPiSessionMessage(
       "/workflows/:workflowName/sessions/:sessionId/command",
       {
         pathParams: { workflowName, sessionId },
-        body: { kind: payload.commandKind ?? "followUp", input: { text: payload.text } },
+        body: { kind: payload.commandKind ?? "prompt", input: { text: payload.text } },
       },
     );
 

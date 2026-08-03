@@ -36,6 +36,7 @@ type RemoteWorkflowMessageRequest = {
     | "waitForEvent"
     | "tx.emit"
     | "tx.previousEmissions"
+    | "tx.previousConsumedEvents"
     | "tx.workflowServiceCalls";
   payload: Record<string, unknown>;
 };
@@ -143,6 +144,14 @@ export class WorkflowStepMessageTxTarget {
 
   async previousEmissions() {
     return await this.#tx.previousEmissions();
+  }
+
+  async previousConsumedEvents() {
+    const previousConsumedEvents = (this.#tx as Partial<WorkflowStepTx>).previousConsumedEvents;
+    if (!previousConsumedEvents) {
+      return unsupportedRemoteTxFeature("PREVIOUS_CONSUMED_EVENTS");
+    }
+    return await previousConsumedEvents();
   }
 
   workflowServiceCalls(operations: readonly WorkflowStepWorkflowOperation[]): void {
@@ -290,6 +299,10 @@ export class WorkflowStepMessageTarget {
       case "tx.previousEmissions": {
         const tx = this.#getTx(message.payload["txId"]);
         return await tx.previousEmissions();
+      }
+      case "tx.previousConsumedEvents": {
+        const tx = this.#getTx(message.payload["txId"]);
+        return await tx.previousConsumedEvents();
       }
       case "tx.workflowServiceCalls": {
         const tx = this.#getTx(message.payload["txId"]);

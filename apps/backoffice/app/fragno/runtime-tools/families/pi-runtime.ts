@@ -1,11 +1,11 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { createPiHarness } from "@fragno-dev/pi-harness/factory";
 import type { PiSession, PiSessionDetail, PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
-import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { PiObject } from "@/backoffice-runtime/object-registry";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-errors";
 
@@ -15,7 +15,7 @@ export type PiSessionCreateArgs = {
   agent: string;
   name?: string;
   systemMessage?: string;
-  metadata?: unknown;
+  metadata?: Record<string, unknown>;
   tags?: string[];
   steeringMode?: "all" | "one-at-a-time";
 };
@@ -120,11 +120,11 @@ export const createPiRouteRuntime = ({
     createSession: async (args) => {
       parsePiRuntimeAgentName(args.agent);
       const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
-        pathParams: { workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME },
+        pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME },
         body: {
           name: args.name,
+          metadata: { ...args.metadata, agentName: args.agent },
           input: {
-            harnessName: args.agent,
             systemPrompt: args.systemMessage,
           },
         },
@@ -150,7 +150,7 @@ export const createPiRouteRuntime = ({
       }
 
       const response = await callRoute("GET", "/workflows/:workflowName/sessions/:sessionId", {
-        pathParams: { workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME, sessionId },
+        pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME, sessionId },
         query,
       });
       if (response.type === "json" && isSuccessStatus(response.status)) {
@@ -168,7 +168,7 @@ export const createPiRouteRuntime = ({
       }
 
       const response = await callRoute("GET", "/workflows/:workflowName/sessions", {
-        pathParams: { workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME },
+        pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME },
         query,
       });
       if (response.type === "json" && isSuccessStatus(response.status)) {
@@ -191,7 +191,7 @@ export const createPiRouteRuntime = ({
       }
 
       const pathParams = {
-        workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
+        workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
         sessionId: normalizedSessionId,
       };
       const waitResponse = callRoute(

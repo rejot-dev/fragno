@@ -26,6 +26,55 @@ const EventWorkflow = defineWorkflow(
 );
 
 describe("workflows scenario DSL", () => {
+  test("keeps the workflow event timestamp stable across resumed runs", async () => {
+    const timestampWorkflow = defineWorkflow(
+      { name: "stable-workflow-event-timestamp" },
+      async (event, step) => {
+        const firstRunTimestamp = await step.do("capture-timestamp", () =>
+          event.timestamp.toISOString(),
+        );
+        await step.sleep("resume", "1 hour");
+        return {
+          firstRunTimestamp,
+          resumedRunTimestamp: event.timestamp.toISOString(),
+        };
+      },
+    );
+    const workflows = { timestamp: timestampWorkflow };
+
+    await runScenario(
+      defineScenario({
+        name: "stable-workflow-event-timestamp",
+        workflows,
+        steps: ({ workflow, runner }) => [
+          runner.initializeAndRunUntilIdle({
+            workflow: "timestamp",
+            id: "stable-timestamp-instance",
+          }),
+          runner.advanceTimeAndRunUntilIdle({
+            workflow: "timestamp",
+            instanceId: "stable-timestamp-instance",
+            advanceBy: "1 hour",
+          }),
+          workflow.read({
+            read: (ctx) => ctx.state.getStatus("timestamp", "stable-timestamp-instance"),
+            assert: (status) => {
+              const output = status.output as {
+                firstRunTimestamp: string;
+                resumedRunTimestamp: string;
+              };
+              expect(output).toEqual({
+                firstRunTimestamp: expect.any(String),
+                resumedRunTimestamp: expect.any(String),
+              });
+              expect(output.resumedRunTimestamp).toBe(output.firstRunTimestamp);
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
   test("types read assert values and vars as readonly", () => {
     const workflows = { sleep: SleepWorkflow };
 

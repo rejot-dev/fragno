@@ -114,58 +114,166 @@ describe("Workflows Fragment Services", () => {
     expect(instances).toHaveLength(2);
   });
 
-  test("status-filtered list pagination does not skip rows sharing updatedAt", async () => {
-    const ids = ["page-0", "page-1", "page-2", "page-3", "page-4"];
-    await runService<{ id: string }[]>(() =>
-      fragment.services.createBatch(
-        "demo-workflow",
-        ids.map((id) => ({ id })),
-      ),
+  test("listInstances paginates equal creation times across orders and optional filters", async () => {
+    const records = [
+      { id: "page-0", remoteWorkflowName: "remote-a", status: "complete" },
+      { id: "page-1", remoteWorkflowName: "remote-a", status: "active" },
+      { id: "page-2", remoteWorkflowName: "remote-a", status: "complete" },
+      { id: "page-3", remoteWorkflowName: "remote-b", status: "complete" },
+      { id: "page-4", remoteWorkflowName: "remote-a", status: "complete" },
+      { id: "page-5", remoteWorkflowName: "remote-b", status: "active" },
+    ] as const;
+    const sharedCreatedAt = new Date("2026-01-01T00:00:00.123Z");
+    const uow = db.createUnitOfWork("equal-creation-time-pagination").forSchema(workflowsSchema);
+    for (const record of records) {
+      uow.create("workflow_instance", {
+        id: buildScopedInstanceRowId("demo-workflow", record.id),
+        workflowName: "demo-workflow",
+        remoteWorkflowName: record.remoteWorkflowName,
+        instanceId: record.id,
+        status: record.status,
+        params: {},
+        createdAt: sharedCreatedAt,
+        updatedAt: sharedCreatedAt,
+        startedAt: null,
+        completedAt: record.status === "complete" ? sharedCreatedAt : null,
+        output: null,
+        errorName: null,
+        errorMessage: null,
+      });
+    }
+    assert((await uow.executeMutations()).success);
+
+    const collectInstanceIds = async (filters: {
+      remoteWorkflowName?: string;
+      status?: "active" | "complete";
+      order?: "asc" | "desc";
+    }) => {
+      const seen: string[] = [];
+      let cursor: Cursor | undefined;
+
+      for (;;) {
+        const page = await runService<{
+          instances: { id: string }[];
+          cursor?: Cursor;
+          hasNextPage: boolean;
+        }>(() =>
+          fragment.services.listInstances({
+            workflowName: "demo-workflow",
+            ...filters,
+            pageSize: 2,
+            cursor,
+          }),
+        );
+        seen.push(...page.instances.map((instance) => instance.id));
+
+        if (!page.hasNextPage) {
+          return seen;
+        }
+        assert(page.cursor);
+        cursor = page.cursor;
+      }
+    };
+
+    expect(await collectInstanceIds({ order: "asc" })).toEqual([
+      "page-0",
+      "page-1",
+      "page-2",
+      "page-3",
+      "page-4",
+      "page-5",
+    ]);
+    expect(await collectInstanceIds({ status: "complete" })).toEqual([
+      "page-4",
+      "page-3",
+      "page-2",
+      "page-0",
+    ]);
+    expect(await collectInstanceIds({ remoteWorkflowName: "remote-a" })).toEqual([
+      "page-4",
+      "page-2",
+      "page-1",
+      "page-0",
+    ]);
+    expect(
+      await collectInstanceIds({ remoteWorkflowName: "remote-a", status: "complete" }),
+    ).toEqual(["page-4", "page-2", "page-0"]);
+  });
+
+  test("listInstances uses creation-time order with optional filters", async () => {
+    const records = [
+      {
+        id: "created-first",
+        remoteWorkflowName: "remote-a",
+        status: "complete",
+        createdAt: new Date("2026-08-01T09:00:00.000Z"),
+      },
+      {
+        id: "created-last",
+        remoteWorkflowName: "remote-b",
+        status: "active",
+        createdAt: new Date("2026-08-01T11:00:00.000Z"),
+      },
+      {
+        id: "created-middle",
+        remoteWorkflowName: "remote-a",
+        status: "complete",
+        createdAt: new Date("2026-08-01T10:00:00.000Z"),
+      },
+    ];
+    const uow = db.createUnitOfWork("creation-order-fixtures").forSchema(workflowsSchema);
+    for (const { id, remoteWorkflowName, status, createdAt } of records) {
+      uow.create("workflow_instance", {
+        id: buildScopedInstanceRowId("demo-workflow", id),
+        workflowName: "demo-workflow",
+        remoteWorkflowName,
+        instanceId: id,
+        status,
+        params: { source: id },
+        createdAt,
+        updatedAt: createdAt,
+        startedAt: null,
+        completedAt: null,
+        output: null,
+        errorName: null,
+        errorMessage: null,
+      });
+    }
+    assert((await uow.executeMutations()).success);
+
+    const page = await runService<{
+      instances: Array<{ id: string; params: unknown; updatedAt: Date }>;
+    }>(() =>
+      fragment.services.listInstances({
+        workflowName: "demo-workflow",
+        pageSize: 2,
+      }),
     );
 
-    const sameUpdatedAt = new Date("2026-01-01T00:00:00.123Z");
-    {
-      const uow = db.createUnitOfWork("complete-for-pagination").forSchema(workflowsSchema);
-      const instances = (
-        await db
-          .createUnitOfWork("read-created-for-pagination")
-          .forSchema(workflowsSchema)
-          .find("workflow_instance", (b) => b.whereIndex("primary"))
-          .executeRetrieve()
-      )[0];
-      for (const instance of instances) {
-        uow.update("workflow_instance", instance.id, (b) =>
-          b.set({ status: "complete", updatedAt: sameUpdatedAt, completedAt: sameUpdatedAt }),
-        );
-      }
-      const { success } = await uow.executeMutations();
-      assert(success);
-    }
+    expect(page.instances).toEqual([
+      expect.objectContaining({
+        id: "created-last",
+        params: { source: "created-last" },
+        updatedAt: new Date("2026-08-01T11:00:00.000Z"),
+      }),
+      expect.objectContaining({
+        id: "created-middle",
+        params: { source: "created-middle" },
+        updatedAt: new Date("2026-08-01T10:00:00.000Z"),
+      }),
+    ]);
 
-    const seen: string[] = [];
-    let cursor: Cursor | undefined;
-    do {
-      const page = await runService<{
-        instances: { id: string }[];
-        cursor?: Cursor;
-        hasNextPage: boolean;
-      }>(() =>
-        fragment.services.listInstances({
-          workflowName: "demo-workflow",
-          status: "complete",
-          pageSize: 2,
-          cursor,
-        }),
-      );
-      seen.push(...page.instances.map((instance) => instance.id));
-      cursor = page.cursor;
-      if (!page.hasNextPage) {
-        break;
-      }
-    } while (cursor);
-
-    expect(new Set(seen)).toEqual(new Set(ids));
-    expect(seen).toHaveLength(ids.length);
+    const filteredPage = await runService<{ instances: Array<{ id: string }> }>(() =>
+      fragment.services.listInstances({
+        workflowName: "demo-workflow",
+        remoteWorkflowName: "remote-a",
+        status: "complete",
+      }),
+    );
+    expect(filteredPage.instances.map((instance) => instance.id)).toEqual([
+      "created-middle",
+      "created-first",
+    ]);
   });
 
   test("listInstances filters by remote workflow name and status together", async () => {
@@ -391,6 +499,7 @@ describe("Workflows Fragment Services", () => {
       uow.create("workflow_step", {
         instanceRef,
         stepKey: "do:flaky",
+        committedByExecutionId: "fixture-execution",
         name: "flaky",
         type: "do",
         status: "errored",
@@ -492,6 +601,7 @@ describe("Workflows Fragment Services", () => {
       uow.create("workflow_step", {
         instanceRef,
         stepKey: "waitForEvent:approval",
+        committedByExecutionId: "fixture-execution",
         name: "approval",
         type: "waitForEvent",
         status: "waiting",
@@ -557,6 +667,7 @@ describe("Workflows Fragment Services", () => {
       uow.create("workflow_step", {
         instanceRef: instance.id,
         stepKey: "waitForEvent:wait-1",
+        committedByExecutionId: "fixture-execution",
         name: "Wait for approval",
         type: "waitForEvent",
         status: "waiting",
@@ -820,6 +931,7 @@ describe("Workflows Fragment Services", () => {
       uow.create("workflow_step", {
         instanceRef,
         stepKey: "waitForEvent:wait-timeout",
+        committedByExecutionId: "fixture-execution",
         name: "Wait for approval",
         type: "waitForEvent",
         status: "waiting",
@@ -934,6 +1046,7 @@ describe("Workflows Fragment Services", () => {
       uow.create("workflow_step", {
         instanceRef: instance.id,
         stepKey: "do:step-1",
+        committedByExecutionId: "fixture-execution",
         name: "first",
         type: "do",
         status: "complete",
@@ -965,6 +1078,7 @@ describe("Workflows Fragment Services", () => {
       uow.create("workflow_step", {
         instanceRef: instance.id,
         stepKey: "waitForEvent:step-2",
+        committedByExecutionId: "fixture-execution",
         name: "await-approval",
         type: "waitForEvent",
         status: "waiting",
@@ -1050,6 +1164,7 @@ describe("Workflows Fragment Services", () => {
       uow.create("workflow_step", {
         instanceRef,
         stepKey: "do:step-1",
+        committedByExecutionId: "fixture-execution",
         name: "Step One",
         type: "do",
         status: "completed",
@@ -1079,6 +1194,7 @@ describe("Workflows Fragment Services", () => {
       uow.create("workflow_step", {
         instanceRef,
         stepKey: "sleep:step-2",
+        committedByExecutionId: "fixture-execution",
         name: "Step Two",
         type: "sleep",
         status: "waiting",
@@ -1150,10 +1266,38 @@ describe("Workflows Fragment Services", () => {
       uow.create("workflow_step_emission", {
         instanceRef,
         stepKey: "do:step-1",
+        executionId: "fixture-execution",
         epoch: "epoch-1",
         sequence: 1,
         actor: "user",
-        payload: { frame: "partial" },
+        payload: { frame: "canonical" },
+      });
+      uow.create("workflow_step_emission", {
+        instanceRef,
+        stepKey: "do:step-1",
+        executionId: "losing-execution",
+        epoch: "epoch-losing-step-1",
+        sequence: 2,
+        actor: "user",
+        payload: { frame: "losing-contested" },
+      });
+      uow.create("workflow_step_emission", {
+        instanceRef,
+        stepKey: "do:speculative-downstream",
+        executionId: "losing-execution",
+        epoch: "epoch-losing-downstream",
+        sequence: 3,
+        actor: "user",
+        payload: { frame: "losing-downstream" },
+      });
+      uow.create("workflow_step_emission", {
+        instanceRef,
+        stepKey: "sleep:step-2",
+        executionId: "unresolved-execution",
+        epoch: "epoch-unresolved",
+        sequence: 4,
+        actor: "user",
+        payload: { frame: "unresolved" },
       });
       const { success } = await uow.executeMutations();
       if (!success) {
@@ -1178,7 +1322,11 @@ describe("Workflows Fragment Services", () => {
     );
     expect(history.steps).toHaveLength(2);
     expect(history.events).toHaveLength(2);
-    expect(history.emissions).toHaveLength(1);
+    expect(history.emissions).toHaveLength(2);
+    expect(history.emissions.map((emission) => emission.stepKey)).toEqual([
+      "do:step-1",
+      "sleep:step-2",
+    ]);
     expect(history.steps[0]?.stepKey).toBeTruthy();
     expect(history.events[0]?.type).toBeTruthy();
     expect(history.emissions[0]).toMatchObject({ stepKey: "do:step-1", actor: "user" });

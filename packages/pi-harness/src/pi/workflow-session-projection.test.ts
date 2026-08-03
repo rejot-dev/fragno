@@ -64,7 +64,6 @@ const completedStep = (
   waitEventType: null,
   result: {
     type: "harness-run",
-    operation: "prompt",
     appendedEntries: [...entries],
     leafId: entries.at(-1)?.id ?? null,
   },
@@ -205,10 +204,8 @@ describe("projectPiWorkflowSession", () => {
           waitEventType: null,
           result: {
             type: "harness-run",
-            operation: "navigateTree",
             appendedEntries: [navigationLeaf],
             leafId: "branch-a",
-            navigateTreeResult: { cancelled: false },
           },
         },
       ],
