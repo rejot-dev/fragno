@@ -45,14 +45,14 @@ describe("Browser Run Quick Actions", () => {
   test("runs a stateless Quick Action with the fragment account", async () => {
     fetchMock.mockResolvedValueOnce(createCloudflareResponse("<h1>Rendered</h1>"));
 
-    const content = await quickActions.content({ url: "https://example.com" });
+    const content = await quickActions.content({ url: "https://fragno.dev" });
 
     expect(content).toBe("<h1>Rendered</h1>");
     expect(fetchMock).toHaveBeenCalledOnce();
 
     const [input, init] = fetchMock.mock.calls[0]!;
     expect(getRequestUrl(input)).toContain("/accounts/acct_test/browser-rendering/content");
-    expect(getRequestBody(init)).toEqual({ url: "https://example.com" });
+    expect(getRequestBody(init)).toEqual({ url: "https://fragno.dev" });
   });
 
   test("returns the raw screenshot response instead of parsing image bytes as text", async () => {
@@ -89,9 +89,7 @@ describe("Browser Run Quick Actions", () => {
         createCloudflareResponse({ job_id: "crawl_job", message: "cancelled" }),
       );
 
-    await expect(quickActions.startCrawl({ url: "https://example.com" })).resolves.toBe(
-      "crawl_job",
-    );
+    await expect(quickActions.startCrawl({ url: "https://fragno.dev" })).resolves.toBe("crawl_job");
     await expect(quickActions.getCrawl("crawl_job")).resolves.toMatchObject({
       id: "crawl_job",
       status: "completed",

@@ -65,18 +65,18 @@ The server-side `browserRun` service calls Cloudflare's REST API using the fragm
 
 ```ts
 const html = await fragment.services.browserRun.content({
-  url: "https://example.com",
+  url: "https://fragno.dev",
 });
 
 const screenshot = await fragment.services.browserRun.screenshot({
-  url: "https://example.com",
+  url: "https://fragno.dev",
   screenshotOptions: {
     fullPage: true,
   },
 });
 
 const crawlJobId = await fragment.services.browserRun.startCrawl({
-  url: "https://example.com/docs",
+  url: "https://fragno.dev/docs",
   limit: 25,
 });
 
@@ -87,8 +87,9 @@ The MVP exposes the stateless `content`, `pdf`, `scrape`, `screenshot`, `snapsho
 `markdown`, and `accessibilityTree` actions. Crawl jobs are exposed through `startCrawl`,
 `getCrawl`, and `cancelCrawl`.
 
-Browser sessions, CDP, Puppeteer, Playwright, and Worker browser bindings are intentionally outside
-this initial scope.
+CDP clients, Puppeteer, Playwright, and Worker browser bindings remain outside this fragment's
+scope. Browser session and target lifecycle operations are available through the Cloudflare REST API
+service described below.
 
 Quick Actions are split by their response and lifecycle semantics:
 
@@ -103,19 +104,19 @@ Quick Actions are split by their response and lifecycle semantics:
 await client.useBrowserRunExtract.mutate({
   body: {
     action: "content",
-    input: { url: "https://example.com" },
+    input: { url: "https://fragno.dev" },
   },
 });
 
 const screenshot = await client.captureBrowserRun({
   action: "screenshot",
-  input: { url: "https://example.com" },
+  input: { url: "https://fragno.dev" },
 });
 
 await client.useBrowserRunCrawl.mutate({
   body: {
     action: "start",
-    input: { url: "https://example.com/docs" },
+    input: { url: "https://fragno.dev/docs" },
   },
 });
 ```
@@ -125,6 +126,30 @@ from the action. Crawl `start` returns `{ jobId }` under `result`. Capture respo
 `Response` objects so consumers can use `blob()`, `arrayBuffer()`, or stream the body directly to a
 file.
 
+## Browser Run Sessions
+
+The `browserRunSessions` service manages remote Browser Run sessions and their browser targets. It
+returns Cloudflare's session and target metadata, including WebSocket debugger URLs when Cloudflare
+provides them, but does not connect to CDP or include a browser automation library.
+
+```ts
+const session = await fragment.services.browserRunSessions.create({
+  keep_alive: 600_000,
+});
+
+const target = await fragment.services.browserRunSessions.createTarget(session.sessionId, {
+  url: "https://fragno.dev",
+});
+
+const targets = await fragment.services.browserRunSessions.listTargets(session.sessionId);
+await fragment.services.browserRunSessions.activateTarget(session.sessionId, target.id);
+await fragment.services.browserRunSessions.closeTarget(session.sessionId, target.id);
+await fragment.services.browserRunSessions.close(session.sessionId);
+```
+
+Session methods are `create`, `list`, `get`, and `close`. Target methods are `createTarget`,
+`listTargets`, `getTarget`, `activateTarget`, and `closeTarget`.
+
 ## Routes
 
 ### Browser Run
@@ -132,6 +157,15 @@ file.
 - `POST /browser-run/extract`
 - `POST /browser-run/capture`
 - `POST /browser-run/crawl`
+- `POST /browser-run/sessions`
+- `GET /browser-run/sessions`
+- `GET /browser-run/sessions/:sessionId`
+- `DELETE /browser-run/sessions/:sessionId`
+- `POST /browser-run/sessions/:sessionId/targets`
+- `GET /browser-run/sessions/:sessionId/targets`
+- `GET /browser-run/sessions/:sessionId/targets/:targetId`
+- `POST /browser-run/sessions/:sessionId/targets/:targetId/activate`
+- `DELETE /browser-run/sessions/:sessionId/targets/:targetId`
 
 ### Workers for Platforms
 
@@ -163,11 +197,23 @@ per tag so `<prefix>-app-...` and `<prefix>-dep-...` stay within Cloudflare's 63
 - `useDeployment`
 - `useQueueDeployment`
 
-It also exposes three Browser Run helpers:
+It also exposes Browser Run Quick Action helpers:
 
 - `useBrowserRunExtract`
 - `captureBrowserRun`
 - `useBrowserRunCrawl`
+
+Browser session helpers are:
+
+- `useBrowserRunSessions`
+- `useBrowserRunSession`
+- `useCreateBrowserRunSession`
+- `useCloseBrowserRunSession`
+- `useBrowserRunTargets`
+- `useBrowserRunTarget`
+- `useCreateBrowserRunTarget`
+- `useActivateBrowserRunTarget`
+- `useCloseBrowserRunTarget`
 
 Framework entrypoints are available at `@fragno-dev/cloudflare-fragment/react`, `./vue`, `./svelte`,
 `./solid`, and `./vanilla`.
