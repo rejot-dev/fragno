@@ -5,11 +5,20 @@ import {
   type AutomationsScopedRouteParams,
 } from "./automations-scoped.server";
 
-const AUTOMATIONS_MOUNT = "/api/automations";
+const AUTOMATIONS_WORKFLOWS_MOUNT = "/api/automations-workflows";
 
-/**
- * Authenticated catch-all route for browser clients that need a scope-aware Automations fragment.
- */
+const forwardToScopedWorkflows = (
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  params: AutomationsScopedRouteParams,
+) =>
+  forwardToScopedAutomationsFragment({
+    request,
+    context,
+    params,
+    mountRoute: AUTOMATIONS_WORKFLOWS_MOUNT,
+  });
+
 export async function loader({
   request,
   context,
@@ -19,12 +28,7 @@ export async function loader({
   context: Readonly<RouterContextProvider>;
   params: AutomationsScopedRouteParams;
 }) {
-  return forwardToScopedAutomationsFragment({
-    request,
-    context,
-    params,
-    mountRoute: AUTOMATIONS_MOUNT,
-  });
+  return forwardToScopedWorkflows(request, context, params);
 }
 
 export async function action({
@@ -36,10 +40,5 @@ export async function action({
   context: Readonly<RouterContextProvider>;
   params: AutomationsScopedRouteParams;
 }) {
-  return forwardToScopedAutomationsFragment({
-    request,
-    context,
-    params,
-    mountRoute: AUTOMATIONS_MOUNT,
-  });
+  return forwardToScopedWorkflows(request, context, params);
 }

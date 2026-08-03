@@ -36,6 +36,7 @@ const createBatchSchema = z.object({
 });
 
 const sendEventSchema = z.object({
+  id: identifierSchema.optional(),
   type: identifierSchema,
   payload: z.unknown().optional(),
 });
