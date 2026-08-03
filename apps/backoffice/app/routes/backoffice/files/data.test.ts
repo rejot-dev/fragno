@@ -61,7 +61,7 @@ describe("files explorer route data", () => {
         "https://backoffice.test/files/acme-org/workspace/automations/example.workflow.js",
       ),
       context: mockContext,
-      orgId: "acme-org",
+      scope: { kind: "org", orgId: "acme-org" },
       requestedPath: "/workspace/automations/example.workflow.js",
     });
 
@@ -75,7 +75,10 @@ describe("files explorer route data", () => {
     ).toEqual({
       kind: "upload",
       provider: "database",
-      source: { orgId: "acme-org", adapterIdentity: "adapter-1" },
+      source: {
+        scope: { kind: "org", orgId: "acme-org" },
+        adapterIdentity: "adapter-1",
+      },
     });
     assert(result.selectedPath === "/workspace/automations/example.workflow.js");
     expect(result.selectedContent).toEqual({
@@ -85,13 +88,40 @@ describe("files explorer route data", () => {
     assert(result.loadError === null);
   });
 
+  test("uses project-scoped Upload data and synchronization", async () => {
+    const scope = { kind: "project" as const, orgId: "acme-org", projectId: "project-1" };
+    const result = await loadFilesExplorerData({
+      request: new Request("https://backoffice.test/files/project/acme-org:project-1"),
+      context: mockContext,
+      scope,
+    });
+
+    expect(createFilesOverviewCollectionsMock).toHaveBeenCalledWith({
+      request: expect.any(Request),
+      context: mockContext,
+      scope,
+    });
+    expect(fetchUploadAdapterIdentityMock).toHaveBeenCalledWith(
+      expect.any(Request),
+      mockContext,
+      scope,
+    );
+    expect(
+      result.sources.find((source) => source.rootPath === "/workspace")?.synchronization,
+    ).toEqual({
+      kind: "upload",
+      provider: "database",
+      source: { scope, adapterIdentity: "adapter-1" },
+    });
+  });
+
   test("retains paths that may exist optimistically in a synchronized collection", async () => {
     const result = await loadFilesExplorerData({
       request: new Request(
         "https://backoffice.test/files/acme-org/workspace/new-optimistic-file.txt",
       ),
       context: mockContext,
-      orgId: "acme-org",
+      scope: { kind: "org", orgId: "acme-org" },
       requestedPath: "/workspace/new-optimistic-file.txt",
     });
 
@@ -104,7 +134,7 @@ describe("files explorer route data", () => {
     const result = await loadFilesExplorerData({
       request: new Request("https://backoffice.test/files/acme-org/missing"),
       context: mockContext,
-      orgId: "acme-org",
+      scope: { kind: "org", orgId: "acme-org" },
       requestedPath: "/missing",
     });
 
@@ -142,7 +172,7 @@ describe("files explorer route data", () => {
     const result = await loadFilesExplorerData({
       request: new Request("https://backoffice.test/files/acme-org/workspace/large.txt"),
       context: mockContext,
-      orgId: "acme-org",
+      scope: { kind: "org", orgId: "acme-org" },
       requestedPath: "/workspace/large.txt",
     });
 
@@ -174,7 +204,7 @@ describe("files explorer route data", () => {
     const result = await loadFilesExplorerData({
       request: new Request("https://backoffice.test/files"),
       context: mockContext,
-      orgId: "acme-org",
+      scope: { kind: "org", orgId: "acme-org" },
     });
 
     expect(result.sources.map((source) => source.rootPath)).toEqual(["/static"]);

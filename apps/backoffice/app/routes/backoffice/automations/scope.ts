@@ -102,26 +102,32 @@ export const createAutomationScopeOptions = ({
   user,
   currentTab,
   projectOrgId,
+  pathForScope,
 }: {
   organisations: Organisation[];
   projects: AutomationProjectRecord[];
   user: AuthMeData["user"];
   currentTab: AutomationScopeTab;
-  projectOrgId: string;
+  projectOrgId: string | null;
+  pathForScope?: (scope: AutomationUiScope) => string;
 }): AutomationScopeOption[] => {
+  const destinationFor = (scope: AutomationUiScope) =>
+    pathForScope?.(scope) ??
+    automationScopeTabPath(scope, resolveAutomationScopeTab(scope, currentTab));
   const orgOptions = organisations.map((organisation) => ({
     id: `org:${organisation.id}`,
     kind: "org" as const,
     label: organisation.name ?? organisation.id,
     description: "Organisation scope",
-    to: automationScopeTabPath(
-      { kind: "org", orgId: organisation.id, label: organisation.name ?? organisation.id },
-      currentTab,
-    ),
+    to: destinationFor({
+      kind: "org",
+      orgId: organisation.id,
+      label: organisation.name ?? organisation.id,
+    }),
   }));
 
   const projectOptions = projects.flatMap((project) => {
-    if (project.archivedAt) {
+    if (!projectOrgId || project.archivedAt) {
       return [];
     }
 
@@ -131,15 +137,12 @@ export const createAutomationScopeOptions = ({
       kind: "project" as const,
       label: projectLabel(project),
       description: project.slug?.trim() ? `Project · ${project.slug}` : "Project scope",
-      to: automationScopeTabPath(
-        {
-          kind: "project",
-          orgId: projectOrgId,
-          projectId,
-          label: projectLabel(project),
-        },
-        currentTab,
-      ),
+      to: destinationFor({
+        kind: "project",
+        orgId: projectOrgId,
+        projectId,
+        label: projectLabel(project),
+      }),
     };
 
     return option.to.includes("/project/") ? [option] : [];
@@ -154,10 +157,7 @@ export const createAutomationScopeOptions = ({
           kind: "system",
           label: SYSTEM_AUTOMATION_SCOPE_LABEL,
           description: "Global system automation scope",
-          to: automationScopeTabPath(
-            systemScope,
-            resolveAutomationScopeTab(systemScope, currentTab),
-          ),
+          to: destinationFor(systemScope),
         },
       ]
     : [];
@@ -171,7 +171,7 @@ export const createAutomationScopeOptions = ({
       kind: "user",
       label: userName(user),
       description: "Personal user scope",
-      to: automationScopeTabPath(userScope, currentTab),
+      to: destinationFor(userScope),
     },
   ];
 };

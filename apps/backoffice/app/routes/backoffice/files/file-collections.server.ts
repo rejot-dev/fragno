@@ -1,6 +1,6 @@
 import type { RouterContextProvider } from "react-router";
 
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { UploadObject } from "@/backoffice-runtime/object-registry";
 import type { FilesExplorerSource } from "@/components/backoffice/files-explorer";
@@ -22,20 +22,51 @@ export type FilesOverviewCollection = Omit<FilesExplorerSource, "tree"> & {
   };
 };
 
+export const filesOverviewRootPathsForScope = (
+  scope: BackofficeContextScope,
+): readonly string[] => {
+  switch (scope.kind) {
+    case "system":
+      return ["/system"];
+    case "org":
+      return ["/static", "/workspace"];
+    case "project":
+    case "user":
+      return ["/workspace"];
+  }
+
+  throw new Error("Unsupported Backoffice file scope kind.");
+};
+
 export async function createFilesOverviewCollections({
   request,
   context,
-  orgId,
+  scope,
 }: {
   request: Request;
   context: Readonly<RouterContextProvider>;
-  orgId: string;
+  scope: BackofficeContextScope;
 }): Promise<FilesOverviewCollection[]> {
   const { runtime } = context.get(BackofficeWorkerContext);
-  const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
+  const execution = await requireBackofficeContext(request, context, scope);
   const kernel = new BackofficeKernel({ objects: runtime.objects });
-  const collections: FilesOverviewCollection[] = [
-    {
+  const rootPaths = filesOverviewRootPathsForScope(execution.scope);
+  const collections: FilesOverviewCollection[] = [];
+
+  if (rootPaths.includes("/system")) {
+    collections.push({
+      rootPath: "/system",
+      rootTitle: "System",
+      rootDescription: "Admin-only system-scope automations and metadata.",
+      rootKind: "static",
+      readOnly: true,
+      persistence: "persistent",
+      collection: systemFileCollection,
+    });
+  }
+
+  if (rootPaths.includes("/static")) {
+    collections.push({
       rootPath: "/static",
       rootTitle: "Static",
       rootDescription:
@@ -50,35 +81,25 @@ export async function createFilesOverviewCollections({
           execution,
         }),
       ),
-    },
-  ];
-
-  if (canSeeSystemFiles(execution)) {
-    collections.push({
-      rootPath: "/system",
-      rootTitle: "System",
-      rootDescription: "Admin-only system-scope automations and metadata.",
-      rootKind: "static",
-      readOnly: true,
-      persistence: "persistent",
-      collection: systemFileCollection,
     });
   }
 
-  const uploadObject = kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload);
-  collections.push({
-    rootPath: "/workspace",
-    rootTitle: "Workspace",
-    rootDescription: "Persistent organization-scoped workspace files.",
-    rootKind: "upload",
-    readOnly: false,
-    persistence: "persistent",
-    collection: createWorkspaceFileCollection(uploadObject, request),
-    clientSynchronization: {
-      kind: "upload",
-      provider: UPLOAD_PROVIDER_DATABASE,
-    },
-  });
+  if (rootPaths.includes("/workspace")) {
+    const uploadObject = kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload);
+    collections.push({
+      rootPath: "/workspace",
+      rootTitle: "Workspace",
+      rootDescription: `Persistent ${execution.scope.kind}-scoped workspace files.`,
+      rootKind: "upload",
+      readOnly: false,
+      persistence: "persistent",
+      collection: createWorkspaceFileCollection(uploadObject, request),
+      clientSynchronization: {
+        kind: "upload",
+        provider: UPLOAD_PROVIDER_DATABASE,
+      },
+    });
+  }
 
   return collections;
 }
@@ -105,12 +126,4 @@ function fetchUploadFile(
   url.searchParams.set("provider", provider);
   url.searchParams.set("key", fileKey);
   return uploadObject.fetch(new Request(url, { headers: request.headers }));
-}
-
-function canSeeSystemFiles(execution: BackofficeExecutionContext): boolean {
-  return (
-    execution.scope.kind === "system" ||
-    execution.actor.type === "system" ||
-    (execution.actor.type === "user" && execution.actor.role === "admin")
-  );
 }

@@ -17,15 +17,20 @@ import {
 } from "@/fragno/upload/tanstack/browser-database";
 
 import type { Route } from "./+types/explorer";
-import { loadFilesExplorerData, type FilesExplorerSourceSnapshot } from "./data";
+import {
+  loadFilesExplorerData,
+  resolveAuthorizedFilesRouteScope,
+  type FilesExplorerSourceSnapshot,
+} from "./data";
 import type { FilesLayoutContext } from "./layout-context";
+import { filesDownloadPath, filesExplorerPath, type FilesUiScope } from "./scope";
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
+  const scope = await resolveAuthorizedFilesRouteScope({ request, context, params, url });
+  if (scope instanceof Response) {
+    return scope;
   }
-
-  return loadFilesExplorerData({ request, context, orgId: params.orgId });
+  return loadFilesExplorerData({ request, context, scope });
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -35,9 +40,9 @@ export function meta({ loaderData }: Route.MetaArgs) {
 
 export default function BackofficeFilesExplorer() {
   const loaderData = useLoaderData<typeof loader>();
-  const { orgId } = useOutletContext<FilesLayoutContext>();
+  const { selectedScope } = useOutletContext<FilesLayoutContext>();
   const synchronizedSource = loaderData.sources.find(hasUploadSynchronization);
-  const initialView = <FilesExplorerRouteView {...loaderData} orgId={orgId} />;
+  const initialView = <FilesExplorerRouteView {...loaderData} selectedScope={selectedScope} />;
 
   if (!synchronizedSource?.synchronization) {
     return initialView;
@@ -51,7 +56,7 @@ export default function BackofficeFilesExplorer() {
             describeUploadCollectionSource(synchronizedSource.synchronization.source).resourceKey
           }
           {...loaderData}
-          orgId={orgId}
+          selectedScope={selectedScope}
           synchronizedSource={synchronizedSource}
         />
       </Suspense>
@@ -64,7 +69,7 @@ function SynchronizedFilesExplorer({
   selectedPath,
   selectedContent,
   loadError,
-  orgId,
+  selectedScope,
   synchronizedSource,
 }: FilesExplorerRouteViewProps & {
   synchronizedSource: SynchronizedFilesExplorerSource;
@@ -129,7 +134,7 @@ function SynchronizedFilesExplorer({
       selectedPath={selectedPath}
       selectedContent={selectedContent}
       loadError={appendErrors(loadError, synchronizationError, selectedPathError)}
-      orgId={orgId}
+      selectedScope={selectedScope}
     />
   );
 }
@@ -139,7 +144,7 @@ type FilesExplorerRouteViewProps = {
   selectedPath: string | null;
   selectedContent: { path: string; text: string } | null;
   loadError: string | null;
-  orgId: string;
+  selectedScope: FilesUiScope;
 };
 
 function FilesExplorerRouteView({
@@ -147,7 +152,7 @@ function FilesExplorerRouteView({
   selectedPath,
   selectedContent,
   loadError,
-  orgId,
+  selectedScope,
 }: FilesExplorerRouteViewProps) {
   return (
     <FilesExplorerView
@@ -156,8 +161,8 @@ function FilesExplorerRouteView({
       selectedContent={selectedContent}
       loadError={loadError}
       defaultCollapsedRootPaths={["/static", "/system"]}
-      buildNodeTo={(path) => ({ pathname: buildExplorerPathname(orgId, path) })}
-      buildDownloadHref={(path) => buildDownloadHref(orgId, path)}
+      buildNodeTo={(path) => ({ pathname: filesExplorerPath(selectedScope, path) })}
+      buildDownloadHref={(path) => filesDownloadPath(selectedScope, path)}
     />
   );
 }
@@ -202,15 +207,4 @@ function readSynchronizationError(error: unknown): string {
 function appendErrors(...errors: Array<string | null>): string | null {
   const messages = errors.filter((error): error is string => Boolean(error));
   return messages.length > 0 ? messages.join(" ") : null;
-}
-
-function buildExplorerPathname(orgId: string, path: string): string {
-  const encodedPath = path.split("/").filter(Boolean).map(encodeURIComponent).join("/");
-  return `/backoffice/files/${encodeURIComponent(orgId)}/${encodedPath}`;
-}
-
-function buildDownloadHref(orgId: string, path: string) {
-  const params = new URLSearchParams();
-  params.set("path", path);
-  return `/backoffice/files/${orgId}/download?${params.toString()}`;
 }

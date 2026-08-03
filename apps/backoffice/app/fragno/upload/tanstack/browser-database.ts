@@ -1,3 +1,8 @@
+import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
+import {
+  backofficeContextScopeRoutePath,
+  backofficeScopeSinglePathSegment,
+} from "@/backoffice-runtime/scope-codec";
 import {
   createBrowserCollectionDatabaseLoader,
   openBrowserCollectionDatabase,
@@ -15,19 +20,20 @@ const UPLOAD_DATABASE_COORDINATOR_NAME = "fragno-backoffice-upload";
 const UPLOAD_COLLECTION_SCHEMA_VERSION = 1;
 
 export type UploadCollectionSource = {
-  orgId: string;
+  scope: BackofficeRoutableScope;
   adapterIdentity: string;
 };
 
 export function describeUploadCollectionSource(
   source: UploadCollectionSource,
 ): BrowserCollectionSourceDescription<UploadCollectionTarget> {
+  const scopeKey = backofficeScopeSinglePathSegment(source.scope);
   return {
-    resourceKey: JSON.stringify([source.orgId, source.adapterIdentity]),
-    internalUrl: `/api/upload/${encodeURIComponent(source.orgId)}/_internal`,
+    resourceKey: JSON.stringify([scopeKey, source.adapterIdentity]),
+    internalUrl: `/api/upload-scoped/${backofficeContextScopeRoutePath(source.scope)}/_internal`,
     bootstrap: { adapterIdentity: source.adapterIdentity },
     collectionId: (target) =>
-      JSON.stringify(["backoffice", "upload", source.orgId, source.adapterIdentity, target]),
+      JSON.stringify(["backoffice", "upload", scopeKey, source.adapterIdentity, target]),
   };
 }
 

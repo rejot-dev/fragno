@@ -1,36 +1,18 @@
-import { getAuthMe } from "@/fragno/auth/auth-server";
-
-import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/download";
+import { resolveAuthorizedFilesRouteScope } from "./data";
 import { createFilesOverviewCollections } from "./file-collections.server";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const path = url.searchParams.get("path")?.trim() ?? "";
   if (!path) {
     throw new Response("Missing file path.", { status: 400 });
   }
 
-  const returnTo = `${url.pathname}${url.search}`;
-  const me = await getAuthMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(new URL(buildBackofficeLoginPath(returnTo), request.url), 302);
+  const scope = await resolveAuthorizedFilesRouteScope({ request, context, params, url });
+  if (scope instanceof Response) {
+    return scope;
   }
-
-  const organisation =
-    me.organizations.find((entry) => entry.organization.id === params.orgId)?.organization ?? null;
-  if (!organisation) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const registrations = await createFilesOverviewCollections({
-    request,
-    context,
-    orgId: params.orgId,
-  });
+  const registrations = await createFilesOverviewCollections({ request, context, scope });
   const target = registrations.find(
     (registration) => path.startsWith(`${registration.rootPath}/`) && !path.endsWith("/"),
   );

@@ -142,7 +142,10 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
         : undefined;
   const uploadCollectionStatePromise =
     selectedScope.kind === "org" && currentTab === "scripts"
-      ? fetchUploadAdapterIdentity(request, context, selectedScope.orgId)
+      ? fetchUploadAdapterIdentity(request, context, {
+          kind: "org",
+          orgId: selectedScope.orgId,
+        })
           .then(
             (
               adapterIdentity,
@@ -150,7 +153,10 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
               source: UploadCollectionSource;
               error: null;
             } => ({
-              source: { orgId: selectedScope.orgId, adapterIdentity },
+              source: {
+                scope: { kind: "org", orgId: selectedScope.orgId },
+                adapterIdentity,
+              },
               error: null,
             }),
           )

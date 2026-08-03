@@ -1,13 +1,23 @@
 import type { RouterContextProvider } from "react-router";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import type {
   FilesExplorerSelectedContent,
   FilesExplorerSource,
 } from "@/components/backoffice/files-explorer";
 import type { FileTreeEntry } from "@/file-collection/file-collection";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
 import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
+import { buildBackofficeLoginPath } from "../auth-navigation";
+import { fetchAutomationProjects } from "../automations/data.server";
+import {
+  automationScopeFromRouteParams,
+  resolveAutomationUiScope,
+  toBackofficeScope,
+} from "../automations/scope";
 import {
   createFilesOverviewCollections,
   type FilesOverviewCollection,
@@ -32,18 +42,54 @@ type FilesExplorerLoaderData = {
   loadError: string | null;
 };
 
+export async function resolveAuthorizedFilesRouteScope({
+  request,
+  context,
+  params,
+  url,
+}: {
+  request: Request;
+  context: Readonly<RouterContextProvider>;
+  params: { scopeKind?: string; scopeId?: string };
+  url: URL;
+}): Promise<BackofficeContextScope | Response> {
+  const returnTo = `${url.pathname}${url.search}`;
+  const me = await getAuthMe(request, context);
+  if (!me?.user) {
+    return Response.redirect(new URL(buildBackofficeLoginPath(returnTo), request.url), 302);
+  }
+
+  const parsedScope = automationScopeFromRouteParams(params);
+  const projectsResult =
+    parsedScope.kind === "project"
+      ? await fetchAutomationProjects(request, context, parsedScope.orgId)
+      : { projects: [], projectsError: null };
+  if (projectsResult.projectsError) {
+    throw new Response(projectsResult.projectsError, { status: 502 });
+  }
+
+  return toBackofficeScope(
+    resolveAutomationUiScope({
+      params,
+      organisations: me.organizations.map((entry) => entry.organization),
+      projects: projectsResult.projects,
+      user: me.user,
+    }),
+  );
+}
+
 export async function loadFilesExplorerData({
   request,
   context,
-  orgId,
+  scope,
   requestedPath: routeRequestedPath,
 }: {
   request: Request;
   context: Readonly<RouterContextProvider>;
-  orgId: string;
+  scope: BackofficeContextScope;
   requestedPath?: string | null;
 }): Promise<FilesExplorerLoaderData> {
-  const registrations = await createFilesOverviewCollections({ request, context, orgId });
+  const registrations = await createFilesOverviewCollections({ request, context, scope });
   const loadedCollections = await loadCollectionSources(registrations);
   const requestedPath = routeRequestedPath?.trim() || null;
   const defaultPath =
@@ -57,7 +103,7 @@ export async function loadFilesExplorerData({
   const synchronizedSources = await attachClientSynchronization({
     request,
     context,
-    orgId,
+    scope,
     collections: loadedCollections.collections,
   });
   loadError = appendOptionalLoadError(loadError, synchronizedSources.error);
@@ -150,25 +196,25 @@ function createExplorerSource(
 async function attachClientSynchronization({
   request,
   context,
-  orgId,
+  scope,
   collections,
 }: {
   request: Request;
   context: Readonly<RouterContextProvider>;
-  orgId: string;
+  scope: BackofficeContextScope;
   collections: readonly LoadedCollection[];
 }): Promise<{ sources: FilesExplorerSourceSnapshot[]; error: string | null }> {
   const hasUploadSynchronization = collections.some(
     ({ registration }) => registration.clientSynchronization?.kind === "upload",
   );
-  if (!hasUploadSynchronization) {
+  if (!hasUploadSynchronization || !isBackofficeRoutableScope(scope)) {
     return { sources: collections.map(({ source }) => source), error: null };
   }
 
   try {
     const source = {
-      orgId,
-      adapterIdentity: await fetchUploadAdapterIdentity(request, context, orgId),
+      scope,
+      adapterIdentity: await fetchUploadAdapterIdentity(request, context, scope),
     } satisfies UploadCollectionSource;
 
     return {

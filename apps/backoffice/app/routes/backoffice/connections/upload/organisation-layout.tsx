@@ -33,8 +33,9 @@ export async function loader({ request, params, context, url }: LoaderFunctionAr
   let persistenceError: string | null = null;
   if (configState?.configured) {
     try {
-      const adapterIdentity = await fetchUploadAdapterIdentity(request, context, orgId);
-      persistenceSource = { orgId, adapterIdentity };
+      const scope = { kind: "org" as const, orgId };
+      const adapterIdentity = await fetchUploadAdapterIdentity(request, context, scope);
+      persistenceSource = { scope, adapterIdentity };
     } catch (error) {
       persistenceError =
         error instanceof Error ? error.message : "Failed to load Upload file persistence.";
