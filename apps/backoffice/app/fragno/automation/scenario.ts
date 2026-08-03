@@ -14,7 +14,7 @@ import type {
   BackofficeObjectAddress,
   BackofficeObjectBindingName,
 } from "@/backoffice-runtime/object-registry";
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import {
   createBackofficeFileSystem,
   STATIC_FILE_CONTENT,
@@ -1385,10 +1385,8 @@ const applyAutomationScopeQuery = (url: URL, scope: BackofficeContextScope) => {
   }
 };
 
-const automationScopedInternalUrl = (scope: BackofficeContextScope) => {
-  const scopeId = encodeURIComponent(backofficeContextScopeSinglePathSegment(scope));
-  return `http://scenario.local/api/automations-scoped/${scope.kind}/${scopeId}/_internal`;
-};
+const automationScopedInternalUrl = (scope: BackofficeContextScope) =>
+  `http://scenario.local/api/automations-scoped/${backofficeContextScopeRoutePath(scope)}/_internal`;
 
 const piScopedInternalUrl = (scope: BackofficeContextScope) =>
   `http://scenario.local${scopedPublicMountPath({ publicPrefix: "/api/pi", scope })}/_internal`;

@@ -1,7 +1,7 @@
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
+  backofficeContextScopeRoutePath,
   backofficeScopeFromRouteParams,
-  backofficeScopeRouteId,
 } from "@/backoffice-runtime/scope-codec";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 
@@ -50,11 +50,8 @@ export const toBackofficeScope = (scope: AutomationUiScope): BackofficeContextSc
   throw new Error("Unsupported automation UI scope kind.");
 };
 
-export const automationScopeRouteId = (scope: AutomationUiScope): string =>
-  scope.kind === "system" ? SYSTEM_AUTOMATION_SCOPE_ID : backofficeScopeRouteId(scope);
-
 export const automationScopeBasePath = (scope: AutomationUiScope) =>
-  `/backoffice/automations/${scope.kind}/${automationScopeRouteId(scope)}`;
+  `/backoffice/automations/${backofficeContextScopeRoutePath(toBackofficeScope(scope))}`;
 
 export const automationUiScopeId = (scope: AutomationUiScope) => {
   switch (scope.kind) {

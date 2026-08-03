@@ -42,8 +42,10 @@ const decodeScopeComponent = (value: string, label: string): string => {
   }
 };
 
-export const backofficeScopeRouteId = (scope: BackofficeRoutableScope) => {
+export const backofficeContextScopeRouteId = (scope: BackofficeContextScope) => {
   switch (scope.kind) {
+    case "system":
+      return "system";
     case "org":
       return encodeScopeComponent(scope.orgId);
     case "project":
@@ -52,8 +54,11 @@ export const backofficeScopeRouteId = (scope: BackofficeRoutableScope) => {
       return encodeScopeComponent(scope.userId);
   }
 
-  throw new Error("Unsupported routable Backoffice scope kind.");
+  throw new Error("Unsupported Backoffice context scope kind.");
 };
+
+export const backofficeContextScopeRoutePath = (scope: BackofficeContextScope) =>
+  `${scope.kind}/${encodeURIComponent(backofficeContextScopeRouteId(scope))}`;
 
 export const backofficeScopeFromRouteParams = ({
   scopeKind,
