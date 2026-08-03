@@ -254,6 +254,7 @@ export default [
       route("internals", "routes/backoffice/internals/layout.tsx", [
         index("routes/backoffice/internals/index.tsx"),
         route("github", "routes/backoffice/internals/github.tsx"),
+        route("cloudflare/browser-run", "routes/backoffice/internals/cloudflare-browser-run.tsx"),
         route("generated-ui", "routes/backoffice/internals/generated-ui.tsx"),
         route("pi", "routes/backoffice/internals/pi.tsx"),
         route("pi/:orgId", "routes/backoffice/internals/pi-layout.tsx", [
@@ -303,6 +304,7 @@ export default [
 
   ...prefix("api", [
     route("auth/*", "routes/api/auth.ts"),
+    route("cloudflare/*", "routes/api/cloudflare.ts"),
     route("resend/:scopeSegment/*", "routes/api/resend.ts"),
     route("reson8/:orgId/*", "routes/api/reson8.ts"),
     route("mcp/:scopeSegment/*", "routes/api/mcp.ts"),
