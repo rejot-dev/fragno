@@ -145,7 +145,7 @@ describe("cloudflare-fragment", () => {
       body: {
         action: "content",
         input: {
-          url: "https://example.com",
+          url: "https://fragno.dev",
           waitForTimeout: 100,
         },
       },

@@ -5,10 +5,16 @@ import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
 import { createBrowserRunCaptureClient } from "./browser-run/client";
 import { browserRunRoutesFactory } from "./browser-run/routes";
+import { createBrowserRunSessionClients } from "./browser-run/session-clients";
+import { browserRunSessionRoutesFactory } from "./browser-run/session-routes";
 import { cloudflareFragmentDefinition, type CloudflareFragmentConfig } from "./definition";
 import { cloudflareRoutesFactory } from "./routes";
 
-const routes = [cloudflareRoutesFactory, browserRunRoutesFactory] as const;
+const routes = [
+  cloudflareRoutesFactory,
+  browserRunRoutesFactory,
+  browserRunSessionRoutesFactory,
+] as const;
 
 export function createCloudflareFragment(
   config: CloudflareFragmentConfig,
@@ -29,8 +35,10 @@ export function createCloudflareFragmentClients(fragnoConfig: FragnoPublicClient
     fetcher,
     defaultOptions,
   });
+  const browserRunSessionClients = createBrowserRunSessionClients(fragnoConfig);
 
   return {
+    ...browserRunSessionClients,
     useApps: builder.createHook("/apps"),
     useApp: builder.createHook("/apps/:appId"),
     useAppDeployments: builder.createHook("/apps/:appId/deployments"),
@@ -87,6 +95,21 @@ export type {
   BrowserRunSnapshotInput,
 } from "./browser-run/quick-actions";
 export { browserRunRoutesFactory } from "./browser-run/routes";
+export { createBrowserRunSessionClients } from "./browser-run/session-clients";
+export {
+  browserRunSessionCreateInputSchema,
+  browserRunSessionListInputSchema,
+  browserRunSessionListQueryParameterNames,
+  browserRunTargetCreateInputSchema,
+} from "./browser-run/session-contracts";
+export type {
+  BrowserRunSessionCreateInput,
+  BrowserRunSessionListInput,
+  BrowserRunTargetCreateInput,
+} from "./browser-run/session-contracts";
+export { browserRunSessionRoutesFactory } from "./browser-run/session-routes";
+export { createBrowserRunSessions } from "./browser-run/sessions";
+export type { BrowserRunSessions } from "./browser-run/sessions";
 export { cloudflareRoutesFactory } from "./routes";
 export { cloudflareSchema } from "./schema";
 export {

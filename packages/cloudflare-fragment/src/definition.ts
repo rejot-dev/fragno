@@ -4,6 +4,7 @@ import { defineFragment } from "@fragno-dev/core";
 import { ExponentialBackoffRetryPolicy, withDatabase, type HookFn } from "@fragno-dev/db";
 
 import { createBrowserRunQuickActions } from "./browser-run/quick-actions";
+import { createBrowserRunSessions } from "./browser-run/sessions";
 import {
   createCloudflareApiClient,
   getCloudflareApiError,
@@ -324,6 +325,9 @@ export const cloudflareFragmentDefinition = defineFragment<CloudflareFragmentCon
   }))
   .providesService("browserRun", ({ deps, config }) =>
     createBrowserRunQuickActions(deps.cloudflare, config.accountId),
+  )
+  .providesService("browserRunSessions", ({ deps, config }) =>
+    createBrowserRunSessions(deps.cloudflare, config.accountId),
   )
   .provideHooks<CloudflareHooksMap>(({ defineHook, deps, config }) => ({
     deployWorker: defineHook(async function (input) {
