@@ -1,9 +1,10 @@
-import { describe, it, expect, assert } from "vitest";
+import { describe, it, expect, assert, vi } from "vitest";
 
 import {
   BetterSQLite3DriverConfig,
   MySQL2DriverConfig,
   NodePostgresDriverConfig,
+  PGLiteDriverConfig,
 } from "../adapters/generic-sql/driver-config";
 import { column, idColumn, schema } from "../schema/create";
 import { decodeCursor, createCursorFromRecord, serializeCursorValues, Cursor } from "./cursor";
@@ -362,6 +363,42 @@ describe("Cursor utilities", () => {
 
       expect(serialized).toHaveProperty("id", "user123");
       expect(serialized).toHaveProperty("age", 25);
+    });
+
+    it("should not apply PGlite timestamp read conversion twice", () => {
+      const getTimezoneOffset = vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(420);
+
+      try {
+        const testSchema = schema("test", (s) =>
+          s.addTable("posts", (t) =>
+            t
+              .addColumn("id", idColumn())
+              .addColumn("createdAt", column("timestamp"))
+              .createIndex("created", ["createdAt"]),
+          ),
+        );
+        const table = testSchema.tables.posts;
+        const createdAt = new Date("2026-08-02T09:00:00.123Z");
+        const cursor = createCursorFromRecord(
+          { id: "post-1", createdAt },
+          table.indexes.created.columns,
+          {
+            indexName: "created",
+            orderDirection: "desc",
+            pageSize: 10,
+          },
+        );
+
+        const serialized = serializeCursorValues(
+          cursor,
+          table.indexes.created.columns,
+          new PGLiteDriverConfig(),
+        );
+
+        expect(serialized["createdAt"]).toEqual(createdAt);
+      } finally {
+        getTimezoneOffset.mockRestore();
+      }
     });
 
     it("should throw when cursor data is missing index values", () => {
