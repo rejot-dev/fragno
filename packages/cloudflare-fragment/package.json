@@ -47,6 +47,10 @@
       "types": "./dist/browser/client/vanilla.d.ts",
       "default": "./dist/browser/client/vanilla.js"
     },
+    "./browser-run": {
+      "types": "./dist/browser/browser-run/index.d.ts",
+      "default": "./dist/browser/browser-run/index.js"
+    },
     "./script-name": {
       "types": "./dist/node/script-name.d.ts",
       "default": "./dist/node/script-name.js"
@@ -62,7 +66,7 @@
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@standard-schema/spec": "^1.1.0",
-    "cloudflare": "^5.2.0",
+    "cloudflare": "^7.0.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

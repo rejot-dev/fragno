@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi, assert } f
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
+import { browserRunRoutesFactory } from "./browser-run/routes";
 import { createCloudflareApiClient } from "./cloudflare-api";
 import { cloudflareDeployRequestSchema } from "./contracts";
 import { cloudflareFragmentDefinition, type CloudflareFragmentConfig } from "./definition";
@@ -57,23 +58,27 @@ const cloudflare = createCloudflareApiClient({
 });
 const config: CloudflareFragmentConfig = {
   accountId: "acct_test",
-  dispatcher: {
-    binding: { get: vi.fn() },
-    namespace: "dispatch-prod",
-  },
-  compatibilityDate: "2026-03-10",
-  compatibilityFlags: ["nodejs_compat"],
-  scriptNamePrefix: "fragno",
-  scriptNameSuffix: "worker",
-  deploymentTagPrefix: "fragno-deployment",
   cloudflare,
+  workersForPlatforms: {
+    dispatcher: {
+      binding: { get: vi.fn() },
+      namespace: "dispatch-prod",
+    },
+    compatibilityDate: "2026-03-10",
+    compatibilityFlags: ["nodejs_compat"],
+    scriptNamePrefix: "fragno",
+    scriptNameSuffix: "worker",
+    deploymentTagPrefix: "fragno-deployment",
+  },
 };
 const invalidDispatcherConfig: CloudflareFragmentConfig = {
   accountId: "acct_test",
-  // @ts-expect-error dispatcher bindings must be wrapped in a namespace descriptor
-  dispatcher: { get: vi.fn() },
-  compatibilityDate: "2026-03-10",
   cloudflare,
+  workersForPlatforms: {
+    // @ts-expect-error dispatcher bindings must be wrapped in a namespace descriptor
+    dispatcher: { get: vi.fn() },
+    compatibilityDate: "2026-03-10",
+  },
 };
 void invalidDispatcherConfig;
 
@@ -84,7 +89,7 @@ const buildCloudflareTestSetup = async () => {
       "cloudflare",
       instantiate(cloudflareFragmentDefinition)
         .withConfig(config)
-        .withRoutes([cloudflareRoutesFactory]),
+        .withRoutes([cloudflareRoutesFactory, browserRunRoutesFactory]),
     )
     .build();
 };
@@ -131,6 +136,57 @@ describe("cloudflare-fragment", () => {
 
   afterAll(async () => {
     await testContext.cleanup();
+  });
+
+  test("extracts Browser Run page data through a typed JSON route", async () => {
+    fetchMock.mockResolvedValueOnce(createSuccessResponse("<h1>Rendered</h1>"));
+
+    const response = await fragment.callRoute("POST", "/browser-run/extract", {
+      body: {
+        action: "content",
+        input: {
+          url: "https://example.com",
+          waitForTimeout: 100,
+        },
+      },
+    });
+
+    assert(response.type === "json");
+    if (response.type !== "json") {
+      return;
+    }
+
+    expect(response.data).toEqual({
+      action: "content",
+      result: "<h1>Rendered</h1>",
+    });
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "/accounts/acct_test/browser-rendering/content",
+    );
+  });
+
+  test("returns raw screenshot bytes from the capture route", async () => {
+    const pngBytes = new Uint8Array([137, 80, 78, 71]);
+    fetchMock.mockResolvedValueOnce(
+      new Response(pngBytes, {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      }),
+    );
+
+    const response = await fragment.handler(
+      new Request("http://localhost/api/cloudflare-fragment/browser-run/capture", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "screenshot",
+          input: { html: "<h1>Hello</h1>" },
+        }),
+      }),
+    );
+
+    assert(response.headers.get("content-type") === "image/png");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(pngBytes);
   });
 
   test("queues a deployment, creates an app record, and exposes the SDK client as a service", async () => {
@@ -465,9 +521,12 @@ describe("cloudflare-fragment", () => {
 
     const secondTag = buildCloudflareDeploymentTag(
       secondDeployment.data.id,
-      config.deploymentTagPrefix,
+      config.workersForPlatforms?.deploymentTagPrefix,
     );
-    const appTag = buildCloudflareAppTag("tenant-app", config.deploymentTagPrefix);
+    const appTag = buildCloudflareAppTag(
+      "tenant-app",
+      config.workersForPlatforms?.deploymentTagPrefix,
+    );
     fetchMock
       .mockResolvedValueOnce(
         createSuccessResponse({

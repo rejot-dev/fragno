@@ -11,6 +11,7 @@ export default defineConfig([
       "./src/client/solid.ts",
       "./src/client/vanilla.ts",
       "./src/client/vue.ts",
+      "./src/browser-run/index.ts",
     ],
     dts: true,
     failOnWarn: true,

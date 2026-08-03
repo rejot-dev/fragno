@@ -3,10 +3,12 @@ import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/
 import { instantiate } from "@fragno-dev/core";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
+import { createBrowserRunCaptureClient } from "./browser-run/client";
+import { browserRunRoutesFactory } from "./browser-run/routes";
 import { cloudflareFragmentDefinition, type CloudflareFragmentConfig } from "./definition";
 import { cloudflareRoutesFactory } from "./routes";
 
-const routes = [cloudflareRoutesFactory] as const;
+const routes = [cloudflareRoutesFactory, browserRunRoutesFactory] as const;
 
 export function createCloudflareFragment(
   config: CloudflareFragmentConfig,
@@ -21,12 +23,21 @@ export function createCloudflareFragment(
 
 export function createCloudflareFragmentClients(fragnoConfig: FragnoPublicClientConfig = {}) {
   const builder = createClientBuilder(cloudflareFragmentDefinition, fragnoConfig, routes);
+  const { fetcher, defaultOptions } = builder.getFetcher();
+  const captureBrowserRun = createBrowserRunCaptureClient({
+    buildUrl: (path) => builder.buildUrl(path),
+    fetcher,
+    defaultOptions,
+  });
 
   return {
     useApps: builder.createHook("/apps"),
     useApp: builder.createHook("/apps/:appId"),
     useAppDeployments: builder.createHook("/apps/:appId/deployments"),
     useDeployment: builder.createHook("/deployments/:deploymentId"),
+    useBrowserRunExtract: builder.createMutator("POST", "/browser-run/extract"),
+    captureBrowserRun,
+    useBrowserRunCrawl: builder.createMutator("POST", "/browser-run/crawl"),
     useQueueDeployment: builder.createMutator(
       "POST",
       "/apps/:appId/deployments",
@@ -45,6 +56,37 @@ export function createCloudflareFragmentClients(fragnoConfig: FragnoPublicClient
 }
 
 export { cloudflareFragmentDefinition } from "./definition";
+export { createBrowserRunCaptureClient } from "./browser-run/client";
+export type { BrowserRunCaptureClient } from "./browser-run/client";
+export {
+  browserRunCaptureInputSchema,
+  browserRunCrawlActionInputSchema,
+  browserRunCrawlActionResultSchema,
+  browserRunExtractInputSchema,
+  browserRunExtractResultSchema,
+} from "./browser-run/contracts";
+export type {
+  BrowserRunCaptureInput,
+  BrowserRunCrawlActionInput,
+  BrowserRunCrawlActionResult,
+  BrowserRunExtractInput,
+  BrowserRunExtractResult,
+} from "./browser-run/contracts";
+export { createBrowserRunQuickActions } from "./browser-run/quick-actions";
+export type {
+  BrowserRunAccessibilityTreeInput,
+  BrowserRunContentInput,
+  BrowserRunCrawlInput,
+  BrowserRunJsonInput,
+  BrowserRunLinksInput,
+  BrowserRunMarkdownInput,
+  BrowserRunPdfInput,
+  BrowserRunQuickActions,
+  BrowserRunScrapeInput,
+  BrowserRunScreenshotInput,
+  BrowserRunSnapshotInput,
+} from "./browser-run/quick-actions";
+export { browserRunRoutesFactory } from "./browser-run/routes";
 export { cloudflareRoutesFactory } from "./routes";
 export { cloudflareSchema } from "./schema";
 export {
@@ -87,7 +129,11 @@ export {
   normalizeCloudflareDeploymentTagPrefix,
   sanitizeCloudflareTag,
 } from "./deployment-tag";
-export type { CloudflareFragmentConfig, DeployWorkerHookInput } from "./definition";
+export type {
+  CloudflareFragmentConfig,
+  CloudflareWorkersForPlatformsConfig,
+  DeployWorkerHookInput,
+} from "./definition";
 export type {
   CloudflareApiClient,
   CloudflareCurrentDeployment,

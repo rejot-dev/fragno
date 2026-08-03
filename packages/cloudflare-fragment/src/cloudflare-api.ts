@@ -156,9 +156,19 @@ export const createCloudflareApiClient = ({
   fetchImplementation,
   maxRetries = 0,
 }: CloudflareApiClientConfig): CloudflareApiClient => {
+  const cloudflareFetch: CloudflareClientOptions["fetch"] | undefined = fetchImplementation
+    ? async (input, init) => {
+        if (String(input).startsWith("data:")) {
+          return await globalThis.fetch(input, init);
+        }
+
+        return await fetchImplementation(input, init);
+      }
+    : undefined;
+
   return new Cloudflare({
     apiToken,
-    fetch: fetchImplementation,
+    fetch: cloudflareFetch,
     maxRetries,
   });
 };
@@ -173,10 +183,10 @@ export const listCloudflareScriptTags = async (
 ) => {
   try {
     const tags = await client.workersForPlatforms.dispatch.namespaces.scripts.tags.list(
-      input.dispatchNamespace,
       input.scriptName,
       {
         account_id: input.accountId,
+        dispatch_namespace: input.dispatchNamespace,
       },
     );
     const results: string[] = [];
@@ -227,10 +237,10 @@ export const getCloudflareScriptState = async (
 ): Promise<CloudflareScriptState> => {
   try {
     const script = await client.workersForPlatforms.dispatch.namespaces.scripts.get(
-      input.dispatchNamespace,
       input.scriptName,
       {
         account_id: input.accountId,
+        dispatch_namespace: input.dispatchNamespace,
       },
     );
 
@@ -256,6 +266,7 @@ export const deployCloudflareWorker = async (
   });
   const params: CloudflareScriptUpdateParams = {
     account_id: input.accountId,
+    dispatch_namespace: input.dispatchNamespace,
     metadata: {
       main_module: input.entrypoint,
       compatibility_date: input.compatibilityDate,
@@ -267,7 +278,6 @@ export const deployCloudflareWorker = async (
   };
 
   return await client.workersForPlatforms.dispatch.namespaces.scripts.update(
-    input.dispatchNamespace,
     input.scriptName,
     params,
     input.ifMatch
