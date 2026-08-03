@@ -18,12 +18,14 @@ import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities
 import {
   getConnectionCapability,
   listConnectionCapabilities,
+  toConnectionVerification,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { listHookScopes } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { backofficeCapabilities } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type {
   BackofficeCapabilityContext,
   ConnectionStatus,
+  ConnectionVerification,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import {
   defineCliArgsParser,
@@ -46,7 +48,7 @@ export type BackofficeCapabilitiesRuntime = {
   getConnection(input: { id: string }): Promise<ConnectionStatus>;
   setupConnection(input: { id: string }): Promise<ConnectionSetupOutput>;
   getConnectionSchema(input: { id: string }): Promise<ConnectionSchemaOutput>;
-  verifyConnection(input: { id: string }): Promise<ConnectionStatus>;
+  verifyConnection(input: { id: string }): Promise<ConnectionVerification>;
   resetConnection(input: { id: string; confirm: string }): Promise<ConnectionStatus>;
   configureConnection(input: {
     id: string;
@@ -103,6 +105,11 @@ const connectionSummarySchema = z.object({
 const connectionsListOutputSchema = z.array(connectionSummarySchema);
 export type ConnectionsListOutput = z.infer<typeof connectionsListOutputSchema>;
 
+const connectionVerificationResultSchema = z.object({
+  ok: z.boolean(),
+  message: z.string(),
+});
+
 const connectionStatusSchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -111,7 +118,11 @@ const connectionStatusSchema = z.object({
   config: z.record(z.string(), z.unknown()).optional(),
   missing: z.array(z.string()).optional(),
   nextSteps: z.array(z.string()).optional(),
-  verification: z.object({ ok: z.boolean(), message: z.string() }).optional(),
+  verification: connectionVerificationResultSchema.optional(),
+});
+
+const connectionVerificationSchema = connectionStatusSchema.extend({
+  verification: connectionVerificationResultSchema,
 });
 
 const connectionSetupOutputSchema = z.object({
@@ -302,7 +313,10 @@ const formatConnectionsList = (data: ConnectionsListOutput, options: OutputOptio
         ),
       };
 
-const formatConnectionStatus = (data: ConnectionStatus, options: OutputOptions) => {
+const formatConnectionStatus = (
+  data: z.infer<typeof connectionStatusSchema>,
+  options: OutputOptions,
+) => {
   if (shouldReturnData(options)) {
     return dataFormat(data);
   }
@@ -600,7 +614,7 @@ const connectionsVerifyTool = defineBackofficeRuntimeTool({
   description: "Verify a Backoffice connection without changing its configuration.",
   requiredPermissions: ["manage"],
   inputSchema: z.object({ id: z.string().trim().min(1) }),
-  outputSchema: connectionStatusSchema,
+  outputSchema: connectionVerificationSchema,
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).verifyConnection(input),
   adapters: {
@@ -1007,8 +1021,8 @@ export const createBackofficeCapabilitiesRuntime = ({
           : [],
         fields: [...(capability.connection.configureFields ?? [])],
         verify: {
-          tool: `connections.get --id ${capability.id}`,
-          description: `Check configured=true for ${capability.label}.`,
+          tool: `connections.verify --id ${capability.id}`,
+          description: `Check verification.ok=true for ${capability.label}.`,
         },
         configureExample: `connections.configure --id ${capability.id} --json '{...}' --format json`,
       };
@@ -1031,8 +1045,9 @@ export const createBackofficeCapabilitiesRuntime = ({
         throw new Error(`Unknown configurable connection: ${id}`);
       }
       assertConnectionAvailable(id, capability);
-      return await (capability.connection.verify?.(capabilityContext) ??
+      const status = await (capability.connection.verify?.(capabilityContext) ??
         capability.connection.getStatus(capabilityContext));
+      return toConnectionVerification(status);
     },
     resetConnection: async ({ id, confirm }) => {
       if (confirm !== id) {

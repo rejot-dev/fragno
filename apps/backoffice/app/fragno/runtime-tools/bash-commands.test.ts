@@ -548,7 +548,13 @@ const createBackofficeRuntime = (
     configureExample: "connections.configure --id mcp --json '{}'",
   }),
   getConnectionSchema: async () => ({ id: "mcp", label: "MCP", fields: [] }),
-  verifyConnection: async () => ({ id: "mcp", label: "MCP", kind: "connection", configured: true }),
+  verifyConnection: async () => ({
+    id: "mcp",
+    label: "MCP",
+    kind: "connection",
+    configured: true,
+    verification: { ok: true, message: "MCP configuration is present." },
+  }),
   resetConnection: async () => ({ id: "mcp", label: "MCP", kind: "connection", configured: false }),
   configureConnection: async () => ({
     id: "mcp",

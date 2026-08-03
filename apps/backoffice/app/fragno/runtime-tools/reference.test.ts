@@ -715,6 +715,12 @@ describe("runtime tool reference generation", () => {
     expect(connectionsTypes).toContain("declare const connections");
     expect(connectionsTypes).toContain("list(input: ConnectionsListInput)");
     expect(connectionsTypes).toContain("configure(input: ConnectionsConfigureInput)");
+    const verifyOutput = connectionsTypes.slice(
+      connectionsTypes.indexOf("type ConnectionsVerifyOutput"),
+      connectionsTypes.indexOf("type ConnectionsResetInput"),
+    );
+    expect(verifyOutput).toContain("verification: {");
+    expect(verifyOutput).not.toContain("verification?: {");
     expect(readGeneratedFile(files, "/static/codemode/providers/store.d.ts")).toContain(
       "declare const store",
     );
