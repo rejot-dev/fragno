@@ -285,6 +285,7 @@ export type UploadObject = FetchObject &
   AlarmableObject &
   DurableHookObject &
   AdminConfigurableObject<AwaitedMethodReturn<Upload, "getAdminConfig">>;
+export type CloudflareObject = FetchObject;
 export type GitHubObject = FetchObject &
   AlarmableObject &
   DurableHookObject & {
@@ -351,6 +352,7 @@ export type BackofficeObjectBindingName =
   | "UPLOAD"
   | "GITHUB"
   | "GITHUB_WEBHOOK_ROUTER"
+  | "CLOUDFLARE"
   | "SANDBOX";
 
 export type BackofficeObjectBinding<_TObject, _TRawObject = _TObject> = {
@@ -390,6 +392,7 @@ export const backofficeObjectScopePolicy = {
   PI: ["org"],
 
   GITHUB_WEBHOOK_ROUTER: ["singleton"],
+  CLOUDFLARE: ["singleton"],
 
   SANDBOX: ["named"],
 } satisfies Record<BackofficeObjectBindingName, readonly BackofficeObjectScopeKind[]>;
@@ -722,6 +725,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   github: scoped(factory, binding<GitHubObject>("GITHUB")),
 
   githubWebhookRouter: scoped(factory, binding<GitHubWebhookRouterObject>("GITHUB_WEBHOOK_ROUTER")),
+  cloudflare: scoped(factory, binding<CloudflareObject>("CLOUDFLARE")),
 
   sandbox: scoped(factory, binding<SandboxObject>("SANDBOX")),
 });

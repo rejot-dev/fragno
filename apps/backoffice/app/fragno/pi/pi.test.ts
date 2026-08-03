@@ -37,6 +37,7 @@ const testRuntimeConfig: BackofficeRuntimeConfig = {
     upload: false,
     github: false,
     githubWebhookRouter: false,
+    cloudflare: false,
     sandbox: false,
   },
 };

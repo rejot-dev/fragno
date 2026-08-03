@@ -14,6 +14,8 @@ export type InMemoryBackofficeRuntimeEnv = {
   GITHUB_APP_CLIENT_SECRET?: string;
   GITHUB_APP_WEBHOOK_SECRET?: string;
   GITHUB_APP_PRIVATE_KEY?: string;
+  CLOUDFLARE_WORKERS_ACCOUNT_ID?: string;
+  CLOUDFLARE_WORKERS_API_TOKEN?: string;
 };
 
 type WorkerLoaderFactory = () => {
@@ -81,4 +83,6 @@ export const defaultInMemoryBackofficeRuntimeEnv = (): InMemoryBackofficeRuntime
   GITHUB_APP_CLIENT_SECRET: "in-memory-github-app-client-secret",
   GITHUB_APP_WEBHOOK_SECRET: "in-memory-github-app-webhook-secret",
   GITHUB_APP_PRIVATE_KEY: "in-memory-github-app-private-key",
+  CLOUDFLARE_WORKERS_ACCOUNT_ID: "in-memory-cloudflare-account-id",
+  CLOUDFLARE_WORKERS_API_TOKEN: "in-memory-cloudflare-api-token",
 });

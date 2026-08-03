@@ -5,6 +5,7 @@ import { InMemoryApiObject } from "../../workers/api.do";
 import { InMemoryAuthObject } from "../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../workers/automations.do";
 import { InMemoryBillingObject } from "../../workers/billing.do";
+import { InMemoryCloudflareObject } from "../../workers/cloudflare.do";
 import { InMemoryGitHubWebhookRouterObject } from "../../workers/github-webhook-router.do";
 import { InMemoryGitHubObject } from "../../workers/github.do";
 import { InMemoryMarketplaceObject } from "../../workers/marketplace.do";
@@ -228,6 +229,12 @@ const inMemoryObjectFactories = {
       state,
       env: env as never,
     }),
+  CLOUDFLARE: ({ state, env, runtime }) =>
+    new InMemoryCloudflareObject({
+      state,
+      env,
+      runtime,
+    }),
   PI: ({ state, env, runtime }) =>
     new InMemoryPiObject({
       state,
@@ -376,6 +383,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
         upload: this.#hasNamespace("UPLOAD"),
         github: this.#hasNamespace("GITHUB"),
         githubWebhookRouter: this.#hasNamespace("GITHUB_WEBHOOK_ROUTER"),
+        cloudflare: this.#hasNamespace("CLOUDFLARE"),
         sandbox: this.#hasNamespace("SANDBOX"),
       },
     };

@@ -18,6 +18,7 @@ import {
   backofficeCapabilitiesToolFamily,
   type BackofficeCapabilitiesRuntime,
 } from "./families/backoffice-capabilities";
+import { cloudflareToolFamily, type CloudflareRuntime } from "./families/cloudflare";
 import { eventCatalogToolFamily, eventFireToolFamily, type EventRuntime } from "./families/event";
 import { internalToolFamily, type InternalRuntime } from "./families/internal";
 import { mcpToolFamily, type McpRuntime } from "./families/mcp";
@@ -39,6 +40,7 @@ export type CoreBackofficeRuntimeMap = {
   workflow?: AutomationWorkflowRuntime;
   durableHooks?: DurableHooksRuntime;
   event?: EventRuntime;
+  cloudflare?: CloudflareRuntime;
   internal?: InternalRuntime;
   api?: ApiRuntime;
   mcp?: McpRuntime;
@@ -63,6 +65,7 @@ export const runtimeToolFamilies = [
   hooksToolFamily,
   eventFireToolFamily,
   eventCatalogToolFamily,
+  cloudflareToolFamily,
   apiToolFamily,
   mcpToolFamily,
   otpToolFamily,

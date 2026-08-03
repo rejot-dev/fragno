@@ -27,6 +27,7 @@
     "@earendil-works/pi-ai": "^0.82.1",
     "@fragno-dev/api-fragment": "workspace:*",
     "@fragno-dev/auth": "workspace:*",
+    "@fragno-dev/cloudflare-fragment": "workspace:*",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/github-app-fragment": "workspace:*",

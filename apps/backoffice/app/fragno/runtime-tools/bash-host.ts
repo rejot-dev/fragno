@@ -20,6 +20,7 @@ import type { DurableHooksRuntime } from "./families/automations-durable-hooks";
 import type { AutomationRouterRuntime } from "./families/automations-routing";
 import type { AutomationWorkflowRuntime } from "./families/automations-workflow";
 import type { BackofficeCapabilitiesRuntime } from "./families/backoffice-capabilities";
+import type { CloudflareRuntime } from "./families/cloudflare-runtime";
 import type { EventRuntime } from "./families/event-runtime";
 import type { InternalRuntime } from "./families/internal";
 import type { RegisteredMcpCommandContext } from "./families/mcp-runtime";
@@ -48,6 +49,7 @@ export type BashHostContext = {
   createBackofficeScopedContext(scope: BackofficeContextScope): BashHostContext;
   backoffice: { runtime: BackofficeCapabilitiesRuntime } | null;
   automation: RegisteredEventBashCommandContext | null;
+  cloudflare?: { runtime: CloudflareRuntime } | null;
   event?: { runtime: EventRuntime } | null;
   automations: RegisteredAutomationsBashCommandContext | null;
   workflow?: { runtime: AutomationWorkflowRuntime } | null;

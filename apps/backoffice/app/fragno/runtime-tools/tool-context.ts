@@ -8,6 +8,7 @@ export const createBackofficeToolContext = (
   const kernel = context.backofficeKernel;
   const runtimes = {
     backoffice: context.backoffice?.runtime,
+    cloudflare: context.cloudflare?.runtime,
     automations: context.automations?.runtime,
     workflow: context.workflow?.runtime,
     durableHooks: context.durableHooks?.runtime,

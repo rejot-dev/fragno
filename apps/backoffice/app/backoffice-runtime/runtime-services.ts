@@ -34,6 +34,7 @@ export type BackofficeRuntimeConfig = {
     upload: boolean;
     github: boolean;
     githubWebhookRouter: boolean;
+    cloudflare: boolean;
     sandbox: boolean;
   };
 };
@@ -121,6 +122,7 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
     upload: Boolean(env.UPLOAD),
     github: Boolean(env.GITHUB),
     githubWebhookRouter: Boolean(env.GITHUB_WEBHOOK_ROUTER),
+    cloudflare: Boolean(env.CLOUDFLARE),
     sandbox: Boolean(env.SANDBOX),
   },
 });

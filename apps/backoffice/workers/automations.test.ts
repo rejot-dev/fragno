@@ -56,6 +56,7 @@ const config: BackofficeRuntimeConfig = {
     upload: false,
     github: false,
     githubWebhookRouter: false,
+    cloudflare: false,
     sandbox: false,
   },
 };
