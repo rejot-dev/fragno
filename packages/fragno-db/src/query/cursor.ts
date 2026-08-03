@@ -274,6 +274,13 @@ export function serializeCursorValues(
       continue;
     }
 
+    // Cursor objects created from query records already contain application-level Date values.
+    // Deserializing them again would apply driver-specific read conversions twice.
+    if (value instanceof Date) {
+      serialized[col.name] = serializer.serialize(value, col);
+      continue;
+    }
+
     // If the cursor value is already a FragnoId/FragnoReference, resolve it directly
     // to avoid deserializing non-JSON objects.
     const resolvedDirect = resolveFragnoIdValue(value, col);
