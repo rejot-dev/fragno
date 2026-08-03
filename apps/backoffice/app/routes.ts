@@ -316,6 +316,10 @@ export default [
     route("upload/:orgId/*", "routes/api/upload.ts"),
     route("pi/:scopeSegment/*", "routes/api/pi.ts"),
     route("pi-workflows/:scopeSegment/*", "routes/api/workflows.ts"),
+    route(
+      "automations-scoped/:scopeKind/:scopeId/workflows/*",
+      "routes/api/automations-scoped-workflows.ts",
+    ),
     route("automations-scoped/:scopeKind/:scopeId/*", "routes/api/automations-scoped.ts"),
     route("automations/:orgId/*", "routes/api/automations.ts"),
     route("automations-workflows/:orgId/*", "routes/api/automations-workflows.ts"),
