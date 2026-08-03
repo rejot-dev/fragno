@@ -732,8 +732,6 @@ export function createWorkflowTokenMachine({
       analysis: { status: "partial", outcomes: [], annotations: [] },
     };
     extendSourceRangeToToken(condition.source, questionMark);
-    workflowMachine.workflow.children.push(condition);
-    moveBeforeWrappingReturn(workflowMachine.workflow, condition, false);
     for (const activeCondition of activeConditionMachines(workflowMachine.workflow)) {
       if (isConditionalExpressionMachine(activeCondition)) {
         activeCondition.markNestedConditional(context.depth);
@@ -745,6 +743,9 @@ export function createWorkflowTokenMachine({
         parentId: enclosingCondition?.id ?? parentId,
         workflow: workflowMachine.workflow,
         baseDepth: context.depth,
+        onPublish: () => {
+          moveBeforeWrappingReturn(workflowMachine.workflow, condition, false);
+        },
       }),
     );
   }

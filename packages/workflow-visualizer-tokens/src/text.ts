@@ -6,6 +6,8 @@ import type {
   WorkflowNode,
   WorkflowVisualizationSnapshot,
 } from "./model.ts";
+import { isTriviaToken, tokenizeWorkflowSource } from "./tokenizer.ts";
+import type { WorkflowToken } from "./tokenizer.ts";
 
 /** Render the workflow graph without exposing tokenizer implementation details. */
 export function renderWorkflowVisualizationText(snapshot: WorkflowVisualizationSnapshot): string {
@@ -162,7 +164,10 @@ function constructionSuffix(construction: {
   status: "partial" | "complete";
   phase: string;
 }): string {
-  return construction.status === "partial" ? ` [${construction.phase}]` : "";
+  if (construction.status === "complete") {
+    return "";
+  }
+  return ` [${construction.phase === "configured" ? "awaiting body" : construction.phase}]`;
 }
 
 function formatDepth(depth: { parentheses: number; braces: number; brackets: number }): string {
@@ -170,5 +175,82 @@ function formatDepth(depth: { parentheses: number; braces: number; brackets: num
 }
 
 function singleLine(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
+  return filterUiProperties(value).replace(/\s+/g, " ").trim();
+}
+
+function filterUiProperties(value: string): string {
+  if (!value.includes("$ui")) {
+    return value;
+  }
+
+  const tokens = Array.from(tokenizeWorkflowSource(value));
+  const offsets: number[] = [];
+  let offset = 0;
+
+  for (const token of tokens) {
+    offsets.push(offset);
+    offset += token.value.length;
+  }
+
+  const replacements: Array<{ start: number; end: number }> = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index]?.value !== "$ui") {
+      continue;
+    }
+
+    const colonIndex = nextNonTriviaTokenIndex(tokens, index + 1);
+    if (colonIndex === undefined || tokens[colonIndex]?.value !== ":") {
+      continue;
+    }
+
+    const valueStartIndex = nextNonTriviaTokenIndex(tokens, colonIndex + 1);
+    if (valueStartIndex === undefined) {
+      replacements.push({ start: offsets[index], end: value.length });
+      break;
+    }
+
+    let parentheses = 0;
+    let braces = 0;
+    let brackets = 0;
+    let end = value.length;
+
+    for (let cursor = valueStartIndex; cursor < tokens.length; cursor += 1) {
+      const tokenValue = tokens[cursor].value;
+      const atPropertyBoundary = parentheses === 0 && braces === 0 && brackets === 0;
+      if (atPropertyBoundary && (tokenValue === "," || tokenValue === "}")) {
+        end = offsets[cursor]!;
+        break;
+      }
+
+      if (tokenValue === "(") {
+        parentheses += 1;
+      } else if (tokenValue === ")") {
+        parentheses = Math.max(0, parentheses - 1);
+      } else if (tokenValue === "{") {
+        braces += 1;
+      } else if (tokenValue === "}") {
+        braces = Math.max(0, braces - 1);
+      } else if (tokenValue === "[") {
+        brackets += 1;
+      } else if (tokenValue === "]") {
+        brackets = Math.max(0, brackets - 1);
+      }
+    }
+
+    replacements.push({ start: offsets[index], end });
+  }
+
+  for (const replacement of replacements.reverse()) {
+    value = `${value.slice(0, replacement.start)}$ui: …${value.slice(replacement.end)}`;
+  }
+  return value;
+}
+
+function nextNonTriviaTokenIndex(tokens: WorkflowToken[], start: number): number | undefined {
+  for (let index = start; index < tokens.length; index += 1) {
+    if (!isTriviaToken(tokens[index])) {
+      return index;
+    }
+  }
+  return undefined;
 }

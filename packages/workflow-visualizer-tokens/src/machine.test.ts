@@ -546,6 +546,30 @@ describe("workflow token state machine", () => {
     },
   );
 
+  it("keeps data-only ternaries provisional while tokens arrive", () => {
+    const machine = createWorkflowTokenMachine({
+      path: "automations/incremental-data-conditional.ts",
+    });
+    const source = `defineWorkflow({ name: "incremental-data-conditional" }, async (event) => {
+      return {
+        status: event.payload.ready ? "ready" : "waiting",
+      };
+    });`;
+
+    for (const token of tokenizeWorkflowSource(source)) {
+      const update = machine.push(token);
+      assert(!update.graph.nodes.some((node) => node.kind === "condition"));
+      assertUsableGraph(update.graph.nodes, update.graph.edges);
+    }
+
+    const finished = machine.finish().graph;
+    assert(!finished.nodes.some((node) => node.kind === "condition"));
+    const terminal = finished.nodes.find((node) => node.kind === "terminal");
+    expect(terminal).toEqual(expect.objectContaining({ order: 0 }));
+    assert(terminal?.kind === "terminal");
+    expect(terminal.value).toContain('status: event.payload.ready ? "ready" : "waiting"');
+  });
+
   it("keeps incomplete ternary branches structurally usable while tokens arrive", () => {
     const machine = createWorkflowTokenMachine({
       path: "automations/incremental-conditional-expression.ts",
