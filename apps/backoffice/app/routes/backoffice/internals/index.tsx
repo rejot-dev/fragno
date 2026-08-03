@@ -25,6 +25,13 @@ function internalDestinations(hasOrganization: boolean): InternalDestination[] {
       to: "/backoffice/internals/github",
     },
     {
+      id: "cloudflare-browser-run",
+      name: "Cloudflare Browser Run",
+      description: "Create Browser Run sessions and exercise their target lifecycle APIs.",
+      status: "Available",
+      to: "/backoffice/internals/cloudflare/browser-run",
+    },
+    {
       id: "generated-ui",
       name: "Generated UI",
       description:
