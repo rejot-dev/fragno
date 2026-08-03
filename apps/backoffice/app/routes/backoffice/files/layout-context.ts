@@ -1,9 +1,9 @@
-import type { AuthMeData } from "@/fragno/auth/auth-client";
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 
-type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
+import type { FilesUiScope } from "./scope";
 
 export type FilesLayoutContext = {
-  orgId: string;
+  scope: BackofficeContextScope;
+  selectedScope: FilesUiScope;
   origin: string;
-  organisation: BackofficeOrganisation;
 };

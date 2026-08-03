@@ -246,8 +246,8 @@ export default [
         ]),
       ]),
       route("files", "routes/backoffice/files/index.tsx"),
-      route("files/:orgId/download", "routes/backoffice/files/download.ts"),
-      route("files/:orgId", "routes/backoffice/files/organisation-layout.tsx", [
+      route("files/:scopeKind/:scopeId/download", "routes/backoffice/files/download.ts"),
+      route("files/:scopeKind/:scopeId", "routes/backoffice/files/scope-layout.tsx", [
         index("routes/backoffice/files/explorer.tsx"),
         route("*", "routes/backoffice/files/explorer-path.tsx"),
       ]),
@@ -314,6 +314,7 @@ export default [
     route("github/webhooks", "routes/api/github-webhooks.ts"),
     route("github/:orgId/*", "routes/api/github.ts"),
     route("upload/:orgId/*", "routes/api/upload.ts"),
+    route("upload-scoped/:scopeKind/:scopeId/*", "routes/api/upload-scoped.ts"),
     route("pi/:scopeSegment/*", "routes/api/pi.ts"),
     route("pi-workflows/:scopeSegment/*", "routes/api/workflows.ts"),
     route(

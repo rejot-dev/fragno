@@ -1,17 +1,17 @@
 import type { Route } from "./+types/explorer-path";
-import { loadFilesExplorerData } from "./data";
+import { loadFilesExplorerData, resolveAuthorizedFilesRouteScope } from "./data";
 
 export { default } from "./explorer";
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
+  const scope = await resolveAuthorizedFilesRouteScope({ request, context, params, url });
+  if (scope instanceof Response) {
+    return scope;
   }
-
   return loadFilesExplorerData({
     request,
     context,
-    orgId: params.orgId,
+    scope,
     requestedPath: readExplorerPath(params["*"]),
   });
 }

@@ -18,6 +18,8 @@ vi.mock("./file-collections.server", () => ({
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import { loader } from "./download";
 
+const DOWNLOAD_PATH = "/backoffice/files/org/org_123/download";
+
 describe("backoffice files download route", () => {
   beforeEach(() => {
     getAuthMeMock.mockReset();
@@ -37,27 +39,19 @@ describe("backoffice files download route", () => {
 
   test("redirects anonymous users to login", async () => {
     getAuthMeMock.mockResolvedValue(null);
-
-    const response = toResponse(
-      await loader(
-        createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fstatic%2FSYSTEM.md",
-        ),
-      ),
-    );
+    const returnTo = `${DOWNLOAD_PATH}?path=%2Fstatic%2FSYSTEM.md`;
+    const response = toResponse(await loader(createLoaderArgs(`https://example.com${returnTo}`)));
 
     assert(response.status === 302);
     expect(response.headers.get("Location")).toBe(
-      `https://example.com${buildBackofficeLoginPath("/backoffice/files/org_123/download?path=%2Fstatic%2FSYSTEM.md")}`,
+      `https://example.com${buildBackofficeLoginPath(returnTo)}`,
     );
   });
 
   test("streams a selected collection file as an attachment", async () => {
     const response = toResponse(
       await loader(
-        createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fstatic%2FSYSTEM.md",
-        ),
+        createLoaderArgs(`https://example.com${DOWNLOAD_PATH}?path=%2Fstatic%2FSYSTEM.md`),
       ),
     );
 
@@ -70,25 +64,15 @@ describe("backoffice files download route", () => {
 
   test("returns not found for roots, directories, and unknown files", async () => {
     await expect(
-      loader(
-        createLoaderArgs("https://example.com/backoffice/files/org_123/download?path=%2Fstatic"),
-      ),
+      loader(createLoaderArgs(`https://example.com${DOWNLOAD_PATH}?path=%2Fstatic`)),
     ).rejects.toMatchObject({ status: 404 });
 
     await expect(
-      loader(
-        createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fstatic%2Fimages%2F",
-        ),
-      ),
+      loader(createLoaderArgs(`https://example.com${DOWNLOAD_PATH}?path=%2Fstatic%2Fimages%2F`)),
     ).rejects.toMatchObject({ status: 404 });
 
     await expect(
-      loader(
-        createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fstatic%2Fmissing.txt",
-        ),
-      ),
+      loader(createLoaderArgs(`https://example.com${DOWNLOAD_PATH}?path=%2Fstatic%2Fmissing.txt`)),
     ).rejects.toMatchObject({ status: 404 });
   });
 
@@ -96,11 +80,7 @@ describe("backoffice files download route", () => {
     getAuthMeMock.mockResolvedValue({ ...createAuthMe(), organizations: [] });
 
     await expect(
-      loader(
-        createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fstatic%2FSYSTEM.md",
-        ),
-      ),
+      loader(createLoaderArgs(`https://example.com${DOWNLOAD_PATH}?path=%2Fstatic%2FSYSTEM.md`)),
     ).rejects.toMatchObject({ status: 404 });
     expect(createFilesOverviewCollectionsMock).not.toHaveBeenCalled();
   });
@@ -111,7 +91,7 @@ const createLoaderArgs = (url: string) =>
     request: new Request(url),
     url: new URL(url),
     context: { get: () => ({ runtime: { objects: {}, config: {} } }) } as never,
-    params: { orgId: "org_123" },
+    params: { scopeKind: "org", scopeId: "org_123" },
   }) as unknown as Parameters<typeof loader>[0];
 
 function toResponse(result: Awaited<ReturnType<typeof loader>>): Response {

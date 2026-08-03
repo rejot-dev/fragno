@@ -4,6 +4,7 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/index";
+import { filesScopeBasePath } from "./scope";
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
   const returnTo = `${url.pathname}${url.search}`;
@@ -20,7 +21,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  return redirect(`/backoffice/files/${orgId}`);
+  return redirect(filesScopeBasePath({ kind: "org", orgId, label: orgId }));
 }
 
 export default function BackofficeFilesIndex() {
