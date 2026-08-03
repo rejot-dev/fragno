@@ -823,26 +823,31 @@ export class ConditionalExpressionMachine implements TokenSubmachine {
   readonly workflow: WorkflowBuilder;
   readonly #conditionNode: ConditionNode;
   readonly #baseDepth: TokenMachineContext["depth"];
+  readonly #onPublish: () => void;
   readonly #consequent: BranchProgress = { containsStep: false };
   readonly #alternate: BranchProgress = { containsStep: false };
   #phase: ConditionalExpressionPhase = "consequent-pending";
   #nestedConditionalDepth = 0;
+  #published = false;
 
   constructor({
     condition,
     parentId,
     workflow,
     baseDepth,
+    onPublish,
   }: {
     condition: ConditionNode;
     parentId: string;
     workflow: WorkflowBuilder;
     baseDepth: TokenMachineContext["depth"];
+    onPublish: () => void;
   }) {
     this.#conditionNode = condition;
     this.parentId = parentId;
     this.workflow = workflow;
     this.#baseDepth = { ...baseDepth };
+    this.#onPublish = onPublish;
   }
 
   get id(): string {
@@ -879,6 +884,7 @@ export class ConditionalExpressionMachine implements TokenSubmachine {
     const branch = this.activeBranch();
     if (branch) {
       branch.containsStep = true;
+      this.publish();
     }
   }
 
@@ -892,6 +898,7 @@ export class ConditionalExpressionMachine implements TokenSubmachine {
     const branch = this.activeBranch();
     if (branch) {
       branch.abruptCompletionId = nodeId;
+      this.publish();
     }
   }
 
@@ -970,7 +977,23 @@ export class ConditionalExpressionMachine implements TokenSubmachine {
       construction: { status: "partial", phase: "body" },
     };
     branch.lastToken = positioned;
-    this.workflow.children.push(branch.node);
+    if (this.#published) {
+      this.workflow.children.push(branch.node);
+    }
+  }
+
+  private publish(): void {
+    if (this.#published) {
+      return;
+    }
+    this.#published = true;
+    this.#onPublish();
+    this.workflow.children.push(this.#conditionNode);
+    for (const branch of [this.#consequent, this.#alternate]) {
+      if (branch.node) {
+        this.workflow.children.push(branch.node);
+      }
+    }
   }
 
   private extendBranchSource(branch: BranchProgress, positioned: PositionedWorkflowToken): void {
@@ -992,6 +1015,7 @@ export class ConditionalExpressionMachine implements TokenSubmachine {
       (branch) => branch.containsStep || branch.abruptCompletionId !== undefined,
     );
     if (hasWorkflowContent) {
+      this.publish();
       this.#conditionNode.construction = { status: "complete", phase: "complete" };
     } else {
       const removedIds = new Set([
