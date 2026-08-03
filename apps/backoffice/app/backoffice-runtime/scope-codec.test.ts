@@ -2,17 +2,18 @@ import { describe, expect, test, assert } from "vitest";
 
 import {
   backofficeContextScopeFromSinglePathSegment,
+  backofficeContextScopeRouteId,
+  backofficeContextScopeRoutePath,
   backofficeContextScopeSinglePathSegment,
   backofficeScopeFromRouteParams,
   backofficeScopeFromSinglePathSegment,
-  backofficeScopeRouteId,
   backofficeScopeSinglePathSegment,
 } from "./scope-codec";
 
 describe("backoffice scope codec", () => {
   test("round-trips route scope ids with encoded delimiters", () => {
     const project = { kind: "project" as const, orgId: "org:one", projectId: "proj~two" };
-    const routeId = backofficeScopeRouteId(project);
+    const routeId = backofficeContextScopeRouteId(project);
 
     expect(routeId).toBe("org%3Aone:proj~two");
     expect(backofficeScopeFromRouteParams({ scopeKind: "project", scopeId: routeId })).toEqual(
@@ -33,6 +34,20 @@ describe("backoffice scope codec", () => {
       backofficeScopeSinglePathSegment({ kind: "project", orgId: "org:1", projectId: "p/2" }) ===
         "project:org%3A1:p%2F2",
     );
+  });
+
+  test.each([
+    [{ kind: "system" } as const, "system", "system/system"],
+    [{ kind: "org", orgId: "org/one" } as const, "org%2Fone", "org/org%252Fone"],
+    [{ kind: "user", userId: "user:one" } as const, "user%3Aone", "user/user%253Aone"],
+    [
+      { kind: "project", orgId: "org-1", projectId: "project/one" } as const,
+      "org-1:project%2Fone",
+      "project/org-1%3Aproject%252Fone",
+    ],
+  ])("builds route identifiers and paths for %#", (scope, expectedId, expectedPath) => {
+    expect(backofficeContextScopeRouteId(scope)).toBe(expectedId);
+    expect(backofficeContextScopeRoutePath(scope)).toBe(expectedPath);
   });
 
   test("supports system scopes for object-address metadata and public callbacks", () => {

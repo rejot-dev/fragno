@@ -1,7 +1,7 @@
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import {
   backofficeScopeFromRouteParams,
-  backofficeScopeRouteId,
+  backofficeContextScopeRoutePath,
 } from "@/backoffice-runtime/scope-codec";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 
@@ -46,7 +46,7 @@ export const toMarketplaceTargetScope = (scope: MarketplaceUiScope): BackofficeR
 };
 
 export const marketplaceScopeBasePath = (scope: MarketplaceUiScope) =>
-  `/backoffice/marketplace/${scope.kind}/${backofficeScopeRouteId(toMarketplaceTargetScope(scope))}`;
+  `/backoffice/marketplace/${backofficeContextScopeRoutePath(toMarketplaceTargetScope(scope))}`;
 
 export const marketplaceScopeTabPath = (
   scope: MarketplaceUiScope,

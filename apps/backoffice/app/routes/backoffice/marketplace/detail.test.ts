@@ -21,7 +21,8 @@ const {
 vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
 
 import {
-  backofficeScopeRouteId,
+  backofficeContextScopeRouteId,
+  backofficeContextScopeRoutePath,
   backofficeScopeSinglePathSegment,
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
@@ -62,14 +63,14 @@ const context = {
 
 const runLoader = (scope: BackofficeRoutableScope = { kind: "org", orgId: "org-1" }) => {
   const url = new URL(
-    `https://example.test/backoffice/marketplace/${scope.kind}/${backofficeScopeRouteId(scope)}/marketplace/${listingRef}`,
+    `https://example.test/backoffice/marketplace/${backofficeContextScopeRoutePath(scope)}/marketplace/${listingRef}`,
   );
   return loader({
     request: new Request(url),
     params: {
       listingRef,
       scopeKind: scope.kind,
-      scopeId: backofficeScopeRouteId(scope),
+      scopeId: backofficeContextScopeRouteId(scope),
     },
     context,
     url,
@@ -83,7 +84,7 @@ const runAction = (input: {
 }) => {
   const scope = input.scope ?? { kind: "org", orgId: "org-1" };
   const url = new URL(
-    `https://example.test/backoffice/marketplace/${scope.kind}/${backofficeScopeRouteId(scope)}/marketplace/${listingRef}`,
+    `https://example.test/backoffice/marketplace/${backofficeContextScopeRoutePath(scope)}/marketplace/${listingRef}`,
   );
   const formData = new FormData();
   if (input.version) {
@@ -100,7 +101,7 @@ const runAction = (input: {
     params: {
       listingRef,
       scopeKind: scope.kind,
-      scopeId: backofficeScopeRouteId(scope),
+      scopeId: backofficeContextScopeRouteId(scope),
     },
     context,
     url,

@@ -1,7 +1,7 @@
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
+  backofficeContextScopeRoutePath,
   backofficeContextScopeSinglePathSegment,
-  backofficeScopeRouteId,
 } from "@/backoffice-runtime/scope-codec";
 import {
   createBrowserCollectionDatabaseLoader,
@@ -28,13 +28,9 @@ export function describeAutomationCollectionSource(
   source: AutomationCollectionSource,
 ): BrowserCollectionSourceDescription<AutomationCollectionTarget> {
   const scopeKey = backofficeContextScopeSinglePathSegment(source.scope);
-  const routeScopeId = encodeURIComponent(
-    source.scope.kind === "system" ? "system" : backofficeScopeRouteId(source.scope),
-  );
-
   return {
     resourceKey: JSON.stringify([scopeKey, source.adapterIdentity]),
-    internalUrl: `/api/automations-scoped/${source.scope.kind}/${routeScopeId}/_internal`,
+    internalUrl: `/api/automations-scoped/${backofficeContextScopeRoutePath(source.scope)}/_internal`,
     bootstrap: { adapterIdentity: source.adapterIdentity },
     collectionId: (target) =>
       JSON.stringify(["backoffice", "automations", scopeKey, source.adapterIdentity, target]),

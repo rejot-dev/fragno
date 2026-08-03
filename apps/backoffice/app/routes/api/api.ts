@@ -1,5 +1,5 @@
 import type { ApiObject } from "@/backoffice-runtime/object-registry";
-import { backofficeScopeRouteId } from "@/backoffice-runtime/scope-codec";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import {
   forwardScopedPublicRequest,
   type ScopedPublicFragmentProxy,
@@ -35,7 +35,7 @@ const apiPublicProxy = {
     invalidResponse: (message) => new Response(message, { status: 502 }),
     redirect: ({ request, scope, status, code, message }) => {
       const redirectUrl = new URL(
-        `/backoffice/automations/${scope.kind}/${encodeURIComponent(backofficeScopeRouteId(scope))}/api`,
+        `/backoffice/automations/${backofficeContextScopeRoutePath(scope)}/api`,
         request.url,
       );
       redirectUrl.searchParams.set("tab", "connections");

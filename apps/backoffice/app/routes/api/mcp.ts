@@ -1,5 +1,5 @@
 import type { McpObject } from "@/backoffice-runtime/object-registry";
-import { backofficeScopeRouteId } from "@/backoffice-runtime/scope-codec";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import {
   forwardScopedPublicRequest,
   type ScopedPublicFragmentProxy,
@@ -23,7 +23,7 @@ const mcpPublicProxy = {
     invalidResponse: (message) => new Response(message, { status: 502 }),
     redirect: ({ request, scope, status }) => {
       const redirectUrl = new URL(
-        `/backoffice/automations/${scope.kind}/${encodeURIComponent(backofficeScopeRouteId(scope))}/mcp`,
+        `/backoffice/automations/${backofficeContextScopeRoutePath(scope)}/mcp`,
         request.url,
       );
       redirectUrl.searchParams.set("oauth", status);
