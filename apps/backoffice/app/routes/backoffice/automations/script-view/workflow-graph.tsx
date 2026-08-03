@@ -31,15 +31,26 @@ import { GraphBadge } from "./graph-badge";
 import type { LinkedScrollViewport } from "./linked-scroll";
 import type { WorkflowGraphDetailMode } from "./script-view-mode";
 import { SourceLocationButton } from "./source-location-button";
-import { WorkflowGeneratedUi } from "./workflow-generated-ui";
+import { WorkflowGeneratedUi, type WorkflowEventSender } from "./workflow-generated-ui";
 import {
   countRenderedWorkflowSteps,
   createWorkflowGraphPresentation,
   workflowTerminalDetails,
   type WorkflowEventGuardPresentation,
 } from "./workflow-graph-presentation";
-import type { ScriptWorkflowRun, WorkflowStepRunState } from "./workflow-run-presentation";
+import { hasVisibleWorkflowOutput } from "./workflow-output";
+import { WorkflowOutputDisclosure } from "./workflow-output-data";
+import type {
+  ScriptWorkflowRun,
+  WorkflowRunEvent,
+  WorkflowStepRunState,
+} from "./workflow-run-presentation";
 import { WorkflowStepCard } from "./workflow-step-card";
+import {
+  createWorkflowUiWaitPairings,
+  workflowUiWaitRunState,
+  type WorkflowUiWaitPairings,
+} from "./workflow-ui-wait-pairing";
 
 export function ScriptWorkflowGraph({
   visualization,
@@ -48,6 +59,7 @@ export function ScriptWorkflowGraph({
   selectedRun,
   scrollViewport,
   fillHeight = false,
+  workflowEventSender,
   onSourceSelect,
 }: {
   visualization: WorkflowVisualizationSnapshot;
@@ -56,6 +68,7 @@ export function ScriptWorkflowGraph({
   selectedRun: ScriptWorkflowRun | null;
   scrollViewport?: LinkedScrollViewport;
   fillHeight?: boolean;
+  workflowEventSender?: WorkflowEventSender;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   const workflows = visualization.graph.nodes.filter((node) => node.kind === "workflow");
@@ -74,12 +87,17 @@ export function ScriptWorkflowGraph({
         <div className="space-y-6">
           {workflows.map((workflow) => {
             const eventGuard = presentation.eventGuardByWorkflowId.get(workflow.id);
-            const stepCount = countRenderedWorkflowSteps(
+            const rawStepCount = countRenderedWorkflowSteps(
               workflow.id,
               presentation.childrenByParent,
             );
             const workflowRun =
               selectedRun?.workflowName === workflow.name ? selectedRun : undefined;
+            const uiWaitPairings = createWorkflowUiWaitPairings({
+              childrenByParent: presentation.childrenByParent,
+              stepStatesByNodeId: workflowRun?.stepStatesByNodeId,
+            });
+            const stepCount = rawStepCount - uiWaitPairings.byUiStepId.size;
             const hasCurrentStep = workflowRun
               ? [...workflowRun.stepStatesByNodeId.values()].some((state) => state.current)
               : false;
@@ -124,6 +142,8 @@ export function ScriptWorkflowGraph({
                     workflowId={workflow.id}
                     childrenByParent={presentation.childrenByParent}
                     run={workflowRun}
+                    uiWaitPairings={uiWaitPairings}
+                    workflowEventSender={workflowEventSender}
                     onSourceSelect={onSourceSelect}
                   />
                 ) : (
@@ -134,9 +154,16 @@ export function ScriptWorkflowGraph({
                       detailMode={detailMode}
                       runtimeToolCallsByStepId={runtimeToolCallsByStepId}
                       stepStatesByNodeId={workflowRun?.stepStatesByNodeId}
+                      uiWaitPairings={uiWaitPairings}
+                      workflowEvents={workflowRun?.workflowEvents}
+                      workflowRunRecordId={workflowRun?.id}
+                      workflowEventSender={workflowEventSender}
+                      workflowEventWorkflowName={workflowRun?.instanceWorkflowName}
+                      workflowInstanceId={workflowRun?.instanceId}
+                      waitingEventTypes={workflowRun?.waitingEventTypes}
+                      workflowRun={workflowRun}
                       onSourceSelect={onSourceSelect}
                     />
-                    <WorkflowFinalOutput run={workflowRun} />
                   </>
                 )}
               </section>
@@ -154,11 +181,15 @@ function WorkflowUiResults({
   workflowId,
   childrenByParent,
   run,
+  uiWaitPairings,
+  workflowEventSender,
   onSourceSelect,
 }: {
   workflowId: string;
   childrenByParent: Map<string, WorkflowChildNode[]>;
   run?: ScriptWorkflowRun;
+  uiWaitPairings: WorkflowUiWaitPairings;
+  workflowEventSender?: WorkflowEventSender;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   const uiSteps = collectWorkflowUiSteps(workflowId, childrenByParent, run?.stepStatesByNodeId);
@@ -174,14 +205,26 @@ function WorkflowUiResults({
 
   return (
     <div className="mt-3 space-y-3">
-      {uiSteps.map((step) => (
-        <WorkflowStepCard
-          key={step.id}
-          step={step}
-          runState={run?.stepStatesByNodeId.get(step.id)}
-          onSourceSelect={onSourceSelect}
-        />
-      ))}
+      {uiSteps.map((step) => {
+        const pair = uiWaitPairings.byUiStepId.get(step.id);
+        return (
+          <WorkflowStepCard
+            key={step.id}
+            step={step}
+            continuationStep={pair?.waitStep}
+            detailMode="ui"
+            generatedUiState={pair?.uiState}
+            runState={pair ? workflowUiWaitRunState(pair) : run?.stepStatesByNodeId.get(step.id)}
+            workflowEvents={run?.workflowEvents}
+            workflowRunRecordId={run?.id}
+            workflowEventSender={workflowEventSender}
+            workflowEventWorkflowName={run?.instanceWorkflowName}
+            workflowInstanceId={run?.instanceId}
+            waitingEventTypes={run?.waitingEventTypes}
+            onSourceSelect={onSourceSelect}
+          />
+        );
+      })}
       <WorkflowFinalOutput run={run} />
     </div>
   );
@@ -263,6 +306,14 @@ function WorkflowChildTree({
   detailMode,
   runtimeToolCallsByStepId,
   stepStatesByNodeId,
+  uiWaitPairings,
+  workflowEvents,
+  workflowRunRecordId,
+  workflowEventSender,
+  workflowEventWorkflowName,
+  workflowInstanceId,
+  waitingEventTypes,
+  workflowRun,
   onSourceSelect,
 }: {
   parentId: string;
@@ -270,37 +321,67 @@ function WorkflowChildTree({
   detailMode: WorkflowGraphDetailMode;
   runtimeToolCallsByStepId: ReadonlyMap<string, readonly ResolvedWorkflowRuntimeToolCall[]>;
   stepStatesByNodeId?: ReadonlyMap<string, WorkflowStepRunState>;
+  uiWaitPairings: WorkflowUiWaitPairings;
+  workflowEvents?: readonly WorkflowRunEvent[];
+  workflowRunRecordId?: string;
+  workflowEventSender?: WorkflowEventSender;
+  workflowEventWorkflowName?: string;
+  workflowInstanceId?: string;
+  waitingEventTypes?: readonly string[];
+  workflowRun?: ScriptWorkflowRun;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
-  const children = childrenByParent.get(parentId) ?? [];
+  const children = (childrenByParent.get(parentId) ?? []).filter(
+    (child) => !uiWaitPairings.uiStepIdByWaitStepId.has(child.id),
+  );
   if (children.length === 0) {
     return null;
   }
 
   return (
     <ol className="ml-4 border-l border-[color:var(--bo-border-strong)] pl-5">
-      {children.map((child) => (
-        <li key={child.id} className="relative pt-3 first:pt-4">
-          <span className="absolute top-7 -left-[1.65rem] flex h-5 w-5 items-center justify-center border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] font-mono text-[9px] font-semibold text-[var(--bo-muted)] tabular-nums">
-            {child.kind === "branch" ? child.index + 1 : child.order}
-          </span>
-          <WorkflowChildCard
-            child={child}
-            detailMode={detailMode}
-            runtimeToolCalls={runtimeToolCallsByStepId.get(child.id)}
-            runState={stepStatesByNodeId?.get(child.id)}
-            onSourceSelect={onSourceSelect}
-          />
-          <WorkflowChildTree
-            parentId={child.id}
-            childrenByParent={childrenByParent}
-            detailMode={detailMode}
-            runtimeToolCallsByStepId={runtimeToolCallsByStepId}
-            stepStatesByNodeId={stepStatesByNodeId}
-            onSourceSelect={onSourceSelect}
-          />
-        </li>
-      ))}
+      {children.map((child) => {
+        const pair = uiWaitPairings.byUiStepId.get(child.id);
+        return (
+          <li key={child.id} className="relative pt-3 first:pt-4">
+            <span className="absolute top-7 -left-[1.65rem] flex h-5 w-5 items-center justify-center border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] font-mono text-[9px] font-semibold text-[var(--bo-muted)] tabular-nums">
+              {child.kind === "branch" ? child.index + 1 : child.order}
+            </span>
+            <WorkflowChildCard
+              child={child}
+              detailMode={detailMode}
+              runtimeToolCalls={runtimeToolCallsByStepId.get(child.id)}
+              continuationStep={pair?.waitStep}
+              generatedUiState={pair?.uiState}
+              runState={pair ? workflowUiWaitRunState(pair) : stepStatesByNodeId?.get(child.id)}
+              workflowEvents={workflowEvents}
+              workflowRunRecordId={workflowRunRecordId}
+              workflowEventSender={workflowEventSender}
+              workflowEventWorkflowName={workflowEventWorkflowName}
+              workflowInstanceId={workflowInstanceId}
+              waitingEventTypes={waitingEventTypes}
+              workflowRun={workflowRun}
+              onSourceSelect={onSourceSelect}
+            />
+            <WorkflowChildTree
+              parentId={child.id}
+              childrenByParent={childrenByParent}
+              detailMode={detailMode}
+              runtimeToolCallsByStepId={runtimeToolCallsByStepId}
+              stepStatesByNodeId={stepStatesByNodeId}
+              uiWaitPairings={uiWaitPairings}
+              workflowEvents={workflowEvents}
+              workflowRunRecordId={workflowRunRecordId}
+              workflowEventSender={workflowEventSender}
+              workflowEventWorkflowName={workflowEventWorkflowName}
+              workflowInstanceId={workflowInstanceId}
+              waitingEventTypes={waitingEventTypes}
+              workflowRun={workflowRun}
+              onSourceSelect={onSourceSelect}
+            />
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -309,13 +390,31 @@ function WorkflowChildCard({
   child,
   detailMode,
   runtimeToolCalls,
+  continuationStep,
+  generatedUiState,
   runState,
+  workflowEvents,
+  workflowRunRecordId,
+  workflowEventSender,
+  workflowEventWorkflowName,
+  workflowInstanceId,
+  waitingEventTypes,
+  workflowRun,
   onSourceSelect,
 }: {
   child: WorkflowChildNode;
   detailMode: WorkflowGraphDetailMode;
   runtimeToolCalls?: readonly ResolvedWorkflowRuntimeToolCall[];
+  continuationStep?: StepNode;
+  generatedUiState?: WorkflowStepRunState;
   runState?: WorkflowStepRunState;
+  workflowEvents?: readonly WorkflowRunEvent[];
+  workflowRunRecordId?: string;
+  workflowEventSender?: WorkflowEventSender;
+  workflowEventWorkflowName?: string;
+  workflowInstanceId?: string;
+  waitingEventTypes?: readonly string[];
+  workflowRun?: ScriptWorkflowRun;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   switch (child.kind) {
@@ -324,7 +423,16 @@ function WorkflowChildCard({
         <WorkflowStepCard
           step={child}
           runtimeToolCalls={detailMode === "verbose" ? runtimeToolCalls : undefined}
+          continuationStep={continuationStep}
+          detailMode={detailMode}
+          generatedUiState={generatedUiState}
           runState={runState}
+          workflowEvents={workflowEvents}
+          workflowRunRecordId={workflowRunRecordId}
+          workflowEventSender={workflowEventSender}
+          workflowEventWorkflowName={workflowEventWorkflowName}
+          workflowInstanceId={workflowInstanceId}
+          waitingEventTypes={waitingEventTypes}
           onSourceSelect={onSourceSelect}
         />
       );
@@ -338,7 +446,12 @@ function WorkflowChildCard({
       return <BranchCard branch={child} onSourceSelect={onSourceSelect} />;
     case "terminal":
       return (
-        <TerminalCard terminal={child} detailMode={detailMode} onSourceSelect={onSourceSelect} />
+        <TerminalCard
+          terminal={child}
+          detailMode={detailMode}
+          workflowRun={workflowRun}
+          onSourceSelect={onSourceSelect}
+        />
       );
   }
   return null;
@@ -475,14 +588,25 @@ function ParallelCard({
 function TerminalCard({
   terminal,
   detailMode,
+  workflowRun,
   onSourceSelect,
 }: {
   terminal: TerminalNode;
   detailMode: WorkflowGraphDetailMode;
+  workflowRun?: ScriptWorkflowRun;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   const presentation = terminalPresentation(terminal);
-  const details = workflowTerminalDetails(terminal, detailMode);
+  const runtimeOutput =
+    terminal.terminalType === "final-return" && workflowRun?.status === "complete"
+      ? workflowRun.output
+      : undefined;
+  const showsRuntimeOutput =
+    terminal.terminalType === "final-return" &&
+    workflowRun?.status === "complete" &&
+    hasVisibleWorkflowOutput(runtimeOutput);
+  const terminalDetails = workflowTerminalDetails(terminal, detailMode);
+  const details = showsRuntimeOutput ? { ...terminalDetails, value: undefined } : terminalDetails;
   const Icon = presentation.icon;
 
   return (
@@ -511,6 +635,11 @@ function TerminalCard({
           ) : null}
         </div>
       </div>
+      {showsRuntimeOutput ? (
+        <div data-workflow-final-return-output>
+          <WorkflowOutputDisclosure value={runtimeOutput} />
+        </div>
+      ) : null}
     </div>
   );
 }

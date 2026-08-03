@@ -17,7 +17,7 @@ import {
 
 const AUTOMATION_DATABASE_NAME = "fragno-backoffice-automations.sqlite";
 const AUTOMATION_DATABASE_COORDINATOR_NAME = "fragno-backoffice-automations";
-const AUTOMATION_COLLECTION_SCHEMA_VERSION = 3;
+const AUTOMATION_COLLECTION_SCHEMA_VERSION = 4;
 
 export type AutomationCollectionSource = {
   scope: BackofficeContextScope;

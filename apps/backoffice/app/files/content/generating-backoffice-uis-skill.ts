@@ -164,9 +164,9 @@ The installed json-render shape is a flat element graph:
 
 - \`root\` names an element in \`elements\`.
 - Every child names an element in the same \`elements\` record.
-- Every element contains exactly \`type\`, \`props\`, and \`children\`, plus optional \`visible\`; \`on\`, \`watch\`, \`repeat\`, actions, event bindings, and other fields are invalid.
+- Every element contains exactly \`type\`, \`props\`, and \`children\`, plus optional \`visible\`; \`on\`, \`watch\`, \`repeat\`, arbitrary actions, event bindings, and other fields are invalid. Durable workflow input uses the catalog's narrowly scoped \`WorkflowEventButton\` component instead.
 - Component and prop names are case-sensitive and must match the production catalog; unsupported names are invalid.
-- A top-level component prop may use \`{ "$state": "/path" }\` to read a value from \`$ui.state\`. Expressions cannot be nested inside array items or object fields; put the complete array or object in state and reference it from the whole prop instead.
+- Component props may use read expressions such as \`{ "$state": "/path" }\` at any depth, including inside array items and object fields. Use \`{ "$bindState": "/path" }\` only as the complete top-level value of an editable component's natural value prop so the renderer can expose its write-back binding.
 - \`visible\` may be a boolean or a state visibility condition. A state condition uses exactly one of \`eq\`, \`neq\`, \`gt\`, \`gte\`, \`lt\`, or \`lte\`; omitting the comparison checks truthiness. \`not: true\` inverts it. Arrays and \`$and\` are AND; \`$or\` is OR.
 - Every root and child reference resolves, and the child graph is acyclic.
 - The graph stays within 128 elements, 32 children per element, 512 total child references, and 24 levels of depth.
@@ -234,6 +234,63 @@ async () => {
 };
 \`\`\`
 
+## Durable workflow input
+
+A completed \`step.do\` UI may collect input for a following \`step.waitForEvent\`:
+
+- Put editable values in \`$ui.state\` and bind \`TextInput.value\`, \`TextArea.value\`, \`Select.value\`, or \`Checkbox.checked\` with \`{ "$bindState": "/path" }\`.
+- Set \`TextInput.secret\` to \`true\` for sensitive values such as API keys so the browser masks the entered value.
+- Add one \`WorkflowEventButton\`. Its \`eventType\` must exactly match the following \`waitForEvent\` type, and its complete \`payload\` should normally be \`{ "$state": "/response" }\`.
+- Return the UI from a completed step before awaiting the event. The Backoffice supplies the current workflow name and instance ID; never place workflow identifiers or URLs in the generated interface.
+- The button is enabled only while the displayed run is currently waiting for the declared event type. A stale or terminal interface remains visible but cannot submit again.
+
+\`\`\`js
+await step.do("request approval", async () => ({
+  $ui: {
+    version: 1,
+    state: { response: { decision: "approve", reason: "" } },
+    spec: {
+      root: "form",
+      elements: {
+        form: {
+          type: "Stack",
+          props: { gap: "md" },
+          children: ["decision", "reason", "submit"],
+        },
+        decision: {
+          type: "Select",
+          props: {
+            label: "Decision",
+            value: { $bindState: "/response/decision" },
+            options: [
+              { label: "Approve", value: "approve" },
+              { label: "Reject", value: "reject" },
+            ],
+          },
+          children: [],
+        },
+        reason: {
+          type: "TextArea",
+          props: { label: "Reason", value: { $bindState: "/response/reason" } },
+          children: [],
+        },
+        submit: {
+          type: "WorkflowEventButton",
+          props: {
+            label: "Submit decision",
+            eventType: "approval",
+            payload: { $state: "/response" },
+          },
+          children: [],
+        },
+      },
+    },
+  },
+}));
+
+const approval = await step.waitForEvent("approval", { type: "approval" });
+\`\`\`
+
 ## Production component catalog
 
 This reference comes from the definitions used by runtime validation and rendering. Props are strict: use only the fields shown by each props type and satisfy every listed limit.
@@ -257,6 +314,7 @@ This reference contains only the \`$ui\` behavior specific to durable workflow r
 - Consume later values from the resolved step result's ordinary fields. \`$ui.state\` is presentation state, not the workflow's durable dataflow API.
 - Ordinary sibling fields remain durable data and are not presented as raw-result UI.
 - Returning the same result from the workflow function renders it as the final output. The workflow workspace's \`UI\` mode shows only steps and final output containing \`$ui\`.
+- For user input, return a generated interface from a completed \`step.do\`, then await \`step.waitForEvent\`. Bind form controls into \`$ui.state\` and submit that state through \`WorkflowEventButton\` with the exact awaited event type. Final workflow output is terminal and cannot accept workflow input.
 
 ## Example
 

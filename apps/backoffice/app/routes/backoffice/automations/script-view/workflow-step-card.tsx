@@ -2,30 +2,72 @@ import { useEffect, useState } from "react";
 
 import type { SourceRange, StepNode } from "@fragno-dev/workflow-visualizer-tokens";
 
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
+import { setByPath } from "@json-render/core";
+
+import { parseBackofficeUiResult, type BackofficeUiResultV1 } from "@/backoffice-ui/result";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 
 import { GraphBadge } from "./graph-badge";
+import type { WorkflowGraphDetailMode } from "./script-view-mode";
 import { SourceLocationButton } from "./source-location-button";
-import { WorkflowGeneratedUi } from "./workflow-generated-ui";
-import type { WorkflowStepRunState } from "./workflow-run-presentation";
+import { WorkflowGeneratedUi, type WorkflowEventSender } from "./workflow-generated-ui";
+import { hasVisibleWorkflowOutput } from "./workflow-output";
+import { WorkflowOutputDisclosure } from "./workflow-output-data";
+import type { WorkflowRunEvent, WorkflowStepRunState } from "./workflow-run-presentation";
+import {
+  deleteWorkflowUiDraft,
+  getOrCreateWorkflowUiDraftEventId,
+  markWorkflowUiDraftSubmitted,
+  saveWorkflowUiDraft,
+  workflowUiDraftId,
+  workflowUiDrafts,
+  type WorkflowUiDraft,
+} from "./workflow-ui-drafts.client";
+import { activeWorkflowUiEventTypes, submittedWorkflowUiEvent } from "./workflow-ui-event-state";
 
 const COMPLETION_HIGHLIGHT_DURATION_MS = 2_000;
 
 export function WorkflowStepCard({
   step,
   runtimeToolCalls = [],
+  continuationStep,
+  detailMode = "simple",
+  generatedUiState,
   runState,
+  workflowEvents = [],
+  workflowRunRecordId,
+  workflowEventSender,
+  workflowEventWorkflowName,
+  workflowInstanceId,
+  waitingEventTypes = [],
   onSourceSelect,
 }: {
   step: StepNode;
   runtimeToolCalls?: readonly ResolvedWorkflowRuntimeToolCall[];
+  continuationStep?: StepNode;
+  detailMode?: WorkflowGraphDetailMode;
+  generatedUiState?: WorkflowStepRunState;
   runState?: WorkflowStepRunState;
+  workflowEvents?: readonly WorkflowRunEvent[];
+  workflowRunRecordId?: string;
+  workflowEventSender?: WorkflowEventSender;
+  workflowEventWorkflowName?: string;
+  workflowInstanceId?: string;
+  waitingEventTypes?: readonly string[];
   onSourceSelect?: (source: SourceRange) => void;
 }) {
-  const details = workflowStepDetails(step);
+  const details = [
+    ...workflowStepDetails(step),
+    ...(continuationStep && detailMode === "verbose" ? workflowStepDetails(continuationStep) : []),
+  ];
+  const hasCollapsibleOutput =
+    runState?.status === "completed" && hasVisibleWorkflowOutput(runState.result);
   const recentlyCompleted = useRecentWorkflowStepCompletion(runState);
-  const runPresentation = workflowStepRunPresentation(runState, recentlyCompleted);
+  const runPresentation = workflowStepRunPresentation(
+    runState,
+    recentlyCompleted,
+    Boolean(continuationStep),
+  );
   return (
     <div
       data-workflow-step-card
@@ -64,13 +106,43 @@ export function WorkflowStepCard({
         </div>
       ) : null}
 
-      <WorkflowStepGeneratedUi state={runState} />
+      <WorkflowStepGeneratedUi
+        state={generatedUiState ?? runState}
+        workflowEvents={workflowEvents}
+        workflowRunRecordId={workflowRunRecordId}
+        workflowName={workflowEventWorkflowName}
+        workflowInstanceId={workflowInstanceId}
+        workflowEventSender={workflowEventSender}
+        waitingEventTypes={waitingEventTypes}
+      />
+
+      {hasCollapsibleOutput ? <WorkflowOutputDisclosure value={runState.result} /> : null}
     </div>
   );
 }
 
-function WorkflowStepGeneratedUi({ state }: { state?: WorkflowStepRunState }) {
-  if (state?.status !== "completed" || parseBackofficeUiResult(state.result).kind === "ordinary") {
+function WorkflowStepGeneratedUi({
+  state,
+  workflowEvents,
+  workflowRunRecordId,
+  workflowEventSender,
+  workflowInstanceId,
+  workflowName,
+  waitingEventTypes,
+}: {
+  state?: WorkflowStepRunState;
+  workflowEvents: readonly WorkflowRunEvent[];
+  workflowRunRecordId?: string;
+  workflowEventSender?: WorkflowEventSender;
+  workflowInstanceId?: string;
+  workflowName?: string;
+  waitingEventTypes: readonly string[];
+}) {
+  if (state?.status !== "completed") {
+    return null;
+  }
+  const parsedResult = parseBackofficeUiResult(state.result);
+  if (parsedResult.kind === "ordinary") {
     return null;
   }
 
@@ -79,8 +151,162 @@ function WorkflowStepGeneratedUi({ state }: { state?: WorkflowStepRunState }) {
       data-workflow-step-generated-ui
       className="mt-3 border-t border-[color:var(--bo-border)] pt-3"
     >
-      <WorkflowGeneratedUi value={state.result} />
+      {parsedResult.kind === "valid" ? (
+        <WorkflowStepInteractiveGeneratedUi
+          result={parsedResult.value}
+          state={state}
+          workflowEvents={workflowEvents}
+          workflowRunRecordId={workflowRunRecordId}
+          workflowEventSender={workflowEventSender}
+          workflowInstanceId={workflowInstanceId}
+          workflowName={workflowName}
+          waitingEventTypes={waitingEventTypes}
+        />
+      ) : (
+        <WorkflowGeneratedUi value={state.result} />
+      )}
     </div>
+  );
+}
+
+function WorkflowStepInteractiveGeneratedUi({
+  result,
+  state,
+  workflowEvents,
+  workflowRunRecordId,
+  workflowEventSender,
+  workflowInstanceId,
+  workflowName,
+  waitingEventTypes,
+}: {
+  result: BackofficeUiResultV1;
+  state: WorkflowStepRunState;
+  workflowEvents: readonly WorkflowRunEvent[];
+  workflowRunRecordId?: string;
+  workflowEventSender?: WorkflowEventSender;
+  workflowInstanceId?: string;
+  workflowName?: string;
+  waitingEventTypes: readonly string[];
+}) {
+  const submitted = submittedWorkflowUiEvent({
+    ui: result.$ui,
+    events: workflowEvents,
+    completedAt: state.completedAt,
+  });
+  const draftId =
+    workflowRunRecordId && state.stepRecordId
+      ? workflowUiDraftId({ runRecordId: workflowRunRecordId, stepRecordId: state.stepRecordId })
+      : undefined;
+  const activeEventTypes = activeWorkflowUiEventTypes(result.$ui, waitingEventTypes);
+  const usesBrowserDraft = Boolean(draftId && !submitted && activeEventTypes.size > 0);
+  const [draft, setDraft] = useState<WorkflowUiDraft | null>();
+
+  useEffect(() => {
+    if (!usesBrowserDraft || !draftId) {
+      setDraft(undefined);
+      return undefined;
+    }
+    let active = true;
+    void workflowUiDrafts.preload().then(() => {
+      if (active) {
+        setDraft(workflowUiDrafts.get(draftId) ?? null);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [draftId, usesBrowserDraft]);
+
+  const submittedEventId = submitted?.event.id;
+  useEffect(() => {
+    if (submittedEventId && draftId) {
+      deleteWorkflowUiDraft(draftId);
+    }
+  }, [draftId, submittedEventId]);
+
+  if (usesBrowserDraft && draft === undefined) {
+    return (
+      <p aria-live="polite" className="text-xs text-[var(--bo-muted-2)]">
+        Restoring saved input…
+      </p>
+    );
+  }
+
+  const ui = {
+    ...result.$ui,
+    state: submitted?.state ?? draft?.state ?? result.$ui.state,
+  };
+  return (
+    <WorkflowGeneratedUi
+      value={{ ...result, $ui: ui }}
+      onStateChange={
+        usesBrowserDraft && draftId
+          ? (changes) => {
+              const nextState = structuredClone(draft?.state ?? ui.state);
+              for (const change of changes) {
+                setByPath(nextState, change.path, change.value);
+              }
+              setDraft({
+                id: draftId,
+                state: nextState,
+                eventIds: draft?.eventIds,
+                submittedEventType: draft?.submittedEventType ?? null,
+                updatedAt: Date.now(),
+              });
+              saveWorkflowUiDraft({ id: draftId, initialState: ui.state, changes });
+            }
+          : undefined
+      }
+      interactionHost={
+        workflowEventSender && workflowName && workflowInstanceId
+          ? {
+              canEditWorkflowInput: () => activeEventTypes.size > 0 && !draft?.submittedEventType,
+              canSendWorkflowEvent: (eventType) =>
+                activeEventTypes.has(eventType) && draft?.submittedEventType !== eventType,
+              sendWorkflowEvent: async ({ eventId: fallbackEventId, eventType, payload }) => {
+                const eventId = draftId
+                  ? await getOrCreateWorkflowUiDraftEventId({
+                      id: draftId,
+                      eventType,
+                      initialState: ui.state,
+                      fallbackEventId,
+                    })
+                  : fallbackEventId;
+                if (draftId) {
+                  setDraft({
+                    id: draftId,
+                    state: draft?.state ?? ui.state,
+                    eventIds: { ...draft?.eventIds, [eventType]: eventId },
+                    submittedEventType: draft?.submittedEventType ?? null,
+                    updatedAt: Date.now(),
+                  });
+                }
+                await workflowEventSender({
+                  eventId,
+                  workflowName,
+                  instanceId: workflowInstanceId,
+                  eventType,
+                  payload,
+                });
+                if (draftId) {
+                  setDraft({
+                    id: draftId,
+                    state: draft?.state ?? ui.state,
+                    eventIds: { ...draft?.eventIds, [eventType]: eventId },
+                    submittedEventType: eventType,
+                    updatedAt: Date.now(),
+                  });
+                  markWorkflowUiDraftSubmitted({
+                    id: draftId,
+                    eventType,
+                    initialState: ui.state,
+                  });
+                }
+              },
+            }
+          : undefined
+      }
+    />
   );
 }
 
@@ -126,6 +352,7 @@ type WorkflowStepRunPresentation = {
 function workflowStepRunPresentation(
   state: WorkflowStepRunState | undefined,
   recentlyCompleted: boolean,
+  mergedWithContinuation = false,
 ): WorkflowStepRunPresentation {
   if (!state) {
     return neutralWorkflowStepRunPresentation();
@@ -146,7 +373,9 @@ function workflowStepRunPresentation(
     return {
       label: state.attempts > 1 ? "Retrying" : "Waiting",
       showBadge: true,
-      surfaceClass: "border-amber-500/55 bg-amber-500/8 shadow-[0_0_0_1px_rgb(245_158_11_/_0.2)]",
+      surfaceClass: mergedWithContinuation
+        ? "border-amber-500/55 bg-[var(--bo-panel)] shadow-[0_0_0_1px_rgb(245_158_11_/_0.2)]"
+        : "border-amber-500/55 bg-amber-500/8 shadow-[0_0_0_1px_rgb(245_158_11_/_0.2)]",
       badgeClass: "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200",
       dotClass: "bg-amber-500",
     };

@@ -1,7 +1,28 @@
-import { BackofficeUiErrorBoundary, BackofficeUiRenderer } from "@/backoffice-ui/renderer";
+import type { BackofficeUiInteractionHost } from "@/backoffice-ui/interaction";
+import {
+  BackofficeUiErrorBoundary,
+  BackofficeUiRenderer,
+  type BackofficeUiStateChange,
+} from "@/backoffice-ui/renderer";
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 
-export function WorkflowGeneratedUi({ value }: { value: unknown }) {
+export type WorkflowEventSender = (input: {
+  eventId: string;
+  workflowName: string;
+  instanceId: string;
+  eventType: string;
+  payload: unknown;
+}) => Promise<void>;
+
+export function WorkflowGeneratedUi({
+  interactionHost,
+  onStateChange,
+  value,
+}: {
+  interactionHost?: BackofficeUiInteractionHost;
+  onStateChange?: (changes: BackofficeUiStateChange[]) => void;
+  value: unknown;
+}) {
   const parsedResult = parseBackofficeUiResult(value);
   if (parsedResult.kind === "ordinary") {
     return null;
@@ -13,7 +34,11 @@ export function WorkflowGeneratedUi({ value }: { value: unknown }) {
 
   return (
     <BackofficeUiErrorBoundary fallback={<WorkflowGeneratedUiUnavailable />}>
-      <BackofficeUiRenderer ui={parsedResult.value.$ui} />
+      <BackofficeUiRenderer
+        interactionHost={interactionHost}
+        onStateChange={onStateChange}
+        ui={parsedResult.value.$ui}
+      />
     </BackofficeUiErrorBoundary>
   );
 }

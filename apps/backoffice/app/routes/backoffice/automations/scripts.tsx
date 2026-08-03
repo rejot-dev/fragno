@@ -15,7 +15,7 @@ import type { Route } from "./+types/scripts";
 import type { AutomationScriptRecord } from "./data";
 import { loadAutomationScriptSource } from "./data.server";
 import type { AutomationLayoutContext } from "./layout-context";
-import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope";
+import { automationScopeFromRouteParams, automationScopeTabPath, toBackofficeScope } from "./scope";
 import { buildUploadWorkspaceScriptRecords } from "./script-records";
 import { ScriptSourcePanel } from "./script-view/script-source-panel";
 import {
@@ -341,6 +341,7 @@ function AutomationScriptsView({
                 source={loaderData.selectedScriptSource}
                 runtimeToolCatalog={loaderData.runtimeToolCatalog}
                 collections={collections}
+                scope={toBackofficeScope(selectedScope)}
               />
             </div>
           ) : (

@@ -46,7 +46,7 @@ import {
   automationRouteMatchesWorkflowInstance,
   automationRouteWorkflowName,
 } from "./route-workflow";
-import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope";
+import { automationScopeFromRouteParams, automationScopeTabPath, toBackofficeScope } from "./scope";
 import { toAutomationScriptIdFromAbsolutePath } from "./script-records";
 import { AutomationNotice } from "./shared";
 
@@ -821,6 +821,7 @@ export default function BackofficeAutomationDashboard() {
           collections={collections}
           scriptsPath={automationScopeTabPath(selectedScope, "scripts")}
           eventsCatalogPath={automationScopeTabPath(selectedScope, "events-catalog")}
+          scope={toBackofficeScope(selectedScope)}
           onClear={() => {
             setSearchParams((currentSearchParams) => {
               const nextSearchParams = new URLSearchParams(currentSearchParams);

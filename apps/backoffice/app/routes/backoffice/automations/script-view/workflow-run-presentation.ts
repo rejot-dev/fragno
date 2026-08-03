@@ -25,11 +25,22 @@ export type WorkflowRunStep = {
   status: PersistedWorkflowStepStatus;
   committedByExecutionId: string;
   attempts: number;
+  waitEventType: string | null;
   result: unknown;
   errorName: string | null;
   errorMessage: string | null;
   createdAt: WorkflowRunTimestamp;
   updatedAt: WorkflowRunTimestamp;
+};
+
+export type WorkflowRunEvent = {
+  id: string;
+  actor: string;
+  type: string;
+  payload: unknown;
+  createdAt: WorkflowRunTimestamp;
+  deliveredAt: WorkflowRunTimestamp | null;
+  consumedByStepKey: string | null;
 };
 
 export type WorkflowRunEmission = {
@@ -46,6 +57,7 @@ export type WorkflowRunEmission = {
 export type AutomationWorkflowRun = {
   id: string;
   instanceId: string;
+  workflowName: string;
   remoteWorkflowName: string | null;
   status: string;
   params: unknown;
@@ -53,15 +65,18 @@ export type AutomationWorkflowRun = {
   createdAt: WorkflowRunTimestamp;
   updatedAt: WorkflowRunTimestamp;
   workflowSteps: readonly WorkflowRunStep[];
+  workflowEvents: readonly WorkflowRunEvent[];
   workflowStepEmissions: readonly WorkflowRunEmission[];
 };
 
 export type WorkflowStepRunState = {
+  stepRecordId?: string;
   status: WorkflowStepRunStatus;
   attempts: number;
   completedAt?: WorkflowRunTimestamp;
   result?: unknown;
   error?: string;
+  waitEventType?: string;
   emissionCount: number;
   current: boolean;
 };
@@ -75,10 +90,13 @@ export type ScriptWorkflowRun = {
   id: string;
   instanceId: string;
   workflowName: string;
+  instanceWorkflowName: string;
   status: string;
   output: unknown;
   createdAt: WorkflowRunTimestamp;
   updatedAt: WorkflowRunTimestamp;
+  waitingEventTypes: readonly string[];
+  workflowEvents: readonly WorkflowRunEvent[];
   stepStatesByNodeId: Map<string, WorkflowStepRunState>;
 };
 
@@ -132,20 +150,33 @@ export function projectWorkflowRun({
     return null;
   }
 
+  const stepStatesByNodeId = projectWorkflowStepStates({
+    visualization,
+    workflowName,
+    steps: instance.workflowSteps,
+    emissions: instance.workflowStepEmissions,
+  });
+
   return {
     id: instance.id,
     instanceId: instance.instanceId,
     workflowName,
+    instanceWorkflowName: instance.workflowName,
     status: instance.status,
     output: instance.output,
     createdAt: instance.createdAt,
     updatedAt: instance.updatedAt,
-    stepStatesByNodeId: projectWorkflowStepStates({
-      visualization,
-      workflowName,
-      steps: instance.workflowSteps,
-      emissions: instance.workflowStepEmissions,
-    }),
+    workflowEvents: instance.workflowEvents,
+    waitingEventTypes: [
+      ...new Set(
+        [...stepStatesByNodeId.values()].flatMap((state) =>
+          state.current && state.status === "waiting" && state.waitEventType
+            ? [state.waitEventType]
+            : [],
+        ),
+      ),
+    ],
+    stepStatesByNodeId,
   };
 }
 
@@ -182,11 +213,15 @@ function projectWorkflowStepStates({
     nodeIdByStepKey.set(step.stepKey, nodeId);
     const error = workflowStepError(step);
     stepStatesByNodeId.set(nodeId, {
+      stepRecordId: step.id,
       status: step.status,
       attempts: step.attempts,
       ...(step.status === "completed" ? { completedAt: step.updatedAt } : {}),
       ...(step.result !== null && step.result !== undefined ? { result: step.result } : {}),
       ...(error ? { error } : {}),
+      ...(step.status === "waiting" && step.type === "waitForEvent" && step.waitEventType
+        ? { waitEventType: step.waitEventType }
+        : {}),
       emissionCount: 0,
       current:
         step.status === "waiting" && !hasTerminalWorkflowStepAncestor(step.stepKey, stepsByKey),
@@ -221,6 +256,7 @@ function projectWorkflowStepStates({
 
     const status = activity.active ? "active" : (existing?.status ?? "active");
     stepStatesByNodeId.set(nodeId, {
+      ...(existing?.stepRecordId ? { stepRecordId: existing.stepRecordId } : {}),
       status,
       attempts: existing?.attempts ?? 1,
       ...(status === "completed" && existing?.completedAt
@@ -228,6 +264,7 @@ function projectWorkflowStepStates({
         : {}),
       ...(existing?.result !== undefined ? { result: existing.result } : {}),
       ...(existing?.error ? { error: existing.error } : {}),
+      ...(existing?.waitEventType ? { waitEventType: existing.waitEventType } : {}),
       emissionCount: activity.userEmissionCount,
       current: activity.active || existing?.current === true,
     });

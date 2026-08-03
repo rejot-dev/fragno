@@ -15,7 +15,7 @@ import {
 
 export type WorkflowRunCollections = Pick<
   AutomationCollections,
-  "workflowInstances" | "workflowSteps" | "workflowStepEmissions"
+  "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
 >;
 
 export type WorkflowRunRecordSelector =
@@ -60,6 +60,7 @@ export function useWorkflowRunRecords({
         .select(({ instance }) => ({
           id: instance.id,
           instanceId: instance.instanceId,
+          workflowName: instance.workflowName,
           remoteWorkflowName: instance.remoteWorkflowName,
           status: instance.status,
           params: instance.params,
@@ -81,11 +82,28 @@ export function useWorkflowRunRecords({
                 status: step.status,
                 committedByExecutionId: step.committedByExecutionId,
                 attempts: step.attempts,
+                waitEventType: step.waitEventType,
                 result: step.result,
                 errorName: step.errorName,
                 errorMessage: step.errorMessage,
                 createdAt: step.createdAt,
                 updatedAt: step.updatedAt,
+              })),
+          ),
+          workflowEvents: toArray(
+            query
+              .from({ event: collections.workflowEvents })
+              .where(({ event }) => eq(event.instanceRef, instance.id))
+              .orderBy(({ event }) => event.createdAt, "asc")
+              .orderBy(({ event }) => event.id, "asc")
+              .select(({ event }) => ({
+                id: event.id,
+                actor: event.actor,
+                type: event.type,
+                payload: event.payload,
+                createdAt: event.createdAt,
+                deliveredAt: event.deliveredAt,
+                consumedByStepKey: event.consumedByStepKey,
               })),
           ),
           workflowStepEmissions: toArray(
@@ -109,6 +127,7 @@ export function useWorkflowRunRecords({
         }));
     },
     [
+      collections?.workflowEvents,
       collections?.workflowInstances,
       collections?.workflowStepEmissions,
       collections?.workflowSteps,
@@ -121,6 +140,7 @@ export function useWorkflowRunRecords({
     collections && selector && runsQuery.isError
       ? (collections.workflowInstances.utils.getLastError() ??
         collections.workflowSteps.utils.getLastError() ??
+        collections.workflowEvents.utils.getLastError() ??
         collections.workflowStepEmissions.utils.getLastError())
       : undefined;
   const error =

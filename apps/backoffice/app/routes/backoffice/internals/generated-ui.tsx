@@ -2,7 +2,7 @@ import { BACKOFFICE_UI_COMPONENT_DEMOS, type BackofficeUiDemoCategory } from "@/
 import { BackofficeUiErrorBoundary, BackofficeUiRenderer } from "@/backoffice-ui/renderer";
 import { BackofficePageHeader, BackofficeStatusLight } from "@/components/backoffice";
 
-const DEMO_CATEGORIES: BackofficeUiDemoCategory[] = ["Layout", "Content", "Data"];
+const DEMO_CATEGORIES: BackofficeUiDemoCategory[] = ["Layout", "Content", "Data", "Input"];
 
 export function meta() {
   return [

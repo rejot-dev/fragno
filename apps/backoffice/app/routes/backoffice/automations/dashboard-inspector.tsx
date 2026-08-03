@@ -3,6 +3,8 @@ import { useMemo } from "react";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 import type { BackofficeCapabilityKind } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
@@ -43,6 +45,7 @@ export function DashboardInspector({
   collections,
   scriptsPath,
   eventsCatalogPath,
+  scope,
   onClear,
 }: {
   selection: DashboardInspectorSelection;
@@ -50,10 +53,11 @@ export function DashboardInspector({
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
   collections: Pick<
     AutomationCollections,
-    "workflowInstances" | "workflowSteps" | "workflowStepEmissions"
+    "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
   >;
   scriptsPath: string;
   eventsCatalogPath: string;
+  scope: BackofficeContextScope;
   onClear: () => void;
 }) {
   return (
@@ -93,6 +97,7 @@ export function DashboardInspector({
             runtimeToolCatalog={runtimeToolCatalog}
             collections={collections}
             scriptsPath={scriptsPath}
+            scope={scope}
           />
         ) : null}
         {!selection ? (
@@ -197,15 +202,17 @@ function ActionInspector({
   runtimeToolCatalog,
   collections,
   scriptsPath,
+  scope,
 }: {
   route: AutomationRouteDefinition;
   source: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
   collections: Pick<
     AutomationCollections,
-    "workflowInstances" | "workflowSteps" | "workflowStepEmissions"
+    "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
   >;
   scriptsPath: string;
+  scope: BackofficeContextScope;
 }) {
   const scriptLink = automationRouteScriptLink(route, scriptsPath);
   const scriptPath =
@@ -256,6 +263,7 @@ function ActionInspector({
           source={source}
           runtimeToolCatalog={runtimeToolCatalog}
           collections={collections}
+          scope={scope}
         />
       ) : null}
     </div>
@@ -267,14 +275,16 @@ function WorkflowGraph({
   source,
   runtimeToolCatalog,
   collections,
+  scope,
 }: {
   absolutePath: string;
   source: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
   collections: Pick<
     AutomationCollections,
-    "workflowInstances" | "workflowSteps" | "workflowStepEmissions"
+    "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
   >;
+  scope: BackofficeContextScope;
 }) {
   const visualization = useMemo(
     () => visualizeWorkflowSource(absolutePath, source.script ?? ""),
@@ -341,6 +351,14 @@ function WorkflowGraph({
         runtimeToolCallsByStepId={runtimeToolCallsByStepId}
         selectedRun={workflowRuns.selectedRun}
         scrollViewport={graphViewport}
+        workflowEventSender={async ({ eventId, workflowName, instanceId, eventType, payload }) => {
+          await sendBackofficeWorkflowEvent({
+            eventId,
+            reference: { scope, workflowName, instanceId },
+            eventType,
+            payload,
+          });
+        }}
       />
     </div>
   );

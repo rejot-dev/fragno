@@ -233,6 +233,35 @@ describe("parseBackofficeUiResult", () => {
     assert(result.kind === "valid");
   });
 
+  test("accepts dynamic values nested inside component collection props", () => {
+    const result = parseBackofficeUiResult(
+      generatedResult({
+        state: { missing: "None" },
+        spec: {
+          root: "details",
+          elements: {
+            details: {
+              type: "KeyValue",
+              props: {
+                columns: 1,
+                items: [
+                  {
+                    key: "missing",
+                    label: "Missing fields",
+                    value: { $state: "/missing" },
+                  },
+                ],
+              },
+              children: [],
+            },
+          },
+        },
+      }),
+    );
+
+    assert(result.kind === "valid");
+  });
+
   test("still rejects invalid literal component props", () => {
     expectInvalidResult(
       generatedResult({

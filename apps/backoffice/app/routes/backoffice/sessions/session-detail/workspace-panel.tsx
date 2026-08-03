@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import type { SourceRange } from "@fragno-dev/workflow-visualizer-tokens";
 
+import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import {
   ProgressiveOverflowControls,
   type ProgressiveOverflowControlGroup,
@@ -49,11 +50,13 @@ export function SessionWorkspacePanel({
   item,
   workflowCollections,
   workflowCollectionsError,
+  orgId,
   onClose,
 }: {
   item: SessionWorkspaceItem;
   workflowCollections?: WorkflowRunCollections;
   workflowCollectionsError?: string | null;
+  orgId: string;
   onClose: () => void;
 }) {
   const [toolbarElement, setToolbarElement] = useState<HTMLElement | null>(null);
@@ -168,6 +171,7 @@ export function SessionWorkspacePanel({
             runReference={item.view.run}
             workflowCollections={workflowCollections}
             workflowCollectionsError={workflowCollectionsError}
+            orgId={orgId}
           />
         )}
       </section>
@@ -334,6 +338,7 @@ function SessionWorkflowWorkspace({
   runReference,
   workflowCollections,
   workflowCollectionsError,
+  orgId,
 }: {
   projection: WorkflowGraphProjection;
   viewMode: ScriptViewMode;
@@ -341,6 +346,7 @@ function SessionWorkflowWorkspace({
   runReference: WorkflowRunReference | null;
   workflowCollections?: WorkflowRunCollections;
   workflowCollectionsError?: string | null;
+  orgId: string;
 }) {
   const [selectedSource, setSelectedSource] = useState<SourceRange>();
   const showCode = viewMode === "code" || viewMode === "split";
@@ -388,6 +394,24 @@ function SessionWorkflowWorkspace({
             runtimeToolCallsByStepId={EMPTY_RUNTIME_TOOL_CALLS}
             selectedRun={workflowRun.selectedRun}
             scrollViewport={graphViewport}
+            workflowEventSender={async ({
+              eventId,
+              workflowName,
+              instanceId,
+              eventType,
+              payload,
+            }) => {
+              await sendBackofficeWorkflowEvent({
+                eventId,
+                reference: {
+                  scope: { kind: "org", orgId },
+                  workflowName,
+                  instanceId,
+                },
+                eventType,
+                payload,
+              });
+            }}
             fillHeight
             onSourceSelect={
               viewMode === "split"

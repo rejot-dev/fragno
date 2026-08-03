@@ -103,6 +103,35 @@ const componentFixtures = [
     validProps: { label: "Import progress", value: 72, variant: "accent" },
     invalidProps: { label: "Import progress", value: 101, variant: "accent" },
   },
+  {
+    component: "TextInput",
+    validProps: { label: "API key", value: "secret-key", secret: true },
+    invalidProps: { label: "", value: "order-42" },
+  },
+  {
+    component: "TextArea",
+    validProps: { label: "Reason", value: "Looks correct", rows: 4 },
+    invalidProps: { label: "Reason", value: "Looks correct", rows: 20 },
+  },
+  {
+    component: "Select",
+    validProps: {
+      label: "Decision",
+      value: "approve",
+      options: [{ label: "Approve", value: "approve" }],
+    },
+    invalidProps: { label: "Decision", value: "approve", options: [] },
+  },
+  {
+    component: "Checkbox",
+    validProps: { label: "I confirm", checked: true },
+    invalidProps: { label: "I confirm", checked: "yes" },
+  },
+  {
+    component: "WorkflowEventButton",
+    validProps: { label: "Submit", eventType: "approval", payload: { approved: true } },
+    invalidProps: { label: "Submit", eventType: "invalid event", payload: null },
+  },
 ] as const;
 
 function parseComponent(component: string, props: unknown) {
