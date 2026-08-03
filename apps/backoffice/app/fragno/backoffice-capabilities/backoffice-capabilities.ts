@@ -44,6 +44,11 @@ export type BackofficeCapabilityId =
   | "telegram"
   | "upload";
 
+export type ConnectionVerificationResult = {
+  ok: boolean;
+  message: string;
+};
+
 export type ConnectionStatus = {
   id: BackofficeCapabilityId;
   label: string;
@@ -52,8 +57,21 @@ export type ConnectionStatus = {
   config?: Record<string, unknown>;
   missing?: string[];
   nextSteps?: string[];
-  verification?: { ok: boolean; message: string };
+  verification?: ConnectionVerificationResult;
 };
+
+export type ConnectionVerification = ConnectionStatus & {
+  verification: ConnectionVerificationResult;
+};
+
+export const toConnectionVerification = (status: ConnectionStatus): ConnectionVerification => ({
+  ...status,
+  verification:
+    status.verification ??
+    (status.configured
+      ? { ok: true, message: `${status.label} configuration is present.` }
+      : { ok: false, message: `${status.label} is not configured.` }),
+});
 
 export type BackofficeCapabilityContext = {
   objects: BackofficeObjectRegistry;
