@@ -10,6 +10,7 @@ import {
   resolveAccessTokenConfig,
   verifySessionAccessTokenDetailed,
   type ResolvedSessionAccessTokenConfig,
+  type SessionAccessTokenConfig,
 } from "./auth/session-access-token";
 import type { AuthCredentialSource, AuthPrincipal, RequestAuthFailureReason } from "./auth/types";
 import {
@@ -485,26 +486,38 @@ const buildAuthFragment = (
     .build();
 };
 
-export type AuthAccessTokenVerificationResult =
-  | { ok: true; principal: AuthPrincipal }
+export type AuthPrincipalWithSessionContext<TContext> = AuthPrincipal & {
+  auth: AuthPrincipal["auth"] & { sessionContext: TContext };
+};
+
+export type AuthAccessTokenVerificationResult<TContext = unknown> =
+  | { ok: true; principal: AuthPrincipalWithSessionContext<TContext> }
   | { ok: false; reason: "disabled" | RequestAuthFailureReason | "expired" };
 
-export interface AuthAccessTokenMethods {
+export interface AuthAccessTokenMethods<TContext = unknown> {
   config: ResolvedSessionAccessTokenConfig | null;
   verify(input: {
     token: string;
     source?: AuthCredentialSource;
-  }): Promise<AuthAccessTokenVerificationResult>;
+  }): Promise<AuthAccessTokenVerificationResult<TContext>>;
   verifyRequest(input: {
     headers: Headers;
     cookieOptions?: CookieOptions;
-  }): Promise<AuthAccessTokenVerificationResult>;
+  }): Promise<AuthAccessTokenVerificationResult<TContext>>;
 }
 
 export type AuthFragmentInstance = ReturnType<typeof buildAuthFragment>;
 
-export function createAuthAccessTokenMethods(config: AuthConfig): AuthAccessTokenMethods {
-  const accessTokens = resolveAccessTokenConfig(config.authentication?.accessTokens);
+export function createAuthAccessTokenMethods<
+  TRole extends string = DefaultOrganizationRole,
+  TSessionContext = unknown,
+  TAccessTokenContext = unknown,
+>(
+  config: AuthConfig<TRole, TSessionContext, TAccessTokenContext>,
+): AuthAccessTokenMethods<TAccessTokenContext> {
+  const accessTokens = resolveAccessTokenConfig(
+    config.authentication?.accessTokens as SessionAccessTokenConfig | undefined,
+  );
 
   return {
     config: accessTokens,
@@ -525,14 +538,19 @@ export function createAuthAccessTokenMethods(config: AuthConfig): AuthAccessToke
         token,
         source,
       });
-      return result.ok ? { ok: true, principal: result.principal } : result;
+      return result.ok
+        ? {
+            ok: true,
+            principal: result.principal as AuthPrincipalWithSessionContext<TAccessTokenContext>,
+          }
+        : result;
     },
     async verifyRequest({ headers, cookieOptions }) {
       if (!accessTokens) {
         return { ok: false, reason: "disabled" };
       }
 
-      return verifyAuthAccessTokenFromRequest({
+      return verifyAuthAccessTokenFromRequest<TAccessTokenContext>({
         headers,
         accessTokens,
         cookieOptions,

@@ -1,6 +1,9 @@
 import type { RouterContextProvider } from "react-router";
 
-import { createAuthAccessTokenMethods, type AuthPrincipal } from "@fragno-dev/auth";
+import {
+  createAuthAccessTokenMethods,
+  type AuthPrincipalWithSessionContext,
+} from "@fragno-dev/auth";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
@@ -19,9 +22,7 @@ const parseBackofficeAccessTokenContext = (value: unknown): BackofficeAccessToke
   return parsed.success ? parsed.data : null;
 };
 
-export type BackofficeAuthPrincipal = AuthPrincipal & {
-  auth: AuthPrincipal["auth"] & { sessionContext: BackofficeAccessTokenContext };
-};
+export type BackofficeAuthPrincipal = AuthPrincipalWithSessionContext<BackofficeAccessTokenContext>;
 
 const getBackofficeAccessTokenMethods = (context: Readonly<RouterContextProvider>) => {
   const { env } = context.get(BackofficeWorkerContext);
@@ -86,7 +87,7 @@ const refreshAccessTokenForRequest = async (
   }
 
   return {
-    principal: verification.principal as BackofficeAuthPrincipal,
+    principal: verification.principal,
     headers: getSetCookieHeaders(refreshResponse.headers).map((value) => ["Set-Cookie", value]),
   };
 };
@@ -102,7 +103,7 @@ const resolveAuthPrincipal = async (
     headers: request.headers,
   });
   if (verification.ok) {
-    return { ok: true, principal: verification.principal as BackofficeAuthPrincipal, headers: [] };
+    return { ok: true, principal: verification.principal, headers: [] };
   }
 
   if (verification.reason !== "malformed" && verification.reason !== "multiple") {
