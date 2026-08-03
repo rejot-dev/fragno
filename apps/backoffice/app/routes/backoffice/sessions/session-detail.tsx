@@ -361,6 +361,7 @@ function PiSessionDetailView({
                   item={selectedWorkspaceItem}
                   workflowCollections={workflowCollections}
                   workflowCollectionsError={workflowCollectionsError}
+                  orgId={scope.orgId}
                   onClose={closeWorkspace}
                 />
               ) : null

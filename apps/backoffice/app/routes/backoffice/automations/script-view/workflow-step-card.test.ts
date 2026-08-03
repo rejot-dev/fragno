@@ -61,7 +61,48 @@ describe("WorkflowStepCard", () => {
     assert.notInclude(markup, "Runtime operation");
   });
 
-  it("renders a generated interface inline without raw-result controls", () => {
+  it.each([undefined, null, {}, []])(
+    "hides the output toggle when the step result has no visible data (%#)",
+    (result) => {
+      const markup = renderToStaticMarkup(
+        createElement(WorkflowStepCard, {
+          step,
+          runState: {
+            status: "completed",
+            attempts: 1,
+            emissionCount: 0,
+            current: false,
+            result,
+          },
+        }),
+      );
+
+      assert.notInclude(markup, "data-workflow-output");
+    },
+  );
+
+  it("keeps ordinary step output collapsed by default", () => {
+    const markup = renderToStaticMarkup(
+      createElement(WorkflowStepCard, {
+        step,
+        runState: {
+          status: "completed",
+          attempts: 1,
+          emissionCount: 0,
+          current: false,
+          result: { recordId: "record-1", count: 3 },
+        },
+      }),
+    );
+
+    assert.include(markup, 'data-workflow-output="true"');
+    assert.notInclude(markup, 'data-workflow-output="true" open');
+    assert.include(markup, ">Output<");
+    assert.include(markup, "&quot;recordId&quot;: &quot;record-1&quot;");
+    assert.include(markup, "&quot;count&quot;: 3");
+  });
+
+  it("renders a generated interface inline and filters $ui from its collapsed output", () => {
     const markup = renderToStaticMarkup(
       createElement(WorkflowStepCard, {
         step,
@@ -93,9 +134,9 @@ describe("WorkflowStepCard", () => {
 
     assert.include(markup, "data-workflow-step-generated-ui");
     assert.include(markup, 'aria-label="Orders"');
-    assert.notInclude(markup, "Raw result");
-    assert.notInclude(markup, "Show result");
-    assert.notInclude(markup, "record-1");
+    assert.include(markup, 'data-workflow-output="true"');
+    assert.include(markup, "&quot;recordId&quot;: &quot;record-1&quot;");
+    assert.notInclude(markup, "&quot;$ui&quot;");
   });
 
   it.each([0, 1])("keeps waiting attempts %i labeled as waiting", (attempts) => {

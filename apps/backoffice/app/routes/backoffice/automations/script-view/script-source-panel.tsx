@@ -3,6 +3,8 @@ import { useSearchParams } from "react-router";
 
 import { visualizeWorkflowSource, type SourceRange } from "@fragno-dev/workflow-visualizer-tokens";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 import {
   resolveWorkflowRuntimeToolCalls,
@@ -30,14 +32,16 @@ export function ScriptSourcePanel({
   source,
   runtimeToolCatalog,
   collections,
+  scope,
 }: {
   absolutePath: string;
   source: { script: string | null; scriptError: string | null };
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
   collections: Pick<
     AutomationCollections,
-    "workflowInstances" | "workflowSteps" | "workflowStepEmissions"
+    "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
   >;
+  scope: BackofficeContextScope;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const viewMode = scriptViewModeFromSearchParam(searchParams.get(SCRIPT_VIEW_MODE_SEARCH_PARAM));
@@ -138,6 +142,20 @@ export function ScriptSourcePanel({
             runtimeToolCallsByStepId={runtimeToolCallsByStepId}
             selectedRun={workflowRuns.selectedRun}
             scrollViewport={graphViewport}
+            workflowEventSender={async ({
+              eventId,
+              workflowName,
+              instanceId,
+              eventType,
+              payload,
+            }) => {
+              await sendBackofficeWorkflowEvent({
+                eventId,
+                reference: { scope, workflowName, instanceId },
+                eventType,
+                payload,
+              });
+            }}
             onSourceSelect={
               viewMode === "split"
                 ? (selectedRange) => {

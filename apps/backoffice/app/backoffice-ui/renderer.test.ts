@@ -102,6 +102,44 @@ test("resolves state, template, and conditional props while rendering", () => {
   expect(markup).toContain(">24</p>");
 });
 
+test("resolves state expressions nested inside collection props", () => {
+  const nestedResult = parseBackofficeUiResult({
+    $ui: {
+      version: 1,
+      state: { missing: "None" },
+      spec: {
+        root: "details",
+        elements: {
+          details: {
+            type: "KeyValue",
+            props: {
+              columns: 1,
+              items: [
+                {
+                  key: "missing",
+                  label: "Missing fields",
+                  value: { $state: "/missing" },
+                },
+              ],
+            },
+            children: [],
+          },
+        },
+      },
+    },
+  });
+  if (nestedResult.kind !== "valid") {
+    throw new Error("Expected nested dynamic prop fixture to parse.");
+  }
+
+  const markup = renderToStaticMarkup(
+    createElement(BackofficeUiRenderer, { ui: nestedResult.value.$ui }),
+  );
+
+  expect(markup).toContain("Missing fields");
+  expect(markup).toContain("None");
+});
+
 const representativeReport = parseBackofficeUiResult({
   $ui: {
     version: 1,

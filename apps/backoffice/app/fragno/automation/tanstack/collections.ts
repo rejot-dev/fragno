@@ -11,6 +11,7 @@ export type AutomationCollectionTarget =
   | AutomationTableName
   | "workflows.workflow_instance"
   | "workflows.workflow_step"
+  | "workflows.workflow_event"
   | "workflows.workflow_step_emission";
 
 export type AutomationCollections = {
@@ -29,6 +30,7 @@ export type AutomationCollections = {
   >;
   workflowInstances: FragnoCollection<typeof workflowsSchema, "workflow_instance">;
   workflowSteps: FragnoCollection<typeof workflowsSchema, "workflow_step">;
+  workflowEvents: FragnoCollection<typeof workflowsSchema, "workflow_event">;
   workflowStepEmissions: FragnoCollection<typeof workflowsSchema, "workflow_step_emission">;
 };
 
@@ -71,6 +73,14 @@ export function createAutomationCollections(options: {
       target: {
         schema: workflowsSchema,
         table: "workflow_step",
+      },
+    }),
+    workflowEvents: options.createCollection({
+      id: options.collectionId("workflows.workflow_event"),
+      coordinator: options.coordinator,
+      target: {
+        schema: workflowsSchema,
+        table: "workflow_event",
       },
     }),
     workflowStepEmissions: options.createCollection({

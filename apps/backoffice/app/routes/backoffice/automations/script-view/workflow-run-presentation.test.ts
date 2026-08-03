@@ -88,6 +88,7 @@ describe("automation script workflow run presentation", () => {
     assert(run.status === "complete");
     expect(run.output).toEqual({ summary: "done" });
     expect(run.stepStatesByNodeId.get(stepNode("prepare").id)).toEqual({
+      stepRecordId: "step-1",
       status: "completed",
       attempts: 1,
       completedAt: "2026-07-24T10:00:00.000Z",
@@ -144,9 +145,57 @@ describe("automation script workflow run presentation", () => {
     const sleepNode = stepNode("resume later");
 
     expect(runs[0]?.stepStatesByNodeId.get(sleepNode.id)).toEqual({
+      stepRecordId: "step-1",
       status: "waiting",
       attempts: 1,
       emissionCount: 0,
+      current: true,
+    });
+  });
+
+  it("projects current waitForEvent types and preserves the instance workflow route target", () => {
+    const run = projectWorkflowRun({
+      visualization,
+      instance: workflowRun({
+        workflowName: "automation-codemode-script",
+        status: "waiting",
+        workflowEvents: [
+          {
+            id: "event-1",
+            actor: "user",
+            type: "approved",
+            payload: { decision: "approve" },
+            createdAt: "2026-07-24T10:01:00.000Z",
+            deliveredAt: "2026-07-24T10:01:01.000Z",
+            consumedByStepKey: "waitForEvent:approval",
+          },
+        ],
+        workflowSteps: [
+          workflowStep({
+            stepKey: "waitForEvent:approval",
+            name: "approval",
+            type: "waitForEvent",
+            status: "waiting",
+            waitEventType: "approved",
+          }),
+        ],
+      }),
+    });
+
+    assert(run);
+    assert(run.workflowName === "demo");
+    assert(run.instanceWorkflowName === "automation-codemode-script");
+    expect(run.waitingEventTypes).toEqual(["approved"]);
+    expect(run.workflowEvents).toEqual([
+      expect.objectContaining({
+        id: "event-1",
+        type: "approved",
+        payload: { decision: "approve" },
+      }),
+    ]);
+    expect(run.stepStatesByNodeId.get(stepNode("approval").id)).toMatchObject({
+      status: "waiting",
+      waitEventType: "approved",
       current: true,
     });
   });
@@ -232,6 +281,7 @@ describe("automation script workflow run presentation", () => {
     });
 
     expect(runs[0]?.stepStatesByNodeId.get(stepNode("prepare").id)).toEqual({
+      stepRecordId: "step-1",
       status: "completed",
       attempts: 1,
       completedAt: "2026-07-24T10:00:00.000Z",
@@ -302,6 +352,7 @@ describe("automation script workflow run presentation", () => {
     });
 
     expect(runs[0]?.stepStatesByNodeId.get(stepNode("prepare").id)).toEqual({
+      stepRecordId: "step-1",
       status: "active",
       attempts: 2,
       emissionCount: 0,
@@ -350,6 +401,7 @@ describe("automation script workflow run presentation", () => {
     });
 
     expect(runs[0]?.stepStatesByNodeId.get(stepNode("prepare").id)).toEqual({
+      stepRecordId: "step-1",
       status: "completed",
       attempts: 1,
       completedAt: "2026-07-24T10:00:00.000Z",
@@ -551,6 +603,7 @@ function workflowRun(overrides: Partial<AutomationWorkflowRun> = {}): Automation
   return {
     id: `automation-codemode-script:${instanceId}`,
     instanceId,
+    workflowName: "automation-codemode-script",
     remoteWorkflowName: "demo",
     status: "active",
     params: { workflowScriptPath: absolutePath },
@@ -558,6 +611,7 @@ function workflowRun(overrides: Partial<AutomationWorkflowRun> = {}): Automation
     createdAt: "2026-07-24T09:00:00.000Z",
     updatedAt: "2026-07-24T10:00:00.000Z",
     workflowSteps: [],
+    workflowEvents: [],
     workflowStepEmissions: [],
     ...overrides,
   };
@@ -575,6 +629,7 @@ function workflowStep(
     status: "completed",
     committedByExecutionId: "execution-1",
     attempts: 1,
+    waitEventType: null,
     result: null,
     errorName: null,
     errorMessage: null,

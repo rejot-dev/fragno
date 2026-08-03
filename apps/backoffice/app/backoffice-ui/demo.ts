@@ -1,7 +1,7 @@
 import { backofficeUiComponentDefinitions } from "./catalog";
 import { parseBackofficeUiResult, type BackofficeUiResultV1 } from "./result";
 
-export type BackofficeUiDemoCategory = "Layout" | "Content" | "Data";
+export type BackofficeUiDemoCategory = "Layout" | "Content" | "Data" | "Input";
 
 export type BackofficeUiComponentDemo = {
   component: keyof typeof backofficeUiComponentDefinitions;
@@ -183,6 +183,48 @@ const componentDemoInputs: ComponentDemoInput[] = [
       value: 72,
       detail: "72 of 100 events",
       variant: "accent",
+    },
+  },
+  {
+    component: "TextInput",
+    category: "Input",
+    props: {
+      label: "API key",
+      value: "sk_example",
+      placeholder: "Enter an API key",
+      secret: true,
+    },
+  },
+  {
+    component: "TextArea",
+    category: "Input",
+    props: { label: "Reason", value: "Ready for approval.", rows: 3 },
+  },
+  {
+    component: "Select",
+    category: "Input",
+    props: {
+      label: "Decision",
+      value: "approve",
+      options: [
+        { label: "Approve", value: "approve" },
+        { label: "Reject", value: "reject" },
+      ],
+    },
+  },
+  {
+    component: "Checkbox",
+    category: "Input",
+    props: { label: "I confirm this operation", checked: true },
+  },
+  {
+    component: "WorkflowEventButton",
+    category: "Input",
+    props: {
+      label: "Submit decision",
+      eventType: "approval",
+      payload: { decision: "approve" },
+      variant: "primary",
     },
   },
 ];

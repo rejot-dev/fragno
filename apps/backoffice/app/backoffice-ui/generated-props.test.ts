@@ -44,4 +44,52 @@ describe("validateGeneratedProps", () => {
       );
     },
   );
+
+  test("accepts generated values nested inside arrays and objects", () => {
+    const propsSchema = z.strictObject({
+      items: z
+        .array(
+          z.strictObject({
+            key: z.string(),
+            value: z.string(),
+            detail: z.string().optional(),
+          }),
+        )
+        .max(2),
+    });
+
+    assert(
+      validateGeneratedProps(propsSchema, {
+        items: [
+          {
+            key: "missing",
+            value: { $state: "/missing" },
+            detail: { $template: "Status: ${/status}" },
+          },
+        ],
+      }),
+    );
+  });
+
+  test("accepts generated values nested inside record values", () => {
+    const propsSchema = z.strictObject({
+      rows: z.array(z.record(z.string(), z.string())),
+    });
+
+    assert(
+      validateGeneratedProps(propsSchema, {
+        rows: [{ status: { $state: "/status" } }],
+      }),
+    );
+  });
+
+  test("preserves literal collection and object constraints", () => {
+    const propsSchema = z.strictObject({
+      items: z.array(z.strictObject({ value: z.string() })).max(1),
+    });
+
+    assert(!validateGeneratedProps(propsSchema, { items: [{ value: "one" }, { value: "two" }] }));
+    assert(!validateGeneratedProps(propsSchema, { items: [{ value: 24 }] }));
+    assert(!validateGeneratedProps(propsSchema, { items: [{ value: "one", extra: true }] }));
+  });
 });

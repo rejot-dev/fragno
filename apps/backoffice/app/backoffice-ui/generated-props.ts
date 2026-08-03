@@ -5,6 +5,55 @@ import { VisibilityConditionSchema } from "@json-render/core";
 const MAX_GENERATED_PROP_CONDITIONAL_DEPTH = 8;
 const generatedPropsSchemaCache = new WeakMap<z.ZodObject, z.ZodType>();
 
+function createGeneratedLiteralSchema(
+  literalSchema: z.ZodType,
+  conditionalDepth: number,
+): z.ZodType {
+  if (literalSchema instanceof z.ZodObject) {
+    const generatedShape = Object.fromEntries(
+      (Object.entries(literalSchema.shape) as Array<[string, z.ZodType]>).map(
+        ([name, propertySchema]) => [
+          name,
+          createGeneratedPropSchema(propertySchema, conditionalDepth),
+        ],
+      ),
+    );
+    return literalSchema.clone({ ...literalSchema.def, shape: generatedShape });
+  }
+
+  if (literalSchema instanceof z.ZodArray) {
+    return literalSchema.clone({
+      ...literalSchema.def,
+      element: createGeneratedPropSchema(literalSchema.element as z.ZodType, conditionalDepth),
+    });
+  }
+
+  if (literalSchema instanceof z.ZodRecord) {
+    return literalSchema.clone({
+      ...literalSchema.def,
+      valueType: createGeneratedPropSchema(literalSchema.valueType as z.ZodType, conditionalDepth),
+    });
+  }
+
+  if (literalSchema instanceof z.ZodOptional) {
+    return literalSchema.clone({
+      ...literalSchema.def,
+      innerType: createGeneratedPropSchema(literalSchema.unwrap() as z.ZodType, conditionalDepth),
+    });
+  }
+
+  if (literalSchema instanceof z.ZodUnion) {
+    return literalSchema.clone({
+      ...literalSchema.def,
+      options: literalSchema.options.map((option) =>
+        createGeneratedLiteralSchema(option as z.ZodType, conditionalDepth),
+      ),
+    });
+  }
+
+  return literalSchema;
+}
+
 function createGeneratedPropSchema(literalSchema: z.ZodType, conditionalDepth = 0): z.ZodType {
   const nestedGeneratedPropSchema =
     conditionalDepth < MAX_GENERATED_PROP_CONDITIONAL_DEPTH
@@ -12,7 +61,7 @@ function createGeneratedPropSchema(literalSchema: z.ZodType, conditionalDepth = 
       : z.never();
 
   return z.union([
-    literalSchema,
+    createGeneratedLiteralSchema(literalSchema, conditionalDepth),
     z.strictObject({ $state: z.string() }),
     z.strictObject({ $bindState: z.string() }),
     z.strictObject({ $item: z.string() }),

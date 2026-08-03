@@ -113,6 +113,10 @@ When available skills list a matching skill, read the corresponding \`/static/sk
 
 Prefer codemode for Backoffice work. Use bash for shell-oriented tasks. The bash host also exposes \`isogit\`, a thin isomorphic-git command with \`clone\`, \`status\`, and bounded non-network \`call\` support. Run \`isogit --help\` for usage.
 
+## Integrations
+
+We offer a number of integrations with external services. You can help set these up. Prefer using a workflow with inline UI to guide the user through the setup.
+
 `;
 
 export const STATIC_FILE_CONTENT = {

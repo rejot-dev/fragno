@@ -112,7 +112,8 @@ describe("generating Backoffice UIs skill", () => {
     expect(skill).toContain("- columns: 1-12 items");
     expect(skill).toContain("- rows[].*: at most 2000 characters");
     expect(skill).toContain("Raw HTML, scripts, iframes, embeds, arbitrary URLs");
-    expect(skill).toContain("Expressions cannot be nested inside array items or object fields");
+    expect(skill).toContain('read expressions such as `{ "$state": "/path" }` at any depth');
+    expect(skill).toContain('`{ "$bindState": "/path" }` only as the complete top-level value');
 
     for (const [name, definition] of Object.entries(backofficeUiComponentDefinitions)) {
       expect(skill).toContain(`### \`${name}\``);
@@ -145,6 +146,11 @@ describe("generating Backoffice UIs skill", () => {
       "List",
       "Table",
       "Progress",
+      "TextInput",
+      "TextArea",
+      "Select",
+      "Checkbox",
+      "WorkflowEventButton",
     ]);
 
     let previousIndex = -1;
