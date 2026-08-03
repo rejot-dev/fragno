@@ -1,5 +1,5 @@
+import type { MutationOperation } from "@fragno-dev/db/mutation-recorder";
 import type { AnySchema } from "@fragno-dev/db/schema";
-import type { MutationOperation } from "@fragno-dev/db/unit-of-work";
 
 import { resolveMutations } from "../query/mutation-values";
 import type { LofiMutation } from "../types";

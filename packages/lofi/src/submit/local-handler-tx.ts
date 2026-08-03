@@ -1,10 +1,10 @@
 import type { Cursor } from "@fragno-dev/db/cursor";
+import type { MutationOperation } from "@fragno-dev/db/mutation-recorder";
 import { FragnoId } from "@fragno-dev/db/schema";
 import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import type {
   CompiledMutation,
   CompiledQueryTreeRootNode,
-  MutationOperation,
   RetrievalOperation,
   UOWCompiler,
   UOWDecoder,
