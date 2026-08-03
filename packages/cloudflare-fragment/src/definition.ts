@@ -3,6 +3,7 @@ import type { ClientOptions as CloudflareClientOptions } from "cloudflare";
 import { defineFragment } from "@fragno-dev/core";
 import { ExponentialBackoffRetryPolicy, withDatabase, type HookFn } from "@fragno-dev/db";
 
+import { createBrowserRunQuickActions } from "./browser-run/quick-actions";
 import {
   createCloudflareApiClient,
   getCloudflareApiError,
@@ -86,12 +87,25 @@ const hookWriteRetryPolicy = new ExponentialBackoffRetryPolicy({
   maxDelayMs: 250,
 });
 
-type CloudflareFragmentSharedConfig = CloudflareScriptNameConfig & {
-  accountId: string;
+export type CloudflareWorkersForPlatformsConfig = CloudflareScriptNameConfig & {
   compatibilityDate: string;
   compatibilityFlags?: string[];
   scriptTags?: string[];
   deploymentTagPrefix?: string;
+} & (
+    | {
+        dispatcher: CloudflareDispatcherConfig;
+        dispatchNamespace?: never;
+      }
+    | {
+        dispatchNamespace: string;
+        dispatcher?: never;
+      }
+  );
+
+type CloudflareFragmentSharedConfig = {
+  accountId: string;
+  workersForPlatforms?: CloudflareWorkersForPlatformsConfig;
 };
 
 type CloudflareFragmentApiTokenConfig = {
@@ -107,17 +121,7 @@ type CloudflareFragmentClientConfig = {
 };
 
 export type CloudflareFragmentConfig = CloudflareFragmentSharedConfig &
-  (CloudflareFragmentApiTokenConfig | CloudflareFragmentClientConfig) &
-  (
-    | {
-        dispatcher: CloudflareDispatcherConfig;
-        dispatchNamespace?: never;
-      }
-    | {
-        dispatchNamespace: string;
-        dispatcher?: never;
-      }
-  );
+  (CloudflareFragmentApiTokenConfig | CloudflareFragmentClientConfig);
 
 export type DeployWorkerHookInput = {
   deploymentId: string;
@@ -134,18 +138,24 @@ export type CloudflareHooksMap = {
   deployWorker: HookFn<DeployWorkerHookInput>;
 };
 
-const resolveDispatcherConfig = (config: CloudflareFragmentConfig): CloudflareDispatcherConfig => {
+const resolveDispatcherConfig = (
+  config: CloudflareWorkersForPlatformsConfig,
+): CloudflareDispatcherConfig => {
   if ("dispatcher" in config && config.dispatcher !== undefined) {
     return config.dispatcher;
   }
 
-  if ("dispatchNamespace" in config && config.dispatchNamespace !== undefined) {
-    return config.dispatchNamespace;
+  return config.dispatchNamespace;
+};
+
+const requireWorkersForPlatformsConfig = (config: CloudflareFragmentConfig) => {
+  if (!config.workersForPlatforms) {
+    throw new Error(
+      "Cloudflare Workers for Platforms is not configured. Pass `workersForPlatforms` to createCloudflareFragment().",
+    );
   }
 
-  throw new Error(
-    "Cloudflare fragment requires `dispatcher` or `dispatchNamespace` to resolve the dispatch namespace name.",
-  );
+  return config.workersForPlatforms;
 };
 
 const normalizeStringList = (value: unknown) => {
@@ -293,9 +303,9 @@ export const cloudflareFragmentDefinition = defineFragment<CloudflareFragmentCon
 )
   .extend(withDatabase(cloudflareSchema))
   .withDependencies(({ config }) => {
-    const dispatchNamespace = resolveCloudflareDispatchNamespaceName(
-      resolveDispatcherConfig(config),
-    );
+    const dispatchNamespace = config.workersForPlatforms
+      ? resolveCloudflareDispatchNamespaceName(resolveDispatcherConfig(config.workersForPlatforms))
+      : null;
     const cloudflare =
       "cloudflare" in config && config.cloudflare
         ? config.cloudflare
@@ -312,8 +322,16 @@ export const cloudflareFragmentDefinition = defineFragment<CloudflareFragmentCon
   .providesService("cloudflare", ({ deps }) => ({
     getClient: () => deps.cloudflare,
   }))
+  .providesService("browserRun", ({ deps, config }) =>
+    createBrowserRunQuickActions(deps.cloudflare, config.accountId),
+  )
   .provideHooks<CloudflareHooksMap>(({ defineHook, deps, config }) => ({
     deployWorker: defineHook(async function (input) {
+      const workersForPlatforms = requireWorkersForPlatformsConfig(config);
+      if (!deps.dispatchNamespace) {
+        throw new Error("Cloudflare Workers for Platforms dispatch namespace is unavailable.");
+      }
+
       // Cloudflare CAS starts once the app has a live etag. The first deploy uses a local
       // lease so we still get compare-and-swap semantics before that point.
       const livePointerGuard = createLivePointerGuard(input);
@@ -415,13 +433,13 @@ export const cloudflareFragmentDefinition = defineFragment<CloudflareFragmentCon
             appId: input.appId,
             deploymentId: input.deploymentId,
             expectedLiveEtag: input.expectedLiveEtag,
-            deploymentTagPrefix: config.deploymentTagPrefix,
+            deploymentTagPrefix: workersForPlatforms.deploymentTagPrefix,
             scriptName: input.scriptName,
             entrypoint: input.entrypoint,
             moduleContent: input.moduleContent,
             compatibilityDate: input.compatibilityDate,
             compatibilityFlags: input.compatibilityFlags,
-            scriptTags: config.scriptTags,
+            scriptTags: workersForPlatforms.scriptTags,
           });
         } catch (error) {
           remoteError = error;
@@ -646,6 +664,8 @@ export const cloudflareFragmentDefinition = defineFragment<CloudflareFragmentCon
   .providesBaseService(({ defineService, config }) => {
     return defineService({
       upsertApp: function (appId: string) {
+        const workersForPlatforms = requireWorkersForPlatformsConfig(config);
+
         return this.serviceTx(cloudflareSchema)
           .retrieve((uow) =>
             uow.findFirst("app", (b) => b.whereIndex("primary", (eb) => eb("id", "=", appId))),
@@ -656,7 +676,7 @@ export const cloudflareFragmentDefinition = defineFragment<CloudflareFragmentCon
             }
 
             const createdAt = new Date();
-            const scriptName = resolveCloudflareScriptName(appId, config);
+            const scriptName = resolveCloudflareScriptName(appId, workersForPlatforms);
             const createdId = uow.create("app", {
               id: appId,
               scriptName,
@@ -678,18 +698,21 @@ export const cloudflareFragmentDefinition = defineFragment<CloudflareFragmentCon
           .build();
       },
       queueDeployment: function (appId: string, request: CloudflareDeployRequest) {
+        const workersForPlatforms = requireWorkersForPlatformsConfig(config);
+
         return this.serviceTx(cloudflareSchema)
           .retrieve((uow) =>
             uow.findFirst("app", (b) => b.whereIndex("primary", (eb) => eb("id", "=", appId))),
           )
           .mutate(({ uow, retrieveResult: [existingApp] }) => {
             const now = new Date();
-            const compatibilityDate = request.compatibilityDate ?? config.compatibilityDate;
+            const compatibilityDate =
+              request.compatibilityDate ?? workersForPlatforms.compatibilityDate;
             const compatibilityFlags = normalizeStringList(
-              request.compatibilityFlags ?? config.compatibilityFlags,
+              request.compatibilityFlags ?? workersForPlatforms.compatibilityFlags,
             );
             const scriptName =
-              existingApp?.scriptName ?? resolveCloudflareScriptName(appId, config);
+              existingApp?.scriptName ?? resolveCloudflareScriptName(appId, workersForPlatforms);
             const sourceByteLength = textEncoder.encode(request.script.content).byteLength;
             const ensuredAppId =
               existingApp?.id ??

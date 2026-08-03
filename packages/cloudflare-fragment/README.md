@@ -1,7 +1,7 @@
 # @fragno-dev/cloudflare-fragment
 
-Fragno fragment for queueing and tracking Cloudflare Workers for Platforms deployments against an
-existing dispatch namespace.
+Fragno fragment for Cloudflare platform primitives, including Workers for Platforms deployments and
+Browser Run Quick Actions.
 
 ## Scope
 
@@ -12,6 +12,7 @@ existing dispatch namespace.
 - Runs the Cloudflare upload through a durable hook after the request transaction commits
 - Builds the official `cloudflare` SDK client and exposes it through
   `fragment.services.cloudflare.getClient()`
+- Exposes Browser Run Quick Actions through `fragment.services.browserRun`
 - Exposes typed routes and client hooks for queueing and status reads
 
 ## Server Setup
@@ -23,15 +24,17 @@ const fragment = createCloudflareFragment(
   {
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
     apiToken: process.env.CLOUDFLARE_API_TOKEN!,
-    dispatcher: {
-      binding: env.DISPATCHER,
-      namespace: "my-dispatch-namespace",
+    workersForPlatforms: {
+      dispatcher: {
+        binding: env.DISPATCHER,
+        namespace: "my-dispatch-namespace",
+      },
+      compatibilityDate: "2026-03-10",
+      compatibilityFlags: ["nodejs_compat"],
+      deploymentTagPrefix: "fragno",
+      scriptNamePrefix: "fragno",
+      scriptNameSuffix: "worker",
     },
-    compatibilityDate: "2026-03-10",
-    compatibilityFlags: ["nodejs_compat"],
-    deploymentTagPrefix: "fragno",
-    scriptNamePrefix: "fragno",
-    scriptNameSuffix: "worker",
   },
   {
     databaseAdapter,
@@ -39,8 +42,12 @@ const fragment = createCloudflareFragment(
 );
 ```
 
-Outside Cloudflare Workers, you can still pass `dispatchNamespace: "my-dispatch-namespace"` if you
-do not have a bound dispatch namespace object available.
+Outside Cloudflare Workers, you can instead pass
+`workersForPlatforms: { dispatchNamespace: "my-dispatch-namespace", ... }` if you do not have a
+bound dispatch namespace object available.
+
+`workersForPlatforms` is optional. Browser Run-only integrations only need the top-level Cloudflare
+account and authentication configuration.
 
 The fragment computes a deterministic `scriptName` from the app-facing ID and stores it in the `app`
 table the first time that app is deployed.
@@ -50,7 +57,83 @@ instead of `apiToken`.
 
 For the detailed write path, see [APP_DEPLOYMENT_FLOW.md](./APP_DEPLOYMENT_FLOW.md).
 
+## Browser Run Quick Actions
+
+The server-side `browserRun` service calls Cloudflare's REST API using the fragment's configured
+`accountId` and Cloudflare client. When using `apiToken`, the token needs the
+`Browser Rendering - Edit` permission.
+
+```ts
+const html = await fragment.services.browserRun.content({
+  url: "https://example.com",
+});
+
+const screenshot = await fragment.services.browserRun.screenshot({
+  url: "https://example.com",
+  screenshotOptions: {
+    fullPage: true,
+  },
+});
+
+const crawlJobId = await fragment.services.browserRun.startCrawl({
+  url: "https://example.com/docs",
+  limit: 25,
+});
+
+const crawl = await fragment.services.browserRun.getCrawl(crawlJobId);
+```
+
+The MVP exposes the stateless `content`, `pdf`, `scrape`, `screenshot`, `snapshot`, `json`, `links`,
+`markdown`, and `accessibilityTree` actions. Crawl jobs are exposed through `startCrawl`,
+`getCrawl`, and `cancelCrawl`.
+
+Browser sessions, CDP, Puppeteer, Playwright, and Worker browser bindings are intentionally outside
+this initial scope.
+
+Quick Actions are split by their response and lifecycle semantics:
+
+- `POST /browser-run/extract` returns JSON for `content`, `scrape`, `snapshot`, `json`, `links`,
+  `markdown`, and `accessibility-tree`.
+- `POST /browser-run/capture` returns raw PDF or image bytes for `pdf` and `screenshot`, preserving
+  Cloudflare's response `Content-Type`.
+- `POST /browser-run/crawl` returns JSON for the `start`, `get`, and `cancel` crawl lifecycle
+  actions.
+
+```ts
+await client.useBrowserRunExtract.mutate({
+  body: {
+    action: "content",
+    input: { url: "https://example.com" },
+  },
+});
+
+const screenshot = await client.captureBrowserRun({
+  action: "screenshot",
+  input: { url: "https://example.com" },
+});
+
+await client.useBrowserRunCrawl.mutate({
+  body: {
+    action: "start",
+    input: { url: "https://example.com/docs" },
+  },
+});
+```
+
+Extract and crawl responses return `{ action, result }`, allowing clients to narrow the result type
+from the action. Crawl `start` returns `{ jobId }` under `result`. Capture responses are raw
+`Response` objects so consumers can use `blob()`, `arrayBuffer()`, or stream the body directly to a
+file.
+
 ## Routes
+
+### Browser Run
+
+- `POST /browser-run/extract`
+- `POST /browser-run/capture`
+- `POST /browser-run/crawl`
+
+### Workers for Platforms
 
 - `GET /apps` lists known workers and their latest deployment
 - `POST /apps/:appId/deployments` queues a deployment request
@@ -72,13 +155,19 @@ per tag so `<prefix>-app-...` and `<prefix>-dep-...` stay within Cloudflare's 63
 
 ## Client Builders
 
-`createCloudflareFragmentClients()` exposes:
+`createCloudflareFragmentClients()` exposes the deployment clients:
 
 - `useApps`
 - `useApp`
 - `useAppDeployments`
 - `useDeployment`
 - `useQueueDeployment`
+
+It also exposes three Browser Run helpers:
+
+- `useBrowserRunExtract`
+- `captureBrowserRun`
+- `useBrowserRunCrawl`
 
 Framework entrypoints are available at `@fragno-dev/cloudflare-fragment/react`, `./vue`, `./svelte`,
 `./solid`, and `./vanilla`.
