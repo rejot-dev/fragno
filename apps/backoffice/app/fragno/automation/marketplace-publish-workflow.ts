@@ -7,7 +7,7 @@ import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
   marketplaceArtifactUploadName,
-  marketplaceListingArtifactFilePath,
+  marketplaceRootArtifactFilePath,
   marketplaceVersionArtifactFilePath,
   prepareMarketplaceArtifactFiles,
 } from "@/fragno/marketplace/artifacts";
@@ -150,15 +150,16 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
           ownerScope: entry.owner.scope,
           slug: entry.slug,
         });
-        const artifactDirectory = marketplaceVersionSchema.parse(entry.version);
         const publicationFiles = [
           ...prepareMarketplaceArtifactFiles(entry.files).map((file) => ({
             ...file,
-            fileKey: marketplaceVersionArtifactFilePath(artifactDirectory, file.relativePath),
+            root: false,
+            fileKey: marketplaceVersionArtifactFilePath(entry.version, file.relativePath),
           })),
-          ...prepareMarketplaceArtifactFiles(entry.listingFiles ?? {}).map((file) => ({
+          ...prepareMarketplaceArtifactFiles(entry.rootFiles ?? {}).map((file) => ({
             ...file,
-            fileKey: marketplaceListingArtifactFilePath(artifactDirectory, file.relativePath),
+            root: true,
+            fileKey: marketplaceRootArtifactFilePath(file.relativePath),
           })),
         ].sort((left, right) => left.fileKey.localeCompare(right.fileKey));
         const files = [];
@@ -166,6 +167,7 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
           const content = TEXT_ENCODER.encode(file.content);
           files.push({
             relativePath: file.relativePath,
+            root: file.root,
             content: file.content,
             fileKey: file.fileKey,
             filename: file.relativePath.split("/").at(-1) ?? file.relativePath,
@@ -185,12 +187,11 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
             ? getNextStaticMarketplaceEntry(entry)
             : null,
           listingId,
-          artifactDirectory,
           artifactUploadName: marketplaceArtifactUploadName(listingId),
           files,
         };
       });
-      const { entry, nextEntry, listingId, artifactDirectory, files } = snapshot;
+      const { entry, nextEntry, listingId, files } = snapshot;
       const callUploadRoute = createArtifactUploadRouteCaller(snapshot.artifactUploadName);
 
       const createdDraft = await step.do(
@@ -224,9 +225,17 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
             return result.value;
           },
         ));
+      const publishRootFiles = await step.do(
+        "resolve marketplace root files",
+        MARKETPLACE_EXTERNAL_STEP_RETRIES,
+        async () => {
+          const manifest = await marketplace.getArtifactManifest({ listingId });
+          return !manifest || manifest.versions.length === 0;
+        },
+      );
       const preparedWrites: PreparedMarketplaceArtifactWrite[] = [];
 
-      for (const file of files) {
+      for (const file of files.filter((file) => !file.root || publishRootFiles)) {
         const uploadSession = await step.do(
           `create marketplace artifact upload ${file.stepKey}`,
           MARKETPLACE_EXTERNAL_STEP_RETRIES,
@@ -351,16 +360,9 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
         async (tx) => {
           const manifest = await marketplace.getArtifactManifest({ listingId: draft.listingId });
-          const existingVersion = manifest?.versions.find(
-            (candidate) => candidate.version === entry.version,
-          );
+          const existingVersion = manifest?.versions.includes(entry.version);
           let result: MarketplacePublishVersionResult;
           if (existingVersion) {
-            if (existingVersion.directory !== artifactDirectory) {
-              throw new NonRetryableError(
-                `Marketplace version '${entry.version}' is already published with a different artifact directory.`,
-              );
-            }
             result = {
               listingId: draft.listingId,
               slug: entry.slug,
@@ -372,7 +374,6 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
               owner: entry.owner,
               listingId: draft.listingId,
               version: entry.version,
-              artifactDirectory,
             });
             if (!publishedVersion.ok) {
               throw new NonRetryableError(

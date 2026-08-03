@@ -26,7 +26,7 @@ export const STATIC_MARKETPLACE_ENTRIES = [
       category: "communication",
       tags: ["telegram", "testing", "workflow"],
     },
-    listingFiles: {
+    rootFiles: {
       "README.md": TELEGRAM_TEST_COMMAND_MARKETPLACE_README,
     },
     versions: [
@@ -90,7 +90,7 @@ const createStaticMarketplaceEntry = (
   owner: listing.owner,
   slug: listing.slug,
   metadata: listing.metadata,
-  listingFiles: listing.listingFiles,
+  rootFiles: listing.rootFiles,
   version: version.version,
   files: version.files,
 });

@@ -10,9 +10,6 @@ export { createUnsupportedFileSystem } from "./interface";
 
 export type { FilePrincipal } from "./permissions";
 export { ROOT_FILE_PRINCIPAL } from "./permissions";
-export type { FilesExplorerTreeNode, FilesNodeDetail } from "./explorer-types";
-export type { FilesActionResult } from "./actions";
-export { performFilesAction } from "./actions";
 export { getBuiltInFileContributors } from "./contributors";
 
 export {
@@ -38,10 +35,4 @@ export { SYSTEM_FILE_CONTENT } from "./content/system";
 export { MasterFileSystem, createMasterFileSystem } from "./master-file-system";
 export { createBackofficeFileSystem } from "./create-file-system";
 export { createSystemFilesContext } from "./system-context";
-export {
-  getFilesNodeDetail,
-  listFilesChildren,
-  listFilesTree,
-  resolveFilesTarget,
-} from "./service";
 export { ensureFolderPath, normalizeRelativePath, stripTrailingSlash } from "./normalize-path";

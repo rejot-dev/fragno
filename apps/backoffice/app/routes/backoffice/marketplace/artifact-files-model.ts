@@ -1,6 +1,6 @@
-import type { FilesExplorerTreeNode, FilesNodeDetail } from "@/files/explorer-types";
+import type { FileTree } from "@/file-collection/file-collection";
 
-export const MARKETPLACE_ARTIFACT_MOUNT_POINT = "/artifact";
+export const MARKETPLACE_ARTIFACT_ROOT_PATH = "/artifact";
 
 export type MarketplaceArtifactSelectedContent = {
   path: string;
@@ -15,11 +15,8 @@ export type MarketplaceArtifactWorkflowSource = {
 export type MarketplaceArtifactExplorerData =
   | {
       state: "ready";
-      tree: FilesExplorerTreeNode[];
+      fileTree: FileTree;
       selectedVersion: string;
-      defaultPath: string;
-      detailsByPath: Record<string, FilesNodeDetail>;
-      overviewPath: string | null;
     }
   | {
       state: "unavailable" | "error";

@@ -223,7 +223,7 @@ describe("marketplace fragment", async () => {
     });
   });
 
-  test("projects published artifact directories and keeps them immutable", async () => {
+  test("projects published versions into the artifact file collection manifest", async () => {
     const owner = organizationOwner("org-artifacts");
     const input = draftInput({
       owner,
@@ -239,7 +239,6 @@ describe("marketplace fragment", async () => {
           listingId,
           version: input.version,
           owner,
-          artifactDirectory: "1.0.0",
         }),
       ),
     ).resolves.toMatchObject({ published: true });
@@ -250,7 +249,7 @@ describe("marketplace fragment", async () => {
       slug: input.slug,
       listingStatus: "published",
       uploadName: marketplaceArtifactUploadName(listingId),
-      versions: [{ version: "1.0.0", directory: "1.0.0" }],
+      versions: ["1.0.0"],
     });
     await expect(
       callServices(() =>
@@ -258,20 +257,9 @@ describe("marketplace fragment", async () => {
           listingId,
           version: input.version,
           owner,
-          artifactDirectory: "1.0.0",
         }),
       ),
     ).resolves.toMatchObject({ published: false });
-    await expect(
-      callServices(() =>
-        marketplace.services.publishVersion({
-          listingId,
-          version: input.version,
-          owner,
-          artifactDirectory: "different-directory",
-        }),
-      ),
-    ).rejects.toBeInstanceOf(MarketplaceVersionTransitionError);
 
     await expect(
       callServices(() => marketplace.services.archiveListing({ listingId, owner })),
@@ -280,7 +268,7 @@ describe("marketplace fragment", async () => {
       callServices(() => marketplace.services.getArtifactManifest({ listingId })),
     ).resolves.toMatchObject({
       listingStatus: "archived",
-      versions: [{ version: "1.0.0", directory: "1.0.0" }],
+      versions: ["1.0.0"],
     });
   });
 
@@ -410,7 +398,6 @@ describe("marketplace fragment", async () => {
           listingId,
           version: input.version,
           owner,
-          artifactDirectory: input.version,
         }),
       );
     }
@@ -505,7 +492,6 @@ describe("marketplace fragment", async () => {
         listingId,
         version: "1.0.0",
         owner,
-        artifactDirectory: "1.0.0",
       }),
     );
     await callServices(() =>
@@ -516,7 +502,6 @@ describe("marketplace fragment", async () => {
         listingId,
         version: "1.1.0",
         owner,
-        artifactDirectory: "1.1.0",
       }),
     );
 
@@ -526,7 +511,6 @@ describe("marketplace fragment", async () => {
           listingId,
           version: "1.0.0",
           owner,
-          artifactDirectory: "1.0.0",
         }),
       ),
     ).resolves.toMatchObject({ published: false });
@@ -537,7 +521,7 @@ describe("marketplace fragment", async () => {
     await expect(
       callServices(() => marketplace.services.getArtifactManifest({ listingId })),
     ).resolves.toMatchObject({
-      versions: [{ version: "1.1.0" }, { version: "1.0.0" }],
+      versions: ["1.1.0", "1.0.0"],
     });
   });
 

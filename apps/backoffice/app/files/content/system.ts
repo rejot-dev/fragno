@@ -1,4 +1,4 @@
-import type { FileContent } from "../interface";
+import { createStaticFileCollection } from "../../file-collection/create-static-file-collection";
 import { SYSTEM_AUTOMATION_CONTENT } from "./system-automations";
 
 const SYSTEM_README = `# Backoffice System Filesystem
@@ -16,4 +16,6 @@ guidance, or codemode declarations here; those belong in \`/static\`.
 export const SYSTEM_FILE_CONTENT = {
   "README.md": SYSTEM_README,
   ...SYSTEM_AUTOMATION_CONTENT,
-} satisfies Record<string, FileContent>;
+} satisfies Record<string, string | Uint8Array>;
+
+export const systemFileCollection = createStaticFileCollection(SYSTEM_FILE_CONTENT);

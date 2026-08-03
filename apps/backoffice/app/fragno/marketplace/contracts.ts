@@ -23,20 +23,6 @@ export const marketplaceVersionSchema = z
   .regex(MARKETPLACE_VERSION_PATTERN, "Use a semantic version such as 1.0.0.")
   .meta({ examples: ["1.0.0", "2.1.0-beta.1"] });
 
-export const marketplaceArtifactDirectorySchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(191)
-  .refine(
-    (value) =>
-      !value.startsWith("/") &&
-      !value.includes("\\") &&
-      value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== ".."),
-    "Use a relative artifact directory without empty, '.' or '..' path segments.",
-  )
-  .meta({ examples: ["1.0.0"] });
-
 export const marketplaceListingIdSchema = z
   .string()
   .trim()
@@ -201,7 +187,6 @@ export const marketplacePublishVersionInputSchema = z
     owner: marketplaceOwnerSchema,
     listingId: marketplaceListingIdSchema,
     version: marketplaceVersionSchema,
-    artifactDirectory: marketplaceArtifactDirectorySchema.optional(),
   })
   .refine(
     marketplaceVersionIdentityFitsDatabase,
@@ -240,12 +225,7 @@ export const marketplaceArtifactManifestSchema = z.object({
   slug: marketplaceSlugSchema,
   listingStatus: marketplaceListingStatusSchema,
   uploadName: z.string(),
-  versions: z.array(
-    z.object({
-      version: marketplaceVersionSchema,
-      directory: marketplaceArtifactDirectorySchema,
-    }),
-  ),
+  versions: z.array(marketplaceVersionSchema),
 });
 
 export type MarketplaceArtifactManifest = z.infer<typeof marketplaceArtifactManifestSchema>;

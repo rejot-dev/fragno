@@ -19,10 +19,7 @@ import {
   UploadFileWriteConflictError,
   type PreparedUploadFileWrite,
 } from "@/files/contributors/upload";
-import {
-  MARKETPLACE_LISTING_FILES_DIRECTORY,
-  normalizeMarketplaceArtifactPath,
-} from "@/fragno/marketplace/artifacts";
+import { normalizeMarketplaceArtifactPath } from "@/fragno/marketplace/artifacts";
 import {
   marketplaceListingIdSchema,
   marketplaceVersionSchema,
@@ -307,7 +304,7 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
           }
           const previous = installed
             ? resolvedArtifact.manifest.versions.find(
-                (candidate) => candidate.version === installed.version,
+                (candidate) => candidate === installed.version,
               )
             : undefined;
           if (installed && !previous) {
@@ -317,12 +314,8 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
           }
           return {
             listingId: resolvedArtifact.manifest.listingId,
-            version: resolvedArtifact.version.version,
-            artifactDirectory: resolvedArtifact.version.directory,
-            previousArtifactDirectory:
-              previous && previous.version !== resolvedArtifact.version.version
-                ? previous.directory
-                : null,
+            version: resolvedArtifact.version,
+            previousVersion: previous && previous !== resolvedArtifact.version ? previous : null,
             uploadName: resolvedArtifact.manifest.uploadName,
           };
         },
@@ -332,21 +325,21 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
       const sourceUploadRoutes = createUploadRouteCaller(sourceObject);
       const artifactListings: Array<{
         kind: "requested" | "installed";
-        artifactDirectory: string;
+        version: string;
         pageStepName:
           | "list marketplace artifact files page"
           | "list installed marketplace artifact files page";
       }> = [
         {
           kind: "requested",
-          artifactDirectory: artifact.artifactDirectory,
+          version: artifact.version,
           pageStepName: "list marketplace artifact files page",
         },
       ];
-      if (artifact.previousArtifactDirectory) {
+      if (artifact.previousVersion) {
         artifactListings.push({
           kind: "installed",
-          artifactDirectory: artifact.previousArtifactDirectory,
+          version: artifact.previousVersion,
           pageStepName: "list installed marketplace artifact files page",
         });
       }
@@ -356,7 +349,7 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
         installed: [],
       };
       for (const listing of artifactListings) {
-        const artifactPrefix = `${listing.artifactDirectory}/`;
+        const artifactPrefix = `${listing.version}/`;
         const files: MarketplaceIngestionSourceFile[] = [];
         let cursor: string | undefined;
         let listingComplete = false;
@@ -382,14 +375,12 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
 
               const pageFiles: MarketplaceIngestionSourceFile[] = [];
               for (const file of response.data.files) {
-                if (
-                  file.metadata?.__docsDirectoryMarker === true ||
-                  file.fileKey.startsWith(
-                    `${artifactPrefix}${MARKETPLACE_LISTING_FILES_DIRECTORY}/`,
-                  )
-                ) {
+                if (file.metadata?.__docsDirectoryMarker === true) {
                   continue;
                 }
+                const relativePath = normalizeMarketplaceArtifactPath(
+                  file.fileKey.slice(artifactPrefix.length),
+                );
                 const checksum = file.checksum;
                 if (!checksum) {
                   throw new NonRetryableError(
@@ -398,9 +389,7 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
                 }
                 pageFiles.push({
                   fileKey: file.fileKey,
-                  relativePath: normalizeMarketplaceArtifactPath(
-                    file.fileKey.slice(artifactPrefix.length),
-                  ),
+                  relativePath,
                   contentType: file.contentType,
                   sizeBytes: file.sizeBytes,
                   checksum,

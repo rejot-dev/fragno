@@ -7,6 +7,8 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+import { createFileTree } from "@/file-collection/create-file-tree";
+
 import { MarketplaceArtifactFiles } from "./artifact-files";
 import type { MarketplaceArtifactExplorerData } from "./artifact-files-model";
 
@@ -17,30 +19,17 @@ const workflowSource = `defineWorkflow({ name: "daily-report" }, async (_event, 
 
 const data: MarketplaceArtifactExplorerData = {
   state: "ready",
-  tree: [],
-  selectedVersion: "1.0.0",
-  defaultPath: "/artifact/1.0.0/",
-  detailsByPath: {
-    [workflowPath]: {
-      node: {
-        kind: "file",
-        path: workflowPath,
-        name: "daily-report.workflow.js",
-        title: "daily-report.workflow.js",
-        mountPoint: "/artifact",
-        mountTitle: "Package contents",
-        mountKind: "custom",
-        readOnly: true,
-        persistence: "persistent",
-        contentType: "text/javascript",
-      },
-      fields: [],
+  fileTree: createFileTree([
+    {
+      kind: "file",
+      path: "1.0.0/automations/daily-report.workflow.js",
+      sizeBytes: workflowSource.length,
+      contentType: "text/javascript",
+      updatedAt: null,
       metadata: null,
-      textContent: null,
-      capabilities: { canCreateFolder: false, canWriteText: false, canDelete: false },
     },
-  },
-  overviewPath: null,
+  ]),
+  selectedVersion: "1.0.0",
 };
 
 afterEach(cleanup);
@@ -98,23 +87,7 @@ describe("Marketplace artifact lazy content", () => {
   });
 
   test("renders text file content selected by the route loader", async () => {
-    const fileData: MarketplaceArtifactExplorerData = {
-      ...data,
-      tree: [
-        {
-          kind: "root",
-          path: "/artifact",
-          name: "artifact",
-          title: "Package contents",
-          mountPoint: "/artifact",
-          mountTitle: "Package contents",
-          mountKind: "custom",
-          readOnly: true,
-          persistence: "persistent",
-          children: [data.detailsByPath[workflowPath]!.node],
-        },
-      ],
-    };
+    const fileData: MarketplaceArtifactExplorerData = data;
     const router = createMemoryRouter(
       [
         {
@@ -131,7 +104,9 @@ describe("Marketplace artifact lazy content", () => {
     );
 
     render(<RouterProvider router={router} />);
-    fireEvent.click(screen.getByRole("link", { name: "daily-report.workflow.js" }));
+    fireEvent.click(screen.getByRole("link", { name: "1.0.0" }));
+    fireEvent.click(await screen.findByRole("link", { name: "automations" }));
+    fireEvent.click(await screen.findByRole("link", { name: "daily-report.workflow.js" }));
 
     await waitFor(() => {
       const search = new URLSearchParams(router.state.location.search);
@@ -142,22 +117,19 @@ describe("Marketplace artifact lazy content", () => {
   });
 
   test("clears a fetched workflow when the artifact version changes", async () => {
-    const secondWorkflowPath = "/artifact/2.0.0/automations/weekly-report.workflow.js";
     const secondVersionData: MarketplaceArtifactExplorerData = {
-      ...data,
-      selectedVersion: "2.0.0",
-      defaultPath: "/artifact/2.0.0/",
-      detailsByPath: {
-        [secondWorkflowPath]: {
-          ...data.detailsByPath[workflowPath]!,
-          node: {
-            ...data.detailsByPath[workflowPath]!.node,
-            path: secondWorkflowPath,
-            name: "weekly-report.workflow.js",
-            title: "weekly-report.workflow.js",
-          },
+      state: "ready",
+      fileTree: createFileTree([
+        {
+          kind: "file",
+          path: "2.0.0/automations/weekly-report.workflow.js",
+          sizeBytes: workflowSource.length,
+          contentType: "text/javascript",
+          updatedAt: null,
+          metadata: null,
         },
-      },
+      ]),
+      selectedVersion: "2.0.0",
     };
     const router = createMemoryRouter(
       [

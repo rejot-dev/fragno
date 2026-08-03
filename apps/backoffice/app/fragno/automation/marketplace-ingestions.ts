@@ -149,14 +149,14 @@ export const resolveMarketplaceIngestionArtifactVersion = (
   requestedVersion: string | undefined,
 ): {
   manifest: MarketplaceArtifactManifest;
-  version: MarketplaceArtifactManifest["versions"][number];
+  version: string;
 } => {
   if (manifest?.listingStatus !== "published") {
     throw new MarketplaceIngestionArtifactUnavailableError("Marketplace listing is not published.");
   }
 
-  const version = requestedVersion ?? manifest.versions[0]?.version;
-  const selected = manifest.versions.find((candidate) => candidate.version === version);
+  const version = requestedVersion ?? manifest.versions[0];
+  const selected = manifest.versions.find((candidate) => candidate === version);
   if (!selected) {
     throw new MarketplaceIngestionArtifactUnavailableError(
       `Marketplace version '${requestedVersion ?? "latest"}' is not available.`,

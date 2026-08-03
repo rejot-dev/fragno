@@ -287,11 +287,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
               slug: marketplaceListingSlug(listing.id.externalId),
               listingStatus: listing.status,
               uploadName: marketplaceArtifactUploadName(listing.id.externalId),
-              versions: versions.flatMap((version) =>
-                version.artifactDirectory
-                  ? [{ version: version.version, directory: version.artifactDirectory }]
-                  : [],
-              ),
+              versions: versions.map((version) => version.version),
             };
           })
           .build();
@@ -815,17 +811,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
             }
 
             if (version.status === "published") {
-              if (
-                input.artifactDirectory &&
-                version.artifactDirectory &&
-                version.artifactDirectory !== input.artifactDirectory
-              ) {
-                throw new MarketplaceVersionTransitionError(slug, input.version);
-              }
-
-              const attachesArtifact =
-                Boolean(input.artifactDirectory) && version.artifactDirectory === null;
-              if (listing.status === "published" && !attachesArtifact) {
+              if (listing.status === "published") {
                 return {
                   listingId: input.listingId,
                   slug,
@@ -835,11 +821,6 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
               }
 
               const now = uow.now();
-              if (attachesArtifact) {
-                uow.update("marketplace_version", version.id, (b) =>
-                  b.set({ artifactDirectory: input.artifactDirectory ?? null }).check(),
-                );
-              }
               uow.update("marketplace_listing", listing.id, (b) =>
                 b
                   .set({
@@ -875,7 +856,6 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
                 .set({
                   status: "published",
                   publishedAt: now,
-                  artifactDirectory: input.artifactDirectory ?? version.artifactDirectory,
                 })
                 .check(),
             );

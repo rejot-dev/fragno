@@ -1,59 +1,43 @@
-import { assert, describe, test } from "vitest";
+// @vitest-environment happy-dom
 
+import { afterEach, assert, describe, test } from "vitest";
+
+import { useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 
-import type { FilesExplorerTreeNode, FilesNodeDetail } from "@/files";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { FilesExplorerView } from "./view";
+import { createFileTree } from "@/file-collection/create-file-tree";
 
-const fileNode: FilesExplorerTreeNode = {
-  kind: "file",
-  path: "/artifact/1.0.0/README.md",
-  name: "README.md",
-  title: "README.md",
-  mountPoint: "/artifact",
-  mountTitle: "Published versions",
-  mountKind: "custom",
-  readOnly: true,
-  persistence: "persistent",
-  contentType: "text/markdown",
-};
+import { FilesExplorerView, type FilesExplorerSource } from "./view";
 
-const tree: FilesExplorerTreeNode[] = [
-  {
-    kind: "root",
-    path: "/artifact",
-    name: "artifact",
-    title: "Published versions",
-    mountPoint: "/artifact",
-    mountTitle: "Published versions",
-    mountKind: "custom",
-    readOnly: true,
-    persistence: "persistent",
-    children: [fileNode],
-  },
-];
+afterEach(cleanup);
 
-const selectedDetail: FilesNodeDetail = {
-  node: fileNode,
-  fields: [{ label: "Path", value: fileNode.path }],
-  textContent: "# Published artifact",
-  capabilities: {
-    canCreateFolder: false,
-    canWriteText: false,
-    canDelete: false,
-  },
+const filePath = "/artifact/1.0.0/README.md";
+const source: FilesExplorerSource = {
+  tree: createFileTree([
+    {
+      kind: "file",
+      path: "1.0.0/README.md",
+      sizeBytes: 20,
+      contentType: "text/markdown",
+      updatedAt: null,
+      metadata: null,
+    },
+  ]),
+  rootPath: "/artifact",
+  rootTitle: "Published versions",
 };
 
 describe("FilesExplorerView", () => {
-  test("renders server-provided trees and details without local-first orchestration", () => {
+  test("renders FileTree sources without caller-owned explorer nodes", () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
         <FilesExplorerView
-          tree={tree}
-          selectedPath={fileNode.path}
-          selectedDetail={selectedDetail}
+          sources={[source]}
+          selectedPath={filePath}
+          selectedContent={{ path: filePath, text: "# Published artifact" }}
           loadError={null}
           treeLabel="Published versions"
           treeAriaLabel="Marketplace artifact files"
@@ -70,27 +54,66 @@ describe("FilesExplorerView", () => {
     assert(!markup.includes("Download"));
   });
 
+  test("formats updated timestamps in UTC for deterministic server rendering", () => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <FilesExplorerView
+          sources={[
+            {
+              ...source,
+              tree: createFileTree([
+                {
+                  kind: "file",
+                  path: "1.0.0/README.md",
+                  sizeBytes: 20,
+                  contentType: "text/markdown",
+                  updatedAt: "2026-01-01T12:00:00.000Z",
+                  metadata: null,
+                },
+              ]),
+            },
+          ]}
+          selectedPath={filePath}
+          loadError={null}
+          buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
+        />
+      </MemoryRouter>,
+    );
+
+    assert(markup.includes("Jan 1, 2026, 12:00 PM"));
+  });
+
   test("renders only public file metadata", () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
         <FilesExplorerView
-          tree={tree}
-          selectedPath={fileNode.path}
-          selectedDetail={{
-            ...selectedDetail,
-            metadata: {
-              provider: "database",
-              filename: "README.md",
-              status: "ready",
-              visibility: "public",
-              createdAt: "2026-01-01T00:00:00.000Z",
-              previewUrl: "/preview/README.md",
-              fileKey: "internal/README.md",
-              uploadId: "upload-internal",
-              uploaderId: "user-internal",
-              customInternalValue: "hidden",
+          sources={[
+            {
+              ...source,
+              tree: createFileTree([
+                {
+                  kind: "file",
+                  path: "1.0.0/README.md",
+                  sizeBytes: 20,
+                  contentType: "text/markdown",
+                  updatedAt: null,
+                  metadata: {
+                    provider: "database",
+                    filename: "README.md",
+                    status: "ready",
+                    visibility: "public",
+                    createdAt: "2026-01-01T00:00:00.000Z",
+                    previewUrl: "/preview/README.md",
+                    fileKey: "internal/README.md",
+                    uploadId: "upload-internal",
+                    uploaderId: "user-internal",
+                    customInternalValue: "hidden",
+                  },
+                },
+              ]),
             },
-          }}
+          ]}
+          selectedPath={filePath}
           loadError={null}
           buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
         />
@@ -105,13 +128,137 @@ describe("FilesExplorerView", () => {
     assert(!markup.includes("customInternalValue"));
   });
 
+  test("supports route-owned default root expansion", () => {
+    const workspaceFilePath = "/workspace/private.txt";
+    const workspaceSource: FilesExplorerSource = {
+      tree: createFileTree([
+        {
+          kind: "file",
+          path: "private.txt",
+          sizeBytes: 7,
+          contentType: "text/plain",
+          updatedAt: null,
+          metadata: null,
+        },
+      ]),
+      rootPath: "/workspace",
+      rootTitle: "Workspace",
+    };
+
+    const collapsedMarkup = renderToStaticMarkup(
+      <MemoryRouter>
+        <FilesExplorerView
+          sources={[workspaceSource, source]}
+          selectedPath="/artifact"
+          loadError={null}
+          defaultCollapsedRootPaths={["/workspace"]}
+          buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
+        />
+      </MemoryRouter>,
+    );
+    assert(collapsedMarkup.includes("Expand Workspace"));
+    assert(!collapsedMarkup.includes("private.txt"));
+
+    const selectedChildMarkup = renderToStaticMarkup(
+      <MemoryRouter>
+        <FilesExplorerView
+          sources={[workspaceSource, source]}
+          selectedPath={workspaceFilePath}
+          loadError={null}
+          defaultCollapsedRootPaths={["/workspace"]}
+          buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
+        />
+      </MemoryRouter>,
+    );
+    assert(selectedChildMarkup.includes("Collapse Workspace"));
+    assert(selectedChildMarkup.includes("private.txt"));
+  });
+
+  test("toggles a root by clicking the root itself", () => {
+    const workspaceSource: FilesExplorerSource = {
+      tree: createFileTree([
+        {
+          kind: "file",
+          path: "visible.txt",
+          sizeBytes: 7,
+          contentType: "text/plain",
+          updatedAt: null,
+          metadata: null,
+        },
+      ]),
+      rootPath: "/workspace",
+      rootTitle: "Workspace",
+    };
+
+    render(
+      <MemoryRouter>
+        <FilesExplorerView
+          sources={[workspaceSource]}
+          selectedPath="/workspace"
+          loadError={null}
+          buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
+        />
+      </MemoryRouter>,
+    );
+
+    const root = screen.getByRole("button", { name: "Collapse Workspace" });
+    assert(!root.className.includes("active:scale"));
+    screen.getByText("visible.txt");
+
+    fireEvent.click(root);
+    screen.getByRole("button", { name: "Expand Workspace" });
+    assert(screen.queryByText("visible.txt") === null);
+  });
+
+  test("allows a root to close while one of its files is selected", () => {
+    const nestedSource = createNestedWorkspaceSource();
+    render(
+      <ExplorerHarness source={nestedSource} initialSelectedPath="/workspace/notes/todo.txt" />,
+    );
+
+    assert(screen.getAllByText("todo.txt").length > 0);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Workspace" }));
+
+    screen.getByRole("button", { name: "Expand Workspace" });
+    assert(screen.queryByRole("link", { name: "notes" }) === null);
+  });
+
+  test("starts folders collapsed and expands them when their row is selected", () => {
+    const nestedSource = createNestedWorkspaceSource();
+    render(<ExplorerHarness source={nestedSource} initialSelectedPath="/workspace" />);
+
+    screen.getByRole("link", { name: "notes" });
+    assert(screen.queryByText("todo.txt") === null);
+
+    fireEvent.click(screen.getByRole("link", { name: "notes" }));
+    screen.getByText("todo.txt");
+
+    fireEvent.click(screen.getByRole("link", { name: "notes" }));
+    screen.getByText("todo.txt");
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse notes" }));
+    assert(screen.queryByText("todo.txt") === null);
+  });
+
+  test("selects a selected file's parent folder without closing it", () => {
+    const nestedSource = createNestedWorkspaceSource();
+    render(
+      <ExplorerHarness source={nestedSource} initialSelectedPath="/workspace/notes/todo.txt" />,
+    );
+
+    assert(screen.getAllByText("todo.txt").length > 0);
+    fireEvent.click(screen.getByRole("link", { name: "notes" }));
+
+    screen.getByText("todo.txt");
+    assert(screen.getByRole("link", { name: "notes" }).getAttribute("aria-current") === "page");
+  });
+
   test("renders downloads only when the caller supplies a download route", () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
         <FilesExplorerView
-          tree={tree}
-          selectedPath={fileNode.path}
-          selectedDetail={selectedDetail}
+          sources={[source]}
+          selectedPath={filePath}
           loadError={null}
           buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
           buildDownloadHref={(path) => `/files/download?path=${encodeURIComponent(path)}`}
@@ -123,3 +270,40 @@ describe("FilesExplorerView", () => {
     assert(markup.includes("/files/download?path=%2Fartifact%2F1.0.0%2FREADME.md"));
   });
 });
+function createNestedWorkspaceSource(): FilesExplorerSource {
+  return {
+    tree: createFileTree([
+      {
+        kind: "file",
+        path: "notes/todo.txt",
+        sizeBytes: 4,
+        contentType: "text/plain",
+        updatedAt: null,
+        metadata: null,
+      },
+    ]),
+    rootPath: "/workspace",
+    rootTitle: "Workspace",
+  };
+}
+
+function ExplorerHarness({
+  source,
+  initialSelectedPath,
+}: {
+  source: FilesExplorerSource;
+  initialSelectedPath: string;
+}) {
+  const [selectedPath, setSelectedPath] = useState(initialSelectedPath);
+  return (
+    <MemoryRouter>
+      <FilesExplorerView
+        sources={[source]}
+        selectedPath={selectedPath}
+        loadError={null}
+        onNodeSelect={(node) => setSelectedPath(node.path)}
+        buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
+      />
+    </MemoryRouter>
+  );
+}

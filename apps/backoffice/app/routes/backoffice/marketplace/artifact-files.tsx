@@ -8,16 +8,20 @@ import {
   type WorkflowVisualizationSnapshot,
 } from "@fragno-dev/workflow-visualizer-tokens";
 
-import { FilesExplorerView } from "@/components/backoffice/files-explorer";
-import type { FilesNodeDetail } from "@/files/explorer-types";
+import {
+  FilesExplorerView,
+  type FilesExplorerSource,
+} from "@/components/backoffice/files-explorer";
+import type { FileTreeEntry } from "@/file-collection/file-collection";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 
 import { ScriptWorkflowGraph } from "../automations/script-view/workflow-graph";
 import { AutomationSubpageTabs } from "../automations/shared";
-import type {
-  MarketplaceArtifactExplorerData,
-  MarketplaceArtifactSelectedContent,
-  MarketplaceArtifactWorkflowSource,
+import {
+  MARKETPLACE_ARTIFACT_ROOT_PATH,
+  type MarketplaceArtifactExplorerData,
+  type MarketplaceArtifactSelectedContent,
+  type MarketplaceArtifactWorkflowSource,
 } from "./artifact-files-model";
 
 type MarketplaceArtifactTab = "overview" | "workflows" | "files";
@@ -79,8 +83,12 @@ function ReadyMarketplaceArtifactFiles({
     requestedTab === "overview" || requestedTab === "workflows" || requestedTab === "files"
       ? requestedTab
       : "files";
-  const overviewResourcePath = data.overviewPath
-    ? buildArtifactFileResourcePath(location.pathname, data.selectedVersion, data.overviewPath)
+  const overviewPath =
+    findMarketplaceArtifactEntry(data, "README.md")?.kind === "file"
+      ? `${MARKETPLACE_ARTIFACT_ROOT_PATH}/README.md`
+      : null;
+  const overviewResourcePath = overviewPath
+    ? buildArtifactFileResourcePath(location.pathname, overviewPath)
     : null;
   const loadOverview = () => {
     if (overviewResourcePath) {
@@ -105,7 +113,7 @@ function ReadyMarketplaceArtifactFiles({
 
       {activeTab === "overview" ? (
         <MarketplaceArtifactOverview
-          path={data.overviewPath}
+          path={overviewPath}
           requested={overviewRequested}
           loading={overview.state !== "idle"}
           markdown={typeof overview.data === "string" ? overview.data : null}
@@ -130,19 +138,46 @@ function MarketplaceArtifactExplorer({
   const location = useLocation();
   const search = new URLSearchParams(location.search);
   const explicitRequestedPath = search.get("artifactPath")?.trim() || null;
-  const requestedPath = explicitRequestedPath ?? data.defaultPath;
-  const selectedPath = data.detailsByPath[requestedPath] ? requestedPath : data.defaultPath;
-  const selectedDetail = data.detailsByPath[selectedPath] ?? null;
-  const displayedDetail = withSelectedTextContent(selectedDetail, selectedContent);
+  const entriesByExplorerPath = useMemo(
+    () => createMarketplaceArtifactEntriesByExplorerPath(data.fileTree.entries),
+    [data.fileTree.entries],
+  );
+  const defaultPath = `${MARKETPLACE_ARTIFACT_ROOT_PATH}/${data.selectedVersion}/`;
+  const requestedPath = explicitRequestedPath ?? defaultPath;
+  const selectedPath =
+    requestedPath === MARKETPLACE_ARTIFACT_ROOT_PATH || entriesByExplorerPath.has(requestedPath)
+      ? requestedPath
+      : defaultPath;
+  const selectedEntry = entriesByExplorerPath.get(selectedPath);
+  const displayedContent =
+    selectedEntry?.kind === "file" &&
+    shouldLoadTextContent({ path: selectedPath, contentType: selectedEntry.contentType })
+      ? selectedContent?.path === selectedPath
+        ? selectedContent
+        : { path: selectedPath, text: "File contents are unavailable." }
+      : null;
+  const sources = useMemo<readonly FilesExplorerSource[]>(
+    () => [
+      {
+        tree: data.fileTree,
+        rootPath: MARKETPLACE_ARTIFACT_ROOT_PATH,
+        rootTitle: "Package contents",
+        rootDescription: "Files published for this Marketplace package.",
+      },
+    ],
+    [data],
+  );
 
   return (
     <div className="mt-5">
       <FilesExplorerView
-        tree={data.tree}
+        sources={sources}
         selectedPath={selectedPath}
-        selectedDetail={displayedDetail}
+        selectedContent={displayedContent}
         loadError={
-          explicitRequestedPath && !data.detailsByPath[explicitRequestedPath]
+          explicitRequestedPath &&
+          explicitRequestedPath !== MARKETPLACE_ARTIFACT_ROOT_PATH &&
+          !entriesByExplorerPath.has(explicitRequestedPath)
             ? `Artifact path '${explicitRequestedPath}' could not be found.`
             : null
         }
@@ -159,13 +194,14 @@ function MarketplaceArtifactExplorer({
           </div>
         }
         buildNodeTo={(path) => {
-          const node = data.detailsByPath[path]?.node;
+          const entry = entriesByExplorerPath.get(path);
           return buildArtifactSelectionPath(
             location.pathname,
             location.search,
             "files",
             path,
-            node?.kind === "file" && shouldLoadTextContent(node),
+            entry?.kind === "file" &&
+              shouldLoadTextContent({ path, contentType: entry.contentType }),
           );
         }}
       />
@@ -181,17 +217,22 @@ function MarketplaceArtifactWorkflows({
   selectedContent: MarketplaceArtifactSelectedContent | null;
 }) {
   const location = useLocation();
-  const workflowPaths = useMemo(
-    () =>
-      Object.keys(data.detailsByPath)
-        .filter(
-          (path) =>
-            path.startsWith(`/artifact/${data.selectedVersion}/automations/`) &&
-            path.toLowerCase().endsWith(".workflow.js"),
-        )
-        .sort((left, right) => left.localeCompare(right)),
-    [data.detailsByPath, data.selectedVersion],
-  );
+  const workflowPaths = useMemo(() => {
+    const workflowPathPrefix = `${data.selectedVersion}/automations/`;
+    const paths: string[] = [];
+
+    for (const entry of data.fileTree.entries) {
+      if (
+        entry.kind === "file" &&
+        entry.path.startsWith(workflowPathPrefix) &&
+        entry.path.toLowerCase().endsWith(".workflow.js")
+      ) {
+        paths.push(`${MARKETPLACE_ARTIFACT_ROOT_PATH}/${entry.path}`);
+      }
+    }
+
+    return paths.sort((left, right) => left.localeCompare(right));
+  }, [data.fileTree.entries, data.selectedVersion]);
   const requestedPath = new URLSearchParams(location.search).get("artifactPath")?.trim();
   const selectedPath =
     requestedPath && workflowPaths.includes(requestedPath) ? requestedPath : null;
@@ -393,20 +434,22 @@ function LoadContentButton({ onClick, children }: { onClick: () => void; childre
   );
 }
 
-function withSelectedTextContent(
-  detail: FilesNodeDetail | null,
-  selectedContent: MarketplaceArtifactSelectedContent | null,
-): FilesNodeDetail | null {
-  if (detail?.node.kind !== "file" || !shouldLoadTextContent(detail.node)) {
-    return detail;
-  }
-  return {
-    ...detail,
-    textContent:
-      selectedContent?.path === detail.node.path
-        ? selectedContent.text
-        : "File contents are unavailable.",
-  };
+function createMarketplaceArtifactEntriesByExplorerPath(
+  entries: readonly FileTreeEntry[],
+): ReadonlyMap<string, FileTreeEntry> {
+  return new Map(
+    entries.map((entry) => [
+      `${MARKETPLACE_ARTIFACT_ROOT_PATH}/${entry.path}${entry.kind === "directory" ? "/" : ""}`,
+      entry,
+    ]),
+  );
+}
+
+function findMarketplaceArtifactEntry(
+  data: ReadyArtifactData,
+  relativePath: string,
+): FileTreeEntry | undefined {
+  return data.fileTree.entries.find((entry) => entry.path === relativePath);
 }
 
 function buildArtifactTabPath(
@@ -453,14 +496,10 @@ function shouldLoadTextContent(node: { path: string; contentType?: string | null
   );
 }
 
-function buildArtifactFileResourcePath(
-  pathname: string,
-  selectedVersion: string,
-  path: string,
-): string {
+function buildArtifactFileResourcePath(pathname: string, path: string): string {
   const resourcePath = pathname.endsWith("/")
     ? `${pathname}artifact-file`
     : `${pathname}/artifact-file`;
-  const search = new URLSearchParams({ artifactVersion: selectedVersion, artifactPath: path });
+  const search = new URLSearchParams({ artifactPath: path });
   return `${resourcePath}?${search}`;
 }

@@ -535,8 +535,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       throw new MarketplaceListingArchivedError(entry.slug);
     }
 
-    const published =
-      manifest?.versions.some((version) => version.version === entry.version) ?? false;
+    const published = manifest?.versions.includes(entry.version) ?? false;
 
     if (published) {
       return {
@@ -596,7 +595,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     const completedManifest = await marketplace.getArtifactManifest({ listingId });
     const completedPublication =
       completedManifest?.listingStatus === "published" &&
-      completedManifest.versions.some((version) => version.version === entry.version);
+      completedManifest.versions.includes(entry.version);
     if (completedPublication) {
       return { ...identity, state: "published" };
     }
@@ -650,7 +649,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
         .getArtifactManifest({ listingId: input.listingId }),
       input.version,
     );
-    const version = resolvedArtifact.version.version;
+    const version = resolvedArtifact.version;
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
       targetScope: input.targetScope,
       listingId: input.listingId,

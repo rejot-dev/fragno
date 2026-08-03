@@ -1,13 +1,10 @@
 import { Outlet } from "react-router";
 
-import type { FileMountMetadata } from "@/files";
 import { getAuthMe } from "@/fragno/auth/auth-server";
-import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import { createOrganisationScopeOptions } from "../integrations/scope";
 import type { Route } from "./+types/organisation-layout";
-import { createBackofficeFilesFileSystem } from "./data";
 import type { FilesLayoutContext } from "./layout-context";
 import { FilesErrorBoundary, FilesWorkspaceHeader } from "./shared";
 
@@ -29,34 +26,11 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  const resolvedFileSystem = await createBackofficeFilesFileSystem({
-    request,
-    context,
-    orgId: params.orgId,
-  });
-  const mounts = resolvedFileSystem.mounts.map<FileMountMetadata>(({ fs: _fs, ...mount }) => mount);
-  const hasUploadMounts = mounts.some((mount) => mount.kind === "upload");
-  let uploadCollectionSource = null;
-  let uploadCollectionError: string | null = null;
-
-  if (hasUploadMounts) {
-    try {
-      const adapterIdentity = await fetchUploadAdapterIdentity(request, context, params.orgId);
-      uploadCollectionSource = { orgId: params.orgId, adapterIdentity };
-    } catch (error) {
-      uploadCollectionError =
-        error instanceof Error ? error.message : "Failed to open local file metadata.";
-    }
-  }
-
   return {
     orgId: params.orgId,
     origin: url.origin,
     organisation,
     organisationOptions: createOrganisationScopeOptions(me.organizations),
-    mounts,
-    uploadCollectionSource,
-    uploadCollectionError,
   };
 }
 
@@ -70,16 +44,12 @@ export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
 }
 
 export default function BackofficeFilesOrganisationLayout({ loaderData }: Route.ComponentProps) {
-  const { orgId, origin, organisation, mounts, uploadCollectionSource, uploadCollectionError } =
-    loaderData;
+  const { orgId, origin, organisation } = loaderData;
 
   const outletContext = {
     orgId,
     origin,
     organisation,
-    mounts,
-    uploadCollectionSource,
-    uploadCollectionError,
   } satisfies FilesLayoutContext;
 
   return (
