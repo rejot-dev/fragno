@@ -49,6 +49,5 @@ export async function loadMarketplaceArtifactFile({
     objects: runtime.objects,
     request,
     path,
-    requestedVersion: url.searchParams.get("artifactVersion")?.trim() || undefined,
   });
 }

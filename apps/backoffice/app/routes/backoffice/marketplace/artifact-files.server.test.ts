@@ -22,10 +22,7 @@ const manifest = {
   slug: "daily-report",
   listingStatus: "published" as const,
   uploadName: "marketplace-test-upload",
-  versions: [
-    { version: "2.0.0", directory: "release-2" },
-    { version: "1.0.0", directory: "1.0.0" },
-  ],
+  versions: ["2.0.0", "1.0.0"],
 };
 
 type ArtifactSeedFile = {
@@ -35,20 +32,21 @@ type ArtifactSeedFile = {
 };
 
 const files: ArtifactSeedFile[] = [
-  createFile("release-2/.listing/README.md", "text/markdown", "# Package overview"),
-  createFile("release-2/README.md", "text/markdown", "# Version 2"),
+  createFile("README.md", "text/markdown", "# Package overview"),
+  createFile("2.0.0/README.md", "text/markdown", "# Version 2"),
   createFile(
-    "release-2/automations/daily-report.workflow.js",
+    "2.0.0/automations/daily-report.workflow.js",
     "text/javascript",
     "defineWorkflow({ name: 'daily' })",
   ),
-  createFile("release-2/automations/helpers.js", "text/javascript", "export const helper = true"),
+  createFile("2.0.0/automations/helpers.js", "text/javascript", "export const helper = true"),
   createFile("1.0.0/README.md", "text/markdown", "# Version 1"),
   createFile(
     "1.0.0/automations/old.workflow.js",
     "text/javascript",
     "defineWorkflow({ name: 'old' })",
   ),
+  createFile("3.0.0/private.txt", "text/plain", "unpublished"),
 ];
 
 const schemaExtractionStorage: StorageAdapter = {
@@ -63,7 +61,7 @@ const schemaExtractionStorage: StorageAdapter = {
   initUpload: async ({ provider, fileKey }) => ({
     strategy: "proxy",
     storageKey: `${provider}/${fileKey}`,
-    expiresAt: new Date("2026-01-01T00:01:00.000Z"),
+    expiresAt: new Date("2027-01-01T00:01:00.000Z"),
   }),
   deleteObject: async () => {},
 };
@@ -116,37 +114,32 @@ describe("Marketplace artifact files", () => {
     });
 
     assert(result.state === "ready");
-    expect(flattenTreePaths(result.tree)).toEqual(
+    const paths = result.fileTree.entries.map((entry) => entry.path);
+    expect(paths).toEqual(
       expect.arrayContaining([
-        "/artifact/README.md",
-        "/artifact/2.0.0/",
-        "/artifact/2.0.0/README.md",
-        "/artifact/2.0.0/automations/daily-report.workflow.js",
+        "README.md",
+        "2.0.0",
+        "2.0.0/README.md",
+        "2.0.0/automations/daily-report.workflow.js",
+        "1.0.0/README.md",
       ]),
     );
-    expect(flattenTreePaths(result.tree)).not.toEqual(
-      expect.arrayContaining(["/artifact/1.0.0/README.md"]),
-    );
-    assert(result.overviewPath === "/artifact/README.md");
-    assert(result.defaultPath === "/artifact/2.0.0/");
-    assert(result.detailsByPath["/artifact/2.0.0/README.md"]?.textContent === null);
-    expect(result.detailsByPath).toHaveProperty(
-      "/artifact/2.0.0/automations/daily-report.workflow.js",
-    );
+    expect(paths).not.toContain("3.0.0/private.txt");
+    assert(result.selectedVersion === "2.0.0");
     assert(requests.every(({ pathname }) => pathname === "/api/upload/files"));
 
-    const storedFile = await readStoredFile("release-2/README.md");
+    const storedFile = await readStoredFile("2.0.0/README.md");
     expect(storedFile).toMatchObject({
-      key: "release-2/README.md",
+      key: "2.0.0/README.md",
       provider: "database",
       filename: "README.md",
       status: "ready",
     });
   });
 
-  test("rejects artifact listings that exceed one 500-file request", async () => {
+  test("rejects artifact trees larger than one Upload page", async () => {
     const overflowFiles = Array.from({ length: 501 }, (_, index) =>
-      createFile(`release-2/generated/file-${index}.txt`, "text/plain", `${index}`),
+      createFile(`2.0.0/generated/file-${index}.txt`, "text/plain", `${index}`),
     );
     const { objects, requests } = await createUploadObjects({ additionalFiles: overflowFiles });
     const result = await loadPublishedMarketplaceArtifactExplorer({
@@ -158,7 +151,7 @@ describe("Marketplace artifact files", () => {
 
     expect(result).toEqual({
       state: "error",
-      message: "Marketplace artifact file listing exceeds the 500-file limit.",
+      message: "Upload file tree exceeded its 1-page retrieval limit.",
     });
     assert(requests.length === 1);
   }, 30_000);
@@ -185,16 +178,15 @@ describe("Marketplace artifact files", () => {
       manifest,
       objects,
       request: new Request("https://backoffice.test/marketplace/daily-report"),
-      requestedVersion: "2.0.0",
-      path: "/artifact/2.0.0/README.md",
+      path: "/artifact/README.md",
     });
 
     assert(response.status === 200);
     assert(response.headers.get("content-type") === "text/markdown");
-    assert((await response.text()) === "# Version 2");
+    assert((await response.text()) === "# Package overview");
     assert(requests.length === 1);
     assert(requests[0]?.pathname === "/api/upload/files/by-key/content");
-    assert(requests[0]?.searchParams.get("key") === "release-2/README.md");
+    assert(requests[0]?.searchParams.get("key") === "README.md");
   });
 
   test("rejects invalid file paths before requesting Upload content", async () => {
@@ -203,7 +195,6 @@ describe("Marketplace artifact files", () => {
       manifest,
       objects,
       request: new Request("https://backoffice.test/marketplace/daily-report"),
-      requestedVersion: "2.0.0",
       path: "/artifact/2.0.0/../private.txt",
     });
 
@@ -217,7 +208,6 @@ describe("Marketplace artifact files", () => {
       manifest: { ...manifest, listingStatus: "draft" },
       objects,
       request: new Request("https://backoffice.test/marketplace/daily-report"),
-      requestedVersion: "2.0.0",
       path: "/artifact/2.0.0/README.md",
     });
 
@@ -287,15 +277,4 @@ async function readStoredFile(fileKey: string) {
 
 function createFile(fileKey: string, contentType: string, content: string): ArtifactSeedFile {
   return { fileKey, contentType, content };
-}
-
-function flattenTreePaths(
-  nodes: readonly { path: string; children?: readonly unknown[] }[],
-): string[] {
-  return nodes.flatMap((node) => [
-    node.path,
-    ...flattenTreePaths(
-      (node.children ?? []) as readonly { path: string; children?: readonly unknown[] }[],
-    ),
-  ]);
 }

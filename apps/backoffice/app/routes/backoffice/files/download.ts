@@ -2,9 +2,7 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/download";
-import { createBackofficeFilesFileSystem } from "./data";
-
-export const MAX_BUFFERED_DOWNLOAD_BYTES = 10 * 1024 * 1024;
+import { createFilesOverviewCollections } from "./file-collections.server";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   if (!params.orgId) {
@@ -28,121 +26,36 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  const fileSystem = await createBackofficeFilesFileSystem({
+  const registrations = await createFilesOverviewCollections({
     request,
     context,
     orgId: params.orgId,
   });
-
-  let stat: Awaited<ReturnType<typeof fileSystem.stat>>;
-  try {
-    stat = await fileSystem.stat(path);
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      throw new Response("File not found.", { status: 404 });
-    }
-    throw error;
-  }
-
-  if (!stat.isFile) {
-    throw new Response("Only files can be downloaded.", { status: 400 });
-  }
-
-  const filename = path.split("/").filter(Boolean).at(-1) ?? "download";
-  const contentType = guessContentType(filename);
-  const { body, contentLength } = await readDownloadBody(fileSystem, path, stat.size);
-
-  return new Response(body, {
-    status: 200,
-    headers: {
-      "content-type": contentType,
-      "content-length": String(contentLength),
-      "content-disposition": createAttachmentDisposition(filename),
-      "cache-control": "no-store",
-    },
-  });
-}
-
-const readDownloadBody = async (
-  fileSystem: Awaited<ReturnType<typeof createBackofficeFilesFileSystem>>,
-  path: string,
-  size: number,
-): Promise<{
-  body: ArrayBuffer | ReadableStream<Uint8Array>;
-  contentLength: number;
-}> => {
-  try {
-    return {
-      body: await fileSystem.readFileStream(path),
-      contentLength: size,
-    };
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      throw new Response("File not found.", { status: 404 });
-    }
-
-    if (!isUnsupportedOperationError(error)) {
-      throw error;
-    }
-  }
-
-  if (size > MAX_BUFFERED_DOWNLOAD_BYTES) {
-    throw new Response("File is too large to buffer for download.", { status: 413 });
-  }
-
-  let bytes: Awaited<ReturnType<typeof fileSystem.readFileBuffer>>;
-  try {
-    bytes = await fileSystem.readFileBuffer(path);
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      throw new Response("File not found.", { status: 404 });
-    }
-    throw error;
-  }
-
-  const body = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(body).set(bytes);
-
-  return {
-    body,
-    contentLength: bytes.byteLength,
-  };
-};
-
-const isNotFoundError = (error: unknown): boolean => {
-  if (error instanceof Response) {
-    return error.status === 404;
-  }
-
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const errorCode = (error as Error & { code?: unknown }).code;
-  if (errorCode === "ENOENT") {
-    return true;
-  }
-
-  return (
-    /ENOENT|no such file or directory/i.test(error.message) ||
-    /^file not found\.?$/i.test(error.message) ||
-    /^path not found\.?$/i.test(error.message) ||
-    /^path '.+' was not found\.?$/i.test(error.message)
+  const target = registrations.find(
+    (registration) => path.startsWith(`${registration.rootPath}/`) && !path.endsWith("/"),
   );
-};
-
-const isUnsupportedOperationError = (error: unknown): boolean => {
-  if (!(error instanceof Error)) {
-    return false;
+  if (!target) {
+    throw new Response("File not found.", { status: 404 });
   }
 
-  const errorCode = (error as Error & { code?: unknown }).code;
-  if (errorCode === "ENOTSUP") {
-    return true;
+  const relativePath = path.slice(target.rootPath.length + 1);
+  const content = await target.collection.getFile(relativePath);
+  if (!content) {
+    throw new Response("File not found.", { status: 404 });
   }
 
-  return /ENOTSUP|operation not supported/i.test(error.message);
-};
+  const filename = relativePath.split("/").at(-1) ?? "download";
+  const headers = new Headers({
+    "content-type": content.contentType ?? guessContentType(filename),
+    "content-disposition": createAttachmentDisposition(filename),
+    "cache-control": "no-store",
+  });
+  if (content.sizeBytes !== null) {
+    headers.set("content-length", String(content.sizeBytes));
+  }
+
+  return new Response(content.body, { headers });
+}
 
 const createAttachmentDisposition = (filename: string) => {
   const sanitizedFilename = filename.replace(/[\r\n"]/g, "_") || "download";

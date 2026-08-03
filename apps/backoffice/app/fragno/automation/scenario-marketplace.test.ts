@@ -22,10 +22,7 @@ import {
   TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
   TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE,
 } from "@/files/content/telegram-test-command";
-import {
-  MARKETPLACE_LISTING_FILES_DIRECTORY,
-  marketplaceArtifactUploadName,
-} from "@/fragno/marketplace/artifacts";
+import { marketplaceArtifactUploadName } from "@/fragno/marketplace/artifacts";
 import type {
   MarketplaceCreateDraftListingInput,
   MarketplacePublishVersionInput,
@@ -242,10 +239,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 slug: "telegram-test-command",
                 listingStatus: "published",
                 uploadName,
-                versions: [
-                  { version: "1.1.0", directory: "1.1.0" },
-                  { version: "1.0.0", directory: "1.0.0" },
-                ],
+                versions: ["1.1.0", "1.0.0"],
               });
 
               const upload = ctx.runtime.objects.upload.forName(uploadName);
@@ -273,15 +267,13 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                       contentType: "text/javascript",
                     }),
                   ),
-                  ...["1.0.0", "1.1.0"].map((version) =>
-                    expect.objectContaining({
-                      fileKey: `${version}/${MARKETPLACE_LISTING_FILES_DIRECTORY}/README.md`,
-                      contentType: "text/markdown",
-                    }),
-                  ),
+                  expect.objectContaining({
+                    fileKey: "README.md",
+                    contentType: "text/markdown",
+                  }),
                 ]),
               );
-              expect(artifactFiles).toHaveLength(4);
+              expect(artifactFiles).toHaveLength(3);
               assert(!files.files.some((file) => file.fileKey === "manifest.json"));
 
               const contentResponse = await upload.fetch(
@@ -296,7 +288,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
               const readmeResponse = await upload.fetch(
                 new Request(
-                  `https://marketplace.test/api/upload/files/by-key/content?provider=database&key=1.1.0%2F${encodeURIComponent(MARKETPLACE_LISTING_FILES_DIRECTORY)}%2FREADME.md`,
+                  "https://marketplace.test/api/upload/files/by-key/content?provider=database&key=README.md",
                 ),
               );
               assert(readmeResponse.ok);
@@ -1563,7 +1555,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   .singleton()
                   .getArtifactManifest({ listingId: MARKETPLACE_LISTING_ID }),
               ).resolves.toMatchObject({
-                versions: [expect.objectContaining({ version: "1.0.0" })],
+                versions: ["1.0.0"],
               });
 
               const workflows = createWorkflowsRouteCaller({
@@ -2673,10 +2665,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(marketplace.getPublishedListing({ listingId })).resolves.toBeNull();
             await expect(marketplace.getArtifactManifest({ listingId })).resolves.toMatchObject({
               listingStatus: "archived",
-              versions: [
-                { version: "1.1.0", directory: "1.1.0" },
-                { version: "1.0.0", directory: "1.0.0" },
-              ],
+              versions: ["1.1.0", "1.0.0"],
             });
           }),
         ],

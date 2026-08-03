@@ -325,11 +325,8 @@ function renderMarketplaceDetail(selectedVersion: string): string {
     installationOrganizationId: "org-1",
     artifactFiles: {
       state: "ready",
-      tree: [],
+      fileTree: { entries: [] },
       selectedVersion,
-      defaultPath: `/artifact/${selectedVersion}/`,
-      detailsByPath: {},
-      overviewPath: null,
     },
     ingestions: [],
   };

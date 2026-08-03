@@ -1,26 +1,24 @@
 import { Suspense, use, useMemo } from "react";
 import { useLoaderData, useOutletContext } from "react-router";
 
-import { eq, useLiveQuery } from "@tanstack/react-db";
+import { and, eq, useLiveQuery } from "@tanstack/react-db";
 
-import { BackofficeSystemState } from "@/components/backoffice";
-import { FilesExplorerView } from "@/components/backoffice/files-explorer";
+import {
+  FilesExplorerView,
+  type FilesExplorerSource,
+} from "@/components/backoffice/files-explorer";
 import { ClientOnly } from "@/components/client-only";
+import { createUploadFileTree } from "@/file-collection/create-upload-file-tree";
+import { resolveSynchronizedFileTree } from "@/file-collection/resolve-synchronized-file-tree";
 import { toUploadFileRecord, type UploadFileRecord } from "@/fragno/upload/file-record";
 import {
   describeUploadCollectionSource,
   getUploadBrowserDatabase,
-  type UploadCollectionSource,
 } from "@/fragno/upload/tanstack/browser-database";
 
 import type { Route } from "./+types/explorer";
-import { handleFilesExplorerAction, loadFilesExplorerData } from "./data";
+import { loadFilesExplorerData, type FilesExplorerSourceSnapshot } from "./data";
 import type { FilesLayoutContext } from "./layout-context";
-import {
-  buildLocalUploadExplorer,
-  getLocalUploadDetail,
-  isUploadExplorerMount,
-} from "./upload-local-tree";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId) {
@@ -30,175 +28,185 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   return loadFilesExplorerData({ request, context, orgId: params.orgId });
 }
 
-export async function action({ request, params, context }: Route.ActionArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  return handleFilesExplorerAction({ request, context, orgId: params.orgId });
-}
-
 export function meta({ loaderData }: Route.MetaArgs) {
-  const selectedTitle = loaderData?.selectedDetail?.node.title;
+  const selectedTitle = loaderData?.selectedPath?.split("/").filter(Boolean).at(-1);
   return [{ title: selectedTitle ? `Files · ${selectedTitle}` : "Files Explorer" }];
 }
 
-const FILES_EXPLORER_LOADING = <FilesExplorerLoading />;
-
 export default function BackofficeFilesExplorer() {
-  const layoutContext = useOutletContext<FilesLayoutContext>();
-  const uploadMounts = layoutContext.mounts.filter(isUploadExplorerMount);
+  const loaderData = useLoaderData<typeof loader>();
+  const { orgId } = useOutletContext<FilesLayoutContext>();
+  const synchronizedSource = loaderData.sources.find(hasUploadSynchronization);
+  const initialView = <FilesExplorerRouteView {...loaderData} orgId={orgId} />;
 
-  if (uploadMounts.length === 0) {
-    return <FilesExplorerRouteView />;
-  }
-
-  if (!layoutContext.uploadCollectionSource) {
-    return (
-      <FilesExplorerRouteView
-        localUploadProjection={{
-          files: [],
-          ready: true,
-          error:
-            layoutContext.uploadCollectionError ?? "Local Upload file metadata is unavailable.",
-        }}
-      />
-    );
+  if (!synchronizedSource?.synchronization) {
+    return initialView;
   }
 
   return (
-    <ClientOnly fallback={FILES_EXPLORER_LOADING}>
-      <Suspense fallback={FILES_EXPLORER_LOADING}>
+    <ClientOnly fallback={initialView}>
+      <Suspense fallback={initialView}>
         <SynchronizedFilesExplorer
-          key={describeUploadCollectionSource(layoutContext.uploadCollectionSource).resourceKey}
-          source={layoutContext.uploadCollectionSource}
+          key={
+            describeUploadCollectionSource(synchronizedSource.synchronization.source).resourceKey
+          }
+          {...loaderData}
+          orgId={orgId}
+          synchronizedSource={synchronizedSource}
         />
       </Suspense>
     </ClientOnly>
   );
 }
 
-function FilesExplorerLoading() {
-  return (
-    <BackofficeSystemState
-      tone="loading"
-      label="Mounting filesystem"
-      title="Synchronizing workspace files…"
-      description="Loading mounted roots, upload metadata, and local file projections."
-    >
-      <noscript>
-        <span className="text-[var(--bo-failed)]">
-          JavaScript is required to open synchronized files.
-        </span>
-      </noscript>
-    </BackofficeSystemState>
-  );
-}
-
-function SynchronizedFilesExplorer({ source }: { source: UploadCollectionSource }) {
+function SynchronizedFilesExplorer({
+  sources,
+  selectedPath,
+  selectedContent,
+  loadError,
+  orgId,
+  synchronizedSource,
+}: FilesExplorerRouteViewProps & {
+  synchronizedSource: SynchronizedFilesExplorerSource;
+}) {
   const database = use(getUploadBrowserDatabase());
-  const collections = database.collectionsFor(source);
+  const collections = database.collectionsFor(synchronizedSource.synchronization.source);
   const filesQuery = useLiveQuery(
     (query) =>
-      query.from({ file: collections.files }).where(({ file }) => eq(file.status, "ready")),
-    [collections.files],
+      query
+        .from({ file: collections.files })
+        .where(({ file }) =>
+          and(
+            eq(file.status, "ready"),
+            eq(file.provider, synchronizedSource.synchronization.provider),
+          ),
+        ),
+    [collections.files, synchronizedSource.synchronization.provider],
   );
   const files = useMemo<UploadFileRecord[]>(
     () => (filesQuery.data ?? []).map(toUploadFileRecord),
     [filesQuery.data],
   );
-  const sourceError = filesQuery.isError ? collections.files.utils.getLastError() : undefined;
-  const filesError =
-    sourceError instanceof Error
-      ? sourceError.message
-      : filesQuery.isError
-        ? "Upload file metadata synchronization failed."
-        : null;
-
-  if (!filesQuery.isReady && files.length === 0) {
-    return <FilesExplorerLoading />;
-  }
+  const localTree = useMemo(
+    () =>
+      createUploadFileTree(files, {
+        provider: synchronizedSource.synchronization.provider,
+      }),
+    [files, synchronizedSource.synchronization.provider],
+  );
+  const synchronizationFailure = filesQuery.isError ? collections.files.utils.getLastError() : null;
+  const synchronizedTree = resolveSynchronizedFileTree(
+    synchronizedSource.tree,
+    synchronizationFailure
+      ? { status: "error", error: synchronizationFailure }
+      : filesQuery.isReady
+        ? { status: "ready", tree: localTree }
+        : { status: "loading" },
+  );
+  const effectiveSources = useMemo<readonly FilesExplorerSource[]>(
+    () =>
+      sources.map((source) =>
+        source.rootPath === synchronizedSource.rootPath
+          ? { ...source, tree: synchronizedTree }
+          : source,
+      ),
+    [sources, synchronizedSource.rootPath, synchronizedTree],
+  );
+  const synchronizationError = synchronizationFailure
+    ? readSynchronizationError(synchronizationFailure)
+    : null;
+  const selectedPathError =
+    filesQuery.isReady &&
+    selectedPath &&
+    isPathWithinRoot(selectedPath, synchronizedSource.rootPath) &&
+    !fileTreeContainsPath(localTree, synchronizedSource.rootPath, selectedPath)
+      ? `Path '${selectedPath}' could not be found.`
+      : null;
 
   return (
     <FilesExplorerRouteView
-      localUploadProjection={{
-        files,
-        ready: filesQuery.isReady,
-        error: filesError,
-      }}
+      sources={effectiveSources}
+      selectedPath={selectedPath}
+      selectedContent={selectedContent}
+      loadError={appendErrors(loadError, synchronizationError, selectedPathError)}
+      orgId={orgId}
     />
   );
 }
 
-type LocalUploadProjection = {
-  files: UploadFileRecord[];
-  ready: boolean;
-  error: string | null;
+type FilesExplorerRouteViewProps = {
+  sources: readonly FilesExplorerSourceSnapshot[];
+  selectedPath: string | null;
+  selectedContent: { path: string; text: string } | null;
+  loadError: string | null;
+  orgId: string;
 };
 
 function FilesExplorerRouteView({
-  localUploadProjection,
-}: {
-  localUploadProjection?: LocalUploadProjection;
-}) {
-  const {
-    tree: serverTree,
-    selectedPath,
-    selectedDetail: serverSelectedDetail,
-    selectedUploadTextContent,
-    loadError: serverLoadError,
-  } = useLoaderData<typeof loader>();
-  const { orgId, mounts } = useOutletContext<FilesLayoutContext>();
-  const uploadMounts = useMemo(() => mounts.filter(isUploadExplorerMount), [mounts]);
-  const localUploadExplorer = useMemo(
-    () => buildLocalUploadExplorer(uploadMounts, localUploadProjection?.files ?? [], orgId),
-    [localUploadProjection?.files, orgId, uploadMounts],
-  );
-  const tree = useMemo(() => {
-    const rootByMountPoint = new Map(
-      [...serverTree, ...localUploadExplorer.roots].map((root) => [root.mountPoint, root]),
-    );
-    return mounts.flatMap((mount) => {
-      const root = rootByMountPoint.get(mount.mountPoint);
-      return root ? [root] : [];
-    });
-  }, [localUploadExplorer.roots, mounts, serverTree]);
-  const localSelectedDetail = selectedPath
-    ? getLocalUploadDetail(localUploadExplorer, selectedPath, selectedUploadTextContent)
-    : null;
-  const selectedDetail = serverSelectedDetail ?? localSelectedDetail;
-  const selectedUploadMount = selectedPath
-    ? uploadMounts.find(
-        (mount) =>
-          selectedPath === mount.mountPoint || selectedPath.startsWith(`${mount.mountPoint}/`),
-      )
-    : undefined;
-  const loadError =
-    serverLoadError ??
-    localUploadProjection?.error ??
-    (localUploadProjection?.ready && selectedPath && selectedUploadMount && !selectedDetail
-      ? `Path '${selectedPath}' could not be found.`
-      : null);
-
+  sources,
+  selectedPath,
+  selectedContent,
+  loadError,
+  orgId,
+}: FilesExplorerRouteViewProps) {
   return (
     <FilesExplorerView
-      tree={tree}
+      sources={sources}
       selectedPath={selectedPath}
-      selectedDetail={selectedDetail}
+      selectedContent={selectedContent}
       loadError={loadError}
-      buildNodeTo={(path) => ({
-        pathname: `/backoffice/files/${orgId}`,
-        search: buildExplorerSearch(path),
-      })}
+      defaultCollapsedRootPaths={["/static", "/system"]}
+      buildNodeTo={(path) => ({ pathname: buildExplorerPathname(orgId, path) })}
       buildDownloadHref={(path) => buildDownloadHref(orgId, path)}
     />
   );
 }
 
-function buildExplorerSearch(path: string) {
-  const params = new URLSearchParams();
-  params.set("path", path);
-  return `?${params.toString()}`;
+type SynchronizedFilesExplorerSource = FilesExplorerSourceSnapshot & {
+  synchronization: NonNullable<FilesExplorerSourceSnapshot["synchronization"]>;
+};
+
+function hasUploadSynchronization(
+  source: FilesExplorerSourceSnapshot,
+): source is SynchronizedFilesExplorerSource {
+  return source.synchronization?.kind === "upload";
+}
+
+function fileTreeContainsPath(
+  tree: FilesExplorerSource["tree"],
+  rootPath: string,
+  path: string,
+): boolean {
+  if (path === rootPath) {
+    return true;
+  }
+  if (!path.startsWith(`${rootPath}/`)) {
+    return false;
+  }
+
+  const relativePath = path.slice(rootPath.length + 1).replace(/\/$/u, "");
+  const entry = tree.entries.find((candidate) => candidate.path === relativePath);
+  return Boolean(entry && path.endsWith("/") === (entry.kind === "directory"));
+}
+
+function isPathWithinRoot(path: string, rootPath: string): boolean {
+  return path === rootPath || path.startsWith(`${rootPath}/`);
+}
+
+function readSynchronizationError(error: unknown): string {
+  return error instanceof Error
+    ? `Workspace local synchronization failed: ${error.message}`
+    : "Workspace local synchronization failed.";
+}
+
+function appendErrors(...errors: Array<string | null>): string | null {
+  const messages = errors.filter((error): error is string => Boolean(error));
+  return messages.length > 0 ? messages.join(" ") : null;
+}
+
+function buildExplorerPathname(orgId: string, path: string): string {
+  const encodedPath = path.split("/").filter(Boolean).map(encodeURIComponent).join("/");
+  return `/backoffice/files/${encodeURIComponent(orgId)}/${encodedPath}`;
 }
 
 function buildDownloadHref(orgId: string, path: string) {

@@ -1,265 +1,310 @@
 import type { RouterContextProvider } from "react-router";
 
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import {
-  createBackofficeFileSystem,
-  ensureFolderPath,
-  getFilesNodeDetail,
-  listFilesChildren,
-  listFilesTree,
-  performFilesAction,
-  resolveFilesTarget,
-  stripTrailingSlash,
-  type FilesActionResult,
-  type FilesExplorerTreeNode,
-  MasterFileSystem,
-  type FilesNodeDetail,
-} from "@/files";
-import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+import type {
+  FilesExplorerSelectedContent,
+  FilesExplorerSource,
+} from "@/components/backoffice/files-explorer";
+import type { FileTreeEntry } from "@/file-collection/file-collection";
+import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
+import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
-type FilesExplorerLoaderData = {
-  tree: FilesExplorerTreeNode[];
-  selectedPath: string | null;
-  selectedDetail: FilesNodeDetail | null;
-  selectedUploadTextContent: string | null;
-  loadError: string | null;
+import {
+  createFilesOverviewCollections,
+  type FilesOverviewCollection,
+} from "./file-collections.server";
+
+const FILES_EXPLORER_ROOT_ORDER = ["/workspace", "/static", "/system"] as const;
+const FILES_EXPLORER_DEFAULT_PATH = "/workspace";
+const FILES_EXPLORER_MAX_TEXT_PREVIEW_BYTES = 1024 * 1024;
+
+export type FilesExplorerSourceSnapshot = FilesExplorerSource & {
+  synchronization?: {
+    kind: "upload";
+    provider: string;
+    source: UploadCollectionSource;
+  };
 };
 
-type FilesExplorerActionResult =
-  | FilesActionResult
-  | {
-      ok: false;
-      intent: string | null;
-      message: string;
-    };
-
-export async function createBackofficeFilesFileSystem({
-  request,
-  context,
-  orgId,
-}: {
-  request: Request;
-  context: Readonly<RouterContextProvider>;
-  orgId: string;
-}): Promise<MasterFileSystem> {
-  const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel({ objects: runtime.objects });
-  const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
-  return createBackofficeFileSystem({
-    objects: runtime.objects,
-    kernel,
-    execution,
-    config: runtime.config,
-  });
-}
+type FilesExplorerLoaderData = {
+  sources: FilesExplorerSourceSnapshot[];
+  selectedPath: string | null;
+  selectedContent: FilesExplorerSelectedContent | null;
+  loadError: string | null;
+};
 
 export async function loadFilesExplorerData({
   request,
   context,
   orgId,
+  requestedPath: routeRequestedPath,
 }: {
   request: Request;
   context: Readonly<RouterContextProvider>;
   orgId: string;
+  requestedPath?: string | null;
 }): Promise<FilesExplorerLoaderData> {
-  const fileSystem = await createBackofficeFilesFileSystem({ request, context, orgId });
-  const serverMetadataFileSystem = new MasterFileSystem({
-    mounts: fileSystem.mounts.filter((mount) => mount.kind !== "upload"),
+  const registrations = await createFilesOverviewCollections({ request, context, orgId });
+  const loadedCollections = await loadCollectionSources(registrations);
+  const requestedPath = routeRequestedPath?.trim() || null;
+  const defaultPath =
+    loadedCollections.collections.find(
+      ({ source }) => source.rootPath === FILES_EXPLORER_DEFAULT_PATH,
+    )?.source.rootPath ??
+    loadedCollections.collections[0]?.source.rootPath ??
+    null;
+  let selectedPath = requestedPath ?? defaultPath;
+  let loadError = loadedCollections.errors.length > 0 ? loadedCollections.errors.join(" ") : null;
+  const synchronizedSources = await attachClientSynchronization({
+    request,
+    context,
+    orgId,
+    collections: loadedCollections.collections,
   });
-  const initialTree = await listFilesTree(serverMetadataFileSystem);
-  const requestUrl = new URL(request.url);
-  const requestedPath = requestUrl.searchParams.get("path")?.trim() ?? null;
-  let selectedPath = requestedPath || fileSystem.mounts[0]?.mountPoint || null;
-  const selectedTarget = selectedPath ? await resolveFilesTarget(fileSystem, selectedPath) : null;
-
-  if (selectedTarget?.mount.kind === "upload") {
-    return {
-      tree: initialTree,
-      selectedPath,
-      selectedDetail: null,
-      selectedUploadTextContent: await readSelectedUploadTextContent(
-        fileSystem,
-        selectedTarget.normalizedPath,
-      ),
-      loadError: null,
-    };
+  loadError = appendOptionalLoadError(loadError, synchronizedSources.error);
+  let selection = selectedPath
+    ? findCollectionSelection(loadedCollections.collections, selectedPath)
+    : null;
+  if (selection) {
+    selectedPath = canonicalSelectionPath(selection);
   }
 
-  let selectedDetail = selectedPath
-    ? await getFilesNodeDetail(serverMetadataFileSystem, selectedPath)
-    : null;
-  let loadError: string | null = null;
-
-  if (selectedPath && !selectedDetail) {
-    loadError = `Path '${selectedPath}' could not be found.`;
-    selectedPath = initialTree[0]?.path || null;
-    selectedDetail = selectedPath
-      ? await getFilesNodeDetail(serverMetadataFileSystem, selectedPath)
+  if (
+    selectedPath &&
+    !selection &&
+    !findSynchronizedSourceForPath(synchronizedSources.sources, selectedPath)
+  ) {
+    loadError = appendLoadError(loadError, `Path '${selectedPath}' could not be found.`);
+    selectedPath = defaultPath;
+    selection = selectedPath
+      ? findCollectionSelection(loadedCollections.collections, selectedPath)
       : null;
   }
 
-  const tree = selectedPath
-    ? await expandTreeAlongSelection(serverMetadataFileSystem, initialTree, selectedPath)
-    : initialTree;
-
   return {
-    tree,
+    sources: orderExplorerSources(synchronizedSources.sources),
     selectedPath,
-    selectedDetail,
-    selectedUploadTextContent: null,
+    selectedContent: selection ? await readSelectedTextContent(selection) : null,
     loadError,
   };
 }
 
-const TEXT_FILE_EXTENSION =
-  /\.(md|mdx|txt|log|json|js|jsx|ts|tsx|css|html|xml|yml|yaml|toml|ini|sh)$/i;
-
-const readSelectedUploadTextContent = async (
-  fileSystem: MasterFileSystem,
-  path: string,
-): Promise<string | null> => {
-  if (!TEXT_FILE_EXTENSION.test(path)) {
-    return null;
-  }
-
-  return await fileSystem.readFile(path, { encoding: "utf-8" });
+type LoadedCollection = {
+  registration: FilesOverviewCollection;
+  source: FilesExplorerSource;
 };
 
-export async function handleFilesExplorerAction({
+async function loadCollectionSources(registrations: readonly FilesOverviewCollection[]): Promise<{
+  collections: LoadedCollection[];
+  errors: string[];
+}> {
+  const results = await Promise.allSettled(
+    registrations.map(async (registration): Promise<LoadedCollection> => {
+      const tree = await registration.collection.getTree();
+      return {
+        registration,
+        source: createExplorerSource(registration, tree),
+      };
+    }),
+  );
+  const collections: LoadedCollection[] = [];
+  const errors: string[] = [];
+
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      collections.push(result.value);
+      return;
+    }
+
+    const registration = registrations[index];
+    const title = registration?.rootTitle ?? "File collection";
+    const message = result.reason instanceof Error ? result.reason.message : "Unknown error.";
+    errors.push(`${title} could not be loaded: ${message}`);
+
+    if (registration?.clientSynchronization) {
+      collections.push({
+        registration,
+        source: createExplorerSource(registration, { entries: [] }),
+      });
+    }
+  });
+
+  return { collections, errors };
+}
+
+function createExplorerSource(
+  registration: FilesOverviewCollection,
+  tree: FilesExplorerSource["tree"],
+): FilesExplorerSource {
+  return {
+    tree,
+    rootPath: registration.rootPath,
+    rootTitle: registration.rootTitle,
+    ...(registration.rootDescription ? { rootDescription: registration.rootDescription } : {}),
+    ...(registration.rootKind ? { rootKind: registration.rootKind } : {}),
+    ...(registration.readOnly !== undefined ? { readOnly: registration.readOnly } : {}),
+    ...(registration.persistence ? { persistence: registration.persistence } : {}),
+    ...(registration.detailFields ? { detailFields: registration.detailFields } : {}),
+  };
+}
+
+async function attachClientSynchronization({
   request,
   context,
   orgId,
+  collections,
 }: {
   request: Request;
   context: Readonly<RouterContextProvider>;
   orgId: string;
-}): Promise<FilesExplorerActionResult> {
-  const formData = await request.formData();
-  const intentValue = formData.get("intent");
-  const pathValue = formData.get("path");
-  const folderNameValue = formData.get("folderName");
-  const contentValue = formData.get("content");
-
-  const intent = typeof intentValue === "string" ? intentValue.trim() : "";
-  const path = typeof pathValue === "string" ? pathValue.trim() : "";
-  const folderName = typeof folderNameValue === "string" ? folderNameValue : undefined;
-  const content = typeof contentValue === "string" ? contentValue : undefined;
-
-  if (intent !== "create-folder" && intent !== "delete" && intent !== "write-text") {
-    return {
-      ok: false,
-      intent,
-      message: "Unknown file action.",
-    };
+  collections: readonly LoadedCollection[];
+}): Promise<{ sources: FilesExplorerSourceSnapshot[]; error: string | null }> {
+  const hasUploadSynchronization = collections.some(
+    ({ registration }) => registration.clientSynchronization?.kind === "upload",
+  );
+  if (!hasUploadSynchronization) {
+    return { sources: collections.map(({ source }) => source), error: null };
   }
 
-  if (!path) {
+  try {
+    const source = {
+      orgId,
+      adapterIdentity: await fetchUploadAdapterIdentity(request, context, orgId),
+    } satisfies UploadCollectionSource;
+
     return {
-      ok: false,
-      intent,
-      message: "Path is required.",
+      sources: collections.map(({ registration, source: fileSource }) => {
+        const synchronization = registration.clientSynchronization;
+        return synchronization?.kind === "upload"
+          ? {
+              ...fileSource,
+              synchronization: {
+                kind: "upload" as const,
+                provider: synchronization.provider,
+                source,
+              },
+            }
+          : fileSource;
+      }),
+      error: null,
+    };
+  } catch (error) {
+    return {
+      sources: collections.map(({ source }) => source),
+      error:
+        error instanceof Error
+          ? `Workspace local synchronization is unavailable: ${error.message}`
+          : "Workspace local synchronization is unavailable.",
     };
   }
-
-  const fileSystem = await createBackofficeFilesFileSystem({ request, context, orgId });
-
-  return performFilesAction(fileSystem, {
-    intent,
-    path,
-    folderName,
-    content,
-  });
 }
 
-async function expandTreeAlongSelection(
-  fileSystem: MasterFileSystem,
-  tree: FilesExplorerTreeNode[],
+function findSynchronizedSourceForPath(
+  sources: readonly FilesExplorerSourceSnapshot[],
+  path: string,
+): FilesExplorerSourceSnapshot | null {
+  return (
+    sources.find(
+      (source) =>
+        source.synchronization !== undefined &&
+        (path === source.rootPath || path.startsWith(`${source.rootPath}/`)),
+    ) ?? null
+  );
+}
+
+type CollectionSelection = LoadedCollection & {
+  relativePath: string;
+  entry: FileTreeEntry | null;
+};
+
+function findCollectionSelection(
+  collections: readonly LoadedCollection[],
   selectedPath: string,
-): Promise<FilesExplorerTreeNode[]> {
-  const target = await resolveFilesTarget(fileSystem, selectedPath);
-  if (!target) {
-    return tree;
-  }
-
-  const expandedFolders = new Set(
-    getExpandedFolderPaths(target.mount.mountPoint, target.normalizedPath),
-  );
-
-  return Promise.all(
-    tree.map(async (node) => {
-      if (node.path !== target.mount.mountPoint) {
-        return node;
-      }
-
-      return {
-        ...node,
-        children: await buildExpandedChildren(
-          fileSystem,
-          node.path,
-          expandedFolders,
-          node.children,
-        ),
-      } satisfies FilesExplorerTreeNode;
-    }),
-  );
-}
-
-async function buildExpandedChildren(
-  fileSystem: MasterFileSystem,
-  parentPath: string,
-  expandedFolders: ReadonlySet<string>,
-  existingChildren: readonly FilesExplorerTreeNode[] | undefined,
-): Promise<FilesExplorerTreeNode[]> {
-  const children = await listFilesChildren(fileSystem, parentPath);
-  const existingChildrenByPath = new Map(
-    existingChildren?.map((child) => [child.path, child]) ?? [],
-  );
-
-  return Promise.all(
-    children.map(async (child) => {
-      const existingChild = existingChildrenByPath.get(child.path);
-
-      return {
-        ...child,
-        children:
-          child.kind === "file"
-            ? undefined
-            : expandedFolders.has(child.path)
-              ? await buildExpandedChildren(
-                  fileSystem,
-                  child.path,
-                  expandedFolders,
-                  existingChild?.children,
-                )
-              : existingChild?.children,
-      } satisfies FilesExplorerTreeNode;
-    }),
-  );
-}
-
-function getExpandedFolderPaths(mountPoint: string, normalizedPath: string): string[] {
-  const expanded = [mountPoint];
-  const pathWithoutTrailingSlash = stripTrailingSlash(normalizedPath);
-
-  if (pathWithoutTrailingSlash === mountPoint) {
-    if (normalizedPath.endsWith("/")) {
-      expanded.push(ensureFolderPath(pathWithoutTrailingSlash));
+): CollectionSelection | null {
+  for (const collection of collections) {
+    const rootPath = collection.source.rootPath;
+    if (selectedPath === rootPath) {
+      return { ...collection, relativePath: "", entry: null };
     }
-    return expanded;
+    if (!selectedPath.startsWith(`${rootPath}/`)) {
+      continue;
+    }
+
+    const relativePath = selectedPath.slice(rootPath.length + 1).replace(/\/$/u, "");
+    const entry = collection.source.tree.entries.find(
+      (candidate) => candidate.path === relativePath,
+    );
+    if (!entry) {
+      return null;
+    }
+    return { ...collection, relativePath, entry };
   }
 
-  const remainder = pathWithoutTrailingSlash.slice(mountPoint.length).replace(/^\/+/, "");
-  if (!remainder) {
-    return expanded;
+  return null;
+}
+
+function canonicalSelectionPath(selection: CollectionSelection): string {
+  if (!selection.entry) {
+    return selection.source.rootPath;
   }
 
-  const segments = remainder.split("/").filter(Boolean);
-  const lastFolderIndex = normalizedPath.endsWith("/") ? segments.length : segments.length - 1;
+  const path = `${selection.source.rootPath}/${selection.relativePath}`;
+  return selection.entry.kind === "directory" ? `${path}/` : path;
+}
 
-  for (let index = 1; index <= lastFolderIndex; index += 1) {
-    expanded.push(`${mountPoint}/${segments.slice(0, index).join("/")}/`);
+async function readSelectedTextContent(
+  selection: CollectionSelection,
+): Promise<FilesExplorerSelectedContent | null> {
+  if (
+    selection.entry?.kind !== "file" ||
+    !isTextFile(selection.entry) ||
+    (selection.entry.sizeBytes ?? 0) > FILES_EXPLORER_MAX_TEXT_PREVIEW_BYTES
+  ) {
+    return null;
   }
 
-  return expanded;
+  const content = await selection.registration.collection.getFile(selection.relativePath);
+  if (!content) {
+    return null;
+  }
+
+  return {
+    path: `${selection.source.rootPath}/${selection.relativePath}`,
+    text: await new Response(content.body).text(),
+  };
+}
+
+function isTextFile(entry: Extract<FileTreeEntry, { kind: "file" }>): boolean {
+  if (entry.contentType?.startsWith("text/")) {
+    return true;
+  }
+  if (
+    entry.contentType &&
+    /(?:json|javascript|typescript|xml|yaml|toml|shellscript)/iu.test(entry.contentType)
+  ) {
+    return true;
+  }
+  return /\.(?:md|mdx|txt|log|json|js|jsx|ts|tsx|css|html|xml|yml|yaml|toml|ini|sh)$/iu.test(
+    entry.path,
+  );
+}
+
+function orderExplorerSources(
+  sources: readonly FilesExplorerSourceSnapshot[],
+): FilesExplorerSourceSnapshot[] {
+  const rankByRootPath = new Map<string, number>(
+    FILES_EXPLORER_ROOT_ORDER.map((rootPath, index) => [rootPath, index]),
+  );
+  return [...sources].sort(
+    (left, right) =>
+      (rankByRootPath.get(left.rootPath) ?? Number.MAX_SAFE_INTEGER) -
+      (rankByRootPath.get(right.rootPath) ?? Number.MAX_SAFE_INTEGER),
+  );
+}
+
+function appendLoadError(current: string | null, next: string): string {
+  return current ? `${current} ${next}` : next;
+}
+
+function appendOptionalLoadError(current: string | null, next: string | null): string | null {
+  return next ? appendLoadError(current, next) : current;
 }

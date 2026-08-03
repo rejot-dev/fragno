@@ -1,19 +1,26 @@
-import { describe, expect, test, assert } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
-import {
-  marketplaceListingArtifactFilePath,
-  marketplaceVersionArtifactFilePath,
-} from "./artifacts";
+import { marketplaceRootArtifactFilePath, marketplaceVersionArtifactFilePath } from "./artifacts";
 
 describe("marketplace artifact paths", () => {
-  test("keeps version and listing files in distinct storage namespaces", () => {
+  test("keeps listing files at the collection root and version files below their version", () => {
+    assert(marketplaceRootArtifactFilePath("README.md") === "README.md");
     assert(marketplaceVersionArtifactFilePath("1.0.0", "README.md") === "1.0.0/README.md");
-    assert(marketplaceListingArtifactFilePath("1.0.0", "README.md") === "1.0.0/.listing/README.md");
+    assert(
+      marketplaceVersionArtifactFilePath("1.0.0", "automations/example.workflow.js") ===
+        "1.0.0/automations/example.workflow.js",
+    );
   });
 
-  test("rejects version files in the reserved listing files directory", () => {
-    expect(() => marketplaceVersionArtifactFilePath("1.0.0", ".listing/README.md")).toThrow(
-      "uses the reserved listing files directory",
+  test("rejects root files that conflict with version directories", () => {
+    expect(() => marketplaceRootArtifactFilePath("1.0.0/README.md")).toThrow(
+      "conflicts with a version directory",
+    );
+  });
+
+  test("rejects invalid relative artifact paths", () => {
+    expect(() => marketplaceVersionArtifactFilePath("1.0.0", "../README.md")).toThrow(
+      "contains an invalid path segment",
     );
   });
 });

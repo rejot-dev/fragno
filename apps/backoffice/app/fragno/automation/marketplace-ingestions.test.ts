@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi, assert } from "vitest";
 
 import type { MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
 
@@ -15,10 +15,7 @@ const publishedManifest: MarketplaceArtifactManifest = {
   slug: "telegram-test-command",
   listingStatus: "published",
   uploadName: "marketplace-system-telegram-test-command",
-  versions: [
-    { version: "1.1.0", directory: "1.1.0" },
-    { version: "1.0.0", directory: "1.0.0" },
-  ],
+  versions: ["1.1.0", "1.0.0"],
 };
 
 describe("marketplace ingestion request rules", () => {
@@ -70,13 +67,12 @@ describe("marketplace ingestion request rules", () => {
   });
 
   test("resolves latest and explicitly requested published artifact versions", () => {
-    expect(
-      resolveMarketplaceIngestionArtifactVersion(publishedManifest, undefined).version,
-    ).toEqual({ version: "1.1.0", directory: "1.1.0" });
-    expect(resolveMarketplaceIngestionArtifactVersion(publishedManifest, "1.0.0").version).toEqual({
-      version: "1.0.0",
-      directory: "1.0.0",
-    });
+    assert(
+      resolveMarketplaceIngestionArtifactVersion(publishedManifest, undefined).version === "1.1.0",
+    );
+    assert(
+      resolveMarketplaceIngestionArtifactVersion(publishedManifest, "1.0.0").version === "1.0.0",
+    );
   });
 
   test("rejects unavailable marketplace artifacts", () => {

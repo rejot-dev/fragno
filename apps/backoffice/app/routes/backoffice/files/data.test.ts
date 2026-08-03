@@ -1,435 +1,186 @@
 import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
-const { createBackofficeFileSystemMock, requireBackofficeContextMock } = vi.hoisted(() => ({
-  createBackofficeFileSystemMock: vi.fn(),
-  requireBackofficeContextMock: vi.fn(),
+import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
+
+const { createFilesOverviewCollectionsMock, fetchUploadAdapterIdentityMock } = vi.hoisted(() => ({
+  createFilesOverviewCollectionsMock: vi.fn(),
+  fetchUploadAdapterIdentityMock: vi.fn(),
 }));
 
-vi.mock("@/files", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/files")>();
-  return {
-    ...actual,
-    createBackofficeFileSystem: createBackofficeFileSystemMock,
-  };
-});
-
-vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
-  requireBackofficeContext: requireBackofficeContextMock,
+vi.mock("./file-collections.server", () => ({
+  createFilesOverviewCollections: createFilesOverviewCollectionsMock,
 }));
 
-import {
-  createMasterFileSystem,
-  createSystemFilesContext,
-  createUnsupportedFileSystem,
-  getBuiltInFileContributors,
-  type FileContributor,
-} from "@/files";
+vi.mock("@/fragno/upload/tanstack/server", () => ({
+  fetchUploadAdapterIdentity: fetchUploadAdapterIdentityMock,
+}));
 
-import { handleFilesExplorerAction, loadFilesExplorerData } from "./data";
+import { loadFilesExplorerData } from "./data";
 
-const mockContext = { get: () => ({ runtime: { objects: {} }, env: {} }) } as never;
-
-const contributors: FileContributor[] = [];
-
-const registerFileContributor = (contributor: FileContributor): void => {
-  contributors.push(contributor);
-};
+const mockContext = { get: () => ({ runtime: { objects: {}, config: {} } }) } as never;
 
 beforeEach(() => {
-  contributors.length = 0;
-  createBackofficeFileSystemMock.mockReset();
-  requireBackofficeContextMock.mockReset();
-  requireBackofficeContextMock.mockResolvedValue({
-    actor: {
-      type: "user",
-      id: "user-1",
-      userId: "user-1",
-      organizationIds: ["acme-org"],
+  createFilesOverviewCollectionsMock.mockReset();
+  fetchUploadAdapterIdentityMock.mockReset();
+  fetchUploadAdapterIdentityMock.mockResolvedValue("adapter-1");
+  createFilesOverviewCollectionsMock.mockResolvedValue([
+    {
+      rootPath: "/static",
+      rootTitle: "Static",
+      rootKind: "static",
+      readOnly: true,
+      persistence: "persistent",
+      collection: createStaticFileCollection({ "SYSTEM.md": "Static guidance" }),
     },
-    scope: { kind: "org", orgId: "acme-org" },
-  });
-  createBackofficeFileSystemMock.mockImplementation(() =>
-    createMasterFileSystem(
-      createSystemFilesContext({
-        execution: {
-          actor: { type: "system", id: "system" },
-          scope: { kind: "org", orgId: "acme-org" },
-        },
-
-        staticFileArtifacts: () => ({}),
+    {
+      rootPath: "/system",
+      rootTitle: "System",
+      rootKind: "static",
+      readOnly: true,
+      persistence: "persistent",
+      collection: createStaticFileCollection({ "README.md": "System files" }),
+    },
+    {
+      rootPath: "/workspace",
+      rootTitle: "Workspace",
+      rootKind: "upload",
+      readOnly: false,
+      persistence: "persistent",
+      collection: createStaticFileCollection({
+        "automations/example.workflow.js": "export default {};",
       }),
-      {
-        contributors: [...getBuiltInFileContributors(), ...contributors],
-      },
-    ),
-  );
+      clientSynchronization: { kind: "upload", provider: "database" },
+    },
+  ]);
 });
 
 describe("files explorer route data", () => {
-  test("falls back to the first mount when the requested path cannot be found", async () => {
-    const result = await loadFilesExplorerData({
-      request: new Request("https://docs.example.test/backoffice/files?path=/missing"),
-      context: mockContext,
-      orgId: "acme-org",
-    });
-
-    expect(result.tree.map((root) => root.path)).toEqual(["/static", "/system", "/tmp"]);
-    assert(result.selectedPath === "/static");
-    assert(result.selectedDetail?.node.path === "/static");
-    assert(result.loadError === "Path '/missing' could not be found.");
-  });
-
-  test("loads upload-backed text content without reading upload metadata on the server", async () => {
-    const metadataRead = vi.fn();
-    registerFileContributor({
-      id: "workspace",
-      kind: "upload",
-      mountPoint: "/workspace",
-      title: "Workspace",
-      readOnly: false,
-      persistence: "persistent",
-      uploadProvider: "database",
-      ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
-      async readFile(path) {
-        expect(path).toBe("/workspace/automations/example.workflow.js");
-        return "export default {};";
-      },
-      async readdir() {
-        metadataRead();
-        return [];
-      },
-      async stat() {
-        metadataRead();
-        throw new Error("Upload metadata must come from TanStack DB.");
-      },
-    });
-
+  test("returns FileTree sources from registered collections", async () => {
     const result = await loadFilesExplorerData({
       request: new Request(
-        "https://docs.example.test/backoffice/files?path=/workspace/automations/example.workflow.js",
+        "https://backoffice.test/files/acme-org/workspace/automations/example.workflow.js",
       ),
       context: mockContext,
       orgId: "acme-org",
+      requestedPath: "/workspace/automations/example.workflow.js",
     });
 
-    expect(result.tree.map((root) => root.path)).not.toContain("/workspace");
-    assert(result.selectedPath === "/workspace/automations/example.workflow.js");
-    assert(result.selectedDetail === null);
-    assert(result.selectedUploadTextContent === "export default {};");
-    expect(metadataRead).not.toHaveBeenCalled();
-  });
-
-  test("propagates upload-backed text content read failures", async () => {
-    registerFileContributor({
-      id: "workspace",
+    expect(result.sources.map((source) => source.rootPath)).toEqual([
+      "/workspace",
+      "/static",
+      "/system",
+    ]);
+    expect(
+      result.sources.find((source) => source.rootPath === "/workspace")?.synchronization,
+    ).toEqual({
       kind: "upload",
-      mountPoint: "/workspace",
-      title: "Workspace",
-      readOnly: false,
-      persistence: "persistent",
-      uploadProvider: "database",
-      ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
-      async readFile() {
-        throw new Error("Upload content unavailable.");
-      },
+      provider: "database",
+      source: { orgId: "acme-org", adapterIdentity: "adapter-1" },
     });
-
-    await expect(
-      loadFilesExplorerData({
-        request: new Request(
-          "https://docs.example.test/backoffice/files?path=/workspace/automations/example.workflow.js",
-        ),
-        context: mockContext,
-        orgId: "acme-org",
-      }),
-    ).rejects.toThrow("Upload content unavailable.");
+    assert(result.selectedPath === "/workspace/automations/example.workflow.js");
+    expect(result.selectedContent).toEqual({
+      path: "/workspace/automations/example.workflow.js",
+      text: "export default {};",
+    });
+    assert(result.loadError === null);
   });
 
-  test("rejects unknown action intents before dispatching to the files domain", async () => {
-    const formData = new FormData();
-    formData.set("intent", "rename");
-    formData.set("path", "/system");
-
-    const result = await handleFilesExplorerAction({
-      request: new Request("https://docs.example.test/backoffice/files", {
-        method: "POST",
-        body: formData,
-      }),
+  test("retains paths that may exist optimistically in a synchronized collection", async () => {
+    const result = await loadFilesExplorerData({
+      request: new Request(
+        "https://backoffice.test/files/acme-org/workspace/new-optimistic-file.txt",
+      ),
       context: mockContext,
       orgId: "acme-org",
+      requestedPath: "/workspace/new-optimistic-file.txt",
     });
 
-    expect(result).toEqual({
-      ok: false,
-      intent: "rename",
-      message: "Unknown file action.",
-    });
+    assert(result.selectedPath === "/workspace/new-optimistic-file.txt");
+    assert(result.selectedContent === null);
+    assert(result.loadError === null);
   });
 
-  test("dispatches valid actions through the shared master filesystem", async () => {
-    const { contributor, folders } = createMutableProjectContributor();
-    registerFileContributor(contributor);
-
-    const formData = new FormData();
-    formData.set("intent", "create-folder");
-    formData.set("path", "/project");
-    formData.set("folderName", "notes/archive");
-
-    const result = await handleFilesExplorerAction({
-      request: new Request("https://docs.example.test/backoffice/files", {
-        method: "POST",
-        body: formData,
-      }),
+  test("falls back to the first collection for an unknown path", async () => {
+    const result = await loadFilesExplorerData({
+      request: new Request("https://backoffice.test/files/acme-org/missing"),
       context: mockContext,
       orgId: "acme-org",
+      requestedPath: "/missing",
     });
 
-    expect(result).toMatchObject({
-      ok: true,
-      intent: "create-folder",
-      path: "/project/notes/archive/",
-      detail: {
-        node: {
-          kind: "folder",
-          path: "/project/notes/archive/",
+    assert(result.selectedPath === "/workspace");
+    assert(result.selectedContent === null);
+    assert(result.loadError === "Path '/missing' could not be found.");
+  });
+
+  test("does not retrieve text content that exceeds the preview limit", async () => {
+    const getFile = vi.fn();
+    createFilesOverviewCollectionsMock.mockResolvedValue([
+      {
+        rootPath: "/workspace",
+        rootTitle: "Workspace",
+        collection: {
+          async getTree() {
+            return {
+              entries: [
+                {
+                  kind: "file" as const,
+                  path: "large.txt",
+                  sizeBytes: 1024 * 1024 + 1,
+                  contentType: "text/plain",
+                  updatedAt: null,
+                  metadata: null,
+                },
+              ],
+            };
+          },
+          getFile,
         },
       },
-    });
-    assert(folders.has("/project/notes"));
-    assert(folders.has("/project/notes/archive"));
-  });
-
-  test("expands the selected folder branch by querying the filesystem for its children", async () => {
-    const { contributor } = createMutableProjectContributor({
-      files: [["/project/hello/world/task.md", "deep file"]],
-      folders: ["/project", "/project/hello", "/project/hello/world"],
-    });
-    registerFileContributor(contributor);
+    ]);
 
     const result = await loadFilesExplorerData({
-      request: new Request("https://docs.example.test/backoffice/files?path=/project/hello/world/"),
+      request: new Request("https://backoffice.test/files/acme-org/workspace/large.txt"),
       context: mockContext,
       orgId: "acme-org",
+      requestedPath: "/workspace/large.txt",
     });
 
-    const projectRoot = result.tree.find((node) => node.path === "/project");
-    const helloFolder = projectRoot?.children?.find((node) => node.path === "/project/hello/");
-    const worldFolder = helloFolder?.children?.find(
-      (node) => node.path === "/project/hello/world/",
-    );
-
-    expect(projectRoot?.children?.map((node) => node.path)).toContain("/project/hello/");
-    expect(helloFolder?.children?.map((node) => node.path)).toContain("/project/hello/world/");
-    expect(worldFolder?.children?.map((node) => node.path)).toContain(
-      "/project/hello/world/task.md",
-    );
-    assert(result.selectedPath === "/project/hello/world/");
-    assert(result.selectedDetail?.node.path === "/project/hello/world/");
+    assert(result.selectedContent === null);
+    expect(getFile).not.toHaveBeenCalled();
   });
 
-  test("preserves eagerly described nested children in the initial tree", async () => {
-    const { contributor } = createMutableProjectContributor({
-      files: [
-        ["/project/hello/world/task.md", "deep file"],
-        ["/project/input/notes.md", "notes"],
-        ["/project/output/.gitkeep", ""],
-      ],
-      folders: [
-        "/project",
-        "/project/hello",
-        "/project/hello/world",
-        "/project/input",
-        "/project/output",
-      ],
-    });
-    registerFileContributor(contributor);
-
-    const initial = await loadFilesExplorerData({
-      request: new Request("https://docs.example.test/backoffice/files?path=/project"),
-      context: mockContext,
-      orgId: "acme-org",
-    });
-    const initialProjectRoot = initial.tree.find((node) => node.path === "/project");
-    const helloFolder = initialProjectRoot?.children?.find(
-      (node) => node.path === "/project/hello/",
-    );
-    const inputFolder = initialProjectRoot?.children?.find(
-      (node) => node.path === "/project/input/",
-    );
-    const outputFolder = initialProjectRoot?.children?.find(
-      (node) => node.path === "/project/output/",
-    );
-
-    expect(initialProjectRoot?.children?.map((node) => node.path)).toEqual([
-      "/project/hello/",
-      "/project/input/",
-      "/project/output/",
+  test("keeps available collections when another tree fails to load", async () => {
+    createFilesOverviewCollectionsMock.mockResolvedValue([
+      {
+        rootPath: "/static",
+        rootTitle: "Static",
+        collection: createStaticFileCollection({ "SYSTEM.md": "Static guidance" }),
+      },
+      {
+        rootPath: "/workspace",
+        rootTitle: "Workspace",
+        collection: {
+          async getTree() {
+            throw new Error("Upload file tree exceeded its 1-page retrieval limit.");
+          },
+          async getFile() {
+            return null;
+          },
+        },
+      },
     ]);
-    expect(helloFolder?.children).toBeUndefined();
-    expect(inputFolder?.children).toBeUndefined();
-    expect(outputFolder?.children).toBeUndefined();
-  });
 
-  test("expands the selected folder branch without descriptor-provided sibling children", async () => {
-    const { contributor } = createMutableProjectContributor({
-      files: [
-        ["/project/hello/world/task.md", "deep file"],
-        ["/project/input/notes.md", "notes"],
-        ["/project/output/.gitkeep", ""],
-      ],
-      folders: [
-        "/project",
-        "/project/hello",
-        "/project/hello/world",
-        "/project/input",
-        "/project/output",
-      ],
-    });
-    registerFileContributor(contributor);
-
-    const expanded = await loadFilesExplorerData({
-      request: new Request("https://docs.example.test/backoffice/files?path=/project/hello/"),
+    const result = await loadFilesExplorerData({
+      request: new Request("https://backoffice.test/files"),
       context: mockContext,
       orgId: "acme-org",
     });
-    const expandedProjectRoot = expanded.tree.find((node) => node.path === "/project");
-    const helloFolder = expandedProjectRoot?.children?.find(
-      (node) => node.path === "/project/hello/",
-    );
-    const inputFolder = expandedProjectRoot?.children?.find(
-      (node) => node.path === "/project/input/",
-    );
-    const outputFolder = expandedProjectRoot?.children?.find(
-      (node) => node.path === "/project/output/",
-    );
 
-    expect(helloFolder?.children?.map((node) => node.path)).toEqual(["/project/hello/world/"]);
-    expect(inputFolder?.children).toBeUndefined();
-    expect(outputFolder?.children).toBeUndefined();
+    expect(result.sources.map((source) => source.rootPath)).toEqual(["/static"]);
+    assert(
+      result.loadError ===
+        "Workspace could not be loaded: Upload file tree exceeded its 1-page retrieval limit.",
+    );
   });
 });
-
-function createMutableProjectContributor(options?: {
-  files?: Array<[path: string, content: string]>;
-  folders?: string[];
-}): {
-  contributor: FileContributor;
-  folders: Set<string>;
-} {
-  const files = new Map<string, string>(options?.files ?? [["/project/README.md", "hello"]]);
-  const folders = new Set<string>(options?.folders ?? ["/project", "/project/src"]);
-
-  const contributor: FileContributor = {
-    id: "project",
-    kind: "custom",
-    mountPoint: "/project",
-    title: "Project",
-    readOnly: false,
-    persistence: "session",
-    ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
-    async exists(path) {
-      return files.has(path) || folders.has(normalizeDirectory(path));
-    },
-    async stat(path) {
-      const normalizedDirectory = normalizeDirectory(path);
-      if (files.has(path)) {
-        return {
-          isFile: true,
-          isDirectory: false,
-          isSymbolicLink: false,
-          mode: 0o644,
-          size: files.get(path)?.length ?? 0,
-          mtime: new Date(0),
-        };
-      }
-
-      if (folders.has(normalizedDirectory)) {
-        return {
-          isFile: false,
-          isDirectory: true,
-          isSymbolicLink: false,
-          mode: 0o755,
-          size: 0,
-          mtime: new Date(0),
-        };
-      }
-
-      throw new Error("Path not found.");
-    },
-    async readdir(path) {
-      const directory = normalizeDirectory(path);
-      const names = new Set<string>();
-
-      for (const folder of folders) {
-        if (!folder.startsWith(`${directory}/`)) {
-          continue;
-        }
-
-        const relative = folder.slice(directory.length + 1);
-        if (relative && !relative.includes("/")) {
-          names.add(relative);
-        }
-      }
-
-      for (const filePath of files.keys()) {
-        if (!filePath.startsWith(`${directory}/`)) {
-          continue;
-        }
-
-        const relative = filePath.slice(directory.length + 1);
-        if (relative && !relative.includes("/")) {
-          names.add(relative);
-        }
-      }
-
-      return Array.from(names).sort();
-    },
-    async readFile(path) {
-      const file = files.get(path);
-      if (file === undefined) {
-        throw new Error("File not found.");
-      }
-      return file;
-    },
-    async writeFile(path, content) {
-      files.set(path, typeof content === "string" ? content : new TextDecoder().decode(content));
-    },
-    async mkdir(path, options) {
-      const segments = normalizeDirectory(path).split("/").filter(Boolean);
-      if (!options?.recursive) {
-        folders.add(`/${segments.join("/")}`);
-        return;
-      }
-
-      for (let index = 1; index <= segments.length; index += 1) {
-        folders.add(`/${segments.slice(0, index).join("/")}`);
-      }
-    },
-    async rm(path, options) {
-      if (files.delete(path)) {
-        return;
-      }
-
-      const directory = normalizeDirectory(path);
-      if (!options?.recursive) {
-        throw new Error("recursive required");
-      }
-
-      folders.delete(directory);
-      for (const existingFolder of Array.from(folders)) {
-        if (existingFolder.startsWith(`${directory}/`)) {
-          folders.delete(existingFolder);
-        }
-      }
-      for (const filePath of Array.from(files.keys())) {
-        if (filePath.startsWith(`${directory}/`)) {
-          files.delete(filePath);
-        }
-      }
-    },
-  };
-
-  return { contributor, folders };
-}
-
-const normalizeDirectory = (path: string) => path.replace(/\/+$/, "") || "/";

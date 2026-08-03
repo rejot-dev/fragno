@@ -3,6 +3,8 @@ import { assert, describe, test } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 
+import { createFileTree } from "@/file-collection/create-file-tree";
+
 import { MarketplaceArtifactFiles, MarketplaceArtifactWorkflowGraphs } from "./artifact-files";
 import type { MarketplaceArtifactExplorerData } from "./artifact-files-model";
 
@@ -15,37 +17,24 @@ const workflowSource = {
 
 const artifactData: MarketplaceArtifactExplorerData = {
   state: "ready",
-  tree: [],
-  selectedVersion: "1.0.0",
-  defaultPath: "/artifact/1.0.0/",
-  detailsByPath: {
-    "/artifact/1.0.0/automations/daily-report.workflow.js": {
-      node: {
-        kind: "file",
-        path: "/artifact/1.0.0/automations/daily-report.workflow.js",
-        name: "daily-report.workflow.js",
-        title: "daily-report.workflow.js",
-        mountPoint: "/artifact",
-        mountTitle: "Package contents",
-        mountKind: "custom",
-        readOnly: true,
-        persistence: "persistent",
-        contentType: "text/javascript",
-      },
-      fields: [],
+  fileTree: createFileTree([
+    {
+      kind: "file",
+      path: "1.0.0/automations/daily-report.workflow.js",
+      sizeBytes: workflowSource.source.length,
+      contentType: "text/javascript",
+      updatedAt: null,
       metadata: null,
-      textContent: null,
-      capabilities: { canCreateFolder: false, canWriteText: false, canDelete: false },
     },
-  },
-  overviewPath: "/artifact/README.md",
+  ]),
+  selectedVersion: "1.0.0",
 };
 
 describe("MarketplaceArtifactFiles", () => {
   test("defaults to the metadata-only files tab and omits the old badges", () => {
     const markup = renderMarketplaceArtifacts("/backoffice/marketplace/example");
 
-    assert(markup.includes("This workspace has no filesystems yet."));
+    assert(markup.includes("Package contents"));
     assert(markup.includes("Overview"));
     assert(markup.includes("Workflows"));
     assert(markup.includes("Files"));

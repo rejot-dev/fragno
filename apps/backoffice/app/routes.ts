@@ -249,6 +249,7 @@ export default [
       route("files/:orgId/download", "routes/backoffice/files/download.ts"),
       route("files/:orgId", "routes/backoffice/files/organisation-layout.tsx", [
         index("routes/backoffice/files/explorer.tsx"),
+        route("*", "routes/backoffice/files/explorer-path.tsx"),
       ]),
       route("internals", "routes/backoffice/internals/layout.tsx", [
         index("routes/backoffice/internals/index.tsx"),
