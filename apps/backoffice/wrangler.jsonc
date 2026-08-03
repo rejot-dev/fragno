@@ -147,6 +147,10 @@
         "name": "MARKETPLACE",
         "class_name": "Marketplace",
       },
+      {
+        "name": "CLOUDFLARE",
+        "class_name": "Cloudflare",
+      },
     ],
   },
   /**
@@ -229,6 +233,10 @@
     {
       "tag": "v21",
       "new_sqlite_classes": ["Marketplace"],
+    },
+    {
+      "tag": "v22",
+      "new_sqlite_classes": ["Cloudflare"],
     },
   ],
 }

@@ -128,6 +128,9 @@ importers:
       '@fragno-dev/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@fragno-dev/cloudflare-fragment':
+        specifier: workspace:*
+        version: link:../../packages/cloudflare-fragment
       '@fragno-dev/core':
         specifier: workspace:*
         version: link:../../packages/fragno
