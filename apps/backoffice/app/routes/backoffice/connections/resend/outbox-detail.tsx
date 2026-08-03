@@ -1,7 +1,5 @@
 import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
 
-import type { ResendEmailInput } from "@fragno-dev/resend-fragment";
-
 import { resolveScopeFromRouteParams } from "../../integrations/scope";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/outbox-detail";
@@ -59,12 +57,7 @@ export default function BackofficeOrganisationResendOutboxDetail() {
     );
   }
 
-  const payload = (email.payload ?? {}) as Partial<ResendEmailInput> & {
-    html?: string;
-    text?: string;
-    headers?: Record<string, string>;
-    tags?: { name: string; value: string }[];
-  };
+  const payload = email.payload ?? {};
   const subject =
     typeof payload.subject === "string" && payload.subject.trim()
       ? payload.subject
