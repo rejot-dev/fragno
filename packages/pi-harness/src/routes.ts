@@ -1,5 +1,10 @@
 import { createId } from "@fragno-dev/db/id";
 import { WorkflowsLogger } from "@fragno-dev/workflows/debug-log";
+import {
+  WorkflowInstanceNotFoundError,
+  WorkflowNotFoundError,
+  WorkflowParamsInvalidError,
+} from "@fragno-dev/workflows/workflow";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
@@ -7,7 +12,6 @@ import { serviceCalls } from "@fragno-dev/db";
 import { validateWorkflowParams } from "@fragno-dev/workflows";
 
 import { piHarnessDefinition, type PiSessionDetailSnapshot } from "./pi/definition";
-import type { PiHarnessEmission } from "./pi/harness/run-pi-harness-step";
 import {
   createWorkflowBackedSessionEntryIdAllocator,
   WorkflowBackedSessionStorage,
@@ -19,28 +23,19 @@ import {
   sessionBaseSchema,
   sessionDetailSchema,
 } from "./pi/route-schemas";
-import type { PiSessionCommandPayload, PiSessionDetail } from "./pi/types";
-import { piSchema } from "./schema";
+import {
+  PiSessionDataIntegrityError,
+  PiSessionDataUnavailableError,
+  projectPiSessionFromWorkflowInstance,
+  type PiSessionCommandPayload,
+  type PiSessionDetail,
+} from "./pi/types";
+import type { PiHarnessEmission } from "./pi/workflows/workflow-agent-harness";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
 const DEFAULT_AGENT_END_WAIT_TIMEOUT_MS = 60_000;
 const MAX_AGENT_END_WAIT_TIMEOUT_MS = 120_000;
-
-class RouteError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-  }
-}
-
-const createRouteError = (code: string, message: string, status: number): RouteError =>
-  new RouteError(code, message, status);
-
-const isRouteError = (err: unknown): err is RouteError => err instanceof RouteError;
 
 const createCommandPayload = (
   commandId: string,
@@ -48,9 +43,14 @@ const createCommandPayload = (
 ): PiSessionCommandPayload => {
   switch (command.kind) {
     case "prompt":
+      return { commandId, kind: command.kind, input: command.input };
+    case "skill":
+      return { commandId, kind: command.kind, input: command.input };
+    case "promptFromTemplate":
+      return { commandId, kind: command.kind, input: command.input };
     case "steer":
+      return { commandId, kind: command.kind, input: command.input };
     case "followUp":
-    case "nextTurn":
       return { commandId, kind: command.kind, input: command.input };
     case "abort":
       return command.reason
@@ -74,14 +74,13 @@ const parsePositiveIntegerQueryValue = (value: string | null): number | undefine
 
 const toSessionDetail = (snapshot: PiSessionDetailSnapshot): PiSessionDetail => ({
   ...snapshot.session,
-  agentName: snapshot.session.agent,
   workflow: {
     status: snapshot.workflowStatus.status,
     error: snapshot.workflowStatus.error,
     output: snapshot.workflowStatus.output,
   },
   agent: {
-    state: { messages: snapshot.detailState.messages },
+    state: { messages: snapshot.messages },
     completedStepKeys: [...snapshot.completedStepKeys],
   },
 });
@@ -93,24 +92,31 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
     }
 
     const toSessionDetailLoadError = (err: unknown, workflowName: string, sessionId: string) => {
-      if (isRouteError(err)) {
-        const code: "SESSION_NOT_FOUND" | "WORKFLOW_INSTANCE_MISSING" =
-          err.code === "SESSION_NOT_FOUND" ? "SESSION_NOT_FOUND" : "WORKFLOW_INSTANCE_MISSING";
-        return {
-          body: { message: err.message, code },
-          init: { status: code === "SESSION_NOT_FOUND" ? (404 as const) : (500 as const) },
-        };
-      }
-      if (
-        err instanceof Error &&
-        (err.message === "SESSION_NOT_FOUND" || err.message === "INSTANCE_NOT_FOUND")
-      ) {
+      if (err instanceof WorkflowInstanceNotFoundError) {
         return {
           body: {
             message: `Session ${workflowName}/${sessionId} not found.`,
             code: "SESSION_NOT_FOUND" as const,
           },
           init: { status: 404 as const },
+        };
+      }
+      if (err instanceof PiSessionDataUnavailableError) {
+        return {
+          body: {
+            message: err.message,
+            code: "SESSION_DATA_UNAVAILABLE" as const,
+          },
+          init: { status: 404 as const },
+        };
+      }
+      if (err instanceof PiSessionDataIntegrityError) {
+        return {
+          body: {
+            message: err.message,
+            code: "SESSION_DATA_INTEGRITY_ERROR" as const,
+          },
+          init: { status: 500 as const },
         };
       }
       const message = err instanceof Error ? err.message : "Failed to load workflow detail.";
@@ -126,15 +132,11 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
         path: "/workflows/:workflowName/sessions",
         inputSchema: z.object({
           name: z.string().optional(),
+          metadata: z.record(z.string(), z.unknown()).optional(),
           input: z.unknown().optional(),
         }),
         outputSchema: sessionBaseSchema,
-        errorCodes: [
-          "AGENT_NOT_FOUND",
-          "WORKFLOW_NOT_FOUND",
-          "WORKFLOW_PARAMS_INVALID",
-          "WORKFLOW_CREATE_FAILED",
-        ],
+        errorCodes: ["WORKFLOW_NOT_FOUND", "WORKFLOW_PARAMS_INVALID", "WORKFLOW_CREATE_FAILED"],
         handler: async function ({ input, pathParams }, { json, error }) {
           const values = await input.valid();
 
@@ -146,25 +148,32 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
             const workflowsByName = new Map(
               (config.workflows ?? []).map((workflow) => [workflow.name, workflow]),
             );
-            const params = await validateWorkflowParams(
+            const validatedParams = await validateWorkflowParams(
               workflowsByName,
               workflowName,
               values.input,
             );
-            const agentName =
-              params && typeof params === "object" && "harnessName" in params
-                ? String(params.harnessName)
-                : params && typeof params === "object" && "agentName" in params
-                  ? String(params.agentName)
-                  : workflowName;
+            if (
+              typeof validatedParams !== "object" ||
+              validatedParams === null ||
+              Array.isArray(validatedParams)
+            ) {
+              throw new WorkflowParamsInvalidError(workflowName, [
+                "Workflow parameters must resolve to an object.",
+              ]);
+            }
+            const params = { ...(validatedParams as Record<string, unknown>) };
+            if (values.metadata !== undefined) {
+              params["metadata"] = values.metadata;
+            } else {
+              delete params["metadata"];
+            }
             await this.handlerTx()
               .withServiceCalls(() => [
                 services.createWorkflowSession({
                   id: sessionId,
                   workflowName,
-                  agent: agentName,
                   name: values.name,
-                  createdAt: now,
                   params,
                 }),
               ])
@@ -173,25 +182,24 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
             return json({
               id: sessionId,
               name: values.name ?? null,
-              agent: agentName,
+              metadata: values.metadata ?? null,
               workflowName,
               createdAt: now,
               updatedAt: now,
             });
           } catch (err) {
-            if (err instanceof Error && err.message === "WORKFLOW_NOT_FOUND") {
+            if (err instanceof WorkflowNotFoundError) {
               return error(
                 { message: `Workflow ${workflowName} not found.`, code: "WORKFLOW_NOT_FOUND" },
                 { status: 404 },
               );
             }
-            if (err instanceof Error && err.message === "WORKFLOW_PARAMS_INVALID") {
+            if (err instanceof WorkflowParamsInvalidError) {
               return error(
                 { message: "Workflow input is invalid.", code: "WORKFLOW_PARAMS_INVALID" },
                 { status: 400 },
               );
             }
-            // TODO: cleanup workflow/session if createInstance or session persist fails.
             const message =
               err instanceof Error ? err.message : "Failed to create workflow instance.";
             return error({ message, code: "WORKFLOW_CREATE_FAILED" }, { status: 500 });
@@ -203,44 +211,59 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
         path: "/workflows/:workflowName/sessions",
         queryParameters: ["limit"],
         outputSchema: z.array(sessionBaseSchema),
-        handler: async function ({ pathParams, query }, { json }) {
+        errorCodes: ["SESSION_DATA_INTEGRITY_ERROR"],
+        handler: async function ({ pathParams, query }, { json, error }) {
           const workflowName = pathParams.workflowName;
           const limit = Number.parseInt(query.get("limit") ?? `${DEFAULT_PAGE_SIZE}`, 10);
           const normalizedLimit = Number.isFinite(limit)
             ? Math.max(1, Math.min(MAX_PAGE_SIZE, limit))
             : DEFAULT_PAGE_SIZE;
 
-          const [sessions] = await this.handlerTx()
-            .retrieve(({ forSchema }) => {
-              const uow = forSchema(piSchema);
-              return uow.find("session", (b) =>
-                b
-                  .whereIndex("idx_session_workflow_created", (eb) =>
-                    eb("workflowName", "=", workflowName),
-                  )
-                  .orderByIndex("idx_session_workflow_created", "desc")
-                  .pageSize(normalizedLimit),
-              );
-            })
+          // TODO: Apply the limit after excluding workflow instances without Pi metadata, so non-Pi rows do not consume the requested page.
+          const result = await this.handlerTx()
+            .withServiceCalls(() => [
+              serviceDeps.workflows.listInstances({
+                workflowName,
+                pageSize: normalizedLimit,
+              }),
+            ])
+            .transform(({ serviceResult: [result] }) => result)
             .execute();
 
-          return json(
-            sessions.map((session) => ({
-              id: session.sessionId,
-              name: session.name ?? null,
-              agent: session.agent,
-              workflowName: session.workflowName,
-              createdAt: session.createdAt,
-              updatedAt: session.updatedAt,
-            })),
-          );
+          try {
+            return json(
+              result.instances.flatMap((instance) => {
+                const session = projectPiSessionFromWorkflowInstance({
+                  id: instance.id,
+                  workflowName,
+                  params: instance.params,
+                  createdAt: instance.createdAt,
+                  updatedAt: instance.updatedAt,
+                });
+                return session ? [session] : [];
+              }),
+            );
+          } catch (err) {
+            if (err instanceof PiSessionDataIntegrityError) {
+              return error(
+                { message: err.message, code: "SESSION_DATA_INTEGRITY_ERROR" },
+                { status: 500 },
+              );
+            }
+            throw err;
+          }
         },
       }),
       defineRoute({
         method: "GET",
         path: "/workflows/:workflowName/sessions/:sessionId",
         outputSchema: sessionDetailSchema,
-        errorCodes: ["SESSION_NOT_FOUND", "WORKFLOW_INSTANCE_MISSING"],
+        errorCodes: [
+          "SESSION_NOT_FOUND",
+          "SESSION_DATA_UNAVAILABLE",
+          "SESSION_DATA_INTEGRITY_ERROR",
+          "WORKFLOW_INSTANCE_MISSING",
+        ],
         handler: async function ({ pathParams: { workflowName, sessionId } }, { json, error }) {
           try {
             const result = await this.handlerTx()
@@ -259,7 +282,12 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
       defineRoute({
         method: "GET",
         path: "/workflows/:workflowName/sessions/:sessionId/export/pi-jsonl",
-        errorCodes: ["SESSION_NOT_FOUND", "WORKFLOW_INSTANCE_MISSING"],
+        errorCodes: [
+          "SESSION_NOT_FOUND",
+          "SESSION_DATA_UNAVAILABLE",
+          "SESSION_DATA_INTEGRITY_ERROR",
+          "WORKFLOW_INSTANCE_MISSING",
+        ],
         handler: async function ({ pathParams: { workflowName, sessionId } }, { error }) {
           try {
             const snapshot = await this.handlerTx()
@@ -299,7 +327,13 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
         path: "/workflows/:workflowName/sessions/:sessionId/wait-for-agent-end",
         queryParameters: ["timeoutMs"],
         outputSchema: sessionDetailSchema,
-        errorCodes: ["SESSION_NOT_FOUND", "WORKFLOW_INSTANCE_MISSING", "AGENT_END_TIMEOUT"],
+        errorCodes: [
+          "SESSION_NOT_FOUND",
+          "SESSION_DATA_UNAVAILABLE",
+          "SESSION_DATA_INTEGRITY_ERROR",
+          "WORKFLOW_INSTANCE_MISSING",
+          "AGENT_END_TIMEOUT",
+        ],
         handler: async function ({ pathParams, query }, { json, error }) {
           const timeoutMs = parsePositiveIntegerQueryValue(query.get("timeoutMs"));
           const workflowName = pathParams.workflowName;
@@ -342,28 +376,8 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
             if (err instanceof Error && err.name === "BufferedPumpObserveTimeoutError") {
               return error({ message: err.message, code: "AGENT_END_TIMEOUT" }, { status: 408 });
             }
-            if (isRouteError(err)) {
-              const code =
-                err.code === "SESSION_NOT_FOUND"
-                  ? "SESSION_NOT_FOUND"
-                  : "WORKFLOW_INSTANCE_MISSING";
-              const status = code === "SESSION_NOT_FOUND" ? 404 : 500;
-              return error({ message: err.message, code }, { status });
-            }
-            if (
-              err instanceof Error &&
-              (err.message === "SESSION_NOT_FOUND" || err.message === "INSTANCE_NOT_FOUND")
-            ) {
-              return error(
-                {
-                  message: `Session ${workflowName}/${sessionId} not found.`,
-                  code: "SESSION_NOT_FOUND",
-                },
-                { status: 404 },
-              );
-            }
-            const message = err instanceof Error ? err.message : "Failed to wait for agent_end.";
-            return error({ message, code: "WORKFLOW_INSTANCE_MISSING" }, { status: 500 });
+            const loadError = toSessionDetailLoadError(err, workflowName, sessionId);
+            return error(loadError.body, loadError.init);
           }
         },
       }),
@@ -392,37 +406,7 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
                   workflowsService.getInstanceStatus(workflowName, sessionId),
                 ),
               )
-              .retrieve(({ forSchema }) =>
-                forSchema(piSchema).findFirst("session", (b) =>
-                  b.whereIndex("idx_session_workflow_session", (eb) =>
-                    eb.and(eb("workflowName", "=", workflowName), eb("sessionId", "=", sessionId)),
-                  ),
-                ),
-              )
-              .mutate(({ forSchema, retrieveResult: [sessionRow] }) => {
-                if (!sessionRow) {
-                  throw createRouteError(
-                    "SESSION_NOT_FOUND",
-                    `Session ${workflowName}/${sessionId} not found.`,
-                    404,
-                  );
-                }
-                const uow = forSchema(piSchema);
-                uow.update("session", sessionRow.id, (b) =>
-                  b.set({ updatedAt: new Date() }).check(),
-                );
-              })
-              .transform(({ serviceResult }) => {
-                const workflowStatus = serviceResult[1];
-                if (!workflowStatus) {
-                  throw createRouteError(
-                    "WORKFLOW_INSTANCE_MISSING",
-                    `Session ${workflowName}/${sessionId} workflow status is missing.`,
-                    500,
-                  );
-                }
-                return { workflowStatus };
-              })
+              .transform(({ serviceResult: [, workflowStatus] }) => ({ workflowStatus }))
               .execute();
 
             return json(
@@ -434,15 +418,7 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
               202,
             );
           } catch (err) {
-            if (isRouteError(err)) {
-              const code =
-                err.code === "SESSION_NOT_FOUND"
-                  ? "SESSION_NOT_FOUND"
-                  : "WORKFLOW_INSTANCE_MISSING";
-              const status = code === "SESSION_NOT_FOUND" ? 404 : 500;
-              return error({ message: err.message, code }, { status });
-            }
-            if (err instanceof Error && err.message === "INSTANCE_NOT_FOUND") {
+            if (err instanceof WorkflowInstanceNotFoundError) {
               return error(
                 {
                   message: `Session ${workflowName}/${sessionId} not found.`,

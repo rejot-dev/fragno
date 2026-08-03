@@ -6,13 +6,24 @@ import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import { z } from "zod";
 
 import { defineFragment, instantiate, type AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
-import { withDatabase, type DatabaseRequestContext } from "@fragno-dev/db";
+import {
+  ConcurrencyConflictError,
+  DatabaseConstraintError,
+  withDatabase,
+  type DatabaseRequestContext,
+} from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
+import { runWorkflowsTick } from "./new-runner";
 import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./runner/step-live-pump";
 import type { WorkflowStepLivePump, WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
 import { workflowsSchema } from "./schema";
-import { createWorkflowsTestHarness } from "./test";
+import { createWorkflowEventConsumedControlPayload } from "./step-emission-control";
+import {
+  createWorkflowsTestHarness,
+  createWorkflowsTestRuntime,
+  recordWorkflowStepRunForTest,
+} from "./test";
 import { defineWorkflow, NonRetryableError, type WorkflowEnqueuedHookPayload } from "./workflow";
 
 function openBus<TOutEmission = unknown, TInEmission = unknown>(
@@ -211,6 +222,7 @@ describe("Workflows Runner", () => {
     seedUow.create("workflow_step_emission", {
       instanceRef: instance!.id,
       stepKey: "do:recoverable",
+      executionId: "fixture-execution",
       epoch: "previous-epoch",
       sequence: 0,
       actor: "user",
@@ -222,6 +234,192 @@ describe("Workflows Runner", () => {
     await harness.tick(buildPayload(instance!, "create"));
 
     expect(observedPayloads).toEqual([[{ type: "checkpoint" }]]);
+  });
+
+  test("WorkflowStepTx previousConsumedEvents reconstructs durably acknowledged events", async () => {
+    const observedEvents: unknown[] = [];
+
+    const PreviousConsumedEventsWorkflow = defineWorkflow<
+      "previous-consumed-events-workflow",
+      undefined,
+      { ok: true }
+    >({ name: "previous-consumed-events-workflow" }, async (_event, step) => {
+      await step.do("recoverable", async (tx) => {
+        observedEvents.push(await tx.previousConsumedEvents<{ command: string }>());
+      });
+      return { ok: true };
+    });
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { PREVIOUS_CONSUMED_EVENTS: PreviousConsumedEventsWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    await harness.createInstance("PREVIOUS_CONSUMED_EVENTS");
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(instance).toBeTruthy();
+
+    const seedUow = harness.db
+      .createUnitOfWork("seed-previous-consumed-event")
+      .forSchema(workflowsSchema);
+    const eventId = seedUow.create("workflow_event", {
+      instanceRef: instance!.id,
+      actor: "user",
+      type: "command",
+      payload: { command: "continue" },
+      deliveredAt: null,
+      consumedByStepKey: null,
+    });
+    seedUow.create("workflow_step_emission", {
+      instanceRef: instance!.id,
+      stepKey: "do:recoverable",
+      executionId: "fixture-execution",
+      epoch: "previous-epoch",
+      sequence: 0,
+      actor: "system",
+      payload: createWorkflowEventConsumedControlPayload(eventId.toString()),
+    });
+    const { success } = await seedUow.executeMutations();
+    assert(success);
+
+    await harness.tick(buildPayload(instance!, "create"));
+
+    expect(observedEvents).toEqual([
+      [
+        {
+          id: eventId.toString(),
+          type: "command",
+          payload: { command: "continue" },
+          timestamp: expect.any(Date),
+        },
+      ],
+    ]);
+  });
+
+  test("step recovery APIs exclude emissions and consumed events from a proven losing execution", async () => {
+    const observedEmissions: unknown[][] = [];
+    const observedConsumedEvents: unknown[][] = [];
+
+    const CanonicalRecoveryWorkflow = defineWorkflow<
+      "canonical-recovery-workflow",
+      undefined,
+      { ok: true }
+    >({ name: "canonical-recovery-workflow" }, async (_event, step) => {
+      await step.do("recoverable", async (tx) => {
+        observedEmissions.push((await tx.previousEmissions()).map((emission) => emission.payload));
+        observedConsumedEvents.push(await tx.previousConsumedEvents());
+      });
+      return { ok: true };
+    });
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { CANONICAL_RECOVERY: CanonicalRecoveryWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    await harness.createInstance("CANONICAL_RECOVERY");
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(instance).toBeTruthy();
+
+    const seedUow = harness.db.createUnitOfWork("seed-losing-recovery").forSchema(workflowsSchema);
+    seedUow.create("workflow_step", {
+      instanceRef: instance!.id,
+      stepKey: "do:contested",
+      committedByExecutionId: "winning-execution",
+      name: "contested",
+      type: "do",
+      status: "completed",
+      attempts: 1,
+      maxAttempts: 1,
+      timeoutMs: null,
+      nextRetryAt: null,
+      wakeAt: null,
+      waitEventType: null,
+      result: null,
+      errorName: null,
+      errorMessage: null,
+    });
+    const consumedEventId = seedUow.create("workflow_event", {
+      instanceRef: instance!.id,
+      actor: "user",
+      type: "command",
+      payload: { command: "discard" },
+      deliveredAt: null,
+      consumedByStepKey: null,
+    });
+    seedUow.create("workflow_step_emission", {
+      instanceRef: instance!.id,
+      stepKey: "do:contested",
+      executionId: "losing-execution",
+      epoch: "losing-contested-epoch",
+      sequence: 0,
+      actor: "user",
+      payload: { type: "losing-contested" },
+    });
+    seedUow.create("workflow_step_emission", {
+      instanceRef: instance!.id,
+      stepKey: "do:recoverable",
+      executionId: "losing-execution",
+      epoch: "losing-recoverable-epoch",
+      sequence: 1,
+      actor: "user",
+      payload: { type: "losing-downstream" },
+    });
+    seedUow.create("workflow_step_emission", {
+      instanceRef: instance!.id,
+      stepKey: "do:recoverable",
+      executionId: "losing-execution",
+      epoch: "losing-recoverable-epoch",
+      sequence: 2,
+      actor: "system",
+      payload: createWorkflowEventConsumedControlPayload(consumedEventId.toString()),
+    });
+    const { success } = await seedUow.executeMutations();
+    assert(success);
+
+    await harness.tick(buildPayload(instance!, "create"));
+
+    expect(observedEmissions).toEqual([[]]);
+    expect(observedConsumedEvents).toEqual([[]]);
+
+    const [steps, emissions] = await Promise.all([
+      harness.db
+        .createUnitOfWork("read-canonical-recovery-step")
+        .forSchema(workflowsSchema)
+        .find("workflow_step", (b) =>
+          b.whereIndex("idx_workflow_step_instanceRef_stepKey", (eb) =>
+            eb.and(eb("instanceRef", "=", instance!.id), eb("stepKey", "=", "do:recoverable")),
+          ),
+        )
+        .executeRetrieve()
+        .then(([rows]) => rows),
+      readStepEmissionRows(harness, "canonical-recovery-workflow", instance!.instanceId),
+    ]);
+    const recoveredStep = steps[0];
+    expect(recoveredStep).toBeTruthy();
+    const committedExecutionEmissions = emissions.filter(
+      (emission) => emission.executionId === recoveredStep!.committedByExecutionId,
+    );
+    expect(new Set(committedExecutionEmissions.map((emission) => emission.executionId))).toEqual(
+      new Set([recoveredStep!.committedByExecutionId]),
+    );
+    assert(emissions.some((emission) => emission.executionId === "losing-execution"));
   });
 
   test("central step emission bus observes outbound events from the active in-process step", async () => {
@@ -1185,6 +1383,7 @@ describe("Workflows Runner", () => {
       uow.create("workflow_step", {
         instanceRef: instance!.id,
         stepKey: "do:flaky",
+        committedByExecutionId: "fixture-execution",
         name: "flaky",
         type: "do",
         status: "waiting",
@@ -1753,6 +1952,169 @@ describe("Workflows Runner", () => {
     })();
     expect(replayRows).toHaveLength(1);
     expect(runs).toBe(1);
+  });
+
+  test("workflow step insertion retries metadata-free unique conflicts", async () => {
+    const recorded = await recordWorkflowStepRunForTest({
+      workflowName: "step-insert-conflict-workflow",
+      instanceId: "step-insert-conflict-1",
+      run: async (step) => await step.do("result", async () => "done"),
+    });
+    const stepCreate = recorded.mutations.find(
+      (operation) => operation.type === "create" && operation.table === "workflow_step",
+    );
+
+    assert(stepCreate?.type === "create");
+    assert(stepCreate.retryOnUniqueConflict);
+    assert(
+      stepCreate.retryOnUniqueConflict({
+        error: new DatabaseConstraintError({ kind: "unique" }),
+        operation: {
+          type: "create",
+          schema: workflowsSchema.name,
+          namespace: null,
+          table: "workflow_step",
+        },
+      }),
+    );
+  });
+
+  test("automatic ticks allocate execution and epoch ids through the configured runtime", async () => {
+    const baseRuntime = createWorkflowsTestRuntime();
+    let uuidCount = 0;
+    const runtime = {
+      ...baseRuntime,
+      random: {
+        ...baseRuntime.random,
+        uuid: () => `runtime-uuid-${(uuidCount += 1)}`,
+      },
+    };
+    const RuntimeIdWorkflow = defineWorkflow(
+      { name: "runtime-id-workflow" },
+      async (_event, step) => {
+        await step.do("emit", async (tx) => {
+          tx.emit({ phase: "running" });
+          return "done";
+        });
+        return { ok: true };
+      },
+    );
+    const harness = await createWorkflowsTestHarness({
+      workflows: { RUNTIME_ID: RuntimeIdWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      runtime,
+    });
+
+    await harness.createInstance("RUNTIME_ID", { id: "runtime-id-1" });
+    await drainDurableHooks(harness.fragment, { mode: "singlePass" });
+
+    const [steps, emissions] = await harness.db
+      .createUnitOfWork("read-runtime-generated-ids")
+      .forSchema(workflowsSchema)
+      .find("workflow_step", (b) => b.whereIndex("primary"))
+      .find("workflow_step_emission", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+
+    expect(uuidCount).toBe(2);
+    expect(steps).toEqual([
+      expect.objectContaining({
+        status: "completed",
+        committedByExecutionId: "runtime-uuid-1",
+      }),
+    ]);
+    expect(emissions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          executionId: "runtime-uuid-1",
+          epoch: "runtime-uuid-2",
+        }),
+      ]),
+    );
+  });
+
+  test("allocates a new execution id for every automatic handler transaction retry", async () => {
+    let workflowRuns = 0;
+    const RetryWorkflow = defineWorkflow(
+      { name: "transaction-retry-execution-workflow" },
+      async (_event, step) => {
+        await step.do("retryable", async (tx) => {
+          workflowRuns += 1;
+          tx.emit({ run: workflowRuns });
+          return "done";
+        });
+        return { ok: true };
+      },
+    );
+    const workflows = { RETRY: RetryWorkflow };
+    const stepEmissions = createStepEmissions();
+    const harness = await createWorkflowsTestHarness({
+      workflows,
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      fragmentConfig: { stepEmissions },
+    });
+
+    const instanceId = await harness.createInstance("RETRY");
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(instance).toBeTruthy();
+
+    let injectedConflict = false;
+    let allocatedExecutions = 0;
+    const processed = await harness.fragment.inContext(async function () {
+      const baseHandlerTx = this.handlerTx.bind(this);
+      const retryingHandlerTx = ((txOptions) =>
+        baseHandlerTx({
+          ...txOptions,
+          onBeforeMutate: (uow) => {
+            txOptions?.onBeforeMutate?.(uow);
+            if (!injectedConflict) {
+              injectedConflict = true;
+              throw new ConcurrencyConflictError();
+            }
+          },
+        })) as DatabaseRequestContext["handlerTx"];
+
+      return await runWorkflowsTick({
+        handlerTx: retryingHandlerTx,
+        busHandlerTx: baseHandlerTx,
+        workflows,
+        payload: { ...buildPayload(instance!, "create"), timestamp: harness.clock.now() },
+        createExecutionId: () => `execution-${(allocatedExecutions += 1)}`,
+        createEpoch: () => `epoch-${allocatedExecutions}`,
+        stepEmissions,
+      });
+    });
+
+    expect(processed).toBe(1);
+    expect(workflowRuns).toBe(2);
+    expect(allocatedExecutions).toBe(2);
+
+    const steps = (
+      await harness.db
+        .createUnitOfWork("read-step")
+        .forSchema(workflowsSchema)
+        .find("workflow_step", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(steps).toHaveLength(1);
+    assert(steps[0]?.committedByExecutionId === "execution-2");
+
+    const emissions = await readStepEmissionRows(
+      harness,
+      "transaction-retry-execution-workflow",
+      instanceId,
+    );
+    expect(new Set(emissions.map((emission) => emission.executionId))).toEqual(
+      new Set(["execution-1", "execution-2"]),
+    );
   });
 
   test("concurrent ticks are idempotent", async () => {

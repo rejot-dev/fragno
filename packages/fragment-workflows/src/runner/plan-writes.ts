@@ -177,18 +177,36 @@ export function applyRunnerMutations(
   uow: IUnitOfWork,
   state: RunnerState,
   workflowsByName: ReadonlyMap<string, WorkflowRegistryEntry>,
+  executionId: string,
 ) {
   const schemaUow = uow.forSchema(workflowsSchema);
 
   for (const [_, draft] of state.mutations.stepCreates) {
     const data = resolveStepDraftTimes(schemaUow, draft);
-    schemaUow.create("workflow_step", data);
+    schemaUow.create(
+      "workflow_step",
+      {
+        ...data,
+        committedByExecutionId: executionId,
+      },
+      {
+        // The only application-defined unique key is (instanceRef, stepKey). Retrying the whole
+        // transaction lets a concurrent tick retrieve and replay the step that committed first.
+        retryOnUniqueConflict: () => true,
+      },
+    );
   }
 
   for (const [_, entry] of state.mutations.stepUpdates) {
     const data = resolveStepDraftTimes(schemaUow, entry.data);
     schemaUow.update("workflow_step", entry.id, (b) =>
-      b.set({ ...data, updatedAt: schemaUow.now() }).check(),
+      b
+        .set({
+          ...data,
+          committedByExecutionId: executionId,
+          updatedAt: schemaUow.now(),
+        })
+        .check(),
     );
   }
 

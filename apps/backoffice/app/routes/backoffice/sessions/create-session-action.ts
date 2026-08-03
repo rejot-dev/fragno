@@ -1,8 +1,8 @@
-import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import { redirect } from "react-router";
 
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import {
+  BACKOFFICE_PI_WORKFLOW_NAME,
   createPiAgentName,
   findPiModelOption,
   resolvePiModelThinkingLevel,
@@ -80,13 +80,15 @@ export async function createSessionAction({ request, params, context }: Route.Ac
   }
 
   const result = await createPiSession(request, context, scope, {
-    workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
-    input: {
-      harnessName: createPiAgentName({
+    workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
+    metadata: {
+      agentName: createPiAgentName({
         harnessId: harness.id,
         provider: modelSelection.provider,
         model: modelSelection.name,
       }),
+    },
+    input: {
       thinkingLevel: resolvePiModelThinkingLevel(modelSelection.provider),
     },
     name: prompt.split("\n")[0]?.slice(0, 72) || undefined,
@@ -102,7 +104,7 @@ export async function createSessionAction({ request, params, context }: Route.Ac
     scope,
     result.session.workflowName,
     result.session.id,
-    { text: prompt },
+    { text: prompt, commandKind: "prompt" },
   );
   const detailPath = `/backoffice/sessions/${params.orgId}/sessions/${encodeURIComponent(result.session.workflowName)}/${encodeURIComponent(result.session.id)}`;
 

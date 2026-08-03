@@ -240,6 +240,39 @@ describe("automation script workflow run presentation", () => {
     });
   });
 
+  it("removes speculative downstream activity from a losing execution", () => {
+    const runs = projectScriptWorkflowRuns({
+      absolutePath,
+      visualization,
+      instances: [
+        workflowRun({
+          workflowSteps: [
+            workflowStep({
+              stepKey: "do:prepare",
+              status: "completed",
+              committedByExecutionId: "winning-execution",
+            }),
+          ],
+          workflowStepEmissions: [
+            workflowEmission({
+              actor: "user",
+              executionId: "losing-execution",
+              stepKey: "do:prepare",
+            }),
+            workflowEmission({
+              actor: "user",
+              executionId: "losing-execution",
+              stepKey: "do:finalize",
+            }),
+          ],
+        }),
+      ],
+    });
+
+    assert(runs[0]?.stepStatesByNodeId.get(stepNode("prepare").id)?.emissionCount === 0);
+    expect(runs[0]?.stepStatesByNodeId.get(stepNode("finalize").id)).toBeUndefined();
+  });
+
   it("keeps a new retry epoch active after the previous epoch commits", () => {
     const runs = projectScriptWorkflowRuns({
       absolutePath,
@@ -540,6 +573,7 @@ function workflowStep(
     name: "prepare",
     type: "do",
     status: "completed",
+    committedByExecutionId: "execution-1",
     attempts: 1,
     result: null,
     errorName: null,
@@ -555,6 +589,7 @@ function workflowEmission(overrides: Partial<WorkflowRunEmission> = {}): Workflo
     id: "emission-1",
     actor: "system",
     stepKey: "do:prepare",
+    executionId: "execution-1",
     epoch: "epoch-1",
     sequence: 0,
     payload: createWorkflowStepStartedControlPayload(),

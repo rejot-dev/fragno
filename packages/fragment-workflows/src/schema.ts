@@ -47,21 +47,6 @@ export const workflowsSchema = schema("workflows", (s) => {
                 unique: true,
               },
             )
-            // Powers status-filtered list queries with cursor-safe string/id ordering.
-            .createIndex("idx_workflow_instance_workflowName_status_instanceId", [
-              "workflowName",
-              "status",
-              "instanceId",
-            ])
-            .createIndex("idx_workflow_instance_workflowName_remoteWorkflowName_instanceId", [
-              "workflowName",
-              "remoteWorkflowName",
-              "instanceId",
-            ])
-            .createIndex(
-              "idx_workflow_instance_workflowName_remoteWorkflowName_status_instanceId",
-              ["workflowName", "remoteWorkflowName", "status", "instanceId"],
-            )
         );
       })
       // Durable step execution history and wait state.
@@ -84,6 +69,8 @@ export const workflowsSchema = schema("workflows", (s) => {
             .addColumn("type", column("string"))
             // Step status (waiting/completed/errored).
             .addColumn("status", column("string"))
+            // Execution whose transaction most recently committed this step state.
+            .addColumn("committedByExecutionId", column("string"))
             // Attempt counter used by retry logic.
             .addColumn("attempts", column("integer").defaultTo(0))
             // Total attempts allowed (for diagnostics and reporting).
@@ -157,6 +144,7 @@ export const workflowsSchema = schema("workflows", (s) => {
           .addColumn("id", idColumn())
           .addColumn("instanceRef", referenceColumn({ table: "workflow_instance" }))
           .addColumn("stepKey", column("string"))
+          .addColumn("executionId", column("string"))
           .addColumn("epoch", column("string"))
           .addColumn("sequence", column("integer"))
           .addColumn("actor", column("string").defaultTo("user"))
@@ -186,6 +174,15 @@ export const workflowsSchema = schema("workflows", (s) => {
             "sequence",
             "id",
           ]),
+      )
+      .alterTable("workflow_instance", (t) =>
+        t.createIndex("idx_workflow_instance_list", [
+          "workflowName",
+          "createdAt",
+          "instanceId",
+          "remoteWorkflowName",
+          "status",
+        ]),
       )
   );
 });

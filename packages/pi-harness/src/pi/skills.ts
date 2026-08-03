@@ -29,7 +29,6 @@ export type PiSkillRegistry = Record<string, PiSkillDefinition>;
 export type PiAgentSkillSelection = readonly string[] | "all";
 
 export type PiSkillResolverContext = {
-  agentName: string;
   workflowName: string;
   sessionId: string;
   turnId: string;

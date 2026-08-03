@@ -12,6 +12,7 @@ export function SessionThread({
   needsNudge,
   onContinue,
   onStop,
+  readyForInput,
   running,
   showThinking,
   showToolCalls,
@@ -26,6 +27,7 @@ export function SessionThread({
   needsNudge: boolean;
   onContinue: () => unknown;
   onStop: () => unknown;
+  readyForInput: boolean;
   running: boolean;
   showThinking: boolean;
   showToolCalls: boolean;
@@ -104,20 +106,24 @@ export function SessionThread({
                 <span className="hidden max-w-44 truncate px-2 text-[10px] text-[var(--bo-muted-2)] sm:block">
                   {modelLabel}
                 </span>
-                <label>
-                  <span className="sr-only">Message mode</span>
-                  <select
-                    disabled={disabled}
-                    value={commandKind}
-                    onChange={(event) => {
-                      onCommandKindChange(event.target.value as "followUp" | "steer");
-                    }}
-                    className="min-h-10 border border-transparent bg-transparent px-2 text-xs font-medium text-[var(--bo-muted)] transition-[background-color,border-color,color] duration-150 outline-none hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] disabled:cursor-not-allowed disabled:hover:border-transparent disabled:hover:bg-transparent disabled:hover:text-[var(--bo-muted)]"
-                  >
-                    <option value="followUp">Follow up</option>
-                    <option value="steer">Steer</option>
-                  </select>
-                </label>
+                {readyForInput ? (
+                  <span className="px-2 text-xs font-medium text-[var(--bo-muted)]">New turn</span>
+                ) : (
+                  <label>
+                    <span className="sr-only">Message mode</span>
+                    <select
+                      disabled={disabled}
+                      value={commandKind}
+                      onChange={(event) => {
+                        onCommandKindChange(event.target.value as "followUp" | "steer");
+                      }}
+                      className="min-h-10 border border-transparent bg-transparent px-2 text-xs font-medium text-[var(--bo-muted)] transition-[background-color,border-color,color] duration-150 outline-none hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] disabled:cursor-not-allowed disabled:hover:border-transparent disabled:hover:bg-transparent disabled:hover:text-[var(--bo-muted)]"
+                    >
+                      <option value="followUp">Follow up</option>
+                      <option value="steer">Steer</option>
+                    </select>
+                  </label>
+                )}
                 {disabled ? (
                   <span className="hidden text-xs text-[var(--bo-muted-2)] sm:inline">
                     {disabledReason}

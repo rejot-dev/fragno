@@ -1,7 +1,5 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
-import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
-
 import { InMemoryAdapter } from "@fragno-dev/db";
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
@@ -19,6 +17,7 @@ import {
   type PiBashCommandContext,
   type PiSessionFileSystemContext,
 } from "./pi";
+import { BACKOFFICE_PI_WORKFLOW_NAME } from "./pi-shared";
 import { loadBackofficePiSkills } from "./pi-skills";
 
 const testRuntimeConfig: BackofficeRuntimeConfig = {
@@ -174,16 +173,16 @@ describe("Backoffice Pi fragment", () => {
     });
 
     const response = await runtime.piFragment.handler(
-      new Request(`http://test.local/api/pi/workflows/${INTERACTIVE_CHAT_WORKFLOW_NAME}/sessions`, {
+      new Request(`http://test.local/api/pi/workflows/${BACKOFFICE_PI_WORKFLOW_NAME}/sessions`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ input: { harnessName: "default::openai::bla" } }),
+        body: JSON.stringify({ metadata: { agentName: "default::openai::bla" }, input: {} }),
       }),
     );
 
     assert(response.status === 400);
     await expect(response.json()).resolves.toMatchObject({
-      code: "AGENT_NOT_FOUND",
+      code: "WORKFLOW_PARAMS_INVALID",
       message: "Model openai/bla not found.",
     });
 
@@ -191,7 +190,7 @@ describe("Backoffice Pi fragment", () => {
       "GET",
       "/workflows/:workflowName/sessions",
       {
-        pathParams: { workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME },
+        pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME },
       },
     );
     assert(listResponse.type === "json");

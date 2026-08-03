@@ -23,12 +23,11 @@ export function usePiSessionListing({
   const collections = database.collectionsFor(source);
   const listingQuery = useLiveQuery(
     (query) => buildPiSessionListingQuery(query, { collections, workflowName, limit }),
-    [collections.sessions, collections.workflowInstances, limit, workflowName],
+    [collections.workflowInstances, limit, workflowName],
   );
   const snapshot: PiSessionListingSnapshot = projectPiSessionListingRows(listingQuery.data ?? []);
   const sourceError = listingQuery.isError
-    ? (collections.sessions.utils.getLastError() ??
-      collections.workflowInstances.utils.getLastError())
+    ? collections.workflowInstances.utils.getLastError()
     : undefined;
   const persistenceError =
     sourceError instanceof Error

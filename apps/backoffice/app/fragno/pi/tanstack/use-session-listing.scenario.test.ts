@@ -1,8 +1,8 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
-import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
-
 import { queryOnce } from "@tanstack/react-db";
+
+import { BACKOFFICE_PI_WORKFLOW_NAME } from "../pi-shared";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class DurableObject {
@@ -22,7 +22,7 @@ import { buildPiSessionListingQuery, projectPiSessionListingRows } from "./sessi
 const querySessionListing = (
   collections: Parameters<typeof buildPiSessionListingQuery>[1]["collections"],
   limit: number,
-  workflowName = INTERACTIVE_CHAT_WORKFLOW_NAME,
+  workflowName = BACKOFFICE_PI_WORKFLOW_NAME,
 ) =>
   queryOnce((query) =>
     buildPiSessionListingQuery(query, {
@@ -33,7 +33,7 @@ const querySessionListing = (
   );
 
 describe("usePiSessionListing", () => {
-  test("queries the real Pi outbox with the production filter, join, ordering, and limit", async () => {
+  test("queries workflow instances with the production filter, ordering, and limit", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "Pi session listing TanStack query",
@@ -87,17 +87,17 @@ describe("usePiSessionListing", () => {
               );
 
               const limitedListing = await querySessionListing(database.collections, 2);
-              const storedSessions = await queryOnce((query) =>
-                query.from({ session: database.collections.sessions }),
+              const storedInstances = await queryOnce((query) =>
+                query.from({ instance: database.collections.workflowInstances }),
               );
-              const expectedSessionIds = storedSessions
+              const expectedSessionIds = storedInstances
                 .sort(
                   (left, right) =>
                     right.createdAt.getTime() - left.createdAt.getTime() ||
                     right.id.localeCompare(left.id),
                 )
                 .slice(0, 2)
-                .map((session) => session.sessionId);
+                .map((instance) => instance.instanceId);
               expect(limitedListing.map((row) => row.sessionId)).toEqual(expectedSessionIds);
 
               const snapshot = projectPiSessionListingRows(limitedListing);

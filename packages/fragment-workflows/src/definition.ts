@@ -17,6 +17,7 @@ import type {
   WorkflowStepRecord,
 } from "./runner/types";
 import { workflowsSchema } from "./schema";
+import { selectCanonicalWorkflowStepEmissions } from "./step-emission-control";
 import {
   isSystemEventActor,
   WORKFLOW_EVENT_ACTOR_SYSTEM,
@@ -24,15 +25,18 @@ import {
   WORKFLOW_SYSTEM_PAUSE_EVENT_TYPE,
   type WorkflowEventActor,
 } from "./system-events";
-import type {
-  InstanceStatus,
-  WorkflowEnqueuedHookPayload,
-  WorkflowInstanceCurrentStep,
-  WorkflowInstanceMetadata,
-  WorkflowRegistryEntry,
-  WorkflowStepEmissionsCleanupHookPayload,
-  WorkflowTerminalHookPayload,
-  WorkflowsFragmentConfig,
+import {
+  WorkflowInstanceNotFoundError,
+  WorkflowNotFoundError,
+  WorkflowParamsInvalidError,
+  type InstanceStatus,
+  type WorkflowEnqueuedHookPayload,
+  type WorkflowInstanceCurrentStep,
+  type WorkflowInstanceMetadata,
+  type WorkflowRegistryEntry,
+  type WorkflowStepEmissionsCleanupHookPayload,
+  type WorkflowTerminalHookPayload,
+  type WorkflowsFragmentConfig,
 } from "./workflow";
 import { validateAndNormalizeWorkflowOperation } from "./workflow-operation";
 
@@ -63,6 +67,7 @@ export type WorkflowsHistoryStep = {
   name: string;
   type: string;
   status: string;
+  committedByExecutionId: string;
   attempts: number;
   maxAttempts: number;
   timeoutMs: number | null;
@@ -87,6 +92,7 @@ export type WorkflowsHistoryEvent = {
 export type WorkflowsHistoryEmission = {
   id: string;
   stepKey: string;
+  executionId: string;
   epoch: string;
   sequence: number;
   actor: WorkflowEventActor;
@@ -217,6 +223,7 @@ function buildStepHistoryEntry(step: WorkflowStepRecord): WorkflowsHistoryStep {
     name: step.name,
     type: step.type,
     status: step.status,
+    committedByExecutionId: step.committedByExecutionId,
     attempts: step.attempts,
     maxAttempts: step.maxAttempts,
     timeoutMs: step.timeoutMs,
@@ -245,6 +252,7 @@ function buildEmissionHistoryEntry(emission: WorkflowStepEmissionRecord): Workfl
   return {
     id: emission.id.toString(),
     stepKey: emission.stepKey,
+    executionId: emission.executionId,
     epoch: emission.epoch,
     sequence: emission.sequence,
     actor: emission.actor,
@@ -275,7 +283,7 @@ export const validateWorkflowParams = async (
 ): Promise<unknown> => {
   const entry = workflowsByName.get(workflowName);
   if (!entry) {
-    throw new Error("WORKFLOW_NOT_FOUND");
+    throw new WorkflowNotFoundError(workflowName);
   }
 
   if (!entry.schema) {
@@ -284,9 +292,7 @@ export const validateWorkflowParams = async (
 
   const result = await entry.schema["~standard"].validate(params ?? {});
   if (result.issues) {
-    const error = new Error("WORKFLOW_PARAMS_INVALID");
-    (error as { issues?: unknown }).issues = result.issues;
-    throw error;
+    throw new WorkflowParamsInvalidError(workflowName, result.issues);
   }
 
   return result.value as unknown;
@@ -320,6 +326,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           busHandlerTx: this.handlerTx,
           workflowsByName: deps.workflowsByName,
           workflows: config.workflows ?? {},
+          createExecutionId: () => config.runtime.random.uuid(),
           createEpoch: () => config.runtime.random.uuid(),
           stepEmissions: deps.stepEmissions,
           payload: { ...payload, timestamp },
@@ -363,7 +370,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
     const getWorkflowEntry = (workflowName: string) => {
       const entry = deps.workflowsByName.get(workflowName);
       if (!entry) {
-        throw new Error("WORKFLOW_NOT_FOUND");
+        throw new WorkflowNotFoundError(workflowName);
       }
       return entry;
     };
@@ -515,7 +522,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           )
           .transformRetrieve(([instance]) => {
             if (!instance) {
-              throw new Error("INSTANCE_NOT_FOUND");
+              throw new WorkflowInstanceNotFoundError(workflowName, instanceId);
             }
             return buildInstanceStatus(instance);
           })
@@ -532,7 +539,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           )
           .transformRetrieve(([instance]) => {
             if (!instance) {
-              throw new Error("INSTANCE_NOT_FOUND");
+              throw new WorkflowInstanceNotFoundError(workflowName, instanceId);
             }
             return buildInstanceMetadata(instance);
           })
@@ -571,64 +578,27 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findWithCursor("workflow_instance", (b) => {
-              if (remoteWorkflowName && status) {
-                const query = b
-                  .whereIndex(
-                    "idx_workflow_instance_workflowName_remoteWorkflowName_status_instanceId",
-                    (eb) =>
-                      eb.and(
-                        eb("workflowName", "=", workflowName),
-                        eb("remoteWorkflowName", "=", remoteWorkflowName),
-                        eb("status", "=", status),
-                      ),
-                  )
-                  .orderByIndex(
-                    "idx_workflow_instance_workflowName_remoteWorkflowName_status_instanceId",
-                    effectiveOrder,
-                  )
-                  .pageSize(effectivePageSize);
-
-                return cursor ? query.after(cursor) : query;
-              }
-
-              if (remoteWorkflowName) {
-                const query = b
-                  .whereIndex(
-                    "idx_workflow_instance_workflowName_remoteWorkflowName_instanceId",
-                    (eb) =>
-                      eb.and(
-                        eb("workflowName", "=", workflowName),
-                        eb("remoteWorkflowName", "=", remoteWorkflowName),
-                      ),
-                  )
-                  .orderByIndex(
-                    "idx_workflow_instance_workflowName_remoteWorkflowName_instanceId",
-                    effectiveOrder,
-                  )
-                  .pageSize(effectivePageSize);
-
-                return cursor ? query.after(cursor) : query;
-              }
-
-              if (status) {
-                const query = b
-                  .whereIndex("idx_workflow_instance_workflowName_status_instanceId", (eb) =>
-                    eb.and(eb("workflowName", "=", workflowName), eb("status", "=", status)),
-                  )
-                  .orderByIndex(
-                    "idx_workflow_instance_workflowName_status_instanceId",
-                    effectiveOrder,
-                  )
-                  .pageSize(effectivePageSize);
-
-                return cursor ? query.after(cursor) : query;
-              }
-
               const query = b
-                .whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
-                  eb("workflowName", "=", workflowName),
-                )
-                .orderByIndex("idx_workflow_instance_workflowName_instanceId", effectiveOrder)
+                .whereIndex("idx_workflow_instance_list", (eb) => {
+                  if (remoteWorkflowName && status) {
+                    return eb.and(
+                      eb("workflowName", "=", workflowName),
+                      eb("remoteWorkflowName", "=", remoteWorkflowName),
+                      eb("status", "=", status),
+                    );
+                  }
+                  if (remoteWorkflowName) {
+                    return eb.and(
+                      eb("workflowName", "=", workflowName),
+                      eb("remoteWorkflowName", "=", remoteWorkflowName),
+                    );
+                  }
+                  if (status) {
+                    return eb.and(eb("workflowName", "=", workflowName), eb("status", "=", status));
+                  }
+                  return eb("workflowName", "=", workflowName);
+                })
+                .orderByIndex("idx_workflow_instance_list", effectiveOrder)
                 .pageSize(effectivePageSize);
 
               return cursor ? query.after(cursor) : query;
@@ -639,7 +609,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               instances: instances.items.map((instance) => ({
                 id: instance.instanceId,
                 details: buildInstanceStatus(instance),
+                params: instance.params ?? {},
                 createdAt: instance.createdAt,
+                updatedAt: instance.updatedAt,
               })),
               cursor: instances.cursor,
               hasNextPage: instances.hasNextPage,
@@ -682,15 +654,20 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .mutate(({ retrieveResult }) => {
             const [instance, steps, events, emissions] = retrieveResult;
             if (!instance) {
-              throw new Error("INSTANCE_NOT_FOUND");
+              throw new WorkflowInstanceNotFoundError(workflowName, instanceId);
             }
+
+            const canonicalEmissions = selectCanonicalWorkflowStepEmissions({
+              steps,
+              emissions,
+            });
 
             return {
               steps: steps.map(buildStepHistoryEntry),
               events: events.flatMap((event) =>
                 isSystemEventActor(event.actor) ? [] : [buildEventHistoryEntry(event)],
               ),
-              emissions: emissions.map(buildEmissionHistoryEntry),
+              emissions: canonicalEmissions.map(buildEmissionHistoryEntry),
             };
           })
           .build();
@@ -706,7 +683,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           )
           .mutate(({ uow, retrieveResult: [instance] }) => {
             if (!instance) {
-              throw new Error("INSTANCE_NOT_FOUND");
+              throw new WorkflowInstanceNotFoundError(workflowName, instanceId);
             }
 
             const currentStatus = buildInstanceStatus(instance).status;
@@ -749,7 +726,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           )
           .mutate(({ uow, retrieveResult: [instance] }) => {
             if (!instance) {
-              throw new Error("INSTANCE_NOT_FOUND");
+              throw new WorkflowInstanceNotFoundError(workflowName, instanceId);
             }
 
             const currentStatus = buildInstanceStatus(instance).status;
@@ -796,7 +773,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           )
           .mutate(({ uow, retrieveResult: [instance] }) => {
             if (!instance) {
-              throw new Error("INSTANCE_NOT_FOUND");
+              throw new WorkflowInstanceNotFoundError(workflowName, instanceId);
             }
 
             const currentStatus = buildInstanceStatus(instance).status;
@@ -857,7 +834,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           )
           .mutate(({ uow, retrieveResult: [instance, steps] }): RetryInstanceResult => {
             if (!instance) {
-              throw new Error("INSTANCE_NOT_FOUND");
+              throw new WorkflowInstanceNotFoundError(workflowName, instanceId);
             }
 
             const step = options?.stepKey
@@ -992,7 +969,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           )
           .mutate(({ uow, retrieveResult: [instance, existingEvent, steps] }) => {
             if (!instance) {
-              throw new Error("INSTANCE_NOT_FOUND");
+              throw new WorkflowInstanceNotFoundError(workflowName, instanceId);
             }
 
             if (

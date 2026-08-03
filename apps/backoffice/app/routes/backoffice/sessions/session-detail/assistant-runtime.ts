@@ -22,6 +22,7 @@ export type PiToolCallArtifact = {
 export type PiAssistantMessageMetadata = {
   errorMessage?: string;
   statusText?: string | null;
+  stopReason?: Extract<AgentMessage, { role: "assistant" }>["stopReason"];
   usage?: Extract<AgentMessage, { role: "assistant" }>["usage"];
 };
 
@@ -217,6 +218,7 @@ export function createAssistantUiMessages({
       }
     }
 
+    const visibleErrorMessage = message.stopReason === "aborted" ? undefined : message.errorMessage;
     converted.push({
       id: `pi-assistant-${message.timestamp ?? index}-${index}`,
       role: "assistant",
@@ -224,13 +226,18 @@ export function createAssistantUiMessages({
       createdAt: messageDate(message.timestamp, index),
       status: shouldStream
         ? { type: "running" }
-        : message.errorMessage
-          ? { type: "incomplete", reason: "error", error: message.errorMessage }
-          : { type: "complete", reason: "stop" },
+        : message.stopReason === "aborted"
+          ? { type: "incomplete", reason: "cancelled" }
+          : message.stopReason === "length"
+            ? { type: "incomplete", reason: "length" }
+            : visibleErrorMessage
+              ? { type: "incomplete", reason: "error", error: visibleErrorMessage }
+              : { type: "complete", reason: "stop" },
       metadata: {
         custom: {
-          errorMessage: message.errorMessage,
+          errorMessage: visibleErrorMessage,
           statusText: shouldStream ? statusText : null,
+          stopReason: message.stopReason,
           usage: message.usage,
         } satisfies PiAssistantMessageMetadata,
       },

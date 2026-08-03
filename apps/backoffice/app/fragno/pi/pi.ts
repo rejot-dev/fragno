@@ -1,12 +1,7 @@
+import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { createPiHarness, createPiWorkflows } from "@fragno-dev/pi-harness/factory";
-import { NoOpExecutionEnv } from "@fragno-dev/pi-harness/harness/execution-env";
-import type { PiSkillDefinition, PiSkillRegistryResolver } from "@fragno-dev/pi-harness/skills";
 import type { PiFragmentConfig } from "@fragno-dev/pi-harness/types";
-import {
-  createInteractiveChatWorkflow,
-  INTERACTIVE_CHAT_WORKFLOW_NAME,
-  type InteractiveChatWorkflowParams,
-} from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
+import { createInteractiveChatWorkflow } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import type { WorkflowRegistryEntry } from "@fragno-dev/workflows/workflow";
 import { Type, type TSchema } from "typebox";
 
@@ -19,7 +14,7 @@ import {
   type AgentTool,
   type Skill,
 } from "@earendil-works/pi-agent-core";
-import { getModels, type Model } from "@earendil-works/pi-ai";
+import type { AuthContext, Models } from "@earendil-works/pi-ai";
 
 import type {
   BackofficeContextScope,
@@ -58,6 +53,7 @@ import {
 } from "../runtime-tools/tool-families";
 import type { PiCodemodeWorkflowParams } from "./pi-codemode-workflow";
 import {
+  BACKOFFICE_PI_WORKFLOW_NAME,
   parsePiAgentName,
   PI_PROVIDER_TO_MODEL_PROVIDER,
   PI_TOOL_IDS,
@@ -67,7 +63,6 @@ import {
   type StoredPiConfig,
 } from "./pi-shared";
 import { loadBackofficePiSkills } from "./pi-skills";
-import { withSinclairSchema } from "./typebox-compat";
 
 export type PiRuntimeFragments = {
   piFragment: ReturnType<typeof createPiHarness>;
@@ -109,37 +104,31 @@ export type PiCodemodeRuntime = {
   workflow?: AutomationWorkflowRuntime;
 };
 
-export const bashParametersSchema = withSinclairSchema(
-  Type.Object({
-    script: Type.String({
-      minLength: 1,
-      description: "Shell script or command to execute in the sandboxed environment.",
-    }),
-    cwd: Type.Optional(
-      Type.String({ description: "Optional working directory within the virtual filesystem." }),
-    ),
+export const bashParametersSchema = Type.Object({
+  script: Type.String({
+    minLength: 1,
+    description: "Shell script or command to execute in the sandboxed environment.",
   }),
-);
+  cwd: Type.Optional(
+    Type.String({ description: "Optional working directory within the virtual filesystem." }),
+  ),
+});
 
-const readParametersSchema = withSinclairSchema(
-  Type.Object({
-    path: Type.String({ description: "Path to the file to read (relative or absolute)." }),
-    offset: Type.Optional(
-      Type.Number({ description: "Line number to start reading from (1-indexed)." }),
-    ),
-    limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read." })),
-  }),
-);
+const readParametersSchema = Type.Object({
+  path: Type.String({ description: "Path to the file to read (relative or absolute)." }),
+  offset: Type.Optional(
+    Type.Number({ description: "Line number to start reading from (1-indexed)." }),
+  ),
+  limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read." })),
+});
 
-const execCodeModeParametersSchema = withSinclairSchema(
-  Type.Object({
-    code: Type.String({
-      minLength: 1,
-      description:
-        "Standalone async arrow function to execute in an isolated dynamic Worker with state.* filesystem tools.",
-    }),
+const execCodeModeParametersSchema = Type.Object({
+  code: Type.String({
+    minLength: 1,
+    description:
+      "Standalone async arrow function to execute in an isolated dynamic Worker with state.* filesystem tools.",
   }),
-);
+});
 
 const defineTool = <TParameters extends TSchema, TDetails>(
   tool: AgentTool<TParameters, TDetails>,
@@ -478,85 +467,51 @@ export const createPiToolRegistry = (options: CreatePiToolFactoryOptions) => {
   };
 };
 
-const BACKOFFICE_OPENAI_MODELS: Model<"openai-responses">[] = [
-  {
-    id: "gpt-5.6-sol",
-    name: "GPT-5.6 Sol",
-    api: "openai-responses",
-    provider: "openai",
-    baseUrl: "https://api.openai.com/v1",
-    reasoning: true,
-    thinkingLevelMap: { off: "none", xhigh: "xhigh" },
-    input: ["text", "image"],
-    cost: { input: 5, output: 30, cacheRead: 5, cacheWrite: 0 },
-    contextWindow: 1_050_000,
-    maxTokens: 128_000,
-  },
-  {
-    id: "gpt-5.6-terra",
-    name: "GPT-5.6 Terra",
-    api: "openai-responses",
-    provider: "openai",
-    baseUrl: "https://api.openai.com/v1",
-    reasoning: true,
-    thinkingLevelMap: { off: "none", xhigh: "xhigh" },
-    input: ["text", "image"],
-    cost: { input: 2.5, output: 15, cacheRead: 2.5, cacheWrite: 0 },
-    contextWindow: 1_050_000,
-    maxTokens: 128_000,
-  },
-  {
-    id: "gpt-5.6-luna",
-    name: "GPT-5.6 Luna",
-    api: "openai-responses",
-    provider: "openai",
-    baseUrl: "https://api.openai.com/v1",
-    reasoning: true,
-    thinkingLevelMap: { off: "none", xhigh: "xhigh" },
-    input: ["text", "image"],
-    cost: { input: 1, output: 6, cacheRead: 1, cacheWrite: 0 },
-    contextWindow: 1_050_000,
-    maxTokens: 128_000,
-  },
-];
-
 const resolveBackofficeModel = (
+  models: Models,
   provider: keyof typeof PI_PROVIDER_TO_MODEL_PROVIDER,
   modelName: string,
-) => {
-  const modelProvider = PI_PROVIDER_TO_MODEL_PROVIDER[provider];
-  const models =
-    provider === "openai"
-      ? [...BACKOFFICE_OPENAI_MODELS, ...getModels(modelProvider)]
-      : getModels(modelProvider);
-  return models.find((model) => model.name === modelName || model.id === modelName);
-};
+) =>
+  models
+    .getModels(PI_PROVIDER_TO_MODEL_PROVIDER[provider])
+    .find((model) => model.name === modelName || model.id === modelName);
 
-const resolveApiKey = (config: StoredPiConfig, provider: string): string | undefined => {
-  switch (provider) {
-    case "openai":
-      return config.apiKeys.openai;
-    case "anthropic":
-      return config.apiKeys.anthropic;
-    case "google":
-      return config.apiKeys.gemini;
-    default:
-      return undefined;
-  }
-};
+const createBackofficeAuthContext = (config: StoredPiConfig): AuthContext => ({
+  env: async (name) => {
+    switch (name) {
+      case "OPENAI_API_KEY":
+        return config.apiKeys.openai;
+      case "ANTHROPIC_API_KEY":
+        return config.apiKeys.anthropic;
+      case "GEMINI_API_KEY":
+        return config.apiKeys.gemini;
+      default:
+        return undefined;
+    }
+  },
+  fileExists: async () => false,
+});
+
+type BackofficePiSkillResolver = (sessionId: string) => Promise<Skill[]>;
 
 const createBackofficePiSkillResolver =
   (options: {
     sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
     sessionFileSystemContext: PiSessionFileSystemContext;
-  }): PiSkillRegistryResolver =>
-  async ({ sessionId }) => {
+  }): BackofficePiSkillResolver =>
+  async (sessionId) => {
     const fileSystem = await getSessionFs(
       options.sessionFileSystems,
       sessionId,
       options.sessionFileSystemContext,
     );
-    return loadBackofficePiSkills(fileSystem);
+    const skills = await loadBackofficePiSkills(fileSystem);
+    return Object.values(skills).map((skill) => ({
+      name: skill.name,
+      description: skill.description,
+      content: skill.body ?? "",
+      filePath: skill.location ?? `${skill.directory ?? "/skills"}/${skill.name}/SKILL.md`,
+    }));
   };
 
 type BackofficeSystemPromptResolver = (options: {
@@ -578,27 +533,23 @@ const createBackofficeSystemPromptResolver =
     return `${baseSystemPrompt}\n\n${await renderCodemodeSystemPrompt({ fileSystem })}`;
   };
 
-const toAgentSkill = (skill: PiSkillDefinition): Skill => ({
-  name: skill.name,
-  description: skill.description,
-  content: skill.body ?? "",
-  filePath: skill.location ?? `${skill.directory ?? "/skills"}/${skill.name}/SKILL.md`,
-});
-
-const buildSystemPrompt = async (
-  harness: PiHarnessConfig,
-  params: Pick<InteractiveChatWorkflowParams, "systemPrompt">,
-  skills: Skill[],
-  resolveSystemPrompt: BackofficeSystemPromptResolver,
-  sessionId: string,
-) => {
+const buildSystemPrompt = async (options: {
+  harness: PiHarnessConfig;
+  systemPrompt?: string;
+  skills: Skill[];
+  resolveSystemPrompt: BackofficeSystemPromptResolver;
+  sessionId: string;
+}) => {
   const baseSystemPrompt = [
-    params.systemPrompt ?? harness.systemPrompt,
-    formatSkillsForSystemPrompt(skills),
+    options.systemPrompt ?? options.harness.systemPrompt,
+    formatSkillsForSystemPrompt(options.skills),
   ]
     .filter((part) => part.trim().length > 0)
     .join("\n\n");
-  return await resolveSystemPrompt({ sessionId, baseSystemPrompt });
+  return await options.resolveSystemPrompt({
+    sessionId: options.sessionId,
+    baseSystemPrompt,
+  });
 };
 
 const resolveHarnessAgentTools = (harness: PiHarnessConfig): PiToolId[] => {
@@ -614,11 +565,12 @@ const isValidPiToolId = (toolId: string): toolId is (typeof PI_TOOL_IDS)[number]
 
 const validateBackofficePiAgentName = (
   config: StoredPiConfig,
+  models: Models,
   agentName: string,
 ): string | null => {
   const parsedAgentName = parsePiAgentName(agentName);
   if (!parsedAgentName) {
-    return null;
+    return "Agent must use the harnessId::provider::model format.";
   }
 
   const harness = resolvePiHarnesses(config.harnesses).find(
@@ -628,7 +580,7 @@ const validateBackofficePiAgentName = (
     return `Harness ${parsedAgentName.harnessId} not found.`;
   }
 
-  const model = resolveBackofficeModel(parsedAgentName.provider, parsedAgentName.model);
+  const model = resolveBackofficeModel(models, parsedAgentName.provider, parsedAgentName.model);
   if (!model) {
     return `Model ${parsedAgentName.provider}/${parsedAgentName.model} not found.`;
   }
@@ -638,43 +590,48 @@ const validateBackofficePiAgentName = (
 
 const createBackofficeInteractiveChatWorkflow = ({
   config,
+  models,
   createTools,
   skills,
   resolveSystemPrompt,
 }: {
   config: StoredPiConfig;
+  models: Models;
   createTools: BackofficePiToolFactory;
-  skills: PiSkillRegistryResolver;
+  skills: BackofficePiSkillResolver;
   resolveSystemPrompt: BackofficeSystemPromptResolver;
 }): WorkflowRegistryEntry =>
   createInteractiveChatWorkflow({
+    name: BACKOFFICE_PI_WORKFLOW_NAME,
     commandTimeout: "1 hour",
-    resolveHarness: async (params, context) => {
-      const requestedAgentName = params.harnessName ?? "default";
+    options: async (event) => {
+      const requestedAgentName = event.payload.metadata?.agentName;
+      if (typeof requestedAgentName !== "string") {
+        throw new Error("BACKOFFICE_PI_AGENT_REQUIRED");
+      }
+
       const parsedAgentName = parsePiAgentName(requestedAgentName);
-      const harnessId = parsedAgentName?.harnessId ?? requestedAgentName;
-      const harness = resolvePiHarnesses(config.harnesses).find((entry) => entry.id === harnessId);
+      if (!parsedAgentName) {
+        throw new Error("Agent must use the harnessId::provider::model format.");
+      }
+
+      const harness = resolvePiHarnesses(config.harnesses).find(
+        (entry) => entry.id === parsedAgentName.harnessId,
+      );
       if (!harness) {
-        throw new Error(`Harness ${harnessId} not found.`);
+        throw new Error(`Harness ${parsedAgentName.harnessId} not found.`);
       }
 
-      const model = parsedAgentName
-        ? resolveBackofficeModel(parsedAgentName.provider, parsedAgentName.model)
-        : params.model;
+      const model = resolveBackofficeModel(models, parsedAgentName.provider, parsedAgentName.model);
       if (!model) {
-        throw new Error(
-          parsedAgentName
-            ? `Model ${parsedAgentName.provider}/${parsedAgentName.model} not found.`
-            : "INTERACTIVE_CHAT_MODEL_REQUIRED",
-        );
+        throw new Error(`Model ${parsedAgentName.provider}/${parsedAgentName.model} not found.`);
       }
 
-      const apiKey = resolveApiKey(config, model.provider);
-      if (!apiKey) {
+      if (!(await models.checkAuth(model.provider))) {
         throw new Error(`API key for provider ${model.provider} is not configured.`);
       }
 
-      const sessionTools = await createTools(context.sessionId);
+      const sessionTools = await createTools(event.instanceId);
       const activeTools = resolveHarnessAgentTools(harness).map((toolId) => {
         const tool = sessionTools[toolId];
         if (!tool) {
@@ -682,33 +639,21 @@ const createBackofficeInteractiveChatWorkflow = ({
         }
         return tool;
       });
-      const agentSkills = Object.values(
-        await skills({
-          agentName: requestedAgentName,
-          workflowName: context.workflowName,
-          sessionId: context.sessionId,
-          turnId: "initial",
-        }),
-      ).map(toAgentSkill);
+      const agentSkills = await skills(event.instanceId);
 
       return {
-        harnessName: requestedAgentName,
-        env: new NoOpExecutionEnv(),
         model,
-        thinkingLevel: params.thinkingLevel ?? harness.thinkingLevel,
-        systemPrompt: await buildSystemPrompt(
+        models,
+        thinkingLevel: event.payload.thinkingLevel ?? harness.thinkingLevel,
+        systemPrompt: await buildSystemPrompt({
           harness,
-          params,
-          agentSkills,
+          systemPrompt: event.payload.systemPrompt,
+          skills: agentSkills,
           resolveSystemPrompt,
-          context.sessionId,
-        ),
+          sessionId: event.instanceId,
+        }),
         resources: { skills: agentSkills },
         tools: activeTools,
-        getApiKeyAndHeaders: async (requestModel) => {
-          const requestApiKey = resolveApiKey(config, requestModel.provider);
-          return requestApiKey ? { apiKey: requestApiKey } : undefined;
-        },
       };
     },
   });
@@ -716,12 +661,19 @@ const createBackofficeInteractiveChatWorkflow = ({
 const buildPiRuntime = (
   config: StoredPiConfig,
   createTools: BackofficePiToolFactory,
-  skills: PiSkillRegistryResolver,
+  skills: BackofficePiSkillResolver,
   resolveSystemPrompt: BackofficeSystemPromptResolver,
   onOperationCompleted: PiFragmentConfig["onOperationCompleted"],
 ) => {
+  const models = builtinModels({ authContext: createBackofficeAuthContext(config) });
   const workflows = [
-    createBackofficeInteractiveChatWorkflow({ config, createTools, skills, resolveSystemPrompt }),
+    createBackofficeInteractiveChatWorkflow({
+      config,
+      models,
+      createTools,
+      skills,
+      resolveSystemPrompt,
+    }),
   ];
   const piConfig = {
     workflows,
@@ -731,6 +683,7 @@ const buildPiRuntime = (
 
   return {
     config: piConfig,
+    models,
     workflows: createPiWorkflows(piConfig),
   };
 };
@@ -799,29 +752,29 @@ export const createPiRuntime = (options: {
       "POST",
       "/workflows/:workflowName/sessions",
       async ({ input, pathParams }, { error }) => {
-        if (pathParams.workflowName !== INTERACTIVE_CHAT_WORKFLOW_NAME) {
+        if (pathParams.workflowName !== BACKOFFICE_PI_WORKFLOW_NAME) {
           return undefined;
         }
 
         const values = await input.valid();
-        const inputValues = values.input;
-        const agentName =
-          inputValues && typeof inputValues === "object" && "harnessName" in inputValues
-            ? inputValues.harnessName
-            : inputValues && typeof inputValues === "object" && "agentName" in inputValues
-              ? inputValues.agentName
-              : null;
+        const agentName = values.metadata?.agentName;
 
         if (typeof agentName !== "string") {
-          return undefined;
+          return error(
+            {
+              message: "Agent name is required.",
+              code: "WORKFLOW_PARAMS_INVALID",
+            },
+            400,
+          );
         }
 
-        const message = validateBackofficePiAgentName(options.config, agentName);
+        const message = validateBackofficePiAgentName(options.config, pi.models, agentName);
         if (!message) {
           return undefined;
         }
 
-        return error({ message, code: "AGENT_NOT_FOUND" }, 400);
+        return error({ message, code: "WORKFLOW_PARAMS_INVALID" }, 400);
       },
     );
   });

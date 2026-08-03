@@ -33,14 +33,14 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
 
-import type { PiHarnessOperation } from "../pi/harness/run-pi-harness-step";
 import {
   fauxAssistantMessageWithCheckpoints,
   fauxCheckpoint,
   fauxEventCheckpoint,
   fauxThinkingWithCheckpoints,
   recordFauxPiHarnessPrompt,
-  startFauxPiHarnessOperation,
+  startFauxPiHarnessPrompt,
+  type FauxPiHarnessPromptOptions,
 } from "../pi/pi-test-utils";
 import type { PiWorkflowSessionProjectionState } from "../pi/workflow-session-projection";
 import { piWorkflowStepEmissionEphemeralTable } from "./pi-workflow-emission-stream";
@@ -281,7 +281,7 @@ const projectManualWorkflow = async (
 
 const projectFauxPrompt = async (options: {
   sessionId: string;
-  operation: PiHarnessOperation;
+  operation: FauxPiHarnessPromptOptions["operation"];
   responses: readonly AssistantMessage[];
   tools?: readonly AgentTool[];
 }): Promise<PiWorkflowSessionProjectionState> => {
@@ -303,7 +303,7 @@ type CheckpointProjectionOptions = {
 };
 
 const withFauxCheckpointProjection = async (
-  run: ReturnType<typeof startFauxPiHarnessOperation>,
+  run: ReturnType<typeof startFauxPiHarnessPrompt>,
   sessionId: string,
   checkpointName: string,
   assertProjection: (projection: PiWorkflowSessionProjectionState) => void | Promise<void>,
@@ -460,7 +460,7 @@ describe("Pi harness workflow projection", () => {
   });
 
   it("projects a checkpoint inside a thinking block", async () => {
-    const run = startFauxPiHarnessOperation({
+    const run = startFauxPiHarnessPrompt({
       workflowName,
       sessionId: "thinking-checkpoint",
       operation: { kind: "prompt", args: ["plan"] },
@@ -491,7 +491,7 @@ describe("Pi harness workflow projection", () => {
 
   describe("checkpoint projection coverage plan", () => {
     it("projects message_start as a starting draft", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-message-start",
         operation: { kind: "prompt", args: ["hello"] },
@@ -518,7 +518,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("projects thinking_start as a thinking draft with empty thinking content", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-thinking-start",
         operation: { kind: "prompt", args: ["think"] },
@@ -549,7 +549,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("projects thinking_delta as a thinking draft with partial thinking content", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-thinking-delta",
         operation: { kind: "prompt", args: ["plan"] },
@@ -578,7 +578,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("projects thinking_end as a thinking draft with completed thinking content", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-thinking-end",
         operation: { kind: "prompt", args: ["think"] },
@@ -608,7 +608,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("projects text_start as a writing draft with empty text content", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-text-start",
         operation: { kind: "prompt", args: ["hello"] },
@@ -638,7 +638,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("projects text_delta as a writing draft with partial text content", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-text-delta",
         operation: { kind: "prompt", args: ["hello"] },
@@ -670,7 +670,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("projects text_end as a writing draft with completed text content", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-text-end",
         operation: { kind: "prompt", args: ["hello"] },
@@ -692,7 +692,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("projects toolcall_start as a tool_calling draft tool", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-toolcall-start",
         operation: { kind: "prompt", args: ["write"] },
@@ -730,7 +730,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("projects toolcall_delta as a tool_calling draft tool", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-toolcall-delta",
         operation: { kind: "prompt", args: ["write"] },
@@ -768,7 +768,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("projects toolcall_end as a complete draft tool call before execution", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-toolcall-end",
         operation: { kind: "prompt", args: ["write"] },
@@ -821,7 +821,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("projects tool_execution_start as a running tool", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-tool-start",
         operation: { kind: "prompt", args: ["write"] },
@@ -867,7 +867,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("projects tool_execution_update as a running tool with partialResult", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-tool-update",
         operation: { kind: "prompt", args: ["write"] },
@@ -914,7 +914,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("projects successful tool_execution_end as a done tool with result", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-tool-end",
         operation: { kind: "prompt", args: ["write"] },
@@ -960,7 +960,7 @@ describe("Pi harness workflow projection", () => {
           throw new Error("write failed");
         },
       };
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-tool-error",
         operation: { kind: "prompt", args: ["write"] },
@@ -1002,7 +1002,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("projects toolResult message_end as an in-flight settled result message", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-tool-result-end",
         operation: { kind: "prompt", args: ["write"], stopOnTools: ["write_file"] },
@@ -1053,7 +1053,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("projects assistant message_end as an in-flight settled assistant message", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-assistant-end",
         operation: { kind: "prompt", args: ["hello"] },
@@ -1081,7 +1081,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("hides draftAgentMessage after all live tools and open message drafts finish", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-hide-draft",
         operation: { kind: "prompt", args: ["hello"] },
@@ -1108,7 +1108,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("keeps readyForInput false while a draft assistant message is open", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-draft-not-ready",
         operation: { kind: "prompt", args: ["hello"] },
@@ -1135,7 +1135,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("keeps readyForInput false while tools are running", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-running-tool-not-ready",
         operation: { kind: "prompt", args: ["write"] },
@@ -1280,7 +1280,7 @@ describe("Pi harness workflow projection", () => {
 
     it("projects one run across live and emission-deleted checkpoint snapshots", async () => {
       const sessionId = "multi-checkpoint-completed-step";
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId,
         operation: { kind: "prompt", args: ["stay visible"] },
@@ -1357,7 +1357,7 @@ describe("Pi harness workflow projection", () => {
 
     it("keeps messages visible in indexeddb after completed step emissions are deleted", async () => {
       const sessionId = "indexeddb-deleted-emissions-after-completion";
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId,
         operation: { kind: "prompt", args: ["stay visible"] },
@@ -1393,7 +1393,7 @@ describe("Pi harness workflow projection", () => {
 
     it("keeps messages visible when live emissions settle into an outbox-shaped completed step", async () => {
       const sessionId = "completed-step-without-created-at";
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId,
         operation: { kind: "prompt", args: ["stay visible"] },
@@ -1443,7 +1443,7 @@ describe("Pi harness workflow projection", () => {
         content: "previous turn",
         timestamp: 1,
       } satisfies AgentMessage;
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-initial-overlay",
         operation: { kind: "prompt", args: ["current turn"] },
@@ -1489,8 +1489,73 @@ describe("Pi harness workflow projection", () => {
       expect(projection.statusText).toBeNull();
     });
 
+    it("scopes draft tools to the current assistant message across tool rounds", async () => {
+      const run = startFauxPiHarnessPrompt({
+        workflowName,
+        sessionId: "checkpoint-second-tool-round",
+        operation: { kind: "prompt", args: ["write two files in sequence"] },
+        responses: [
+          fauxAssistantMessage(
+            fauxToolCall(
+              "write_file",
+              { path: "/tmp/one.txt", contents: "one" },
+              { id: "call-one" },
+            ),
+            { stopReason: "toolUse", timestamp: 1 },
+          ),
+          fauxAssistantMessageWithCheckpoints(
+            [
+              fauxEventCheckpoint("second-round-tool-start", "tool_execution_start", {
+                toolCallId: "call-two",
+              }),
+              fauxThinking("The first file is done."),
+              fauxToolCall(
+                "write_file",
+                { path: "/tmp/two.txt", contents: "two" },
+                { id: "call-two" },
+              ),
+            ],
+            { stopReason: "toolUse", timestamp: 2 },
+          ),
+          fauxAssistantMessage(fauxText("Done."), { timestamp: 3 }),
+        ],
+        tools: [writeFileTool],
+      });
+
+      await withFauxCheckpointProjection(
+        run,
+        "checkpoint-second-tool-round",
+        "second-round-tool-start",
+        (projection) => {
+          expect(projection.state.messages.map((message) => message.role)).toEqual([
+            "user",
+            "assistant",
+            "toolResult",
+            "assistant",
+          ]);
+          expect(projection.draftAgentMessage?.assistant?.content).toEqual([
+            { type: "thinking", thinking: "The first file is done." },
+            {
+              type: "toolCall",
+              id: "call-two",
+              name: "write_file",
+              arguments: { path: "/tmp/two.txt", contents: "two" },
+            },
+          ]);
+          expect(projection.draftAgentMessage?.tools).toEqual({
+            "call-two": expect.objectContaining({
+              id: "call-two",
+              name: "write_file",
+              args: { path: "/tmp/two.txt", contents: "two" },
+              status: "running",
+            }),
+          });
+        },
+      );
+    });
+
     it("projects multiple draft tool calls independently", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-multiple-toolcalls",
         operation: { kind: "prompt", args: ["write two files"] },
@@ -1547,7 +1612,7 @@ describe("Pi harness workflow projection", () => {
         ...writeFileTool,
         name: "fast_write_file",
       };
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-mixed-tools",
         operation: { kind: "prompt", args: ["write two files"] },
@@ -1602,7 +1667,7 @@ describe("Pi harness workflow projection", () => {
           return { content: [fauxText(`wrote ${args.path}`)], details: { phase: "done" } };
         },
       };
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-latest-update",
         operation: { kind: "prompt", args: ["write"] },
@@ -1647,7 +1712,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("preserves tool args from toolcall_end when execution_end omits args", async () => {
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-preserve-tool-args",
         operation: { kind: "prompt", args: ["write"] },
@@ -1756,7 +1821,7 @@ describe("Pi harness workflow projection", () => {
         content: "already committed",
         timestamp: 1,
       } satisfies AgentMessage;
-      const run = startFauxPiHarnessOperation({
+      const run = startFauxPiHarnessPrompt({
         workflowName,
         sessionId: "checkpoint-ignore-initial-step",
         operation: { kind: "prompt", args: ["live turn"] },

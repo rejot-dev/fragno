@@ -1,4 +1,5 @@
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
+import { selectCanonicalWorkflowStepEmissions } from "@fragno-dev/workflows/step-emission-control";
 
 import {
   type LofiFindBuilder,
@@ -7,7 +8,6 @@ import {
   type LofiRuntime,
 } from "@fragno-dev/lofi";
 
-import type { PiHarnessStepResult } from "../pi/harness/run-pi-harness-step";
 import type { PiAgentStateSnapshot } from "../pi/types";
 import {
   createPiWorkflowSessionLiveState,
@@ -21,6 +21,7 @@ import {
   type PiWorkflowSessionProjectionEmission,
   type PiWorkflowSessionProjectionState,
 } from "../pi/workflow-session-projection";
+import type { PiHarnessStepResult } from "../pi/workflows/workflow-agent-harness";
 
 export type PiSessionProjectionSourceState = {
   state: PiAgentStateSnapshot;
@@ -66,6 +67,51 @@ type SessionProjectionOptions = {
   initialCompletedStepKeys?: readonly string[];
 };
 
+type PiWorkflowLofiEmission = {
+  actor: string;
+  stepKey: string;
+  executionId: string;
+  epoch: string;
+  payload: unknown;
+  createdAt: Date;
+};
+
+type PiWorkflowLofiLiveState = {
+  projection: ReturnType<typeof createPiWorkflowSessionLiveState>;
+  emissions: PiWorkflowLofiEmission[];
+};
+
+const createPiWorkflowLofiLiveState = (): PiWorkflowLofiLiveState => ({
+  projection: createPiWorkflowSessionLiveState(),
+  emissions: [],
+});
+
+const rebuildCanonicalPiWorkflowLiveProjection = (
+  state: PiWorkflowLofiLiveState,
+  workflowSteps: readonly PiHarnessWorkflowInstanceProjectionRow["workflowSteps"][number][],
+  completedStepKeys: readonly string[],
+): void => {
+  const completedStepKeySet = new Set(completedStepKeys);
+  const canonicalEmissions = selectCanonicalWorkflowStepEmissions({
+    steps: workflowSteps,
+    emissions: state.emissions,
+  });
+  const projection = createPiWorkflowSessionLiveState();
+
+  for (const emission of canonicalEmissions) {
+    if (completedStepKeySet.has(emission.stepKey)) {
+      continue;
+    }
+    reducePiWorkflowSessionEmission(projection, {
+      stepKey: emission.stepKey,
+      payload: emission.payload as PiWorkflowSessionProjectionEmission["payload"],
+      createdAt: emission.createdAt,
+    });
+  }
+
+  state.projection = projection;
+};
+
 const projectWorkflowInstanceRow = (
   rawInstance: WorkflowInstanceProjectionRow,
   workflowName: string,
@@ -100,44 +146,56 @@ export const createSessionProjectionDataStore = (
       projectWorkflowInstanceRow(instance, workflowName, sessionId, options),
     )
     .withEphemeral(workflowsSchema, "workflow_step_emission", {
-      initialState: createPiWorkflowSessionLiveState,
+      initialState: createPiWorkflowLofiLiveState,
 
-      // Only reduce emissions belonging to this session and not yet represented by durable steps.
+      // Buffer raw emissions so durable winner changes can rebuild the live projection.
       reduce: (liveState, item, { retrieved: { instance }, durableData }) => {
-        if (
-          !instance ||
-          String(item.instanceRef) !== String(instance.id) ||
-          durableData.completedStepKeys.includes(item.stepKey)
-        ) {
+        if (!instance || String(item.instanceRef) !== String(instance.id)) {
           return undefined;
         }
 
-        reducePiWorkflowSessionEmission(liveState, {
-          stepKey: item.stepKey,
-          payload: item.payload as PiWorkflowSessionProjectionEmission["payload"],
-          createdAt: item.createdAt,
+        const projectedInstance = instance as PiHarnessWorkflowInstanceProjectionRow;
+        const emission = item as typeof item & { actor: string };
+        liveState.emissions.push({
+          actor: emission.actor,
+          stepKey: emission.stepKey,
+          executionId: emission.executionId,
+          epoch: emission.epoch,
+          payload: emission.payload,
+          createdAt: emission.createdAt,
         });
+        rebuildCanonicalPiWorkflowLiveProjection(
+          liveState,
+          projectedInstance.workflowSteps,
+          durableData.completedStepKeys,
+        );
         return liveState;
       },
 
-      // Completed durable steps supersede their transient drafts after each query refresh.
+      // Durable step winners can invalidate every transient emission from a losing execution.
       reconcile: (liveState, { retrieved: { instance }, durableData }) => {
-        settleCompletedPiWorkflowSessionLiveSteps(
+        if (!instance) {
+          return;
+        }
+        const projectedInstance = instance as PiHarnessWorkflowInstanceProjectionRow;
+        rebuildCanonicalPiWorkflowLiveProjection(
           liveState,
+          projectedInstance.workflowSteps,
+          durableData.completedStepKeys,
+        );
+        settleCompletedPiWorkflowSessionLiveSteps(
+          liveState.projection,
           new Set(durableData.completedStepKeys),
         );
-        if (instance) {
-          const projectedInstance = instance as PiHarnessWorkflowInstanceProjectionRow;
-          liveState.activeLiveWork ||= projectedInstance.workflowSteps.some(
-            (step) =>
-              step.status !== "completed" &&
-              !(
-                step.status === "waiting" &&
-                step.type === "waitForEvent" &&
-                step.waitEventType === "command"
-              ),
-          );
-        }
+        liveState.projection.activeLiveWork ||= projectedInstance.workflowSteps.some(
+          (step) =>
+            step.status !== "completed" &&
+            !(
+              step.status === "waiting" &&
+              step.type === "waitForEvent" &&
+              step.waitEventType === "command"
+            ),
+        );
       },
 
       // Keep durable messages authoritative while layering the current in-flight Pi state on top.
@@ -150,7 +208,7 @@ export const createSessionProjectionDataStore = (
           durableData,
           projectedInstance,
           projectedInstance.workflowSteps,
-          liveState,
+          liveState.projection,
         );
       },
     })

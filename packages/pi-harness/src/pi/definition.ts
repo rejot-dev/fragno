@@ -1,4 +1,4 @@
-import { buildScopedInstanceRowId } from "@fragno-dev/workflows/instance-ref";
+import { selectWorkflowStepCommittedEpochs } from "@fragno-dev/workflows/step-emission-control";
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 
 import { defineFragment } from "@fragno-dev/core";
@@ -8,65 +8,30 @@ import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 import type { AgentMessage, SessionTreeEntry } from "@earendil-works/pi-agent-core";
 
 import { piSchema } from "../schema";
-import type { PiHarnessStepResult } from "./harness/run-pi-harness-step";
-import type { PiFragmentConfig, PiSession, PiOperationCompletedHookPayload } from "./types";
+import {
+  PiSessionDataUnavailableError,
+  projectPiSessionFromWorkflowInstance,
+  type PiFragmentConfig,
+  type PiSession,
+  type PiOperationCompletedHookPayload,
+} from "./types";
 import {
   latestCompletedPiHarnessEntries,
   projectPiWorkflowSession,
   type PiWorkflowSessionProjectionStep,
 } from "./workflow-session-projection";
-
-export type PiAgentLoopCursorState = {
-  turn: number;
-  phase: "waiting-for-command" | "running-agent";
-  waitingFor:
-    | {
-        type: "command";
-        turn: number;
-        stepKey: string;
-        allowedCommands: ("prompt" | "followUp" | "steer" | "nextTurn" | "abort")[];
-        timeoutMs: number | null;
-      }
-    | {
-        type: "agent" | "assistant";
-        turn: number;
-        operation?: "prompt";
-        stepKey: string;
-      }
-    | null;
-};
-
-export type PiAgentLoopSerializableState = PiAgentLoopCursorState & {
-  messages: AgentMessage[];
-};
+import type { PiHarnessStepResult } from "./workflows/workflow-agent-harness";
 
 export type PiHarnessHooksMap = {
   onOperationCompleted: HookFn<PiOperationCompletedHookPayload>;
 };
 
-const WAIT_FOR_COMMAND_TIMEOUT_MS = 60 * 60 * 1000;
-
-const createInitialPiAgentLoopCursorState = (): PiAgentLoopCursorState => ({
-  turn: 0,
-  phase: "waiting-for-command",
-  waitingFor: {
-    type: "command",
-    turn: 0,
-    stepKey: "waitForEvent:wait-command-turn-0-command-0",
-    allowedCommands: ["prompt", "followUp", "steer", "nextTurn", "abort"],
-    timeoutMs: WAIT_FOR_COMMAND_TIMEOUT_MS,
-  },
-});
-
 export type PiSessionDetailSnapshot = {
   session: PiSession;
   workflowStatus: InstanceStatus;
-  detailState: PiAgentLoopSerializableState;
+  messages: AgentMessage[];
   sessionEntries: readonly SessionTreeEntry[];
-  /**
-   * Step keys whose emissions are already represented in `detailState` because
-   * the step has a persisted `workflow_step.result` row.
-   */
+  /** Step keys whose persisted results are already represented in `messages`. */
   completedStepKeys: ReadonlySet<string>;
 };
 
@@ -84,32 +49,23 @@ export const piHarnessDefinition = defineFragment<PiFragmentConfig>("pi-harness"
         return this.serviceTx(piSchema)
           .withServiceCalls(() =>
             serviceCalls(
+              serviceDeps.workflows.getInstanceMetadata(workflowName, sessionId),
               serviceDeps.workflows.getInstanceStatus(workflowName, sessionId),
               serviceDeps.workflows.listHistory({ workflowName, instanceId: sessionId }),
             ),
           )
-          .retrieve((uow) =>
-            uow.findFirst("session", (b) =>
-              b.whereIndex("idx_session_workflow_session", (eb) =>
-                eb.and(eb("workflowName", "=", workflowName), eb("sessionId", "=", sessionId)),
-              ),
-            ),
-          )
-          .transform(({ retrieveResult: [sessionRow], serviceResult }) => {
-            if (!sessionRow) {
-              throw new Error("SESSION_NOT_FOUND");
+          .transform(({ serviceResult }) => {
+            const [instanceMetadata, workflowStatus, history] = serviceResult;
+            const session = projectPiSessionFromWorkflowInstance({
+              id: sessionId,
+              workflowName,
+              params: instanceMetadata.params,
+              createdAt: instanceMetadata.createdAt,
+              updatedAt: instanceMetadata.updatedAt,
+            });
+            if (!session) {
+              throw new PiSessionDataUnavailableError(workflowName, sessionId);
             }
-
-            const session: PiSession = {
-              id: sessionRow.sessionId,
-              name: sessionRow.name ?? null,
-              agent: sessionRow.agent,
-              workflowName: sessionRow.workflowName,
-              createdAt: sessionRow.createdAt,
-              updatedAt: sessionRow.updatedAt,
-            };
-            const [workflowStatus, history] = serviceResult;
-            const cursorState = createInitialPiAgentLoopCursorState();
             const workflowSteps: PiWorkflowSessionProjectionStep[] = history.steps.map((step) => ({
               stepKey: step.stepKey,
               type: step.type,
@@ -117,12 +73,17 @@ export const piHarnessDefinition = defineFragment<PiFragmentConfig>("pi-harness"
               waitEventType: step.waitEventType,
               result: (step.result ?? null) as PiHarnessStepResult | null,
             }));
+            const selectedEpochs = selectWorkflowStepCommittedEpochs(history.emissions);
+            const selectedEmissions = history.emissions.filter((emission) => {
+              const selectedEpoch = selectedEpochs.get(emission.stepKey);
+              return !selectedEpoch || selectedEpoch === emission.epoch;
+            });
             const projection = projectPiWorkflowSession({
               workflowName,
               sessionId,
               instance: workflowStatus,
               workflowSteps,
-              workflowStepEmissions: history.emissions.map((emission) => ({
+              workflowStepEmissions: selectedEmissions.map((emission) => ({
                 stepKey: emission.stepKey,
                 payload:
                   typeof emission.payload === "object" && emission.payload !== null
@@ -131,73 +92,36 @@ export const piHarnessDefinition = defineFragment<PiFragmentConfig>("pi-harness"
                 createdAt: emission.createdAt,
               })),
             });
-            const detailState: PiAgentLoopSerializableState = {
-              ...cursorState,
-              messages: projection.state.messages,
-            };
-            const completedStepKeys = new Set(projection.completedStepKeys);
-
             return {
               session,
               workflowStatus,
-              detailState,
+              messages: projection.state.messages,
               sessionEntries: latestCompletedPiHarnessEntries(workflowSteps),
-              completedStepKeys,
+              completedStepKeys: new Set(projection.completedStepKeys),
             };
-          })
-          .build();
-      },
-      createSession: function (values: {
-        id: string;
-        workflowName: string;
-        agent: string;
-        name?: string;
-        createdAt: Date;
-      }) {
-        return this.serviceTx(piSchema)
-          .mutate(({ uow }) => {
-            uow.create("session", {
-              id: buildScopedInstanceRowId(values.workflowName, values.id),
-              sessionId: values.id,
-              name: values.name ?? null,
-              agent: values.agent,
-              workflowName: values.workflowName,
-              createdAt: values.createdAt,
-              updatedAt: values.createdAt,
-            });
           })
           .build();
       },
       createWorkflowSession: function (values: {
         id: string;
         workflowName: string;
-        agent: string;
         name?: string;
-        createdAt: Date;
-        params?: unknown;
+        params?: Record<string, unknown>;
       }) {
         return this.serviceTx(piSchema)
           .withServiceCalls(() => [
             serviceDeps.workflows.createInstance(values.workflowName, {
               id: values.id,
-              params: values.params,
+              params: {
+                ...values.params,
+                __piSession: {
+                  name: values.name ?? null,
+                },
+              },
             }),
           ])
-          .mutate(({ uow }) => {
-            uow.create("session", {
-              id: buildScopedInstanceRowId(values.workflowName, values.id),
-              sessionId: values.id,
-              name: values.name ?? null,
-              agent: values.agent,
-              workflowName: values.workflowName,
-              createdAt: values.createdAt,
-              updatedAt: values.createdAt,
-            });
-          })
           .build();
       },
     }),
   )
   .build();
-
-export const piFragmentDefinition = piHarnessDefinition;

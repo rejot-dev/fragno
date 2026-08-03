@@ -1,6 +1,7 @@
 import {
   SessionError,
   type LeafEntry,
+  type SessionEntryCursorOptions,
   type SessionMetadata,
   type SessionStorage,
   type SessionTreeEntry,
@@ -11,6 +12,27 @@ type AllocateSessionEntryId = () => string;
 
 export type WorkflowBackedSessionEntryIdAllocator = {
   next: AllocateSessionEntryId;
+};
+
+export const nextWorkflowBackedSessionEntryIndex = (options: {
+  prefix: string;
+  entries: readonly SessionTreeEntry[];
+}): number => {
+  const idPrefix = `${options.prefix}-`;
+  let highestIndex = -1;
+
+  for (const entry of options.entries) {
+    if (!entry.id.startsWith(idPrefix)) {
+      continue;
+    }
+
+    const index = Number(entry.id.slice(idPrefix.length));
+    if (Number.isSafeInteger(index) && index >= 0) {
+      highestIndex = Math.max(highestIndex, index);
+    }
+  }
+
+  return highestIndex + 1;
 };
 
 export const createWorkflowBackedSessionEntryIdAllocator = (options: {
@@ -45,6 +67,14 @@ const cloneEntry = <TEntry extends SessionTreeEntry>(entry: TEntry): TEntry =>
 
 const leafIdAfterEntry = (entry: SessionTreeEntry): string | null =>
   entry.type === "leaf" ? entry.targetId : entry.id;
+
+export const sessionEntriesLeafId = (entries: readonly SessionTreeEntry[]): string | null => {
+  let leafId: string | null = null;
+  for (const entry of entries) {
+    leafId = leafIdAfterEntry(entry);
+  }
+  return leafId;
+};
 
 const updateLabelCache = (labelsById: Map<string, string>, entry: SessionTreeEntry): void => {
   if (entry.type !== "label") {
@@ -102,11 +132,7 @@ export class WorkflowBackedSessionStorage<
     this.entries = (options.entries ?? []).map(cloneEntry);
     this.byId = new Map(this.entries.map((entry) => [entry.id, entry]));
     this.labelsById = buildLabelsById(this.entries);
-    this.leafId = null;
-
-    for (const entry of this.entries) {
-      this.leafId = leafIdAfterEntry(entry);
-    }
+    this.leafId = sessionEntriesLeafId(this.entries);
 
     if (this.leafId !== null && !this.byId.has(this.leafId)) {
       throw new SessionError("invalid_session", `Entry ${this.leafId} not found`);
@@ -180,6 +206,81 @@ export class WorkflowBackedSessionStorage<
     return this.labelsById.get(id);
   }
 
+  async getSessionName(): Promise<string | undefined> {
+    const entries = await this.findEntries("session_info");
+    return entries.at(-1)?.name?.trim() || undefined;
+  }
+
+  async getSessionStats() {
+    let messageCount = 0;
+    let cachedTokens = 0;
+    let uncachedTokens = 0;
+    let totalTokens = 0;
+    let costTotal = 0;
+
+    for (const entry of this.entries) {
+      if (entry.type === "message") {
+        messageCount += 1;
+      }
+
+      const usage =
+        entry.type === "message"
+          ? entry.message.role === "assistant"
+            ? entry.message.usage
+            : undefined
+          : entry.type === "compaction" || entry.type === "branch_summary"
+            ? entry.usage
+            : undefined;
+      if (!usage) {
+        continue;
+      }
+
+      cachedTokens += usage.cacheRead;
+      uncachedTokens += usage.input + usage.cacheWrite;
+      totalTokens += usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+      costTotal += usage.cost.total;
+    }
+
+    return { messageCount, cachedTokens, uncachedTokens, totalTokens, costTotal };
+  }
+
+  async getPathToRootOrCompaction(leafId: string | null): Promise<SessionTreeEntry[]> {
+    if (leafId === null) {
+      return [];
+    }
+
+    const path: SessionTreeEntry[] = [];
+    let stopAtEntryId: string | null = null;
+    let current = this.byId.get(leafId);
+    if (!current) {
+      throw new SessionError("not_found", `Entry ${leafId} not found`);
+    }
+
+    while (current) {
+      path.unshift(cloneEntry(current));
+      if (stopAtEntryId !== null && current.id === stopAtEntryId) {
+        break;
+      }
+      if (current.type === "compaction") {
+        if (current.retainedTail) {
+          break;
+        }
+        stopAtEntryId = current.firstKeptEntryId ?? null;
+      }
+      if (!current.parentId) {
+        break;
+      }
+
+      const parent = this.byId.get(current.parentId);
+      if (!parent) {
+        throw new SessionError("invalid_session", `Entry ${current.parentId} not found`);
+      }
+      current = parent;
+    }
+
+    return path;
+  }
+
   async getPathToRoot(leafId: string | null): Promise<SessionTreeEntry[]> {
     if (leafId === null) {
       return [];
@@ -207,7 +308,9 @@ export class WorkflowBackedSessionStorage<
     return path;
   }
 
-  async getEntries(): Promise<SessionTreeEntry[]> {
-    return this.entries.map(cloneEntry);
+  async getEntries(options?: SessionEntryCursorOptions): Promise<SessionTreeEntry[]> {
+    const start = options?.afterEntrySeq ?? 0;
+    const end = options?.limit === undefined ? undefined : start + options.limit;
+    return this.entries.slice(start, end).map(cloneEntry);
   }
 }

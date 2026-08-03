@@ -12,10 +12,10 @@
  * `prompt-context` can tell the two apart.
  */
 
-import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
 import {
   createPiAgentName,
   PI_MODEL_CATALOG,
@@ -119,9 +119,9 @@ export async function handleComposeAction({
   const name = prompt.length > 60 ? `${prompt.slice(0, 59)}…` : prompt;
 
   const created = await createPiSession(request, context, scope, {
-    workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
+    workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
+    metadata: { agentName },
     input: {
-      harnessName: agentName,
       thinkingLevel: resolvePiModelThinkingLevel(model.provider),
     },
     name,
@@ -148,7 +148,7 @@ export async function handleComposeAction({
     session: {
       id: created.session.id,
       workflowName: created.session.workflowName,
-      agentName: created.session.agent,
+      agentName,
     },
   };
 }

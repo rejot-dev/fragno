@@ -143,6 +143,38 @@ describe("createAssistantUiMessages", () => {
     });
   });
 
+  test("presents an aborted provider stream as a user cancellation", () => {
+    const converted = createAssistantUiMessages({
+      draftAgentMessage: null,
+      readyForInput: true,
+      statusText: null,
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Partial response" }],
+          timestamp: 1,
+          api: "openai-responses",
+          provider: "openai",
+          model: "test",
+          usage,
+          stopReason: "aborted",
+          errorMessage: "OpenAI Responses stream ended before a terminal response event",
+        } as never,
+      ],
+    });
+
+    expect(converted[0]).toMatchObject({
+      role: "assistant",
+      status: { type: "incomplete", reason: "cancelled" },
+      metadata: {
+        custom: {
+          stopReason: "aborted",
+          errorMessage: undefined,
+        },
+      },
+    });
+  });
+
   test("marks only the last visible message as running", () => {
     const converted = createAssistantUiMessages({
       draftAgentMessage: null,

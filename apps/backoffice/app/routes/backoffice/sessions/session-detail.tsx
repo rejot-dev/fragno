@@ -11,7 +11,7 @@ import {
 } from "@assistant-ui/react";
 
 import { createPiClient } from "@/fragno/pi/pi-client";
-import { findPiModelOption, parsePiAgentName } from "@/fragno/pi/pi-shared";
+import { findPiModelOption, parsePiAgentName, piSessionAgentName } from "@/fragno/pi/pi-shared";
 import { usePiSessionProjection } from "@/fragno/pi/tanstack/use-session-projection";
 import { scopedPublicMountPath } from "@/fragno/scoped-public-fragment-routes";
 
@@ -160,14 +160,15 @@ function PiSessionDetailView({
   const running = !sessionDisabled && (sending || !projection.readyForInput);
   const needsNudge = !sessionDisabled && !sending && !readyForInput && statusText === "Working…";
 
-  const parsedAgent = parsePiAgentName(session.agent);
+  const agentName = piSessionAgentName(session.metadata);
+  const parsedAgent = agentName ? parsePiAgentName(agentName) : null;
   const harnessLabel = parsedAgent
     ? (harnesses.find((entry) => entry.id === parsedAgent.harnessId)?.label ??
       parsedAgent.harnessId)
-    : session.agent;
+    : session.workflowName;
   const modelLabel = parsedAgent
     ? (findPiModelOption(parsedAgent.provider, parsedAgent.model)?.label ?? parsedAgent.model)
-    : session.agent;
+    : session.workflowName;
 
   const assistantMessages = useMemo(
     () =>
@@ -238,7 +239,10 @@ function PiSessionDetailView({
       try {
         await commandSession.mutate({
           path: { workflowName: session.workflowName, sessionId: session.id },
-          body: { kind: commandKind, input: { text } },
+          body: {
+            kind: projection.readyForInput ? "prompt" : commandKind,
+            input: { text },
+          },
         });
       } catch (error) {
         const composer = runtimeRef.current?.thread.composer;
@@ -263,6 +267,7 @@ function PiSessionDetailView({
       commandKind,
       commandSession,
       initialPromptError,
+      projection.readyForInput,
       sessionDisabled,
       session.id,
       session.workflowName,
@@ -288,7 +293,7 @@ function PiSessionDetailView({
   const handleContinue = () =>
     commandSession.mutate({
       path: { workflowName: session.workflowName, sessionId: session.id },
-      body: { kind: "nextTurn", input: { text: "Continue." } },
+      body: { kind: "prompt", input: { text: "Continue." } },
     });
 
   const handleStop = () =>
@@ -339,6 +344,7 @@ function PiSessionDetailView({
                 needsNudge={needsNudge}
                 onContinue={handleContinue}
                 onStop={handleStop}
+                readyForInput={readyForInput}
                 running={running}
                 showThinking={displayOptions.showThinking}
                 showToolCalls={displayOptions.showToolCalls}

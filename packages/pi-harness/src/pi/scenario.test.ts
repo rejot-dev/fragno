@@ -1,4 +1,4 @@
-import { assert, describe, expect, expectTypeOf, test, vi } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 
 import { defineScenario, runScenario } from "@fragno-dev/workflows/scenario";
 import { defineWorkflow } from "@fragno-dev/workflows/workflow";
@@ -20,16 +20,11 @@ import { createPiFragmentClients } from "../client/clients";
 import { piRoutesFactory } from "../routes";
 import { piHarnessDefinition } from "./definition";
 import { createPiWorkflows } from "./factory";
-import { createAgentLoop, waitForPiCommand } from "./harness/commands";
-import { NoOpExecutionEnv } from "./harness/execution-env";
-import type { PiHarnessAgentOptions, PiHarnessStepResult } from "./harness/run-pi-harness-step";
+import { createModelsForStreamFn } from "./harness/test-models";
+import { piSessionCommandPayloadSchema } from "./route-schemas";
 import { definePiTool } from "./tools";
-import type { PiFragmentConfig, PiOperationCompletedHookPayload } from "./types";
+import type { PiFragmentConfig } from "./types";
 import { createInteractiveChatWorkflow } from "./workflows/interactive-chat-workflow";
-
-type ScenarioHarnesses = Record<string, PiHarnessAgentOptions>;
-
-const createEnv = () => new NoOpExecutionEnv();
 
 const mockModel: Model<Api> = {
   id: "test-model",
@@ -173,9 +168,10 @@ const createToolCallStreamFn =
   };
 
 const commandEchoWorkflow = defineWorkflow(
-  { name: "pi-harness-command-echo", schema: z.object({ harnessName: z.string() }) },
+  { name: "pi-harness-command-echo", schema: z.object({ profileName: z.string() }) },
   async (_event, step) => {
-    const command = await waitForPiCommand(step);
+    const commandEvent = await step.waitForEvent("command", { type: "command" });
+    const command = piSessionCommandPayloadSchema.parse(commandEvent.payload);
 
     return {
       kind: command.kind,
@@ -218,7 +214,7 @@ describe("Pi harness workflow scenarios", () => {
                 path: { workflowName: commandEchoWorkflow.name },
                 body: {
                   name: "Scenario Session",
-                  input: { harnessName: "default" },
+                  input: { profileName: "default" },
                 },
               });
               assert(session && !Array.isArray(session), "expected session response");
@@ -282,22 +278,15 @@ describe("Pi harness workflow scenarios", () => {
 
   test("runs one interactive chat prompt through AgentHarness and persists workflow transcript", async () => {
     const observedSystemPrompts: string[] = [];
-    const harnesses: ScenarioHarnesses = {
-      default: {
-        env: createEnv(),
-        systemPrompt: "You are helpful.",
-        model: mockModel,
-        streamFn: (_model, context) => {
-          observedSystemPrompts.push(context.systemPrompt ?? "");
-          return createTextStreamFn("hello from harness")();
-        },
-      },
-    };
-    const resolveHarness = vi.fn(() => ({
-      harnessName: "default",
+    const resolveOptions = vi.fn(() => ({
       systemPrompt: "You are resolved for this session.",
+      model: mockModel,
+      models: createModelsForStreamFn(mockModel, (_model, context) => {
+        observedSystemPrompts.push(context.systemPrompt ?? "");
+        return createTextStreamFn("hello from harness")();
+      }),
     }));
-    const interactiveChatWorkflow = createInteractiveChatWorkflow({ harnesses, resolveHarness });
+    const interactiveChatWorkflow = createInteractiveChatWorkflow({ options: resolveOptions });
     const config: PiFragmentConfig = {
       workflows: [interactiveChatWorkflow],
     };
@@ -330,7 +319,8 @@ describe("Pi harness workflow scenarios", () => {
                 path: { workflowName: interactiveChatWorkflow.name },
                 body: {
                   name: "Scenario Session",
-                  input: { harnessName: "default" },
+                  metadata: { runtime: "default" },
+                  input: {},
                 },
               });
               assert(session && !Array.isArray(session), "expected session response");
@@ -380,9 +370,11 @@ describe("Pi harness workflow scenarios", () => {
             }),
             assert: ({ status, steps, detail }) => {
               assert(status.status === "waiting");
-              expect(resolveHarness).toHaveBeenCalledWith(
-                { harnessName: "default" },
-                { workflowName: interactiveChatWorkflow.name, sessionId: expect.any(String) },
+              expect(resolveOptions).toHaveBeenCalledWith(
+                expect.objectContaining({
+                  instanceId: expect.any(String),
+                  payload: { metadata: { runtime: "default" } },
+                }),
               );
               expect(observedSystemPrompts).toEqual(["You are resolved for this session."]);
               expect(steps).not.toContainEqual(
@@ -418,21 +410,13 @@ describe("Pi harness workflow scenarios", () => {
     );
   });
 
-  test("marks an interactive chat workflow errored when resolving the harness throws", async () => {
-    const resolveHarness = vi.fn(() => {
-      throw new Error("RESOLVE_HARNESS_FAILED");
+  test("marks an interactive chat workflow errored when resolving options throws", async () => {
+    const resolveOptions = vi.fn(() => {
+      throw new Error("RESOLVE_OPTIONS_FAILED");
     });
     const interactiveChatWorkflow = createInteractiveChatWorkflow({
-      harnesses: {
-        default: {
-          env: createEnv(),
-          systemPrompt: "You are helpful.",
-          model: mockModel,
-          streamFn: createTextStreamFn("should not run"),
-        },
-      },
-      resolveHarness,
       name: "interactive-chat-resolve-throws-workflow",
+      options: resolveOptions,
     });
     const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
 
@@ -458,7 +442,11 @@ describe("Pi harness workflow scenarios", () => {
             read: async () => {
               const session = await clients.user.useCreateSession.mutateQuery({
                 path: { workflowName: interactiveChatWorkflow.name },
-                body: { name: "Resolve Throws Session", input: { harnessName: "default" } },
+                body: {
+                  name: "Resolve Throws Session",
+                  metadata: { runtime: "default" },
+                  input: {},
+                },
               });
               assert(session && !Array.isArray(session), "expected session response");
               return session.id;
@@ -488,13 +476,15 @@ describe("Pi harness workflow scenarios", () => {
               }),
             }),
             assert: ({ status, steps, detail }) => {
-              expect(resolveHarness).toHaveBeenCalledWith(
-                { harnessName: "default" },
-                { workflowName: interactiveChatWorkflow.name, sessionId: expect.any(String) },
+              expect(resolveOptions).toHaveBeenCalledWith(
+                expect.objectContaining({
+                  instanceId: expect.any(String),
+                  payload: { metadata: { runtime: "default" } },
+                }),
               );
               expect(status).toMatchObject({
                 status: "errored",
-                error: { name: "Error", message: "RESOLVE_HARNESS_FAILED" },
+                error: { name: "Error", message: "RESOLVE_OPTIONS_FAILED" },
               });
               expect(steps).not.toContainEqual(
                 expect.objectContaining({
@@ -505,7 +495,7 @@ describe("Pi harness workflow scenarios", () => {
               assert(detail && !Array.isArray(detail), "expected session detail response");
               expect(detail.workflow).toMatchObject({
                 status: "errored",
-                error: { name: "Error", message: "RESOLVE_HARNESS_FAILED" },
+                error: { name: "Error", message: "RESOLVE_OPTIONS_FAILED" },
               });
               expect(detail.agent.state.messages).toEqual([]);
             },
@@ -515,284 +505,15 @@ describe("Pi harness workflow scenarios", () => {
     );
   });
 
-  test("restores an in-flight harness prompt step after runner restart without duplicating the prompt", async () => {
-    let releaseInFlightAttempt!: () => void;
-    const inFlightAttemptReleased = new Promise<void>((resolve) => {
-      releaseInFlightAttempt = resolve;
-    });
-    const streamFn = vi.fn(() => {
-      const stream = createAssistantMessageEventStream();
-      const message = createAssistantMessage("stop");
-
-      void (async () => {
-        await inFlightAttemptReleased;
-        stream.push({ type: "start", partial: message });
-        stream.push({ type: "text_start", contentIndex: 0, partial: message });
-        stream.push({ type: "text_delta", contentIndex: 0, delta: "stop", partial: message });
-        stream.push({ type: "text_end", contentIndex: 0, content: "stop", partial: message });
-        stream.push({ type: "done", reason: "stop", message });
-      })();
-
-      return stream;
-    });
-    const harnesses: ScenarioHarnesses = {
-      default: {
-        env: createEnv(),
-        systemPrompt: "You are helpful.",
-        model: mockModel,
-        streamFn,
-      },
-    };
-    const restoreWorkflow = defineWorkflow(
-      { name: "pi-harness-restore-prompt-in-flight", schema: z.object({}) },
-      async (event, step) => {
-        const agentLoop = createAgentLoop(step, {
-          workflowName: "pi-harness-restore-prompt-in-flight",
-          sessionId: event.instanceId,
-          agentName: "default",
-          ...harnesses["default"]!,
-        });
-
-        await agentLoop.runStep("ask", { kind: "prompt", args: ["hello"] });
-        const messages = agentLoop
-          .getState()
-          .entries.flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
-
-        return {
-          roles: messages.map((message) => message.role),
-          text: messages
-            .flatMap((message) =>
-              "content" in message && Array.isArray(message.content)
-                ? message.content.flatMap((content) =>
-                    content.type === "text" ? [content.text] : [],
-                  )
-                : [],
-            )
-            .join(" "),
-        };
-      },
-    );
-    const config: PiFragmentConfig = { workflows: [restoreWorkflow] };
-
-    await runScenario(
-      defineScenario({
-        name: "pi-harness-restore-prompt-in-flight",
-        workflows: createPiWorkflows({ workflows: config.workflows }),
-        harness: {
-          configureFragments: (harness) => ({
-            pi: instantiate(piHarnessDefinition)
-              .withConfig(config)
-              .withRoutes([piRoutesFactory])
-              .withServices({ workflows: harness.fragment.services }),
-          }),
-        },
-        runners: ["worker", "killer"],
-        steps: ({ workflow, runners, concurrent }) => [
-          workflow.create({ workflow: restoreWorkflow.name, id: "restore-prompt-session" }),
-          concurrent({
-            worker: [
-              runners.worker.tick({
-                workflow: restoreWorkflow.name,
-                instanceId: "restore-prompt-session",
-                reason: "create",
-              }),
-            ],
-            killer: [
-              runners.killer.waitForEmission({
-                workflow: restoreWorkflow.name,
-                instanceId: "restore-prompt-session",
-                match: (emission) => {
-                  const payload = emission.payload;
-                  if (
-                    typeof payload !== "object" ||
-                    payload === null ||
-                    !("kind" in payload) ||
-                    payload.kind !== "harness-event" ||
-                    !("event" in payload)
-                  ) {
-                    return false;
-                  }
-                  const event = payload.event as AgentEvent;
-                  return event.type === "message_end" && event.message.role === "user";
-                },
-              }),
-              runners.killer.restart(),
-              workflow.read({
-                read: () => {
-                  const timeout = setTimeout(releaseInFlightAttempt, 20);
-                  timeout.unref?.();
-                },
-              }),
-              runners.killer.tick({
-                workflow: restoreWorkflow.name,
-                instanceId: "restore-prompt-session",
-                reason: "create",
-              }),
-            ],
-          }),
-          workflow.read({
-            read: async (ctx) => ({
-              status: await ctx.state.getStatus(restoreWorkflow.name, "restore-prompt-session"),
-              steps: await ctx.state.getSteps(restoreWorkflow.name, "restore-prompt-session"),
-            }),
-            assert: ({ status, steps }) => {
-              expect(status).toMatchObject({
-                status: "complete",
-                output: { roles: ["user", "assistant"], text: "hello stop" },
-              });
-              expect(steps).toContainEqual(
-                expect.objectContaining({
-                  stepKey: "do:ask",
-                  status: "completed",
-                }),
-              );
-            },
-          }),
-        ],
-      }),
-    );
-  });
-
-  test("rebuilds persisted session entry state when replaying completed steps after restart", async () => {
-    const streamFn = vi.fn(createTextStreamFn("replayed after restart"));
-    const harnesses: ScenarioHarnesses = {
-      default: {
-        env: createEnv(),
-        systemPrompt: "You are helpful.",
-        model: mockModel,
-        streamFn,
-      },
-    };
-    const replayWorkflowSchema = z.object({ harnessName: z.string() });
-    const replayWorkflow = defineWorkflow(
-      { name: "pi-harness-replay-completed-step", schema: replayWorkflowSchema },
-      async (event, step) => {
-        const params = replayWorkflowSchema.parse(event.payload ?? {});
-        const harness = harnesses[params.harnessName];
-        if (!harness) {
-          throw new Error(`Harness ${params.harnessName} not found.`);
-        }
-        const agentLoop = createAgentLoop(step, {
-          workflowName: "pi-harness-replay-completed-step",
-          sessionId: event.instanceId,
-          agentName: params.harnessName,
-          ...harness,
-          initialMessages: [{ role: "user", content: "initial context", timestamp: Date.now() }],
-        });
-
-        await agentLoop.runStep("ask", { kind: "prompt", args: ["hello before restart"] });
-        await step.waitForEvent("resume", { type: "resume" });
-        await agentLoop.runStep("after-resume", {
-          kind: "prompt",
-          args: ["hello after restart"],
-        });
-
-        const state = agentLoop.getState();
-        return {
-          ...agentLoop.summary(),
-          persistedEntryCount: state.persistedEntryIds.length,
-        };
-      },
-    );
-    const config: PiFragmentConfig = { workflows: [replayWorkflow] };
-
-    await runScenario(
-      defineScenario({
-        name: "pi-harness-replay-completed-step",
-        workflows: createPiWorkflows({ workflows: config.workflows }),
-        vars: () => ({ sessionId: "replay-completed-session" }),
-        harness: {
-          configureFragments: (harness) => ({
-            pi: instantiate(piHarnessDefinition)
-              .withConfig(config)
-              .withRoutes([piRoutesFactory])
-              .withServices({ workflows: harness.fragment.services }),
-          }),
-        },
-        runners: ["worker"],
-        steps: ({ workflow, runners }) => [
-          workflow.create({
-            workflow: replayWorkflow.name,
-            id: (ctx) => ctx.vars.sessionId!,
-            params: { harnessName: "default" },
-          }),
-          runners.worker.runUntilIdle({
-            workflow: replayWorkflow.name,
-            instanceId: (ctx) => ctx.vars.sessionId!,
-            reason: "create",
-          }),
-          workflow.read({
-            read: async (ctx) => ({
-              status: await ctx.state.getStatus(replayWorkflow.name, ctx.vars.sessionId!),
-              steps: await ctx.state.getSteps(replayWorkflow.name, ctx.vars.sessionId!),
-            }),
-            assert: ({ status, steps }) => {
-              assert(status.status === "waiting");
-              expect(streamFn).toHaveBeenCalledTimes(1);
-              const askStep = steps.find((step) => step.stepKey === "do:ask");
-              assert(askStep?.result);
-              const askResult = askStep.result as PiHarnessStepResult;
-              expect(askResult.appendedEntries).toHaveLength(3);
-              expect(askResult.appendedEntries[0]).toMatchObject({ id: "initial-0" });
-              expect(steps).toContainEqual(
-                expect.objectContaining({
-                  stepKey: "waitForEvent:resume",
-                  status: "waiting",
-                }),
-              );
-            },
-          }),
-          runners.worker.restart(),
-          workflow.event({
-            workflow: replayWorkflow.name,
-            instanceId: (ctx) => ctx.vars.sessionId!,
-            event: { type: "resume", payload: {} },
-          }),
-          runners.worker.runUntilIdle({
-            workflow: replayWorkflow.name,
-            instanceId: (ctx) => ctx.vars.sessionId!,
-            reason: "event",
-          }),
-          workflow.read({
-            read: async (ctx) => ({
-              status: await ctx.state.getStatus(replayWorkflow.name, ctx.vars.sessionId!),
-              steps: await ctx.state.getSteps(replayWorkflow.name, ctx.vars.sessionId!),
-            }),
-            assert: ({ status, steps }) => {
-              assert(status.status === "complete");
-              expect(streamFn).toHaveBeenCalledTimes(2);
-              expect(status.output).toMatchObject({ entryCount: 5, persistedEntryCount: 5 });
-
-              const askStep = steps.find((step) => step.stepKey === "do:ask");
-              const afterResumeStep = steps.find((step) => step.stepKey === "do:after-resume");
-              expect(askStep).toMatchObject({ status: "completed", attempts: 1 });
-              expect(afterResumeStep).toMatchObject({ status: "completed", attempts: 1 });
-              assert(askStep?.result);
-              assert(afterResumeStep?.result);
-              expect((askStep.result as PiHarnessStepResult).appendedEntries).toHaveLength(3);
-              expect((afterResumeStep.result as PiHarnessStepResult).appendedEntries).toHaveLength(
-                2,
-              );
-            },
-          }),
-        ],
-      }),
-    );
-  });
-
   test("aborts an in-flight AgentHarness prompt", async () => {
     const abortObserved = vi.fn();
-    const harnesses: ScenarioHarnesses = {
-      default: {
-        env: createEnv(),
+    const interactiveChatWorkflow = createInteractiveChatWorkflow({
+      name: "interactive-chat-abort-workflow",
+      options: {
         systemPrompt: "You are helpful.",
         model: mockModel,
-        streamFn: createAbortableStreamFn(abortObserved),
+        models: createModelsForStreamFn(mockModel, createAbortableStreamFn(abortObserved)),
       },
-    };
-    const interactiveChatWorkflow = createInteractiveChatWorkflow({
-      harnesses,
-      name: "interactive-chat-abort-workflow",
     });
     const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
 
@@ -820,7 +541,7 @@ describe("Pi harness workflow scenarios", () => {
             read: async () => {
               const session = await clients.user.useCreateSession.mutateQuery({
                 path: { workflowName: interactiveChatWorkflow.name },
-                body: { name: "Abort Session", input: { harnessName: "default" } },
+                body: { name: "Abort Session", input: { profileName: "default" } },
               });
               assert(session && !Array.isArray(session), "expected session response");
               return session.id;
@@ -917,25 +638,24 @@ describe("Pi harness workflow scenarios", () => {
         };
       },
     });
-    const harnesses: ScenarioHarnesses = {
-      default: {
-        env: createEnv(),
-        systemPrompt: "You are helpful.",
-        model: mockModel,
-        streamFn: createToolCallStreamFn({
+    const tools: AgentTool[] = [classifyTool];
+    const resolveOptions = vi.fn(() => ({
+      systemPrompt: "You are helpful.",
+      model: mockModel,
+      models: createModelsForStreamFn(
+        mockModel,
+        createToolCallStreamFn({
           type: "toolCall",
           id: "call-1",
           name: "classify",
           arguments: { request: "broken" },
         }),
-      },
-    };
-    const tools: readonly AgentTool[] = [classifyTool];
-    const resolveHarness = vi.fn(() => ({ tools }));
+      ),
+      tools,
+    }));
     const interactiveChatWorkflow = createInteractiveChatWorkflow({
-      harnesses,
-      resolveHarness,
       name: "interactive-chat-tool-workflow",
+      options: resolveOptions,
     });
     const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
 
@@ -963,7 +683,11 @@ describe("Pi harness workflow scenarios", () => {
             read: async () => {
               const session = await clients.user.useCreateSession.mutateQuery({
                 path: { workflowName: interactiveChatWorkflow.name },
-                body: { name: "Tool Session", input: { harnessName: "default" } },
+                body: {
+                  name: "Tool Session",
+                  metadata: { runtime: "default" },
+                  input: {},
+                },
               });
               assert(session && !Array.isArray(session), "expected session response");
               return session.id;
@@ -1009,671 +733,12 @@ describe("Pi harness workflow scenarios", () => {
                 content: [{ type: "text", text: "classified:broken" }],
                 details: { kind: "bug", confidence: 0.91 },
               });
-              expect(resolveHarness).toHaveBeenCalledWith(
-                { harnessName: "default" },
-                { workflowName: interactiveChatWorkflow.name, sessionId: expect.any(String) },
+              expect(resolveOptions).toHaveBeenCalledWith(
+                expect.objectContaining({
+                  instanceId: expect.any(String),
+                  payload: { metadata: { runtime: "default" } },
+                }),
               );
-            },
-          }),
-        ],
-      }),
-    );
-  });
-
-  test("applies per-command active tool policy to registered tools", async () => {
-    const observedToolNames: string[][] = [];
-    const searchTool = definePiTool({
-      name: "search",
-      label: "Search",
-      description: "Search docs.",
-      parameters: Type.Object({ query: Type.String() }),
-      async execute(_toolCallId, params) {
-        return { content: [{ type: "text", text: `searched:${params.query}` }], details: {} };
-      },
-    });
-    const writeTool = definePiTool({
-      name: "write",
-      label: "Write",
-      description: "Write docs.",
-      parameters: Type.Object({ path: Type.String() }),
-      async execute(_toolCallId, params) {
-        return { content: [{ type: "text", text: `wrote:${params.path}` }], details: {} };
-      },
-    });
-    const tools = [searchTool, writeTool] as const;
-    const streamFn: StreamFn = (_model, context) => {
-      observedToolNames.push((context.tools ?? []).map((tool) => tool.name));
-      return createTextStreamFn("used only the active tool")();
-    };
-    const activeToolsWorkflow = defineWorkflow(
-      { name: "pi-harness-active-tools-policy", schema: z.object({}) },
-      async (event, step) => {
-        const agentLoop = createAgentLoop(step, {
-          workflowName: "pi-harness-active-tools-policy",
-          sessionId: event.instanceId,
-          agentName: "default",
-          env: createEnv(),
-          systemPrompt: "Use only exposed tools.",
-          model: mockModel,
-          streamFn,
-          tools,
-        });
-
-        const result = await agentLoop.waitForCommandAndRunStep({
-          activeToolNames: ["search"],
-        });
-
-        if (result.kind !== "agentRun") {
-          throw new Error("EXPECTED_AGENT_RUN");
-        }
-
-        return agentLoop.summary();
-      },
-    );
-    const config: PiFragmentConfig = { workflows: [activeToolsWorkflow] };
-
-    await runScenario(
-      defineScenario({
-        name: "pi-harness-active-tools-policy",
-        workflows: createPiWorkflows({ workflows: config.workflows }),
-        vars: () => ({ sessionId: undefined as string | undefined }),
-        harness: {
-          configureFragments: (harness) => ({
-            pi: instantiate(piHarnessDefinition)
-              .withConfig(config)
-              .withRoutes([piRoutesFactory])
-              .withServices({ workflows: harness.fragment.services }),
-          }),
-        },
-        clients: ({ clientConfig }) => ({
-          user: createPiFragmentClients(clientConfig("pi", { runner: "user" })),
-        }),
-        runners: ["agent", "user"],
-        steps: ({ workflow, runners, clients }) => [
-          workflow.read({
-            read: async () => {
-              const session = await clients.user.useCreateSession.mutateQuery({
-                path: { workflowName: activeToolsWorkflow.name },
-                body: { name: "Active Tools Session", input: {} },
-              });
-              assert(session && !Array.isArray(session), "expected session response");
-              return session.id;
-            },
-            storeAs: "sessionId",
-          }),
-          runners.agent.runUntilIdle({
-            workflow: activeToolsWorkflow.name,
-            instanceId: (ctx) => ctx.vars.sessionId!,
-            reason: "create",
-          }),
-          workflow.read({
-            read: async (ctx) =>
-              clients.user.useCommandSession.mutateQuery({
-                path: { workflowName: activeToolsWorkflow.name, sessionId: ctx.vars.sessionId! },
-                body: { kind: "prompt", input: { text: "search only" } },
-              }),
-          }),
-          runners.agent.runUntilIdle({
-            workflow: activeToolsWorkflow.name,
-            instanceId: (ctx) => ctx.vars.sessionId!,
-            reason: "event",
-          }),
-          workflow.read({
-            read: async (ctx) =>
-              clients.user.useSessionDetail.query({
-                path: { workflowName: activeToolsWorkflow.name, sessionId: ctx.vars.sessionId! },
-              }),
-            assert: (detail) => {
-              assert(detail && !Array.isArray(detail), "expected session detail response");
-              expect(observedToolNames).toEqual([["search"]]);
-              assert(detail.workflow.status === "complete");
-              expect(detail.agent.state.messages).toContainEqual(
-                expect.objectContaining({ role: "assistant", stopReason: "stop" }),
-              );
-            },
-          }),
-        ],
-      }),
-    );
-  });
-
-  test("uses already-loaded skills and prompt templates from harness resources", async () => {
-    const observedPrompts: string[] = [];
-    const streamFn: StreamFn = (_model, context) => {
-      const prompt = context.messages.at(-1)?.content;
-      observedPrompts.push(
-        typeof prompt === "string"
-          ? prompt
-          : (prompt ?? []).map((content) => (content.type === "text" ? content.text : "")).join(""),
-      );
-      return createTextStreamFn(`resource prompt ${observedPrompts.length}`)();
-    };
-    const resourcesWorkflow = defineWorkflow(
-      { name: "pi-harness-resources", schema: z.object({}) },
-      async (event, step) => {
-        const agentLoop = createAgentLoop(step, {
-          workflowName: "pi-harness-resources",
-          sessionId: event.instanceId,
-          agentName: "default",
-          env: createEnv(),
-          systemPrompt: "Use loaded resources.",
-          model: mockModel,
-          streamFn,
-          resources: {
-            skills: [
-              {
-                name: "fragno",
-                description: "Use for Fragno work.",
-                content: "Always preserve durable workflow state.",
-                filePath: "/repo/.agents/skills/fragno/SKILL.md",
-              },
-            ],
-            promptTemplates: [
-              {
-                name: "review",
-                description: "Review a change.",
-                content: "Review $1 for durable Pi harness behavior.",
-              },
-            ],
-          },
-        });
-
-        await agentLoop.runStep("invoke-skill", {
-          kind: "skill",
-          args: ["fragno", "Apply this to pi-harness."],
-        });
-        await agentLoop.runStep("invoke-template", {
-          kind: "promptFromTemplate",
-          args: ["review", ["teal-recorder"]],
-        });
-
-        return agentLoop.summary();
-      },
-    );
-    const config: PiFragmentConfig = { workflows: [resourcesWorkflow] };
-
-    await runScenario(
-      defineScenario({
-        name: "pi-harness-resources",
-        workflows: createPiWorkflows({ workflows: config.workflows }),
-        vars: () => ({ sessionId: undefined as string | undefined }),
-        harness: {
-          configureFragments: (harness) => ({
-            pi: instantiate(piHarnessDefinition)
-              .withConfig(config)
-              .withRoutes([piRoutesFactory])
-              .withServices({ workflows: harness.fragment.services }),
-          }),
-        },
-        clients: ({ clientConfig }) => ({
-          user: createPiFragmentClients(clientConfig("pi", { runner: "user" })),
-        }),
-        runners: ["agent", "user"],
-        steps: ({ workflow, runners, clients }) => [
-          workflow.read({
-            read: async () => {
-              const session = await clients.user.useCreateSession.mutateQuery({
-                path: { workflowName: resourcesWorkflow.name },
-                body: { name: "Resources Session", input: {} },
-              });
-              assert(session && !Array.isArray(session), "expected session response");
-              return session.id;
-            },
-            storeAs: "sessionId",
-          }),
-          runners.agent.runUntilIdle({
-            workflow: resourcesWorkflow.name,
-            instanceId: (ctx) => ctx.vars.sessionId!,
-            reason: "create",
-          }),
-          workflow.read({
-            read: async (ctx) =>
-              clients.user.useSessionDetail.query({
-                path: { workflowName: resourcesWorkflow.name, sessionId: ctx.vars.sessionId! },
-              }),
-            assert: (detail) => {
-              assert(detail && !Array.isArray(detail), "expected session detail response");
-              expect(observedPrompts[0]).toContain('<skill name="fragno"');
-              expect(observedPrompts[0]).toContain("Always preserve durable workflow state.");
-              expect(observedPrompts[0]).toContain("Apply this to pi-harness.");
-              assert(
-                observedPrompts[1] === "Review teal-recorder for durable Pi harness behavior.",
-              );
-              expect(detail.agent.state.messages).toMatchObject([
-                { role: "user" },
-                { role: "assistant", stopReason: "stop" },
-                { role: "user" },
-                { role: "assistant", stopReason: "stop" },
-              ]);
-            },
-          }),
-        ],
-      }),
-    );
-  });
-
-  test("runs an autonomous agentic workflow that hands off at a classification tool", async () => {
-    let providerCalls = 0;
-    const fakeSafetyApi = vi.fn(async (input: { text: string; offensive: boolean }) => ({
-      action: input.offensive ? "escalated" : "allowed",
-      ticketId: input.offensive ? "safety-123" : null,
-    }));
-    const classifySafetyTool = definePiTool({
-      name: "classifySafety",
-      label: "Classify safety",
-      description: "Classify whether text is offensive.",
-      parameters: Type.Object({ text: Type.String() }),
-      resultSchema: Type.Object({ offensive: Type.Boolean() }),
-      async execute(_toolCallId, params) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: params.text.includes("idiot") ? "offensive" : "not offensive",
-            },
-          ],
-          details: { offensive: params.text.includes("idiot") },
-        };
-      },
-    });
-    const skippedClassificationStream = createTextStreamFn("This looks offensive to me.");
-    const classifyStream = createToolCallStreamFn({
-      type: "toolCall",
-      id: "classify-call-1",
-      name: "classifySafety",
-      arguments: { text: "you are an idiot" },
-    });
-    const finalStream = createTextStreamFn(
-      "Created safety ticket safety-123 and drafted a moderator summary.",
-    );
-    const streamFn: StreamFn = (model, context, options) => {
-      providerCalls += 1;
-      if (providerCalls === 1) {
-        return skippedClassificationStream();
-      }
-      return providerCalls === 2 ? classifyStream(model, context, options) : finalStream();
-    };
-    const harnesses: ScenarioHarnesses = {
-      default: {
-        env: createEnv(),
-        systemPrompt: "You are a safety operations agent.",
-        model: mockModel,
-        streamFn,
-      },
-    };
-    const tools = [classifySafetyTool] as const;
-    const actor = { type: "account", id: "safety-operator" };
-    const onOperationCompleted = vi.fn();
-    const workflowSchema = z.object({
-      harnessName: z.string(),
-      text: z.string(),
-      actor: z.unknown(),
-    });
-    const autonomousSafetyWorkflow = defineWorkflow(
-      { name: "pi-harness-autonomous-safety-agent", schema: workflowSchema },
-      async (event, step) => {
-        const params = workflowSchema.parse(event.payload ?? {});
-        const harness = harnesses[params.harnessName];
-        if (!harness) {
-          throw new Error(`Harness ${params.harnessName} not found.`);
-        }
-        const agentLoop = createAgentLoop(step, {
-          workflowName: "pi-harness-autonomous-safety-agent",
-          sessionId: event.instanceId,
-          agentName: params.harnessName,
-          actor: params.actor,
-          ...harness,
-          tools,
-        });
-        let offensive: boolean | undefined;
-        for (let attempt = 0; offensive === undefined && attempt < 3; attempt += 1) {
-          const message = await agentLoop.runStep(`classify-safety-${attempt}`, {
-            kind: "prompt",
-            args: [
-              attempt === 0
-                ? `Classify this text: ${params.text}`
-                : `You must call classifySafety for this text before deciding: ${params.text}`,
-            ],
-            stopOnTools: ["classifySafety"],
-          });
-          if (message?.role === "toolResult" && message.toolName === "classifySafety") {
-            expectTypeOf(message.details).toEqualTypeOf<{ offensive: boolean }>();
-            offensive = message.details.offensive;
-          }
-        }
-        if (offensive === undefined) {
-          throw new Error("MISSING_CLASSIFICATION_RESULT_AFTER_REPROMPT");
-        }
-        const apiResult = await step.do("external-safety-api", async () =>
-          fakeSafetyApi({ text: params.text, offensive }),
-        );
-        await agentLoop.runStep("summarize-safety-action", {
-          kind: "prompt",
-          args: [
-            `External safety API returned ${apiResult.action} with ticket ${apiResult.ticketId}. Draft the operator summary.`,
-          ],
-        });
-
-        return {
-          action: apiResult.action,
-          ticketId: apiResult.ticketId,
-          leafId: agentLoop.summary().leafId,
-        };
-      },
-    );
-    const config: PiFragmentConfig = {
-      workflows: [autonomousSafetyWorkflow],
-      onOperationCompleted,
-    };
-
-    await runScenario(
-      defineScenario({
-        name: "pi-harness-autonomous-safety-agent",
-        workflows: createPiWorkflows({
-          workflows: config.workflows,
-        }),
-        vars: () => ({ sessionId: undefined as string | undefined }),
-        harness: {
-          configureFragments: (harness) => ({
-            pi: instantiate(piHarnessDefinition)
-              .withConfig(config)
-              .withRoutes([piRoutesFactory])
-              .withServices({ workflows: harness.fragment.services }),
-          }),
-        },
-        clients: ({ clientConfig }) => ({
-          user: createPiFragmentClients(clientConfig("pi", { runner: "user" })),
-        }),
-        runners: ["agent", "user"],
-        steps: ({ workflow, hooks, runners, clients }) => [
-          workflow.read({
-            read: async () => {
-              const session = await clients.user.useCreateSession.mutateQuery({
-                path: { workflowName: autonomousSafetyWorkflow.name },
-                body: {
-                  name: "Autonomous Safety Session",
-                  input: { harnessName: "default", text: "you are an idiot", actor },
-                },
-              });
-              assert(session && !Array.isArray(session), "expected session response");
-              return session.id;
-            },
-            storeAs: "sessionId",
-          }),
-          runners.agent.runUntilIdle({
-            workflow: autonomousSafetyWorkflow.name,
-            instanceId: (ctx) => ctx.vars.sessionId!,
-            reason: "create",
-          }),
-          hooks.read<PiOperationCompletedHookPayload>({
-            fragment: "pi",
-            hookName: "onOperationCompleted",
-            status: "pending",
-            assert: (records) => {
-              expect(records).toHaveLength(3);
-              expect(records.map((record) => record.payload.stepName)).toEqual(
-                expect.arrayContaining([
-                  "classify-safety-0",
-                  "classify-safety-1",
-                  "summarize-safety-action",
-                ]),
-              );
-              expect(onOperationCompleted).not.toHaveBeenCalled();
-            },
-          }),
-          runners.agent.drainHooks(),
-          hooks.read<PiOperationCompletedHookPayload>({
-            fragment: "pi",
-            hookName: "onOperationCompleted",
-            status: "completed",
-            assert: (records, ctx) => {
-              assert(ctx.vars.sessionId, "session id should be set");
-              expect(records).toHaveLength(3);
-
-              const recordsByStepName = new Map(
-                records.map((record) => [record.payload.stepName, record]),
-              );
-              const expectedUsage = {
-                input: 0,
-                output: 0,
-                cacheRead: 0,
-                cacheWrite: 0,
-                totalTokens: 0,
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-              };
-              const expectedStopReasons = new Map([
-                ["classify-safety-0", "stop"],
-                ["classify-safety-1", "toolUse"],
-                ["summarize-safety-action", "stop"],
-              ] as const);
-
-              for (const [stepName, stopReason] of expectedStopReasons) {
-                expect(recordsByStepName.get(stepName)).toEqual(
-                  expect.objectContaining({
-                    hookName: "onOperationCompleted",
-                    status: "completed",
-                    payload: {
-                      actor,
-                      workflowName: autonomousSafetyWorkflow.name,
-                      sessionId: ctx.vars.sessionId,
-                      agentName: "default",
-                      stepName,
-                      operationId: `${autonomousSafetyWorkflow.name}:${ctx.vars.sessionId}:${stepName}`,
-                      operation: "prompt",
-                      modelCalls: [
-                        {
-                          api: "openai-responses",
-                          provider: "openai",
-                          model: "test-model",
-                          usage: expectedUsage,
-                          stopReason,
-                          timestamp: expect.any(Number),
-                        },
-                      ],
-                      usage: expectedUsage,
-                    },
-                  }),
-                );
-              }
-            },
-          }),
-          workflow.read({
-            read: async (ctx) => ({
-              detail: await clients.user.useSessionDetail.query({
-                path: {
-                  workflowName: autonomousSafetyWorkflow.name,
-                  sessionId: ctx.vars.sessionId!,
-                },
-              }),
-              status: await ctx.state.getStatus(autonomousSafetyWorkflow.name, ctx.vars.sessionId!),
-            }),
-            assert: ({ detail, status }) => {
-              assert(detail && !Array.isArray(detail), "expected session detail response");
-              assert(status.status === "complete");
-              expect(status.output).toMatchObject({ action: "escalated", ticketId: "safety-123" });
-              expect(fakeSafetyApi).toHaveBeenCalledWith({
-                text: "you are an idiot",
-                offensive: true,
-              });
-              assert(providerCalls === 3);
-              expect(onOperationCompleted).toHaveBeenCalledTimes(3);
-              expect(onOperationCompleted.mock.calls.map(([payload]) => payload)).toEqual(
-                expect.arrayContaining([
-                  expect.objectContaining({
-                    actor,
-                    operation: "prompt",
-                    stepName: "classify-safety-0",
-                  }),
-                  expect.objectContaining({
-                    actor,
-                    operation: "prompt",
-                    stepName: "classify-safety-1",
-                  }),
-                  expect.objectContaining({
-                    actor,
-                    operation: "prompt",
-                    stepName: "summarize-safety-action",
-                  }),
-                ]),
-              );
-              expect(detail.agent.state.messages).toMatchObject([
-                { role: "user" },
-                { role: "assistant", stopReason: "stop" },
-                { role: "user" },
-                { role: "assistant", stopReason: "toolUse" },
-                { role: "toolResult", toolName: "classifySafety" },
-                { role: "user" },
-                { role: "assistant", stopReason: "stop" },
-              ]);
-              expect(detail.agent.state.messages[4]).toMatchObject({
-                role: "toolResult",
-                content: [{ type: "text", text: "offensive" }],
-                details: { offensive: true },
-              });
-              expect(detail.agent.state.messages[6]).toMatchObject({
-                role: "assistant",
-                content: [
-                  {
-                    type: "text",
-                    text: "Created safety ticket safety-123 and drafted a moderator summary.",
-                  },
-                ],
-              });
-            },
-          }),
-        ],
-      }),
-    );
-  });
-
-  test("uses stopOnTools to terminate after a matching tool result", async () => {
-    const classifyTool = definePiTool({
-      name: "classify",
-      label: "Classify",
-      description: "Classify a request.",
-      parameters: Type.Object({ request: Type.String() }),
-      async execute(_toolCallId, params) {
-        return {
-          content: [{ type: "text", text: `classified:${params.request}` }],
-          details: { stoppedBy: "workflow-option" as const },
-        };
-      },
-    });
-    const streamFn = vi.fn(
-      createToolCallStreamFn({
-        type: "toolCall",
-        id: "call-1",
-        name: "classify",
-        arguments: { request: "handoff" },
-      }),
-    );
-    const harnesses: ScenarioHarnesses = {
-      default: {
-        env: createEnv(),
-        systemPrompt: "You are helpful.",
-        model: mockModel,
-        streamFn,
-      },
-    };
-    const tools = [classifyTool] as const;
-    const stopOnToolsWorkflow = defineWorkflow(
-      { name: "pi-harness-stop-on-tools", schema: z.object({ harnessName: z.string() }) },
-      async (event, step) => {
-        const params = z.object({ harnessName: z.string() }).parse(event.payload ?? {});
-        const harness = harnesses[params.harnessName];
-        if (!harness) {
-          throw new Error(`Harness ${params.harnessName} not found.`);
-        }
-        const commandLoop = createAgentLoop(step, {
-          workflowName: "pi-harness-stop-on-tools",
-          sessionId: event.instanceId,
-          agentName: params.harnessName,
-          ...harness,
-          tools,
-          commandTimeout: "1 hour",
-        });
-        const result = await commandLoop.waitForCommandAndRunStep({ stopOnTools: ["classify"] });
-        if (result.kind !== "agentRun") {
-          return { skipped: true };
-        }
-
-        return commandLoop.summary();
-      },
-    );
-    const config: PiFragmentConfig = { workflows: [stopOnToolsWorkflow] };
-
-    await runScenario(
-      defineScenario({
-        name: "pi-harness-stop-on-tools",
-        workflows: createPiWorkflows({
-          workflows: config.workflows,
-        }),
-        vars: () => ({ sessionId: undefined as string | undefined }),
-        harness: {
-          configureFragments: (harness) => ({
-            pi: instantiate(piHarnessDefinition)
-              .withConfig(config)
-              .withRoutes([piRoutesFactory])
-              .withServices({ workflows: harness.fragment.services }),
-          }),
-        },
-        clients: ({ clientConfig }) => ({
-          user: createPiFragmentClients(clientConfig("pi", { runner: "user" })),
-        }),
-        runners: ["agent", "user"],
-        steps: ({ workflow, runners, clients }) => [
-          workflow.read({
-            read: async () => {
-              const session = await clients.user.useCreateSession.mutateQuery({
-                path: { workflowName: stopOnToolsWorkflow.name },
-                body: { name: "Stop Tool Session", input: { harnessName: "default" } },
-              });
-              assert(session && !Array.isArray(session), "expected session response");
-              return session.id;
-            },
-            storeAs: "sessionId",
-          }),
-          runners.agent.runUntilIdle({
-            workflow: stopOnToolsWorkflow.name,
-            instanceId: (ctx) => ctx.vars.sessionId!,
-            reason: "create",
-          }),
-          workflow.read({
-            read: async (ctx) => {
-              assert(ctx.vars.sessionId, "session id should be set");
-              return await clients.user.useCommandSession.mutateQuery({
-                path: { workflowName: stopOnToolsWorkflow.name, sessionId: ctx.vars.sessionId },
-                body: { kind: "prompt", input: { text: "classify this" } },
-              });
-            },
-          }),
-          runners.agent.runUntilIdle({
-            workflow: stopOnToolsWorkflow.name,
-            instanceId: (ctx) => ctx.vars.sessionId!,
-            reason: "event",
-          }),
-          workflow.read({
-            read: async (ctx) =>
-              clients.user.useSessionDetail.query({
-                path: {
-                  workflowName: stopOnToolsWorkflow.name,
-                  sessionId: ctx.vars.sessionId!,
-                },
-              }),
-            assert: (detail) => {
-              assert(detail && !Array.isArray(detail), "expected session detail response");
-              expect(streamFn).toHaveBeenCalledTimes(1);
-              assert(detail.workflow.status === "complete");
-              expect(detail.agent.state.messages).toMatchObject([
-                { role: "user" },
-                { role: "assistant", stopReason: "toolUse" },
-                { role: "toolResult", toolCallId: "call-1", toolName: "classify" },
-              ]);
-              expect(detail.agent.state.messages[2]).toMatchObject({
-                role: "toolResult",
-                content: [{ type: "text", text: "classified:handoff" }],
-                details: { stoppedBy: "workflow-option" },
-              });
             },
           }),
         ],

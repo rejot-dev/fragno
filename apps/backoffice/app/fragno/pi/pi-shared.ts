@@ -1,6 +1,8 @@
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { STATIC_FILE_CONTENT } from "@/files";
 
+export const BACKOFFICE_PI_WORKFLOW_NAME = "interactive-chat-workflow";
+
 export type PiSteeringMode = "all" | "one-at-a-time";
 export type PiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
@@ -122,6 +124,11 @@ export const createPiAgentName = (options: {
   provider: PiModelProvider;
   model: string;
 }) => `${options.harnessId}::${options.provider}::${options.model}`;
+
+export const piSessionAgentName = (metadata: Record<string, unknown> | null): string | null => {
+  const agentName = metadata?.agentName;
+  return typeof agentName === "string" ? agentName : null;
+};
 
 export const parsePiAgentName = (agent: string) => {
   const parts = agent.split("::");

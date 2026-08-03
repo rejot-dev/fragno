@@ -6,8 +6,8 @@ import {
 import type { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
 
 import type { PiHarnessAssistantMessageEvent } from "./harness/message-update-protocol";
-import type { PiHarnessEmission, PiHarnessStepResult } from "./harness/run-pi-harness-step";
 import type { PiAgentStateSnapshot } from "./types";
+import type { PiHarnessEmission, PiHarnessStepResult } from "./workflows/workflow-agent-harness";
 
 export type PiSessionProjectionStatus = "idle" | "loading" | "ready" | "error";
 
@@ -95,7 +95,7 @@ export const emptyPiWorkflowSessionProjectionState = (
   statusText: "Loading…",
 });
 
-export const piAgentMessagesFromSessionEntries = (
+const piAgentMessagesFromSessionEntries = (
   entries: readonly SessionTreeEntry[],
 ): AgentMessage[] => {
   let leafId: string | null = null;
@@ -313,6 +313,8 @@ export const reducePiWorkflowSessionEmission = (
   if (event.type === "message_start") {
     draftAgentMessage.activity = "starting";
     if (event.message.role === "assistant") {
+      draftAgentMessage.assistant = undefined;
+      draftAgentMessage.tools = {};
       state.currentAssistantMessage = {
         ...event.message,
         content: [...event.message.content],

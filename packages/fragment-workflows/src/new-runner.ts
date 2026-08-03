@@ -3,7 +3,11 @@
 import type { StandardSchemaV1 } from "@fragno-dev/core/api";
 import { BufferedPumpScopeAlreadyOpenError } from "@fragno-dev/db/buffered-pump";
 
-import type { DatabaseRequestContext, IUnitOfWork } from "@fragno-dev/db";
+import {
+  ConcurrencyConflictError,
+  type DatabaseRequestContext,
+  type IUnitOfWork,
+} from "@fragno-dev/db";
 
 import {
   applyOutcome,
@@ -27,7 +31,10 @@ import type {
 } from "./runner/types";
 import { toError } from "./runner/utils";
 import { workflowsSchema } from "./schema";
-import { createWorkflowStepCommittedControlPayload } from "./step-emission-control";
+import {
+  createWorkflowStepCommittedControlPayload,
+  selectCanonicalWorkflowStepEmissions,
+} from "./step-emission-control";
 import {
   isSystemEventActor,
   WORKFLOW_SYSTEM_PAUSE_CONSUMER_KEY,
@@ -59,6 +66,7 @@ type RunnerTickContext = {
   workflowsByName: Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>;
   handlerTx: DatabaseRequestContext["handlerTx"];
   busHandlerTx: DatabaseRequestContext["handlerTx"];
+  executionId: string;
   createEpoch: () => string;
   stepEmissions?: WorkflowStepLivePumpRegistry;
   stepEmissionsToPublish: WorkflowStepEmission[];
@@ -115,10 +123,6 @@ async function validateWorkflowOutput(
  * Bigger picture: keep initial/event/resume ticks on the normal run path, and reserve
  * wake/retry paths for scheduled wakeups and retry hooks.
  */
-function isConcurrencyConflictError(error: unknown): boolean {
-  return error instanceof Error && error.name === "ConcurrencyConflictError";
-}
-
 function coerceTaskKind(reason: WorkflowEnqueuedHookPayload["reason"]): RunnerTaskKind {
   if (reason === "retry") {
     return "retry";
@@ -138,7 +142,21 @@ function coerceTaskKind(reason: WorkflowEnqueuedHookPayload["reason"]): RunnerTa
 function sortEventsForRunner(events: WorkflowEventRecord[]): WorkflowEventRecord[] {
   return events.toSorted((a, b) => {
     const timeDiff = a.createdAt.getTime() - b.createdAt.getTime();
-    return timeDiff !== 0 ? timeDiff : String(a.id).localeCompare(String(b.id));
+
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
+
+    if (!a.id.internalId || !b.id.internalId) {
+      throw new Error("WorkflowEventRecord missing internalId for tie-breaking");
+    }
+
+    if (a.id.internalId === b.id.internalId) {
+      throw new Error("WorkflowEventRecord has duplicate internalId for tie-breaking");
+    }
+
+    // TODO: In some databases, like Postgres, ids are not strictly monotonic, so this tiebreaker is NOT guaranteed to be reliable.
+    return a.id.internalId < b.id.internalId ? -1 : 1;
   });
 }
 
@@ -313,6 +331,7 @@ function planEarlyReschedule(
 function addStepCommittedEmissions(
   uow: IUnitOfWork,
   state: RunnerState,
+  executionId: string,
   publishedStepEmissions: WorkflowStepEmission[],
 ) {
   const mutatedStepKeys = new Set<string>([
@@ -330,6 +349,7 @@ function addStepCommittedEmissions(
     const id = schemaUow.create("workflow_step_emission", {
       instanceRef: request.instanceRef,
       stepKey: request.stepKey,
+      executionId,
       epoch: request.epoch,
       sequence: 0,
       actor: "system",
@@ -340,6 +360,7 @@ function addStepCommittedEmissions(
       id: id.toString(),
       actor: "system",
       stepKey: request.stepKey,
+      executionId,
       epoch: request.epoch,
       sequence: 0,
       payload,
@@ -354,26 +375,24 @@ async function planRunTask(
   payload: WorkflowEnqueuedHookPayload & { timestamp: Date },
 ): Promise<RunnerTickPlan> {
   const events = sortEventsForRunner(selection.events);
+  const canonicalStepEmissions = selectCanonicalWorkflowStepEmissions({
+    steps: selection.steps,
+    emissions: selection.stepEmissions,
+  });
   const state = createRunnerState(
     selection.instance,
     selection.steps,
     events,
-    selection.stepEmissions,
+    canonicalStepEmissions,
   );
-  const outcome = await runTask(
-    selection.instance,
-    coerceTaskKind(payload.reason),
-    payload.timestamp,
-    state,
-    ctx,
-  );
+  const outcome = await runTask(selection.instance, coerceTaskKind(payload.reason), state, ctx);
 
   return {
     processed: 1,
     operations: [
       (uow) => {
-        applyRunnerMutations(uow, state, ctx.workflowsByName);
-        addStepCommittedEmissions(uow, state, ctx.stepEmissionsToPublish);
+        applyRunnerMutations(uow, state, ctx.workflowsByName, ctx.executionId);
+        addStepCommittedEmissions(uow, state, ctx.executionId, ctx.stepEmissionsToPublish);
         applyOutcome(uow, selection.instance, outcome);
       },
     ],
@@ -384,10 +403,10 @@ async function planRunTask(
  * Build the workflow event delivered to user code.
  * Bigger picture: runner invokes workflows with a stable event payload derived from instance state.
  */
-function buildWorkflowEvent(instance: WorkflowInstanceRecord, timestamp: Date) {
+function buildWorkflowEvent(instance: WorkflowInstanceRecord) {
   return {
     payload: instance.params ?? {},
-    timestamp,
+    timestamp: instance.createdAt,
     instanceId: instance.instanceId,
   };
 }
@@ -399,7 +418,6 @@ function buildWorkflowEvent(instance: WorkflowInstanceRecord, timestamp: Date) {
 async function runTask(
   instance: WorkflowInstanceRecord,
   taskKind: RunnerTaskKind,
-  timestamp: Date,
   state: ReturnType<typeof createRunnerState>,
   ctx: RunnerTickContext,
 ): Promise<RunnerTaskOutcome> {
@@ -417,11 +435,12 @@ async function runTask(
     workflowName: instance.workflowName,
     instanceId: instance.instanceId,
     handlerTx: ctx.busHandlerTx,
+    executionId: ctx.executionId,
     createEpoch: ctx.createEpoch,
     stepEmissions: ctx.stepEmissions,
     workflowsByName: ctx.workflowsByName,
   });
-  const initialEvent = buildWorkflowEvent(instance, timestamp);
+  const initialEvent = buildWorkflowEvent(instance);
 
   try {
     const rawOutput = await workflow.run(initialEvent, step);
@@ -536,7 +555,8 @@ export async function runWorkflowsTick(options: {
   workflows: WorkflowsRegistry;
   payload: WorkflowEnqueuedHookPayload & { timestamp: Date };
   workflowsByName?: Map<string, WorkflowsRegistry[keyof WorkflowsRegistry]>;
-  createEpoch?: () => string;
+  createExecutionId: () => string;
+  createEpoch: () => string;
   stepEmissions?: WorkflowStepLivePumpRegistry;
 }): Promise<number> {
   const workflowsByName =
@@ -548,12 +568,12 @@ export async function runWorkflowsTick(options: {
   if (workflowsByName.size === 0) {
     return 0;
   }
-  const createEpoch = options.createEpoch ?? (() => crypto.randomUUID());
+  const { createExecutionId, createEpoch } = options;
 
   // Instance-scoped tick: we only fetch data for the payload's instance/run.
   let processed = 0;
   let mutatePhase = false;
-  const stepEmissionsToPublish: WorkflowStepEmission[] = [];
+  let stepEmissionsToPublish: WorkflowStepEmission[] = [];
 
   try {
     await options
@@ -561,6 +581,12 @@ export async function runWorkflowsTick(options: {
         // We must plan mutations after retrieve and before executeMutations. The
         // transform hooks are synchronous and run too late, so we use onAfterRetrieve.
         onAfterRetrieve: async (uow, results) => {
+          const executionId = createExecutionId();
+          const attemptStepEmissionsToPublish: WorkflowStepEmission[] = [];
+          processed = 0;
+          mutatePhase = false;
+          stepEmissionsToPublish = attemptStepEmissionsToPublish;
+
           const retrieveResults = results as [
             WorkflowInstanceRecord[],
             WorkflowStepRecord[],
@@ -580,9 +606,10 @@ export async function runWorkflowsTick(options: {
               workflowsByName,
               handlerTx: options.handlerTx,
               busHandlerTx: options.busHandlerTx ?? options.handlerTx,
+              executionId,
               createEpoch,
               stepEmissions: options.stepEmissions,
-              stepEmissionsToPublish,
+              stepEmissionsToPublish: attemptStepEmissionsToPublish,
             },
             options.payload,
           );
@@ -624,7 +651,10 @@ export async function runWorkflowsTick(options: {
       )
       .execute();
   } catch (err) {
-    if (err instanceof WorkflowRunnerConcurrencyConflict || isConcurrencyConflictError(err)) {
+    if (
+      err instanceof WorkflowRunnerConcurrencyConflict ||
+      err instanceof ConcurrencyConflictError
+    ) {
       return 0;
     }
     if (mutatePhase) {

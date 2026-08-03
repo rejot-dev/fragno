@@ -35,12 +35,12 @@ export type WorkflowStepEmissionRecord = TableToColumnValues<
 
 export type WorkflowStepCreate = Omit<
   TableToInsertValues<(typeof workflowsSchema)["tables"]["workflow_step"]>,
-  "id" | "createdAt" | "updatedAt"
+  "id" | "createdAt" | "updatedAt" | "committedByExecutionId"
 >;
 
 export type WorkflowStepUpdate = Omit<
   TableToUpdateValues<(typeof workflowsSchema)["tables"]["workflow_step"]>,
-  "createdAt" | "updatedAt"
+  "createdAt" | "updatedAt" | "committedByExecutionId"
 >;
 
 export type WorkflowEventUpdate = TableToUpdateValues<

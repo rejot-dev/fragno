@@ -11,7 +11,7 @@ const snapshot: PiSessionListingSnapshot = {
     {
       id: "local-session",
       name: "Local session",
-      agent: "default::openai::model",
+      metadata: { agentName: "default::openai::model" },
       workflowName: "interactive-chat-workflow",
       createdAt: new Date("2026-07-22T10:00:00.000Z"),
       updatedAt: new Date("2026-07-22T10:00:00.000Z"),
@@ -21,13 +21,17 @@ const snapshot: PiSessionListingSnapshot = {
 };
 
 describe("projectPiSessionListingRows", () => {
-  it("maps joined collection rows into the session listing", () => {
+  it("maps workflow instance rows into the session listing", () => {
     const listing = projectPiSessionListingRows([
       {
         sessionId: "session-1",
-        name: "Local session",
-        agent: "default::openai::model",
         workflowName: "interactive-chat-workflow",
+        params: {
+          metadata: { agentName: "default::openai::model" },
+          __piSession: {
+            name: "Local session",
+          },
+        },
         createdAt: new Date("2026-07-22T11:00:00.000Z"),
         updatedAt: new Date("2026-07-22T11:05:00.000Z"),
         workflowStatus: "active",
@@ -38,7 +42,7 @@ describe("projectPiSessionListingRows", () => {
       {
         id: "session-1",
         name: "Local session",
-        agent: "default::openai::model",
+        metadata: { agentName: "default::openai::model" },
         workflowName: "interactive-chat-workflow",
         createdAt: new Date("2026-07-22T11:00:00.000Z"),
         updatedAt: new Date("2026-07-22T11:05:00.000Z"),
@@ -47,32 +51,40 @@ describe("projectPiSessionListingRows", () => {
     expect(listing.workflowStatuses).toEqual({ "session-1": "active" });
   });
 
-  it("does not expose missing or unknown workflow statuses as Pi statuses", () => {
+  it("omits workflow instances without Pi session data", () => {
     const listing = projectPiSessionListingRows([
       {
-        sessionId: "missing-workflow",
-        name: null,
-        agent: "default::openai::model",
-        workflowName: "interactive-chat-workflow",
-        createdAt: new Date(0),
-        updatedAt: new Date(0),
-        workflowStatus: undefined,
-      },
-      {
         sessionId: "future-workflow",
-        name: null,
-        agent: "default::openai::model",
         workflowName: "interactive-chat-workflow",
+        params: {},
         createdAt: new Date(0),
         updatedAt: new Date(0),
         workflowStatus: "future-status",
       },
     ]);
 
-    expect(listing.workflowStatuses).toEqual({
-      "missing-workflow": null,
-      "future-workflow": null,
-    });
+    expect(listing.sessions).toEqual([]);
+    expect(listing.workflowStatuses).toEqual({});
+  });
+
+  it("does not expose unknown workflow statuses as Pi statuses", () => {
+    const listing = projectPiSessionListingRows([
+      {
+        sessionId: "future-workflow",
+        workflowName: "interactive-chat-workflow",
+        params: {
+          metadata: { agentName: "default::openai::model" },
+          __piSession: {
+            name: null,
+          },
+        },
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+        workflowStatus: "future-status",
+      },
+    ]);
+
+    expect(listing.workflowStatuses).toEqual({ "future-workflow": null });
   });
 });
 

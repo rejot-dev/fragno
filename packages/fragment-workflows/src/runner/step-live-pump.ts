@@ -11,14 +11,21 @@ import type { DatabaseRequestContext } from "@fragno-dev/db";
 
 import { buildScopedInstanceRowId } from "../instance-ref";
 import { workflowsSchema } from "../schema";
-import { createWorkflowStepStartedControlPayload } from "../step-emission-control";
+import {
+  createWorkflowEventConsumedControlPayload,
+  createWorkflowStepStartedControlPayload,
+  isWorkflowEventConsumedControlPayload,
+  isWorkflowStepStartedControlPayload,
+  selectCanonicalWorkflowStepEmissions,
+  selectNoncanonicalWorkflowExecutionIds,
+} from "../step-emission-control";
 import {
   isSystemEventActor,
   WORKFLOW_EVENT_ACTOR_SYSTEM,
   WORKFLOW_EVENT_ACTOR_USER,
   type WorkflowEventActor,
 } from "../system-events";
-import type { WorkflowStepEvent } from "../workflow";
+import { WorkflowInstanceNotFoundError, type WorkflowStepEvent } from "../workflow";
 import { buildFailedStepEmissionFlushDiagnostics } from "./step-live-pump-diagnostics";
 import type { WorkflowEventRecord } from "./types";
 
@@ -26,7 +33,9 @@ const WORKFLOW_STEP_EMISSION_PUMP_INTERVAL_MS = 100;
 
 type StepEmissionOpenScopeMeta = {
   stepKey: string;
+  executionId: string;
   epoch: string;
+  eventConsumptions: ReadonlyMap<string, WorkflowEventRecord>;
   queueEventConsumption: (event: WorkflowEventRecord, consumedByStepKey: string) => void;
   isEventConsumptionQueued: (event: WorkflowEventRecord) => boolean;
 };
@@ -46,6 +55,7 @@ export type WorkflowStepEmission<TMessage = unknown> = {
   id: string;
   actor: WorkflowEventActor;
   stepKey: string;
+  executionId: string;
   epoch: string;
   sequence: number;
   payload: TMessage;
@@ -81,6 +91,7 @@ type LogicalStepEmissionRow = {
   id: string;
   actor: WorkflowEventActor;
   stepKey: string;
+  executionId: string;
   epoch: string;
   sequence: number;
   payload: unknown;
@@ -146,7 +157,9 @@ export function createWorkflowStepLivePump<TOutEmission = unknown, TInEvent = un
 
       return {
         stepKey: key,
+        executionId: meta.executionId,
         epoch: meta.epoch,
+        eventConsumptions: meta.eventConsumptions,
         queueEventConsumption: meta.queueEventConsumption,
         isEventConsumptionQueued: meta.isEventConsumptionQueued,
         eventTypeCounts: new Map<string, number>(),
@@ -188,6 +201,13 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
             )
             .orderByIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", "asc"),
         )
+        .find("workflow_step", (b) =>
+          b
+            .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
+              eb("instanceRef", "=", instanceRef),
+            )
+            .orderByIndex("idx_workflow_step_instanceRef_createdAt", "asc"),
+        )
         .find("workflow_event", (b) =>
           b
             .whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
@@ -196,9 +216,9 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
             .orderByIndex("idx_workflow_event_instanceRef_createdAt", "asc"),
         );
     })
-    .mutate(({ forSchema, retrieveResult: [instance, rows, events] }) => {
+    .mutate(({ forSchema, retrieveResult: [instance, rows, steps, events] }) => {
       if (!instance) {
-        throw new Error("INSTANCE_NOT_FOUND");
+        throw new WorkflowInstanceNotFoundError(options.workflowName, options.instanceId);
       }
 
       const uow = forSchema(workflowsSchema);
@@ -206,15 +226,26 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
         id: row.id.toString(),
         actor: row.actor,
         stepKey: row.stepKey,
+        executionId: row.executionId,
         epoch: row.epoch,
         sequence: row.sequence,
         payload: row.payload,
         createdAt: row.createdAt,
       }));
       const createdRows: LogicalStepEmissionRow[] = [];
+      const canonicalRetrievedRows = selectCanonicalWorkflowStepEmissions({
+        steps,
+        emissions: retrievedRows,
+      });
+      const noncanonicalExecutionIds = selectNoncanonicalWorkflowExecutionIds({
+        steps,
+        emissions: retrievedRows,
+      });
+      const consumedEventIds = workflowEventConsumptionIds(canonicalRetrievedRows);
       let nextSequence = 0;
       const appendRow = (row: {
         stepKey: string;
+        executionId: string;
         epoch: string;
         sequence: number;
         actor: typeof WORKFLOW_EVENT_ACTOR_SYSTEM | typeof WORKFLOW_EVENT_ACTOR_USER;
@@ -224,6 +255,7 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
         const id = uow.create("workflow_step_emission", {
           instanceRef: instance.id,
           stepKey: row.stepKey,
+          executionId: row.executionId,
           epoch: row.epoch,
           sequence: row.sequence,
           actor: row.actor,
@@ -239,11 +271,21 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
         }
         const step = scope.meta;
         const existingRows = retrievedRows.filter(
-          (row) => row.stepKey === stepKey && row.epoch === step.epoch,
+          (row) =>
+            row.stepKey === stepKey &&
+            row.executionId === step.executionId &&
+            row.epoch === step.epoch,
         );
-        if (!existingRows.some((row) => row.actor === WORKFLOW_EVENT_ACTOR_SYSTEM)) {
+        if (
+          !existingRows.some(
+            (row) =>
+              row.actor === WORKFLOW_EVENT_ACTOR_SYSTEM &&
+              isWorkflowStepStartedControlPayload(row.payload),
+          )
+        ) {
           appendRow({
             stepKey,
+            executionId: step.executionId,
             epoch: step.epoch,
             sequence: nextSequence++,
             actor: WORKFLOW_EVENT_ACTOR_SYSTEM,
@@ -251,9 +293,38 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
           });
         }
 
+        for (const eventId of step.eventConsumptions.keys()) {
+          const scopeAlreadyAcknowledgedEvent = existingRows.some(
+            (row) =>
+              row.actor === WORKFLOW_EVENT_ACTOR_SYSTEM &&
+              isWorkflowEventConsumedControlPayload(row.payload) &&
+              row.payload.eventId === eventId,
+          );
+          if (scopeAlreadyAcknowledgedEvent) {
+            continue;
+          }
+
+          const canonicalScope = !noncanonicalExecutionIds.has(step.executionId);
+          if (canonicalScope && consumedEventIds.has(eventId)) {
+            continue;
+          }
+          if (canonicalScope) {
+            consumedEventIds.add(eventId);
+          }
+          appendRow({
+            stepKey,
+            executionId: step.executionId,
+            epoch: step.epoch,
+            sequence: nextSequence++,
+            actor: WORKFLOW_EVENT_ACTOR_SYSTEM,
+            payload: createWorkflowEventConsumedControlPayload(eventId),
+          });
+        }
+
         for (const payload of options.batch.outgoingByScope.get(stepKey) ?? []) {
           appendRow({
             stepKey,
+            executionId: step.executionId,
             epoch: step.epoch,
             sequence: nextSequence++,
             actor: WORKFLOW_EVENT_ACTOR_USER,
@@ -262,14 +333,19 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
         }
       }
 
-      return { retrievedRows, createdRows, events };
+      return { retrievedRows, createdRows, steps, events };
     })
     .execute();
 
-  const observedItems = [...result.retrievedRows, ...result.createdRows].map((row) => ({
+  const canonicalRows = selectCanonicalWorkflowStepEmissions({
+    steps: result.steps,
+    emissions: [...result.retrievedRows, ...result.createdRows],
+  });
+  const observedItems = canonicalRows.map((row) => ({
     id: row.id,
     actor: row.actor,
     stepKey: row.stepKey,
+    executionId: row.executionId,
     epoch: row.epoch,
     sequence: row.sequence,
     payload: trustStoredStepEmissionPayload<TOutEmission>(row.payload),
@@ -279,11 +355,13 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
   const queuedConsumptionPredicates = [...options.scopes.values()].map(
     (scope) => scope.meta.isEventConsumptionQueued,
   );
+  const consumedEventIds = workflowEventConsumptionIds(canonicalRows);
   const pendingEvents = [...result.events]
     .filter(
       (event) =>
         !isSystemEventActor(event.actor) &&
         !event.consumedByStepKey &&
+        !consumedEventIds.has(event.id.toString()) &&
         !queuedConsumptionPredicates.some((isQueued) => isQueued(event)),
     )
     .sort((a, b) => {
@@ -318,6 +396,16 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
 // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Workflow registration supplies the payload type trusted at this persisted JSON boundary.
 const trustStoredStepEmissionPayload = <TEmission>(payload: unknown): TEmission =>
   payload as TEmission;
+
+const workflowEventConsumptionIds = (rows: readonly LogicalStepEmissionRow[]): Set<string> =>
+  new Set(
+    rows.flatMap((row) =>
+      row.actor === WORKFLOW_EVENT_ACTOR_SYSTEM &&
+      isWorkflowEventConsumedControlPayload(row.payload)
+        ? [row.payload.eventId]
+        : [],
+    ),
+  );
 
 const buildWorkflowStepEvent = <TPayload>(
   event: WorkflowEventRecord,

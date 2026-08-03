@@ -102,6 +102,7 @@ const historyStepSchema = z.object({
   name: z.string(),
   type: z.string(),
   status: z.string(),
+  committedByExecutionId: z.string(),
   attempts: z.number(),
   maxAttempts: z.number(),
   timeoutMs: z.number().nullable(),
@@ -131,6 +132,7 @@ const historyEventSchema = z.object({
 const historyEmissionSchema = z.object({
   id: z.string(),
   stepKey: z.string(),
+  executionId: z.string(),
   epoch: z.string(),
   sequence: z.number(),
   actor: z.string(),

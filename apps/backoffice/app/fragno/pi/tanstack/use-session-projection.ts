@@ -1,4 +1,4 @@
-import type { PiSession } from "@fragno-dev/pi-harness/types";
+import { projectPiSessionFromWorkflowInstance } from "@fragno-dev/pi-harness/types";
 import { use } from "react";
 
 import { and, eq, toArray, useLiveQuery } from "@tanstack/react-db";
@@ -17,24 +17,6 @@ export function usePiSessionProjection({
 }) {
   const database = use(getPiBrowserDatabase());
   const collections = database.collectionsFor(source);
-  const sessionQuery = useLiveQuery(
-    (query) =>
-      query
-        .from({ session: collections.sessions })
-        .where(({ session }) =>
-          and(eq(session.workflowName, workflowName), eq(session.sessionId, sessionId)),
-        )
-        .select(({ session }) => ({
-          id: session.sessionId,
-          name: session.name,
-          agent: session.agent,
-          workflowName: session.workflowName,
-          createdAt: session.createdAt,
-          updatedAt: session.updatedAt,
-        }))
-        .findOne(),
-    [collections.sessions, sessionId, workflowName],
-  );
   const projectionQuery = useLiveQuery(
     (query) =>
       query
@@ -43,6 +25,11 @@ export function usePiSessionProjection({
           and(eq(instance.workflowName, workflowName), eq(instance.instanceId, sessionId)),
         )
         .select(({ instance }) => ({
+          instanceId: instance.instanceId,
+          workflowName: instance.workflowName,
+          params: instance.params,
+          createdAt: instance.createdAt,
+          updatedAt: instance.updatedAt,
           instanceStatus: instance.status,
           workflowSteps: toArray(
             query
@@ -54,6 +41,7 @@ export function usePiSessionProjection({
                 stepKey: step.stepKey,
                 type: step.type,
                 status: step.status,
+                committedByExecutionId: step.committedByExecutionId,
                 waitEventType: step.waitEventType,
                 result: step.result,
               })),
@@ -66,7 +54,10 @@ export function usePiSessionProjection({
               .orderBy(({ emission }) => emission.sequence, "asc")
               .orderBy(({ emission }) => emission.id, "asc")
               .select(({ emission }) => ({
+                actor: emission.actor,
                 stepKey: emission.stepKey,
+                executionId: emission.executionId,
+                epoch: emission.epoch,
                 payload: emission.payload,
                 createdAt: emission.createdAt,
               })),
@@ -81,8 +72,16 @@ export function usePiSessionProjection({
       workflowName,
     ],
   );
-  const session: PiSession | null = sessionQuery.data ?? null;
   const projectionRows = projectionQuery.data;
+  const session = projectionRows
+    ? projectPiSessionFromWorkflowInstance({
+        id: projectionRows.instanceId,
+        workflowName: projectionRows.workflowName,
+        params: projectionRows.params,
+        createdAt: projectionRows.createdAt,
+        updatedAt: projectionRows.updatedAt,
+      })
+    : null;
   const projection = projectPiSessionCollectionRows({
     workflowName,
     sessionId,
@@ -91,26 +90,26 @@ export function usePiSessionProjection({
     workflowStepEmissions: projectionRows?.workflowStepEmissions ?? [],
     synchronized: projectionQuery.isReady,
   });
-  const sourceError =
-    sessionQuery.isError || projectionQuery.isError
-      ? (collections.sessions.utils.getLastError() ??
-        collections.workflowInstances.utils.getLastError() ??
-        collections.workflowSteps.utils.getLastError() ??
-        collections.workflowStepEmissions.utils.getLastError())
-      : undefined;
+  const sourceError = projectionQuery.isError
+    ? (collections.workflowInstances.utils.getLastError() ??
+      collections.workflowSteps.utils.getLastError() ??
+      collections.workflowStepEmissions.utils.getLastError())
+    : undefined;
   const error =
     projection.error?.message ??
-    (sourceError instanceof Error
-      ? sourceError.message
-      : sessionQuery.isError || projectionQuery.isError
-        ? "Pi session synchronization failed."
-        : null);
+    (projectionRows && !session
+      ? `Workflow ${workflowName}/${sessionId} does not contain Pi session data.`
+      : sourceError instanceof Error
+        ? sourceError.message
+        : projectionQuery.isError
+          ? "Pi session synchronization failed."
+          : null);
 
   return {
     session,
     projection,
     instanceStatus: projectionRows?.instanceStatus ?? null,
     error,
-    isLoading: !sessionQuery.isReady || !projectionQuery.isReady,
+    isLoading: !projectionQuery.isReady,
   };
 }

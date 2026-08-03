@@ -22,7 +22,8 @@ overrides:
   zod@^4.0.0: 4.3.5
 
 patchedDependencies:
-  "@earendil-works/pi-ai": patches/@earendil-works__pi-ai.patch
+  "@earendil-works/pi-ai@0.75.5": patches/@earendil-works__pi-ai.patch
+  "@earendil-works/pi-ai@0.82.1": patches/@earendil-works__pi-ai-0.82.1.patch
 
 allowBuilds:
   "@journeyapps/wa-sqlite": true

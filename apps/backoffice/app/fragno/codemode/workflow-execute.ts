@@ -147,6 +147,7 @@ const createRemoteWorkflowStep = (stepTarget) => {
     return {
       emit: (payload) => queue(txTarget.emit(payload)),
       previousEmissions: async () => await txTarget.previousEmissions(),
+      previousConsumedEvents: async () => await txTarget.previousConsumedEvents(),
       workflowServiceCalls: (factory) => queue(txTarget.workflowServiceCalls(factory())),
       onEvent: (type, handler) => {
         let active = true;

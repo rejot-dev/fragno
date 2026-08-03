@@ -8,58 +8,100 @@ and client integrations.
 Import the logical surface you need directly:
 
 ```ts
+import { AgentHarness } from "@earendil-works/pi-agent-core";
+import { defineWorkflow } from "@fragno-dev/workflows/workflow";
+import { z } from "zod";
+
 import { piHarnessDefinition } from "@fragno-dev/pi-harness/definition";
 import { createPiHarness } from "@fragno-dev/pi-harness/factory";
-import { createAgentLoop } from "@fragno-dev/pi-harness/harness/commands";
+import { piSessionCommandPayloadSchema } from "@fragno-dev/pi-harness/route-schemas";
 import { definePiTool } from "@fragno-dev/pi-harness/tools";
 import type { PiFragmentConfig } from "@fragno-dev/pi-harness/types";
 import { createInteractiveChatWorkflow } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
+import {
+  applyWorkflowAgentHarnessStepResult,
+  createPiHarnessSessionState,
+  restoreWorkflowBackedSession,
+  withWorkflowAgentHarness,
+} from "@fragno-dev/pi-harness/workflows/workflow-agent-harness";
 ```
 
 There is intentionally no package-root barrel export.
 
-Interactive chat workflows split static runtime capabilities from durable per-session resolution:
+Interactive chat workflows reconstruct normal `AgentHarness` options for every workflow replay:
 
 ```ts
 createInteractiveChatWorkflow({
-  harnesses: {
-    default: {
-      env,
-      model,
-      tools: [searchTool],
-      streamFn,
-    },
-  },
-  resolveHarness: async (params, { sessionId }) => ({
-    harnessName: params.harnessName ?? "default",
-    systemPrompt: await loadSystemPrompt(params),
-    resources: await loadResources(params),
-    tools: await loadSessionTools(sessionId),
+  options: async (event) => ({
+    model,
+    models,
+    systemPrompt: await loadSystemPrompt(event.payload),
+    resources: await loadResources(event.payload),
+    tools: await loadSessionTools(event.instanceId),
   }),
 });
 ```
 
-`resolveHarness` runs outside durable workflow steps and receives `{ workflowName, sessionId }`, so
-it may return non-serializable runtime overrides such as session-scoped tool `execute` functions.
-Keep static defaults like `env`, `model`, and `streamFn` in `harnesses` when possible.
+The `options` callback runs outside durable workflow steps, so it may return non-serializable
+runtime resources such as session-scoped tool `execute` functions. Session creation may include an
+arbitrary `metadata` object; Pi Harness stores it with the session, forwards it as
+`event.payload.metadata`, and includes it in operation accounting.
 
-Tools are registered up front on the agent loop. Use `activeToolNames` as a per-step policy when a
-turn should expose only a subset of the registered tools:
+Custom workflows own their durable steps and use real Pi `Session` and `AgentHarness` objects. Fold
+each completed step result into workflow-local state before starting the next operation:
 
 ```ts
-const loop = createAgentLoop(step, {
-  env,
-  model,
-  workflowName,
-  sessionId,
-  agentName: "default",
-  tools: [searchTool, writeTool],
-});
+const workflow = defineWorkflow(
+  { name: "search-chat", schema: z.object({}) },
+  async (event, step) => {
+    let state = createPiHarnessSessionState({
+      metadata: { id: event.instanceId, createdAt: event.timestamp.toISOString() },
+    });
 
-await loop.waitForCommandAndRunStep({
-  activeToolNames: ["search"],
-});
+    while (true) {
+      const commandEvent = await step.waitForEvent("wait-command", {
+        type: "command",
+        timeout: "7 days",
+      });
+      const command = piSessionCommandPayloadSchema.parse(commandEvent.payload);
+      if (command.kind !== "prompt") continue;
+
+      const result = await step.do(`command:${command.commandId}`, async (tx) => {
+        const {
+          session,
+          storage,
+          options: restoredOptions,
+        } = restoreWorkflowBackedSession({
+          operationId: `${workflow.name}:${event.instanceId}:command:${command.commandId}`,
+          state,
+          previousEmissions: await tx.previousEmissions(),
+          models,
+        });
+        const harness = new AgentHarness({
+          session,
+          models,
+          model,
+          tools: [searchTool, writeTool],
+          activeToolNames: ["search"],
+          ...restoredOptions,
+        });
+
+        return await withWorkflowAgentHarness({
+          session,
+          storage,
+          harness,
+          tx,
+          runDurableStep: () => harness.prompt(command.input.text),
+        });
+      });
+
+      state = applyWorkflowAgentHarnessStepResult(state, result);
+    }
+  },
+);
 ```
+
+`activeToolNames` is a per-harness-operation policy for exposing only a subset of registered tools.
 
 ## Operation completion hook
 

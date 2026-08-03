@@ -67,13 +67,11 @@ import { createInteractiveChatWorkflow } from "@fragno-dev/pi-harness/workflows/
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
 const interactiveChat = createInteractiveChatWorkflow({
-  harnesses: {
-    support: {
-      env,
-      model,
-      systemPrompt: "You are a helpful support agent.",
-      tools: [bashTool],
-    },
+  options: {
+    model,
+    models,
+    systemPrompt: "You are a helpful support agent.",
+    tools: [bashTool],
   },
 });
 
@@ -99,7 +97,7 @@ const createSession = pi.useCreateSession();
 
 const created = await createSession.mutateQuery({
   path: { workflowName: "interactive-chat-workflow" },
-  body: { name: "Customer issue", input: { harnessName: "support" } },
+  body: { name: "Customer issue", metadata: { runtime: "support" }, input: {} },
 });
 
 const session = pi.useSession({

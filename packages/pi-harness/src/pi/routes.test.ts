@@ -8,13 +8,14 @@ import { drainDurableHooks } from "@fragno-dev/test";
 
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 
-import { waitForPiCommand } from "./harness/commands";
+import { createModelsForStreamFn } from "./harness/test-models";
 import {
   buildHarness,
   createAssistantMessage,
-  createHarnessOptions,
   createTextStreamFn,
+  mockModel,
 } from "./pi-test-utils";
+import { piSessionCommandPayloadSchema } from "./route-schemas";
 import type { PiFragmentConfig } from "./types";
 import { createInteractiveChatWorkflow } from "./workflows/interactive-chat-workflow";
 
@@ -38,8 +39,10 @@ const textMessages = (messages: Array<{ role?: string; content?: unknown }>, rol
 
 const createConfig = () => {
   const interactiveChatWorkflow = createInteractiveChatWorkflow({
-    harnesses: {
-      default: createHarnessOptions(),
+    options: {
+      systemPrompt: "You are helpful.",
+      model: mockModel,
+      models: createModelsForStreamFn(mockModel, createTextStreamFn("assistant:init")),
     },
   });
 
@@ -81,7 +84,8 @@ describe("pi-harness routes", () => {
         pathParams: { workflowName: interactiveChatWorkflow.name },
         body: {
           name: "Pi Session",
-          input: { harnessName: "default" },
+          metadata: { runtime: "default" },
+          input: {},
         },
       }),
     );
@@ -103,19 +107,141 @@ describe("pi-harness routes", () => {
         pathParams: { workflowName: interactiveChatWorkflow.name },
         body: {
           name: "Pi Session",
-          input: { harnessName: "default" },
+          metadata: { runtime: "default" },
+          input: {},
         },
       }),
     );
 
     expect(response.data).toMatchObject({
       name: "Pi Session",
-      agent: "default",
+      metadata: { runtime: "default" },
       workflowName: interactiveChatWorkflow.name,
     });
     await expect(
       harness.workflows.getStatus(interactiveChatWorkflow.name, response.data.id),
     ).resolves.toEqual(expect.objectContaining({ status: "active" }));
+    const instance = await harness.workflows.fragment.callServices(() =>
+      harness.workflows.services.getInstanceMetadata(
+        interactiveChatWorkflow.name,
+        response.data.id,
+      ),
+    );
+    expect(instance.params).toEqual({
+      metadata: { runtime: "default" },
+      __piSession: { name: "Pi Session" },
+    });
+
+    const sessions = assertJson(
+      await harness.fragments.pi.callRoute("GET", "/workflows/:workflowName/sessions", {
+        pathParams: { workflowName: interactiveChatWorkflow.name },
+      }),
+    );
+    expect(sessions.data).toEqual([
+      expect.objectContaining({
+        id: response.data.id,
+        name: "Pi Session",
+        metadata: { runtime: "default" },
+        workflowName: interactiveChatWorkflow.name,
+      }),
+    ]);
+  });
+
+  it("omits workflow instances that do not contain Pi session data", async () => {
+    await harness.test.cleanup();
+    const workflow = defineWorkflow(
+      { name: "direct", schema: z.object({ profileName: z.string() }) },
+      () => ({ ok: true }),
+    );
+    harness = await buildHarness({ workflows: [workflow] });
+
+    const sessionId = await harness.workflows.createInstance("direct", {
+      id: "direct-session",
+      params: { profileName: "direct-profile" },
+    });
+    const sessions = assertJson(
+      await harness.fragments.pi.callRoute("GET", "/workflows/:workflowName/sessions", {
+        pathParams: { workflowName: "direct" },
+      }),
+    );
+
+    expect(sessions.data).toEqual([]);
+
+    const detail = assertError(
+      await harness.fragments.pi.callRoute("GET", "/workflows/:workflowName/sessions/:sessionId", {
+        pathParams: { workflowName: "direct", sessionId },
+      }),
+    );
+    assert(detail.status === 404);
+    assert(detail.error.code === "SESSION_DATA_UNAVAILABLE");
+  });
+
+  it("fails listings and detail loads for malformed persisted Pi session data", async () => {
+    await harness.test.cleanup();
+    const workflow = defineWorkflow(
+      {
+        name: "corrupted",
+        schema: z.object({
+          metadata: z.unknown(),
+          __piSession: z.object({ name: z.string().nullable() }),
+        }),
+      },
+      () => ({ ok: true }),
+    );
+    harness = await buildHarness({ workflows: [workflow] });
+
+    const sessionId = await harness.workflows.createInstance("corrupted", {
+      id: "corrupted-session",
+      params: {
+        metadata: "not-an-object",
+        __piSession: { name: "Corrupted session" },
+      },
+    });
+
+    const sessions = assertError(
+      await harness.fragments.pi.callRoute("GET", "/workflows/:workflowName/sessions", {
+        pathParams: { workflowName: "corrupted" },
+      }),
+    );
+    assert(sessions.status === 500);
+    assert(sessions.error.code === "SESSION_DATA_INTEGRITY_ERROR");
+
+    const detail = assertError(
+      await harness.fragments.pi.callRoute("GET", "/workflows/:workflowName/sessions/:sessionId", {
+        pathParams: { workflowName: "corrupted", sessionId },
+      }),
+    );
+    assert(detail.status === 500);
+    assert(detail.error.code === "SESSION_DATA_INTEGRITY_ERROR");
+  });
+
+  it("returns stable not-found errors for missing workflow instances", async () => {
+    const detail = assertError(
+      await harness.fragments.pi.callRoute("GET", "/workflows/:workflowName/sessions/:sessionId", {
+        pathParams: {
+          workflowName: interactiveChatWorkflow.name,
+          sessionId: "missing-session",
+        },
+      }),
+    );
+    assert(detail.status === 404);
+    assert(detail.error.code === "SESSION_NOT_FOUND");
+
+    const command = assertError(
+      await harness.fragments.pi.callRoute(
+        "POST",
+        "/workflows/:workflowName/sessions/:sessionId/command",
+        {
+          pathParams: {
+            workflowName: interactiveChatWorkflow.name,
+            sessionId: "missing-session",
+          },
+          body: { kind: "prompt", input: { text: "hello" } },
+        },
+      ),
+    );
+    assert(command.status === 404);
+    assert(command.error.code === "SESSION_NOT_FOUND");
   });
 
   it("rejects unknown workflow session creation", async () => {
@@ -140,17 +266,13 @@ describe("pi-harness routes", () => {
       harness.fragments.pi.services.createWorkflowSession({
         id: "shared-session",
         workflowName: "first",
-        agent: "first",
         name: "First",
-        createdAt: new Date(),
         params: {},
       }),
       harness.fragments.pi.services.createWorkflowSession({
         id: "shared-session",
         workflowName: "second",
-        agent: "second",
         name: "Second",
-        createdAt: new Date(),
         params: {},
       }),
     ]);
@@ -181,14 +303,11 @@ describe("pi-harness routes", () => {
     const parent = defineWorkflow({ name: "parent" }, async (_event, step) => {
       await step.do("start-child", (tx) => {
         const childSessionId = createId();
-        const createdAt = new Date();
         tx.serviceCalls(() => [
           piServices.createWorkflowSession({
             id: childSessionId,
             workflowName: "child",
-            agent: "child",
             name: "Child",
-            createdAt,
             params: {},
           }),
         ]);
@@ -252,7 +371,7 @@ describe("pi-harness routes", () => {
 
     expect(response.data).toMatchObject({
       name: "Custom",
-      agent: "custom",
+      metadata: null,
       workflowName: "custom",
     });
     await expect(harness.workflows.getStatus("custom", response.data.id)).resolves.toEqual(
@@ -263,7 +382,8 @@ describe("pi-harness routes", () => {
   it("loads custom workflow status and commands through the session workflow name", async () => {
     await harness.test.cleanup();
     const workflow = defineWorkflow({ name: "approval" }, async (_event, step) => {
-      const command = await waitForPiCommand(step, "approval");
+      const commandEvent = await step.waitForEvent("approval", { type: "command" });
+      const command = piSessionCommandPayloadSchema.parse(commandEvent.payload);
       return {
         command: command.kind,
         text: command.kind === "prompt" ? command.input.text : null,
@@ -359,10 +479,10 @@ describe("pi-harness routes", () => {
     };
     const onOperationCompleted = vi.fn();
     interactiveChatWorkflow = createInteractiveChatWorkflow({
-      harnesses: {
-        default: createHarnessOptions({
-          streamFn: createTextStreamFn("metered response", usage),
-        }),
+      options: {
+        systemPrompt: "You are helpful.",
+        model: mockModel,
+        models: createModelsForStreamFn(mockModel, createTextStreamFn("metered response", usage)),
       },
     });
     harness = await buildHarness({
@@ -375,8 +495,8 @@ describe("pi-harness routes", () => {
         pathParams: { workflowName: interactiveChatWorkflow.name },
         body: {
           name: "Metered session",
+          metadata: { runtime: "default" },
           input: {
-            harnessName: "default",
             actor,
             initialMessages: [previousAssistantMessage],
           },
@@ -402,7 +522,7 @@ describe("pi-harness routes", () => {
         actor,
         workflowName: interactiveChatWorkflow.name,
         sessionId: created.data.id,
-        agentName: "default",
+        metadata: { runtime: "default" },
         stepName: expect.stringMatching(/^command:/),
         operationId: expect.stringContaining(created.data.id),
         operation: "prompt",
@@ -446,17 +566,17 @@ describe("pi-harness routes", () => {
     };
     const onOperationCompleted = vi.fn();
     interactiveChatWorkflow = createInteractiveChatWorkflow({
-      harnesses: {
-        default: createHarnessOptions({
-          streamFn: () => {
-            const stream = createAssistantMessageEventStream();
-            const message = createAssistantMessage("");
-            message.stopReason = "error";
-            message.errorMessage = "provider failed";
-            message.usage = usage;
-            stream.push({ type: "error", reason: "error", error: message });
-            return stream;
-          },
+      options: {
+        systemPrompt: "You are helpful.",
+        model: mockModel,
+        models: createModelsForStreamFn(mockModel, () => {
+          const stream = createAssistantMessageEventStream();
+          const message = createAssistantMessage("");
+          message.stopReason = "error";
+          message.errorMessage = "provider failed";
+          message.usage = usage;
+          stream.push({ type: "error", reason: "error", error: message });
+          return stream;
         }),
       },
     });

@@ -123,6 +123,7 @@ describe("Workflows Fragment", () => {
       uow.create("workflow_step", {
         instanceRef,
         stepKey: "do:step-1",
+        committedByExecutionId: "fixture-execution",
         name: "Start",
         type: "do",
         status: "completed",
@@ -447,6 +448,7 @@ describe("Workflows Fragment", () => {
         uow.create("workflow_step", {
           instanceRef,
           stepKey: "do:step-1",
+          committedByExecutionId: "fixture-execution",
           name: "Example",
           type: "do",
           status: "completed",
@@ -497,6 +499,7 @@ describe("Workflows Fragment", () => {
         uow.create("workflow_step_emission", {
           instanceRef,
           stepKey: "do:step-1",
+          executionId: "fixture-execution",
           epoch: "epoch-1",
           sequence: 1,
           actor: "user",
@@ -565,6 +568,7 @@ describe("Workflows Fragment", () => {
         uow.create("workflow_step", {
           instanceRef,
           stepKey: "do:step-old",
+          committedByExecutionId: "fixture-execution",
           name: "Old",
           type: "do",
           status: "completed",
@@ -594,6 +598,7 @@ describe("Workflows Fragment", () => {
         uow.create("workflow_step", {
           instanceRef,
           stepKey: "do:step-new",
+          committedByExecutionId: "fixture-execution",
           name: "New",
           type: "do",
           status: "completed",

@@ -1,6 +1,6 @@
 import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
+import type { MutationOperation } from "@fragno-dev/db/mutation-recorder";
 import type { AnySchema } from "@fragno-dev/db/schema";
-import type { MutationOperation } from "@fragno-dev/db/unit-of-work";
 import {
   workflowStepLivePumpKey,
   type WorkflowStepLivePump,
@@ -11,43 +11,43 @@ import {
   type RecordedWorkflowStepRun,
   type WorkflowsTestHarness,
 } from "@fragno-dev/workflows/test";
-import type { WorkflowRegistryEntry } from "@fragno-dev/workflows/workflow";
+import type { WorkflowRegistryEntry, WorkflowStep } from "@fragno-dev/workflows/workflow";
 
 import { instantiate } from "@fragno-dev/core";
 import { migrate } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, type SupportedAdapter } from "@fragno-dev/test";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
-import type { AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
+import { AgentHarness, type AgentTool, type StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
+  createModels,
   fauxAssistantMessage,
-  parseStreamingJson,
-  registerFauxProvider,
+  fauxProvider,
   type Api,
   type AssistantMessage,
   type AssistantMessageEvent,
   type FauxContentBlock,
   type Model,
+  type Models,
   type RegisterFauxProviderOptions,
   type SimpleStreamOptions,
-  type StopReason,
   type Usage,
-  type ToolCall,
 } from "@earendil-works/pi-ai";
 
 import { piRoutesFactory } from "../routes";
 import { piSchema } from "../schema";
 import { piHarnessDefinition } from "./definition";
+import type { PiHarnessHooksMap } from "./definition";
 import { createPiWorkflows, type createPiFragment } from "./factory";
-import { NoOpExecutionEnv } from "./harness/execution-env";
-import {
-  runPiHarnessStep,
-  type PiHarnessAgentOptions,
-  type PiHarnessInternalOptions,
-  type PiHarnessOperation,
-} from "./harness/run-pi-harness-step";
+import { createModelsForStreamFn } from "./harness/test-models";
 import type { PiFragmentConfig } from "./types";
+import {
+  createPiHarnessSessionState,
+  restoreWorkflowBackedSession,
+  withWorkflowAgentHarness,
+  type PiHarnessOperation,
+} from "./workflows/workflow-agent-harness";
 
 export const mockModel: Model<Api> = {
   id: "test-model",
@@ -61,8 +61,6 @@ export const mockModel: Model<Api> = {
   contextWindow: 8192,
   maxTokens: 2048,
 };
-
-export const createEnv = () => new NoOpExecutionEnv();
 
 export const createAssistantMessage = (text: string): AssistantMessage => ({
   role: "assistant",
@@ -82,180 +80,6 @@ export const createAssistantMessage = (text: string): AssistantMessage => ({
   timestamp: Date.now(),
 });
 
-const buildAssistantMessage = (
-  content: AssistantMessage["content"],
-  stopReason: AssistantMessage["stopReason"] = "stop",
-): AssistantMessage => ({
-  role: "assistant",
-  content,
-  api: mockModel.api,
-  provider: mockModel.provider,
-  model: mockModel.id,
-  usage: {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 0,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  },
-  stopReason,
-  timestamp: Date.now(),
-});
-
-const cloneAssistantMessage = (message: AssistantMessage): AssistantMessage => ({
-  ...message,
-  content: message.content.map((block) =>
-    block.type === "toolCall"
-      ? ({ ...block, arguments: { ...block.arguments } } as ToolCall)
-      : { ...block },
-  ),
-  usage: { ...message.usage, cost: { ...message.usage.cost } },
-});
-
-type ScriptedAssistantTurnOptions = {
-  waitBeforeStart?: Promise<unknown>;
-  waitBeforeEnd?: Promise<unknown>;
-};
-
-type StreamingToolCall = ToolCall & { partialJson?: string };
-
-type ScriptedToolCallOptions = {
-  id: string;
-  args: Record<string, unknown>;
-  deltas?: string[];
-};
-
-type ScriptedAssistantTurn =
-  | ({
-      type: "text";
-      text: string;
-      stopReason?: Extract<StopReason, "stop" | "length">;
-    } & ScriptedAssistantTurnOptions)
-  | ({ type: "toolCall"; toolCall: ToolCall; deltas?: string[] } & ScriptedAssistantTurnOptions);
-
-export const createAssistantStreamScript = () => {
-  const turns: ScriptedAssistantTurn[] = [];
-  let nextTurnOptions: ScriptedAssistantTurnOptions = {};
-  const takeNextTurnOptions = () => {
-    const options = nextTurnOptions;
-    nextTurnOptions = {};
-    return options;
-  };
-
-  const builder = {
-    waitBeforeStart(waitBeforeStart: Promise<unknown>) {
-      nextTurnOptions = { ...nextTurnOptions, waitBeforeStart };
-      return builder;
-    },
-    waitBeforeEnd(waitBeforeEnd: Promise<unknown>) {
-      nextTurnOptions = { ...nextTurnOptions, waitBeforeEnd };
-      return builder;
-    },
-    text(text: string, options: { stopReason?: Extract<StopReason, "stop" | "length"> } = {}) {
-      turns.push({ type: "text", text, stopReason: options.stopReason, ...takeNextTurnOptions() });
-      return builder;
-    },
-    toolCall(name: string, options: ScriptedToolCallOptions) {
-      turns.push({
-        type: "toolCall",
-        toolCall: { type: "toolCall", id: options.id, name, arguments: options.args },
-        deltas: options.deltas,
-        ...takeNextTurnOptions(),
-      });
-      return builder;
-    },
-    build(): { streamFn: StreamFn } {
-      let nextTurnIndex = 0;
-      return {
-        streamFn: async () => {
-          const turn = turns[nextTurnIndex];
-          if (!turn) {
-            throw new Error(`No scripted assistant turn available at index ${nextTurnIndex}.`);
-          }
-          nextTurnIndex += 1;
-          await turn.waitBeforeStart;
-
-          const stream = createAssistantMessageEventStream();
-
-          void (async () => {
-            if (turn.type === "toolCall") {
-              const finalMessage = buildAssistantMessage([turn.toolCall], "toolUse");
-              const startMessage = buildAssistantMessage([], "toolUse");
-              const partialToolCall: StreamingToolCall = {
-                type: "toolCall",
-                id: turn.toolCall.id,
-                name: turn.toolCall.name,
-                arguments: {},
-                partialJson: "",
-              };
-              const partialMessage = buildAssistantMessage([partialToolCall], "toolUse");
-
-              stream.push({ type: "start", partial: cloneAssistantMessage(startMessage) });
-              stream.push({
-                type: "toolcall_start",
-                contentIndex: 0,
-                partial: cloneAssistantMessage(partialMessage),
-              });
-
-              for (const delta of turn.deltas ?? []) {
-                partialToolCall.partialJson = `${partialToolCall.partialJson ?? ""}${delta}`;
-                partialToolCall.arguments = parseStreamingJson(partialToolCall.partialJson);
-                stream.push({
-                  type: "toolcall_delta",
-                  contentIndex: 0,
-                  delta,
-                  partial: cloneAssistantMessage(partialMessage),
-                });
-              }
-
-              await turn.waitBeforeEnd;
-              stream.push({
-                type: "toolcall_end",
-                contentIndex: 0,
-                toolCall: turn.toolCall,
-                partial: cloneAssistantMessage(finalMessage),
-              });
-              stream.push({ type: "done", reason: "toolUse", message: finalMessage });
-              return;
-            }
-
-            const message = buildAssistantMessage(
-              [{ type: "text", text: turn.text }],
-              turn.stopReason ?? "stop",
-            );
-
-            stream.push({ type: "start", partial: cloneAssistantMessage(message) });
-            stream.push({
-              type: "text_start",
-              contentIndex: 0,
-              partial: cloneAssistantMessage(message),
-            });
-            stream.push({
-              type: "text_delta",
-              contentIndex: 0,
-              delta: turn.text,
-              partial: cloneAssistantMessage(message),
-            });
-            await turn.waitBeforeEnd;
-            stream.push({
-              type: "text_end",
-              contentIndex: 0,
-              content: turn.text,
-              partial: cloneAssistantMessage(message),
-            });
-            stream.push({ type: "done", reason: turn.stopReason ?? "stop", message });
-          })();
-
-          return stream;
-        },
-      };
-    },
-  };
-
-  return builder;
-};
-
 export const createTextStreamFn =
   (text: string, usage?: Usage): StreamFn =>
   () => {
@@ -273,16 +97,6 @@ export const createTextStreamFn =
 
     return stream;
   };
-
-export const createHarnessOptions = (
-  overrides: Partial<PiHarnessAgentOptions> = {},
-): PiHarnessAgentOptions => ({
-  env: createEnv(),
-  systemPrompt: "You are helpful.",
-  model: mockModel,
-  streamFn: createTextStreamFn("assistant:init"),
-  ...overrides,
-});
 
 export type FauxPiHarnessCheckpoint = {
   type: "checkpoint";
@@ -348,13 +162,11 @@ export const fauxAssistantMessageWithCheckpoints = (
 export type FauxPiHarnessPromptOptions = {
   workflowName: string;
   sessionId: string;
-  operation: PiHarnessOperation;
+  operation: Extract<PiHarnessOperation, { kind: "prompt" }>;
   responses: readonly (AssistantMessage | FauxPiHarnessResponse)[];
   tools?: readonly AgentTool[];
-  agentName?: string;
   systemPrompt?: string;
   fauxProviderOptions?: RegisterFauxProviderOptions;
-  internal?: PiHarnessInternalOptions;
 };
 
 type FauxCheckpointMatcher = {
@@ -723,7 +535,7 @@ export type FauxPiHarnessCheckpointResult = {
   resume: () => void;
 };
 
-export type StartedFauxPiHarnessOperation = {
+export type StartedFauxPiHarnessPrompt = {
   waitForCheckpoint: (name: string) => Promise<FauxPiHarnessCheckpointResult>;
   done: Promise<RecordedWorkflowStepRun>;
   mutationsWithDeletedStepEmissions: (
@@ -753,36 +565,66 @@ const mutationsWithDeletedStepEmissions = (
   }),
 ];
 
-const registerDeterministicFauxProvider = (options?: RegisterFauxProviderOptions) =>
-  registerFauxProvider({
+const createDeterministicFauxProvider = (options?: RegisterFauxProviderOptions) =>
+  fauxProvider({
     api: "faux",
     tokenSize: { min: 1, max: 1 },
     tokensPerSecond: 0,
     ...options,
   });
 
-const runFauxPiHarnessStep = async (
-  step: Parameters<typeof runPiHarnessStep>[0],
+const runFauxPiHarnessPrompt = async (
+  step: WorkflowStep<PiHarnessHooksMap>,
   options: FauxPiHarnessPromptOptions,
   model: Model<string>,
-  streamFn?: StreamFn,
-) =>
-  await runPiHarnessStep(step, "faux-turn", {
-    workflowName: options.workflowName,
-    sessionId: options.sessionId,
-    agentName: options.agentName ?? "faux-agent",
-    env: new NoOpExecutionEnv(),
-    systemPrompt: options.systemPrompt ?? "You are helpful.",
-    model,
-    streamFn,
-    tools: [...(options.tools ?? [])],
-    operation: options.operation,
-    internal: options.internal,
+  models: Models,
+) => {
+  const operationId = `${options.workflowName}:${options.sessionId}:faux-turn`;
+  const state = createPiHarnessSessionState({
+    metadata: {
+      id: options.sessionId,
+      createdAt: "2000-01-01T00:00:00.000Z",
+    },
   });
 
-export const startFauxPiHarnessOperation = (
+  return await step.do("faux-turn", async (tx) => {
+    const {
+      session,
+      storage,
+      options: restoredOptions,
+    } = restoreWorkflowBackedSession({
+      operationId,
+      state,
+      previousEmissions: await tx.previousEmissions(),
+      models,
+    });
+    const harness = new AgentHarness({
+      systemPrompt: options.systemPrompt ?? "You are helpful.",
+      model,
+      models,
+      tools: [...(options.tools ?? [])],
+      ...restoredOptions,
+    });
+    const stopOnTools = new Set(options.operation.stopOnTools ?? []);
+    if (stopOnTools.size > 0) {
+      harness.on("tool_result", (toolResult) =>
+        stopOnTools.has(toolResult.toolName) ? { terminate: true } : undefined,
+      );
+    }
+
+    return await withWorkflowAgentHarness({
+      session,
+      storage,
+      harness,
+      tx,
+      runDurableStep: () => harness.prompt(...options.operation.args),
+    });
+  });
+};
+
+export const startFauxPiHarnessPrompt = (
   options: FauxPiHarnessPromptOptions,
-): StartedFauxPiHarnessOperation => {
+): StartedFauxPiHarnessPrompt => {
   const compiled = compileFauxPiHarnessResponses(options.responses);
   const checkpoints = createCheckpointState(compiled.checkpoints);
   const stepEmissions = new BufferedPumpRegistry<WorkflowStepLivePump>();
@@ -810,12 +652,13 @@ export const startFauxPiHarnessOperation = (
     maxTokens: 16384,
   };
 
+  const models = createModelsForStreamFn(model, streamFn);
   const done = recordWorkflowStepRunForTest({
     workflowName: options.workflowName,
     instanceId: options.sessionId,
     schemas: [{ schema: piSchema, namespace: "pi-harness" }],
     stepEmissions,
-    run: async (step) => await runFauxPiHarnessStep(step, options, model, streamFn),
+    run: async (step) => await runFauxPiHarnessPrompt(step, options, model, models),
     onMutations: async ({ mutations: newMutations, allMutations }) => {
       mutations = [...allMutations];
       const previousMutationCount = allMutations.length - newMutations.length;
@@ -889,19 +732,17 @@ export const startFauxPiHarnessOperation = (
  */
 export const recordFauxPiHarnessPrompt = async (options: FauxPiHarnessPromptOptions) => {
   const compiled = compileFauxPiHarnessResponses(options.responses);
-  const faux = registerDeterministicFauxProvider(options.fauxProviderOptions);
+  const faux = createDeterministicFauxProvider(options.fauxProviderOptions);
   faux.setResponses([...compiled.responses]);
+  const models = createModels();
+  models.setProvider(faux.provider);
 
-  try {
-    return await recordWorkflowStepRunForTest({
-      workflowName: options.workflowName,
-      instanceId: options.sessionId,
-      schemas: [{ schema: piSchema, namespace: "pi-harness" }],
-      run: async (step) => await runFauxPiHarnessStep(step, options, faux.getModel()),
-    });
-  } finally {
-    faux.unregister();
-  }
+  return await recordWorkflowStepRunForTest({
+    workflowName: options.workflowName,
+    instanceId: options.sessionId,
+    schemas: [{ schema: piSchema, namespace: "pi-harness" }],
+    run: async (step) => await runFauxPiHarnessPrompt(step, options, faux.getModel(), models),
+  });
 };
 
 type PiFragmentInstance = ReturnType<typeof createPiFragment>;

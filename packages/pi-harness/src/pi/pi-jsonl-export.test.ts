@@ -2,8 +2,9 @@ import { describe, expect, it, assert } from "vitest";
 
 import { drainDurableHooks } from "@fragno-dev/test";
 
+import { createModelsForStreamFn } from "./harness/test-models";
 import { exportSessionStorageToJsonl, PI_JSONL_EXPORT_CWD } from "./pi-jsonl-export";
-import { buildHarness, createHarnessOptions, createTextStreamFn } from "./pi-test-utils";
+import { buildHarness, createTextStreamFn, mockModel } from "./pi-test-utils";
 import type { PiFragmentConfig } from "./types";
 import { createInteractiveChatWorkflow } from "./workflows/interactive-chat-workflow";
 
@@ -35,11 +36,11 @@ const textContent = (message: unknown): string[] => {
 describe("pi JSONL export", () => {
   it("exports a Pi v3 NDJSON attachment from workflow-backed session storage", async () => {
     const interactiveChatWorkflow = createInteractiveChatWorkflow({
-      harnesses: {
-        default: createHarnessOptions({
-          thinkingLevel: "medium",
-          streamFn: createTextStreamFn("assistant:export"),
-        }),
+      options: {
+        systemPrompt: "You are helpful.",
+        model: mockModel,
+        models: createModelsForStreamFn(mockModel, createTextStreamFn("assistant:export")),
+        thinkingLevel: "medium",
       },
     });
     const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
@@ -53,7 +54,7 @@ describe("pi JSONL export", () => {
           pathParams: { workflowName: interactiveChatWorkflow.name },
           body: {
             name: "Command Session",
-            input: { harnessName: "default" },
+            input: { profileName: "default" },
           },
         },
       );
@@ -120,9 +121,92 @@ describe("pi JSONL export", () => {
     }
   });
 
+  it("exports the canonical transcript from the interactive chat workflow", async () => {
+    const interactiveChatWorkflow = createInteractiveChatWorkflow({
+      name: "interactive-chat-jsonl-export",
+      options: {
+        systemPrompt: "You are helpful.",
+        model: mockModel,
+        models: createModelsForStreamFn(mockModel, createTextStreamFn("assistant:new-export")),
+        thinkingLevel: "medium",
+      },
+    });
+    const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
+    const harness = await buildHarness(config, { autoTickHooks: true });
+
+    try {
+      const create = await harness.fragments.pi.callRoute(
+        "POST",
+        "/workflows/:workflowName/sessions",
+        {
+          pathParams: { workflowName: interactiveChatWorkflow.name },
+          body: {
+            name: "New Command Session",
+            input: { profileName: "default" },
+          },
+        },
+      );
+      assert(create.type === "json");
+      const sessionId = create.data.id;
+
+      await harness.workflows.getStatus(interactiveChatWorkflow.name, sessionId);
+      await harness.workflows.runUntilIdle({
+        workflowName: interactiveChatWorkflow.name,
+        instanceId: sessionId,
+        reason: "create",
+      });
+      await harness.fragments.pi.callRoute(
+        "POST",
+        "/workflows/:workflowName/sessions/:sessionId/command",
+        {
+          pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
+          body: { kind: "prompt", input: { text: "hello new export" } },
+        },
+      );
+      await drainDurableHooks(harness.workflows.fragment, { mode: "singlePass" });
+      await harness.workflows.runUntilIdle({
+        workflowName: interactiveChatWorkflow.name,
+        instanceId: sessionId,
+        reason: "event",
+      });
+
+      const response = await harness.fragments.pi.callRouteRaw(
+        "GET",
+        "/workflows/:workflowName/sessions/:sessionId/export/pi-jsonl",
+        {
+          pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
+          query: {},
+        },
+      );
+
+      assert(response.status === 200);
+      const lines = parseJsonl(await response.text());
+      expect(lines[0]).toMatchObject({
+        type: "session",
+        version: 3,
+        id: sessionId,
+        cwd: PI_JSONL_EXPORT_CWD,
+      });
+      const entries = lines.slice(1);
+      expect(entries.map((entry) => entry["type"])).toEqual(["message", "message"]);
+      expect(entries[0]?.["parentId"]).toBeNull();
+      expect(entries[1]?.["parentId"]).toBe(entries[0]?.["id"]);
+      const messages = entries.map((entry) => entry["message"]);
+      expect(messages).toMatchObject([{ role: "user" }, { role: "assistant" }]);
+      expect(textContent(messages[0])).toEqual(["hello new export"]);
+      expect(textContent(messages[1])).toEqual(["assistant:new-export"]);
+    } finally {
+      await harness.test.cleanup();
+    }
+  });
+
   it("returns SESSION_NOT_FOUND for missing sessions", async () => {
     const interactiveChatWorkflow = createInteractiveChatWorkflow({
-      harnesses: { default: createHarnessOptions() },
+      options: {
+        systemPrompt: "You are helpful.",
+        model: mockModel,
+        models: createModelsForStreamFn(mockModel, createTextStreamFn("assistant:init")),
+      },
     });
     const harness = await buildHarness({ workflows: [interactiveChatWorkflow] });
 

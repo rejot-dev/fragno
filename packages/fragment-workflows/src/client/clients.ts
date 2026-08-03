@@ -2,36 +2,22 @@ import { createClientBuilder } from "@fragno-dev/core/client";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import { computed } from "nanostores";
 
-import { isWorkflowStepCommittedControlPayload } from "../step-emission-control";
+import { selectWorkflowStepPresentationEmissions } from "../step-emission-control";
 import { currentStepLabel, isTerminalStatus, isWaitingStatus, statusLabel } from "../workflow";
 import { workflowsFragmentDefinitionClient } from "./definition";
 import { workflowsRoutesFactoryClient } from "./routes";
 
 type CurrentStepEmission = {
+  actor: string;
   stepKey: string;
+  executionId: string;
   epoch: string;
   payload: unknown;
 };
 
-const isStepCommittedEmission = (emission: CurrentStepEmission) =>
-  isWorkflowStepCommittedControlPayload(emission.payload) &&
-  emission.payload.epoch === emission.epoch;
-
 const filterCurrentStepEmissions = <TEmission extends CurrentStepEmission>(
   emissions: TEmission[],
-) => {
-  const committedEpochsByStep = new Map<string, string>();
-  for (const emission of emissions) {
-    if (isStepCommittedEmission(emission)) {
-      committedEpochsByStep.set(emission.stepKey, emission.epoch);
-    }
-  }
-
-  return emissions.filter((emission) => {
-    const committedEpoch = committedEpochsByStep.get(emission.stepKey);
-    return !committedEpoch || committedEpoch === emission.epoch;
-  });
-};
+) => selectWorkflowStepPresentationEmissions(emissions);
 
 export function createWorkflowsClients(fragnoConfig: FragnoPublicClientConfig = {}) {
   const builder = createClientBuilder(workflowsFragmentDefinitionClient, fragnoConfig, [

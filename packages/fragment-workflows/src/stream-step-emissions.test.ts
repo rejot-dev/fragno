@@ -45,6 +45,7 @@ const createFakeBus = () => {
   let outboundHandler:
     | ((message: {
         stepKey: string;
+        executionId: string;
         epoch: string;
         id: string;
         sequence: number;
@@ -58,6 +59,7 @@ const createFakeBus = () => {
       (
         handler: (message: {
           stepKey: string;
+          executionId: string;
           epoch: string;
           id: string;
           sequence: number;
@@ -78,6 +80,7 @@ const createFakeBus = () => {
       outboundHandler?.({
         id: `fake-${payload.type}`,
         stepKey: "fake",
+        executionId: "fake-execution",
         epoch: "0",
         sequence: 0,
         actor: "user",

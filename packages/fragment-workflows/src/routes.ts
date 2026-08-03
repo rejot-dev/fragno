@@ -122,6 +122,7 @@ const historyStepSchema = z.object({
   name: z.string(),
   type: z.string(),
   status: z.string(),
+  committedByExecutionId: z.string(),
   attempts: z.number(),
   maxAttempts: z.number(),
   timeoutMs: z.number().nullable(),
@@ -151,6 +152,7 @@ const historyEventSchema = z.object({
 const historyEmissionSchema = z.object({
   id: z.string(),
   stepKey: z.string(),
+  executionId: z.string(),
   epoch: z.string(),
   sequence: z.number(),
   actor: z.string(),
@@ -184,6 +186,7 @@ type WorkflowStepEmissionOutput = z.infer<typeof historyEmissionSchema>;
 const mapStepEmissionOutput = (emission: {
   id: string | { toString(): string };
   stepKey: string;
+  executionId: string;
   epoch: string;
   sequence: number;
   actor: WorkflowEventActor;
@@ -192,6 +195,7 @@ const mapStepEmissionOutput = (emission: {
 }): WorkflowStepEmissionOutput => ({
   id: emission.id.toString(),
   stepKey: emission.stepKey,
+  executionId: emission.executionId,
   epoch: emission.epoch,
   sequence: emission.sequence,
   actor: emission.actor,
