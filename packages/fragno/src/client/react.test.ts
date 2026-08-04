@@ -78,6 +78,41 @@ describe("createReactHook", () => {
     expect(result.current.error).toBeUndefined();
   });
 
+  test("should allow a GET route store to be refetched", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        headers: new Headers(),
+        ok: true,
+        json: async () => [{ id: 1, name: "John" }],
+      })
+      .mockResolvedValueOnce({
+        headers: new Headers(),
+        ok: true,
+        json: async () => [{ id: 2, name: "Jane" }],
+      });
+
+    const client = createClientBuilder(testFragmentDefinition, clientConfig, testRoutes);
+    const clientObj = {
+      users: client.createHook("/users"),
+    };
+
+    const { users } = createFragnoReactClient(clientObj);
+    const { result } = renderHook(() => users());
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual([{ id: 1, name: "John" }]);
+    });
+
+    act(() => {
+      result.current.refetch();
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual([{ id: 2, name: "Jane" }]);
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   test("should create a hook with path parameters", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       headers: new Headers(),
