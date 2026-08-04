@@ -97,7 +97,7 @@ describe("Pi execCodeMode tool", () => {
       sessionFileSystems,
       sessionFileSystemContext: createPiSessionFileSystemContext(),
       codemode: createPiCodemodeRuntime(env),
-      bashCommandContext: EMPTY_BASH_HOST_CONTEXT as never,
+      runtimeToolContext: EMPTY_BASH_HOST_CONTEXT as never,
     });
 
     const execCodeModeFactory = tools.execCodeMode;
@@ -278,7 +278,7 @@ describe("Pi execCodeMode tool", () => {
             await harness.sendEvent(workflowName, instanceId, { type, payload }),
         },
       },
-      bashCommandContext: EMPTY_BASH_HOST_CONTEXT as never,
+      runtimeToolContext: EMPTY_BASH_HOST_CONTEXT as never,
     });
     const execCodeModeFactory = tools.execCodeMode;
     if (typeof execCodeModeFactory !== "function") {
@@ -379,7 +379,7 @@ describe("Pi execCodeMode tool", () => {
               await harness.sendEvent(workflowName, instanceId, { type, payload }),
           },
         },
-        bashCommandContext: EMPTY_BASH_HOST_CONTEXT as never,
+        runtimeToolContext: EMPTY_BASH_HOST_CONTEXT as never,
       });
       const execCodeModeFactory = tools.execCodeMode;
       if (typeof execCodeModeFactory !== "function") {
@@ -616,7 +616,7 @@ const createExecCodeModeTool = async ({
     sessionFileSystems,
     sessionFileSystemContext: createPiSessionFileSystemContext(),
     codemode: { ...createPiCodemodeRuntime(env), workflow: workflowRuntime },
-    bashCommandContext: automationsRuntime
+    runtimeToolContext: automationsRuntime
       ? ({ ...EMPTY_BASH_HOST_CONTEXT, automations: { runtime: automationsRuntime } } as never)
       : (EMPTY_BASH_HOST_CONTEXT as never),
   });

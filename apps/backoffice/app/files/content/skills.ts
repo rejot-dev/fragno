@@ -216,13 +216,15 @@ Use \`connections.reset({ id, confirm: id })\` only for an explicit reset reques
     title: "Workflows",
     description:
       "Orchestrate durable multi-step work with defineWorkflow and operate workflow instances. Use when a current task needs retries, sleeps, waiting for an external event, or the user asks to inspect, signal, or retry a workflow instance.",
-    body: `A \`defineWorkflow\` run is durable. A top-level \`async () => { ... }\` script is immediate. Use the durable boundary only when work must survive retries, time, or an external continuation.
+    body: `Use \`defineWorkflow\` for work that must survive retries, time, or an external continuation.
 
 ## Authoring a workflow
 
-1. Read "/static/codemode/workflow-authoring.d.ts" and "/static/codemode/providers/workflow.d.ts". **Complete when** the available step methods and workflow operations are known from the live declarations.
+1. **Preflight.** Apply the system guidance's closed-world preflight before calling \`defineWorkflow\`. The workflow authoring declarations are already present in the system reference; read the provider declarations selected by that gate.
 
-2. Define the workflow directly at the top level. Inline definitions automatically start; retain the returned \`workflowName\` and \`instanceId\`. Save a workflow file only when the user asks for persistent automation behavior; use the Building Automations skill for that branch.
+   **Complete when** the closed-world preflight passes. When it cannot pass, complete this branch by reporting the blocking requirement.
+
+2. **Author.** Define the workflow directly at the top level. Inline definitions automatically start; retain the returned \`workflowName\` and \`instanceId\`. Save a workflow file only when the user asks for persistent automation behavior; use the Building Automations skill for that branch.
 
    \`\`\`js
    defineWorkflow(
@@ -242,25 +244,27 @@ Use \`connections.reset({ id, confirm: id })\` only for an explicit reset reques
    );
    \`\`\`
 
-   Put side effects, provider calls, and expensive work inside \`step.do\`. Keep pure deterministic calculations outside steps. Use stable, descriptive step names because history and retries address those names. Use \`step.sleep\` or \`step.sleepUntil\` for time and \`step.waitForEvent\` for external continuation. **Complete when** every non-deterministic operation has a durable step and every continuation has an exact event type.
+   Put side effects, provider calls, and expensive work inside \`step.do\`. Keep pure deterministic calculations outside steps. Use stable, descriptive step names because history and retries address those names. Use \`step.sleep\` or \`step.sleepUntil\` for time and \`step.waitForEvent\` for external continuation.
 
-3. After the tool returns the run handle, use its exact \`workflowName\` and \`instanceId\` with \`workflow.getInstance\` and \`workflow.getHistory\`. **Complete when** the instance is \`complete\`, intentionally \`waiting\` with its expected continuation recorded, or \`errored\` with the failed step identified.
+   **Complete when** every non-deterministic operation has a durable step and every continuation has an exact event type.
+
+3. **Observe.** Read the returned instance with \`workflow.getInstance\`. Inspect output for a completed run, confirm the authored event type for a waiting run, and read \`workflow.getHistory\` when diagnosing an errored run. If instance details are temporarily unavailable, call \`workflow.listInstances\` once as a status fallback and report the backend failure beside the observed summary.
+
+   **Complete when** the instance is \`complete\` with observed output, intentionally \`waiting\` with its exact continuation, or \`errored\` with the failed step and error identified.
 
 ## Operating an existing workflow
 
-Use the live provider declarations for exact inputs:
+Read "/static/codemode/providers/workflow.d.ts" for exact inputs:
 
 - \`workflow.listWorkflows({})\` discovers registered workflow names.
 - \`workflow.createInstance({ workflowName, remoteWorkflowName, instanceId, params })\` starts a registered or saved workflow; inline \`defineWorkflow\` runs do not need this call.
 - \`workflow.listInstances({ workflowName, status, pageSize, cursor })\` lists instances.
 - \`workflow.getInstance({ workflowName, instanceId })\` reads status, output, and error.
-- \`workflow.getHistory({ workflowName, instanceId })\` exposes steps, events, and emissions.
+- \`workflow.getHistory({ workflowName, instanceId })\` exposes steps, events, and emissions for diagnosis.
 - \`workflow.sendEvent({ workflowName, instanceId, type, payload })\` resumes a waiting instance.
 - \`workflow.retryInstance({ workflowName, instanceId, stepKey, delayMs, reason })\` retries failed work.
 
-For a waiting instance, read history and send the exact event \`type\` expected by \`step.waitForEvent\`. For an errored instance, inspect the latest failed step before retrying and use its exact \`stepKey\` when selecting a retry boundary.
-
-**Completion criterion:** a run is complete when its status is \`complete\` and its output has been observed. A deliberate \`waiting\` status is complete for the current turn only when the expected event type and target instance are explicit. An error investigation is complete only after the failed step and error message are identified.`,
+For a waiting instance, send the exact event \`type\` expected by \`step.waitForEvent\`. For an errored instance, inspect the latest failed step before retrying and use its exact \`stepKey\`.`,
   }),
   ...starterSkill({
     name: "web",

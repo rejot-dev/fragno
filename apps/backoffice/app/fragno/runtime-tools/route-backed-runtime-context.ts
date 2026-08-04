@@ -33,7 +33,7 @@ import {
 } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
 
-import type { InteractiveBashCommandContext } from "./bash-host";
+import type { InteractiveRuntimeToolContext } from "./bash-host";
 import { getRuntimeToolNamespacesByCapability, runtimeToolFamilies } from "./tool-families";
 
 export type RouteBackedRuntimeContextOptions = {
@@ -81,7 +81,7 @@ export const createRouteBackedRuntimeContext = ({
   kernel,
   execution,
   pi,
-}: RouteBackedRuntimeContextOptions): InteractiveBashCommandContext => {
+}: RouteBackedRuntimeContextOptions): InteractiveRuntimeToolContext => {
   const org = ownerOrgScope(execution);
   const selectedOrg = selectedOrgScope(execution);
   const automationsObject = kernel.scoped(

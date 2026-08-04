@@ -67,7 +67,7 @@ export type BashHostContext = {
   web?: { runtime: WebRuntime } | null;
 };
 
-export type InteractiveBashCommandContext = Omit<BashHostContext, "automation"> & {
+export type InteractiveRuntimeToolContext = Omit<BashHostContext, "automation"> & {
   automation: null;
   automations: NonNullable<BashHostContext["automations"]>;
   workflow?: BashHostContext["workflow"];
