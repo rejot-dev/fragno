@@ -14,6 +14,7 @@ const localHostnames = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 const devCodemodeBodySchema = z.object({
   code: z.string().min(1),
+  dependencies: z.record(z.string().min(1), z.string().min(1)).optional(),
   timeout: z.number().int().positive().max(120_000).optional(),
 });
 
@@ -61,6 +62,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 
   const result = await runBackofficeCodemode({
     code: body.code,
+    dependencies: body.dependencies,
     fs,
     env,
     timeout: body.timeout,

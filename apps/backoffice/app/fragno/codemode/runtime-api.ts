@@ -29,14 +29,6 @@ export type DynamicWorkerExecutorOptions = {
   loader: WorkerLoader;
   timeout?: number;
   globalOutbound?: Fetcher | null;
-  modules?: Record<string, string>;
-};
-
-export type Executor = {
-  execute(
-    code: string,
-    providersOrFns: ResolvedProvider[] | Record<string, (...args: unknown[]) => Promise<unknown>>,
-  ): Promise<ExecuteResult>;
 };
 
 export const normalizeCode = (code: string): string => {

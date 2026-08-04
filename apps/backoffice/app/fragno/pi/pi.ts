@@ -121,6 +121,12 @@ export const execCodeModeParametersSchema = Type.Object({
     description:
       "One top-level codemode program: an async arrow function for immediate work or defineWorkflow(...) for durable work.",
   }),
+  dependencies: Type.Optional(
+    Type.Record(Type.String({ minLength: 1 }), Type.String({ minLength: 1 }), {
+      description:
+        "npm package names mapped to versions or version ranges. Import packages by their normal unversioned names in code.",
+    }),
+  ),
 });
 
 const defineTool = <TParameters extends TSchema, TDetails>(
@@ -210,7 +216,7 @@ const createExecCodeModeTool = (
     description: "Execute one top-level codemode program against the current Backoffice context.",
     parameters: execCodeModeParametersSchema,
     execute: async (toolCallId, params, signal) => {
-      const { code } = params;
+      const { code, dependencies } = params;
       if (signal?.aborted) {
         throw new Error("Codemode execution aborted.");
       }
@@ -231,6 +237,7 @@ const createExecCodeModeTool = (
 
       const result = await codemode.execute({
         code,
+        dependencies,
         fs,
         env: codemode.env,
         families: runtimeToolFamilies,
@@ -266,8 +273,8 @@ const createExecCodeModeTool = (
               params: {
                 scope: execution.scope,
                 actors: execution.actors,
-                code: result.preparedCode ?? code,
-                ...(result.preparedModules ? { modules: result.preparedModules } : {}),
+                code,
+                dependencies,
                 sessionId,
                 toolCallId: toolCallId,
               } satisfies PiCodemodeWorkflowParams,
@@ -292,16 +299,10 @@ const createExecCodeModeTool = (
         throw new Error(text);
       }
 
-      const {
-        preparedCode: _preparedCode,
-        preparedModules: _preparedModules,
-        ...publicResult
-      } = result;
-
       return {
         content: [{ type: "text", text }],
         details: {
-          ...publicResult,
+          ...result,
           code,
           workflowGraph,
           outputText: text,

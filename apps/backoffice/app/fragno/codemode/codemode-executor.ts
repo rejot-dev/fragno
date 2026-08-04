@@ -11,6 +11,8 @@
  * - Adds `createCodemodeDispatchers` and `createCodemodeProviderProxySource` so callers can pass
  *   provider RpcTargets alongside additional RpcTargets such as workflow step targets.
  */
+import type { WorkerBundle } from "@/backoffice-runtime/dynamic-workers/worker-bundle";
+
 import {
   normalizeCode,
   resolveProvider,
@@ -18,7 +20,6 @@ import {
   ToolDispatcher,
   type DynamicWorkerExecutorOptions,
   type ExecuteResult,
-  type Executor,
   type ResolvedProvider,
   type ToolProvider,
 } from "./runtime-api";
@@ -28,7 +29,6 @@ export {
   resolveProvider,
   type DynamicWorkerExecutorOptions,
   type ExecuteResult,
-  type Executor,
   type ResolvedProvider,
   type ToolProvider,
 };
@@ -211,31 +211,25 @@ export const createCodemodeDispatchers = (
 export type DynamicWorkerRpcTargetMap = Record<string, unknown>;
 
 export type DynamicWorkerEntrypointRunOptions<TEntrypoint, TResult> = {
-  compatibilityDate?: string;
-  compatibilityFlags?: string[];
-  mainModule: string;
-  modules: Record<string, string>;
+  bundle: WorkerBundle;
   globalOutbound?: Fetcher | null;
   rpcTargets?: DynamicWorkerRpcTargetMap;
   run: (entrypoint: TEntrypoint, rpcTargets: DynamicWorkerRpcTargetMap) => Promise<TResult>;
 };
 
-export class DynamicWorkerExecutor implements Executor {
+export class DynamicWorkerExecutor {
   readonly #loader: WorkerLoader;
   readonly #timeout: number;
   readonly #globalOutbound: Fetcher | null;
-  readonly #modules: Record<string, string>;
 
   constructor(options: DynamicWorkerExecutorOptions) {
     this.#loader = options.loader;
     this.#timeout = options.timeout ?? 30000;
     this.#globalOutbound = options.globalOutbound ?? null;
-    const { "executor.js": _executor, ...safeModules } = options.modules ?? {};
-    this.#modules = safeModules;
   }
 
   async execute(
-    code: string,
+    bundle: WorkerBundle,
     providersOrFns: ResolvedProvider[] | Record<string, (...args: unknown[]) => Promise<unknown>>,
   ): Promise<ExecuteResult> {
     const providers = Array.isArray(providersOrFns)
@@ -247,9 +241,7 @@ export class DynamicWorkerExecutor implements Executor {
       return { result: undefined, error: dispatcherResult.error };
     }
 
-    const executorModule = this.createExecutorModule(code, providers);
-
-    const response = await this.evaluateExecutorModule(executorModule, {
+    const response = await this.evaluateWorkerBundle(bundle, {
       __dispatchers: dispatcherResult.dispatchers,
     });
 
@@ -304,30 +296,27 @@ export class DynamicWorkerExecutor implements Executor {
   }
 
   async runEntrypoint<TEntrypoint, TResult>({
-    compatibilityDate = "2025-06-01",
-    compatibilityFlags = ["nodejs_compat"],
-    mainModule,
-    modules,
+    bundle,
     globalOutbound = this.#globalOutbound,
     rpcTargets = {},
     run,
   }: DynamicWorkerEntrypointRunOptions<TEntrypoint, TResult>): Promise<TResult> {
     const worker = this.#loader.get(`codemode-${crypto.randomUUID()}`, () => ({
-      compatibilityDate,
-      compatibilityFlags,
-      mainModule,
-      modules: {
-        ...this.#modules,
-        ...modules,
-      },
+      mainModule: bundle.mainModule,
+      modules: { ...bundle.modules },
+      compatibilityDate: bundle.runtime.compatibilityDate,
+      compatibilityFlags:
+        bundle.runtime.compatibilityFlags.length > 0
+          ? [...bundle.runtime.compatibilityFlags]
+          : undefined,
       globalOutbound,
     }));
 
     return await run(worker.getEntrypoint() as unknown as TEntrypoint, rpcTargets);
   }
 
-  async evaluateExecutorModule(
-    executorModule: string,
+  async evaluateWorkerBundle(
+    bundle: WorkerBundle,
     rpcTargets: DynamicWorkerRpcTargetMap,
   ): Promise<{
     result: unknown;
@@ -351,8 +340,7 @@ export class DynamicWorkerExecutor implements Executor {
         workflowDefinition?: { name: string; options?: unknown };
       }
     >({
-      mainModule: "executor.js",
-      modules: { "executor.js": executorModule },
+      bundle,
       rpcTargets,
       run: async (entrypoint, targets) => await entrypoint.evaluate(targets),
     });

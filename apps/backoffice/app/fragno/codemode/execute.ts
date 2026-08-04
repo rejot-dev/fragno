@@ -1,3 +1,9 @@
+import {
+  compileWorker,
+  type CompiledWorker,
+  type WorkerCompiler,
+} from "@/backoffice-runtime/dynamic-workers/compile-worker";
+import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 import type { IFileSystem } from "@/files/interface";
 import { createMcpCodemodeProviders } from "@/fragno/codemode/mcp-codemode-tools";
 import {
@@ -19,11 +25,6 @@ import {
   type ResolvedProvider,
 } from "./codemode-executor";
 import { BackofficeStateFileSystem } from "./master-file-system-state";
-import {
-  collectBareSpecifiers,
-  resolveNpmModules,
-  rewriteCodeImports,
-} from "./resolve-npm-modules";
 import { BackofficeFileSystemStateBackend, stateToolsFromBackend } from "./state-backend";
 
 export type BackofficeCodemodeEnv = {
@@ -36,10 +37,12 @@ export type BackofficeCodemodeEnv = {
    * sandbox sealed.
    */
   OUTBOUND?: Fetcher;
+  compileWorker?: WorkerCompiler;
 };
 
 export type RunBackofficeCodemodeInput = {
   code: string;
+  dependencies?: NpmDependencyMap;
   fs: IFileSystem;
   env: BackofficeCodemodeEnv;
   timeout?: number;
@@ -70,35 +73,10 @@ export type BackofficeCodemodeWorkflowDefinition = {
 export type BackofficeCodemodeExecuteResult = ExecuteResult & {
   toolCalls: BackofficeRuntimeToolCall[];
   workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
-  preparedCode?: string;
-  preparedModules?: Record<string, string>;
 };
 
 export const normalizeBackofficeCodemodeCode = (code: string): string =>
   normalizeCode(code.trim().replace(/;*$/, "")).trim().replace(/;*$/, "");
-
-export type PreparedBackofficeCodemodeCode = {
-  code: string;
-  modules: Record<string, string>;
-  specifiers: string[];
-};
-
-export const prepareBackofficeCodemodeCode = async (
-  code: string,
-): Promise<PreparedBackofficeCodemodeCode> => {
-  const normalizedCode = normalizeBackofficeCodemodeCode(code);
-  const specifiers = collectBareSpecifiers(normalizedCode);
-  if (specifiers.length === 0) {
-    return { code: normalizedCode, modules: {}, specifiers };
-  }
-
-  const resolved = await resolveNpmModules(specifiers);
-  return {
-    code: rewriteCodeImports(normalizedCode, resolved.imports),
-    modules: resolved.modules,
-    specifiers,
-  };
-};
 
 type ScopedCodemodeCallInput = {
   scope:
@@ -247,6 +225,7 @@ export const createBackofficeCodemodeResolvedProviders = async ({
 
 export const runBackofficeCodemode = async ({
   code,
+  dependencies,
   fs,
   env,
   timeout,
@@ -256,33 +235,12 @@ export const runBackofficeCodemode = async ({
 }: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeExecuteResult> => {
   const toolCalls: BackofficeRuntimeToolCall[] = [];
 
-  // A dynamically-loaded Worker cannot fetch modules at runtime, so any npm package
-  // the snippet imports must be resolved on the host and supplied in the Worker
-  // Loader `modules` map. We bundle each imported package from esm.sh and rewrite the
-  // snippet's specifiers to the resulting module keys. Versions are taken from the
-  // specifier when present (`lodash@4.17.21`), else esm.sh resolves the latest.
-  let prepared: PreparedBackofficeCodemodeCode;
-  try {
-    prepared = await prepareBackofficeCodemodeCode(code);
-  } catch (err) {
-    const normalizedCode = normalizeBackofficeCodemodeCode(code);
-    const specifiers = collectBareSpecifiers(normalizedCode);
-    return {
-      result: undefined,
-      error: `Failed to resolve npm imports (${specifiers.join(", ")}): ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-      toolCalls,
-    };
-  }
-
   const executor = new DynamicWorkerExecutor({
     loader: env.LOADER,
     timeout,
     // Default (caller passed nothing): grant egress via the host's OUTBOUND
     // capability when bound, else stay sealed. An explicit Fetcher or `null` wins.
     globalOutbound: globalOutbound === undefined ? (env.OUTBOUND ?? null) : globalOutbound,
-    modules: prepared.modules,
   });
 
   const providers = await createBackofficeCodemodeResolvedProviders({
@@ -292,14 +250,38 @@ export const runBackofficeCodemode = async ({
     toolCalls,
   });
 
+  const compile = env.compileWorker ?? compileWorker;
+  let compiled: CompiledWorker;
+  try {
+    compiled = await compile({
+      files: {
+        "executor.js": executor.createExecutorModule(
+          normalizeBackofficeCodemodeCode(code),
+          providers,
+        ),
+      },
+      entryPoint: "executor.js",
+      dependencies,
+      runtime: {
+        compatibilityDate: "2026-05-07",
+        compatibilityFlags: ["nodejs_compat"],
+      },
+    });
+  } catch (error) {
+    return {
+      result: undefined,
+      error: `Failed to compile codemode: ${error instanceof Error ? error.message : String(error)}`,
+      toolCalls,
+    };
+  }
+
   const result = (await executor.execute(
-    prepared.code,
+    compiled.bundle,
     providers,
   )) as BackofficeCodemodeExecuteResult;
   return {
     ...result,
+    logs: [...compiled.warnings, ...(result.logs ?? [])],
     toolCalls,
-    preparedCode: prepared.code,
-    preparedModules: prepared.modules,
   };
 };

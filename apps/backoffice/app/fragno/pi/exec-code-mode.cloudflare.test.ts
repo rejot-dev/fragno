@@ -1,4 +1,4 @@
-import { describe, expect, test, assert, vi } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
@@ -47,27 +47,6 @@ const testRuntimeConfig: BackofficeRuntimeConfig = {
     cloudflare: false,
     sandbox: false,
   },
-};
-
-function makeFakeEsmSh(files: Record<string, string>): typeof fetch {
-  return (async (input: RequestInfo | URL) => {
-    const url = new URL(typeof input === "string" ? input : input.toString());
-    const body = files[url.pathname + url.search] ?? files[url.pathname];
-    if (body === undefined) {
-      return new Response(`not found: ${url.pathname}`, { status: 404 });
-    }
-    return new Response(body, {
-      status: 200,
-      headers: { "content-type": "application/javascript" },
-    });
-  }) as typeof fetch;
-}
-
-const LEFTPAD_ESM = {
-  "/leftpad@1.0.0?bundle-deps&target=es2022":
-    'export { default } from "/leftpad@1.0.0/es2022/leftpad.bundle.mjs";',
-  "/leftpad@1.0.0/es2022/leftpad.bundle.mjs":
-    'export default (s, n, c = " ") => String(s).padStart(n, c);',
 };
 
 const createPiSessionFileSystemContext = () => ({
@@ -318,105 +297,94 @@ describe("Pi execCodeMode tool", () => {
     );
   });
 
-  test("schedules and runs a workflow with resolved npm imports", async () => {
-    const originalFetch = globalThis.fetch;
-    vi.stubGlobal("fetch", makeFakeEsmSh(LEFTPAD_ESM));
-
-    try {
-      const fs = createTestMasterFileSystem({});
-      const sessionFileSystems = new Map<string, Promise<MasterFileSystem>>([
-        ["session-1", Promise.resolve(fs)],
-      ]);
-      const workflow = defineRemoteWorkflow(
-        { name: "pi-codemode-script" },
-        async (event, remote) => {
-          const params = event.payload as PiCodemodeWorkflowParams;
-          const sessionFs = await sessionFileSystems.get(params.sessionId);
-          if (!sessionFs) {
-            throw new Error("Missing session filesystem");
-          }
-          const result = await runBackofficeCodemodeWorkflow({
-            code: params.code,
-            modules: params.modules,
-            event,
-            remote,
-            fs: sessionFs,
-            env,
-            families: runtimeToolFamilies,
-            toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
-          });
-          if (result.error) {
-            throw new Error(result.error);
-          }
-          return result.result;
-        },
-      );
-      const harness = await createWorkflowsTestHarness({
-        workflows: { PI_CODEMODE_SCRIPT: workflow },
-        adapter: { type: "in-memory" },
-        testBuilder: buildDatabaseFragmentsTest(),
-        autoTickHooks: false,
-      });
-
-      const tools = createPiToolRegistry({
-        sessionFileSystems,
-        sessionFileSystemContext: createPiSessionFileSystemContext(),
-        codemode: {
-          ...createPiCodemodeRuntime(env),
-          workflow: {
-            createInstance: async ({ workflowName, remoteWorkflowName, instanceId, params }) => {
-              const resolvedInstanceId = instanceId ?? "generated-instance-id";
-              await harness.createInstance(workflowName, {
-                id: resolvedInstanceId,
-                params,
-                remoteWorkflowName,
-              });
-              return { workflowName, instanceId: resolvedInstanceId };
-            },
-            getStatus: async ({ instanceId }) =>
-              await harness.getStatus("PI_CODEMODE_SCRIPT", instanceId),
-            sendEvent: async ({ workflowName, instanceId, type, payload }) =>
-              await harness.sendEvent(workflowName, instanceId, { type, payload }),
-          },
-        },
-        runtimeToolContext: EMPTY_BASH_HOST_CONTEXT as never,
-      });
-      const execCodeModeFactory = tools.execCodeMode;
-      if (typeof execCodeModeFactory !== "function") {
-        throw new Error("Expected execCodeMode tool to be registered as a factory.");
+  test("schedules and runs a workflow with an npm dependency", async () => {
+    const fs = createTestMasterFileSystem({});
+    const sessionFileSystems = new Map<string, Promise<MasterFileSystem>>([
+      ["session-1", Promise.resolve(fs)],
+    ]);
+    const workflow = defineRemoteWorkflow({ name: "pi-codemode-script" }, async (event, remote) => {
+      const params = event.payload as PiCodemodeWorkflowParams;
+      const sessionFs = await sessionFileSystems.get(params.sessionId);
+      if (!sessionFs) {
+        throw new Error("Missing session filesystem");
       }
-      const tool = await execCodeModeFactory({
-        session: { id: "session-1" },
-        turnId: "turn-1",
-        toolConfig: null,
-        messages: [],
-      } as never);
+      const result = await runBackofficeCodemodeWorkflow({
+        code: params.code,
+        dependencies: params.dependencies,
+        event,
+        remote,
+        fs: sessionFs,
+        env,
+        families: runtimeToolFamilies,
+        toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+      });
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.result;
+    });
+    const harness = await createWorkflowsTestHarness({
+      workflows: { PI_CODEMODE_SCRIPT: workflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
 
-      const result = await tool.execute("tool-call-1", {
-        code: `defineWorkflow({ name: "pi-session-workflow-npm" }, async (_event, step) => {
-          return await step.do("leftpad", async () => {
-            const leftpad = (await import("leftpad@1.0.0")).default;
-            return leftpad("7", 3, "0");
+    const tools = createPiToolRegistry({
+      sessionFileSystems,
+      sessionFileSystemContext: createPiSessionFileSystemContext(),
+      codemode: {
+        ...createPiCodemodeRuntime(env),
+        workflow: {
+          createInstance: async ({ workflowName, remoteWorkflowName, instanceId, params }) => {
+            const resolvedInstanceId = instanceId ?? "generated-instance-id";
+            await harness.createInstance(workflowName, {
+              id: resolvedInstanceId,
+              params,
+              remoteWorkflowName,
+            });
+            return { workflowName, instanceId: resolvedInstanceId };
+          },
+          getStatus: async ({ instanceId }) =>
+            await harness.getStatus("PI_CODEMODE_SCRIPT", instanceId),
+          sendEvent: async ({ workflowName, instanceId, type, payload }) =>
+            await harness.sendEvent(workflowName, instanceId, { type, payload }),
+        },
+      },
+      runtimeToolContext: EMPTY_BASH_HOST_CONTEXT as never,
+    });
+    const execCodeModeFactory = tools.execCodeMode;
+    if (typeof execCodeModeFactory !== "function") {
+      throw new Error("Expected execCodeMode tool to be registered as a factory.");
+    }
+    const tool = await execCodeModeFactory({
+      session: { id: "session-1" },
+      turnId: "turn-1",
+      toolConfig: null,
+      messages: [],
+    } as never);
+
+    const result = await tool.execute("tool-call-1", {
+      code: `defineWorkflow({ name: "pi-session-workflow-npm" }, async (_event, step) => {
+          return await step.do("is-number", async () => {
+            const isNumber = (await import("is-number")).default;
+            return isNumber(7);
           });
         });`,
-      });
+      dependencies: { "is-number": "7.0.0" },
+    });
 
-      const details = result.details as { result?: { instanceId?: string } };
-      assert(details.result?.instanceId === "18tfv3i1e4o7fe");
-      await harness.runUntilIdle({
-        workflowName: "pi-codemode-script",
-        instanceId: "18tfv3i1e4o7fe",
-        reason: "create",
-      });
-      await expect(
-        harness.getStatus("PI_CODEMODE_SCRIPT", "18tfv3i1e4o7fe"),
-      ).resolves.toMatchObject({
-        status: "complete",
-        output: "007",
-      });
-    } finally {
-      vi.stubGlobal("fetch", originalFetch);
-    }
+    const details = result.details as { result?: { instanceId?: string } };
+    assert(details.result?.instanceId === "18tfv3i1e4o7fe");
+    await harness.runUntilIdle({
+      workflowName: "pi-codemode-script",
+      instanceId: "18tfv3i1e4o7fe",
+      reason: "create",
+    });
+    await expect(harness.getStatus("PI_CODEMODE_SCRIPT", "18tfv3i1e4o7fe")).resolves.toMatchObject({
+      status: "complete",
+      output: true,
+    });
   });
 
   test("shows current raw text behavior when codemode returns a Map", async () => {

@@ -1,7 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
+import type { WorkerCompiler } from "./dynamic-workers/compile-worker";
+import { compileInMemoryWorker } from "./dynamic-workers/compile-worker.in-memory";
+
 export type InMemoryBackofficeRuntimeEnv = {
   LOADER?: WorkerLoader;
+  compileWorker?: WorkerCompiler;
   DOCS_PUBLIC_BASE_URL?: string;
   TURNSTILE_SITEKEY?: string;
   GITHUB_CLIENT_ID?: string;
@@ -71,6 +75,7 @@ const createInMemoryWorkerLoader = (): WorkerLoader => {
 
 export const defaultInMemoryBackofficeRuntimeEnv = (): InMemoryBackofficeRuntimeEnv => ({
   LOADER: createInMemoryWorkerLoader(),
+  compileWorker: compileInMemoryWorker,
   DOCS_PUBLIC_BASE_URL: "https://example.com",
   TURNSTILE_SITEKEY: "0x4AAAAAACEAKTUMl498hZ6v",
   GITHUB_CLIENT_ID: "in-memory-github-client-id",
