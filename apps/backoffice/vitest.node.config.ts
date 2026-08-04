@@ -1,26 +1,19 @@
-import { mergeConfig, defineProject } from "vitest/config";
-
-import { baseConfig } from "@fragno-private/vitest-config";
+import { defineProject } from "vitest/config";
 
 import { docsVitestResolveConfig } from "./vitest.shared";
 
-export default mergeConfig(
-  baseConfig,
-  defineProject({
-    resolve: docsVitestResolveConfig,
-    test: {
-      name: "node",
-      environment: "node",
-      coverage: {
-        enabled: false,
-      },
-      include: [
-        "app/**/*.test.ts",
-        "app/**/*.test.tsx",
-        "workers/**/*.test.ts",
-        "scripts/**/*.test.ts",
-      ],
-      exclude: ["app/**/*.cloudflare.test.ts", "workers/**/*.cloudflare.test.ts"],
-    },
-  }),
-);
+export default defineProject({
+  resolve: docsVitestResolveConfig,
+  test: {
+    name: "node",
+    environment: "node",
+    globals: true,
+    include: [
+      "app/**/*.test.ts",
+      "app/**/*.test.tsx",
+      "workers/**/*.test.ts",
+      "scripts/**/*.test.ts",
+    ],
+    exclude: ["app/**/*.cloudflare.test.ts", "workers/**/*.cloudflare.test.ts"],
+  },
+});
