@@ -156,7 +156,6 @@ await api.request({
 
 \`\`\`
 
-Bash runtime commands include \`api.connections.list\`, \`api.connections.create\`, \`api.connections.delete\`, \`api.auth.status\`, \`api.auth.token\`, \`api.oauth.start\`, \`api.auth.delete\`, and \`api.request\`.
 
 For JSON request bodies, use \`api.request --json '{"key":"value"}'\`. For text bodies, use \`--body\`.
 

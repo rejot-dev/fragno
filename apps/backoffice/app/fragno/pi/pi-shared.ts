@@ -95,17 +95,16 @@ export const PI_MODEL_CATALOG: PiModelOption[] = [
   },
 ];
 
-export const PI_TOOL_IDS = ["bash", "execCodeMode", "read"] as const;
+export const PI_TOOL_IDS = ["execCodeMode", "read"] as const;
 export type PiToolId = (typeof PI_TOOL_IDS)[number];
 
 export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
   {
     id: "default",
     label: "Default",
-    description:
-      "Built-in harness with codemode, read, and bash access to the combined session filesystem.",
+    description: "Built-in harness with codemode and read access.",
     systemPrompt: STATIC_FILE_CONTENT["SYSTEM.md"],
-    tools: ["execCodeMode", "read", "bash"],
+    tools: ["execCodeMode", "read"],
     thinkingLevel: "low",
   },
 ];

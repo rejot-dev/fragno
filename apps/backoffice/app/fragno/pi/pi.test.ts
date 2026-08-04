@@ -1,4 +1,4 @@
-import { describe, expect, test, vi, assert } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
 
@@ -17,7 +17,7 @@ import {
   createPiRuntime,
   createPiToolFactory,
   createPiToolRegistry,
-  type PiBashCommandContext,
+  type PiRuntimeToolContext,
   type PiSessionFileSystemContext,
 } from "./pi";
 import { BACKOFFICE_PI_WORKFLOW_NAME } from "./pi-shared";
@@ -45,15 +45,7 @@ const testRuntimeConfig: BackofficeRuntimeConfig = {
   },
 };
 
-const createMockEnv = () =>
-  ({
-    UPLOAD: { idFromName: () => "stub", get: () => ({}) },
-    RESEND: { idFromName: () => "stub", get: () => ({}) },
-    RESON8: { idFromName: () => "stub", get: () => ({}) },
-    AUTOMATIONS: { idFromName: () => "stub", get: () => ({}) },
-  }) as unknown as CloudflareEnv;
-
-const createMockBashContext = (): PiBashCommandContext => ({
+const createMockRuntimeToolContext = (): PiRuntimeToolContext => ({
   ...EMPTY_BASH_HOST_CONTEXT,
   automation: null,
   automations: {
@@ -164,10 +156,9 @@ describe("Backoffice Pi fragment", () => {
       adapters: {
         createAdapter: () => new InMemoryAdapter({ idSeed: "pi-invalid-model-test" }),
       } as never,
-      env: createMockEnv(),
       sessionFileSystems: new Map(),
       sessionFileSystemContext: context,
-      bashCommandContext: createMockBashContext(),
+      runtimeToolContext: createMockRuntimeToolContext(),
       codemode: {
         env: {} as never,
         execute: async () => {
@@ -201,7 +192,7 @@ describe("Backoffice Pi fragment", () => {
 });
 
 describe("Backoffice Pi execution", () => {
-  test("builds Bash tools from the session creator execution", async () => {
+  test("builds runtime tools from the session creator execution", async () => {
     const sessionExecution = createBackofficeUserExecution({
       scope: { kind: "org", orgId: "acme-org" },
       userId: "session-creator",
@@ -211,10 +202,9 @@ describe("Backoffice Pi execution", () => {
     const createTools = createPiToolFactory({
       sessionFileSystems: new Map([[sessionId, Promise.resolve(createTestMasterFileSystem({}))]]),
       sessionFileSystemContext: createContext(),
-      env: createMockEnv(),
-      bashCommandContext: (execution) => {
+      runtimeToolContext: (execution) => {
         receivedExecution = execution;
-        return createMockBashContext();
+        return createMockRuntimeToolContext();
       },
     });
 
@@ -234,7 +224,11 @@ describe("Backoffice Pi skills", () => {
     const skills = await loadBackofficePiSkills(fs);
 
     expect(Object.keys(skills)).toEqual(
-      expect.arrayContaining(["building-automations", "generating-backoffice-uis"]),
+      expect.arrayContaining([
+        "building-automations",
+        "generating-backoffice-uis",
+        "using-prepared-uploads",
+      ]),
     );
     expect(skills["building-automations"]).toMatchObject({
       location: "/static/skills/building-automations/SKILL.md",
@@ -271,6 +265,15 @@ Filesystem-defined instructions.
     });
   });
 
+  test("exposes only codemode and declaration-reading tools", () => {
+    const tools = createPiToolRegistry({
+      sessionFileSystems: new Map(),
+      sessionFileSystemContext: createContext(),
+    });
+
+    expect(Object.keys(tools)).toEqual(["read", "execCodeMode"]);
+  });
+
   test("exposes a read tool that can load starter skill files", async () => {
     const tools = createPiToolRegistry({
       sessionFileSystems: new Map(),
@@ -304,351 +307,6 @@ Filesystem-defined instructions.
     const content = result.content[0];
     assert(content?.type === "text");
     expect(content?.type === "text" ? content.text : "").toContain("name: building-automations");
-  });
-});
-
-describe("Pi bash tool", () => {
-  test("defaults just-bash to the shared filesystem root so pwd and ls work without an explicit cwd", async () => {
-    const tools = createPiToolRegistry({
-      sessionFileSystems: new Map(),
-      sessionFileSystemContext: createContext(),
-      env: createMockEnv(),
-      bashCommandContext: createMockBashContext(),
-    });
-
-    const bashFactory = tools.bash;
-    if (typeof bashFactory !== "function") {
-      throw new Error("Expected bash tool to be registered as a factory.");
-    }
-
-    const tool = await bashFactory({
-      session: { id: "session-1" },
-      turnId: "turn-1",
-      toolConfig: null,
-      messages: [],
-    } as never);
-
-    const pwdResult = await tool.execute("tool-call-1", {
-      script: "pwd",
-    } as never);
-    expect(pwdResult.details).toMatchObject({
-      stdout: "/",
-      stderr: "",
-      exitCode: 0,
-    });
-
-    const lsResult = await tool.execute("tool-call-2", {
-      script: "ls",
-    } as never);
-    expect(lsResult.details).toMatchObject({
-      stderr: "",
-      exitCode: 0,
-    });
-    expect((lsResult.details as { stdout: string }).stdout.split("\n")).toEqual([
-      "dev",
-      "projects",
-      "resend",
-      "static",
-      "tmp",
-    ]);
-  });
-
-  test("respects an explicit cwd inside the static starter filesystem", async () => {
-    const tools = createPiToolRegistry({
-      sessionFileSystems: new Map(),
-      sessionFileSystemContext: createContext(),
-      env: createMockEnv(),
-      bashCommandContext: createMockBashContext(),
-    });
-
-    const bashFactory = tools.bash;
-    if (typeof bashFactory !== "function") {
-      throw new Error("Expected bash tool to be registered as a factory.");
-    }
-
-    const tool = await bashFactory({
-      session: { id: "session-2" },
-      turnId: "turn-1",
-      toolConfig: null,
-      messages: [],
-    } as never);
-
-    const result = await tool.execute("tool-call-3", {
-      script: "ls",
-      cwd: "/static",
-    } as never);
-    expect(result.details).toMatchObject({
-      stderr: "",
-      exitCode: 0,
-    });
-    expect((result.details as { stdout: string }).stdout.split("\n")).toEqual([
-      "SYSTEM.md",
-      "automations",
-      "codemode",
-      "skills",
-    ]);
-  });
-
-  test("exposes starter automation files inside the shared Pi filesystem", async () => {
-    const tools = createPiToolRegistry({
-      sessionFileSystems: new Map(),
-      sessionFileSystemContext: createContext(),
-      env: createMockEnv(),
-      bashCommandContext: createMockBashContext(),
-    });
-
-    const bashFactory = tools.bash;
-    if (typeof bashFactory !== "function") {
-      throw new Error("Expected bash tool to be registered as a factory.");
-    }
-
-    const tool = await bashFactory({
-      session: { id: "session-automations" },
-      turnId: "turn-1",
-      toolConfig: null,
-      messages: [],
-    } as never);
-
-    const result = await tool.execute("tool-call-automations-1", {
-      script: "cat /static/automations/project-files-configure.workflow.js",
-    } as never);
-    expect(result.details).toMatchObject({
-      stderr: "",
-      exitCode: 0,
-    });
-    expect((result.details as { stdout: string }).stdout).toContain("project-files-configure");
-  });
-
-  test("mounts resend thread snapshots when a resend runtime is available", async () => {
-    const tools = createPiToolRegistry({
-      sessionFileSystems: new Map(),
-      sessionFileSystemContext: createContext({ resend: true }),
-      env: createMockEnv(),
-      bashCommandContext: createMockBashContext(),
-    });
-
-    const bashFactory = tools.bash;
-    if (typeof bashFactory !== "function") {
-      throw new Error("Expected bash tool to be registered as a factory.");
-    }
-
-    const tool = await bashFactory({
-      session: { id: "session-resend" },
-      turnId: "turn-1",
-      toolConfig: null,
-      messages: [],
-    } as never);
-
-    const listResult = await tool.execute("tool-call-resend-1", {
-      script: "ls /resend",
-    } as never);
-    expect(listResult.details).toMatchObject({
-      stderr: "",
-      exitCode: 0,
-    });
-    assert((listResult.details as { stdout: string }).stdout === "thread-1.md");
-
-    const readResult = await tool.execute("tool-call-resend-2", {
-      script: "cat /resend/thread-1.md",
-    } as never);
-    expect(readResult.details).toMatchObject({
-      stderr: "",
-      exitCode: 0,
-    });
-    expect((readResult.details as { stdout: string }).stdout).toContain("# Invoice Update");
-  });
-
-  test("uses the shared workspace storage for reads and writes", async () => {
-    const tools = createPiToolRegistry({
-      sessionFileSystems: new Map(),
-      sessionFileSystemContext: createContext({
-        uploadSeed: { "README.md": "custom workspace readme" },
-      }),
-      env: createMockEnv(),
-      bashCommandContext: createMockBashContext(),
-    });
-
-    const bashFactory = tools.bash;
-    if (typeof bashFactory !== "function") {
-      throw new Error("Expected bash tool to be registered as a factory.");
-    }
-
-    const tool = await bashFactory({
-      session: { id: "session-3" },
-      turnId: "turn-1",
-      toolConfig: null,
-      messages: [],
-    } as never);
-
-    const readResult = await tool.execute("tool-call-4", {
-      script: "cat /workspace/README.md",
-    } as never);
-    expect(readResult.details).toMatchObject({
-      stdout: "custom workspace readme",
-      stderr: "",
-      exitCode: 0,
-    });
-
-    const writeResult = await tool.execute("tool-call-5", {
-      script: "printf 'hello from pi' > /workspace/output/result.txt",
-    } as never);
-    expect(writeResult.details).toMatchObject({
-      stderr: "",
-      exitCode: 0,
-    });
-
-    const verifyResult = await tool.execute("tool-call-6", {
-      script: "cat /workspace/output/result.txt",
-    } as never);
-    expect(verifyResult.details).toMatchObject({
-      stdout: "hello from pi",
-      stderr: "",
-      exitCode: 0,
-    });
-  });
-
-  test("reports deleted upload-backed paths as missing for exact ls lookups", async () => {
-    const tools = createPiToolRegistry({
-      sessionFileSystems: new Map(),
-      sessionFileSystemContext: createContext({
-        uploadSeed: {
-          "output/result.txt": { content: "stale", status: "deleted" },
-        },
-      }),
-      env: createMockEnv(),
-      bashCommandContext: createMockBashContext(),
-    });
-
-    const bashFactory = tools.bash;
-    if (typeof bashFactory !== "function") {
-      throw new Error("Expected bash tool to be registered as a factory.");
-    }
-
-    const tool = await bashFactory({
-      session: { id: "session-deleted-ls" },
-      turnId: "turn-1",
-      toolConfig: null,
-      messages: [],
-    } as never);
-
-    const parentListResult = await tool.execute("tool-call-deleted-1", {
-      script: "ls /workspace/output",
-    } as never);
-    expect(parentListResult.details).toMatchObject({
-      stdout: "",
-      exitCode: 2,
-    });
-    expect((parentListResult.details as { stderr: string }).stderr).toContain(
-      "No such file or directory",
-    );
-
-    const exactPathResult = await tool.execute("tool-call-deleted-2", {
-      script: "ls /workspace/output/result.txt",
-    } as never);
-    expect(exactPathResult.details).toMatchObject({
-      stdout: "",
-      exitCode: 2,
-    });
-    expect((exactPathResult.details as { stderr: string }).stderr).toContain(
-      "No such file or directory",
-    );
-  });
-
-  test("surfaces read-only filesystem errors for touch", async () => {
-    const tools = createPiToolRegistry({
-      sessionFileSystems: new Map(),
-      sessionFileSystemContext: createContext(),
-      env: createMockEnv(),
-      bashCommandContext: createMockBashContext(),
-    });
-
-    const bashFactory = tools.bash;
-    if (typeof bashFactory !== "function") {
-      throw new Error("Expected bash tool to be registered as a factory.");
-    }
-
-    const tool = await bashFactory({
-      session: { id: "session-readonly-errors" },
-      turnId: "turn-1",
-      toolConfig: null,
-      messages: [],
-    } as never);
-
-    const touchResult = await tool.execute("tool-call-readonly-1", {
-      script: "touch /static/SYSTEM.md",
-    } as never);
-    expect(touchResult.details).toMatchObject({
-      stdout: "",
-      exitCode: 1,
-    });
-    expect((touchResult.details as { stderr: string }).stderr).toMatch(/read-only file system/i);
-  });
-
-  test("deduplicates concurrent session filesystem initialization", async () => {
-    const createBackofficeFileSystem = files.createBackofficeFileSystem;
-    let release: () => void = () => {};
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-
-    const createBackofficeFileSystemSpy = vi
-      .spyOn(files, "createBackofficeFileSystem")
-      .mockImplementation(async (options) => {
-        await gate;
-        return createBackofficeFileSystem(options);
-      });
-
-    try {
-      const tools = createPiToolRegistry({
-        sessionFileSystems: new Map(),
-        sessionFileSystemContext: createContext({
-          uploadSeed: { "README.md": "custom workspace readme" },
-        }),
-        env: createMockEnv(),
-        bashCommandContext: createMockBashContext(),
-      });
-
-      const bashFactory = tools.bash;
-      if (typeof bashFactory !== "function") {
-        throw new Error("Expected bash tool to be registered as a factory.");
-      }
-
-      const toolContext = {
-        session: { id: "session-race" },
-        turnId: "turn-1",
-        toolConfig: null,
-        messages: [],
-      } as never;
-
-      const firstToolPromise = bashFactory(toolContext);
-      const secondToolPromise = bashFactory(toolContext);
-
-      await Promise.resolve();
-      expect(createBackofficeFileSystemSpy).toHaveBeenCalledTimes(1);
-
-      release();
-
-      const [firstTool, secondTool] = await Promise.all([firstToolPromise, secondToolPromise]);
-
-      const writeResult = await firstTool.execute("tool-call-7", {
-        script: "printf 'race-free' > /workspace/output/race.txt",
-      } as never);
-      expect(writeResult.details).toMatchObject({
-        stderr: "",
-        exitCode: 0,
-      });
-
-      const readResult = await secondTool.execute("tool-call-8", {
-        script: "cat /workspace/output/race.txt",
-      } as never);
-      expect(readResult.details).toMatchObject({
-        stdout: "race-free",
-        stderr: "",
-        exitCode: 0,
-      });
-    } finally {
-      createBackofficeFileSystemSpy.mockRestore();
-    }
   });
 });
 

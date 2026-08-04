@@ -68,7 +68,7 @@ MCP tools can:
 - refresh the cached tools advertised by a configured server;
 - call tools exposed by a configured server.
 
-Use codemode first. The \`mcp\` provider methods are \`listServers\`, \`createServer\`, \`deleteServer\`, \`refreshServer\`, \`startOAuth\`, \`setToken\`, and \`callTool\`.
+Use the declared \`mcp\` provider methods: \`listServers\`, \`createServer\`, \`deleteServer\`, \`refreshServer\`, \`startOAuth\`, \`setToken\`, and \`callTool\`.
 
 Examples:
 
@@ -82,6 +82,5 @@ await mcp.callTool({
 });
 \`\`\`
 
-Bash runtime commands include \`mcp.servers.list\`, \`mcp.servers.add\`, \`mcp.servers.delete\`, \`mcp.servers.refresh\`, \`mcp.oauth.start\`, \`mcp.auth.token\`, and \`mcp.tools.call\`.
 `,
   });

@@ -34,9 +34,8 @@ import type {
   BackofficeCodemodeExecuteResult,
   RunBackofficeCodemodeInput,
 } from "../codemode/execute";
-import { createInteractiveBashHost } from "../runtime-tools/automation-host";
 import type {
-  InteractiveBashCommandContext,
+  InteractiveRuntimeToolContext,
   RegisteredAutomationsRuntime,
 } from "../runtime-tools/bash-host";
 import type {
@@ -71,7 +70,7 @@ export type PiRuntimeFragments = {
   workflowsFragment: ReturnType<typeof createWorkflowsFragment>;
 };
 
-export type PiBashCommandContext = InteractiveBashCommandContext & {
+export type PiRuntimeToolContext = InteractiveRuntimeToolContext & {
   automations: {
     runtime: RegisteredAutomationsRuntime;
   };
@@ -108,16 +107,6 @@ export type PiCodemodeRuntime = {
 
 const PI_SESSION_ACTORS_METADATA_KEY = "__backofficeActors";
 
-export const bashParametersSchema = Type.Object({
-  script: Type.String({
-    minLength: 1,
-    description: "Shell script or command to execute in the sandboxed environment.",
-  }),
-  cwd: Type.Optional(
-    Type.String({ description: "Optional working directory within the virtual filesystem." }),
-  ),
-});
-
 const readParametersSchema = Type.Object({
   path: Type.String({ description: "Path to the file to read (relative or absolute)." }),
   offset: Type.Optional(
@@ -126,11 +115,11 @@ const readParametersSchema = Type.Object({
   limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read." })),
 });
 
-const execCodeModeParametersSchema = Type.Object({
+export const execCodeModeParametersSchema = Type.Object({
   code: Type.String({
     minLength: 1,
     description:
-      "Standalone async arrow function to execute in an isolated dynamic Worker with state.* filesystem tools.",
+      "One top-level codemode program: an async arrow function for immediate work or defineWorkflow(...) for durable work.",
   }),
 });
 
@@ -156,7 +145,7 @@ const createReadTool = (fs: MasterFileSystem): AgentTool =>
     name: "read",
     label: "Read",
     description:
-      "Read a file from the combined Pi session filesystem. Use this to load matching skills from /static/skills/<skill-name>/SKILL.md or /workspace/skills/<skill-name>/SKILL.md before applying them.",
+      "Read a known skill or TypeScript declaration from the combined Pi session filesystem. Read selected skills in full before applying them.",
     parameters: readParametersSchema,
     execute: async (_toolCallId, params, signal) => {
       if (signal?.aborted) {
@@ -172,72 +161,6 @@ const createReadTool = (fs: MasterFileSystem): AgentTool =>
           path,
           offset: params.offset ?? null,
           limit: params.limit ?? null,
-        },
-      };
-    },
-  });
-
-const createBashTool = (
-  fs: MasterFileSystem,
-  sessionId: string,
-  context: PiBashCommandContext,
-): AgentTool =>
-  defineTool({
-    name: "bash",
-    label: "Bash",
-    description: "Execute bash commands in the combined Pi session filesystem.",
-    parameters: bashParametersSchema,
-    execute: async (_toolCallId, params, signal) => {
-      const { script, cwd } = params;
-      if (signal?.aborted) {
-        throw new Error("Bash execution aborted.");
-      }
-      const scriptPreview = script.length > 120 ? `${script.slice(0, 117)}...` : script;
-      console.info("Pi bash tool start", {
-        sessionId,
-        cwd,
-        length: script.length,
-        preview: scriptPreview,
-      });
-
-      const { bash, commandCallsResult } = createInteractiveBashHost({
-        fs,
-        sessionId,
-        context,
-      });
-      let result: Awaited<ReturnType<typeof bash.exec>>;
-      try {
-        result = await bash.exec(script, cwd ? { cwd } : { cwd: "/" });
-      } catch (error) {
-        console.warn("Pi bash tool error", {
-          sessionId,
-          cwd,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        throw error;
-      }
-
-      const stdout = result.stdout?.trimEnd() ?? "";
-      const stderr = result.stderr?.trimEnd() ?? "";
-      const exitCode = result.exitCode ?? 0;
-
-      const outputLines = [stdout, stderr].filter(Boolean);
-      if (outputLines.length === 0) {
-        outputLines.push(`Command finished with exit code ${exitCode}.`);
-      }
-
-      console.info("Pi bash tool end", {
-        sessionId,
-        exitCode,
-      });
-
-      return {
-        content: [{ type: "text", text: outputLines.join("\n") }],
-        details: {
-          stdout,
-          stderr,
-          exitCode,
-          commandCalls: commandCallsResult,
         },
       };
     },
@@ -278,13 +201,13 @@ const createExecCodeModeTool = (
   fs: MasterFileSystem,
   sessionId: string,
   codemode: PiCodemodeRuntime | undefined,
-  bashCommandContext: PiBashCommandContext | undefined,
+  runtimeToolContext: PiRuntimeToolContext | undefined,
   execution: BackofficeExecutionContext,
 ): AgentTool =>
   defineTool({
     name: "execCodeMode",
     label: "Exec Code Mode",
-    description: "Execute JavaScript code in the context of the system.",
+    description: "Execute one top-level codemode program against the current Backoffice context.",
     parameters: execCodeModeParametersSchema,
     execute: async (toolCallId, params, signal) => {
       const { code } = params;
@@ -296,13 +219,13 @@ const createExecCodeModeTool = (
         throw new Error("execCodeMode is not configured for this Pi runtime.");
       }
 
-      if (!bashCommandContext) {
+      if (!runtimeToolContext) {
         throw new Error("execCodeMode requires a Backoffice runtime context.");
       }
 
-      const workflowRuntime = bashCommandContext.workflow?.runtime ?? codemode.workflow;
+      const workflowRuntime = runtimeToolContext.workflow?.runtime ?? codemode.workflow;
       const context: CoreBackofficeToolContext = createBackofficeToolContext({
-        ...bashCommandContext,
+        ...runtimeToolContext,
         workflow: workflowRuntime ? { runtime: workflowRuntime } : null,
       });
 
@@ -423,20 +346,19 @@ type BackofficePiToolFactory = (input: {
   execution: BackofficeExecutionContext;
 }) => Promise<Partial<Record<PiToolId, AgentTool>>>;
 
-type PiBashCommandContextSource =
-  | PiBashCommandContext
-  | ((execution: BackofficeExecutionContext) => PiBashCommandContext);
+type PiRuntimeToolContextSource =
+  | PiRuntimeToolContext
+  | ((execution: BackofficeExecutionContext) => PiRuntimeToolContext);
 
 type CreatePiToolFactoryOptions = {
   sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
   sessionFileSystemContext: PiSessionFileSystemContext;
-  env?: CloudflareEnv;
   codemode?: PiCodemodeRuntime;
-  bashCommandContext?: PiBashCommandContextSource;
+  runtimeToolContext?: PiRuntimeToolContextSource;
 };
 
-const resolvePiBashCommandContext = (
-  source: PiBashCommandContextSource | undefined,
+const resolvePiRuntimeToolContext = (
+  source: PiRuntimeToolContextSource | undefined,
   execution: BackofficeExecutionContext,
 ) => (typeof source === "function" ? source(execution) : source);
 
@@ -444,27 +366,23 @@ export const createPiToolFactory =
   ({
     sessionFileSystems,
     sessionFileSystemContext,
-    env,
     codemode,
-    bashCommandContext: bashCommandContextSource,
+    runtimeToolContext: runtimeToolContextSource,
   }: CreatePiToolFactoryOptions): BackofficePiToolFactory =>
   async ({ sessionId, execution }) => {
     const fileSystem = await getSessionFs(sessionFileSystems, sessionId, {
       ...sessionFileSystemContext,
       execution,
     });
-    const bashCommandContext = resolvePiBashCommandContext(bashCommandContextSource, execution);
+    const runtimeToolContext = resolvePiRuntimeToolContext(runtimeToolContextSource, execution);
 
     return {
       read: createReadTool(fileSystem),
-      ...(bashCommandContext && env
-        ? { bash: createBashTool(fileSystem, sessionId, bashCommandContext) }
-        : {}),
       execCodeMode: createExecCodeModeTool(
         fileSystem,
         sessionId,
         codemode,
-        bashCommandContext,
+        runtimeToolContext,
         execution,
       ),
     };
@@ -489,7 +407,6 @@ export const createPiToolRegistry = (options: CreatePiToolFactoryOptions) => {
 
   return {
     read: createSessionTool("read"),
-    bash: createSessionTool("bash"),
     execCodeMode: createSessionTool("execCodeMode"),
   };
 };
@@ -730,10 +647,9 @@ const buildPiRuntime = (
 export const createPiRuntime = (options: {
   config: StoredPiConfig;
   adapters: BackofficeDatabaseAdapterFactory;
-  env: CloudflareEnv;
   sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
   sessionFileSystemContext: PiSessionFileSystemContext;
-  bashCommandContext: PiBashCommandContextSource;
+  runtimeToolContext: PiRuntimeToolContextSource;
   codemode: PiCodemodeRuntime;
   onOperationCompleted?: PiFragmentConfig["onOperationCompleted"];
 }): PiRuntimeFragments => {
@@ -744,9 +660,8 @@ export const createPiRuntime = (options: {
   const createTools = createPiToolFactory({
     sessionFileSystems: options.sessionFileSystems,
     sessionFileSystemContext: options.sessionFileSystemContext,
-    env: options.env,
     codemode,
-    bashCommandContext: options.bashCommandContext,
+    runtimeToolContext: options.runtimeToolContext,
   });
   const skills = createBackofficePiSkillResolver({
     sessionFileSystems: options.sessionFileSystems,

@@ -98,7 +98,7 @@ const createScenarioPiExecCodeMode = async (
     sessionFileSystems: new Map([[sessionId, Promise.resolve(ctx.files.forOrg(orgId))]]),
     sessionFileSystemContext,
     codemode: createPiCodemodeRuntime({ LOADER: loader }),
-    bashCommandContext: (toolExecution) =>
+    runtimeToolContext: (toolExecution) =>
       createRouteBackedRuntimeContext({
         runtime: ctx.runtime.services,
         kernel,

@@ -1,83 +1,23 @@
 import { describe, expect, it, assert } from "vitest";
 
-import AjvModule from "ajv";
-import { env } from "cloudflare:workers";
+import Ajv from "ajv";
 
-import { validateToolArguments } from "@earendil-works/pi-ai";
+import { execCodeModeParametersSchema } from "@/fragno/pi/pi";
 
-import { bashParametersSchema } from "@/fragno/pi/pi";
+describe("Pi tool TypeBox schemas", () => {
+  it("rejects empty codemode programs", () => {
+    const validate = new Ajv().compile(execCodeModeParametersSchema);
 
-describe("typebox failure reproduction", () => {
-  it("eval is blocked in the workers test runtime", () => {
-    expect(env).toBeDefined();
-    // oxlint-disable-next-line no-eval -- intentional CSP regression test
-    expect(() => eval("1 + 1")).toThrow(/Code generation from strings disallowed/i);
+    assert(!validate({ code: "" }));
+    expect(validate.errors).toEqual(
+      expect.arrayContaining([expect.objectContaining({ keyword: "minLength" })]),
+    );
   });
 
-  it("new Function works in the workers test runtime", () => {
-    expect(env).toBeDefined();
-    // oxlint-disable-next-line typescript/no-implied-eval -- intentional code-generation compatibility test
-    const fn = new Function("return 2 + 2;");
-    assert(fn() === 4);
-  });
+  it("accepts immediate and durable codemode programs", () => {
+    const validate = new Ajv().compile(execCodeModeParametersSchema);
 
-  it("validateToolArguments reports a validation error for invalid bash args", () => {
-    expect(env).toBeDefined();
-    const tool = {
-      name: "bash",
-      label: "Bash",
-      description: "Tool used to reproduce AJV eval/Function CSP failures.",
-      parameters: bashParametersSchema,
-    };
-
-    const toolCall = {
-      type: "toolCall" as const,
-      id: "test-tool-call-invalid",
-      name: "bash",
-      arguments: { script: "" },
-    };
-
-    let thrown: unknown = null;
-    try {
-      validateToolArguments(tool, toolCall);
-    } catch (error) {
-      thrown = error;
-    }
-
-    const message = thrown instanceof Error ? thrown.message : String(thrown ?? "");
-    expect(message).toMatch(/Validation failed for tool "bash"/i);
-    expect(message).toMatch(/script/i);
-  });
-
-  it("validateToolArguments accepts valid bash args", () => {
-    expect(env).toBeDefined();
-    const tool = {
-      name: "bash",
-      label: "Bash",
-      description: "Tool used to validate bash args.",
-      parameters: bashParametersSchema,
-    };
-
-    const toolCall = {
-      type: "toolCall" as const,
-      id: "test-tool-call",
-      name: "bash",
-      arguments: { script: "echo ok" },
-    };
-
-    try {
-      const result = validateToolArguments(tool, toolCall);
-      expect(result).toEqual(toolCall.arguments);
-    } finally {
-      // no-op
-    }
-  });
-
-  it("ajv compiles the bash schema in the workers test runtime", () => {
-    const Ajv = (AjvModule as unknown as { default?: typeof AjvModule }).default || AjvModule;
-    const ajv = new Ajv({ allErrors: true, strict: false, coerceTypes: true });
-    const validate = ajv.compile(bashParametersSchema);
-    assert(validate({ script: "echo ok" }));
-    assert(!validate({ script: "" }));
+    assert(validate({ code: "async () => ({ ok: true })" }));
+    assert(validate({ code: 'defineWorkflow({ name: "demo" }, async () => ({}))' }));
   });
 });

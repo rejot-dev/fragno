@@ -54,7 +54,7 @@ describe("pi-shared helpers", () => {
     expect(harnesses).toHaveLength(1);
     expect(harnesses[0]?.id).toBe(DEFAULT_PI_HARNESS.id);
     expect(harnesses).toEqual(DEFAULT_PI_HARNESSES);
-    expect(harnesses[0]?.tools).toEqual(["execCodeMode", "read", "bash"]);
+    expect(harnesses[0]?.tools).toEqual(["execCodeMode", "read"]);
     assert(harnesses[0]?.thinkingLevel === "low");
   });
 });

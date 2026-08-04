@@ -39,6 +39,7 @@ import {
   type PiConfigState,
   type PiHarnessConfig,
   type PiThinkingLevel,
+  type PiToolId,
   type PiSteeringMode,
   type StoredPiConfig,
 } from "@/fragno/pi/pi-shared";
@@ -77,7 +78,12 @@ const harnessSchema = z.object({
     .transform((value) => value || undefined)
     .optional(),
   systemPrompt: z.string().trim().min(1, "Harness system prompt is required."),
-  tools: z.array(z.enum(PI_TOOL_IDS)).default([]),
+  tools: z
+    .array(z.union([z.enum(PI_TOOL_IDS), z.literal("bash")]))
+    .default([])
+    .transform((tools) =>
+      tools.filter((tool): tool is PiToolId => PI_TOOL_IDS.includes(tool as PiToolId)),
+    ),
   thinkingLevel: z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]).optional(),
   steeringMode: z.enum(["all", "one-at-a-time"]).optional(),
   toolConfig: z.unknown().optional(),
@@ -204,7 +210,7 @@ const toStoredHarnesses = (harnesses: z.infer<typeof harnessesSchema>) =>
   harnesses.map(toStoredHarness);
 
 export class InMemoryPiObject implements PiObject {
-  readonly #env: Parameters<typeof createPiRuntime>[0]["env"];
+  readonly #env: CloudflareEnv;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #kernel: BackofficeKernel;
@@ -221,7 +227,7 @@ export class InMemoryPiObject implements PiObject {
     runtime,
   }: {
     state: BackofficeObjectState;
-    env: Parameters<typeof createPiRuntime>[0]["env"];
+    env: CloudflareEnv;
     runtime: BackofficeRuntimeServices;
   }) {
     this.#env = env;
@@ -315,7 +321,6 @@ export class InMemoryPiObject implements PiObject {
     return createPiRuntime({
       config,
       adapters: this.#runtimeServices.adapters,
-      env: this.#env,
       codemode: {
         ...createPiCodemodeRuntime(this.#env),
         workflow: createRouteBackedAutomationWorkflowRuntime({
@@ -324,7 +329,7 @@ export class InMemoryPiObject implements PiObject {
       },
       sessionFileSystems: this.#sessionFileSystems,
       sessionFileSystemContext,
-      bashCommandContext: (sessionExecution) =>
+      runtimeToolContext: (sessionExecution) =>
         createRouteBackedRuntimeContext({
           runtime: this.#runtimeServices,
           kernel: this.#kernel,
