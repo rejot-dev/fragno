@@ -1,17 +1,22 @@
 import { fileURLToPath } from "node:url";
 
-import { defineConfig } from "vitest/config";
+import { defineConfig, mergeConfig } from "vitest/config";
+
+import { baseConfig } from "@fragno-private/vitest-config";
 
 const resolveConfig = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
-export default defineConfig({
-  test: {
-    coverage: {
-      enabled: false,
+export default mergeConfig(
+  baseConfig,
+  defineConfig({
+    test: {
+      coverage: {
+        enabled: false,
+      },
+      projects: [
+        resolveConfig("./vitest.node.config.ts"),
+        resolveConfig("./vitest.cloudflare.config.ts"),
+      ],
     },
-    projects: [
-      resolveConfig("./vitest.node.config.ts"),
-      resolveConfig("./vitest.cloudflare.config.ts"),
-    ],
-  },
-});
+  }),
+);
