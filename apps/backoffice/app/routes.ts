@@ -253,6 +253,7 @@ export default [
       ]),
       route("internals", "routes/backoffice/internals/layout.tsx", [
         index("routes/backoffice/internals/index.tsx"),
+        route("users", "routes/backoffice/internals/users.tsx"),
         route("github", "routes/backoffice/internals/github.tsx"),
         route("cloudflare/browser-run", "routes/backoffice/internals/cloudflare-browser-run.tsx"),
         route("generated-ui", "routes/backoffice/internals/generated-ui.tsx"),

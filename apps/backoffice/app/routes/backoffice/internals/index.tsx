@@ -17,6 +17,13 @@ type InternalDestination = {
 function internalDestinations(hasOrganization: boolean): InternalDestination[] {
   return [
     {
+      id: "users",
+      name: "Users",
+      description: "Review every system account and manage global administrator access.",
+      status: "Available",
+      to: "/backoffice/internals/users",
+    },
+    {
       id: "github",
       name: "GitHub",
       description:
