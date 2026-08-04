@@ -263,6 +263,32 @@ For a waiting instance, read history and send the exact event \`type\` expected 
 **Completion criterion:** a run is complete when its status is \`complete\` and its output has been observed. A deliberate \`waiting\` status is complete for the current turn only when the expected event type and target instance are explicit. An error investigation is complete only after the failed step and error message are identified.`,
   }),
   ...starterSkill({
+    name: "web",
+    title: "Web Pages",
+    description:
+      "Retrieve web pages when the user mentions a page or URL, asks to fetch or read its contents, or wants HTML or Markdown extracted from it.",
+    body: `Retrieve the page with the \`web\` provider.
+
+1. Read "/static/codemode/providers/web.d.ts" and select the source: a \`url\` supplied by the user or provided \`html\`. **Complete when** the exact source and supported input fields are known.
+
+2. Choose the output shape:
+   - \`content\` for rendered HTML;
+   - \`markdown\` for readable page text.
+
+   **Complete when** one action matches how the result will be used.
+
+3. Call \`web.extract\`:
+
+   \`\`\`js
+   async () => await web.extract({
+     action: "markdown",
+     input: { url: "https://example.com" },
+   });
+   \`\`\`
+
+   Inspect the result branch selected by \`action\`. **Complete when** extraction succeeds and the returned content has been checked.`,
+  }),
+  ...starterSkill({
     name: "sandbox",
     title: "Sandbox",
     description:

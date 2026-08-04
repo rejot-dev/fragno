@@ -5,7 +5,6 @@ import type { CloudflareRuntime } from "./families/cloudflare-runtime";
 import { createBackofficeToolContext } from "./tool-context";
 
 const cloudflareRuntime: CloudflareRuntime = {
-  browserRunExtract: vi.fn(),
   browserRunCapture: vi.fn(),
   browserRunCrawl: vi.fn(),
 };

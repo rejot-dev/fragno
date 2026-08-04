@@ -2,11 +2,8 @@ import {
   browserRunCaptureInputSchema,
   browserRunCrawlActionInputSchema,
   browserRunCrawlActionResultSchema,
-  browserRunExtractInputSchema,
-  browserRunExtractResultSchema,
   type BrowserRunCaptureInput,
   type BrowserRunCrawlActionInput,
-  type BrowserRunExtractInput,
 } from "@fragno-dev/cloudflare-fragment/browser-run";
 import { z } from "zod";
 
@@ -48,12 +45,6 @@ const parseJsonOption = (args: string[]) => {
   }
   return JSON.parse(inputJson) as unknown;
 };
-
-const parseExtract = (args: string[]): BrowserRunExtractInput =>
-  browserRunExtractInputSchema.parse({
-    action: readStringOption(parseCliTokens(args), "action", true),
-    input: parseJsonOption(args),
-  });
 
 const parseCapture = (args: string[]): BrowserRunCaptureInput =>
   browserRunCaptureInputSchema.parse({
@@ -100,48 +91,6 @@ const jsonOutputOptions = (args: string[]) => {
   const output = readOutputOptions(parseCliTokens(args));
   return output.print ? output : { ...output, format: "json" as const };
 };
-
-const browserRunExtractTool = defineBackofficeRuntimeTool({
-  id: "cloudflare.browser-run.extract",
-  namespace: "cloudflare",
-  name: "browserRunExtract",
-  description: "Extract text or structured data from a page with Cloudflare Browser Run.",
-  requiredPermissions: ["browserRun"],
-  inputSchema: browserRunExtractInputSchema,
-  outputSchema: browserRunExtractResultSchema,
-  execute: async (input, context: CloudflareToolContext) =>
-    await getCloudflareRuntime(context.runtimes.cloudflare).browserRunExtract(input),
-  adapters: {
-    bash: {
-      command: "cloudflare.browser-run.extract",
-      help: {
-        summary: "Extract text or structured data from a page.",
-        options: [
-          {
-            name: "action",
-            required: true,
-            valueRequired: true,
-            valueName: "action",
-            description: "content, scrape, snapshot, json, links, markdown, or accessibility-tree.",
-          },
-          {
-            name: "input-json",
-            required: true,
-            valueRequired: true,
-            valueName: "json",
-            description: "Browser Run page input JSON.",
-          },
-        ],
-        examples: [
-          `cloudflare.browser-run.extract --action markdown --input-json '{"url":"https://example.com"}'`,
-        ],
-      },
-      parse: parseExtract,
-      outputOptions: jsonOutputOptions,
-      format: (result) => ({ data: result }),
-    },
-  },
-});
 
 const browserRunCaptureTool = defineBackofficeRuntimeTool({
   id: "cloudflare.browser-run.capture",
@@ -259,11 +208,7 @@ const browserRunCrawlTool = defineBackofficeRuntimeTool({
   },
 });
 
-export const cloudflareRuntimeTools = [
-  browserRunExtractTool,
-  browserRunCaptureTool,
-  browserRunCrawlTool,
-] as const;
+export const cloudflareRuntimeTools = [browserRunCaptureTool, browserRunCrawlTool] as const;
 
 export const cloudflareToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "cloudflare",

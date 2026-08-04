@@ -30,6 +30,7 @@ import { resendToolFamily, type ResendRuntime } from "./families/resend";
 import { reson8ToolFamily, type Reson8Runtime } from "./families/reson8";
 import { sandboxToolFamily, type SandboxRuntime } from "./families/sandbox";
 import { telegramToolFamily, type TelegramRuntime } from "./families/telegram";
+import { webToolFamily, type WebRuntime } from "./families/web";
 import {
   getAvailableRuntimeTools,
   type BackofficeRuntimeToolFamily,
@@ -53,6 +54,7 @@ export type CoreBackofficeRuntimeMap = {
   reson8?: Reson8Runtime;
   sandbox?: SandboxRuntime;
   telegram?: TelegramRuntime;
+  web?: WebRuntime;
 };
 
 export type CoreBackofficeToolContext = BackofficeToolContext<CoreBackofficeRuntimeMap>;
@@ -67,6 +69,7 @@ export const runtimeToolFamilies = [
   eventFireToolFamily,
   eventCatalogToolFamily,
   cloudflareToolFamily,
+  webToolFamily,
   apiToolFamily,
   mcpToolFamily,
   otpToolFamily,

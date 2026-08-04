@@ -31,6 +31,7 @@ import {
   createTelegramRuntime,
   createUnavailableTelegramRuntime,
 } from "@/fragno/runtime-tools/families/telegram-runtime";
+import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
 
 import type { InteractiveBashCommandContext } from "./bash-host";
 import { getRuntimeToolNamespacesByCapability, runtimeToolFamilies } from "./tool-families";
@@ -119,6 +120,12 @@ export const createRouteBackedRuntimeContext = ({
       ? (() => {
           const object = unavailableObject(() => runtime.objects.cloudflare.singleton());
           return object ? { runtime: createCloudflareRuntime({ object }) } : null;
+        })()
+      : null,
+    web: runtime.config.bindings.cloudflare
+      ? (() => {
+          const object = unavailableObject(() => runtime.objects.cloudflare.singleton());
+          return object ? { runtime: createWebRuntime({ object }) } : null;
         })()
       : null,
     event: {

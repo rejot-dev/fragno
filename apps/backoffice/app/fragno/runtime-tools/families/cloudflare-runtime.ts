@@ -2,8 +2,6 @@ import type {
   BrowserRunCaptureInput,
   BrowserRunCrawlActionInput,
   BrowserRunCrawlActionResult,
-  BrowserRunExtractInput,
-  BrowserRunExtractResult,
 } from "@fragno-dev/cloudflare-fragment/browser-run";
 import { createRouteCaller } from "@fragno-dev/core/api";
 
@@ -17,7 +15,6 @@ import {
 } from "../runtime-errors";
 
 export type CloudflareRuntime = {
-  browserRunExtract(input: BrowserRunExtractInput): Promise<BrowserRunExtractResult>;
   browserRunCapture(input: BrowserRunCaptureInput): Promise<Response>;
   browserRunCrawl(input: BrowserRunCrawlActionInput): Promise<BrowserRunCrawlActionResult>;
 };
@@ -36,20 +33,6 @@ export const createCloudflareRuntime = ({
   });
 
   return {
-    browserRunExtract: async (input) => {
-      const response = await callRoute("POST", "/browser-run/extract", { body: input });
-
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as BrowserRunExtractResult;
-      }
-
-      return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Cloudflare fragment",
-        label: "cloudflare.browserRunExtract",
-        notConfiguredMessage:
-          "Cloudflare is not configured. Set the Cloudflare account ID and API token.",
-      });
-    },
     browserRunCapture: async (input) => {
       const response = await object.fetch(
         new Request("https://cloudflare.do/api/cloudflare/browser-run/capture", {

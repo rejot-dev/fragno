@@ -39,6 +39,7 @@ const ALWAYS_AVAILABLE_CODEMODE_NAMESPACES = new Set([
   "events",
   "event",
   "otp",
+  "web",
 ]);
 
 const VALID_DECLARE_CONST_NAME = /^[A-Za-z_$][\w$]*$/u;

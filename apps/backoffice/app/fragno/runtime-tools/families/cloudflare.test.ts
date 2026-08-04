@@ -11,10 +11,6 @@ import {
 import { cloudflareRuntimeTools, type CloudflareRuntime } from "./cloudflare";
 
 const createRuntime = (overrides: Partial<CloudflareRuntime> = {}): CloudflareRuntime => ({
-  browserRunExtract: vi.fn(async () => ({
-    action: "content" as const,
-    result: "<html>example</html>",
-  })),
   browserRunCapture: vi.fn(
     async () =>
       new Response(new Uint8Array([0, 255, 1, 2]), {
@@ -29,31 +25,20 @@ const createRuntime = (overrides: Partial<CloudflareRuntime> = {}): CloudflareRu
 });
 
 describe("cloudflare runtime tools", () => {
-  test("exposes extract, capture, and crawl tools", () => {
+  test("exposes capture and crawl tools", () => {
     expect(cloudflareRuntimeTools.map((tool) => tool.name)).toEqual([
-      "browserRunExtract",
       "browserRunCapture",
       "browserRunCrawl",
     ]);
     expect(cloudflareRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
-      "cloudflare.browser-run.extract",
       "cloudflare.browser-run.capture",
       "cloudflare.browser-run.crawl",
     ]);
   });
 
-  test("parses extract, capture, and crawl actions", () => {
+  test("parses capture and crawl actions", () => {
     expect(
       cloudflareRuntimeTools[0].adapters!.bash!.parse([
-        "--action",
-        "markdown",
-        "--input-json",
-        '{"url":"https://example.com"}',
-      ]),
-    ).toEqual({ action: "markdown", input: { url: "https://example.com" } });
-
-    expect(
-      cloudflareRuntimeTools[1].adapters!.bash!.parse([
         "--action",
         "screenshot",
         "--input-json",
@@ -62,32 +47,23 @@ describe("cloudflare runtime tools", () => {
     ).toEqual({ action: "screenshot", input: { html: "<h1>Hello</h1>" } });
 
     expect(
-      cloudflareRuntimeTools[2].adapters!.bash!.parse(["--action", "get", "--job-id", "crawl-123"]),
+      cloudflareRuntimeTools[1].adapters!.bash!.parse(["--action", "get", "--job-id", "crawl-123"]),
     ).toEqual({ action: "get", jobId: "crawl-123" });
   });
 
-  test("delegates extract and crawl actions to the singleton runtime", async () => {
+  test("delegates crawl actions to the singleton runtime", async () => {
     const runtime = createRuntime();
     const context: BackofficeToolContext<{ cloudflare: CloudflareRuntime }> =
       createTrustedSystemBackofficeToolContext({ runtimes: { cloudflare: runtime } });
-    const extractInput = {
-      action: "content" as const,
-      input: { url: "https://example.com" },
-    };
     const crawlInput = {
       action: "start" as const,
       input: { url: "https://example.com" },
     };
 
-    await expect(cloudflareRuntimeTools[0].execute(extractInput, context)).resolves.toEqual({
-      action: "content",
-      result: "<html>example</html>",
-    });
-    await expect(cloudflareRuntimeTools[2].execute(crawlInput, context)).resolves.toEqual({
+    await expect(cloudflareRuntimeTools[1].execute(crawlInput, context)).resolves.toEqual({
       action: "start",
       result: { jobId: "crawl-123" },
     });
-    expect(runtime.browserRunExtract).toHaveBeenCalledWith(extractInput);
     expect(runtime.browserRunCrawl).toHaveBeenCalledWith(crawlInput);
   });
 

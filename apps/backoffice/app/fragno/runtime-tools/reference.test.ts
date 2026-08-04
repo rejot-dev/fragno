@@ -708,6 +708,7 @@ describe("runtime tool reference generation", () => {
     const workflowTypes = readGeneratedFile(files, "/static/codemode/providers/workflow.d.ts");
     const eventTypes = readGeneratedFile(files, "/static/codemode/providers/events.d.ts");
     const otpTypes = readGeneratedFile(files, "/static/codemode/providers/otp.d.ts");
+    const webTypes = readGeneratedFile(files, "/static/codemode/providers/web.d.ts");
 
     expect(capabilitiesTypes).toContain("declare const capabilities");
     expect(connectionsTypes).toContain("declare const connections");
@@ -730,6 +731,12 @@ describe("runtime tool reference generation", () => {
     expect(eventTypes).toContain("fire(input: EventsFireInput)");
     expect(eventTypes).toContain("catalogList(input: EventsCatalogListInput)");
     expect(otpTypes).toContain("declare const otp");
+    expect(webTypes).toContain("declare const web");
+    expect(webTypes).toContain("extract(input: WebExtractInput)");
+    expect(webTypes).toContain('action: "content"');
+    expect(webTypes).toContain('action: "markdown"');
+    expect(webTypes).not.toContain('action: "json"');
+    expect(webTypes).not.toContain('action: "links"');
     assert(!files.some((file) => file.path === "/static/codemode/providers/pi.d.ts"));
     assert(!files.some((file) => file.path === "/static/codemode/providers/telegram.d.ts"));
   });
