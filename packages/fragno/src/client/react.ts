@@ -44,7 +44,9 @@ export type FragnoReactHook<
 }) => FetcherValue<
   StandardSchemaV1.InferOutput<TOutputSchema>,
   FragnoClientRequestError<NonNullable<TErrorCode>>
->;
+> & {
+  refetch: () => void;
+};
 
 export type FragnoReactMutator<
   _TMethod extends NonGetHTTPMethod,
@@ -87,8 +89,12 @@ function createReactHook<
       () => hook.store({ path, query }),
       [hook, ...pathParamValues, ...queryParamValues],
     );
+    const value = useStore(store);
+    const refetch = useCallback(() => {
+      store.revalidate();
+    }, [store]);
 
-    return useStore(store);
+    return useMemo(() => ({ ...value, refetch }), [refetch, value]);
   };
 }
 
