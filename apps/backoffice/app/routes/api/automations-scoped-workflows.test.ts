@@ -1,5 +1,8 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
+
 const { requireBackofficeContextMock } = vi.hoisted(() => ({
   requireBackofficeContextMock: vi.fn(),
 }));
@@ -12,19 +15,20 @@ import { action } from "./automations-scoped-workflows";
 
 const projectFetch = vi.fn();
 const forProject = vi.fn(() => ({ fetch: projectFetch }));
-const context = {
-  get: () => ({
-    runtime: {
-      objects: {
-        automations: {
-          singleton: vi.fn(),
-          forOrg: vi.fn(),
-          forUser: vi.fn(),
-          forProject,
-        },
-      },
+const runtime = {
+  objects: {
+    automations: {
+      singleton: vi.fn(),
+      forOrg: vi.fn(),
+      forUser: vi.fn(),
+      forProject,
     },
-  }),
+  },
+  authorityResolver: unavailableBackofficeAuthorityResolver,
+  kernelObserver: noopBackofficeKernelObserver,
+};
+const context = {
+  get: () => ({ runtime, kernel: new BackofficeKernel(runtime) }),
 } as never;
 
 beforeEach(() => {

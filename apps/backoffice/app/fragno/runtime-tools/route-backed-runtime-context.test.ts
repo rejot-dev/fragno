@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 
-import { BackofficeKernel, BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
+import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import {
+  BackofficeKernel,
+  BackofficeUnavailableError,
+  noopBackofficeKernelObserver,
+} from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
@@ -21,6 +27,8 @@ const createRuntime = (): BackofficeRuntimeServices => {
 
   return {
     objects,
+    authorityResolver: unrestrictedBackofficeAuthorityResolver,
+    kernelObserver: noopBackofficeKernelObserver,
     adapters: {} as BackofficeRuntimeServices["adapters"],
     config: {
       authEmailVerification: { enabled: false },
@@ -48,13 +56,11 @@ const createRuntime = (): BackofficeRuntimeServices => {
 
 describe("createRouteBackedRuntimeContext", () => {
   test("keeps the context available when the Cloudflare singleton cannot be resolved", () => {
+    const runtime = createRuntime();
     const context = createRouteBackedRuntimeContext({
-      runtime: createRuntime(),
-      kernel: new BackofficeKernel({}),
-      execution: {
-        actor: { type: "system", id: "system" },
-        scope: { kind: "system" },
-      },
+      runtime,
+      kernel: new BackofficeKernel(runtime),
+      execution: createBackofficeSystemExecution({ kind: "system" }),
     });
 
     expect(context.cloudflare).toBeNull();

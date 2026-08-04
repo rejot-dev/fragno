@@ -8,6 +8,7 @@ import { BACKOFFICE_PERMISSION, type BackofficePermissionRequirement } from "./p
 const USER_AUTHORITY_ROLE_GRANTS = {
   "system-administrator": [
     BACKOFFICE_PERMISSION.capabilities.read,
+    BACKOFFICE_PERMISSION.cloudflare.browserRun,
     BACKOFFICE_PERMISSION.connections.manage,
     BACKOFFICE_PERMISSION.connections.read,
     BACKOFFICE_PERMISSION.events.emit,

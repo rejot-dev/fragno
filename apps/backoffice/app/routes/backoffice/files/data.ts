@@ -62,7 +62,7 @@ export async function resolveAuthorizedFilesRouteScope({
   const parsedScope = automationScopeFromRouteParams(params);
   const projectsResult =
     parsedScope.kind === "project"
-      ? await fetchAutomationProjects(request, context, parsedScope.orgId)
+      ? await fetchAutomationProjects(context, parsedScope.orgId)
       : { projects: [], projectsError: null };
   if (projectsResult.projectsError) {
     throw new Response(projectsResult.projectsError, { status: 502 });

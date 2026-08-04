@@ -47,6 +47,7 @@ describe("Backoffice authority role grants", () => {
   test("grants identity administration only to system administrators and trusted objects", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["system-administrator"]).toEqual([
       BACKOFFICE_PERMISSION.capabilities.read,
+      BACKOFFICE_PERMISSION.cloudflare.browserRun,
       BACKOFFICE_PERMISSION.connections.manage,
       BACKOFFICE_PERMISSION.connections.read,
       BACKOFFICE_PERMISSION.events.emit,
@@ -81,6 +82,17 @@ describe("Backoffice authority role grants", () => {
       BACKOFFICE_PERMISSION.identity.revoke,
       ...currentKernelPermissions,
     ]);
+  });
+
+  test("grants Cloudflare Browser Run only to system administrators", () => {
+    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["system-administrator"]).toContain(
+      BACKOFFICE_PERMISSION.cloudflare.browserRun,
+    );
+    for (const [role, grants] of Object.entries(BACKOFFICE_AUTHORITY_ROLE_GRANTS)) {
+      if (role !== "system-administrator") {
+        expect(grants).not.toContain(BACKOFFICE_PERMISSION.cloudflare.browserRun);
+      }
+    }
   });
 
   test("allows automations to resolve identity bindings inside workflow logic", () => {

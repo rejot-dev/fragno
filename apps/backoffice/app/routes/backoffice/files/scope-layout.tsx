@@ -29,7 +29,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   const projectOrgId =
     selectedOrgId ?? me.activeOrganization?.organization.id ?? organisations[0]?.id ?? null;
   const projectsResult = projectOrgId
-    ? await fetchAutomationProjects(request, context, projectOrgId)
+    ? await fetchAutomationProjects(context, projectOrgId)
     : { projects: [], projectsError: null };
   if (parsedScope.kind === "project" && projectsResult.projectsError) {
     throw new Response(projectsResult.projectsError, { status: 502 });

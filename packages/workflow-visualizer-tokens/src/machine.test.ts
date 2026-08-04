@@ -20,17 +20,16 @@ const AUTOMATIONS = new Map(await loadBackofficeAutomationFixtures());
 
 const EXPECTED_DURABLE_STEPS: Record<string, string[]> = {
   "automations/telegram-user-linking.workflow.js": [
-    "lookup existing telegram user link",
+    "resolve existing telegram user link",
     "send already linked telegram message",
     "create telegram identity claim",
     "store telegram claim workflow binding",
     "send telegram identity claim link",
     "identity-claim-completed",
-    "bind telegram user",
     "send telegram user linked message",
   ],
   "automations/telegram-user-pi-linking.workflow.js": [
-    "lookup linked telegram user",
+    "resolve linked telegram user",
     "lookup default pi agent",
     "lookup pi session",
     "check existing pi session",
@@ -107,7 +106,7 @@ describe("workflow token state machine", () => {
     );
     assert(linkedMessage);
     expect(ancestorLabels(linking.graph, linkedMessage)).toEqual([
-      "if linkedUser?.value",
+      "if linkedIdentity",
       "telegram-user-linking",
     ]);
 
