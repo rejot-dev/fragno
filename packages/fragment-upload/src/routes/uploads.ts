@@ -382,6 +382,50 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
       }),
 
       defineRoute({
+        method: "GET",
+        path: "/uploads/:uploadId/content",
+        errorCodes: uploadErrorCodes,
+        handler: async function readPreparedUploadContent({ pathParams }, { error }) {
+          const resolvedConfig = getResolvedConfig();
+          if (!resolvedConfig.storage.getDownloadStream) {
+            return error({ message: "Download streaming unsupported", code: "STORAGE_ERROR" }, 502);
+          }
+
+          try {
+            const upload = await this.handlerTx()
+              .withServiceCalls(() => [services.getUpload(pathParams.uploadId)])
+              .transform(({ serviceResult: [result] }) => result)
+              .execute();
+
+            const providerMismatch = rejectProviderMismatch(
+              upload,
+              resolvedConfig.storage.name,
+              error,
+            );
+            if (providerMismatch) {
+              return providerMismatch;
+            }
+            if (!isPreparedBatchUpload(upload)) {
+              return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" }, 409);
+            }
+            if (upload.expiresAt.getTime() <= Date.now()) {
+              return error({ message: "Upload expired", code: "UPLOAD_EXPIRED" }, 410);
+            }
+
+            try {
+              return await resolvedConfig.storage.getDownloadStream({
+                storageKey: upload.objectKey,
+              });
+            } catch {
+              return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
+            }
+          } catch (cause) {
+            return handleUploadServiceError(cause, error);
+          }
+        },
+      }),
+
+      defineRoute({
         method: "PUT",
         path: "/uploads/:uploadId/content",
         contentType: "application/octet-stream",

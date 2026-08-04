@@ -234,6 +234,7 @@ describe("upload client helpers", () => {
       if (url.endsWith("/uploads")) {
         const body = JSON.parse(init?.body as string);
         assert(body.publicationMode === "batch");
+        assert(body.provider === undefined);
         return jsonResponse({
           uploadId: "prepared-proxy",
           fileKey: "files/prepared.txt",
@@ -279,7 +280,6 @@ describe("upload client helpers", () => {
     });
 
     const result = await helpers.createUploadAndTransfer(new Blob(["prepared"]), {
-      provider: TEST_PROVIDER,
       fileKey: "files/prepared.txt",
       publicationMode: "batch",
     });
@@ -847,17 +847,11 @@ describe("upload client helpers", () => {
     assert(result.matches[0]?.path === "workspace/src/workflows.ts");
   });
 
-  it("requires callers to specify provider and file key when creating uploads", async () => {
+  it("requires callers to specify a file key when creating uploads", async () => {
     const helpers = createUploadHelpers({
       buildUrl: (path) => `https://local${path}`,
       fetcher: (async () => new Response(null, { status: 500 })) as typeof fetch,
     });
-
-    await expect(
-      helpers.createUploadAndTransfer(new Blob(["data"]), {
-        fileKey: "files.sample.upload-missing-provider",
-      } as never),
-    ).rejects.toThrow(/Provider is required/);
 
     await expect(
       helpers.createUploadAndTransfer(new Blob(["data"]), {

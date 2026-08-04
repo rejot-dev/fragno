@@ -282,6 +282,42 @@ describe("upload routes", () => {
     assert(statusResponse.data.bytesUploaded === 5);
   });
 
+  it("GET /uploads/:uploadId/content streams prepared upload bytes before publication", async () => {
+    const createResponse = asJsonResponse<{ uploadId: string }>(
+      await fragment.callRoute("POST", "/uploads", {
+        body: {
+          provider,
+          fileKey: "generated-ui/prepared.txt",
+          filename: "prepared.txt",
+          sizeBytes: 8,
+          contentType: "text/plain",
+          publicationMode: "batch",
+        },
+      }),
+    );
+
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("prepared"));
+        controller.close();
+      },
+    });
+    const uploadResponse = asJsonResponse<{ kind: string }>(
+      await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
+        pathParams: { uploadId: createResponse.data.uploadId },
+        body: stream,
+      }),
+    );
+    assert(uploadResponse.data.kind === "prepared");
+
+    const response = await fragment.callRouteRaw("GET", "/uploads/:uploadId/content", {
+      pathParams: { uploadId: createResponse.data.uploadId },
+    });
+
+    assert(response.status === 200);
+    assert((await response.text()) === "prepared");
+  });
+
   it("POST /uploads supports overwriting an existing file on the same path", async () => {
     const firstUpload = asJsonResponse<{ uploadId: string; fileKey: string }>(
       await fragment.callRoute("POST", "/uploads", {
