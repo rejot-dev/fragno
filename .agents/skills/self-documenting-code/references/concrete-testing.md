@@ -5,7 +5,8 @@ concrete collaborators, deterministic implementations, and co-located specificat
 
 ## Pass dependencies through visible boundaries
 
-Make infrastructure and nondeterminism explicit in the operation's inputs.
+Make the infrastructure and nondeterminism that current behavior depends on explicit in the
+operation's inputs.
 
 ### Positive — Inject operation dependencies
 
@@ -36,7 +37,9 @@ satisfy its contracts.
 
 ## Use concrete local implementations
 
-A local implementation should honor the production contract and maintain real state or behavior.
+When current tests or development environments require substitution, a local implementation should
+honor a production contract containing only the behavior shared by the collaborators and maintain
+real state or behavior.
 
 ### Positive — Implement the real contract locally
 
@@ -152,7 +155,9 @@ discoverable while editing.
 
 ## Review criterion
 
-Code is concretely testable when dependencies are explicit, deterministic implementations control
-time and identity at the boundaries that own them, database time remains owned by storage adapters,
-local implementations preserve real contract behavior, tests exercise public operations,
-infrastructure adapters receive integration coverage, and source files sit beside their tests.
+Code is concretely testable when the dependencies its behavior requires are explicit, collaborator
+contracts contain only the operations current production and local implementations share,
+deterministic implementations control time and identity at the boundaries that own them, database
+time remains owned by storage adapters, local implementations preserve real contract behavior, tests
+exercise public operations, infrastructure adapters receive integration coverage, and source files
+sit beside their tests.

@@ -5,10 +5,15 @@ internal values retain their types, or what a database operation should return.
 
 ## Resolve `unknown` at acquisition
 
-Every `unknown` value has exactly two paths at the point where it enters the code:
+At the point where an `unknown` value enters the code, establish only the contract the current
+operation needs:
 
-1. **Cast immediately** when the source contract is trusted and only its static type is incomplete.
-2. **Parse or validate immediately** when the runtime value must earn trust.
+1. **Cast immediately** to the required type when an authoritative source contract is trusted and
+   only its static type is incomplete.
+2. **Parse or validate immediately** to the required projection when the runtime value must earn
+   trust.
+3. **Preserve it as opaque** when the operation stores or forwards the value without interpreting
+   it.
 
 ### Positive — Cast a trusted source immediately
 
@@ -26,7 +31,24 @@ const input = requestSchema.parse(await request.json());
 ```
 
 HTTP, environment variables, files, queues, and external payloads typically earn trust through
-validation. Internal code then uses the parsed type directly.
+validation. Internal code then uses the parsed projection directly.
+
+### Positive — Preserve pass-through data as opaque
+
+```ts
+type QueuedEvent = {
+  id: EventId;
+  payload: unknown;
+};
+
+const event: QueuedEvent = {
+  id: eventId(input.id),
+  payload: input.payload,
+};
+```
+
+The queueing operation establishes the identity it uses and makes no claims about payload fields it
+does not inspect. The handler that interprets `payload` owns its validation.
 
 ## Establish trust once
 
@@ -97,7 +119,7 @@ shape and type information should not be re-proven downstream.
 
 A field with a known domain type should acquire that type in the schema or adapter that creates it.
 
-### Negative — Recover weak types downstream
+### Negative — Recover imprecise types downstream
 
 Repeated parsing and casting make every consumer re-establish the same trust decision.
 
@@ -174,8 +196,8 @@ return {
 };
 ```
 
-Preserve useful resolved fields. Introduce timestamps or computed columns into the public result
-after a read has produced their concrete values.
+Preserve resolved fields required by the current result contract. Introduce timestamps or computed
+columns after a read has produced their concrete values and the result contract requires them.
 
 ## Read for the decision being made
 
@@ -197,8 +219,10 @@ The selected fields reveal the operation's actual dependencies.
 
 ## Review criterion
 
-The boundary is clear when every obtained `unknown` is cast or validated immediately, each cast
-names a trusted source contract, each parse protects an untrusted value, downstream code relies on
-the resulting precise type without defensive shape checks or fallback coercions, genuine domain and
-operational failures remain explicit, local mappings remain visible, reads expose only operation
-dependencies, and results distinguish resolved values from pending database expressions.
+The boundary is clear when every obtained `unknown` is cast, validated, or deliberately preserved as
+opaque at acquisition, each cast names an authoritative source contract, each parse establishes only
+the projection current behavior requires, opaque values remain uninterpreted until their owning
+boundary, downstream code relies on the trust established there without defensive shape checks or
+fallback coercions, genuine domain and operational failures remain explicit, local mappings remain
+visible, reads expose only operation dependencies, and results contain only resolved values required
+by their current contract.
