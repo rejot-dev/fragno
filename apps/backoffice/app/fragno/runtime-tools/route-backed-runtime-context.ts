@@ -138,7 +138,10 @@ export const createRouteBackedRuntimeContext = ({
       runtime: createRouteBackedAutomationIdentityRuntime({ object: automationsObject, execution }),
     },
     workflow: {
-      runtime: createRouteBackedAutomationWorkflowRuntime({ object: automationsObject }),
+      runtime: createRouteBackedAutomationWorkflowRuntime({
+        object: automationsObject,
+        execution,
+      }),
     },
     durableHooks: org
       ? {
@@ -191,6 +194,7 @@ export const createRouteBackedRuntimeContext = ({
         ? createPiRouteRuntime({
             object: kernel.scoped("PI", execution.scope, runtime.objects.pi),
             scope: execution.scope,
+            execution,
           })
         : unavailableRuntime<PiRuntime>(unavailableMessage("PI", execution)),
     },

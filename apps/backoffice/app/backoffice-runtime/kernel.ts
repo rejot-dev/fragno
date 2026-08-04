@@ -2,7 +2,11 @@ import { resolveExecutionFilePrincipal, type FilePrincipal } from "@/files/permi
 import { automationActorsSchema } from "@/fragno/automation/actors";
 
 import type { BackofficeAuthorityResolver } from "./authority-resolver";
-import { resolveBackofficeInternalServiceAuthorityRole } from "./authority-roles";
+import {
+  getBackofficeAuthorityRoleGrants,
+  resolveBackofficeInternalServiceAuthorityRole,
+  resolveBackofficeUserAuthorityRole,
+} from "./authority-roles";
 import {
   backofficeContextScopesEqual,
   backofficeVerifiedAccessTokenAuthoritySchema,
@@ -22,6 +26,8 @@ export type BackofficeKernelAction = {
 };
 
 export type BackofficeKernelObserver = {
+  /** Observe a successfully authorized action, including checks that do not execute through invoke(). */
+  observeAuthorization?(action: BackofficeKernelAction): Promise<void>;
   runAction<T>(action: BackofficeKernelAction, execute: () => Promise<T>): Promise<void>;
 };
 
@@ -77,6 +83,17 @@ const backofficePermissionsEqual = (
   requirement: BackofficePermissionRequirement,
 ) => grant.namespace === requirement.namespace && grant.permission === requirement.permission;
 
+/**
+ * Authorizes sensitive Backoffice actions against trusted execution provenance.
+ *
+ * Use `invoke()` for actions whose side effect can be expressed as a callback. It keeps
+ * authorization, observation, and exactly-once execution in one boundary. Use
+ * `assertAuthorized()` only at framework boundaries where successful authorization must allow an
+ * external router, middleware chain, or transaction handler to continue the operation.
+ *
+ * `scoped()` is not an authorization method. It only validates object availability and selects the
+ * Durable Object address for an already-established scope.
+ */
 export class BackofficeKernel {
   readonly #authorityResolver: BackofficeAuthorityResolver;
   readonly #observer: BackofficeKernelObserver;
@@ -86,17 +103,31 @@ export class BackofficeKernel {
     this.#observer = runtime.kernelObserver;
   }
 
+  /**
+   * Checks an action without executing it, selecting authority from the execution context.
+   *
+   * Verified request authority resolves permissions from the JWT role snapshot without rereading
+   * Auth. Executions without token authority resolve current identity state through the configured
+   * authority resolver. Prefer `invoke()` when this code owns the sensitive side effect; use this
+   * method when successful authorization delegates execution to framework-owned code.
+   */
   async assertAuthorized(action: BackofficeKernelAction): Promise<void> {
-    await this.#authorize(action);
+    await this.#authorizeForExecution(action);
   }
 
+  /**
+   * Authorizes and executes a sensitive effect exactly once through the configured observer.
+   *
+   * This is the preferred kernel API for application-owned effects. The callback is not called when
+   * authority resolution fails, permissions are insufficient, or execution provenance is invalid.
+   */
   async invoke<T>({
     execution,
     operation,
     resource,
     execute,
   }: BackofficeKernelAction & { execute: () => Promise<T> }): Promise<T> {
-    const action = await this.#authorize({ execution, operation, resource });
+    const action = await this.#authorizeForExecution({ execution, operation, resource });
     let observerActive = true;
     let observerFailure: { error: unknown } | null = null;
     const observedExecution: { promise: Promise<T> | null } = { promise: null };
@@ -140,7 +171,55 @@ export class BackofficeKernel {
     return result;
   }
 
-  async #authorize({
+  /**
+   * Selects the authoritative permission source encoded by the trusted execution boundary.
+   * Immediate requests carry a verified JWT snapshot; deferred and internal executions omit that
+   * snapshot so role changes, bans, memberships, and service grants resolve from current state.
+   */
+  async #authorizeForExecution(action: BackofficeKernelAction): Promise<BackofficeKernelAction> {
+    return action.execution.userAuthority
+      ? await this.#authorizeVerifiedRequest(action)
+      : await this.#authorizeCurrentAuthority(action);
+  }
+
+  /** Resolves an immediate request exclusively from its verified JWT authority snapshot. */
+  async #authorizeVerifiedRequest(action: BackofficeKernelAction): Promise<BackofficeKernelAction> {
+    const trustedExecution = this.#parseExecutionContext(action.execution);
+    const tokenAuthority = trustedExecution.userAuthority;
+    if (!tokenAuthority || tokenAuthority.expiresAtEpochMs <= Date.now()) {
+      throw new BackofficeForbiddenError(
+        "This request requires unexpired verified access-token authority.",
+        "context-access-denied",
+      );
+    }
+
+    if (trustedExecution.actors.delegation.length > 0) {
+      throw new BackofficeForbiddenError(
+        "Verified user requests cannot carry delegated authority.",
+        "context-access-denied",
+      );
+    }
+
+    const role = resolveBackofficeUserAuthorityRole(tokenAuthority, trustedExecution.scope);
+    const permissions = role ? getBackofficeAuthorityRoleGrants(role) : [];
+    if (!permissions.some((grant) => backofficePermissionsEqual(grant, action.operation))) {
+      throw new BackofficeForbiddenError(
+        "The verified access-token role does not have the required permission.",
+        "principal-permission-denied",
+      );
+    }
+
+    const authorizedAction = {
+      execution: trustedExecution,
+      operation: action.operation,
+      resource: action.resource,
+    };
+    await this.#observer.observeAuthorization?.(authorizedAction);
+    return authorizedAction;
+  }
+
+  /** Resolves deferred and internal execution against current authoritative identity state. */
+  async #authorizeCurrentAuthority({
     execution,
     operation,
     resource,
@@ -201,7 +280,9 @@ export class BackofficeKernel {
       }
     }
 
-    return { execution: trustedExecution, operation, resource };
+    const authorizedAction = { execution: trustedExecution, operation, resource };
+    await this.#observer.observeAuthorization?.(authorizedAction);
+    return authorizedAction;
   }
 
   #parseExecutionContext(execution: BackofficeExecutionContext): BackofficeExecutionContext {
@@ -276,6 +357,7 @@ export class BackofficeKernel {
     operation: BackofficePermissionRequirement,
     resource: unknown,
   ) {
+    // TODO: This fn needs to go
     const { initiator } = execution.actors;
     if (initiator.scope !== "external") {
       return false;
@@ -431,6 +513,12 @@ export class BackofficeKernel {
     }
   }
 
+  /**
+   * Selects a configured Durable Object binding at the requested scope.
+   *
+   * This performs structural availability and addressing checks only. The caller must establish
+   * authentication and operation authorization before invoking sensitive object methods.
+   */
   scoped<T>(
     binding: BackofficeObjectBindingName,
     scope: BackofficeContextScope,

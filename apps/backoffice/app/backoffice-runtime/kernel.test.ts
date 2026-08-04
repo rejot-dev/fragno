@@ -54,7 +54,12 @@ const linkedExecution = {
 const operation = { namespace: "telegram", permission: "send" } as const;
 
 class RecordingKernelObserver implements BackofficeKernelObserver {
+  readonly authorizations: BackofficeKernelAction[] = [];
   readonly actions: BackofficeKernelAction[] = [];
+
+  async observeAuthorization(action: BackofficeKernelAction): Promise<void> {
+    this.authorizations.push(action);
+  }
 
   async runAction<T>(action: BackofficeKernelAction, execute: () => Promise<T>): Promise<void> {
     this.actions.push(action);
@@ -63,7 +68,7 @@ class RecordingKernelObserver implements BackofficeKernelObserver {
 }
 
 describe("BackofficeKernel.assertAuthorized", () => {
-  test("resolves current authority without running the action observer", async () => {
+  test("observes authorization without running the action execution observer", async () => {
     const resolvePrincipalPermissions = vi.fn(async () => [operation]);
     const resolveActorCapabilityGrants = vi.fn(async () => [operation]);
     const observer = new RecordingKernelObserver();
@@ -81,6 +86,9 @@ describe("BackofficeKernel.assertAuthorized", () => {
 
     expect(resolvePrincipalPermissions).toHaveBeenCalledOnce();
     expect(resolveActorCapabilityGrants).toHaveBeenCalledTimes(2);
+    expect(observer.authorizations).toEqual([
+      { execution: linkedExecution, operation, resource: undefined },
+    ]);
     expect(observer.actions).toEqual([]);
   });
 

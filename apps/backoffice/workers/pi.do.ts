@@ -1,13 +1,14 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
-import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import {
+  backofficeContextScopesEqual,
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
 } from "@/backoffice-runtime/context";
+import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { PiObject } from "@/backoffice-runtime/object-registry";
+import type { BackofficeActionRpcContext, PiObject } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
@@ -206,6 +207,7 @@ export class InMemoryPiObject implements PiObject {
   readonly #env: Parameters<typeof createPiRuntime>[0]["env"];
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
+  readonly #kernel: BackofficeKernel;
   readonly #host: BackofficeFragmentDurableObject<
     StoredPiConfig,
     StoredPiConfig,
@@ -225,6 +227,7 @@ export class InMemoryPiObject implements PiObject {
     this.#env = env;
     this.#state = state;
     this.#runtimeServices = runtime;
+    this.#kernel = new BackofficeKernel(runtime);
     this.#host = createBackofficeFragmentDurableObject({
       name: "Pi",
       state,
@@ -301,11 +304,10 @@ export class InMemoryPiObject implements PiObject {
             service: { type: "object", id: `pi:${scopeKey}` },
           });
 
-    const kernel = new BackofficeKernel(this.#runtimeServices);
     const sessionFileSystemContext: PiSessionFileSystemContext = {
       scope,
       objects: this.#runtimeServices.objects,
-      kernel,
+      kernel: this.#kernel,
       execution,
       runtimeConfig: this.#runtimeServices.config,
     };
@@ -322,11 +324,12 @@ export class InMemoryPiObject implements PiObject {
       },
       sessionFileSystems: this.#sessionFileSystems,
       sessionFileSystemContext,
-      bashCommandContext: createRouteBackedRuntimeContext({
-        runtime: this.#runtimeServices,
-        kernel,
-        execution,
-      }),
+      bashCommandContext: (sessionExecution) =>
+        createRouteBackedRuntimeContext({
+          runtime: this.#runtimeServices,
+          kernel: this.#kernel,
+          execution: sessionExecution,
+        }),
       onOperationCompleted: async (payload, context) => {
         let event: ReturnType<typeof createPiOperationBillingEvent>;
         try {
@@ -433,6 +436,18 @@ export class InMemoryPiObject implements PiObject {
     });
   }
 
+  async fetchWithContext(request: Request, context: BackofficeActionRpcContext): Promise<Response> {
+    const { stored } = this.#host.requireConfigured("Pi runtime is not ready.");
+    if (!backofficeContextScopesEqual(stored.scope, context.execution.scope)) {
+      throw new Error("Backoffice object method scope does not match object address scope.");
+    }
+
+    return await this.#host.fetch(request, {
+      propagationContext: context.propagationContext,
+      requestContext: context.execution,
+    });
+  }
+
   async fetch(request: Request): Promise<Response> {
     return await this.#host.fetch(request);
   }
@@ -468,6 +483,10 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiObject {
 
   getDurableHookRepository(fragment?: PiHookFragment) {
     return this.#object.getDurableHookRepository(fragment);
+  }
+
+  async fetchWithContext(request: Request, context: BackofficeActionRpcContext): Promise<Response> {
+    return await this.#object.fetchWithContext(request, context);
   }
 
   async fetch(request: Request): Promise<Response> {

@@ -6,6 +6,7 @@ import type { OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 import { eq, queryOnce } from "@tanstack/react-db";
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BackofficeScenarioStep } from "@/fragno/automation/scenario";
 import { IDENTITY_LINK_TYPE } from "@/fragno/otp";
@@ -134,21 +135,55 @@ describe("external identity retry regressions", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "accepted identity claims remain consumed after revocation",
-        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        setup: ({ given }) => [
+          given.auth.user({
+            id: "owner-1",
+            email: "owner@example.com",
+          }),
+          given.auth.user({
+            id: userId,
+            email: "linked-user@example.com",
+          }),
+          given.auth.organization({
+            id: orgId,
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+            ownerRoles: ["owner"],
+          }),
+          given.auth.member({
+            orgId,
+            userId,
+            roles: ["member"],
+          }),
+        ],
         steps: ({ then }) => [
+          then.auth.authority({
+            userId,
+            orgId,
+            expected: {
+              active: true,
+              role: "user",
+              organizationMember: true,
+            },
+          }),
+          then.auth.member({
+            orgId,
+            userId,
+            roles: ["member"],
+          }),
+          then.auth.permissions({
+            userId,
+            scope,
+            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            exclude: [BACKOFFICE_PERMISSION.identity.bind],
+          }),
           whenIdentityIsBound("claim-1"),
           whenIdentityIsBound("claim-2"),
           whenIdentityIsRevoked("revoke the binding after claim-2 was accepted"),
           whenIdentityIsBound("claim-2"),
-          then.assert("the consumed claim does not reactivate the binding", async (ctx) => {
-            const resolved = await ctx.runtime.objects.automations
-              .for(scope)
-              .resolveExternalIdentity(
-                { identity },
-                { execution: createBackofficeSystemExecution(scope) },
-              );
-
-            assert.equal(resolved, null);
+          then.identity.unresolved({
+            scope,
+            identity,
           }),
         ],
       }),
@@ -159,21 +194,56 @@ describe("external identity retry regressions", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "stale revocation cannot cross identity binding generations",
-        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        setup: ({ given }) => [
+          given.auth.user({
+            id: "owner-1",
+            email: "owner@example.com",
+          }),
+          given.auth.user({
+            id: userId,
+            email: "linked-user@example.com",
+          }),
+          given.auth.organization({
+            id: orgId,
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+            ownerRoles: ["owner"],
+          }),
+          given.auth.member({
+            orgId,
+            userId,
+            roles: ["member"],
+          }),
+        ],
         steps: ({ then }) => [
+          then.auth.authority({
+            userId,
+            orgId,
+            expected: {
+              active: true,
+              role: "user",
+              organizationMember: true,
+            },
+          }),
+          then.auth.member({
+            orgId,
+            userId,
+            roles: ["member"],
+          }),
+          then.auth.permissions({
+            userId,
+            scope,
+            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            exclude: [BACKOFFICE_PERMISSION.identity.bind],
+          }),
           whenIdentityIsBound("claim-1"),
           whenIdentityIsRevoked("revoke the claim-1 binding, but lose the response"),
           whenIdentityIsBound("claim-2"),
           thenStaleRevocationIsRejected(0),
-          then.assert("the claim-2 activation remains active", async (ctx) => {
-            const resolved = await ctx.runtime.objects.automations
-              .for(scope)
-              .resolveExternalIdentity(
-                { identity },
-                { execution: createBackofficeSystemExecution(scope) },
-              );
-
-            assert.deepEqual(resolved, { userId });
+          then.identity.resolves({
+            scope,
+            identity,
+            userId,
           }),
         ],
       }),
@@ -186,8 +256,48 @@ describe("external identity retry regressions", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "revoked identity claim retries do not emit completion events",
-        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        setup: ({ given }) => [
+          given.auth.user({
+            id: "owner-1",
+            email: "owner@example.com",
+          }),
+          given.auth.user({
+            id: userId,
+            email: "linked-user@example.com",
+          }),
+          given.auth.organization({
+            id: orgId,
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+            ownerRoles: ["owner"],
+          }),
+          given.auth.member({
+            orgId,
+            userId,
+            roles: ["member"],
+          }),
+        ],
         steps: ({ then }) => [
+          then.auth.authority({
+            userId,
+            orgId,
+            expected: {
+              active: true,
+              role: "user",
+              organizationMember: true,
+            },
+          }),
+          then.auth.member({
+            orgId,
+            userId,
+            roles: ["member"],
+          }),
+          then.auth.permissions({
+            userId,
+            scope,
+            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            exclude: [BACKOFFICE_PERMISSION.identity.bind],
+          }),
           whenIdentityIsBound("claim-1"),
           whenIdentityIsRevoked("revoke the binding before the confirmed hook retries"),
           whenConfirmedClaimHookRetries("claim-1", completionEventId),
@@ -203,15 +313,9 @@ describe("external identity retry regressions", () => {
 
             assert.equal(completionEvent, undefined);
           }),
-          then.assert("the identity remains unresolved", async (ctx) => {
-            const resolved = await ctx.runtime.objects.automations
-              .for(scope)
-              .resolveExternalIdentity(
-                { identity },
-                { execution: createBackofficeSystemExecution(scope) },
-              );
-
-            assert.equal(resolved, null);
+          then.identity.unresolved({
+            scope,
+            identity,
           }),
         ],
       }),

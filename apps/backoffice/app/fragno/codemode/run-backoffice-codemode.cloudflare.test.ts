@@ -625,7 +625,10 @@ describe("runBackofficeCodemode", () => {
   });
 
   test("runs route-backed event emit tools through codemode handles", async () => {
-    const runtime = await createInMemoryBackofficeRuntime({ env: { LOADER: env.LOADER } });
+    const runtime = await createInMemoryBackofficeRuntime({
+      env: { LOADER: env.LOADER },
+      authorityResolver: unrestrictedBackofficeAuthorityResolver,
+    });
     try {
       const routeContext = createRouteBackedRuntimeContext({
         runtime: runtime.services,

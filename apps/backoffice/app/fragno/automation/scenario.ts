@@ -1,11 +1,10 @@
-import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
-
 import type { UserAuthorityFacts } from "@fragno-dev/auth";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 import { createFragnoCollection } from "@fragno-dev/tanstack-db-adapter";
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
 
 import {
+  backofficeContextScopesEqual,
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
   type BackofficeContextScope,
@@ -16,13 +15,25 @@ import {
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import type { InMemoryBackofficeRuntimeEnv } from "@/backoffice-runtime/in-memory-runtime-env";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import {
+  BackofficeForbiddenError,
+  BackofficeKernel,
+  type BackofficeKernelAction,
+  type BackofficeKernelObserver,
+} from "@/backoffice-runtime/kernel";
 import type {
+  BackofficeActionRpcContext,
   BackofficeObjectAddress,
   BackofficeObjectBindingName,
 } from "@/backoffice-runtime/object-registry";
-import type { BackofficePermissionRequirement } from "@/backoffice-runtime/permissions";
-import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import {
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "@/backoffice-runtime/permissions";
+import {
+  backofficeContextScopeFromSinglePathSegment,
+  backofficeContextScopeRoutePath,
+} from "@/backoffice-runtime/scope-codec";
 import {
   createBackofficeFileSystem,
   STATIC_FILE_CONTENT,
@@ -58,11 +69,16 @@ import {
 
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { listHookScopes } from "../backoffice-capabilities/backoffice-capabilities";
-import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
+import {
+  AUTOMATION_SYSTEM_INITIATOR,
+  type AutomationActors,
+  type AutomationExternalEntityRef,
+} from "./actors";
 import { createRouteBackedAutomationStoreRuntime } from "./bindings-route-runtime";
 import type { AutomationEvent } from "./contracts";
 import { createRouteBackedDurableHooksRuntime } from "./durable-hooks-route-runtime";
 import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
+import { automationEventListResultSchema } from "./events";
 import type { AutomationRouteDefinition } from "./routing";
 import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
 import type { AutomationRouteCreateInput, AutomationRouteUpdateInput } from "./routing-schemas";
@@ -247,6 +263,7 @@ export type FakePiApi = {
   getSessionCalls: PiGetSessionCall[];
   runTurnCalls: PiRunTurnCall[];
   fetch(request: Request): Promise<Response>;
+  fetchWithContext(request: Request, context: BackofficeActionRpcContext): Promise<Response>;
   setSessionStatus(sessionId: string, status: PiSessionStatus): void;
 };
 
@@ -315,6 +332,7 @@ export type BackofficeScenarioContext<TVars extends ScenarioVars = ScenarioVars>
   fakes: ScenarioFakes;
   tanstack: BackofficeScenarioTanStack;
   codemodeRuns: ScenarioCodemodeRun[];
+  kernelActions: readonly BackofficeKernelAction[];
   journal: ScenarioJournal;
   drain(): Promise<void>;
   runCodemode(input: BackofficeScenarioCodemodeInput): Promise<BackofficeCodemodeExecuteResult>;
@@ -519,12 +537,41 @@ type CodemodeToolCallsInput = {
   label?: string;
 };
 
+type AutomationEventAssertionInput = {
+  scope: BackofficeContextScope;
+  where: {
+    id?: string;
+    source?: string;
+    eventType?: string;
+  };
+  expected: DeepPartial<Omit<AutomationEvent, "actors">> & {
+    actors?: AutomationActors;
+  };
+};
+
+type IdentityAssertionInput = {
+  scope: BackofficeContextScope;
+  identity: AutomationExternalEntityRef;
+};
+
+type IdentityResolvesInput = IdentityAssertionInput & {
+  userId: string;
+};
+
+type KernelActionAssertionInput = {
+  operation: BackofficePermissionRequirement;
+  scope: BackofficeContextScope;
+  actors?: DeepPartial<AutomationActors>;
+  resource?: unknown;
+};
+
 type WorkflowInstanceInput = {
   workflowName?: string;
   instanceId?: string;
   remoteWorkflowName?: string;
   status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
   waitingFor?: string;
+  params?: unknown;
   output?: unknown;
 };
 
@@ -763,6 +810,16 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
       member(input: AuthMemberAssertionInput): BackofficeScenarioStep;
       permissions(input: AuthPermissionsAssertionInput): BackofficeScenarioStep;
     };
+    automation: {
+      event(input: AutomationEventAssertionInput): BackofficeScenarioStep;
+    };
+    identity: {
+      resolves(input: IdentityResolvesInput): BackofficeScenarioStep;
+      unresolved(input: IdentityAssertionInput): BackofficeScenarioStep;
+    };
+    kernel: {
+      action(input: KernelActionAssertionInput): BackofficeScenarioStep;
+    };
     telegram: {
       sentMessage(input: TelegramSentMessageInput): BackofficeScenarioStep;
       noMessages(): BackofficeScenarioStep;
@@ -997,6 +1054,96 @@ const createFakePiApi = (
     return session;
   };
 
+  const handleRequest = async (request: Request): Promise<Response> => {
+    const url = new URL(request.url);
+    const pathname = url.pathname;
+    const sessionMatch =
+      /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/([^/]+))?$/u.exec(pathname);
+    const workflowName = sessionMatch?.[1] ?? BACKOFFICE_PI_WORKFLOW_NAME;
+    const sessionId = sessionMatch?.[2] ?? "";
+    const suffix = sessionMatch?.[3] ?? "";
+
+    if (request.method === "POST" && pathname === `/api/pi/workflows/${workflowName}/sessions`) {
+      const body = (await request.json()) as {
+        name?: string | null;
+        metadata?: { agentName?: string };
+        input?: { systemPrompt?: string };
+      };
+      const id = `pi-session-${sessions.size + 1}`;
+      const agent = body.metadata?.agentName ?? "default::openai::gpt-5-mini";
+      const session: FakePiSession = {
+        id,
+        name: body.name ?? null,
+        status: "waiting",
+        agent,
+        workflowName,
+        assistantText: "",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      sessions.set(id, session);
+      createSessionCalls.push({
+        agent,
+        name: session.name,
+        sessionId: id,
+        ...(body.input?.systemPrompt ? { systemMessage: body.input.systemPrompt } : {}),
+      });
+      return Response.json({
+        id: session.id,
+        name: session.name,
+        metadata: { agentName: session.agent },
+        workflowName: session.workflowName,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+      });
+    }
+
+    if (request.method === "GET" && pathname === `/api/pi/workflows/${workflowName}/sessions`) {
+      return Response.json([...sessions.values()]);
+    }
+
+    if (!sessionId) {
+      return Response.json({ message: "Not found", code: "NOT_FOUND" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && !suffix) {
+      getSessionCalls.push({ sessionId });
+    }
+
+    const session = getSessionOrResponse(sessionId);
+    if (session instanceof Response) {
+      return session;
+    }
+
+    if (request.method === "GET" && suffix === "wait-for-agent-end") {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      return Response.json(toSessionDetail(session));
+    }
+
+    if (request.method === "POST" && suffix === "command") {
+      const body = (await request.json()) as { input?: { text?: string } };
+      const text = body.input?.text ?? "";
+      const reply = assistantText({ sessionId, text });
+      session.assistantText = reply;
+      session.status = "waiting";
+      session.updatedAt = new Date().toISOString();
+      runTurnCalls.push({ sessionId, text, assistantText: reply });
+      return Response.json({
+        accepted: true,
+        commandId: `command-${runTurnCalls.length}`,
+        status: "active",
+      });
+    }
+
+    if (request.method === "GET" && !suffix) {
+      return Response.json(toSessionDetail(session));
+    }
+
+    return Response.json({ message: "Not found", code: "NOT_FOUND" }, { status: 404 });
+  };
+
   return {
     createSessionCalls,
     getSessionCalls,
@@ -1010,93 +1157,30 @@ const createFakePiApi = (
       session.updatedAt = new Date().toISOString();
     },
     fetch: async (request) => {
-      const url = new URL(request.url);
-      const pathname = url.pathname;
-      const sessionMatch =
-        /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/([^/]+))?$/u.exec(pathname);
-      const workflowName = sessionMatch?.[1] ?? BACKOFFICE_PI_WORKFLOW_NAME;
-      const sessionId = sessionMatch?.[2] ?? "";
-      const suffix = sessionMatch?.[3] ?? "";
-
-      if (request.method === "POST" && pathname === `/api/pi/workflows/${workflowName}/sessions`) {
-        const body = (await request.json()) as {
-          name?: string | null;
-          metadata?: { agentName?: string };
-          input?: { systemPrompt?: string };
-        };
-        const id = `pi-session-${sessions.size + 1}`;
-        const agent = body.metadata?.agentName ?? "default::openai::gpt-5-mini";
-        const session: FakePiSession = {
-          id,
-          name: body.name ?? null,
-          status: "waiting",
-          agent,
-          workflowName,
-          assistantText: "",
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        };
-        sessions.set(id, session);
-        createSessionCalls.push({
-          agent,
-          name: session.name,
-          sessionId: id,
-          ...(body.input?.systemPrompt ? { systemMessage: body.input.systemPrompt } : {}),
-        });
-        return Response.json({
-          id: session.id,
-          name: session.name,
-          metadata: { agentName: session.agent },
-          workflowName: session.workflowName,
-          createdAt: session.createdAt,
-          updatedAt: session.updatedAt,
-        });
+      const pathname = new URL(request.url).pathname;
+      if (/\/api\/pi\/workflows\/[^/]+\/sessions(?:\/|$)/u.test(pathname)) {
+        return Response.json(
+          {
+            message: "Pi session routes require trusted action context.",
+            code: "context-access-denied",
+          },
+          { status: 403 },
+        );
+      }
+      return await handleRequest(request);
+    },
+    fetchWithContext: async (request, context) => {
+      const encodedScope = new URL(request.url).searchParams.get("scope");
+      if (!encodedScope) {
+        throw new Error("Fake Pi requests require an encoded Backoffice scope.");
       }
 
-      if (request.method === "GET" && pathname === `/api/pi/workflows/${workflowName}/sessions`) {
-        return Response.json([...sessions.values()]);
+      const requestScope = backofficeContextScopeFromSinglePathSegment(encodedScope);
+      if (!backofficeContextScopesEqual(requestScope, context.execution.scope)) {
+        throw new Error("Backoffice object method scope does not match object address scope.");
       }
 
-      if (!sessionId) {
-        return Response.json({ message: "Not found", code: "NOT_FOUND" }, { status: 404 });
-      }
-
-      if (request.method === "GET" && !suffix) {
-        getSessionCalls.push({ sessionId });
-      }
-
-      const session = getSessionOrResponse(sessionId);
-      if (session instanceof Response) {
-        return session;
-      }
-
-      if (request.method === "GET" && suffix === "wait-for-agent-end") {
-        await new Promise((resolve) => {
-          setTimeout(resolve, 0);
-        });
-        return Response.json(toSessionDetail(session));
-      }
-
-      if (request.method === "POST" && suffix === "command") {
-        const body = (await request.json()) as { input?: { text?: string } };
-        const text = body.input?.text ?? "";
-        const reply = assistantText({ sessionId, text });
-        session.assistantText = reply;
-        session.status = "waiting";
-        session.updatedAt = new Date().toISOString();
-        runTurnCalls.push({ sessionId, text, assistantText: reply });
-        return Response.json({
-          accepted: true,
-          commandId: `command-${runTurnCalls.length}`,
-          status: "active",
-        });
-      }
-
-      if (request.method === "GET" && !suffix) {
-        return Response.json(toSessionDetail(session));
-      }
-
-      return Response.json({ message: "Not found", code: "NOT_FOUND" }, { status: 404 });
+      return await handleRequest(request);
     },
   };
 };
@@ -2523,7 +2607,7 @@ const buildStepBuilders = <
               `http://scenario.local/api/pi/workflows/${encodeURIComponent(workflowName)}/sessions`,
             );
             appendBackofficeScopeQuery(url, scope);
-            const response = await ctx.runtime.objects.pi.forOrg(input.orgId).fetch(
+            const response = await ctx.runtime.objects.pi.forOrg(input.orgId).fetchWithContext(
               new Request(url, {
                 method: "POST",
                 headers: { "content-type": "application/json" },
@@ -2535,6 +2619,10 @@ const buildStepBuilders = <
                   input: {},
                 }),
               }),
+              {
+                execution: createBackofficeUserExecution({ scope, userId: "user-1" }),
+                propagationContext: null,
+              },
             );
             if (!response.ok) {
               throw new Error(
@@ -2806,6 +2894,122 @@ const buildStepBuilders = <
                 `Permission assertion failed: ${JSON.stringify({ missing, unexpected, actual: [...actual] })}.`,
               );
             }
+          },
+        ),
+    },
+    automation: {
+      event: (input) =>
+        createStep(
+          "then",
+          "automation.event",
+          `assert automation event ${input.where.id ?? `${input.where.source ?? "*"}:${input.where.eventType ?? "*"}`}`,
+          async (ctx) => {
+            if (!input.where.id && !input.where.source && !input.where.eventType) {
+              throw new Error("Automation event assertions require at least one selector.");
+            }
+
+            const response = await ctx.runtime.objects.automations
+              .for(input.scope)
+              .fetch(new Request("https://automations.test/api/automations/events?limit=500"));
+            if (!response.ok) {
+              throw new Error(`Automation event listing returned ${response.status}.`);
+            }
+
+            const result = automationEventListResultSchema.parse(await response.json());
+            const selected = result.events.filter(
+              (event) =>
+                (!input.where.id || event.id === input.where.id) &&
+                (!input.where.source || event.source === input.where.source) &&
+                (!input.where.eventType || event.eventType === input.where.eventType),
+            );
+            if (selected.length === 0) {
+              throw new Error(
+                `Expected automation event was not found: ${JSON.stringify(input.where)}.`,
+              );
+            }
+
+            for (const event of selected) {
+              try {
+                assertPartialMatch(event, input.expected, "automation.event");
+                return;
+              } catch {
+                // Continue through events selected by source/type until one matches the expectation.
+              }
+            }
+
+            throw new Error(
+              `No automation event matched ${JSON.stringify(input.expected)}. Selected events: ${JSON.stringify(selected, null, 2)}.`,
+            );
+          },
+        ),
+    },
+    identity: {
+      resolves: (input) =>
+        createStep(
+          "then",
+          "identity.resolves",
+          `assert ${input.identity.source}:${input.identity.type}:${input.identity.id} resolves to ${input.userId}`,
+          async (ctx) => {
+            const result = await ctx.runtime.objects.automations
+              .for(input.scope)
+              .resolveExternalIdentity(
+                { identity: input.identity },
+                { execution: createBackofficeSystemExecution(input.scope) },
+              );
+            if (result?.userId !== input.userId) {
+              throw new Error(
+                `Expected identity to resolve to ${input.userId}, got ${JSON.stringify(result)}.`,
+              );
+            }
+          },
+        ),
+      unresolved: (input) =>
+        createStep(
+          "then",
+          "identity.unresolved",
+          `assert ${input.identity.source}:${input.identity.type}:${input.identity.id} is unresolved`,
+          async (ctx) => {
+            const result = await ctx.runtime.objects.automations
+              .for(input.scope)
+              .resolveExternalIdentity(
+                { identity: input.identity },
+                { execution: createBackofficeSystemExecution(input.scope) },
+              );
+            if (result !== null) {
+              throw new Error(`Expected identity to be unresolved, got ${JSON.stringify(result)}.`);
+            }
+          },
+        ),
+    },
+    kernel: {
+      action: (input) =>
+        createStep(
+          "then",
+          "kernel.action",
+          `assert kernel action ${permissionKey(input.operation)}`,
+          (ctx) => {
+            const selected = ctx.kernelActions.filter(
+              (action) => permissionKey(action.operation) === permissionKey(input.operation),
+            );
+
+            for (const action of selected) {
+              try {
+                assertPartialMatch(action.execution.scope, input.scope, "kernel.action.scope");
+                if (input.actors) {
+                  assertPartialMatch(action.execution.actors, input.actors, "kernel.action.actors");
+                }
+                if (typeof input.resource !== "undefined") {
+                  assertPartialMatch(action.resource, input.resource, "kernel.action.resource");
+                }
+                return;
+              } catch {
+                // Continue through repeated operations until the expected execution is found.
+              }
+            }
+
+            throw new Error(
+              `No kernel action matched ${JSON.stringify(input)}. Selected actions: ${JSON.stringify(selected, null, 2)}.`,
+            );
           },
         ),
     },
@@ -3193,6 +3397,10 @@ const buildStepBuilders = <
                   `Expected workflow to wait for ${input.waitingFor}, got ${JSON.stringify(currentStep)}.`,
                 );
               }
+            }
+
+            if (typeof input.params !== "undefined") {
+              assertPartialMatch(match.instance.meta.params, input.params, "workflow.params");
             }
 
             if (typeof input.output !== "undefined") {
@@ -3666,24 +3874,69 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
   }
 
   if (fakes.pi) {
-    objectFactories.PI = () => ({
-      fetch: (request: Request) => fakes.pi!.fetch(request),
-      alarm: async () => undefined,
-      getAdminConfig: async () => ({ configured: true }),
-      resetAdminConfig: async () => ({ configured: false }),
-      setAdminConfig: async () => ({ configured: true }),
-      getDurableHookRepository: () => ({
-        getHookQueue: async () => ({
-          configured: false,
-          hooksEnabled: false,
-          namespace: null,
-          items: [],
-          cursor: undefined,
-          hasNextPage: false,
+    objectFactories.PI = ({ runtime }) => {
+      const kernel = new BackofficeKernel(runtime);
+
+      return {
+        fetch: (request: Request) => fakes.pi!.fetch(request),
+        fetchWithContext: async (request: Request, context: BackofficeActionRpcContext) => {
+          const sessionRoute =
+            /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/([^/]+))?$/u.exec(
+              new URL(request.url).pathname,
+            );
+          const operation =
+            sessionRoute && request.method === "GET"
+              ? BACKOFFICE_PERMISSION.pi.read
+              : sessionRoute && request.method === "POST"
+                ? BACKOFFICE_PERMISSION.pi.modify
+                : null;
+
+          if (operation) {
+            const action = {
+              execution: context.execution,
+              operation,
+              resource: {
+                kind: sessionRoute?.[2]
+                  ? "pi-session"
+                  : request.method === "POST"
+                    ? "pi-session-create"
+                    : "pi-session-list",
+                workflowName: sessionRoute?.[1],
+                sessionId: sessionRoute?.[2],
+              },
+            };
+            try {
+              await kernel.assertAuthorized(action);
+            } catch (cause) {
+              if (cause instanceof BackofficeForbiddenError) {
+                return Response.json(
+                  { message: cause.message, code: cause.reason },
+                  { status: cause.reason === "authority-unavailable" ? 503 : 403 },
+                );
+              }
+              throw cause;
+            }
+          }
+
+          return await fakes.pi!.fetchWithContext(request, context);
+        },
+        alarm: async () => undefined,
+        getAdminConfig: async () => ({ configured: true }),
+        resetAdminConfig: async () => ({ configured: false }),
+        setAdminConfig: async () => ({ configured: true }),
+        getDurableHookRepository: () => ({
+          getHookQueue: async () => ({
+            configured: false,
+            hooksEnabled: false,
+            namespace: null,
+            items: [],
+            cursor: undefined,
+            hasNextPage: false,
+          }),
+          getHook: async () => null,
         }),
-        getHook: async () => null,
-      }),
-    });
+      };
+    };
   }
 
   if (fakes.resend) {
@@ -3891,8 +4144,18 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
     orgIds,
   );
   const fakes = scenario.fakes?.({ fake: createScenarioFakeFactory() }) ?? {};
+  const kernelActions: BackofficeKernelAction[] = [];
+  const kernelObserver: BackofficeKernelObserver = {
+    async observeAuthorization(action) {
+      kernelActions.push(action);
+    },
+    async runAction(_action, execute) {
+      await execute();
+    },
+  };
   const runtime = await createInMemoryBackofficeRuntime({
     env: scenario.env,
+    kernelObserver,
     getAutomationFileSystem: async ({ execution }) =>
       execution.scope.kind === "project"
         ? files.forProject(execution.scope.projectId)
@@ -3915,6 +4178,7 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
     fakes,
     tanstack,
     codemodeRuns: [],
+    kernelActions,
     journal,
     drain: () => tanstack.drainAll(),
     runCodemode: (input) => runScenarioCodemode(ctx, input),

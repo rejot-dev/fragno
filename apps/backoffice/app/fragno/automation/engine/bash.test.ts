@@ -1,5 +1,7 @@
 import { describe, expect, it, assert } from "vitest";
 
+import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import { createUnsupportedOperationFileSystemError } from "@/files/fs-errors";
 import { createUnsupportedFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
@@ -79,6 +81,11 @@ const createDeferred = <T = void>() => {
   return { promise, resolve, reject };
 };
 
+const testKernel = new BackofficeKernel({
+  authorityResolver: unrestrictedBackofficeAuthorityResolver,
+  kernelObserver: noopBackofficeKernelObserver,
+});
+
 const createTestAutomationScriptHostContext = ({
   event,
   runtime: automationRuntime,
@@ -95,6 +102,7 @@ const createTestAutomationScriptHostContext = ({
     },
     idempotencyKey: `idempotency-${event.id}`,
     runtime: automationRuntime,
+    kernel: testKernel,
     pi: null,
   });
 

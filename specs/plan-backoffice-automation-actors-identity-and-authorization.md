@@ -50,10 +50,13 @@ Backoffice scenario utilities.
   other internal boundaries use explicit Durable Object RPC methods that accept typed context.
 - Deferred external effects are reauthorized immediately before every attempt, including retries.
   Enqueue authorization alone never authorizes the later side effect.
-- Automation-defined Pi session routing state carries no authority. Session IDs are identifiers, not
-  capabilities; every Pi session read, turn, or mutation authorizes the referenced session from the
-  trusted execution context, even when automation state is stale after identity revocation or
-  rebinding.
+- Pi sessions persist trusted execution authority: a user principal for user-created sessions, a
+  stable automation principal for organization-owned automation sessions, or an explicit service
+  principal for trusted infrastructure. The session stores actors, never a permission snapshot.
+  Public request flows resolve the requested Pi permission from a verified JWT's role and
+  organization snapshot. Trusted internal calls resolve current authority from explicit execution
+  context. Pi operations do not compare the caller with the persisted principal. Sensitive tools
+  resolve the persisted principal's current permissions whenever they execute.
 - External identity bind, active-resolution, and revoke operations execute through `kernel.invoke()`
   inside the owning Automations object; persistence services are not standalone authorization
   boundaries.
@@ -154,10 +157,12 @@ These are acceptance constraints, not implementation details that may be deferre
 2. **Pi provenance cannot use a public header.** Production and fake Pi objects consume execution
    context through the same trusted internal RPC. Public `fetch()` neither trusts nor forwards
    `x-backoffice-execution-context` or an equivalent actor header.
-3. **Session routing never grants session access.** Automations may select and persist arbitrary Pi
-   session IDs according to their own routing semantics. Every Pi session read, turn, or mutation
-   authorizes the referenced session from trusted execution context, so stale routing state after an
-   external identity rebind cannot expose the previous principal's session.
+3. **Session routing does not replace Pi permissions.** Automations may select and persist Pi
+   session IDs according to their routing semantics, but public callers must still present a
+   verified JWT whose role grants the requested Pi permission at the current scope. The referenced
+   session retains the trusted execution principal established at creation, and sensitive tools
+   resolve that principal's current permissions. Pi operations do not require equality between the
+   caller and the persisted principal.
 4. **Deferred Telegram delivery is a fresh authorization attempt.** Every send/edit attempt restores
    its typed execution envelope and wraps the external API call in `kernel.invoke()`. Revocation
    after enqueue prevents delivery.
@@ -416,9 +421,11 @@ meaning.
 `hasSystemCategory()` and category-based deletion protection have been removed. Categories cannot
 protect trusted state. External identity bindings therefore live outside generic KV.
 Claim-to-workflow correlation, Pi session routing, and default-agent selection may remain in generic
-KV because those values carry no authority; authorization occurs when the referenced identity,
-workflow, Pi resource, or agent is used. If other generic system-owned KV remains necessary, use a
-separate internal store or a kernel-controlled write-policy field that user tools cannot set.
+KV because those values carry no authority. The Pi session's trusted storage owns its authority
+owner; a routing entry merely names that session and cannot replace or enrich the owner.
+Authorization occurs when the referenced identity, workflow, Pi resource, or agent is used. If other
+generic system-owned KV remains necessary, use a separate internal store or a kernel-controlled
+write-policy field that user tools cannot set.
 
 ### Mutation boundary
 
@@ -614,20 +621,23 @@ Telegram event.
 Pi session selection remains automation-defined behavior. The starter automation currently chooses
 one reusable session per linked principal with a key such as `telegram-pi-session/<principalId>`,
 but another automation may choose a session per chat, thread, workflow instance, organization, or
-message, or may intentionally share a session. Each automation's workflow logic and state keys
-define its session reuse cardinality.
+message. Those choices define reuse cardinality, not execution authority: every reused session
+retains the trusted authority principal established at creation. Public Pi route access is
+established by resolving the requested Pi permission from the verified JWT role and organization
+snapshot, not equality with that persisted principal.
 
 Automation state may therefore store a Pi session ID in ordinary KV or workflow state. That lookup
-is not an authorization boundary and does not grant access to the referenced session. Every
-`pi.getSession`, `pi.runTurn`, and future Pi session mutation receives trusted execution context and
-authorizes the actual session resource before returning data, running tools, or changing state.
-Session IDs are identifiers rather than capabilities.
+is not sufficient on its own: the caller must still hold the required Pi permission at the current
+scope. Session creation derives and persists trusted execution actors. `pi.getSession`,
+`pi.runTurn`, and future Pi session mutations authorize the incoming operation using its Pi
+permission, while asynchronous tools resolve current permissions for the session's persisted
+authority principal.
 
-Identity revoke/rebind does not need to atomically clean up automation routing state for security. A
-stale mapping may still produce the previous session ID, but the next Pi operation runs under the
-newly resolved principal and must deny access unless the Pi session's own ownership or sharing
-policy allows it. Automations may replace stale mappings for correctness or user experience after
-that denial.
+Identity revoke/rebind does not need to atomically clean up automation routing state for authority.
+A stale mapping may continue selecting the previous session, and an execution accepted by the
+trusted Pi request boundary may submit work to it. The work continues under the session's persisted
+authority principal, whose current permissions are reevaluated for every sensitive tool action.
+Automations may replace stale mappings for correctness or user experience.
 
 ### 4. Workflow delegation
 
@@ -661,30 +671,51 @@ The automation identity must use a stable automation-definition identity, not a 
 event ID, or individual run ID. Trusted system-service execution remains a separate explicit service
 principal and is not inferred through either automation mode.
 
-### 5. Pi delegation
+### 5. Pi session execution authority and delegation
 
-Each Pi turn receives the current action's execution context through an explicit trusted Durable
-Object RPC and appends the Pi agent/session actor:
+Pi session creation derives trusted execution actors from the request context and persists them with
+the session. User-created sessions retain that user principal. Sessions created by an
+organization-owned automation retain the stable automation principal, not the automation's creator.
+Trusted service sessions require an explicit service principal. The persisted actors contain
+identity and provenance, never permission grants; permissions are resolved when sensitive tools
+execute.
+
+The session creation request contains no caller-authored authority field. The Pi object derives the
+actors from trusted execution, stores them atomically with the session, and treats them as immutable
+execution provenance. These actors determine the principal used by Bash, codemode, filesystem, and
+runtime tools. They do not define who may read or submit commands to the session.
+
+Each Pi operation receives the current action's execution context through an explicit trusted
+Durable Object RPC:
 
 ```ts
 await pi.runTurn({ workflowName, sessionId, input }, { execution, propagationContext });
 ```
 
+The public request boundary resolves the requested Pi permission from the verified JWT role and
+organization snapshot without rereading Auth. Trusted internal calls resolve current permission from
+explicit execution context. Neither path requires the incoming principal to equal the session's
+persisted principal. An accepted caller may submit a turn to an existing session, while the
+resulting agent and tool execution continues under the trusted authority principal persisted with
+that session.
+
 The public Pi `fetch()` path accepts domain request data only. It rejects or ignores
 `x-backoffice-execution-context` and any equivalent actor/principal metadata. The in-memory Pi fake
-implements `runTurn()` exactly like production and must not parse a header that production ignores.
+implements the same trusted context and permission checks as production and must not parse a header
+that production ignores.
 
-The trusted execution context is persisted with the individual turn/command before asynchronous
-workflow execution begins:
+Before asynchronous workflow execution begins, the turn persists its trusted provenance while
+retaining the principal from the session actors:
 
 ```ts
 const actors = automationActorsSchema.parse({
-  ...workflowActors,
-  delegation: [...workflowActors.delegation, piAssistant],
+  initiator: execution.actors.initiator,
+  principal: session.actors.principal,
+  delegation: [...execution.actors.delegation, piAssistant],
 });
 ```
 
-The resulting value is:
+The resulting value for a linked Telegram user is:
 
 ```ts
 {
@@ -694,17 +725,23 @@ The resulting value is:
 }
 ```
 
-A reusable Pi session does not inherit the actor provenance of the session creator. Every turn
-carries its own actor provenance, and tool construction resolves context from that persisted turn
-rather than from session-global mutable state.
+A reusable Pi session therefore retains the authority principal established at creation, but it does
+not retain a permission snapshot. Turns may have different initiators or submitters while tools
+continue resolving current authority for the stable session principal. Tool construction reads the
+persisted turn context rather than the Pi Durable Object's service identity or a mutable
+session-global "last caller" context.
 
 Required tests:
 
-- a public request supplying a forged execution header cannot affect Pi tool actors;
+- a public request supplying a forged execution header cannot affect Pi session or tool actors;
 - production and fake Pi objects receive context through the same typed RPC contract;
-- two turns on one reused session can have different initiators/principals without provenance
-  leakage;
-- downstream Bash, codemode, and runtime-tool calls observe the current turn's actor object.
+- a user-created session runs tools under that user's current authority;
+- another principal accepted by the JWT scope boundary can submit a turn while tools retain the
+  session principal;
+- two turns on one reused session may have different initiators but retain the same authority
+  principal without provenance leakage;
+- banning, downgrading, or removing the persisted principal denies the next sensitive tool action;
+- downstream Bash, codemode, and runtime-tool calls observe the persisted turn actor object.
 
 ### 6. Tool calls and emitted events
 
@@ -941,13 +978,15 @@ These fields inspect recorded execution metadata, not domain input payloads.
 
 Every fake that crosses a trust boundary implements the same typed interface production uses. A fake
 may record additional diagnostics, but it cannot acquire execution context from headers, mutable
-globals, session creation metadata, or other channels absent from production.
+globals, untrusted session metadata, or other channels absent from production. Pi session authority
+metadata is valid only when the same trusted creation boundary writes and consumes it in production
+and the fake.
 
 Add contract tests that run against both production-style and in-memory object adapters for:
 
-- Pi per-turn context RPC;
+- Pi session creation authority and turn-context RPC;
 - Automations identity bind/resolve/revoke RPC;
-- Pi session resource authorization for automation-supplied session IDs;
+- Pi session permission authorization for automation-supplied session IDs;
 - deferred Telegram attempt authorization.
 
 A scenario assertion is not sufficient proof when its fake bypasses the production acquisition
@@ -958,6 +997,7 @@ boundary.
 Scenario failure snapshots should include:
 
 - identity bindings;
+- Pi session execution principals and per-turn actors;
 - persisted Automation event actors;
 - kernel action records;
 - denied authorization decisions;
@@ -967,22 +1007,25 @@ Scenario failure snapshots should include:
 
 ## Implementation status
 
-**Status as of July 28, 2026:** Slices 1 and 2 are complete. Slice 3 is implemented and pending its
-review gate. Store, event, and OTP tool inputs now reject caller-authored provenance; mutable KV
-rows no longer persist actor attribution; store mutation requires a current kernel authorization
-check in typed Fragment middleware; and OTP claims derive their target from the trusted external
-initiator. `BackofficeExecutionContext` is now the single execution model across authenticated
-requests, filesystems, tools, and kernel actions; the legacy single-actor context and its conversion
-adapter have been removed. Store mutations now enter through the generic execution-bound
-`fetchWithContext()` route transport, while the scope-aware public Automations proxy exposes only
-outbox routes. The organization-only compatibility proxy has been removed; the workflow proxy
-forwards directly to the workflows fragment. Immediate system-store mutation trusts a verified
-access token's administrator role until token expiry; executions without token authority use the
-current Auth state. Automation runtimes preserve the event actors and add their explicit service
-identity as the principal only when the event has none, or as a delegate when it already has one. A
-previous all-at-once implementation was removed after review exposed trust-boundary and
-asynchronous-authorization mistakes. Its code may be consulted as a prototype, but remaining slices
-must be implemented independently from this plan and must not be replayed wholesale.
+**Status as of August 3, 2026:** Slices 1 and 2 are complete. Slice 3 is implemented and pending its
+review gate. The Pi scope-level route authorization implemented toward Slice 6 is the operation
+access policy; each Pi session separately persists trusted actors that establish tool execution
+authority without requiring caller/principal equality. Store, event, and OTP tool inputs now reject
+caller-authored provenance; mutable KV rows no longer persist actor attribution; store mutation
+requires a current kernel authorization check in typed Fragment middleware; and OTP claims derive
+their target from the trusted external initiator. `BackofficeExecutionContext` is now the single
+execution model across authenticated requests, filesystems, tools, and kernel actions; the legacy
+single-actor context and its conversion adapter have been removed. Store mutations now enter through
+the generic execution-bound `fetchWithContext()` route transport, while the scope-aware public
+Automations proxy exposes only outbox routes. The organization-only compatibility proxy has been
+removed; the workflow proxy forwards directly to the workflows fragment. Immediate system-store
+mutation trusts a verified access token's administrator role until token expiry; executions without
+token authority use the current Auth state. Automation runtimes preserve the event actors and add
+their explicit service identity as the principal only when the event has none, or as a delegate when
+it already has one. A previous all-at-once implementation was removed after review exposed
+trust-boundary and asynchronous-authorization mistakes. Its code may be consulted as a prototype,
+but remaining slices must be implemented independently from this plan and must not be replayed
+wholesale.
 
 No checklist item below is complete until its production path, negative tests, typecheck, and
 focused scenario have landed together. Validation results from the removed prototype do not count as
@@ -1144,38 +1187,70 @@ this slice proves fail-closed production wiring.
 **Review gate:** accept the complete identity acquisition path before session reuse or Pi
 delegation.
 
-### Slice 6: Automation-defined Pi routing and session resource authorization
+### Slice 6: Automation-defined Pi routing and session execution authority
 
 **Production behavior**
 
-- [ ] Keep Pi session selection and routing cardinality in automation code and ordinary automation
+- [x] Keep Pi session selection and routing cardinality in automation code and ordinary automation
       state, with each automation's workflow logic and state keys defining its reuse behavior.
 - [ ] Keep default-agent selection in automation-controlled configuration; selecting an agent never
       grants permission to create a session with or delegate to that agent.
-- [ ] Treat session IDs as identifiers rather than capabilities.
-- [ ] Establish session ownership or sharing policy from trusted execution when a Pi session is
-      created, independently of the automation key used to find it later.
-- [ ] Require trusted execution context and resource authorization for every Pi session read, turn,
-      and mutation before returning session data, running tools, or changing state.
-- [ ] Preserve the current starter automation's per-principal reuse behavior as its own explicit KV
+- [x] Treat session IDs as identifiers rather than capabilities.
+- [x] Resolve `pi.read` or `pi.modify` from verified JWT role/scope claims for public Pi requests
+      and from current trusted execution authority for internal Pi calls.
+- [x] Persist immutable trusted `AutomationActors` when a Pi session is created without persisting a
+      permission snapshot.
+- [ ] Make user-created sessions retain the creating user principal, organization-automation
+      sessions retain their stable automation principal, and trusted service sessions require an
+      explicit service principal.
+- [x] Authorize public session reads, turns, and mutations by resolving the requested Pi permission
+      from JWT role/scope claims without requiring equality with the persisted session principal.
+- [x] Resolve the persisted session principal's current permissions for tool execution rather than
+      persisting role grants or using the Pi Durable Object service principal.
+- [x] Preserve the current starter automation's per-principal reuse behavior as its own explicit KV
       keying strategy without making that behavior a platform invariant.
 - [x] Remove category-based protection; ordinary routing and default-agent configuration values
       carry no authority and need no category-based security semantics.
 
+`PiObject.fetchWithContext()` is the thin trusted transport that installs execution as Pi fragment
+request context. Public routes verify the JWT before calling this transport. Pi fragment middleware
+uses `kernel.assertAuthorized()` to resolve `pi.read` or `pi.modify`. The kernel selects the token's
+role and organization snapshot without a second Auth lookup when verified request authority is
+present; internal executions without token authority use current-state resolution. Session creation
+persists trusted `AutomationActors` in workflow metadata. Agent and tool execution use the session's
+persisted principal. Raw `fetch()` reaches the same middleware without request context and is
+rejected for protected Pi routes. Automation routing KV and default-agent KV remain ordinary,
+non-authoritative data; trusted Pi session storage owns the execution actor record.
+
+Slice 7 must establish the final effective automation principal used when an automation creates or
+invokes a session. Slice 8 persists turn execution and appends the Pi assistant. The remaining
+transitional behavior is limited to stable automation/service principals and complete trusted turn
+provenance.
+
 **Required tests**
 
-- [ ] Prove the starter automation can resume the session selected by its per-principal KV key.
-- [ ] Prove an automation can choose a different keying strategy without a Backoffice schema or
-      authorization change.
-- [ ] Revoke and rebind an external identity while stale automation state still points at the old
-      session; prove the next Pi operation denies before exposing data or running tools.
-- [ ] Supply another principal's session ID directly through user-authored routing state and prove
-      the real Pi boundary denies it.
-- [ ] Prove automation-controlled default-agent selection cannot exceed current principal,
+- [x] Prove the starter automation can resume the session selected by its per-principal KV key.
+- [ ] Prove an automation can choose a different keying strategy without changing the Pi schema,
+      while every resulting session still records trusted execution actors.
+- [x] Create a session as a user and prove another principal accepted by the same JWT scope boundary
+      can read and invoke it while tool execution retains the persisted session principal.
+- [ ] Revoke and rebind an external identity while stale automation state still points at a session;
+      prove the mapping may reuse the session but sensitive tools still resolve the persisted
+      principal's current authority.
+- [x] Downgrade, ban, or remove the persisted session principal and prove the next sensitive tool
+      action resolves current authority and is denied.
+- [ ] Prove an organization-owned automation session continues independently of its creator but
+      stops when the automation principal loses its grants.
+- [ ] Prove automation-controlled default-agent selection cannot exceed the persisted principal,
       automation, agent, or resource grants.
 
-**Review gate:** no Pi operation may treat a session ID, routing key, or default-agent value as
-runtime authority.
+Existing boundary coverage proves public requests resolve Pi permissions from verified JWT claims
+without a user-directory lookup, internal context resolves current authority, and raw `fetch()`
+cannot access protected routes. It does not complete this slice until stable automation/service
+principals and their dynamic authority are implemented in production and in-memory adapters.
+
+**Review gate:** a routing key or session ID is insufficient without the required Pi permission, and
+tool execution always uses trusted persisted session actors rather than caller-authored authority.
 
 ### Slice 7: Workflow and runtime-tool provenance propagation
 
@@ -1190,6 +1265,7 @@ runtime authority.
 - [ ] Reject missing or incompatible authority mode instead of inferring organization ownership from
       an absent principal.
 - [x] Carry `BackofficeExecutionContext` through tool, Bash, codemode, and child-event boundaries.
+- [x] Enforce every runtime tool's declared permissions before direct, Bash, or codemode execution.
 - [x] Define telemetry-only `BackofficeRpcContext` and execution-bearing
       `BackofficeActionRpcContext` as separate trusted contracts.
 - [ ] Preserve the actor object through durable Backoffice-owned envelopes and retries.
@@ -1211,27 +1287,46 @@ runtime authority.
 
 **Review gate:** provenance reaches internal tools without relying on Pi or Telegram-specific hacks.
 
-### Slice 8: Trusted per-turn Pi RPC
+### Slice 8: Trusted session-authority Pi turn RPC
+
+"Per turn" in this slice refers to preserving the initiator and delegation chain for each submitted
+command. A public caller is authorized by resolving `pi.modify` from verified JWT claims but does
+not replace the trusted session principal established in Slice 6.
 
 **Production behavior**
 
 - [ ] Add a typed internal Pi `runTurn(..., BackofficeActionRpcContext)` Durable Object RPC.
 - [ ] Keep the public Pi `fetch()` path free of trusted actor/principal input.
 - [ ] Remove and reject `x-backoffice-execution-context` or equivalent headers.
-- [ ] Persist execution context with each command/turn before asynchronous execution.
-- [ ] Append the Pi assistant to that turn's `delegation` and build tools from turn context, not
-      session context.
-- [ ] Make production and fake Pi objects implement the same trusted interface.
+- [ ] Authorize the incoming public turn by resolving `pi.modify` from verified JWT role/scope
+      claims, then load the persisted session actors without requiring caller/principal equality.
+- [ ] Persist the turn's trusted initiator and delegation context before asynchronous execution
+      while taking the principal from the immutable session actors.
+- [ ] Append the Pi assistant to that turn's `delegation` and build Bash, codemode, filesystem, and
+      runtime tools from the persisted turn context rather than the Pi object service context or a
+      mutable session-global caller context.
+- [ ] Resolve current persisted-principal and delegated-agent grants for every sensitive tool
+      action.
+- [ ] Make production and fake Pi objects implement the same trusted creation and turn interface.
 
 **Required tests**
 
 - [ ] Forge an execution header through public HTTP and prove it has no effect.
-- [ ] Run two differently attributed turns on one session and prove no actor leakage.
+- [ ] Create a session as an administrator and prove an authorized agent tool call observes that
+      administrator as principal.
+- [ ] Downgrade the administrator after session creation and prove a later privileged tool call is
+      denied instead of using a stored permission snapshot.
+- [ ] Submit a turn as another principal accepted by the JWT scope boundary and prove it is accepted
+      while agent and tool execution retain the persisted session principal.
+- [ ] Run two turns with different initiators but the same persisted session principal and prove the
+      principal is stable with no actor leakage.
 - [ ] Execute a downstream tool in both production-style and fake Pi adapters and compare the
       complete actor object.
-- [ ] Prove the fake does not parse an execution header.
+- [ ] Prove the fake does not parse an execution header or replace persisted session actors.
 
-**Review gate:** do not merge Pi provenance based only on scenario-fake behavior.
+**Review gate:** do not merge Pi authority or provenance based only on scenario-fake behavior, and
+do not let either the turn caller or Pi object service identity replace the persisted session
+principal.
 
 ### Slice 9: Deferred Telegram attempt authorization
 
@@ -1312,14 +1407,15 @@ than reintroducing attribution fields on `kv_store`.
 
 **Decision:** Session reuse cardinality belongs to automation behavior. The starter automation
 currently stores a session ID under a per-principal key, while another automation may choose
-per-chat, per-thread, per-run, shared, or no reuse. The automation's workflow logic and state keys
-fully express that routing policy.
+per-chat, per-thread, per-run, or no reuse. The automation's workflow logic and state keys express
+that routing policy, while the session retains the trusted execution actors established at creation.
 
-Automation routing state may remain in generic KV or workflow state because it carries no authority.
-A session ID is an identifier, not a capability. Every Pi session read, turn, or mutation authorizes
-the referenced session from trusted execution context against the session's own ownership or sharing
-policy. A stale mapping after identity revoke/rebind may identify the previous session, but cannot
-expose it to the new principal unless that session was independently shared with them.
+Automation routing state may remain in generic KV or workflow state because it carries no authority
+without the corresponding Pi permission. Trusted Pi session storage persists execution actors, not
+permission grants. Public Pi operations resolve the requested permission from a verified JWT's role
+and organization snapshot; trusted internal operations resolve current authority from explicit
+execution context. Neither requires caller equality with the persisted principal. Agent and tool
+execution use the persisted principal and resolve its current authority for every sensitive action.
 
 ### Default Pi agent selection
 

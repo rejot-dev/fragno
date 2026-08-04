@@ -2,7 +2,10 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 import type { createPiHarness } from "@fragno-dev/pi-harness/factory";
 import type { PiSession, PiSessionDetail, PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type {
+  BackofficeContextScope,
+  BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import type { PiObject } from "@/backoffice-runtime/object-registry";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
@@ -77,9 +80,11 @@ export type RegisteredPiCommandContext = {
 const createPiRouteCaller = ({
   object,
   scope,
+  execution,
 }: {
   object: PiObject;
   scope: BackofficeContextScope;
+  execution: BackofficeExecutionContext;
 }) =>
   createRouteCaller<PiFragment>({
     // Durable Object route helpers still need absolute URLs, so use a synthetic origin.
@@ -88,7 +93,10 @@ const createPiRouteCaller = ({
     fetch: async (outboundRequest) => {
       const url = new URL(outboundRequest.url);
       url.searchParams.set("scope", backofficeContextScopeSinglePathSegment(scope));
-      return object.fetch(new Request(url.toString(), outboundRequest));
+      return object.fetchWithContext(new Request(url.toString(), outboundRequest), {
+        execution,
+        propagationContext: null,
+      });
     },
   });
 
@@ -110,11 +118,13 @@ const parsePiRuntimeAgentName = (agent: string) => {
 export const createPiRouteRuntime = ({
   object,
   scope,
+  execution,
 }: {
   object: PiObject;
   scope: BackofficeContextScope;
+  execution: BackofficeExecutionContext;
 }): PiRuntime => {
-  const callRoute = createPiRouteCaller({ object, scope });
+  const callRoute = createPiRouteCaller({ object, scope, execution });
 
   return {
     createSession: async (args) => {

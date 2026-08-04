@@ -1,14 +1,11 @@
 import type { RemoteWorkflowStepHost } from "@fragno-dev/workflows/remote-workflow";
 import type { WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
-import {
-  createBackofficeServiceExecution,
-  createBackofficeSystemExecution,
-} from "@/backoffice-runtime/context";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import type { MasterFileSystem } from "@/files/master-file-system";
+import { automationActorsSchema } from "@/fragno/automation/actors";
 import {
   runBackofficeCodemode,
   type BackofficeCodemodeEnv,
@@ -129,15 +126,10 @@ export const executePiCodemodeWorkflow = async ({
   workflowEvent: WorkflowEvent<unknown>;
   remote: RemoteWorkflowStepHost;
 }): Promise<unknown> => {
-  const { scope } = params;
-  const scopeKey = backofficeContextScopeSinglePathSegment(scope);
-  const execution =
-    scope.kind === "system"
-      ? createBackofficeSystemExecution(scope)
-      : createBackofficeServiceExecution({
-          scope,
-          service: { type: "automation", id: `pi-codemode-workflow:${scopeKey}` },
-        });
+  const execution: BackofficeExecutionContext = {
+    scope: params.scope,
+    actors: automationActorsSchema.parse(params.actors),
+  };
 
   if (!runtime) {
     throw new Error("Pi codemode workflow requires Backoffice runtime services.");

@@ -50,4 +50,22 @@ describe("requireBackofficeContext", () => {
       },
     });
   });
+
+  test("does not let an administrator enter another user's private scope", async () => {
+    requireAuthPrincipalMock.mockResolvedValue({
+      user: { id: "admin-1", email: "admin@example.com", role: "admin" },
+      auth: {
+        credentialKind: "jwt",
+        expiresAt: new Date("2099-01-01T00:00:00.000Z"),
+        sessionContext: { organizationIds: [] },
+      },
+    });
+
+    await expect(
+      requireBackofficeContext(new Request("https://backoffice.example/"), {} as never, {
+        kind: "user",
+        userId: "user-1",
+      }),
+    ).rejects.toMatchObject({ reason: "policy-denied" });
+  });
 });

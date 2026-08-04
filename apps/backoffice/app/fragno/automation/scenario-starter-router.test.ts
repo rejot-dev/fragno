@@ -823,7 +823,30 @@ describe("starter automation router scenarios", () => {
         }),
 
         setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.auth.user({
+            id: "owner-1",
+            email: "owner@example.com",
+          }),
+          given.auth.user({
+            id: "user-1",
+            email: "linked-user@example.com",
+          }),
+          given.auth.organization({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+            ownerRoles: ["owner"],
+          }),
+          given.auth.member({
+            orgId: "org-1",
+            userId: "user-1",
+            roles: ["member"],
+          }),
+          given.organization.exists({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+          }),
           given.telegram.configured({
             orgId: "org-1",
             botUsername: "fragno_bot",
@@ -845,11 +868,26 @@ describe("starter automation router scenarios", () => {
               organizationMember: true,
             },
           }),
+          then.auth.member({
+            orgId: "org-1",
+            userId: "user-1",
+            roles: ["member"],
+          }),
           then.auth.permissions({
             userId: "user-1",
             scope: { kind: "org", orgId: "org-1" },
             include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
+          }),
+          then.identity.resolves({
+            scope: { kind: "org", orgId: "org-1" },
+            identity: {
+              scope: "external",
+              source: "telegram",
+              type: "chat",
+              id: "1001",
+            },
+            userId: "user-1",
           }),
 
           when.capability.configured.pi({
@@ -873,6 +911,27 @@ describe("starter automation router scenarios", () => {
             from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
+          then.automation.event({
+            scope: { kind: "org", orgId: "org-1" },
+            where: {
+              source: "telegram",
+              eventType: "message.received",
+            },
+            expected: {
+              actors: {
+                initiator: {
+                  scope: "external",
+                  source: "telegram",
+                  type: "chat",
+                  id: "1001",
+                  role: "initiator",
+                },
+                principal: null,
+                delegation: [],
+              },
+              subject: null,
+            },
+          }),
           then.pi.createdSession({
             agent: "default::openai::gpt-5-mini",
             name: "Telegram 1001",
@@ -883,6 +942,24 @@ describe("starter automation router scenarios", () => {
             key: "telegram-pi-session/user-1",
             value: "pi-session-1",
           }),
+          then.kernel.action({
+            operation: BACKOFFICE_PERMISSION.store.modify,
+            scope: { kind: "org", orgId: "org-1" },
+            actors: {
+              initiator: {
+                scope: "external",
+                source: "telegram",
+                type: "chat",
+                id: "1001",
+                role: "initiator",
+              },
+              principal: {
+                scope: "internal",
+                type: "automation",
+                role: "principal",
+              },
+            },
+          }),
           then.telegram.sentMessage({
             chatId: "1001",
             text: "Created Pi session: pi-session-1",
@@ -890,6 +967,21 @@ describe("starter automation router scenarios", () => {
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-pi-linking",
             status: "complete",
+            params: {
+              automationEvent: {
+                actors: {
+                  initiator: {
+                    scope: "external",
+                    source: "telegram",
+                    type: "chat",
+                    id: "1001",
+                    role: "initiator",
+                  },
+                  principal: null,
+                  delegation: [],
+                },
+              },
+            },
             output: { sessionId: "pi-session-1" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
@@ -911,7 +1003,30 @@ describe("starter automation router scenarios", () => {
         }),
 
         setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.auth.user({
+            id: "owner-1",
+            email: "owner@example.com",
+          }),
+          given.auth.user({
+            id: "user-1",
+            email: "linked-user@example.com",
+          }),
+          given.auth.organization({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+            ownerRoles: ["owner"],
+          }),
+          given.auth.member({
+            orgId: "org-1",
+            userId: "user-1",
+            roles: ["member"],
+          }),
+          given.organization.exists({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+          }),
           given.telegram.configured({
             orgId: "org-1",
             botUsername: "fragno_bot",
@@ -924,6 +1039,27 @@ describe("starter automation router scenarios", () => {
         ],
 
         steps: ({ when, then }) => [
+          then.auth.authority({
+            userId: "user-1",
+            orgId: "org-1",
+            expected: {
+              active: true,
+              role: "user",
+              organizationMember: true,
+            },
+          }),
+          then.auth.member({
+            orgId: "org-1",
+            userId: "user-1",
+            roles: ["member"],
+          }),
+          then.auth.permissions({
+            userId: "user-1",
+            scope: { kind: "org", orgId: "org-1" },
+            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            exclude: [BACKOFFICE_PERMISSION.identity.bind],
+          }),
+
           when.telegram.receivesMessage({
             orgId: "org-1",
             updateId: 20_004,
@@ -961,7 +1097,30 @@ describe("starter automation router scenarios", () => {
           pi: fake.pi(),
         }),
         setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.auth.user({
+            id: "owner-1",
+            email: "owner@example.com",
+          }),
+          given.auth.user({
+            id: "user-1",
+            email: "linked-user@example.com",
+          }),
+          given.auth.organization({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+            ownerRoles: ["owner"],
+          }),
+          given.auth.member({
+            orgId: "org-1",
+            userId: "user-1",
+            roles: ["member"],
+          }),
+          given.organization.exists({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+          }),
           given.telegram.configured({
             orgId: "org-1",
             botUsername: "fragno_bot",
@@ -973,6 +1132,27 @@ describe("starter automation router scenarios", () => {
           }),
         ],
         steps: ({ when, then }) => [
+          then.auth.authority({
+            userId: "user-1",
+            orgId: "org-1",
+            expected: {
+              active: true,
+              role: "user",
+              organizationMember: true,
+            },
+          }),
+          then.auth.member({
+            orgId: "org-1",
+            userId: "user-1",
+            roles: ["member"],
+          }),
+          then.auth.permissions({
+            userId: "user-1",
+            scope: { kind: "org", orgId: "org-1" },
+            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            exclude: [BACKOFFICE_PERMISSION.identity.bind],
+          }),
+
           when.identity.revoke({
             orgId: "org-1",
             externalId: "1001",
@@ -1264,7 +1444,30 @@ describe("starter automation router scenarios", () => {
         }),
 
         setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.auth.user({
+            id: "owner-1",
+            email: "owner@example.com",
+          }),
+          given.auth.user({
+            id: "user-1",
+            email: "linked-user@example.com",
+          }),
+          given.auth.organization({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+            ownerRoles: ["owner"],
+          }),
+          given.auth.member({
+            orgId: "org-1",
+            userId: "user-1",
+            roles: ["member"],
+          }),
+          given.organization.exists({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+          }),
           given.telegram.configured({
             orgId: "org-1",
             botUsername: "fragno_bot",
@@ -1281,6 +1484,27 @@ describe("starter automation router scenarios", () => {
         ],
 
         steps: ({ when, then }) => [
+          then.auth.authority({
+            userId: "user-1",
+            orgId: "org-1",
+            expected: {
+              active: true,
+              role: "user",
+              organizationMember: true,
+            },
+          }),
+          then.auth.member({
+            orgId: "org-1",
+            userId: "user-1",
+            roles: ["member"],
+          }),
+          then.auth.permissions({
+            userId: "user-1",
+            scope: { kind: "org", orgId: "org-1" },
+            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            exclude: [BACKOFFICE_PERMISSION.identity.bind],
+          }),
+
           when.telegram.receivesMessage({
             orgId: "org-1",
             updateId: 20_002,
@@ -1352,7 +1576,30 @@ describe("starter automation router scenarios", () => {
         }),
 
         setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.auth.user({
+            id: "owner-1",
+            email: "owner@example.com",
+          }),
+          given.auth.user({
+            id: "user-1",
+            email: "linked-user@example.com",
+          }),
+          given.auth.organization({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+            ownerRoles: ["owner"],
+          }),
+          given.auth.member({
+            orgId: "org-1",
+            userId: "user-1",
+            roles: ["member"],
+          }),
+          given.organization.exists({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+          }),
           given.telegram.configured({
             orgId: "org-1",
             botUsername: "fragno_bot",
@@ -1369,6 +1616,27 @@ describe("starter automation router scenarios", () => {
         ],
 
         steps: ({ when, then }) => [
+          then.auth.authority({
+            userId: "user-1",
+            orgId: "org-1",
+            expected: {
+              active: true,
+              role: "user",
+              organizationMember: true,
+            },
+          }),
+          then.auth.member({
+            orgId: "org-1",
+            userId: "user-1",
+            roles: ["member"],
+          }),
+          then.auth.permissions({
+            userId: "user-1",
+            scope: { kind: "org", orgId: "org-1" },
+            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            exclude: [BACKOFFICE_PERMISSION.identity.bind],
+          }),
+
           when.telegram.receivesMessage({
             orgId: "org-1",
             updateId: 20_009,
@@ -1430,7 +1698,30 @@ describe("starter automation router scenarios", () => {
         }),
 
         setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.auth.user({
+            id: "owner-1",
+            email: "owner@example.com",
+          }),
+          given.auth.user({
+            id: "user-1",
+            email: "linked-user@example.com",
+          }),
+          given.auth.organization({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+            ownerRoles: ["owner"],
+          }),
+          given.auth.member({
+            orgId: "org-1",
+            userId: "user-1",
+            roles: ["member"],
+          }),
+          given.organization.exists({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+          }),
           given.telegram.configured({
             orgId: "org-1",
             botUsername: "fragno_bot",
@@ -1452,6 +1743,27 @@ describe("starter automation router scenarios", () => {
         ],
 
         steps: ({ when, then }) => [
+          then.auth.authority({
+            userId: "user-1",
+            orgId: "org-1",
+            expected: {
+              active: true,
+              role: "user",
+              organizationMember: true,
+            },
+          }),
+          then.auth.member({
+            orgId: "org-1",
+            userId: "user-1",
+            roles: ["member"],
+          }),
+          then.auth.permissions({
+            userId: "user-1",
+            scope: { kind: "org", orgId: "org-1" },
+            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            exclude: [BACKOFFICE_PERMISSION.identity.bind],
+          }),
+
           when.telegram.receivesMessage({
             orgId: "org-1",
             updateId: 20_011,
@@ -1507,7 +1819,30 @@ describe("starter automation router scenarios", () => {
           }),
 
           setup: ({ given }) => [
-            given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+            given.auth.user({
+              id: "owner-1",
+              email: "owner@example.com",
+            }),
+            given.auth.user({
+              id: "user-1",
+              email: "linked-user@example.com",
+            }),
+            given.auth.organization({
+              id: "org-1",
+              name: "Ada Labs",
+              ownerUserId: "owner-1",
+              ownerRoles: ["owner"],
+            }),
+            given.auth.member({
+              orgId: "org-1",
+              userId: "user-1",
+              roles: ["member"],
+            }),
+            given.organization.exists({
+              id: "org-1",
+              name: "Ada Labs",
+              ownerUserId: "owner-1",
+            }),
             given.telegram.configured({
               orgId: "org-1",
               botUsername: "fragno_bot",
@@ -1524,6 +1859,27 @@ describe("starter automation router scenarios", () => {
           ],
 
           steps: ({ when, then }) => [
+            then.auth.authority({
+              userId: "user-1",
+              orgId: "org-1",
+              expected: {
+                active: true,
+                role: "user",
+                organizationMember: true,
+              },
+            }),
+            then.auth.member({
+              orgId: "org-1",
+              userId: "user-1",
+              roles: ["member"],
+            }),
+            then.auth.permissions({
+              userId: "user-1",
+              scope: { kind: "org", orgId: "org-1" },
+              include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+              exclude: [BACKOFFICE_PERMISSION.identity.bind],
+            }),
+
             when.telegram.receivesMessage({
               orgId: "org-1",
               updateId: `terminal-${status}-1`,
@@ -1586,7 +1942,30 @@ describe("starter automation router scenarios", () => {
         }),
 
         setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.auth.user({
+            id: "owner-1",
+            email: "owner@example.com",
+          }),
+          given.auth.user({
+            id: "user-1",
+            email: "linked-user@example.com",
+          }),
+          given.auth.organization({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+            ownerRoles: ["owner"],
+          }),
+          given.auth.member({
+            orgId: "org-1",
+            userId: "user-1",
+            roles: ["member"],
+          }),
+          given.organization.exists({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+          }),
           given.telegram.configured({
             orgId: "org-1",
             botUsername: "fragno_bot",
@@ -1603,6 +1982,27 @@ describe("starter automation router scenarios", () => {
         ],
 
         steps: ({ when, then }) => [
+          then.auth.authority({
+            userId: "user-1",
+            orgId: "org-1",
+            expected: {
+              active: true,
+              role: "user",
+              organizationMember: true,
+            },
+          }),
+          then.auth.member({
+            orgId: "org-1",
+            userId: "user-1",
+            roles: ["member"],
+          }),
+          then.auth.permissions({
+            userId: "user-1",
+            scope: { kind: "org", orgId: "org-1" },
+            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            exclude: [BACKOFFICE_PERMISSION.identity.bind],
+          }),
+
           when.telegram.receivesMessage({
             orgId: "org-1",
             updateId: 20_014,
@@ -1679,7 +2079,31 @@ describe("starter automation router scenarios", () => {
           then.telegram.noMessages(),
           then.workflow.instance({
             remoteWorkflowName: "telegram-test-command",
+            instanceId: "telegram-test-message-20005",
             status: "waiting",
+            params: {
+              automationEvent: {
+                source: "telegram",
+                eventType: "message.received",
+                payload: {
+                  chatId: "1001",
+                  text: "/test",
+                },
+                actors: {
+                  initiator: {
+                    scope: "external",
+                    source: "telegram",
+                    type: "chat",
+                    id: "1001",
+                    role: "initiator",
+                  },
+                  principal: null,
+                  delegation: [],
+                },
+              },
+              workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
+              workflowInstanceId: "telegram-test-message-20005",
+            },
           }),
           then.workflow.steps({
             remoteWorkflowName: "telegram-test-command",
@@ -1694,6 +2118,7 @@ describe("starter automation router scenarios", () => {
           }),
           then.workflow.instance({
             remoteWorkflowName: "telegram-test-command",
+            instanceId: "telegram-test-message-20005",
             status: "complete",
             output: { sent: true },
           }),

@@ -10,6 +10,7 @@ import {
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import {
   createBackofficeFileSystem,
   createMasterFileSystem,
@@ -20,6 +21,11 @@ import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-hos
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import type { AutomationEvent } from "./contracts";
+import {
+  setUpScenarioAuthMember,
+  setUpScenarioAuthOrganization,
+  setUpScenarioAuthUser,
+} from "./scenario-auth";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -88,6 +94,26 @@ describe("system automation scenarios", () => {
     });
 
     try {
+      await setUpScenarioAuthUser(runtime, {
+        id: "owner-1",
+        email: "owner@example.com",
+      });
+      await setUpScenarioAuthUser(runtime, {
+        id: "user-1",
+        email: "member@example.com",
+      });
+      await setUpScenarioAuthOrganization(runtime, {
+        id: orgId,
+        name: "Ada Labs",
+        ownerUserId: "owner-1",
+        ownerRoles: ["owner"],
+      });
+      await setUpScenarioAuthMember(runtime, {
+        orgId,
+        userId: "user-1",
+        roles: ["member"],
+      });
+
       const systemAutomations = runtime.objects.automations.singleton();
       await systemAutomations.ingestEvent({
         id: `system:auth:organization.created:${orgId}`,
@@ -102,7 +128,7 @@ describe("system automation scenarios", () => {
             slug: "ada-labs",
             logoUrl: null,
             metadata: null,
-            createdBy: "user-1",
+            createdBy: "owner-1",
             createdAt: "2026-01-01T00:00:00.000Z",
             updatedAt: "2026-01-01T00:00:00.000Z",
             deletedAt: null,
@@ -112,7 +138,7 @@ describe("system automation scenarios", () => {
           initiator: {
             scope: "internal",
             type: "user",
-            id: "user-1",
+            id: "owner-1",
             role: "initiator",
           },
           principal: null,
@@ -159,13 +185,23 @@ describe("system automation scenarios", () => {
       // workspace automation. Seeded files are group-owned by the org, so the
       // member's group-write bit applies instead of the read-only "other" bits
       // that previously failed their save with EACCES.
+      const memberExecution = createBackofficeUserExecution({
+        scope: { kind: "org", orgId },
+        userId: "user-1",
+      });
+      const memberPrincipal = memberExecution.actors.principal;
+      assert(memberPrincipal);
+      await expect(
+        runtime.services.authorityResolver.resolvePrincipalPermissions({
+          principal: memberPrincipal,
+          execution: memberExecution,
+        }),
+      ).resolves.toContainEqual(BACKOFFICE_PERMISSION.store.modify);
+
       const memberFs = await createMasterFileSystem(
         createSystemFilesContext({
           objects: runtime.objects,
-          execution: createBackofficeUserExecution({
-            scope: { kind: "org", orgId },
-            userId: "user-1",
-          }),
+          execution: memberExecution,
           staticFileArtifacts: () => ({}),
         }),
       );
@@ -258,10 +294,24 @@ describe("system automation scenarios", () => {
         files: backofficeFiles.systemOnly(),
 
         setup: ({ given }) => [
-          given.organization.exists({
+          given.auth.user({
+            id: "user-1",
+            email: "ada@example.com",
+          }),
+          given.auth.user({
+            id: "scenario-user",
+            email: "scenario-user@example.com",
+          }),
+          given.auth.organization({
             id: "org-1",
             name: "Ada Labs",
             ownerUserId: "user-1",
+            ownerRoles: ["owner"],
+          }),
+          given.auth.member({
+            orgId: "org-1",
+            userId: "scenario-user",
+            roles: ["member"],
           }),
         ],
 
@@ -273,6 +323,28 @@ describe("system automation scenarios", () => {
             ownerEmail: "ada@example.com",
           }),
 
+          then.automation.event({
+            scope: { kind: "system" },
+            where: {
+              id: "auth:organization.created:org-1",
+            },
+            expected: {
+              scope: { kind: "system" },
+              source: "auth",
+              eventType: "organization.created",
+              actors: {
+                initiator: {
+                  scope: "internal",
+                  type: "user",
+                  id: "user-1",
+                  role: "initiator",
+                },
+                principal: null,
+                delegation: [],
+              },
+              subject: { orgId: "org-1" },
+            },
+          }),
           then.workflow.instance({
             remoteWorkflowName: "workspace-file-initialization",
             status: "complete",
@@ -354,12 +426,32 @@ describe("system automation scenarios", () => {
             path: "/static/codemode/system.d.ts",
             text: "declare",
           }),
+          then.auth.authority({
+            userId: "scenario-user",
+            orgId: "org-1",
+            expected: {
+              active: true,
+              role: "user",
+              organizationMember: true,
+            },
+          }),
+          then.auth.member({
+            orgId: "org-1",
+            userId: "scenario-user",
+            roles: ["member"],
+          }),
+          then.auth.permissions({
+            userId: "scenario-user",
+            scope: { kind: "org", orgId: "org-1" },
+            include: [BACKOFFICE_PERMISSION.store.modify],
+            exclude: [BACKOFFICE_PERMISSION.identity.bind],
+          }),
           then.assert(
             "workspace automations directory is writable through dashboard bash",
             async (ctx) => {
               const orgId = "org-1";
               const kernel = new BackofficeKernel({
-                authorityResolver: unavailableBackofficeAuthorityResolver,
+                authorityResolver: ctx.runtime.services.authorityResolver,
                 kernelObserver: noopBackofficeKernelObserver,
               });
               const execution = createBackofficeUserExecution({

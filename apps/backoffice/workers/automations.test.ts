@@ -16,6 +16,7 @@ import { TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE } from "@/files/content/tele
 import { loadAutomationCatalog } from "@/fragno/automation/catalog";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 import { createAutomationRuntimeExecution } from "@/fragno/automation/engine/runtime-execution";
+import { PI_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
 import {
   buildMarketplaceIngestionWorkflowInstanceId,
   MARKETPLACE_INGEST_WORKFLOW_NAME,
@@ -505,6 +506,91 @@ describe("Automations fetchWithContext authorization", () => {
         { query: { key: "user/key" } },
       );
       expect(response).toMatchObject({ type: "error", status: 404 });
+    } finally {
+      await runtime.cleanup();
+    }
+  });
+
+  test("rejects raw Pi codemode creation and overwrites caller-authored actors in trusted creation", async () => {
+    const runtime = await createInMemoryBackofficeRuntime({
+      authorityResolver: {
+        async resolvePrincipalPermissions() {
+          return [BACKOFFICE_PERMISSION.workflow.modify];
+        },
+        async resolveActorCapabilityGrants() {
+          return [];
+        },
+      },
+    });
+
+    try {
+      const scope = { kind: "org" as const, orgId: "org-1" };
+      const execution = createBackofficeUserExecution({ scope, userId: "user-1" });
+      const automations = runtime.objects.automations.forOrg(scope.orgId);
+      const forgedActors = {
+        initiator: {
+          scope: "internal" as const,
+          type: "system",
+          id: "backoffice",
+          role: "initiator" as const,
+        },
+        principal: {
+          scope: "internal" as const,
+          type: "automation",
+          id: "forged-automation",
+          role: "principal" as const,
+        },
+        delegation: [],
+      };
+      const body = {
+        id: "trusted-pi-codemode",
+        remoteWorkflowName: "forged-run",
+        params: {
+          scope,
+          actors: forgedActors,
+          code: "async () => undefined",
+          sessionId: "session-1",
+          toolCallId: "tool-call-1",
+        },
+      };
+
+      const rawCall = createWorkflowsRouteCaller({ object: automations });
+      await expect(
+        rawCall("POST", "/:workflowName/instances", {
+          pathParams: { workflowName: PI_CODEMODE_WORKFLOW },
+          body,
+        }),
+      ).resolves.toMatchObject({
+        type: "error",
+        status: 403,
+        error: { code: "context-access-denied" },
+      });
+
+      const trustedCall = createWorkflowsRouteCaller({
+        object: automations,
+        context: { execution },
+      });
+      await expect(
+        trustedCall("POST", "/:workflowName/instances", {
+          pathParams: { workflowName: PI_CODEMODE_WORKFLOW },
+          body,
+        }),
+      ).resolves.toMatchObject({ type: "json", data: { id: body.id } });
+
+      const instance = await rawCall("GET", "/:workflowName/instances/:instanceId", {
+        pathParams: { workflowName: PI_CODEMODE_WORKFLOW, instanceId: body.id },
+      });
+      expect(instance).toMatchObject({
+        type: "json",
+        data: {
+          meta: {
+            params: {
+              scope,
+              actors: execution.actors,
+            },
+          },
+        },
+      });
     } finally {
       await runtime.cleanup();
     }

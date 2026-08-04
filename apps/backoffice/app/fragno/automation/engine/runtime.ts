@@ -111,6 +111,7 @@ export const createAutomationRuntimeHostContext = ({
   idempotencyKey,
   runtime,
   runtimeServices,
+  kernel,
   pi,
 }: {
   event: AutomationEvent;
@@ -118,14 +119,23 @@ export const createAutomationRuntimeHostContext = ({
   idempotencyKey: string;
   runtime: AutomationRuntime;
   runtimeServices?: BackofficeRuntimeServices;
+  kernel?: BackofficeKernel;
   pi: AutomationPiBashContext | null;
 }): AutomationRuntimeHostContext => {
   const execution = createAutomationRuntimeExecution(event);
+  const backofficeKernel =
+    kernel ??
+    new BackofficeKernel(
+      runtimeServices ?? {
+        authorityResolver: unavailableBackofficeAuthorityResolver,
+        kernelObserver: noopBackofficeKernelObserver,
+      },
+    );
 
   const routeBacked = runtimeServices
     ? createRouteBackedRuntimeContext({
         runtime: runtimeServices,
-        kernel: new BackofficeKernel(runtimeServices),
+        kernel: backofficeKernel,
         execution,
         ...(pi ? { pi: { runtime: pi.runtime } } : {}),
       })
@@ -134,10 +144,7 @@ export const createAutomationRuntimeHostContext = ({
   return {
     ...(routeBacked ?? {
       execution,
-      backofficeKernel: new BackofficeKernel({
-        authorityResolver: unavailableBackofficeAuthorityResolver,
-        kernelObserver: noopBackofficeKernelObserver,
-      }),
+      backofficeKernel,
       createBackofficeScopedContext: () => {
         throw new BackofficeForbiddenError("Backoffice runtime services are not configured.");
       },

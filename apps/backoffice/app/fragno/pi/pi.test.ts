@@ -15,6 +15,7 @@ import type { UploadFileRecord } from "@/fragno/upload/file-record";
 import { createTestMasterFileSystem } from "../automation/engine/test-master-file-system.test-utils";
 import {
   createPiRuntime,
+  createPiToolFactory,
   createPiToolRegistry,
   type PiBashCommandContext,
   type PiSessionFileSystemContext,
@@ -181,6 +182,7 @@ describe("Backoffice Pi fragment", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ metadata: { agentName: "default::openai::bla" }, input: {} }),
       }),
+      { requestContext: context.execution },
     );
 
     assert(response.status === 400);
@@ -189,15 +191,36 @@ describe("Backoffice Pi fragment", () => {
       message: "Model openai/bla not found.",
     });
 
-    const listResponse = await runtime.piFragment.callRoute(
-      "GET",
-      "/workflows/:workflowName/sessions",
-      {
-        pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME },
-      },
+    const listResponse = await runtime.workflowsFragment.callServices(() =>
+      runtime.workflowsFragment.services.listInstances({
+        workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
+      }),
     );
-    assert(listResponse.type === "json");
-    expect(listResponse.data).toEqual([]);
+    expect(listResponse.instances).toEqual([]);
+  });
+});
+
+describe("Backoffice Pi execution", () => {
+  test("builds Bash tools from the session creator execution", async () => {
+    const sessionExecution = createBackofficeUserExecution({
+      scope: { kind: "org", orgId: "acme-org" },
+      userId: "session-creator",
+    });
+    let receivedExecution: typeof sessionExecution | undefined;
+    const sessionId = "session-execution";
+    const createTools = createPiToolFactory({
+      sessionFileSystems: new Map([[sessionId, Promise.resolve(createTestMasterFileSystem({}))]]),
+      sessionFileSystemContext: createContext(),
+      env: createMockEnv(),
+      bashCommandContext: (execution) => {
+        receivedExecution = execution;
+        return createMockBashContext();
+      },
+    });
+
+    await createTools({ sessionId, execution: sessionExecution });
+
+    expect(receivedExecution).toEqual(sessionExecution);
   });
 });
 

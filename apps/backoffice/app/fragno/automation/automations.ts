@@ -19,6 +19,7 @@ import {
   defineAutomationCodemodeWorkflow,
   definePiCodemodeWorkflow,
 } from "@/fragno/automation/engine/workflow";
+import { PI_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
 
 import { defineMarketplaceIngestWorkflow } from "./marketplace-ingest-workflow";
 import { defineMarketplacePublishWorkflow } from "./marketplace-publish-workflow";
@@ -38,7 +39,7 @@ const AUTOMATIONS_AUTHORIZATION_STATUS_BY_REASON = {
 } as const satisfies Record<BackofficeAuthorizationDenialReason, 403 | 503>;
 
 export type AutomationsRuntime = {
-  workflowsFragment: ReturnType<typeof createWorkflowsFragment>;
+  workflowsFragment: ReturnType<typeof createWorkflowsFragment<BackofficeExecutionContext>>;
   automationFragment: AutomationFragmentWithExecutionContext;
   dispatcher: DurableHooksDispatcherDurableObjectHandler | null;
 };
@@ -61,12 +62,12 @@ export const createAutomationsRuntime = (
     | "ownerScope"
     | "sandboxProviders"
   > & { kernel: BackofficeKernel },
-) => {
+): AutomationsRuntime => {
   const databaseAdapter = runtime.adapters.createAdapter({
     kind: "automations",
   });
   let automationFragment: AutomationFragmentWithExecutionContext | undefined;
-  const workflowsFragment = createWorkflowsFragment(
+  const workflowsFragment = createWorkflowsFragment<BackofficeExecutionContext>(
     {
       workflows: {
         AUTOMATION_CODEMODE_SCRIPT: defineAutomationCodemodeWorkflow(config),
@@ -108,7 +109,66 @@ export const createAutomationsRuntime = (
       mountRoute: "/api/automations-workflows",
       outbox: { enabled: true },
     },
-  );
+  ).withMiddleware(async function authorizePiCodemodeWorkflowCreation(
+    { ifMatchesRoute, requestContext, requestState },
+    { error },
+  ) {
+    return await ifMatchesRoute(
+      "POST",
+      "/:workflowName/instances",
+      async ({ input, pathParams }) => {
+        if (pathParams.workflowName !== PI_CODEMODE_WORKFLOW) {
+          return undefined;
+        }
+        if (!requestContext) {
+          return error(
+            {
+              message: "Pi codemode workflow creation requires trusted action context.",
+              code: "context-access-denied",
+            },
+            403,
+          );
+        }
+
+        try {
+          await config.kernel.assertAuthorized({
+            execution: requestContext,
+            operation: BACKOFFICE_PERMISSION.workflow.modify,
+            resource: { kind: "workflow", workflowName: PI_CODEMODE_WORKFLOW },
+          });
+        } catch (cause) {
+          if (cause instanceof BackofficeForbiddenError) {
+            return error(
+              { message: cause.message, code: cause.reason },
+              AUTOMATIONS_AUTHORIZATION_STATUS_BY_REASON[cause.reason],
+            );
+          }
+          throw cause;
+        }
+
+        const values = await input.valid();
+        if (!values.params || typeof values.params !== "object" || Array.isArray(values.params)) {
+          return error(
+            {
+              message: "Pi codemode workflow params must be an object.",
+              code: "WORKFLOW_PARAMS_INVALID",
+            },
+            400,
+          );
+        }
+
+        requestState.setBody({
+          ...values,
+          params: {
+            ...values.params,
+            scope: requestContext.scope,
+            actors: requestContext.actors,
+          },
+        });
+        return undefined;
+      },
+    );
+  });
   automationFragment = createAutomationFragment<BackofficeExecutionContext>(
     {
       env: config.env,

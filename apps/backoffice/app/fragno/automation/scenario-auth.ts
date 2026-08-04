@@ -45,7 +45,14 @@ export type ScenarioAuthMemberRemoveInput = Pick<ScenarioAuthMemberInput, "orgId
 type ScenarioAuthServices = AuthFragment["services"];
 
 export const normalizeScenarioAuthRoles = (roles: readonly string[]): string[] =>
-  [...new Set(roles.map((role) => role.trim()).filter(Boolean))].sort();
+  [
+    ...new Set(
+      roles.flatMap((role) => {
+        const normalizedRole = role.trim();
+        return normalizedRole ? [normalizedRole] : [];
+      }),
+    ),
+  ].sort();
 
 // Use the fragment owned by the Auth object so scenarios share its services and persistence rules.
 // Scenario state controls suppress lifecycle hooks so they do not introduce unstated events.
