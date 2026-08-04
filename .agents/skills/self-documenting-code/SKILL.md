@@ -14,6 +14,9 @@ the system.
 
 Load the matching reference before working on its branch:
 
+- For speculative fields or capabilities, premature protocols or options, or implementation choices
+  unsupported by required behavior, read
+  [`references/present-tense-design.md`](references/present-tense-design.md).
 - For runtime validation, internal storage types, result mapping, or mutation return shapes, read
   [`references/trust-boundaries-and-result-shapes.md`](references/trust-boundaries-and-result-shapes.md).
 - For function extraction, orchestration boundaries, direct imports, package exports, or breaking
@@ -35,19 +38,26 @@ Before shaping persistent data, identify:
 Treat each read path as a graph the model must support explicitly. Design the schema from actual
 behavior rather than isolated record shapes.
 
+**Use least commitment.** Encode required behavior, known invariants, and external contracts
+exactly. When several designs satisfy them, choose the one that leaves everything else unspecified.
+A caller or test introduced by the change is not independent demand; trace each commitment to
+observable behavior or an authoritative contract.
+
 **Complete when:** every changed entry point has an accounted-for read graph, write boundary,
-invariant set, and side-effect destination.
+invariant set, and side-effect destination, every added commitment traces to required behavior, a
+known invariant, or an external contract, and the design makes no claims beyond them.
 
 ## 2. Shape the models
 
-Give each model one precise domain meaning. Its name should make every field feel inevitable.
+Make each model exact about its known domain meaning and silent about unresolved distinctions. Its
+name should make every field feel inevitable.
 
-- Represent distinct states with distinct types.
-- Prefer required fields and discriminated variants over loosely related optional fields.
+- Represent known distinct states with distinct types.
+- Use required fields for known invariants and discriminated variants for known state distinctions.
 - Compose independent concepts instead of flattening them into one model.
-- Brand structurally identical primitives when swapping them would be a domain error.
-- Give records one clear application-facing identity; keep storage metadata an implementation
-  detail.
+- Brand structurally identical primitives when swapping them is a known domain error.
+- Give records one clear application-facing identity when the domain defines one; keep storage
+  metadata an implementation detail.
 - Encode known domain types at the schema boundary, including structured or JSON-backed fields.
 - Split a model when its fields no longer cohere around its name.
 
@@ -55,9 +65,9 @@ For persistent models, encode every required traversal as an explicit relation. 
 each filter, ordering, join, uniqueness check, and pagination path. A relation expresses meaning;
 its indexes make that meaning operationally viable.
 
-**Complete when:** every changed model excludes invalid field combinations, distinguishes
-incompatible domain values, contains only fields implied by its name, and supports every required
-access path explicitly and efficiently.
+**Complete when:** every changed model excludes known-invalid field combinations, distinguishes
+values known to be incompatible, leaves unresolved distinctions unencoded, contains only fields
+implied by its name, and supports every required access path explicitly and efficiently.
 
 ## 3. Build the semantic core
 
@@ -96,14 +106,18 @@ to understand. Extraction adds independence rather than merely reducing indentat
 
 ## 4. Respect trust boundaries
 
-Resolve every `unknown` value immediately where it is obtained. Choose exactly one boundary
-operation:
+At acquisition, establish only the contract an `unknown` value needs for the current operation.
+Choose one boundary treatment:
 
-- **cast immediately** when the source contract is trusted but its static type is incomplete;
-- **parse or validate immediately** when the value itself must earn trust.
+- **cast immediately** to the required type when an authoritative source contract is trusted but its
+  static type is incomplete;
+- **parse or validate immediately** to the required projection when the runtime value must earn
+  trust;
+- **preserve it as opaque** when the operation stores or forwards it without interpretation.
 
-The resulting precise type crosses into internal code and remains authoritative through downstream
-layers. The cast or parse marks the exact point where trust was established.
+A cast or parse marks the exact point and scope where trust was established. The resulting type
+remains authoritative within that scope; opaque data acquires a stronger type only at the boundary
+that interprets it.
 
 **Program to established trust.** Internal code uses that precise contract directly. When a
 downstream consumer appears to need shape checks, fallback coercions, optional access for required
@@ -118,14 +132,14 @@ Construct known result shapes directly:
 - query only the fields required for the decision or mutation;
 - return immediately known mutation values directly, including generated identifiers;
 - omit values represented only by unresolved database expressions until a later read resolves them;
-- strengthen weak types at their schema or adapter source rather than compensating in every
+- strengthen imprecise types at their schema or adapter source rather than compensating in every
   consumer.
 
-**Complete when:** every obtained `unknown` is cast or validated at its acquisition boundary,
-downstream code relies on the resulting authoritative type without defensive shape checks or
-fallback coercions, genuine domain and operational failures remain explicit, reads fetch only
-operation-relevant state, and returned shapes contain all useful resolved values without pretending
-unresolved values are concrete.
+**Complete when:** every obtained `unknown` is cast, validated, or deliberately preserved as opaque
+at its acquisition boundary, downstream code relies on only the trust established there without
+defensive shape checks or fallback coercions, genuine domain and operational failures remain
+explicit, reads fetch only operation-relevant state, and returned shapes contain the resolved values
+required by the current result contract without pretending unresolved values are concrete.
 
 ## 5. Keep definitions canonical
 
@@ -146,20 +160,22 @@ consumers use its current name directly, and obsolete compatibility layers have 
 
 ## 6. Design for concrete tests
 
-Make dependencies explicit so tests can assemble the operation with concrete collaborators. Pass
-clocks, identity generators, storage, transports, and external services through visible boundaries
-rather than acquiring them from hidden global state.
+Make explicit, at the boundary that owns them, the nondeterminism and infrastructure that changed
+behavior depends on. Pass required clocks, identity generators, storage, transports, and external
+services through visible boundaries rather than acquiring them from hidden global state.
 
 Favor pure semantic functions and small adapters around infrastructure. Provide lightweight local or
-in-memory implementations of dependency contracts where useful, and exercise the same public
-behavior production uses. This keeps module interception, monkey-patching, and behavioral mocks
+in-memory implementations when current tests or development environments need substitution, and give
+the shared contract only the operations those collaborators require. Exercise the same public
+behavior production uses so module interception, monkey-patching, and behavioral mocks remain
 unnecessary.
 
 Co-locate each test with the source it specifies so behavior and verification move together, such as
 `route.ts` beside `route.test.ts`.
 
-**Complete when:** changed behavior is testable through explicit inputs and concrete collaborators,
-tests sit beside their source, and the same production paths run under test.
+**Complete when:** changed behavior is testable through explicit inputs and collaborator contracts
+containing only the operations it requires, tests sit beside their source, and the same production
+paths run under test.
 
 ## 7. Make transactions read like plans
 
