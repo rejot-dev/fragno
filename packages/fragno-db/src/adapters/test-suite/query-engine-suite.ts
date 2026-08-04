@@ -5,7 +5,7 @@ import superjson, { type SuperJSONResult } from "superjson";
 import { DatabaseConstraintError } from "../../errors";
 import { internalSchema } from "../../fragments/internal-fragment";
 import { getOutboxStateForAdapter } from "../../internal/outbox-state";
-import type { OutboxPayload } from "../../outbox/outbox";
+import type { OutboxMutation, OutboxPayload } from "../../outbox/outbox";
 import { Cursor } from "../../query/cursor";
 import {
   createHandlerTxBuilder,
@@ -523,18 +523,24 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         });
         assert((await create.executeMutations()).success);
 
-        const [entries] = await adapter
+        const [entries, mutationRows] = await adapter
           .createUnitOfWork(internalSchema, null, "read-outbox-now-entry")
           .find("fragno_db_outbox", (b) =>
             b.whereIndex("idx_outbox_uow", (eb) => eb("uowId", "=", uowId)),
           )
+          .find("fragno_db_outbox_mutations", (b) =>
+            b.whereIndex("idx_outbox_mutations_uow", (eb) => eb("uowId", "=", uowId)),
+          )
           .executeRetrieve();
 
         expect(entries).toHaveLength(1);
-        const payload = superjson.deserialize(
-          entries[0].payload as SuperJSONResult,
-        ) as OutboxPayload;
-        const mutation = payload.mutations[0];
+        expect(superjson.deserialize<OutboxPayload>(entries[0].payload as SuperJSONResult)).toEqual(
+          { version: 1, mutations: [] },
+        );
+        expect(mutationRows).toHaveLength(1);
+        const mutation = superjson.deserialize<OutboxMutation>(
+          mutationRows[0].payload as SuperJSONResult,
+        );
         assert(mutation.op === "create");
         expect(mutation.values["created_at"]).toBeInstanceOf(Date);
         expect(mutation.values["created_at"]).not.toMatchObject({ tag: "db-now" });
@@ -577,18 +583,24 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           runtime_label: "runtime-generated",
         });
 
-        const [entries] = await adapter
+        const [entries, mutationRows] = await adapter
           .createUnitOfWork(internalSchema, null, "read-outbox-default-entry")
           .find("fragno_db_outbox", (b) =>
             b.whereIndex("idx_outbox_uow", (eb) => eb("uowId", "=", uowId)),
           )
+          .find("fragno_db_outbox_mutations", (b) =>
+            b.whereIndex("idx_outbox_mutations_uow", (eb) => eb("uowId", "=", uowId)),
+          )
           .executeRetrieve();
 
         expect(entries).toHaveLength(1);
-        const payload = superjson.deserialize(
-          entries[0].payload as SuperJSONResult,
-        ) as OutboxPayload;
-        const mutation = payload.mutations.find((candidate) => candidate.table === "emails");
+        expect(superjson.deserialize<OutboxPayload>(entries[0].payload as SuperJSONResult)).toEqual(
+          { version: 1, mutations: [] },
+        );
+        const mutations = mutationRows.map((row) =>
+          superjson.deserialize<OutboxMutation>(row.payload as SuperJSONResult),
+        );
+        const mutation = mutations.find((candidate) => candidate.table === "emails");
         assert(mutation?.op === "create");
         expect(mutation.values).toMatchObject({
           is_primary: false,
@@ -1985,6 +1997,49 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         expect(users[0]?.emails).toMatchObject([
           { email: "ordered-child-c@example.com" },
           { email: "ordered-child-b@example.com" },
+        ]);
+      } finally {
+        await close?.();
+      }
+    });
+
+    it("preserves child joinMany ordering without pagination", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const create = createSuiteUnitOfWork(adapter, "create-unpaginated-ordered-child-joins");
+        create.create("users", {
+          id: "unpaginated-ordered-child-user",
+          name: "Unpaginated Ordered Child",
+          email: "unpaginated-ordered-child@example.com",
+          age: 1,
+        });
+        for (const suffix of ["a", "b", "c"] as const) {
+          create.create("emails", {
+            id: `unpaginated-ordered-child-email-${suffix}`,
+            user_id: "unpaginated-ordered-child-user",
+            email: `unpaginated-ordered-child-${suffix}@example.com`,
+            is_primary: false,
+          });
+        }
+        await create.executeMutations();
+
+        const [users] = await createSuiteUnitOfWork(adapter, "read-unpaginated-ordered-child-joins")
+          .find("users", (b) =>
+            b
+              .whereIndex("primary", (eb) => eb("id", "=", "unpaginated-ordered-child-user"))
+              .joinMany("emails", "emails", (emails) =>
+                emails
+                  .onIndex("emails_user_idx", (eb) => eb("user_id", "=", eb.parent("id")))
+                  .select(["id"])
+                  .orderByIndex("emails_email_idx", "desc"),
+              ),
+          )
+          .executeRetrieve();
+
+        expect(users[0]?.emails.map((email) => email.id.externalId)).toEqual([
+          "unpaginated-ordered-child-email-c",
+          "unpaginated-ordered-child-email-b",
+          "unpaginated-ordered-child-email-a",
         ]);
       } finally {
         await close?.();
