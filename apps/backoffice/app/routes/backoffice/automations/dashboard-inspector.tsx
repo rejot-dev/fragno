@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
@@ -351,6 +352,7 @@ function WorkflowGraph({
         runtimeToolCallsByStepId={runtimeToolCallsByStepId}
         selectedRun={workflowRuns.selectedRun}
         scrollViewport={graphViewport}
+        currentScope={isBackofficeRoutableScope(scope) ? scope : undefined}
         workflowEventSender={async ({ eventId, workflowName, instanceId, eventType, payload }) => {
           await sendBackofficeWorkflowEvent({
             eventId,

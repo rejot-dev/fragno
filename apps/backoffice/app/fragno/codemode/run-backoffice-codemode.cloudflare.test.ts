@@ -23,6 +23,7 @@ import { type EventRuntime } from "@/fragno/runtime-tools/families/event";
 import type { McpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import { type OtpRuntime } from "@/fragno/runtime-tools/families/otp";
 import { type TelegramRuntime } from "@/fragno/runtime-tools/families/telegram";
+import type { UploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
@@ -270,6 +271,64 @@ describe("runBackofficeCodemode", () => {
         status: "success",
       },
     ]);
+  });
+
+  test("preserves prepared upload bytes through codemode providers", async () => {
+    const uploadRuntime: UploadRuntime = {
+      readPrepared: async ({ file, encoding }) => {
+        expect(encoding).toBe("bytes");
+        return {
+          file,
+          encoding: "bytes",
+          bytes: new Uint8Array([0, 1, 2, 255]),
+          byteLength: 4,
+        };
+      },
+      commitPrepared: async ({ file }) => ({
+        kind: "uploaded-file",
+        scope: file.scope,
+        uploadId: file.uploadId,
+        provider: file.provider,
+        fileKey: file.fileKey,
+        filename: file.filename,
+        sizeBytes: file.sizeBytes,
+        contentType: file.contentType,
+      }),
+      discardPrepared: async ({ file }) => ({ discarded: true, uploadId: file.uploadId }),
+    };
+    const systemContext = createTrustedSystemBackofficeToolContext({
+      runtimes: { upload: uploadRuntime },
+    });
+
+    const result = await runBackofficeCodemode({
+      env,
+      fs: createTestMasterFileSystem({}),
+      families: runtimeToolFamilies,
+      toolContext: systemContext.createScopedContext({ kind: "org", orgId: "org-1" }),
+      code: `async () => {
+        const prepared = await upload.readPrepared({
+          file: {
+            kind: "prepared-upload",
+            scope: { kind: "org", orgId: "org-1" },
+            uploadId: "upload-1",
+            provider: "database",
+            fileKey: "generated-ui/audio.oga",
+            filename: "audio.oga",
+            sizeBytes: 4,
+            contentType: "audio/ogg",
+            expiresAt: "2027-01-01T00:00:00.000Z",
+          },
+          encoding: "bytes",
+        });
+        return {
+          isUint8Array: prepared.bytes instanceof Uint8Array,
+          bytes: Array.from(prepared.bytes),
+        };
+      }`,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toEqual({ isUint8Array: true, bytes: [0, 1, 2, 255] });
   });
 
   test("calls telegram tools through codemode providers", async () => {

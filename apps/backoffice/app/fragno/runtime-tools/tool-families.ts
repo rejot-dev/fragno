@@ -30,6 +30,8 @@ import { resendToolFamily, type ResendRuntime } from "./families/resend";
 import { reson8ToolFamily, type Reson8Runtime } from "./families/reson8";
 import { sandboxToolFamily, type SandboxRuntime } from "./families/sandbox";
 import { telegramToolFamily, type TelegramRuntime } from "./families/telegram";
+import { uploadToolFamily } from "./families/upload";
+import type { UploadRuntime } from "./families/upload-runtime";
 import { webToolFamily, type WebRuntime } from "./families/web";
 import {
   getAvailableRuntimeTools,
@@ -54,6 +56,7 @@ export type CoreBackofficeRuntimeMap = {
   reson8?: Reson8Runtime;
   sandbox?: SandboxRuntime;
   telegram?: TelegramRuntime;
+  upload?: UploadRuntime;
   web?: WebRuntime;
 };
 
@@ -78,6 +81,7 @@ export const runtimeToolFamilies = [
   reson8ToolFamily,
   sandboxToolFamily,
   telegramToolFamily,
+  uploadToolFamily,
   internalToolFamily,
 ] as const satisfies readonly BackofficeRuntimeToolFamily[];
 
@@ -99,6 +103,7 @@ const namespaceCapabilityIds = {
   reson8: "reson8",
   sandbox: "sandbox",
   telegram: "telegram",
+  upload: "upload",
 } as const;
 
 export const getRuntimeToolNamespacesByCapability = () => {

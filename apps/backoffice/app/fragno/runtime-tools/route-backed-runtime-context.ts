@@ -31,6 +31,7 @@ import {
   createTelegramRuntime,
   createUnavailableTelegramRuntime,
 } from "@/fragno/runtime-tools/families/telegram-runtime";
+import { createUploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
 
 import type { InteractiveRuntimeToolContext } from "./bash-host";
@@ -228,6 +229,14 @@ export const createRouteBackedRuntimeContext = ({
                   orgId: selectedOrg.orgId,
                 })
               : unavailableRuntime(unavailableMessage("SANDBOX", execution)),
+          }
+        : null,
+    upload:
+      runtime.config.bindings.upload && isBackofficeRoutableScope(execution.scope)
+        ? {
+            runtime: createUploadRuntime(
+              kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload),
+            ),
           }
         : null,
     telegram:

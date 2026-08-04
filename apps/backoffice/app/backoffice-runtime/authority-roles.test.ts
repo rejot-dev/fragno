@@ -11,6 +11,8 @@ const currentKernelPermissions = [
   BACKOFFICE_PERMISSION.otp.create,
   BACKOFFICE_PERMISSION.store.modify,
   BACKOFFICE_PERMISSION.telegram.send,
+  BACKOFFICE_PERMISSION.upload.modify,
+  BACKOFFICE_PERMISSION.upload.read,
 ];
 
 const automationRuntimePermissions = [
@@ -23,6 +25,8 @@ const automationRuntimePermissions = [
   BACKOFFICE_PERMISSION.store.modify,
   BACKOFFICE_PERMISSION.store.read,
   BACKOFFICE_PERMISSION.telegram.send,
+  BACKOFFICE_PERMISSION.upload.modify,
+  BACKOFFICE_PERMISSION.upload.read,
 ];
 
 const automationAuthoringPermissions = [
@@ -39,6 +43,8 @@ const automationAuthoringPermissions = [
   BACKOFFICE_PERMISSION.store.modify,
   BACKOFFICE_PERMISSION.store.read,
   BACKOFFICE_PERMISSION.telegram.send,
+  BACKOFFICE_PERMISSION.upload.modify,
+  BACKOFFICE_PERMISSION.upload.read,
   BACKOFFICE_PERMISSION.workflow.modify,
   BACKOFFICE_PERMISSION.workflow.read,
 ];

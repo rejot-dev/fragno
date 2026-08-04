@@ -128,6 +128,21 @@ const componentFixtures = [
     invalidProps: { label: "I confirm", checked: "yes" },
   },
   {
+    component: "FileUpload",
+    validProps: {
+      label: "Document",
+      scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+      value: null,
+      accept: [".pdf", "image/*"],
+      maxSizeBytes: 10_000,
+    },
+    invalidProps: {
+      label: "Document",
+      scope: { kind: "system" },
+      value: null,
+    },
+  },
+  {
     component: "WorkflowEventButton",
     validProps: { label: "Submit", eventType: "approval", payload: { approved: true } },
     invalidProps: { label: "Submit", eventType: "invalid event", payload: null },

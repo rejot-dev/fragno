@@ -778,6 +778,25 @@ describe("runtime tool reference generation", () => {
     );
   });
 
+  test("renders prepared Upload lifecycle provider types when Upload is configured", () => {
+    const files = createCodemodeTypeFiles({
+      configuredCapabilityIds: ["upload"],
+      families: runtimeToolFamilies,
+      stateTypes: "declare const state: unknown;",
+    });
+    const types = readGeneratedFile(files, "/static/codemode/providers/upload.d.ts");
+
+    expect(types).toContain("declare const upload");
+    expect(types).toContain("readPrepared(input: UploadReadPreparedInput)");
+    expect(types).toContain('encoding?: "utf8" | "base64" | "bytes";');
+    expect(types).toContain("text: string;");
+    expect(types).toContain("base64: string;");
+    expect(types).toContain("bytes: Uint8Array;");
+    expect(types).not.toContain("content: string;");
+    expect(types).toContain("commitPrepared(input: UploadCommitPreparedInput)");
+    expect(types).toContain("discardPrepared(input: UploadDiscardPreparedInput)");
+  });
+
   test("renders installed MCP providers with dash-safe server slugs", () => {
     const files = createCodemodeTypeFiles({
       configuredCapabilityIds: ["mcp"],

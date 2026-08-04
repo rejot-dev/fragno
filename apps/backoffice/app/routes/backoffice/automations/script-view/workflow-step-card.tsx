@@ -4,6 +4,9 @@ import type { SourceRange, StepNode } from "@fragno-dev/workflow-visualizer-toke
 
 import { setByPath } from "@json-render/core";
 
+import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
+import { resolveGeneratedUiUploadScope } from "@/backoffice-ui/generated-ui-upload-scope";
+import { uploadPreparedGeneratedUiFile } from "@/backoffice-ui/prepared-upload.client";
 import { parseBackofficeUiResult, type BackofficeUiResultV1 } from "@/backoffice-ui/result";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 
@@ -36,6 +39,7 @@ export function WorkflowStepCard({
   runState,
   workflowEvents = [],
   workflowRunRecordId,
+  currentScope,
   workflowEventSender,
   workflowEventWorkflowName,
   workflowInstanceId,
@@ -50,6 +54,7 @@ export function WorkflowStepCard({
   runState?: WorkflowStepRunState;
   workflowEvents?: readonly WorkflowRunEvent[];
   workflowRunRecordId?: string;
+  currentScope?: BackofficeRoutableScope;
   workflowEventSender?: WorkflowEventSender;
   workflowEventWorkflowName?: string;
   workflowInstanceId?: string;
@@ -110,6 +115,7 @@ export function WorkflowStepCard({
         state={generatedUiState ?? runState}
         workflowEvents={workflowEvents}
         workflowRunRecordId={workflowRunRecordId}
+        currentScope={currentScope}
         workflowName={workflowEventWorkflowName}
         workflowInstanceId={workflowInstanceId}
         workflowEventSender={workflowEventSender}
@@ -125,6 +131,7 @@ function WorkflowStepGeneratedUi({
   state,
   workflowEvents,
   workflowRunRecordId,
+  currentScope,
   workflowEventSender,
   workflowInstanceId,
   workflowName,
@@ -133,6 +140,7 @@ function WorkflowStepGeneratedUi({
   state?: WorkflowStepRunState;
   workflowEvents: readonly WorkflowRunEvent[];
   workflowRunRecordId?: string;
+  currentScope?: BackofficeRoutableScope;
   workflowEventSender?: WorkflowEventSender;
   workflowInstanceId?: string;
   workflowName?: string;
@@ -157,6 +165,7 @@ function WorkflowStepGeneratedUi({
           state={state}
           workflowEvents={workflowEvents}
           workflowRunRecordId={workflowRunRecordId}
+          currentScope={currentScope}
           workflowEventSender={workflowEventSender}
           workflowInstanceId={workflowInstanceId}
           workflowName={workflowName}
@@ -174,6 +183,7 @@ function WorkflowStepInteractiveGeneratedUi({
   state,
   workflowEvents,
   workflowRunRecordId,
+  currentScope,
   workflowEventSender,
   workflowInstanceId,
   workflowName,
@@ -183,6 +193,7 @@ function WorkflowStepInteractiveGeneratedUi({
   state: WorkflowStepRunState;
   workflowEvents: readonly WorkflowRunEvent[];
   workflowRunRecordId?: string;
+  currentScope?: BackofficeRoutableScope;
   workflowEventSender?: WorkflowEventSender;
   workflowInstanceId?: string;
   workflowName?: string;
@@ -198,6 +209,7 @@ function WorkflowStepInteractiveGeneratedUi({
       ? workflowUiDraftId({ runRecordId: workflowRunRecordId, stepRecordId: state.stepRecordId })
       : undefined;
   const activeEventTypes = activeWorkflowUiEventTypes(result.$ui, waitingEventTypes);
+  const stepRecordId = state.stepRecordId;
   const usesBrowserDraft = Boolean(draftId && !submitted && activeEventTypes.size > 0);
   const [draft, setDraft] = useState<WorkflowUiDraft | null>();
 
@@ -258,11 +270,20 @@ function WorkflowStepInteractiveGeneratedUi({
           : undefined
       }
       interactionHost={
-        workflowEventSender && workflowName && workflowInstanceId
+        workflowEventSender && workflowName && workflowInstanceId && stepRecordId
           ? {
               canEditWorkflowInput: () => activeEventTypes.size > 0 && !draft?.submittedEventType,
               canSendWorkflowEvent: (eventType) =>
                 activeEventTypes.has(eventType) && draft?.submittedEventType !== eventType,
+              uploadPreparedFile: ({ scope, file, onProgress }) =>
+                uploadPreparedGeneratedUiFile({
+                  scope: resolveGeneratedUiUploadScope(scope, currentScope),
+                  file,
+                  workflowName,
+                  instanceId: workflowInstanceId,
+                  stepRecordId,
+                  onProgress,
+                }),
               sendWorkflowEvent: async ({ eventId: fallbackEventId, eventType, payload }) => {
                 const eventId = draftId
                   ? await getOrCreateWorkflowUiDraftEventId({

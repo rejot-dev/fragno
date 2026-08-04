@@ -83,6 +83,33 @@ describe("validateGeneratedProps", () => {
     );
   });
 
+  test("preserves discriminators while allowing generated variant fields", () => {
+    const propsSchema = z.strictObject({
+      scope: z.union([
+        z.strictObject({ kind: z.literal("current") }),
+        z.discriminatedUnion("kind", [
+          z.strictObject({ kind: z.literal("org"), orgId: z.string() }),
+          z.strictObject({
+            kind: z.literal("project"),
+            orgId: z.string(),
+            projectId: z.string(),
+          }),
+        ]),
+      ]),
+    });
+
+    assert(
+      validateGeneratedProps(propsSchema, {
+        scope: { kind: "project", orgId: { $state: "/orgId" }, projectId: "project-1" },
+      }),
+    );
+    assert(
+      !validateGeneratedProps(propsSchema, {
+        scope: { kind: { $state: "/scopeKind" }, orgId: "org-1" },
+      }),
+    );
+  });
+
   test("preserves literal collection and object constraints", () => {
     const propsSchema = z.strictObject({
       items: z.array(z.strictObject({ value: z.string() })).max(1),

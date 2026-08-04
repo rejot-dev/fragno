@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeContextScope } from "./context";
+import type { BackofficeRoutableScope } from "./scope-codec";
 
 export const backofficeSystemScopeSchema = z.object({ kind: z.literal("system") });
 export const backofficeOrganisationScopeSchema = z.object({
@@ -16,6 +17,13 @@ export const backofficeProjectScopeSchema = z.object({
   orgId: z.string().trim().min(1),
   projectId: z.string().trim().min(1),
 });
+
+export const backofficeRoutableScopeSchema: z.ZodType<BackofficeRoutableScope> =
+  z.discriminatedUnion("kind", [
+    backofficeOrganisationScopeSchema,
+    backofficeUserScopeSchema,
+    backofficeProjectScopeSchema,
+  ]);
 
 export const backofficeContextScopeSchema: z.ZodType<BackofficeContextScope> = z.discriminatedUnion(
   "kind",
