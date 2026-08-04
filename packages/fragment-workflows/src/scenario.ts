@@ -3083,7 +3083,7 @@ export async function runScenario<
         case "callRoute": {
           const response = await currentRunner.callRoute(
             step.method,
-            step.path,
+            step.path as Parameters<WorkflowsTestRunner["callRoute"]>[1],
             step.options as Parameters<WorkflowsTestRunner["callRoute"]>[2],
           );
           if (step.storeAs) {

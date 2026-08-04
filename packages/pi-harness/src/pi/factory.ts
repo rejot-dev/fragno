@@ -36,7 +36,7 @@ export const createPiWorkflows = (options: WorkflowsOptions) => {
   return registry;
 };
 
-export function createPiFragment(
+export function createPiFragment<TRequestContext = never>(
   config: PiFragmentConfig,
   options: FragnoPublicConfigWithDatabase,
   services: PiFragmentServices,
@@ -46,6 +46,7 @@ export function createPiFragment(
     .withRoutes([piRoutesFactory])
     .withOptions(options)
     .withServices(services)
+    .withRequestContext<TRequestContext>()
     .build();
 }
 

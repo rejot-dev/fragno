@@ -1,4 +1,4 @@
-import { instantiate, type InstantiatedFragmentFromDefinition } from "@fragno-dev/core";
+import { instantiate } from "@fragno-dev/core";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
 import { workflowsFragmentDefinition } from "./definition";
@@ -8,29 +8,28 @@ import type { WorkflowsFragmentConfig, WorkflowsRegistry } from "./workflow";
 
 const routes = [workflowsRoutesFactory] as const;
 
-type UntypedWorkflowsFragment = InstantiatedFragmentFromDefinition<
-  typeof workflowsFragmentDefinition
->;
-
-export type WorkflowsFragment<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> =
-  UntypedWorkflowsFragment & { readonly __workflowsRegistry?: TRegistry };
-
-export type WorkflowsFragmentServices<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> =
-  WorkflowsFragment<TRegistry>["services"];
-
 /** Create a workflows fragment with routes and database integration. */
-export function createWorkflowsFragment<TRegistry extends WorkflowsRegistry = WorkflowsRegistry>(
-  config: WorkflowsFragmentConfig<TRegistry>,
-  fragnoConfig: FragnoPublicConfigWithDatabase,
-): WorkflowsFragment<TRegistry> {
+export function createWorkflowsFragment<
+  TRequestContext = never,
+  TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
+>(config: WorkflowsFragmentConfig<TRegistry>, fragnoConfig: FragnoPublicConfigWithDatabase) {
   const fragment = instantiate(workflowsFragmentDefinition)
     .withConfig(config)
     .withRoutes(routes)
     .withOptions(fragnoConfig)
+    .withRequestContext<TRequestContext>()
     .build();
 
-  return fragment as WorkflowsFragment<TRegistry>;
+  return fragment as typeof fragment & { readonly __workflowsRegistry?: TRegistry };
 }
+
+export type WorkflowsFragment<
+  TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
+  TRequestContext = never,
+> = ReturnType<typeof createWorkflowsFragment<TRequestContext, TRegistry>>;
+
+export type WorkflowsFragmentServices<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> =
+  WorkflowsFragment<TRegistry>["services"];
 
 export { validateWorkflowParams, workflowsFragmentDefinition } from "./definition";
 export { workflowsRoutesFactory };
