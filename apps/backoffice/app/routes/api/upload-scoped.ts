@@ -1,6 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { automationScopeFromRouteParams } from "@/routes/backoffice/automations/scope";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -13,12 +12,8 @@ const forwardToScopedUpload = async (
   const scope = automationScopeFromRouteParams(params);
   await requireBackofficeContext(request, context, scope);
 
-  const { runtime } = context.get(BackofficeWorkerContext);
-  const uploadObject = new BackofficeKernel({ objects: runtime.objects }).scoped(
-    "UPLOAD",
-    scope,
-    runtime.objects.upload,
-  );
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
+  const uploadObject = kernel.scoped("UPLOAD", scope, runtime.objects.upload);
   const url = new URL(request.url);
   const suffix = params["*"] ? `/${params["*"]}` : "";
   url.pathname = `/api/upload${suffix}`;

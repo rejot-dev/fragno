@@ -189,9 +189,10 @@ const browserRunCaptureTool = defineBackofficeRuntimeTool({
       },
       parse: parseCapture,
       execute: async ({ input, args, context, shell }) => {
-        const response = await getCloudflareRuntime(context.runtimes.cloudflare).browserRunCapture(
-          input,
-        );
+        const cloudflareContext = context;
+        const response = await getCloudflareRuntime(
+          cloudflareContext.runtimes.cloudflare,
+        ).browserRunCapture(input);
         const bytes = new Uint8Array(await response.arrayBuffer());
         const outputPath = readStringOption(parseCliTokens(args), "output");
 

@@ -17,6 +17,9 @@ export const BACKOFFICE_PERMISSION = {
   capabilities: {
     read: { namespace: "capabilities", permission: "read" },
   },
+  cloudflare: {
+    browserRun: { namespace: "cloudflare", permission: "browserRun" },
+  },
   connections: {
     manage: { namespace: "connections", permission: "manage" },
     read: { namespace: "connections", permission: "read" },

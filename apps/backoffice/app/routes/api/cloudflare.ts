@@ -1,18 +1,14 @@
-import { requireBackofficePrincipal } from "@/fragno/auth/backoffice-principal.server";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/cloudflare";
 
 const forwardToCloudflare = async (request: Request, context: Route.LoaderArgs["context"]) => {
-  const principal = await requireBackofficePrincipal(request, context);
-  if (principal.type !== "user" || principal.role !== "admin") {
-    return new Response("Not Found", { status: 404 });
-  }
+  const scope = { kind: "system" as const };
+  await requireBackofficeContext(request, context, scope);
 
-  const cloudflareObject = context
-    .get(BackofficeWorkerContext)
-    .runtime.objects.cloudflare.singleton();
-
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
+  const cloudflareObject = kernel.scoped("CLOUDFLARE", scope, runtime.objects.cloudflare);
   return cloudflareObject.fetch(request);
 };
 
