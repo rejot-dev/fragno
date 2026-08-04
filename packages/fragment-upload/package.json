@@ -51,6 +51,10 @@
       "types": "./dist/node/schema.d.ts",
       "default": "./dist/node/schema.js"
     },
+    "./helpers": {
+      "types": "./dist/browser/client/helpers.d.ts",
+      "default": "./dist/browser/client/helpers.js"
+    },
     "./react": {
       "types": "./dist/browser/client/react.d.ts",
       "default": "./dist/browser/client/react.js"

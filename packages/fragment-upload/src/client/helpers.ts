@@ -15,7 +15,7 @@ export type UploadProgress = {
 };
 
 export type CreateUploadAndTransferOptions = {
-  provider: string;
+  provider?: string;
   fileKey: string;
   filename?: string;
   contentType?: string;
@@ -365,10 +365,6 @@ export const createUploadHelpers = (input: {
       (file.type && file.type.length > 0 ? file.type : undefined) ??
       DEFAULT_CONTENT_TYPE;
     const sizeBytes = file.size;
-
-    if (!hasText(options.provider)) {
-      throw new Error("Provider is required");
-    }
 
     if (!hasText(options.fileKey)) {
       throw new Error("File key is required");

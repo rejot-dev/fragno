@@ -29,6 +29,7 @@ export default defineConfig([
     fixedExtension: false,
     ignoreWatch: ["./dist"],
     entry: [
+      "./src/client/helpers.ts",
       "./src/client/react.ts",
       "./src/client/svelte.ts",
       "./src/client/solid.ts",
