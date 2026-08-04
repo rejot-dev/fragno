@@ -5,6 +5,8 @@ import {
 } from "@fragno-dev/workflows/remote-workflow";
 import type { RemoteWorkflowRunFn, WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
+import { compileWorker } from "@/backoffice-runtime/dynamic-workers/compile-worker";
+import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 import type { IFileSystem } from "@/files/interface";
 import type {
   BackofficeRuntimeToolFamily,
@@ -69,8 +71,7 @@ export type BackofficeCodemodeWorkflowOptions = {
    *   permitted to access the internet".
    */
   globalOutbound?: Fetcher | null;
-  /** Pre-resolved Worker Loader modules required by `code` (for rewritten npm imports). */
-  modules?: Record<string, string>;
+  dependencies?: NpmDependencyMap;
 };
 
 const createRemoteWorkflowWorkerCode = ({
@@ -272,7 +273,7 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
   families,
   toolContext,
   globalOutbound,
-  modules,
+  dependencies,
 }: {
   code: string;
   event: WorkflowEvent<TParams>;
@@ -286,7 +287,6 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
     // capability when bound, else stay sealed. An explicit value — a custom
     // Fetcher or `null` to seal — always wins. See BackofficeCodemodeWorkflowOptions.
     globalOutbound: globalOutbound === undefined ? (env.OUTBOUND ?? null) : globalOutbound,
-    modules,
   });
 
   const providers = await createBackofficeCodemodeResolvedProviders({
@@ -300,19 +300,25 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
   }
   const { dispatchers } = dispatcherResult;
 
-  const output = await executor.runEntrypoint<
-    WorkflowWorkerEntrypoint<TParams, TOutput>,
-    WorkflowWorkerResult<TOutput>
-  >({
-    compatibilityDate: "2026-05-07",
-    compatibilityFlags: ["nodejs_als"],
-    mainModule: "remote-workflow.js",
-    modules: {
+  const compiled = await (env.compileWorker ?? compileWorker)({
+    files: {
       "remote-workflow.js": createRemoteWorkflowWorkerCode({
         code,
         providerProxySource: createCodemodeProviderProxySource(providers),
       }),
     },
+    entryPoint: "remote-workflow.js",
+    dependencies,
+    runtime: {
+      compatibilityDate: "2026-05-07",
+      compatibilityFlags: ["nodejs_als"],
+    },
+  });
+  const output = await executor.runEntrypoint<
+    WorkflowWorkerEntrypoint<TParams, TOutput>,
+    WorkflowWorkerResult<TOutput>
+  >({
+    bundle: compiled.bundle,
     rpcTargets: { dispatchers, stepTarget },
     run: async (entrypoint, rpcTargets) =>
       await entrypoint.run(

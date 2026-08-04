@@ -1802,7 +1802,7 @@ const runScenarioCodemode = async (
   const result = await runBackofficeCodemode({
     code: input.code,
     fs: ctx.files.forOrg(input.orgId),
-    env: { LOADER: loader },
+    env: { LOADER: loader, compileWorker: ctx.runtime.env.compileWorker },
     timeout: input.timeout,
     families: runtimeToolFamilies,
     toolContext: toolContext,
