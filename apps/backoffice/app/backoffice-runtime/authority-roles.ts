@@ -3,34 +3,14 @@ import type { Role } from "@fragno-dev/auth";
 import type { AutomationEntityRef } from "@/fragno/automation/actors";
 
 import type { BackofficeContextScope } from "./context";
-import { BACKOFFICE_PERMISSION, type BackofficePermissionRequirement } from "./permissions";
+import {
+  allBackofficePermissionRequirements,
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "./permissions";
 
 const USER_AUTHORITY_ROLE_GRANTS = {
-  "system-administrator": [
-    BACKOFFICE_PERMISSION.capabilities.read,
-    BACKOFFICE_PERMISSION.cloudflare.browserRun,
-    BACKOFFICE_PERMISSION.connections.manage,
-    BACKOFFICE_PERMISSION.connections.read,
-    BACKOFFICE_PERMISSION.events.emit,
-    BACKOFFICE_PERMISSION.events.manage,
-    BACKOFFICE_PERMISSION.events.read,
-    BACKOFFICE_PERMISSION.hooks.read,
-    BACKOFFICE_PERMISSION.identity.bind,
-    BACKOFFICE_PERMISSION.identity.resolve,
-    BACKOFFICE_PERMISSION.identity.revoke,
-    BACKOFFICE_PERMISSION.internal.manage,
-    BACKOFFICE_PERMISSION.internal.read,
-    BACKOFFICE_PERMISSION.otp.create,
-    BACKOFFICE_PERMISSION.pi.modify,
-    BACKOFFICE_PERMISSION.pi.read,
-    BACKOFFICE_PERMISSION.router.modify,
-    BACKOFFICE_PERMISSION.router.read,
-    BACKOFFICE_PERMISSION.store.modify,
-    BACKOFFICE_PERMISSION.store.read,
-    BACKOFFICE_PERMISSION.telegram.send,
-    BACKOFFICE_PERMISSION.workflow.modify,
-    BACKOFFICE_PERMISSION.workflow.read,
-  ],
+  "system-administrator": allBackofficePermissionRequirements,
   "user-owner": [
     BACKOFFICE_PERMISSION.capabilities.read,
     BACKOFFICE_PERMISSION.events.emit,
@@ -123,8 +103,8 @@ export type BackofficeInternalServiceAuthorityRole =
  * Explicit grants for operations that currently execute through `BackofficeKernel.invoke()`.
  *
  * These are Backoffice authorization roles, not persisted actor roles or Auth organization role
- * names. Each later action migration must update only the roles that should receive its permission;
- * adding a permission to the catalog grants it to no role automatically.
+ * names. System administrators receive the complete permission catalog automatically. Each later
+ * action migration must explicitly update any non-administrator roles that should receive it.
  */
 export const BACKOFFICE_AUTHORITY_ROLE_GRANTS = {
   ...USER_AUTHORITY_ROLE_GRANTS,

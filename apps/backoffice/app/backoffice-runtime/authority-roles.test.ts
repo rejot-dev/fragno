@@ -5,7 +5,7 @@ import {
   resolveBackofficeInternalServiceAuthorityRole,
   resolveBackofficeUserAuthorityRole,
 } from "./authority-roles";
-import { BACKOFFICE_PERMISSION } from "./permissions";
+import { allBackofficePermissionRequirements, BACKOFFICE_PERMISSION } from "./permissions";
 
 const currentKernelPermissions = [
   BACKOFFICE_PERMISSION.otp.create,
@@ -44,32 +44,13 @@ const automationAuthoringPermissions = [
 ];
 
 describe("Backoffice authority role grants", () => {
-  test("grants identity administration only to system administrators and trusted objects", () => {
-    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["system-administrator"]).toEqual([
-      BACKOFFICE_PERMISSION.capabilities.read,
-      BACKOFFICE_PERMISSION.cloudflare.browserRun,
-      BACKOFFICE_PERMISSION.connections.manage,
-      BACKOFFICE_PERMISSION.connections.read,
-      BACKOFFICE_PERMISSION.events.emit,
-      BACKOFFICE_PERMISSION.events.manage,
-      BACKOFFICE_PERMISSION.events.read,
-      BACKOFFICE_PERMISSION.hooks.read,
-      BACKOFFICE_PERMISSION.identity.bind,
-      BACKOFFICE_PERMISSION.identity.resolve,
-      BACKOFFICE_PERMISSION.identity.revoke,
-      BACKOFFICE_PERMISSION.internal.manage,
-      BACKOFFICE_PERMISSION.internal.read,
-      BACKOFFICE_PERMISSION.otp.create,
-      BACKOFFICE_PERMISSION.pi.modify,
-      BACKOFFICE_PERMISSION.pi.read,
-      BACKOFFICE_PERMISSION.router.modify,
-      BACKOFFICE_PERMISSION.router.read,
-      BACKOFFICE_PERMISSION.store.modify,
-      BACKOFFICE_PERMISSION.store.read,
-      BACKOFFICE_PERMISSION.telegram.send,
-      BACKOFFICE_PERMISSION.workflow.modify,
-      BACKOFFICE_PERMISSION.workflow.read,
-    ]);
+  test("grants every permission to system administrators", () => {
+    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["system-administrator"]).toEqual(
+      allBackofficePermissionRequirements,
+    );
+  });
+
+  test("grants identity administration to trusted objects", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.object).toEqual([
       BACKOFFICE_PERMISSION.identity.bind,
       BACKOFFICE_PERMISSION.identity.resolve,
@@ -134,9 +115,11 @@ describe("Backoffice authority role grants", () => {
     );
   });
 
-  test("does not grant unrelated read permissions merely because they exist", () => {
-    for (const grants of Object.values(BACKOFFICE_AUTHORITY_ROLE_GRANTS)) {
-      expect(grants).not.toContain(BACKOFFICE_PERMISSION.telegram.read);
+  test("does not grant unrelated read permissions to non-administrator roles", () => {
+    for (const [role, grants] of Object.entries(BACKOFFICE_AUTHORITY_ROLE_GRANTS)) {
+      if (role !== "system-administrator") {
+        expect(grants).not.toContain(BACKOFFICE_PERMISSION.telegram.read);
+      }
     }
   });
 
