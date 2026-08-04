@@ -218,6 +218,18 @@ const componentDemoInputs: ComponentDemoInput[] = [
     props: { label: "I confirm this operation", checked: true },
   },
   {
+    component: "FileUpload",
+    category: "Input",
+    props: {
+      label: "Supporting document",
+      scope: { kind: "project", orgId: "org-demo", projectId: "project-demo" },
+      value: null,
+      accept: [".pdf", "image/*"],
+      maxSizeBytes: 26_214_400,
+      required: true,
+    },
+  },
+  {
     component: "WorkflowEventButton",
     category: "Input",
     props: {

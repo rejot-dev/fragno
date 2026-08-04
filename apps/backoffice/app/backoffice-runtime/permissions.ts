@@ -78,6 +78,10 @@ export const BACKOFFICE_PERMISSION = {
     read: { namespace: "telegram", permission: "read" },
     send: { namespace: "telegram", permission: "send" },
   },
+  upload: {
+    modify: { namespace: "upload", permission: "modify" },
+    read: { namespace: "upload", permission: "read" },
+  },
   workflow: {
     modify: { namespace: "workflow", permission: "modify" },
     read: { namespace: "workflow", permission: "read" },

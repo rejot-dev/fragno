@@ -5,20 +5,43 @@ import { VisibilityConditionSchema } from "@json-render/core";
 const MAX_GENERATED_PROP_CONDITIONAL_DEPTH = 8;
 const generatedPropsSchemaCache = new WeakMap<z.ZodObject, z.ZodType>();
 
+function createGeneratedObjectSchema(
+  literalSchema: z.ZodObject,
+  conditionalDepth: number,
+  discriminator?: string,
+): z.ZodObject {
+  const generatedShape = Object.fromEntries(
+    (Object.entries(literalSchema.shape) as Array<[string, z.ZodType]>).map(
+      ([name, propertySchema]) => [
+        name,
+        name === discriminator
+          ? propertySchema
+          : createGeneratedPropSchema(propertySchema, conditionalDepth),
+      ],
+    ),
+  );
+  return literalSchema.clone({ ...literalSchema.def, shape: generatedShape });
+}
+
 function createGeneratedLiteralSchema(
   literalSchema: z.ZodType,
   conditionalDepth: number,
 ): z.ZodType {
-  if (literalSchema instanceof z.ZodObject) {
-    const generatedShape = Object.fromEntries(
-      (Object.entries(literalSchema.shape) as Array<[string, z.ZodType]>).map(
-        ([name, propertySchema]) => [
-          name,
-          createGeneratedPropSchema(propertySchema, conditionalDepth),
-        ],
+  if (literalSchema instanceof z.ZodDiscriminatedUnion) {
+    return literalSchema.clone({
+      ...literalSchema.def,
+      options: literalSchema.options.map((option) =>
+        createGeneratedObjectSchema(
+          option as z.ZodObject,
+          conditionalDepth,
+          literalSchema.def.discriminator,
+        ),
       ),
-    );
-    return literalSchema.clone({ ...literalSchema.def, shape: generatedShape });
+    });
+  }
+
+  if (literalSchema instanceof z.ZodObject) {
+    return createGeneratedObjectSchema(literalSchema, conditionalDepth);
   }
 
   if (literalSchema instanceof z.ZodArray) {

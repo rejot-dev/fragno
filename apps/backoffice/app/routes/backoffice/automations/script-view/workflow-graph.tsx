@@ -24,6 +24,7 @@ import type {
   WorkflowVisualizationSnapshot,
 } from "@fragno-dev/workflow-visualizer-tokens";
 
+import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 
@@ -59,6 +60,7 @@ export function ScriptWorkflowGraph({
   selectedRun,
   scrollViewport,
   fillHeight = false,
+  currentScope,
   workflowEventSender,
   onSourceSelect,
 }: {
@@ -68,6 +70,7 @@ export function ScriptWorkflowGraph({
   selectedRun: ScriptWorkflowRun | null;
   scrollViewport?: LinkedScrollViewport;
   fillHeight?: boolean;
+  currentScope?: BackofficeRoutableScope;
   workflowEventSender?: WorkflowEventSender;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
@@ -143,6 +146,7 @@ export function ScriptWorkflowGraph({
                     childrenByParent={presentation.childrenByParent}
                     run={workflowRun}
                     uiWaitPairings={uiWaitPairings}
+                    currentScope={currentScope}
                     workflowEventSender={workflowEventSender}
                     onSourceSelect={onSourceSelect}
                   />
@@ -157,6 +161,7 @@ export function ScriptWorkflowGraph({
                       uiWaitPairings={uiWaitPairings}
                       workflowEvents={workflowRun?.workflowEvents}
                       workflowRunRecordId={workflowRun?.id}
+                      currentScope={currentScope}
                       workflowEventSender={workflowEventSender}
                       workflowEventWorkflowName={workflowRun?.instanceWorkflowName}
                       workflowInstanceId={workflowRun?.instanceId}
@@ -182,6 +187,7 @@ function WorkflowUiResults({
   childrenByParent,
   run,
   uiWaitPairings,
+  currentScope,
   workflowEventSender,
   onSourceSelect,
 }: {
@@ -189,6 +195,7 @@ function WorkflowUiResults({
   childrenByParent: Map<string, WorkflowChildNode[]>;
   run?: ScriptWorkflowRun;
   uiWaitPairings: WorkflowUiWaitPairings;
+  currentScope?: BackofficeRoutableScope;
   workflowEventSender?: WorkflowEventSender;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
@@ -217,6 +224,7 @@ function WorkflowUiResults({
             runState={pair ? workflowUiWaitRunState(pair) : run?.stepStatesByNodeId.get(step.id)}
             workflowEvents={run?.workflowEvents}
             workflowRunRecordId={run?.id}
+            currentScope={currentScope}
             workflowEventSender={workflowEventSender}
             workflowEventWorkflowName={run?.instanceWorkflowName}
             workflowInstanceId={run?.instanceId}
@@ -309,6 +317,7 @@ function WorkflowChildTree({
   uiWaitPairings,
   workflowEvents,
   workflowRunRecordId,
+  currentScope,
   workflowEventSender,
   workflowEventWorkflowName,
   workflowInstanceId,
@@ -324,6 +333,7 @@ function WorkflowChildTree({
   uiWaitPairings: WorkflowUiWaitPairings;
   workflowEvents?: readonly WorkflowRunEvent[];
   workflowRunRecordId?: string;
+  currentScope?: BackofficeRoutableScope;
   workflowEventSender?: WorkflowEventSender;
   workflowEventWorkflowName?: string;
   workflowInstanceId?: string;
@@ -356,6 +366,7 @@ function WorkflowChildTree({
               runState={pair ? workflowUiWaitRunState(pair) : stepStatesByNodeId?.get(child.id)}
               workflowEvents={workflowEvents}
               workflowRunRecordId={workflowRunRecordId}
+              currentScope={currentScope}
               workflowEventSender={workflowEventSender}
               workflowEventWorkflowName={workflowEventWorkflowName}
               workflowInstanceId={workflowInstanceId}
@@ -372,6 +383,7 @@ function WorkflowChildTree({
               uiWaitPairings={uiWaitPairings}
               workflowEvents={workflowEvents}
               workflowRunRecordId={workflowRunRecordId}
+              currentScope={currentScope}
               workflowEventSender={workflowEventSender}
               workflowEventWorkflowName={workflowEventWorkflowName}
               workflowInstanceId={workflowInstanceId}
@@ -395,6 +407,7 @@ function WorkflowChildCard({
   runState,
   workflowEvents,
   workflowRunRecordId,
+  currentScope,
   workflowEventSender,
   workflowEventWorkflowName,
   workflowInstanceId,
@@ -410,6 +423,7 @@ function WorkflowChildCard({
   runState?: WorkflowStepRunState;
   workflowEvents?: readonly WorkflowRunEvent[];
   workflowRunRecordId?: string;
+  currentScope?: BackofficeRoutableScope;
   workflowEventSender?: WorkflowEventSender;
   workflowEventWorkflowName?: string;
   workflowInstanceId?: string;
@@ -429,6 +443,7 @@ function WorkflowChildCard({
           runState={runState}
           workflowEvents={workflowEvents}
           workflowRunRecordId={workflowRunRecordId}
+          currentScope={currentScope}
           workflowEventSender={workflowEventSender}
           workflowEventWorkflowName={workflowEventWorkflowName}
           workflowInstanceId={workflowInstanceId}

@@ -56,7 +56,7 @@ const toUploadStatus = (response: UploadAdminConfigResponse): ConnectionStatus =
 
 export const uploadCapability: BackofficeCapability = {
   ...capability,
-  runtimeToolNamespaces: [],
+  runtimeToolNamespaces: ["upload"],
   get files() {
     return createUploadCapabilityFiles();
   },

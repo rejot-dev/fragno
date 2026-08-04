@@ -394,6 +394,7 @@ function SessionWorkflowWorkspace({
             runtimeToolCallsByStepId={EMPTY_RUNTIME_TOOL_CALLS}
             selectedRun={workflowRun.selectedRun}
             scrollViewport={graphViewport}
+            currentScope={{ kind: "org", orgId }}
             workflowEventSender={async ({
               eventId,
               workflowName,

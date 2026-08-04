@@ -30,6 +30,7 @@ import type { RegisteredResendCommandContext } from "./families/resend-runtime";
 import type { RegisteredReson8CommandContext } from "./families/reson8-runtime";
 import type { SandboxRuntime } from "./families/sandbox-runtime";
 import type { RegisteredTelegramCommandContext } from "./families/telegram-runtime";
+import type { UploadRuntime } from "./families/upload-runtime";
 import type { WebRuntime } from "./families/web-runtime";
 import { isomorphicGitCommand } from "./isomorphic-git-command";
 
@@ -64,6 +65,7 @@ export type BashHostContext = {
   resend: RegisteredResendCommandContext | null;
   sandbox?: { runtime: SandboxRuntime } | null;
   telegram: RegisteredTelegramCommandContext | null;
+  upload?: { runtime: UploadRuntime } | null;
   web?: { runtime: WebRuntime } | null;
 };
 

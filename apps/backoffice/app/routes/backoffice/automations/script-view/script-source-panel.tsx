@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router";
 import { visualizeWorkflowSource, type SourceRange } from "@fragno-dev/workflow-visualizer-tokens";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 import {
@@ -142,6 +143,7 @@ export function ScriptSourcePanel({
             runtimeToolCallsByStepId={runtimeToolCallsByStepId}
             selectedRun={workflowRuns.selectedRun}
             scrollViewport={graphViewport}
+            currentScope={isBackofficeRoutableScope(scope) ? scope : undefined}
             workflowEventSender={async ({
               eventId,
               workflowName,

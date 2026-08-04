@@ -12,11 +12,16 @@ import { STATIC_FILE_CONTENT } from "./static";
 
 const staticContent = STATIC_FILE_CONTENT as Record<string, FileContent>;
 const skill = GENERATING_BACKOFFICE_UIS_SKILL_CONTENT["skills/generating-backoffice-uis/SKILL.md"];
+const catalogReference =
+  GENERATING_BACKOFFICE_UIS_SKILL_CONTENT["skills/generating-backoffice-uis/CATALOG.md"];
 const workflowReference =
   GENERATING_BACKOFFICE_UIS_SKILL_CONTENT["skills/generating-backoffice-uis/WORKFLOWS.md"];
 
 if (typeof skill !== "string") {
   throw new Error("Expected the generated Backoffice UI skill to contain text.");
+}
+if (typeof catalogReference !== "string") {
+  throw new Error("Expected the generated Backoffice UI catalog reference to contain text.");
 }
 if (typeof workflowReference !== "string") {
   throw new Error("Expected the generated Backoffice UI workflow reference to contain text.");
@@ -101,24 +106,27 @@ describe("generating Backoffice UIs skill", () => {
   test("renders the production skill from the canonical catalog", () => {
     expect(skill).toContain("name: generating-backoffice-uis");
     expect(skill).toContain("## Result contract");
-    expect(skill).toContain("## Durable workflow branch");
+    expect(skill).toContain("## Branches");
     expect(skill).toContain("/static/skills/workflows/SKILL.md");
     expect(skill).toContain("/static/skills/generating-backoffice-uis/WORKFLOWS.md");
+    expect(skill).toContain("/static/skills/generating-backoffice-uis/CATALOG.md");
+    expect(skill).toContain("/static/skills/using-prepared-uploads/SKILL.md");
+    expect(staticContent["skills/generating-backoffice-uis/CATALOG.md"]).toBe(catalogReference);
     expect(staticContent["skills/generating-backoffice-uis/WORKFLOWS.md"]).toBe(workflowReference);
     expect(skill).toContain("## Spec invariants");
     expect(skill).toContain("type StateVisibilityCondition");
-    expect(skill).toContain("## Production component catalog");
-    expect(skill).toContain("Props type:");
-    expect(skill).toContain("- columns: 1-12 items");
-    expect(skill).toContain("- rows[].*: at most 2000 characters");
+    expect(catalogReference).toContain("# Production Component Catalog");
+    expect(catalogReference).toContain("Props type:");
+    expect(catalogReference).toContain("- columns: 1-12 items");
+    expect(catalogReference).toContain("- rows[].*: at most 2000 characters");
     expect(skill).toContain("Raw HTML, scripts, iframes, embeds, arbitrary URLs");
     expect(skill).toContain('read expressions such as `{ "$state": "/path" }` at any depth');
     expect(skill).toContain('`{ "$bindState": "/path" }` only as the complete top-level value');
 
     for (const [name, definition] of Object.entries(backofficeUiComponentDefinitions)) {
-      expect(skill).toContain(`### \`${name}\``);
-      expect(skill).toContain(definition.description);
-      expect(skill).toContain(JSON.stringify(definition.example, null, 2));
+      expect(catalogReference).toContain(`### \`${name}\``);
+      expect(catalogReference).toContain(definition.description);
+      expect(catalogReference).toContain(JSON.stringify(definition.example, null, 2));
     }
   });
 
@@ -150,6 +158,7 @@ describe("generating Backoffice UIs skill", () => {
       "TextArea",
       "Select",
       "Checkbox",
+      "FileUpload",
       "WorkflowEventButton",
     ]);
 
@@ -235,8 +244,50 @@ describe("generating Backoffice UIs skill", () => {
       throw new Error("Expected static system guidance to contain text.");
     }
 
+    expect(systemGuidance).toContain("Prefer acting over asking");
+    expect(systemGuidance).toContain("Do not present executable code for the user to run");
+    expect(systemGuidance).toContain("Immediate work uses a top-level async function");
+    expect(systemGuidance).toContain('state.find("/workspace"');
+    expect(systemGuidance).not.toContain('state.find("/events"');
+    expect(systemGuidance).toContain("Define a durable workflow directly at the top level");
+    expect(systemGuidance).toContain("Do not wrap `defineWorkflow` inside an async function");
+    expect(systemGuidance).toContain("the returned handle alone is not completion");
+    expect(systemGuidance).toContain(
+      "Treat the generated TypeScript declarations as a closed world",
+    );
+    expect(systemGuidance).toContain(
+      "preflight every provider operation, concrete target scope, and continuation event type",
+    );
+    expect(systemGuidance).toContain("report an unavailable requirement as blocking");
+    expect(systemGuidance).toContain("Classify execution errors from their messages");
+    expect(systemGuidance).toContain("Report success only from an executed result");
+    expect(systemGuidance).toContain("A scope is the ownership and authorization boundary");
+    expect(systemGuidance).toContain("context.current.store.get(...)");
+    expect(systemGuidance).toContain("context.org(orgId)");
+    expect(systemGuidance).toContain("context.user(userId)");
+    expect(systemGuidance).toContain("context.project(projectId)");
+    expect(systemGuidance).toContain("only visible in system/admin contexts");
+    expect(systemGuidance).toContain("must return JSON-serializable values");
+    expect(systemGuidance).not.toMatch(/bash/iu);
     expect(systemGuidance).not.toContain("BackofficeUiResult");
-    expect(systemGuidance).not.toContain("Production component catalog");
+    expect(systemGuidance).not.toContain("Production Component Catalog");
     expect(systemGuidance).not.toContain("$ui");
+  });
+
+  test("discloses the prepared upload lifecycle through one capability skill", () => {
+    const uploadSkill = staticContent["skills/using-prepared-uploads/SKILL.md"];
+    if (typeof uploadSkill !== "string") {
+      throw new Error("Expected the prepared Upload lifecycle skill to contain text.");
+    }
+
+    expect(uploadSkill).toContain("/static/codemode/providers/upload.d.ts");
+    expect(uploadSkill).toContain("upload.readPrepared");
+    expect(uploadSkill).toContain('encoding: "bytes"');
+    expect(uploadSkill).toContain("pass those bytes directly to binary consumers");
+    expect(uploadSkill).toContain("not raw bytes");
+    expect(uploadSkill).toContain("upload.commitPrepared");
+    expect(uploadSkill).toContain("upload.discardPrepared");
+    expect(uploadSkill).toContain('{ kind: "current" }');
+    expect(skill).not.toContain("upload.readPrepared");
   });
 });

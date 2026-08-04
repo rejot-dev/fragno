@@ -6,6 +6,7 @@ import { Callout } from "./components/callout.component";
 import { Checkbox } from "./components/checkbox.component";
 import { Code } from "./components/code.component";
 import { Divider } from "./components/divider.component";
+import { FileUpload } from "./components/file-upload.component";
 import { Grid } from "./components/grid.component";
 import { Heading } from "./components/heading.component";
 import { KeyValue } from "./components/key-value.component";
@@ -41,6 +42,7 @@ export const { registry: backofficeUiRegistry } = defineRegistry(backofficeUiCat
     TextArea,
     Select,
     Checkbox,
+    FileUpload,
     WorkflowEventButton,
   },
 });

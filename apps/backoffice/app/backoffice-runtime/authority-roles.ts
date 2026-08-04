@@ -25,6 +25,8 @@ const USER_AUTHORITY_ROLE_GRANTS = {
     BACKOFFICE_PERMISSION.store.modify,
     BACKOFFICE_PERMISSION.store.read,
     BACKOFFICE_PERMISSION.telegram.send,
+    BACKOFFICE_PERMISSION.upload.modify,
+    BACKOFFICE_PERMISSION.upload.read,
     BACKOFFICE_PERMISSION.workflow.modify,
     BACKOFFICE_PERMISSION.workflow.read,
   ],
@@ -44,6 +46,8 @@ const USER_AUTHORITY_ROLE_GRANTS = {
     BACKOFFICE_PERMISSION.store.modify,
     BACKOFFICE_PERMISSION.store.read,
     BACKOFFICE_PERMISSION.telegram.send,
+    BACKOFFICE_PERMISSION.upload.modify,
+    BACKOFFICE_PERMISSION.upload.read,
     BACKOFFICE_PERMISSION.workflow.modify,
     BACKOFFICE_PERMISSION.workflow.read,
   ],
@@ -66,16 +70,22 @@ const INTERNAL_SERVICE_AUTHORITY_ROLE_GRANTS = {
     BACKOFFICE_PERMISSION.store.modify,
     BACKOFFICE_PERMISSION.store.read,
     BACKOFFICE_PERMISSION.telegram.send,
+    BACKOFFICE_PERMISSION.upload.modify,
+    BACKOFFICE_PERMISSION.upload.read,
   ],
   agent: [
     BACKOFFICE_PERMISSION.otp.create,
     BACKOFFICE_PERMISSION.store.modify,
     BACKOFFICE_PERMISSION.telegram.send,
+    BACKOFFICE_PERMISSION.upload.modify,
+    BACKOFFICE_PERMISSION.upload.read,
   ],
   capability: [
     BACKOFFICE_PERMISSION.otp.create,
     BACKOFFICE_PERMISSION.store.modify,
     BACKOFFICE_PERMISSION.telegram.send,
+    BACKOFFICE_PERMISSION.upload.modify,
+    BACKOFFICE_PERMISSION.upload.read,
   ],
   object: [
     BACKOFFICE_PERMISSION.identity.bind,
@@ -84,6 +94,8 @@ const INTERNAL_SERVICE_AUTHORITY_ROLE_GRANTS = {
     BACKOFFICE_PERMISSION.otp.create,
     BACKOFFICE_PERMISSION.store.modify,
     BACKOFFICE_PERMISSION.telegram.send,
+    BACKOFFICE_PERMISSION.upload.modify,
+    BACKOFFICE_PERMISSION.upload.read,
   ],
   system: [
     BACKOFFICE_PERMISSION.identity.bind,
@@ -92,6 +104,8 @@ const INTERNAL_SERVICE_AUTHORITY_ROLE_GRANTS = {
     BACKOFFICE_PERMISSION.otp.create,
     BACKOFFICE_PERMISSION.store.modify,
     BACKOFFICE_PERMISSION.telegram.send,
+    BACKOFFICE_PERMISSION.upload.modify,
+    BACKOFFICE_PERMISSION.upload.read,
   ],
 } as const satisfies Record<string, readonly BackofficePermissionRequirement[]>;
 

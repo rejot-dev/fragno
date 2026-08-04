@@ -1,6 +1,6 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
-import { backofficeContextScopeSchema } from "./context-schema";
+import { backofficeContextScopeSchema, backofficeRoutableScopeSchema } from "./context-schema";
 
 describe("Backoffice context scope schema", () => {
   test("validates every context scope kind", () => {
@@ -12,6 +12,17 @@ describe("Backoffice context scope schema", () => {
         { kind: "project", orgId: "org-1", projectId: "project-1" },
       ].map((scope) => backofficeContextScopeSchema.parse(scope)),
     ).toHaveLength(4);
+  });
+
+  test("validates only routable scope kinds for scoped resources", () => {
+    expect(
+      backofficeRoutableScopeSchema.parse({
+        kind: "project",
+        orgId: "org-1",
+        projectId: "project-1",
+      }),
+    ).toEqual({ kind: "project", orgId: "org-1", projectId: "project-1" });
+    assert(!backofficeRoutableScopeSchema.safeParse({ kind: "system" }).success);
   });
 
   test("rejects empty scope identifiers", () => {

@@ -7,6 +7,7 @@ import { calloutDefinition } from "./components/callout";
 import { checkboxDefinition } from "./components/checkbox";
 import { codeDefinition } from "./components/code";
 import { dividerDefinition } from "./components/divider";
+import { fileUploadDefinition } from "./components/file-upload";
 import { gridDefinition } from "./components/grid";
 import { headingDefinition } from "./components/heading";
 import { keyValueDefinition } from "./components/key-value";
@@ -41,6 +42,7 @@ export const backofficeUiComponentDefinitions = {
   TextArea: textAreaDefinition,
   Select: selectDefinition,
   Checkbox: checkboxDefinition,
+  FileUpload: fileUploadDefinition,
   WorkflowEventButton: workflowEventButtonDefinition,
 };
 

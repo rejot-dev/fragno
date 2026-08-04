@@ -22,6 +22,7 @@ export const createBackofficeToolContext = (
     reson8: context.reson8?.runtime,
     sandbox: context.sandbox?.runtime,
     telegram: context.telegram?.runtime,
+    upload: context.upload?.runtime,
     web: context.web?.runtime,
   };
 
