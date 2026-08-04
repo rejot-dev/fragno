@@ -418,7 +418,7 @@ export const auth_schema = {
   oauthState_authRelations: oauthState_authRelations,
   oauthState: oauthState_auth,
   oauthStateRelations: oauthState_authRelations,
-  schemaVersion: 34
+  schemaVersion: 36
 }
 
 // ============================================================================
@@ -521,9 +521,7 @@ export const workflow_instance_workflows = mysqlTable("workflow_instance_workflo
   _version: int("_version").notNull().default(0)
 }, (table) => [
   uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa12b3a436").on(table.workflowName, table.instanceId),
-  index("idx_workflow_instance_idx_workflow_instance_workflowNam3beb4686").on(table.workflowName, table.status, table.instanceId),
-  index("idx_workflow_instance_idx_workflow_instance_workflowNamcdb5b486").on(table.workflowName, table.remoteWorkflowName, table.instanceId),
-  index("idx_workflow_instance_idx_workflow_instance_workflowNam8747c859").on(table.workflowName, table.remoteWorkflowName, table.status, table.instanceId)
+  index("idx_workflow_instance_idx_workflow_instance_list_workfl9c4bc4aa").on(table.workflowName, table.createdAt, table.instanceId, table.remoteWorkflowName, table.status)
 ])
 
 export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
@@ -535,6 +533,7 @@ export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
   name: varchar("name", { length: 191 }).notNull(),
   type: varchar("type", { length: 191 }).notNull(),
   status: varchar("status", { length: 191 }).notNull(),
+  committedByExecutionId: varchar("committedByExecutionId", { length: 191 }).notNull(),
   attempts: int("attempts").notNull().default(0),
   maxAttempts: int("maxAttempts").notNull(),
   timeoutMs: int("timeoutMs"),
@@ -583,6 +582,7 @@ export const workflow_step_emission_workflows = mysqlTable("workflow_step_emissi
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   instanceRef: bigint("instanceRef", { mode: "number" }).notNull(),
   stepKey: varchar("stepKey", { length: 191 }).notNull(),
+  executionId: varchar("executionId", { length: 191 }).notNull(),
   epoch: varchar("epoch", { length: 191 }).notNull(),
   sequence: int("sequence").notNull(),
   actor: varchar("actor", { length: 191 }).notNull().default("user"),
@@ -654,5 +654,5 @@ export const workflows_schema = {
   workflow_step_emission_workflowsRelations: workflow_step_emission_workflowsRelations,
   workflow_step_emission: workflow_step_emission_workflows,
   workflow_step_emissionRelations: workflow_step_emission_workflowsRelations,
-  schemaVersion: 6
+  schemaVersion: 7
 }
