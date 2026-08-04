@@ -439,7 +439,7 @@ describe("runtime tool reference generation", () => {
         declare const reson8: Reson8CodemodeProvider;
 
         type Reson8TranscribePrerecordedInput = {
-          audio?: unknown;
+          audio: { kind: "arrayBuffer"; arrayBuffer: ArrayBuffer } | { kind: "arrayBufferView"; arrayBufferView: ArrayBufferView } | { kind: "bytes"; bytes: number[] };
           encoding?: "auto" | "pcm_s16le";
           sampleRate?: number;
           channels?: number;

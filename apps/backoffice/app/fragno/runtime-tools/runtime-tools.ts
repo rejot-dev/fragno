@@ -91,17 +91,18 @@ export type BackofficeRuntimeToolBashAdapter<
   TInputSchema extends z.ZodType = z.ZodType,
   TOutputSchema extends z.ZodType = z.ZodType,
   TContext extends BackofficeToolContext = BackofficeToolContext,
+  TBashInput = z.input<TInputSchema>,
 > = {
   command: string;
   help: AutomationCommandHelp;
-  parse: (args: string[]) => z.input<TInputSchema>;
+  parse: (args: string[]) => TBashInput;
   outputOptions?(args: string[], parsed: ParsedCliTokens): AutomationCommandOutputOptions;
   format?(
     output: z.output<TOutputSchema>,
     options: AutomationCommandOutputOptions,
   ): AutomationCommandExecutionResult;
   execute?(options: {
-    input: z.input<TInputSchema>;
+    input: TBashInput;
     args: string[];
     context: TContext;
     commandOutput: AutomationCommandOutputOptions;
@@ -113,8 +114,9 @@ export type BackofficeRuntimeToolAdapters<
   TInputSchema extends z.ZodType = z.ZodType,
   TOutputSchema extends z.ZodType = z.ZodType,
   TContext extends BackofficeToolContext = BackofficeToolContext,
+  TBashInput = z.input<TInputSchema>,
 > = {
-  bash?: BackofficeRuntimeToolBashAdapter<TInputSchema, TOutputSchema, TContext>;
+  bash?: BackofficeRuntimeToolBashAdapter<TInputSchema, TOutputSchema, TContext, TBashInput>;
 };
 
 export type BackofficeRuntimeToolReferenceHints = {
@@ -133,6 +135,7 @@ export type BackofficeRuntimeTool<
   TInputSchema extends z.ZodType = z.ZodType,
   TOutputSchema extends z.ZodType = z.ZodType,
   TContext extends BackofficeToolContext = BackofficeToolContext,
+  TBashInput = z.input<TInputSchema>,
 > = {
   id: string;
   namespace: string;
@@ -145,7 +148,7 @@ export type BackofficeRuntimeTool<
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
   execute(input: z.output<TInputSchema>, context: TContext): Promise<z.output<TOutputSchema>>;
-  adapters?: BackofficeRuntimeToolAdapters<TInputSchema, TOutputSchema, TContext>;
+  adapters?: BackofficeRuntimeToolAdapters<TInputSchema, TOutputSchema, TContext, TBashInput>;
   reference?: BackofficeRuntimeToolReferenceHints;
 };
 
@@ -163,9 +166,10 @@ export const defineBackofficeRuntimeTool = <
   TInputSchema extends z.ZodType,
   TOutputSchema extends z.ZodType,
   TContext extends BackofficeToolContext = BackofficeToolContext,
+  TBashInput = z.input<TInputSchema>,
 >(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext>,
-): BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext> => {
+  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext, TBashInput>,
+): BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext, TBashInput> => {
   const authorizationNamespace = tool.authorizationNamespace ?? tool.namespace;
   for (const permission of tool.requiredPermissions) {
     if (!isBackofficePermissionRequirement({ namespace: authorizationNamespace, permission })) {
@@ -188,7 +192,7 @@ export const defineBackofficeRuntimeToolFamily = <
 }: {
   namespace: string;
   permissions: Readonly<Record<string, string>>;
-  tools: readonly BackofficeRuntimeTool<z.ZodType, z.ZodType, TContext>[];
+  tools: readonly BackofficeRuntimeTool<z.ZodType, z.ZodType, TContext, unknown>[];
   hidden?: boolean;
   isAvailable?: (context: TContext) => boolean;
 }): BackofficeRuntimeToolFamily => {

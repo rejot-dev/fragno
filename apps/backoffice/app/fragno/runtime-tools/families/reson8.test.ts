@@ -49,27 +49,33 @@ describe("reson8 runtime tools", () => {
       createTrustedSystemBackofficeToolContext({
         runtimes: { reson8: runtime },
       });
-    const audio = new Uint8Array([1, 2, 3]);
+    const arrayBufferView = new Uint8Array([1, 2, 3]);
 
     await expect(
-      reson8RuntimeTools[0].execute({ audio, includeConfidence: true }, context),
+      reson8RuntimeTools[0].execute(
+        {
+          audio: { kind: "arrayBufferView", arrayBufferView },
+          includeConfidence: true,
+        },
+        context,
+      ),
     ).resolves.toEqual({
       text: "hello world",
     });
     expect(runtime.transcribePrerecorded).toHaveBeenCalledWith({
-      audio,
+      audio: arrayBufferView,
       query: { include_confidence: "true" },
     });
   });
 
-  test("normalizes JSON byte arrays from codemode before calling Reson8", async () => {
+  test("normalizes the bytes variant before calling Reson8", async () => {
     const runtime = createRuntime();
     const context: BackofficeToolContext<{ reson8: Reson8Runtime }> =
       createTrustedSystemBackofficeToolContext({
         runtimes: { reson8: runtime },
       });
 
-    await reson8RuntimeTools[0].execute({ audio: [1, 2, 3] }, context);
+    await reson8RuntimeTools[0].execute({ audio: { kind: "bytes", bytes: [1, 2, 3] } }, context);
 
     expect(runtime.transcribePrerecorded).toHaveBeenCalledWith({
       audio: new Uint8Array([1, 2, 3]),

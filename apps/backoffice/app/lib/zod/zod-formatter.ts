@@ -18,6 +18,7 @@ export type JsonSchemaObject = {
   $ref?: string;
   $defs?: Record<string, JsonSchemaObject>;
   definitions?: Record<string, JsonSchemaObject>;
+  codemodeType?: string;
 };
 
 export type JsonSchemaTypeScriptRender = {
@@ -41,6 +42,9 @@ export const zodSchemaToJsonSchema = (
       const metadata = (zodSchema as unknown as z.ZodType).meta?.();
       if (io === "input" && typeof metadata?.codemodeInputId === "string") {
         jsonSchema.id = metadata.codemodeInputId;
+      }
+      if (typeof metadata?.codemodeType === "string") {
+        jsonSchema.codemodeType = metadata.codemodeType;
       }
       if ((zodSchema as unknown as z.ZodType)._zod.def.type === "date") {
         jsonSchema.type = "string";
@@ -233,6 +237,10 @@ const renderJsonSchemaType = (
 
   if (schema.$ref) {
     return resolveRefType(schema.$ref, context);
+  }
+
+  if (schema.codemodeType?.trim()) {
+    return schema.codemodeType.trim();
   }
 
   if (schema.const !== undefined) {
