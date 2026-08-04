@@ -431,7 +431,7 @@ export const auth_schema = {
   oauthState_authRelations: oauthState_authRelations,
   oauthState: oauthState_auth,
   oauthStateRelations: oauthState_authRelations,
-  schemaVersion: 34
+  schemaVersion: 36
 }
 
 // ============================================================================
@@ -537,9 +537,7 @@ export const workflow_instance_workflows = sqliteTable("workflow_instance_workfl
   _version: integer("_version").notNull().default(0)
 }, (table) => [
   uniqueIndex("uidx_workflow_instance_idx_workflow_instance_workflowNa12b3a436").on(table.workflowName, table.instanceId),
-  index("idx_workflow_instance_idx_workflow_instance_workflowNam3beb4686").on(table.workflowName, table.status, table.instanceId),
-  index("idx_workflow_instance_idx_workflow_instance_workflowNamcdb5b486").on(table.workflowName, table.remoteWorkflowName, table.instanceId),
-  index("idx_workflow_instance_idx_workflow_instance_workflowNam8747c859").on(table.workflowName, table.remoteWorkflowName, table.status, table.instanceId),
+  index("idx_workflow_instance_idx_workflow_instance_list_workfl9c4bc4aa").on(table.workflowName, table.createdAt, table.instanceId, table.remoteWorkflowName, table.status),
   uniqueIndex("uidx_workflow_instance_idx_workflow_instance_external_i88920a7e").on(table.id)
 ])
 
@@ -552,6 +550,7 @@ export const workflow_step_workflows = sqliteTable("workflow_step_workflows", {
   name: text("name").notNull(),
   type: text("type").notNull(),
   status: text("status").notNull(),
+  committedByExecutionId: text("committedByExecutionId").notNull(),
   attempts: integer("attempts").notNull().default(0),
   maxAttempts: integer("maxAttempts").notNull(),
   timeoutMs: integer("timeoutMs"),
@@ -602,6 +601,7 @@ export const workflow_step_emission_workflows = sqliteTable("workflow_step_emiss
   id: text("id").notNull().unique().$defaultFn(() => createId()),
   instanceRef: integer("instanceRef").notNull(),
   stepKey: text("stepKey").notNull(),
+  executionId: text("executionId").notNull(),
   epoch: text("epoch").notNull(),
   sequence: integer("sequence").notNull(),
   actor: text("actor").notNull().default("user"),
@@ -674,5 +674,5 @@ export const workflows_schema = {
   workflow_step_emission_workflowsRelations: workflow_step_emission_workflowsRelations,
   workflow_step_emission: workflow_step_emission_workflows,
   workflow_step_emissionRelations: workflow_step_emission_workflowsRelations,
-  schemaVersion: 6
+  schemaVersion: 7
 }
