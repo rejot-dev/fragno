@@ -21,9 +21,11 @@ import type {
   BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
-import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeForbiddenError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { createBackofficeFileSystem, type MasterFileSystem } from "@/files";
+import { automationActorsSchema } from "@/fragno/automation/actors";
 import { PI_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
 import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-dts";
 
@@ -103,6 +105,8 @@ export type PiCodemodeRuntime = {
   execute(input: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeExecuteResult>;
   workflow?: AutomationWorkflowRuntime;
 };
+
+const PI_SESSION_ACTORS_METADATA_KEY = "__backofficeActors";
 
 export const bashParametersSchema = Type.Object({
   script: Type.String({
@@ -275,7 +279,7 @@ const createExecCodeModeTool = (
   sessionId: string,
   codemode: PiCodemodeRuntime | undefined,
   bashCommandContext: PiBashCommandContext | undefined,
-  scope: BackofficeContextScope,
+  execution: BackofficeExecutionContext,
 ): AgentTool =>
   defineTool({
     name: "execCodeMode",
@@ -296,9 +300,10 @@ const createExecCodeModeTool = (
         throw new Error("execCodeMode requires a Backoffice runtime context.");
       }
 
+      const workflowRuntime = bashCommandContext.workflow?.runtime ?? codemode.workflow;
       const context: CoreBackofficeToolContext = createBackofficeToolContext({
         ...bashCommandContext,
-        workflow: codemode.workflow ? { runtime: codemode.workflow } : bashCommandContext.workflow,
+        workflow: workflowRuntime ? { runtime: workflowRuntime } : null,
       });
 
       const result = await codemode.execute({
@@ -326,17 +331,18 @@ const createExecCodeModeTool = (
       // can subscribe to its live progress (history/status + step emissions).
       let runHandle: WorkflowCreateInstanceResult | undefined;
       if (result.workflowDefinition) {
-        if (!codemode.workflow) {
+        if (!workflowRuntime) {
           scheduleError = "execCodeMode workflow definition cannot be scheduled in this runtime.";
         } else {
           try {
             const instanceId = hashToolCallId(`${sessionId}--${toolCallId}`);
-            runHandle = await codemode.workflow.createInstance({
+            runHandle = await workflowRuntime.createInstance({
               workflowName: PI_CODEMODE_WORKFLOW,
               remoteWorkflowName: result.workflowDefinition.name,
               instanceId,
               params: {
-                scope,
+                scope: execution.scope,
+                actors: execution.actors,
                 code: result.preparedCode ?? code,
                 ...(result.preparedModules ? { modules: result.preparedModules } : {}),
                 sessionId,
@@ -412,15 +418,27 @@ const getSessionFs = async (
   }
 };
 
-type BackofficePiToolFactory = (sessionId: string) => Promise<Partial<Record<PiToolId, AgentTool>>>;
+type BackofficePiToolFactory = (input: {
+  sessionId: string;
+  execution: BackofficeExecutionContext;
+}) => Promise<Partial<Record<PiToolId, AgentTool>>>;
+
+type PiBashCommandContextSource =
+  | PiBashCommandContext
+  | ((execution: BackofficeExecutionContext) => PiBashCommandContext);
 
 type CreatePiToolFactoryOptions = {
   sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
   sessionFileSystemContext: PiSessionFileSystemContext;
   env?: CloudflareEnv;
   codemode?: PiCodemodeRuntime;
-  bashCommandContext?: PiBashCommandContext;
+  bashCommandContext?: PiBashCommandContextSource;
 };
+
+const resolvePiBashCommandContext = (
+  source: PiBashCommandContextSource | undefined,
+  execution: BackofficeExecutionContext,
+) => (typeof source === "function" ? source(execution) : source);
 
 export const createPiToolFactory =
   ({
@@ -428,10 +446,14 @@ export const createPiToolFactory =
     sessionFileSystemContext,
     env,
     codemode,
-    bashCommandContext,
+    bashCommandContext: bashCommandContextSource,
   }: CreatePiToolFactoryOptions): BackofficePiToolFactory =>
-  async (sessionId) => {
-    const fileSystem = await getSessionFs(sessionFileSystems, sessionId, sessionFileSystemContext);
+  async ({ sessionId, execution }) => {
+    const fileSystem = await getSessionFs(sessionFileSystems, sessionId, {
+      ...sessionFileSystemContext,
+      execution,
+    });
+    const bashCommandContext = resolvePiBashCommandContext(bashCommandContextSource, execution);
 
     return {
       read: createReadTool(fileSystem),
@@ -443,7 +465,7 @@ export const createPiToolFactory =
         sessionId,
         codemode,
         bashCommandContext,
-        sessionFileSystemContext.scope,
+        execution,
       ),
     };
   };
@@ -453,7 +475,12 @@ export const createPiToolRegistry = (options: CreatePiToolFactoryOptions) => {
   const createSessionTool =
     (toolId: PiToolId) =>
     async (context: { session: { id: string } }): Promise<AgentTool> => {
-      const tool = (await createTools(context.session.id))[toolId];
+      const tool = (
+        await createTools({
+          sessionId: context.session.id,
+          execution: options.sessionFileSystemContext.execution,
+        })
+      )[toolId];
       if (!tool) {
         throw new Error(`${toolId} is not configured for this Pi runtime.`);
       }
@@ -492,19 +519,21 @@ const createBackofficeAuthContext = (config: StoredPiConfig): AuthContext => ({
   fileExists: async () => false,
 });
 
-type BackofficePiSkillResolver = (sessionId: string) => Promise<Skill[]>;
+type BackofficePiSkillResolver = (input: {
+  sessionId: string;
+  execution: BackofficeExecutionContext;
+}) => Promise<Skill[]>;
 
 const createBackofficePiSkillResolver =
   (options: {
     sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
     sessionFileSystemContext: PiSessionFileSystemContext;
   }): BackofficePiSkillResolver =>
-  async (sessionId) => {
-    const fileSystem = await getSessionFs(
-      options.sessionFileSystems,
-      sessionId,
-      options.sessionFileSystemContext,
-    );
+  async ({ sessionId, execution }) => {
+    const fileSystem = await getSessionFs(options.sessionFileSystems, sessionId, {
+      ...options.sessionFileSystemContext,
+      execution,
+    });
     const skills = await loadBackofficePiSkills(fileSystem);
     return Object.values(skills).map((skill) => ({
       name: skill.name,
@@ -516,6 +545,7 @@ const createBackofficePiSkillResolver =
 
 type BackofficeSystemPromptResolver = (options: {
   sessionId: string;
+  execution: BackofficeExecutionContext;
   baseSystemPrompt: string;
 }) => Promise<string>;
 
@@ -524,12 +554,11 @@ const createBackofficeSystemPromptResolver =
     sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
     sessionFileSystemContext: PiSessionFileSystemContext;
   }): BackofficeSystemPromptResolver =>
-  async ({ sessionId, baseSystemPrompt }) => {
-    const fileSystem = await getSessionFs(
-      options.sessionFileSystems,
-      sessionId,
-      options.sessionFileSystemContext,
-    );
+  async ({ sessionId, execution, baseSystemPrompt }) => {
+    const fileSystem = await getSessionFs(options.sessionFileSystems, sessionId, {
+      ...options.sessionFileSystemContext,
+      execution,
+    });
     return `${baseSystemPrompt}\n\n${await renderCodemodeSystemPrompt({ fileSystem })}`;
   };
 
@@ -539,6 +568,7 @@ const buildSystemPrompt = async (options: {
   skills: Skill[];
   resolveSystemPrompt: BackofficeSystemPromptResolver;
   sessionId: string;
+  execution: BackofficeExecutionContext;
 }) => {
   const baseSystemPrompt = [
     options.systemPrompt ?? options.harness.systemPrompt,
@@ -548,6 +578,7 @@ const buildSystemPrompt = async (options: {
     .join("\n\n");
   return await options.resolveSystemPrompt({
     sessionId: options.sessionId,
+    execution: options.execution,
     baseSystemPrompt,
   });
 };
@@ -631,7 +662,14 @@ const createBackofficeInteractiveChatWorkflow = ({
         throw new Error(`API key for provider ${model.provider} is not configured.`);
       }
 
-      const sessionTools = await createTools(event.instanceId);
+      const actors = automationActorsSchema.parse(
+        event.payload.metadata?.[PI_SESSION_ACTORS_METADATA_KEY],
+      );
+      const execution: BackofficeExecutionContext = {
+        scope: config.scope,
+        actors,
+      };
+      const sessionTools = await createTools({ sessionId: event.instanceId, execution });
       const activeTools = resolveHarnessAgentTools(harness).map((toolId) => {
         const tool = sessionTools[toolId];
         if (!tool) {
@@ -639,7 +677,7 @@ const createBackofficeInteractiveChatWorkflow = ({
         }
         return tool;
       });
-      const agentSkills = await skills(event.instanceId);
+      const agentSkills = await skills({ sessionId: event.instanceId, execution });
 
       return {
         model,
@@ -651,6 +689,7 @@ const createBackofficeInteractiveChatWorkflow = ({
           skills: agentSkills,
           resolveSystemPrompt,
           sessionId: event.instanceId,
+          execution,
         }),
         resources: { skills: agentSkills },
         tools: activeTools,
@@ -694,7 +733,7 @@ export const createPiRuntime = (options: {
   env: CloudflareEnv;
   sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
   sessionFileSystemContext: PiSessionFileSystemContext;
-  bashCommandContext: PiBashCommandContext;
+  bashCommandContext: PiBashCommandContextSource;
   codemode: PiCodemodeRuntime;
   onOperationCompleted?: PiFragmentConfig["onOperationCompleted"];
 }): PiRuntimeFragments => {
@@ -737,7 +776,7 @@ export const createPiRuntime = (options: {
     },
   );
 
-  const piFragment = createPiHarness(
+  const piFragment = createPiHarness<BackofficeExecutionContext>(
     pi.config,
     {
       databaseAdapter: adapter,
@@ -747,35 +786,116 @@ export const createPiRuntime = (options: {
     {
       workflows: workflowsFragment.services,
     },
-  ).withMiddleware(async ({ ifMatchesRoute }) => {
-    return await ifMatchesRoute(
-      "POST",
-      "/workflows/:workflowName/sessions",
-      async ({ input, pathParams }, { error }) => {
-        if (pathParams.workflowName !== BACKOFFICE_PI_WORKFLOW_NAME) {
-          return undefined;
-        }
+  ).withMiddleware(async function authorizePiSessionRoutes(
+    { ifMatchesRoute, requestContext, requestState },
+    { error },
+  ) {
+    const authorize = async (
+      operation: typeof BACKOFFICE_PERMISSION.pi.read | typeof BACKOFFICE_PERMISSION.pi.modify,
+      resource: Record<string, unknown>,
+    ) => {
+      if (!requestContext) {
+        return error(
+          {
+            message: "Pi session routes require trusted action context.",
+            code: "context-access-denied",
+          },
+          403,
+        );
+      }
 
-        const values = await input.valid();
-        const agentName = values.metadata?.agentName;
-
-        if (typeof agentName !== "string") {
+      try {
+        await options.sessionFileSystemContext.kernel.assertAuthorized({
+          execution: requestContext,
+          operation,
+          resource,
+        });
+        return undefined;
+      } catch (cause) {
+        if (cause instanceof BackofficeForbiddenError) {
           return error(
-            {
-              message: "Agent name is required.",
-              code: "WORKFLOW_PARAMS_INVALID",
-            },
-            400,
+            { message: cause.message, code: cause.reason },
+            cause.reason === "authority-unavailable" ? 503 : 403,
           );
         }
+        throw cause;
+      }
+    };
 
-        const message = validateBackofficePiAgentName(options.config, pi.models, agentName);
-        if (!message) {
-          return undefined;
+    const createResponse = await ifMatchesRoute(
+      "POST",
+      "/workflows/:workflowName/sessions",
+      async ({ input, pathParams }) => {
+        const values = await input.valid();
+        const agentName = values.metadata?.agentName;
+        if (pathParams.workflowName === BACKOFFICE_PI_WORKFLOW_NAME) {
+          if (typeof agentName !== "string") {
+            return error(
+              { message: "Agent name is required.", code: "WORKFLOW_PARAMS_INVALID" },
+              400,
+            );
+          }
+
+          const message = validateBackofficePiAgentName(options.config, pi.models, agentName);
+          if (message) {
+            return error({ message, code: "WORKFLOW_PARAMS_INVALID" }, 400);
+          }
         }
 
-        return error({ message, code: "WORKFLOW_PARAMS_INVALID" }, 400);
+        const authorizationResponse = await authorize(BACKOFFICE_PERMISSION.pi.modify, {
+          kind: "pi-session-create",
+          workflowName: pathParams.workflowName,
+          agentName,
+        });
+        if (authorizationResponse || !requestContext) {
+          return authorizationResponse;
+        }
+
+        requestState.setBody({
+          ...values,
+          metadata: {
+            ...values.metadata,
+            [PI_SESSION_ACTORS_METADATA_KEY]: automationActorsSchema.parse(requestContext.actors),
+          },
+        });
+        return undefined;
       },
+    );
+    if (createResponse) {
+      return createResponse;
+    }
+
+    const readRoutes = [
+      "/workflows/:workflowName/sessions",
+      "/workflows/:workflowName/sessions/:sessionId",
+      "/workflows/:workflowName/sessions/:sessionId/export/pi-jsonl",
+      "/workflows/:workflowName/sessions/:sessionId/wait-for-agent-end",
+    ] as const;
+    for (const route of readRoutes) {
+      const response = await ifMatchesRoute(
+        "GET",
+        route,
+        async ({ pathParams }, _output) =>
+          await authorize(BACKOFFICE_PERMISSION.pi.read, {
+            kind: pathParams.sessionId ? "pi-session" : "pi-session-list",
+            workflowName: pathParams.workflowName,
+            sessionId: pathParams.sessionId,
+          }),
+      );
+      if (response) {
+        return response;
+      }
+    }
+
+    return await ifMatchesRoute(
+      "POST",
+      "/workflows/:workflowName/sessions/:sessionId/command",
+      async ({ pathParams }) =>
+        await authorize(BACKOFFICE_PERMISSION.pi.modify, {
+          kind: "pi-session",
+          workflowName: pathParams.workflowName,
+          sessionId: pathParams.sessionId,
+        }),
     );
   });
 

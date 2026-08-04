@@ -124,7 +124,11 @@ describe("scenario auth authority fixtures", () => {
           then.auth.permissions({
             userId: "member-1",
             scope: { kind: "org", orgId: "org-1" },
-            exclude: [BACKOFFICE_PERMISSION.store.modify],
+            include: [
+              BACKOFFICE_PERMISSION.connections.read,
+              BACKOFFICE_PERMISSION.internal.manage,
+              BACKOFFICE_PERMISSION.pi.read,
+            ],
           }),
         ],
       }),

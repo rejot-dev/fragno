@@ -1,4 +1,5 @@
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type { AutomationActors } from "@/fragno/automation/actors";
 
 export type PiCodemodeWorkflowParams = {
   code: string;
@@ -7,4 +8,5 @@ export type PiCodemodeWorkflowParams = {
   sessionId: string;
   toolCallId: string;
   scope: BackofficeContextScope;
+  actors: AutomationActors;
 };

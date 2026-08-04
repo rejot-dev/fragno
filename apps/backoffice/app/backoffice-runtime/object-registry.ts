@@ -298,7 +298,9 @@ export type OtpObject = FetchObject &
 export type PiObject = FetchObject &
   AlarmableObject &
   DurableHookObject &
-  AdminConfigurableObject<AwaitedMethodReturn<Pi, "getAdminConfig">>;
+  AdminConfigurableObject<AwaitedMethodReturn<Pi, "getAdminConfig">> & {
+    fetchWithContext(request: Request, context: BackofficeActionRpcContext): Promise<Response>;
+  };
 export type ResendObject = FetchObject &
   AlarmableObject &
   DurableHookObject &

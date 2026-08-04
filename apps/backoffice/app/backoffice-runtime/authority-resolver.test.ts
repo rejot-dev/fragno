@@ -92,7 +92,7 @@ describe("createBackofficeAuthorityResolver", () => {
           userAuthority: accessTokenAuthority,
         },
       }),
-    ).resolves.toEqual(BACKOFFICE_AUTHORITY_ROLE_GRANTS["organization-member"]);
+    ).resolves.toEqual(BACKOFFICE_AUTHORITY_ROLE_GRANTS["system-administrator"]);
     await expect(
       resolver.resolvePrincipalPermissions({
         principal,
@@ -102,7 +102,7 @@ describe("createBackofficeAuthorityResolver", () => {
           userAuthority: accessTokenAuthority,
         },
       }),
-    ).resolves.toEqual(BACKOFFICE_AUTHORITY_ROLE_GRANTS["user-owner"]);
+    ).resolves.toEqual(BACKOFFICE_AUTHORITY_ROLE_GRANTS["system-administrator"]);
     await expect(
       resolver.resolvePrincipalPermissions({
         principal,

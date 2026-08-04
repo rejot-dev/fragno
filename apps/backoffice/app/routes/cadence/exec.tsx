@@ -44,10 +44,14 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     return { history: [] as ComposeHistorySession[], piCollectionSource: null };
   }
 
-  const [adapterIdentity, { sessions }] = await Promise.all([
+  const [adapterIdentity, sessionsResult] = await Promise.all([
     fetchPiAdapterIdentity(request, context, scope),
     fetchPiSessions(request, context, scope, { limit: HISTORY_LIMIT }),
   ]);
+  if (sessionsResult.sessionsError) {
+    throw new Error(sessionsResult.sessionsError);
+  }
+  const { sessions } = sessionsResult;
 
   const detailResults = await Promise.all(
     sessions.map((session) =>

@@ -6,26 +6,35 @@ import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
 import type { PiConfigState, PiThinkingLevel } from "@/fragno/pi/pi-shared";
 import { getPiDurableObject } from "@/worker-runtime/durable-objects";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
 
 type PiFragment = ReturnType<typeof createPiHarness>;
 
-const createPiRouteCaller = (
+const createPiRouteCaller = async (
   request: Request,
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
 ) => {
-  const piDo = getPiDurableObject(context, scope);
+  const execution = await requireBackofficeContext(request, context, scope);
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
+  const piObject = kernel.scoped("PI", scope, runtime.objects.pi);
+
   return createRouteCaller<PiFragment>({
     baseUrl: request.url,
     mountRoute: "/api/pi",
     baseHeaders: request.headers,
-    fetch: piDo.fetch.bind(piDo),
+    fetch: async (routeRequest) =>
+      await piObject.fetchWithContext(routeRequest, {
+        execution,
+        propagationContext: null,
+      }),
   });
 };
 
@@ -40,6 +49,18 @@ type PiSessionsResult = {
 };
 
 type PiRouteError = { message: string; code: string };
+
+type PiRouteErrorResponse = {
+  type: "error";
+  status: number;
+  error: PiRouteError;
+};
+
+const throwPiAuthorizationFailure = (response: PiRouteErrorResponse) => {
+  if (response.status === 401 || response.status === 403 || response.status === 503) {
+    throw Response.json(response.error, { status: response.status });
+  }
+};
 
 type PiSessionDetailResult = {
   session: PiSessionDetail | null;
@@ -98,37 +119,31 @@ export async function fetchPiSessions(
   scope: BackofficeContextScope,
   options: { limit?: number } = {},
 ): Promise<PiSessionsResult> {
-  try {
-    const callRoute = createPiRouteCaller(request, context, scope);
-    const requestedLimit =
-      typeof options.limit === "number" && Number.isFinite(options.limit)
-        ? options.limit
-        : DEFAULT_PAGE_SIZE;
-    const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, requestedLimit));
+  const callRoute = await createPiRouteCaller(request, context, scope);
+  const requestedLimit =
+    typeof options.limit === "number" && Number.isFinite(options.limit)
+      ? options.limit
+      : DEFAULT_PAGE_SIZE;
+  const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, requestedLimit));
 
-    const response = await callRoute("GET", "/workflows/:workflowName/sessions", {
-      pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME },
-      query: { limit: String(limit) },
-    });
+  const response = await callRoute("GET", "/workflows/:workflowName/sessions", {
+    pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME },
+    query: { limit: String(limit) },
+  });
 
-    if (response.type === "json") {
-      return { sessions: response.data, sessionsError: null };
-    }
-
-    if (response.type === "error") {
-      return { sessions: [], sessionsError: response.error.message };
-    }
-
-    return {
-      sessions: [],
-      sessionsError: `Failed to fetch sessions (${response.status}).`,
-    };
-  } catch (error) {
-    return {
-      sessions: [],
-      sessionsError: error instanceof Error ? error.message : "Failed to load sessions.",
-    };
+  if (response.type === "json") {
+    return { sessions: response.data, sessionsError: null };
   }
+
+  if (response.type === "error") {
+    throwPiAuthorizationFailure(response);
+    return { sessions: [], sessionsError: response.error.message };
+  }
+
+  return {
+    sessions: [],
+    sessionsError: `Failed to fetch sessions (${response.status}).`,
+  };
 }
 
 export async function fetchPiSessionDetail(
@@ -138,7 +153,7 @@ export async function fetchPiSessionDetail(
   workflowName: string,
   sessionId: string,
 ): Promise<PiSessionDetailResult> {
-  const callRoute = createPiRouteCaller(request, context, scope);
+  const callRoute = await createPiRouteCaller(request, context, scope);
   const response = await callRoute("GET", "/workflows/:workflowName/sessions/:sessionId", {
     pathParams: { workflowName, sessionId },
   });
@@ -147,6 +162,7 @@ export async function fetchPiSessionDetail(
   }
 
   if (response.type === "error") {
+    throwPiAuthorizationFailure(response);
     return {
       session: null,
       status: response.status,
@@ -178,38 +194,32 @@ export async function createPiSession(
     name?: string;
   },
 ): Promise<PiCreateSessionResult> {
-  try {
-    const callRoute = createPiRouteCaller(request, context, scope);
-    const { workflowName = BACKOFFICE_PI_WORKFLOW_NAME, ...body } = payload;
-    const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
-      pathParams: { workflowName },
-      body: {
-        ...body,
-        input: {
-          ...body.input,
-          systemPrompt: body.input.systemPrompt,
-        },
+  const callRoute = await createPiRouteCaller(request, context, scope);
+  const { workflowName = BACKOFFICE_PI_WORKFLOW_NAME, ...body } = payload;
+  const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
+    pathParams: { workflowName },
+    body: {
+      ...body,
+      input: {
+        ...body.input,
+        systemPrompt: body.input.systemPrompt,
       },
-    });
+    },
+  });
 
-    if (response.type === "json") {
-      return { session: response.data, error: null };
-    }
-
-    if (response.type === "error") {
-      return { session: null, error: response.error.message };
-    }
-
-    return {
-      session: null,
-      error: `Failed to create session (${response.status}).`,
-    };
-  } catch (error) {
-    return {
-      session: null,
-      error: error instanceof Error ? error.message : "Failed to create session.",
-    };
+  if (response.type === "json") {
+    return { session: response.data, error: null };
   }
+
+  if (response.type === "error") {
+    throwPiAuthorizationFailure(response);
+    return { session: null, error: response.error.message };
+  }
+
+  return {
+    session: null,
+    error: `Failed to create session (${response.status}).`,
+  };
 }
 
 export async function sendPiSessionMessage(
@@ -223,33 +233,23 @@ export async function sendPiSessionMessage(
     commandKind?: "prompt" | "followUp" | "steer";
   },
 ): Promise<PiSendMessageResult> {
-  try {
-    const callRoute = createPiRouteCaller(request, context, scope);
-    const response = await callRoute(
-      "POST",
-      "/workflows/:workflowName/sessions/:sessionId/command",
-      {
-        pathParams: { workflowName, sessionId },
-        body: { kind: payload.commandKind ?? "prompt", input: { text: payload.text } },
-      },
-    );
+  const callRoute = await createPiRouteCaller(request, context, scope);
+  const response = await callRoute("POST", "/workflows/:workflowName/sessions/:sessionId/command", {
+    pathParams: { workflowName, sessionId },
+    body: { kind: payload.commandKind ?? "prompt", input: { text: payload.text } },
+  });
 
-    if (response.type === "json") {
-      return { status: response.data.status, error: null };
-    }
-
-    if (response.type === "error") {
-      return { status: null, error: response.error.message };
-    }
-
-    return {
-      status: null,
-      error: `Failed to send message (${response.status}).`,
-    };
-  } catch (error) {
-    return {
-      status: null,
-      error: error instanceof Error ? error.message : "Failed to send message.",
-    };
+  if (response.type === "json") {
+    return { status: response.data.status, error: null };
   }
+
+  if (response.type === "error") {
+    throwPiAuthorizationFailure(response);
+    return { status: null, error: response.error.message };
+  }
+
+  return {
+    status: null,
+    error: `Failed to send message (${response.status}).`,
+  };
 }

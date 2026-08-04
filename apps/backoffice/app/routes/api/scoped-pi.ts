@@ -37,7 +37,7 @@ export async function forwardScopedPiRequest({
     }
     throw error;
   }
-  await requireBackofficeContext(request, context, scope);
+  const execution = await requireBackofficeContext(request, context, scope);
 
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const piObject = kernel.scoped("PI", scope, runtime.objects.pi);
@@ -46,5 +46,8 @@ export async function forwardScopedPiRequest({
   url.pathname = `${mountRoute}${suffix}`;
   url.searchParams.set("scope", backofficeContextScopeSinglePathSegment(scope));
 
-  return await piObject.fetch(new Request(url.toString(), request));
+  return await piObject.fetchWithContext(new Request(url.toString(), request), {
+    execution,
+    propagationContext: null,
+  });
 }

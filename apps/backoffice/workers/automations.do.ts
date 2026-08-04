@@ -51,6 +51,7 @@ import type {
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
+import { createAutomationRuntimeExecution } from "@/fragno/automation/engine/runtime-execution";
 import {
   bindExternalIdentityInputSchema,
   getExternalIdentityBindingInputSchema,
@@ -404,6 +405,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       runtime: createPiRouteRuntime({
         object: this.#runtimeServices.objects.pi.for(scope),
         scope,
+        execution: createAutomationRuntimeExecution(input.event),
       }),
     };
   }

@@ -1,6 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { executeBackofficeRuntimeTool } from "../runtime-tools";
+import {
+  createTrustedSystemBackofficeToolContext,
+  executeBackofficeRuntimeTool,
+} from "../runtime-tools";
 import { automationIdentityRuntimeTools } from "./automations-identities";
 
 describe("automation identity runtime tools", () => {
@@ -11,9 +14,9 @@ describe("automation identity runtime tools", () => {
     const result = await executeBackofficeRuntimeTool(
       resolveExternalIdentity,
       { source: "telegram", type: "chat", id: "1001" },
-      {
+      createTrustedSystemBackofficeToolContext({
         runtimes: { identity: { resolveExternal } },
-      } as never,
+      }),
     );
 
     expect(resolveExternal).toHaveBeenCalledWith({

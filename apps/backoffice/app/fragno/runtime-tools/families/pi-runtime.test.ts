@@ -2,7 +2,10 @@ import { describe, expect, it, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import {
+  createBackofficeUserExecution,
+  type BackofficeContextScope,
+} from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry, PiObject } from "@/backoffice-runtime/object-registry";
 
 import { createBashHost } from "../bash-host";
@@ -23,9 +26,18 @@ const now = new Date("2026-01-01T00:00:00.000Z");
 const createPiObjects = (env: Pick<CloudflareEnv, "PI">): BackofficeObjectRegistry =>
   ({
     pi: {
-      forOrg: (orgId: string) => env.PI.get(env.PI.idFromName(orgId)),
+      forOrg: (orgId: string) => {
+        const object = env.PI.get(env.PI.idFromName(orgId));
+        return {
+          ...object,
+          fetchWithContext: async (request: Request) => await object.fetch(request),
+        };
+      },
     },
   }) as unknown as BackofficeObjectRegistry;
+
+const createPiTestExecution = (scope: BackofficeContextScope) =>
+  createBackofficeUserExecution({ scope, userId: "user-1" });
 
 const createTurnResult = (sessionId: string, assistantText = "assistant:hello") => {
   const assistantMessage = {
@@ -701,14 +713,20 @@ describe("createPiRouteRuntime", () => {
     ],
   ])("calls Pi through a %s scope", async (scope, expectedScopeQuery) => {
     let receivedUrl = "";
+    const fetchWithContext = async (request: Request) => {
+      receivedUrl = request.url;
+      return Response.json([]);
+    };
     const object = {
-      fetch: async (request: Request) => {
-        receivedUrl = request.url;
-        return Response.json([]);
-      },
-    } as PiObject;
+      fetch: fetchWithContext,
+      fetchWithContext,
+    } as unknown as PiObject;
 
-    await createPiRouteRuntime({ object, scope }).listSessions({});
+    await createPiRouteRuntime({
+      object,
+      scope,
+      execution: createPiTestExecution(scope),
+    }).listSessions({});
 
     expect(new URL(receivedUrl || "https://missing").searchParams.get("scope")).toBe(
       expectedScopeQuery,
@@ -870,9 +888,11 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
+    const scope = { kind: "org", orgId: "acme" } as const;
     const runtime = createPiRouteRuntime({
       object: createPiObjects(env).pi.forOrg("acme"),
-      scope: { kind: "org", orgId: "acme" },
+      scope,
+      execution: createPiTestExecution(scope),
     });
 
     const created = await runtime.createSession({
@@ -1047,9 +1067,11 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
+    const scope = { kind: "org", orgId: "acme" } as const;
     const runtime = createPiRouteRuntime({
       object: createPiObjects(env).pi.forOrg("acme"),
-      scope: { kind: "org", orgId: "acme" },
+      scope,
+      execution: createPiTestExecution(scope),
     });
     const turned = await withTimeout(
       runtime.runTurn({ sessionId: "session-2", text: "hello" }),
@@ -1154,9 +1176,11 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
+    const scope = { kind: "org", orgId: "acme" } as const;
     const runtime = createPiRouteRuntime({
       object: createPiObjects(env).pi.forOrg("acme"),
-      scope: { kind: "org", orgId: "acme" },
+      scope,
+      execution: createPiTestExecution(scope),
     });
     const turned = await runtime.runTurn({ sessionId: "session-2", text: "poem" });
 
@@ -1195,9 +1219,11 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
+    const scope = { kind: "org", orgId: "acme" } as const;
     const runtime = createPiRouteRuntime({
       object: createPiObjects(env).pi.forOrg("acme"),
-      scope: { kind: "org", orgId: "acme" },
+      scope,
+      execution: createPiTestExecution(scope),
     });
 
     await expect(runtime.createSession({ agent: "missing::openai::gpt-5-mini" })).rejects.toThrow(
@@ -1264,9 +1290,11 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
+    const scope = { kind: "org", orgId: "acme" } as const;
     const runtime = createPiRouteRuntime({
       object: createPiObjects(env).pi.forOrg("acme"),
-      scope: { kind: "org", orgId: "acme" },
+      scope,
+      execution: createPiTestExecution(scope),
     });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
@@ -1314,9 +1342,11 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
+    const scope = { kind: "org", orgId: "acme" } as const;
     const runtime = createPiRouteRuntime({
       object: createPiObjects(env).pi.forOrg("acme"),
-      scope: { kind: "org", orgId: "acme" },
+      scope,
+      execution: createPiTestExecution(scope),
     });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(

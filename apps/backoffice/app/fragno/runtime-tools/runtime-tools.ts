@@ -250,12 +250,38 @@ const summarizeToolValue = (value: unknown) => {
   return summary.length > 500 ? `${summary.slice(0, 497)}...` : summary;
 };
 
+const authorizeBackofficeRuntimeTool = async (
+  tool: AnyBackofficeRuntimeTool,
+  parsedInput: unknown,
+  context: BackofficeToolContext,
+) => {
+  const namespace = tool.authorizationNamespace ?? tool.namespace;
+  const resource = tool.getResource?.(parsedInput) ?? { kind: "runtime-tool", toolId: tool.id };
+
+  // TODO: Express this ordered authorization chain without triggering async-await-in-loop.
+  for (const permission of tool.requiredPermissions) {
+    const operation = { namespace, permission };
+    if (!isBackofficePermissionRequirement(operation)) {
+      throw new Error(
+        `Runtime tool '${tool.id}' requires unknown permission '${namespace}.${permission}'.`,
+      );
+    }
+
+    await context.kernel.assertAuthorized({
+      execution: context.execution,
+      operation,
+      resource,
+    });
+  }
+};
+
 export const executeBackofficeRuntimeTool = async (
   tool: AnyBackofficeRuntimeTool,
   input: unknown,
   context: BackofficeToolContext,
 ): Promise<unknown> => {
   const parsedInput = tool.inputSchema.parse(input);
+  await authorizeBackofficeRuntimeTool(tool, parsedInput, context);
   const output = await tool.execute(parsedInput, context);
   return tool.outputSchema.parse(output);
 };
@@ -351,6 +377,7 @@ export const createBackofficeBashCommands = ({
           : readOutputOptions(parsed);
         let rawResult: unknown;
         if (bash.execute) {
+          await authorizeBackofficeRuntimeTool(tool, tool.inputSchema.parse(input), context);
           rawResult = await bash.execute({
             input,
             args,
