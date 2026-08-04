@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { z } from "zod";
 
@@ -399,6 +399,22 @@ describe("zodSchemaToTypeScript", () => {
         "type": "ReusableRoute",
       }
     `);
+  });
+
+  test("renders explicit codemode types for values JSON Schema cannot represent", () => {
+    const binarySchema = z.unknown().meta({
+      codemodeType:
+        '{ kind: "arrayBuffer"; arrayBuffer: ArrayBuffer } | { kind: "bytes"; bytes: number[] }',
+    });
+
+    try {
+      assert(
+        zodSchemaToTypeScript(z.object({ audio: binarySchema }), "input") ===
+          '{\n  audio: { kind: "arrayBuffer"; arrayBuffer: ArrayBuffer } | { kind: "bytes"; bytes: number[] };\n}',
+      );
+    } finally {
+      z.globalRegistry.remove(binarySchema);
+    }
   });
 
   test("uses codemodeInputId metadata for input-only declaration names", () => {

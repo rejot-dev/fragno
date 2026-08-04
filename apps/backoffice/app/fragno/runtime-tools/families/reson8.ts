@@ -23,8 +23,28 @@ import {
 
 type Reson8ToolContext = BackofficeToolContext<{ reson8?: Reson8Runtime }>;
 
+const codemodeAudioInputSchema = z
+  .discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("arrayBuffer"),
+      arrayBuffer: z.instanceof(ArrayBuffer),
+    }),
+    z.object({
+      kind: z.literal("arrayBufferView"),
+      arrayBufferView: z.custom<ArrayBufferView>((value) => ArrayBuffer.isView(value)),
+    }),
+    z.object({
+      kind: z.literal("bytes"),
+      bytes: z.array(z.number().int().min(0).max(255)),
+    }),
+  ])
+  .meta({
+    codemodeType:
+      '{ kind: "arrayBuffer"; arrayBuffer: ArrayBuffer } | { kind: "arrayBufferView"; arrayBufferView: ArrayBufferView } | { kind: "bytes"; bytes: number[] }',
+  });
+
 const transcribeInputSchema = z.object({
-  audio: z.unknown().optional(),
+  audio: codemodeAudioInputSchema,
   encoding: z.enum(["auto", "pcm_s16le"]).optional(),
   sampleRate: z.number().int().positive().optional(),
   channels: z.number().int().positive().optional(),
@@ -41,31 +61,19 @@ const getReson8Runtime = (runtime: Reson8ToolContext["runtimes"]["reson8"]): Res
   return runtime;
 };
 
-const isByteArray = (value: unknown): value is number[] =>
-  Array.isArray(value) && value.every((item) => Number.isInteger(item) && item >= 0 && item <= 255);
-
-const normalizeAudioInput = (
-  audio: unknown,
-): ArrayBuffer | ArrayBufferView | Blob | ReadableStream<Uint8Array> => {
-  if (audio instanceof ArrayBuffer || ArrayBuffer.isView(audio)) {
-    return audio;
+const normalizeCodemodeAudioInput = (
+  audio: z.output<typeof codemodeAudioInputSchema>,
+): ArrayBuffer | ArrayBufferView => {
+  switch (audio.kind) {
+    case "arrayBuffer":
+      return audio.arrayBuffer;
+    case "arrayBufferView":
+      return audio.arrayBufferView;
+    case "bytes":
+      return new Uint8Array(audio.bytes);
+    default:
+      throw new Error("Unsupported Reson8 codemode audio input");
   }
-
-  if (isByteArray(audio)) {
-    return new Uint8Array(audio);
-  }
-
-  if (typeof Blob !== "undefined" && audio instanceof Blob) {
-    return audio;
-  }
-
-  if (typeof ReadableStream !== "undefined" && audio instanceof ReadableStream) {
-    return audio as ReadableStream<Uint8Array>;
-  }
-
-  throw new Error(
-    "reson8.transcribePrerecorded requires audio as bytes, an ArrayBuffer, a typed array, a Blob, or a ReadableStream",
-  );
 };
 
 const normalizeEncoding = (value: string | undefined) => {
@@ -129,12 +137,8 @@ const transcribePrerecordedTool = defineBackofficeRuntimeTool({
   inputSchema: transcribeInputSchema,
   outputSchema: reson8PrerecordedTranscriptionSchema,
   execute: async (input, context: Reson8ToolContext) => {
-    if (!input.audio) {
-      throw new Error("reson8.transcribePrerecorded requires audio input");
-    }
-
     return getReson8Runtime(context.runtimes.reson8).transcribePrerecorded({
-      audio: normalizeAudioInput(input.audio),
+      audio: normalizeCodemodeAudioInput(input.audio),
       query: toPrerecordedQuery(input),
     });
   },
