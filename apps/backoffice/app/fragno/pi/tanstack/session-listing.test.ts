@@ -11,7 +11,7 @@ const snapshot: PiSessionListingSnapshot = {
     {
       id: "local-session",
       name: "Local session",
-      metadata: { agentName: "default::openai::model" },
+      metadata: { model: { provider: "openai", name: "model" } },
       workflowName: "interactive-chat-workflow",
       createdAt: new Date("2026-07-22T10:00:00.000Z"),
       updatedAt: new Date("2026-07-22T10:00:00.000Z"),
@@ -27,7 +27,7 @@ describe("projectPiSessionListingRows", () => {
         sessionId: "session-1",
         workflowName: "interactive-chat-workflow",
         params: {
-          metadata: { agentName: "default::openai::model" },
+          metadata: { model: { provider: "openai", name: "model" } },
           __piSession: {
             name: "Local session",
           },
@@ -42,7 +42,7 @@ describe("projectPiSessionListingRows", () => {
       {
         id: "session-1",
         name: "Local session",
-        metadata: { agentName: "default::openai::model" },
+        metadata: { model: { provider: "openai", name: "model" } },
         workflowName: "interactive-chat-workflow",
         createdAt: new Date("2026-07-22T11:00:00.000Z"),
         updatedAt: new Date("2026-07-22T11:05:00.000Z"),
@@ -73,7 +73,7 @@ describe("projectPiSessionListingRows", () => {
         sessionId: "future-workflow",
         workflowName: "interactive-chat-workflow",
         params: {
-          metadata: { agentName: "default::openai::model" },
+          metadata: { model: { provider: "openai", name: "model" } },
           __piSession: {
             name: null,
           },

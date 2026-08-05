@@ -55,11 +55,14 @@ import {
 import type { PiCodemodeWorkflowParams } from "./pi-codemode-workflow";
 import {
   BACKOFFICE_PI_WORKFLOW_NAME,
-  parsePiAgentName,
+  piSessionModel,
+  PI_SUPPORTED_MODELS,
   PI_PROVIDER_TO_MODEL_PROVIDER,
+  PI_SYSTEM_PROMPT,
+  PI_THINKING_LEVEL,
   PI_TOOL_IDS,
-  resolvePiHarnesses,
-  type PiHarnessConfig,
+  type PiApiKeys,
+  type PiModel,
   type PiToolId,
   type StoredPiConfig,
 } from "./pi-shared";
@@ -421,15 +424,15 @@ const resolveBackofficeModel = (
     .getModels(PI_PROVIDER_TO_MODEL_PROVIDER[provider])
     .find((model) => model.name === modelName || model.id === modelName);
 
-const createBackofficeAuthContext = (config: StoredPiConfig): AuthContext => ({
+const createBackofficeAuthContext = (apiKeys: PiApiKeys): AuthContext => ({
   env: async (name) => {
     switch (name) {
       case "OPENAI_API_KEY":
-        return config.apiKeys.openai;
+        return apiKeys.openai;
       case "ANTHROPIC_API_KEY":
-        return config.apiKeys.anthropic;
+        return apiKeys.anthropic;
       case "GEMINI_API_KEY":
-        return config.apiKeys.gemini;
+        return apiKeys.gemini;
       default:
         return undefined;
     }
@@ -481,7 +484,6 @@ const createBackofficeSystemPromptResolver =
   };
 
 const buildSystemPrompt = async (options: {
-  harness: PiHarnessConfig;
   systemPrompt?: string;
   skills: Skill[];
   resolveSystemPrompt: BackofficeSystemPromptResolver;
@@ -489,7 +491,7 @@ const buildSystemPrompt = async (options: {
   execution: BackofficeExecutionContext;
 }) => {
   const baseSystemPrompt = [
-    options.systemPrompt ?? options.harness.systemPrompt,
+    options.systemPrompt ?? PI_SYSTEM_PROMPT,
     formatSkillsForSystemPrompt(options.skills),
   ]
     .filter((part) => part.trim().length > 0)
@@ -501,40 +503,19 @@ const buildSystemPrompt = async (options: {
   });
 };
 
-const resolveHarnessAgentTools = (harness: PiHarnessConfig): PiToolId[] => {
-  const tools = harness.tools.filter(isValidPiToolId);
-  if (tools.includes("read")) {
-    return tools;
+const resolveDefaultBackofficePiModel = async (models: Models): Promise<PiModel | null> => {
+  for (const option of PI_SUPPORTED_MODELS) {
+    const resolvedModel = resolveBackofficeModel(models, option.provider, option.name);
+    if (resolvedModel && (await models.checkAuth(resolvedModel.provider))) {
+      return { provider: option.provider, name: option.name };
+    }
   }
-  return [...tools, "read"];
+  return null;
 };
 
-const isValidPiToolId = (toolId: string): toolId is (typeof PI_TOOL_IDS)[number] =>
-  PI_TOOL_IDS.includes(toolId as (typeof PI_TOOL_IDS)[number]);
-
-const validateBackofficePiAgentName = (
-  config: StoredPiConfig,
-  models: Models,
-  agentName: string,
-): string | null => {
-  const parsedAgentName = parsePiAgentName(agentName);
-  if (!parsedAgentName) {
-    return "Agent must use the harnessId::provider::model format.";
-  }
-
-  const harness = resolvePiHarnesses(config.harnesses).find(
-    (entry) => entry.id === parsedAgentName.harnessId,
-  );
-  if (!harness) {
-    return `Harness ${parsedAgentName.harnessId} not found.`;
-  }
-
-  const model = resolveBackofficeModel(models, parsedAgentName.provider, parsedAgentName.model);
-  if (!model) {
-    return `Model ${parsedAgentName.provider}/${parsedAgentName.model} not found.`;
-  }
-
-  return null;
+const validateBackofficePiModel = (models: Models, selection: PiModel): string | null => {
+  const model = resolveBackofficeModel(models, selection.provider, selection.name);
+  return model ? null : `Model ${selection.provider}/${selection.name} not found.`;
 };
 
 const createBackofficeInteractiveChatWorkflow = ({
@@ -554,26 +535,14 @@ const createBackofficeInteractiveChatWorkflow = ({
     name: BACKOFFICE_PI_WORKFLOW_NAME,
     commandTimeout: "1 hour",
     options: async (event) => {
-      const requestedAgentName = event.payload.metadata?.agentName;
-      if (typeof requestedAgentName !== "string") {
-        throw new Error("BACKOFFICE_PI_AGENT_REQUIRED");
+      const selectedModel = piSessionModel(event.payload.metadata);
+      if (!selectedModel) {
+        throw new Error("BACKOFFICE_PI_MODEL_REQUIRED");
       }
 
-      const parsedAgentName = parsePiAgentName(requestedAgentName);
-      if (!parsedAgentName) {
-        throw new Error("Agent must use the harnessId::provider::model format.");
-      }
-
-      const harness = resolvePiHarnesses(config.harnesses).find(
-        (entry) => entry.id === parsedAgentName.harnessId,
-      );
-      if (!harness) {
-        throw new Error(`Harness ${parsedAgentName.harnessId} not found.`);
-      }
-
-      const model = resolveBackofficeModel(models, parsedAgentName.provider, parsedAgentName.model);
+      const model = resolveBackofficeModel(models, selectedModel.provider, selectedModel.name);
       if (!model) {
-        throw new Error(`Model ${parsedAgentName.provider}/${parsedAgentName.model} not found.`);
+        throw new Error(`Model ${selectedModel.provider}/${selectedModel.name} not found.`);
       }
 
       if (!(await models.checkAuth(model.provider))) {
@@ -588,7 +557,7 @@ const createBackofficeInteractiveChatWorkflow = ({
         actors,
       };
       const sessionTools = await createTools({ sessionId: event.instanceId, execution });
-      const activeTools = resolveHarnessAgentTools(harness).map((toolId) => {
+      const activeTools = PI_TOOL_IDS.map((toolId) => {
         const tool = sessionTools[toolId];
         if (!tool) {
           throw new Error(`${toolId} is not configured for this Pi runtime.`);
@@ -600,9 +569,8 @@ const createBackofficeInteractiveChatWorkflow = ({
       return {
         model,
         models,
-        thinkingLevel: event.payload.thinkingLevel ?? harness.thinkingLevel,
+        thinkingLevel: event.payload.thinkingLevel ?? PI_THINKING_LEVEL,
         systemPrompt: await buildSystemPrompt({
-          harness,
           systemPrompt: event.payload.systemPrompt,
           skills: agentSkills,
           resolveSystemPrompt,
@@ -617,12 +585,13 @@ const createBackofficeInteractiveChatWorkflow = ({
 
 const buildPiRuntime = (
   config: StoredPiConfig,
+  apiKeys: PiApiKeys,
   createTools: BackofficePiToolFactory,
   skills: BackofficePiSkillResolver,
   resolveSystemPrompt: BackofficeSystemPromptResolver,
   onOperationCompleted: PiFragmentConfig["onOperationCompleted"],
 ) => {
-  const models = builtinModels({ authContext: createBackofficeAuthContext(config) });
+  const models = builtinModels({ authContext: createBackofficeAuthContext(apiKeys) });
   const workflows = [
     createBackofficeInteractiveChatWorkflow({
       config,
@@ -647,6 +616,7 @@ const buildPiRuntime = (
 
 export const createPiRuntime = (options: {
   config: StoredPiConfig;
+  apiKeys: PiApiKeys;
   adapters: BackofficeDatabaseAdapterFactory;
   sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
   sessionFileSystemContext: PiSessionFileSystemContext;
@@ -674,6 +644,7 @@ export const createPiRuntime = (options: {
   });
   const pi = buildPiRuntime(
     options.config,
+    options.apiKeys,
     createTools,
     skills,
     resolveSystemPrompt,
@@ -743,16 +714,19 @@ export const createPiRuntime = (options: {
       "/workflows/:workflowName/sessions",
       async ({ input, pathParams }) => {
         const values = await input.valid();
-        const agentName = values.metadata?.agentName;
+        let model = piSessionModel(values.metadata);
         if (pathParams.workflowName === BACKOFFICE_PI_WORKFLOW_NAME) {
-          if (typeof agentName !== "string") {
+          if (!model) {
+            model = await resolveDefaultBackofficePiModel(pi.models);
+          }
+          if (!model) {
             return error(
-              { message: "Agent name is required.", code: "WORKFLOW_PARAMS_INVALID" },
+              { message: "No configured Pi model is available.", code: "WORKFLOW_PARAMS_INVALID" },
               400,
             );
           }
 
-          const message = validateBackofficePiAgentName(options.config, pi.models, agentName);
+          const message = validateBackofficePiModel(pi.models, model);
           if (message) {
             return error({ message, code: "WORKFLOW_PARAMS_INVALID" }, 400);
           }
@@ -761,7 +735,7 @@ export const createPiRuntime = (options: {
         const authorizationResponse = await authorize(BACKOFFICE_PERMISSION.pi.modify, {
           kind: "pi-session-create",
           workflowName: pathParams.workflowName,
-          agentName,
+          model,
         });
         if (authorizationResponse || !requestContext) {
           return authorizationResponse;
@@ -771,6 +745,7 @@ export const createPiRuntime = (options: {
           ...values,
           metadata: {
             ...values.metadata,
+            model,
             [PI_SESSION_ACTORS_METADATA_KEY]: automationActorsSchema.parse(requestContext.actors),
           },
         });

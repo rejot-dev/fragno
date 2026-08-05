@@ -33,6 +33,7 @@ import { useFetcher } from "react-router";
 
 import type { WorkflowGraph as CodemodeWorkflowGraph } from "@fragno-dev/workflow-visualizer";
 
+import type { PiModel } from "@/fragno/pi/pi-shared";
 import type { PiCollectionSource } from "@/fragno/pi/tanstack/browser-database";
 import {
   type DashboardCommandResult,
@@ -96,7 +97,7 @@ export type ComposeHistorySession = {
   name: string | null;
   status: string;
   workflowName: string;
-  agentName: string;
+  model: PiModel;
   updatedAt: string | Date;
 };
 
@@ -290,7 +291,7 @@ export function PromptProvider({
       if (existingSession) {
         formData.set("sessionId", existingSession.id);
         formData.set("workflowName", existingSession.workflowName);
-        formData.set("agentName", existingSession.agentName);
+        formData.set("model", JSON.stringify(existingSession.model));
       }
       void composeFetcher.submit(formData, { method: "post" });
 
@@ -391,7 +392,7 @@ export function PromptProvider({
       session: {
         id: session.id,
         workflowName: session.workflowName,
-        agentName: session.agentName,
+        model: session.model,
       },
       blocks: [],
       view: { kind: "stream" },

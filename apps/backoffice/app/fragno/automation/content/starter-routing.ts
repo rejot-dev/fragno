@@ -126,29 +126,6 @@ export const STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInput[] = 
     }),
   },
   {
-    id: "pi-default-agent-configure",
-    name: "Configure default Pi agent",
-    enabled: true,
-    trigger: {
-      kind: "event",
-      source: "pi",
-      eventType: "capability.configured",
-      matcher: {
-        all: [
-          { path: "$.payload.harnesses[0].id", op: "exists" },
-          { path: "$.payload.modelCatalog[0].provider", op: "exists" },
-          { path: "$.payload.modelCatalog[0].name", op: "exists" },
-        ],
-      },
-    },
-    priority: 25,
-    action: startWorkflowAction({
-      remoteWorkflowName: "pi-default-agent-configure",
-      workflowScriptPath: "/workspace/automations/pi-default-agent-configure.workflow.js",
-      instanceIdTemplate: "pi-default-agent-configure-${event.id}",
-    }),
-  },
-  {
     id: "telegram-start-linking",
     name: "Telegram /start identity linking",
     enabled: true,

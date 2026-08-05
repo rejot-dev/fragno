@@ -1,39 +1,17 @@
-import { describe, expect, it, assert } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 
 import {
-  createPiAgentName,
-  DEFAULT_PI_HARNESSES,
-  DEFAULT_PI_HARNESS,
   findPiModelOption,
-  parsePiAgentName,
-  PI_MODEL_CATALOG,
-  resolvePiHarnesses,
+  PI_SUPPORTED_MODELS,
+  PI_SYSTEM_PROMPT,
+  PI_THINKING_LEVEL,
+  PI_TOOL_IDS,
   resolvePiModelThinkingLevel,
 } from "./pi-shared";
 
 describe("pi-shared helpers", () => {
-  it("builds and parses agent names", () => {
-    const agent = createPiAgentName({
-      harnessId: "support",
-      provider: "openai",
-      model: "gpt-5.2",
-    });
-
-    expect(agent).toBe("support::openai::gpt-5.2");
-    expect(parsePiAgentName(agent)).toEqual({
-      harnessId: "support",
-      provider: "openai",
-      model: "gpt-5.2",
-    });
-  });
-
-  it("returns null for invalid agent names", () => {
-    expect(parsePiAgentName("invalid")).toBeNull();
-    expect(parsePiAgentName("a::b")).toBeNull();
-  });
-
-  it("offers GPT-5.6 Luna as the default OpenAI model", () => {
-    const openAiModels = PI_MODEL_CATALOG.filter((option) => option.provider === "openai");
+  it("offers the supported OpenAI models", () => {
+    const openAiModels = PI_SUPPORTED_MODELS.filter((option) => option.provider === "openai");
 
     expect(openAiModels).toEqual([
       { provider: "openai", name: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
@@ -43,18 +21,15 @@ describe("pi-shared helpers", () => {
     expect(findPiModelOption("openai", "gpt-5.6-terra")).toEqual(openAiModels[1]);
   });
 
-  it("uses medium reasoning for OpenAI models", () => {
+  it("defines one built-in Pi behavior", () => {
+    expect(PI_TOOL_IDS).toEqual(["execCodeMode", "read"]);
+    expect(PI_SYSTEM_PROMPT.length).toBeGreaterThan(0);
+    assert(PI_THINKING_LEVEL === "low");
+  });
+
+  it("uses medium reasoning for OpenAI models selected by the UI", () => {
     assert(resolvePiModelThinkingLevel("openai") === "medium");
     expect(resolvePiModelThinkingLevel("anthropic")).toBeUndefined();
     expect(resolvePiModelThinkingLevel("gemini")).toBeUndefined();
-  });
-
-  it("falls back to the single default harness", () => {
-    const harnesses = resolvePiHarnesses([]);
-    expect(harnesses).toHaveLength(1);
-    expect(harnesses[0]?.id).toBe(DEFAULT_PI_HARNESS.id);
-    expect(harnesses).toEqual(DEFAULT_PI_HARNESSES);
-    expect(harnesses[0]?.tools).toEqual(["execCodeMode", "read"]);
-    assert(harnesses[0]?.thinkingLevel === "low");
   });
 });

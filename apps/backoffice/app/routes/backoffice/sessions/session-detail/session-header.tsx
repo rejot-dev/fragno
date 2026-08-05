@@ -1,12 +1,10 @@
 import type { ReactNode } from "react";
 
 export function SessionHeader({
-  harnessLabel,
   modelLabel,
   options,
   session,
 }: {
-  harnessLabel: string;
   modelLabel: string;
   options?: ReactNode;
   session: {
@@ -20,9 +18,7 @@ export function SessionHeader({
         <h2 className="truncate text-sm font-semibold text-[var(--bo-fg)]">
           {session.name || session.id}
         </h2>
-        <p className="truncate text-[10px] text-[var(--bo-muted-2)]">
-          {harnessLabel} · {modelLabel}
-        </p>
+        <p className="truncate text-[10px] text-[var(--bo-muted-2)]">{modelLabel}</p>
       </div>
       {options}
     </header>

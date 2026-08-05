@@ -8,54 +8,28 @@ export type PiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "x
 
 export type PiModelProvider = "openai" | "anthropic" | "gemini";
 
-export type PiModelOption = {
+export type PiModel = {
   provider: PiModelProvider;
   name: string;
-  label: string;
 };
 
-export type PiHarnessConfig = {
-  id: string;
+export type PiModelOption = PiModel & {
   label: string;
-  description?: string;
-  systemPrompt: string;
-  tools: string[];
-  thinkingLevel?: PiThinkingLevel;
-  steeringMode?: PiSteeringMode;
-  toolConfig?: unknown;
 };
 
 export type StoredPiConfig = {
   scope: BackofficeContextScope;
-  apiKeys: {
-    openai?: string;
-    anthropic?: string;
-    gemini?: string;
-  };
-  harnesses: PiHarnessConfig[];
-  createdAt: string;
-  updatedAt: string;
 };
 
-export type PiConfigState = {
+export type PiRuntimeState = {
   configured: boolean;
-  config?: {
-    scope: BackofficeContextScope;
-    apiKeys: {
-      openai?: string | null;
-      anthropic?: string | null;
-      gemini?: string | null;
-    };
-    harnesses: PiHarnessConfig[];
-    createdAt: string;
-    updatedAt: string;
-  };
+  modelCatalog: PiModelOption[];
 };
 
-const PI_PROVIDER_LABELS: Record<PiModelProvider, string> = {
-  openai: "OpenAI",
-  anthropic: "Anthropic",
-  gemini: "Gemini",
+export type PiApiKeys = {
+  openai?: string;
+  anthropic?: string;
+  gemini?: string;
 };
 
 export const PI_PROVIDER_TO_MODEL_PROVIDER = {
@@ -72,7 +46,7 @@ export const resolvePiModelThinkingLevel = (
   provider: PiModelProvider,
 ): PiThinkingLevel | undefined => PI_PROVIDER_THINKING_LEVELS[provider];
 
-export const PI_MODEL_CATALOG: PiModelOption[] = [
+export const PI_SUPPORTED_MODELS: PiModelOption[] = [
   { provider: "openai", name: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
   { provider: "openai", name: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
   { provider: "openai", name: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
@@ -97,55 +71,27 @@ export const PI_MODEL_CATALOG: PiModelOption[] = [
 
 export const PI_TOOL_IDS = ["execCodeMode", "read"] as const;
 export type PiToolId = (typeof PI_TOOL_IDS)[number];
+export const PI_SYSTEM_PROMPT = STATIC_FILE_CONTENT["SYSTEM.md"];
+export const PI_THINKING_LEVEL: PiThinkingLevel = "low";
 
-export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
-  {
-    id: "default",
-    label: "Default",
-    description: "Built-in harness with codemode and read access.",
-    systemPrompt: STATIC_FILE_CONTENT["SYSTEM.md"],
-    tools: ["execCodeMode", "read"],
-    thinkingLevel: "low",
-  },
-];
-
-export const DEFAULT_PI_HARNESS: PiHarnessConfig = DEFAULT_PI_HARNESSES[0];
-
-export const resolvePiHarnesses = (harnesses?: PiHarnessConfig[] | null): PiHarnessConfig[] => {
-  if (Array.isArray(harnesses) && harnesses.length > 0) {
-    return harnesses;
-  }
-  return DEFAULT_PI_HARNESSES;
-};
-
-export const createPiAgentName = (options: {
-  harnessId: string;
-  provider: PiModelProvider;
-  model: string;
-}) => `${options.harnessId}::${options.provider}::${options.model}`;
-
-export const piSessionAgentName = (metadata: Record<string, unknown> | null): string | null => {
-  const agentName = metadata?.agentName;
-  return typeof agentName === "string" ? agentName : null;
-};
-
-export const parsePiAgentName = (agent: string) => {
-  const parts = agent.split("::");
-  if (parts.length < 3) {
+export const piSessionModel = (
+  metadata: Record<string, unknown> | null | undefined,
+): PiModel | null => {
+  const model = metadata?.model;
+  if (!model || typeof model !== "object") {
     return null;
   }
-  const [harnessId, providerRaw, ...modelParts] = parts;
-  const provider = providerRaw as PiModelProvider;
-  if (!harnessId || !modelParts.length || !(provider in PI_PROVIDER_LABELS)) {
+  const { provider, name } = model as Record<string, unknown>;
+  if (
+    (provider !== "openai" && provider !== "anthropic" && provider !== "gemini") ||
+    typeof name !== "string" ||
+    !name
+  ) {
     return null;
   }
-  return {
-    harnessId,
-    provider,
-    model: modelParts.join("::"),
-  };
+  return { provider, name };
 };
 
 export const findPiModelOption = (provider: PiModelProvider, name: string) => {
-  return PI_MODEL_CATALOG.find((option) => option.provider === provider && option.name === name);
+  return PI_SUPPORTED_MODELS.find((option) => option.provider === provider && option.name === name);
 };

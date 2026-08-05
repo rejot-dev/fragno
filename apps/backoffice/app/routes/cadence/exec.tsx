@@ -6,13 +6,13 @@ import { CodemodeWorkflowPanel } from "@/components/cadence/prompt/codemode-work
 import { WorkflowPanel } from "@/components/cadence/prompt/workflow-panel";
 import { ResizableSplit } from "@/components/cadence/resizable-split";
 import { getAuthMe } from "@/fragno/auth/auth-server";
-import { piSessionAgentName } from "@/fragno/pi/pi-shared";
+import { piSessionModel } from "@/fragno/pi/pi-shared";
 import type { CadenceLayoutContext } from "@/layouts/cadence-layout";
 import { cn } from "@/lib/utils";
 import { handlePiTerminalAction } from "@/routes/backoffice/pi-terminal-action";
 import {
   fetchPiAdapterIdentity,
-  fetchPiConfig,
+  fetchPiRuntimeState,
   fetchPiSessionDetail,
   fetchPiSessions,
 } from "@/routes/backoffice/sessions/data";
@@ -39,8 +39,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   }
 
   const scope = { kind: "org" as const, orgId: activeOrg.id };
-  const { configState, configError } = await fetchPiConfig(context, scope);
-  if (configError || !configState?.configured) {
+  const { runtimeState, runtimeError } = await fetchPiRuntimeState(context, scope);
+  if (runtimeError || !runtimeState?.configured) {
     return { history: [] as ComposeHistorySession[], piCollectionSource: null };
   }
 
@@ -65,16 +65,21 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
   return {
     piCollectionSource: { scope, adapterIdentity },
-    history: sessions.map((session, index): ComposeHistorySession => {
-      const status = detailResults[index]?.session?.workflow.status ?? "unknown";
-      return {
-        id: session.id,
-        name: session.name,
-        status,
-        workflowName: session.workflowName,
-        agentName: piSessionAgentName(session.metadata) ?? session.workflowName,
-        updatedAt: session.updatedAt,
-      };
+    history: sessions.flatMap((session, index): ComposeHistorySession[] => {
+      const model = piSessionModel(session.metadata);
+      if (!model) {
+        return [];
+      }
+      return [
+        {
+          id: session.id,
+          name: session.name,
+          status: detailResults[index]?.session?.workflow.status ?? "unknown",
+          workflowName: session.workflowName,
+          model,
+          updatedAt: session.updatedAt,
+        },
+      ];
     }),
   };
 }

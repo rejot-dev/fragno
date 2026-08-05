@@ -11,7 +11,7 @@ import {
 } from "@assistant-ui/react";
 
 import { createPiClient } from "@/fragno/pi/pi-client";
-import { findPiModelOption, parsePiAgentName, piSessionAgentName } from "@/fragno/pi/pi-shared";
+import { findPiModelOption, piSessionModel } from "@/fragno/pi/pi-shared";
 import { usePiSessionProjection } from "@/fragno/pi/tanstack/use-session-projection";
 import { scopedPublicMountPath } from "@/fragno/scoped-public-fragment-routes";
 
@@ -44,7 +44,7 @@ const TERMINAL_SESSION_LABELS: Record<string, string> = {
 
 export default function BackofficeOrganisationPiSessionDetail() {
   const { workflowName, sessionId } = useParams();
-  const { scope, persistenceSource, harnesses } = useOutletContext<PiSessionsOutletContext>();
+  const { scope, persistenceSource } = useOutletContext<PiSessionsOutletContext>();
 
   if (!workflowName || !sessionId) {
     throw new Response("Not Found", { status: 404 });
@@ -57,7 +57,6 @@ export default function BackofficeOrganisationPiSessionDetail() {
       source={persistenceSource}
       workflowName={workflowName}
       sessionId={sessionId}
-      harnesses={harnesses}
     />
   );
 }
@@ -76,13 +75,11 @@ function SynchronizedPiSessionDetail({
   source,
   workflowName,
   sessionId,
-  harnesses,
 }: {
   scope: PiSessionsOutletContext["scope"];
   source: PiSessionsOutletContext["persistenceSource"];
   workflowName: string;
   sessionId: string;
-  harnesses: PiSessionsOutletContext["harnesses"];
 }) {
   const {
     session,
@@ -110,7 +107,6 @@ function SynchronizedPiSessionDetail({
     <PiSessionDetailView
       scope={scope}
       session={session}
-      harnesses={harnesses}
       projection={projection}
       projectionError={projectionError}
       instanceStatus={instanceStatus}
@@ -121,14 +117,12 @@ function SynchronizedPiSessionDetail({
 function PiSessionDetailView({
   scope,
   session,
-  harnesses,
   projection,
   projectionError,
   instanceStatus,
 }: {
   scope: PiSessionsOutletContext["scope"];
   session: PiSession;
-  harnesses: PiSessionsOutletContext["harnesses"];
   projection: PiWorkflowSessionProjectionState;
   projectionError: string | null;
   instanceStatus: string | null;
@@ -160,14 +154,9 @@ function PiSessionDetailView({
   const running = !sessionDisabled && (sending || !projection.readyForInput);
   const needsNudge = !sessionDisabled && !sending && !readyForInput && statusText === "Working…";
 
-  const agentName = piSessionAgentName(session.metadata);
-  const parsedAgent = agentName ? parsePiAgentName(agentName) : null;
-  const harnessLabel = parsedAgent
-    ? (harnesses.find((entry) => entry.id === parsedAgent.harnessId)?.label ??
-      parsedAgent.harnessId)
-    : session.workflowName;
-  const modelLabel = parsedAgent
-    ? (findPiModelOption(parsedAgent.provider, parsedAgent.model)?.label ?? parsedAgent.model)
+  const model = piSessionModel(session.metadata);
+  const modelLabel = model
+    ? (findPiModelOption(model.provider, model.name)?.label ?? model.name)
     : session.workflowName;
 
   const assistantMessages = useMemo(
@@ -311,7 +300,6 @@ function PiSessionDetailView({
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         <SessionHeader
           session={session}
-          harnessLabel={harnessLabel}
           modelLabel={modelLabel}
           options={
             <SessionDisplayOptions

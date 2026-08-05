@@ -220,13 +220,6 @@ export const backofficeConnectionCatalog: readonly BackofficeConnectionCatalogEn
     routeSegment: "reson8",
   },
   {
-    id: "pi",
-    label: "Pi",
-    kind: "connection",
-    configurable: true,
-    description: "Configure model providers and Pi runtime harnesses.",
-  },
-  {
     id: "sandbox",
     label: "Sandbox",
     kind: "connection",

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { PiModel } from "@/fragno/pi/pi-shared";
 import {
   defineCliArgsParser,
   parseCliTokens,
@@ -66,7 +67,12 @@ const sessionDetailBaseOutputSchema = sessionBaseOutputSchema.extend({
 });
 
 const sessionCreateInputSchema = z.object({
-  agent: z.string().trim().min(1),
+  model: z
+    .object({
+      provider: z.enum(["openai", "anthropic", "gemini"]),
+      name: z.string().trim().min(1),
+    })
+    .optional(),
   name: z.string().trim().min(1).optional(),
   systemMessage: z.string().trim().min(1).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -126,7 +132,7 @@ const normalizeSteeringMode = (
 };
 
 const parseSessionCreate = defineCliArgsParser<PiSessionCreateArgs>("pi.session.create", {
-  agent: { required: true },
+  model: { kind: "json", option: "model-json" },
   name: {},
   systemMessage: {},
   metadata: { kind: "json", option: "metadata-json" },
@@ -178,11 +184,11 @@ const sessionCreateTool = defineBackofficeRuntimeTool({
         summary: "pi.session.create creates a new Pi session via the existing Pi session route.",
         options: [
           {
-            name: "agent",
-            required: true,
+            name: "model-json",
             valueRequired: true,
-            valueName: "agent",
-            description: "Pi agent identifier",
+            valueName: "json",
+            description:
+              "Optional model selection; defaults to the first available supported model",
           },
           {
             name: "name",
@@ -217,9 +223,9 @@ const sessionCreateTool = defineBackofficeRuntimeTool({
           },
         ],
         examples: [
-          `pi.session.create --agent assistant --name onboarding --tag team-alpha --tag priority --metadata-json '{"purpose":"support"}'`,
-          'pi.session.create --agent assistant --system-message "You are operating in staging mode." --format json',
-          "pi.session.create --agent assistant --steering-mode one-at-a-time --format json",
+          `pi.session.create --name onboarding --tag team-alpha --tag priority --metadata-json '{"purpose":"support"}'`,
+          'pi.session.create --system-message "You are operating in staging mode." --format json',
+          `pi.session.create --model-json '${JSON.stringify({ provider: "openai", name: "gpt-5.6-luna" } satisfies PiModel)}' --steering-mode one-at-a-time --format json`,
         ],
       },
       parse: parseSessionCreate,

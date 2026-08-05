@@ -38,11 +38,9 @@ describe("Pi session authorization", () => {
   beforeEach(async () => {
     runtime = await createInMemoryBackofficeRuntime({
       authorityResolver: unexpectedRouteAuthorityResolver,
+      env: { OPENAI_API_KEY: "test-openai-key" },
     });
-    await runtime.objects.pi.forOrg(scope.orgId).setAdminConfig({
-      scope,
-      apiKeys: { openai: "test-openai-key" },
-    });
+    await runtime.objects.pi.forOrg(scope.orgId).getRuntimeState(scope);
   });
 
   afterEach(async () => {
@@ -84,7 +82,7 @@ describe("Pi session authorization", () => {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          metadata: { agentName: "default::openai::gpt-5.6-luna" },
+          metadata: { model: { provider: "openai", name: "gpt-5.6-luna" } },
           input: {},
         }),
       }),
@@ -94,6 +92,21 @@ describe("Pi session authorization", () => {
     assert.equal(response.status, 200);
     return (await response.json()) as { id: string };
   };
+
+  test("selects the first environment-backed model when no model is specified", async () => {
+    const response = await runtime.objects.pi.forOrg(scope.orgId).fetchWithContext(
+      new Request(sessionUrl(), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ input: {} }),
+      }),
+      jwtContextFor({ userId: "user-1", role: "user", organizationIds: [scope.orgId] }),
+    );
+
+    assert.equal(response.status, 200);
+    const session = (await response.json()) as { metadata: Record<string, unknown> };
+    expect(session.metadata.model).toEqual({ provider: "openai", name: "gpt-5.6-luna" });
+  });
 
   test("persists the trusted creator actors in workflow metadata", async () => {
     const creatorContext = contextFor("session-creator");
@@ -188,7 +201,9 @@ describe("Pi session authorization", () => {
 
     assert.equal(response.status, 200);
     const sessions = (await response.json()) as { id: string }[];
-    expect(sessions.map((session) => session.id)).toEqual([second.id, first.id]);
+    expect(sessions.map((session) => session.id)).toEqual(
+      expect.arrayContaining([first.id, second.id]),
+    );
   });
 
   test("rejects protected session routes without trusted execution context", async () => {

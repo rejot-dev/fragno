@@ -1,4 +1,3 @@
-import type { Dispatch, SetStateAction } from "react";
 import { isRouteErrorResponse } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
@@ -8,9 +7,8 @@ import {
   BackofficeOrganisationScopeMenu,
   type BackofficeOrganisationScopeOption,
 } from "@/components/backoffice/organisation-scope-menu";
-import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
 import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
-import type { PiConfigState } from "@/fragno/pi/pi-shared";
+import type { PiRuntimeState } from "@/fragno/pi/pi-shared";
 import type { PiCollectionSource } from "@/fragno/pi/tanstack/browser-database";
 
 import {
@@ -25,50 +23,27 @@ export type PiLayoutContext = {
   persistenceError: string | null;
   automationPersistenceSource: AutomationCollectionSource | null;
   automationPersistenceError: string | null;
-  configState: PiConfigState | null;
-  configError: string | null;
-  setConfigState: Dispatch<SetStateAction<PiConfigState | null>>;
-  setConfigError: Dispatch<SetStateAction<string | null>>;
+  runtimeState: PiRuntimeState | null;
+  runtimeError: string | null;
 };
 
-export type PiTab = "sessions" | "harnesses" | "configuration";
+export type PiTab = "sessions";
 
-const PI_INTERNAL_TABS = [
-  { id: "harnesses", label: "Harnesses" },
-  { id: "configuration", label: "Configuration" },
-] as const satisfies readonly { id: Exclude<PiTab, "sessions">; label: string }[];
+const PI_WORKSPACE_BREADCRUMBS = [
+  { label: "Backoffice", to: "/backoffice" },
+  { label: "Sessions" },
+];
 
 export function PiWorkspaceHeader({
   orgId,
   organisationName,
   organisationOptions,
-  activeTab,
 }: {
   orgId: string;
   organisationName?: string | null;
   organisationOptions: BackofficeOrganisationScopeOption[];
-  activeTab: PiTab;
 }) {
   const workspaceLabel = organisationName ?? orgId;
-  const isInternals = activeTab !== "sessions";
-  const activeInternalTab = isInternals
-    ? PI_INTERNAL_TABS.find((candidate) => candidate.id === activeTab)
-    : null;
-  const breadcrumbs = isInternals
-    ? [
-        { label: "Backoffice", to: "/backoffice" },
-        { label: "Internals", to: "/backoffice/internals" },
-        { label: "Pi", to: "/backoffice/internals/pi" },
-        ...(activeInternalTab ? [{ label: activeInternalTab.label }] : []),
-      ]
-    : [{ label: "Backoffice", to: "/backoffice" }, { label: "Sessions" }];
-  const basePath = `/backoffice/internals/pi/${encodeURIComponent(orgId)}`;
-  const tabs = PI_INTERNAL_TABS.map((tab) => ({
-    id: tab.id,
-    label: tab.label,
-    to: `${basePath}/${tab.id}`,
-    active: tab.id === activeTab,
-  }));
 
   return (
     <section className="bo-fragment-surface bo-panel-surface overflow-hidden bg-[var(--bo-panel)]">
@@ -77,7 +52,7 @@ export function PiWorkspaceHeader({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-2">
             <span className="bo-product-code">SES</span>
-            <BackofficeBreadcrumbs items={breadcrumbs} />
+            <BackofficeBreadcrumbs items={PI_WORKSPACE_BREADCRUMBS} />
           </div>
           <div className="w-full min-w-0 sm:w-auto sm:max-w-md">
             <BackofficeOrganisationScopeMenu
@@ -85,21 +60,13 @@ export function PiWorkspaceHeader({
               activeOrganisationLabel={workspaceLabel}
               options={organisationOptions}
               pathForOption={(option) =>
-                isInternals
-                  ? `/backoffice/internals/pi/${encodeURIComponent(option.id)}/${activeTab}`
-                  : `/backoffice/sessions/${encodeURIComponent(option.id)}/sessions`
+                `/backoffice/sessions/${encodeURIComponent(option.id)}/sessions`
               }
-              scopeLabel={isInternals ? "Pi internal scope" : "Session scope"}
+              scopeLabel="Session scope"
             />
           </div>
         </div>
       </div>
-
-      {isInternals ? (
-        <div className="border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
-          <OverflowTabRow items={tabs} ariaLabel="Pi internal sections" />
-        </div>
-      ) : null}
     </section>
   );
 }

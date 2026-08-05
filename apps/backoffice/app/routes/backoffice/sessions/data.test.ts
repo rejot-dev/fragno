@@ -57,7 +57,7 @@ describe("Pi session route caller", () => {
         { get: vi.fn() } as never,
         scope,
         {
-          metadata: { agentName: "default::openai::gpt-5" },
+          metadata: { model: { provider: "openai", name: "gpt-5" } },
           input: {},
         },
       ),
@@ -86,7 +86,7 @@ describe("Pi session route caller", () => {
         context as never,
         scope,
         {
-          metadata: { agentName: "default::openai::gpt-5" },
+          metadata: { model: { provider: "openai", name: "gpt-5" } },
           input: {},
         },
       ),
@@ -134,7 +134,7 @@ describe("Pi session route caller", () => {
 
     await expect(
       createPiSession(request, context as never, scope, {
-        metadata: { agentName: "default::openai::gpt-5" },
+        metadata: { model: { provider: "openai", name: "gpt-5" } },
         input: {},
       }),
     ).resolves.toMatchObject({

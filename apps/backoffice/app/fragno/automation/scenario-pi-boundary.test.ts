@@ -145,7 +145,7 @@ const createScenarioPiSession = async ({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           metadata: {
-            agentName: "default::openai::gpt-5.6-luna",
+            model: { provider: "openai", name: "gpt-5.6-luna" },
             ...metadata,
           },
           input: {},
@@ -276,7 +276,7 @@ describe("scenario Pi boundary", () => {
                   body: JSON.stringify({
                     id: "legacy-session",
                     params: {
-                      metadata: { agentName: "default::openai::gpt-5.6-luna" },
+                      metadata: { model: { provider: "openai", name: "gpt-5.6-luna" } },
                       __piSession: { name: null },
                     },
                   }),

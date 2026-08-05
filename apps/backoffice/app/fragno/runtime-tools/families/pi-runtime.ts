@@ -8,14 +8,14 @@ import type {
 } from "@/backoffice-runtime/context";
 import type { PiObject } from "@/backoffice-runtime/object-registry";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
-import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
+import { BACKOFFICE_PI_WORKFLOW_NAME, type PiModel } from "@/fragno/pi/pi-shared";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-errors";
 
 type PiFragment = ReturnType<typeof createPiHarness>;
 
 export type PiSessionCreateArgs = {
-  agent: string;
+  model?: PiModel;
   name?: string;
   systemMessage?: string;
   metadata?: Record<string, unknown>;
@@ -100,21 +100,6 @@ const createPiRouteCaller = ({
     },
   });
 
-const parsePiRuntimeAgentName = (agent: string) => {
-  const [harnessId, provider, ...modelParts] = agent.split("::");
-  const model = modelParts.join("::");
-  if (
-    !harnessId ||
-    !model ||
-    (provider !== "openai" && provider !== "anthropic" && provider !== "gemini")
-  ) {
-    throw new Error(
-      "pi.session.create agent must use the harnessId::provider::model name shown by the Pi UI.",
-    );
-  }
-  return { harnessId, provider, model };
-};
-
 export const createPiRouteRuntime = ({
   object,
   scope,
@@ -128,12 +113,11 @@ export const createPiRouteRuntime = ({
 
   return {
     createSession: async (args) => {
-      parsePiRuntimeAgentName(args.agent);
       const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
         pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME },
         body: {
           name: args.name,
-          metadata: { ...args.metadata, agentName: args.agent },
+          metadata: { ...args.metadata, ...(args.model ? { model: args.model } : {}) },
           input: {
             systemPrompt: args.systemMessage,
           },
@@ -143,7 +127,7 @@ export const createPiRouteRuntime = ({
         return response.data;
       }
       return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Pi harness",
+        runtimeLabel: "Pi",
         label: "pi.session.create",
       });
     },
@@ -167,7 +151,7 @@ export const createPiRouteRuntime = ({
         return response.data;
       }
       return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Pi harness",
+        runtimeLabel: "Pi",
         label: "pi.session.get",
       });
     },
@@ -185,7 +169,7 @@ export const createPiRouteRuntime = ({
         return response.data;
       }
       return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Pi harness",
+        runtimeLabel: "Pi",
         label: "pi.session.list",
       });
     },
@@ -225,7 +209,7 @@ export const createPiRouteRuntime = ({
       );
       if (promptResponse.type !== "json" || !isSuccessStatus(promptResponse.status)) {
         return throwOnRouteRuntimeError(promptResponse, {
-          runtimeLabel: "Pi harness",
+          runtimeLabel: "Pi",
           label: "pi.session.turn prompt",
         });
       }
@@ -233,7 +217,7 @@ export const createPiRouteRuntime = ({
       const detailResponse = await waitResponse;
       if (detailResponse.type !== "json" || !isSuccessStatus(detailResponse.status)) {
         return throwOnRouteRuntimeError(detailResponse, {
-          runtimeLabel: "Pi harness",
+          runtimeLabel: "Pi",
           label: "pi.session.turn wait-for-agent-end",
         });
       }

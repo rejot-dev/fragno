@@ -257,12 +257,6 @@ export default [
         route("github", "routes/backoffice/internals/github.tsx"),
         route("cloudflare/browser-run", "routes/backoffice/internals/cloudflare-browser-run.tsx"),
         route("generated-ui", "routes/backoffice/internals/generated-ui.tsx"),
-        route("pi", "routes/backoffice/internals/pi.tsx"),
-        route("pi/:orgId", "routes/backoffice/internals/pi-layout.tsx", [
-          index("routes/backoffice/internals/pi-organisation-index.tsx"),
-          route("configuration", "routes/backoffice/sessions/configuration.tsx"),
-          route("harnesses", "routes/backoffice/sessions/harnesses.tsx"),
-        ]),
         route("durable-hooks", "routes/backoffice/internals/durable-hooks.tsx"),
         route("workflows", "routes/backoffice/internals/workflows.tsx"),
         route(

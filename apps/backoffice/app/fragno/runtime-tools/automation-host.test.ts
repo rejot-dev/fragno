@@ -164,7 +164,7 @@ const createPiRuntime = (): PiRuntime => ({
   }),
   getSession: async ({ sessionId }) => ({
     id: sessionId,
-    agentName: "assistant",
+    model: "assistant",
     workflowName: "interactive-chat-workflow",
     agent: { state: { messages: [] }, completedStepKeys: [] },
     status: "waiting" as const,
@@ -192,7 +192,7 @@ const createPiRuntime = (): PiRuntime => ({
   ],
   runTurn: async ({ sessionId, text }) => ({
     id: sessionId,
-    agentName: "assistant",
+    model: "assistant",
     workflowName: "interactive-chat-workflow",
     agent: {
       state: {
@@ -442,7 +442,7 @@ describe("bash host command assembly", () => {
     });
 
     const eventHelp = await bash.exec("events.fire --help");
-    const missingPi = await bash.exec("pi.session.create --agent assistant");
+    const missingPi = await bash.exec("pi.session.create");
 
     assert(eventHelp.exitCode === 0);
     expect(eventHelp.stdout).toContain("events.fire");
@@ -475,7 +475,7 @@ describe("bash host command assembly", () => {
     });
 
     const telegramHelp = await bash.exec("telegram.file.get --help");
-    const missingPi = await bash.exec("pi.session.create --agent assistant");
+    const missingPi = await bash.exec("pi.session.create");
 
     assert(telegramHelp.exitCode === 0);
     expect(telegramHelp.stdout).toContain("telegram.file.get");
