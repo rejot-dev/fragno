@@ -79,6 +79,10 @@ export class RequestMiddlewareInputContext<
     return this.#options.method;
   }
 
+  get request(): Request {
+    return this.#options.request;
+  }
+
   get pathParams(): Record<string, string> {
     return this.#state.pathParams;
   }
