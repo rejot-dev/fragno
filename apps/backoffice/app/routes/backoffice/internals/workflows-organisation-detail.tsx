@@ -4,12 +4,7 @@ import { Link, useLoaderData, useSearchParams } from "react-router";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/workflows-organisation-detail";
-import {
-  loadWorkflowInstanceDetail,
-  resolveWorkflowFragment,
-  WorkflowApiError,
-  type WorkflowOrgFragment,
-} from "./workflows-data";
+import { loadWorkflowInstanceDetail, WorkflowApiError } from "./workflows-data";
 import {
   formatJson,
   formatTimestamp,
@@ -34,16 +29,10 @@ const resolveDetailTab = (value: string | null): WorkflowDetailTab => {
 
 type WorkflowDetailLoaderData = Awaited<ReturnType<typeof loadWorkflowInstanceDetail>> & {
   orgId: string;
-  fragment: WorkflowOrgFragment;
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId || !params.fragment || !params.workflowName || !params.instanceId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const fragment = resolveWorkflowFragment(params.fragment);
-  if (!fragment) {
+  if (!params.orgId || !params.workflowName || !params.instanceId) {
     throw new Response("Not Found", { status: 404 });
   }
 
@@ -63,7 +52,6 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       request,
       context,
       orgId: params.orgId,
-      fragment,
       workflowName: params.workflowName,
       instanceId: params.instanceId,
     });
@@ -71,7 +59,6 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     return {
       ...detail,
       orgId: params.orgId,
-      fragment,
     } satisfies WorkflowDetailLoaderData;
   } catch (error) {
     if (error instanceof WorkflowApiError) {
@@ -83,7 +70,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
 export default function BackofficeWorkflowsOrganisationDetail() {
   const detail = useLoaderData<typeof loader>();
-  const basePath = `/backoffice/internals/workflows/${detail.orgId}/${detail.fragment}`;
+  const basePath = `/backoffice/internals/workflows/${detail.orgId}`;
   const currentStep = detail.meta.currentStep;
   const outputText = formatJson(detail.details.output);
   const paramsText = formatJson(detail.meta.params);

@@ -3,7 +3,10 @@ import { afterEach, describe, expect, test, vi, assert } from "vitest";
 import { env } from "cloudflare:workers";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
-import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
+import {
+  createBackofficeSystemExecution,
+  createBackofficeUserExecution,
+} from "@/backoffice-runtime/context";
 import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
@@ -164,10 +167,12 @@ describe("project automation event routing", () => {
 
     await runtime.drain();
 
-    const workflowsResponse = await projectAutomations.fetch(
-      new Request(
-        "https://automations.do/api/automations-workflows/automation-codemode-script/instances",
-      ),
+    const workflowsResponse = await projectAutomations.fetchWithContext(
+      new Request("https://automations.do/api/workflows/automation-codemode-script/instances"),
+      {
+        execution: createBackofficeSystemExecution({ kind: "project", orgId, projectId }),
+        propagationContext: null,
+      },
     );
     assert(workflowsResponse.status === 200);
     const workflows = (await workflowsResponse.json()) as {

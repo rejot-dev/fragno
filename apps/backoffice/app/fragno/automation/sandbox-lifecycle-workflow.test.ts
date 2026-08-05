@@ -9,6 +9,8 @@ import {
 import { instantiate, type InstantiatedFragmentFromDefinition } from "@fragno-dev/core";
 import type { TestDb } from "@fragno-dev/test";
 
+import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
+import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import type { SandboxRuntimeHandle, SandboxRuntimeProvider } from "@/sandbox/contracts";
 import { CLOUDFLARE_SANDBOX_PROVIDER } from "@/sandbox/contracts";
 
@@ -27,6 +29,9 @@ const defaultParams = (overrides: Partial<SandboxLifecycleWorkflowParams> = {}) 
     sleepAfter: "10m",
     startupCommand: "pnpm install",
     startupTimeoutMs: 12_000,
+    metadata: {
+      [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: BACKOFFICE_SYSTEM_ACTORS,
+    },
     ...overrides,
   }) satisfies SandboxLifecycleWorkflowParams;
 
@@ -1249,6 +1254,9 @@ describe("sandbox lifecycle workflow", () => {
       id: "org_123::startup-defaults",
       provider: CLOUDFLARE_SANDBOX_PROVIDER,
       sleepAfter: "10s",
+      metadata: {
+        [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: BACKOFFICE_SYSTEM_ACTORS,
+      },
     } satisfies SandboxLifecycleWorkflowParams;
     let automationFragment: AutomationFragment | undefined;
     const workflows = createLifecycleWorkflows({

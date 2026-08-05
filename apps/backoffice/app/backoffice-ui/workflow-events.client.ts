@@ -3,7 +3,7 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 import type { WorkflowsFragment } from "@fragno-dev/workflows";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import type { WorkflowRunReference } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
 const MAX_WORKFLOW_EVENT_PAYLOAD_BYTES = 64 * 1024;
@@ -20,7 +20,7 @@ export type SendBackofficeWorkflowEventResult = {
 const createScopedWorkflowsRouteCaller = (scope: BackofficeContextScope) =>
   createRouteCaller<WorkflowsFragment>({
     baseUrl: window.location.origin,
-    mountRoute: `/api/automations-scoped/${backofficeContextScopeRoutePath(scope)}/workflows`,
+    mountRoute: `/api/workflows/${encodeURIComponent(backofficeContextScopeSinglePathSegment(scope))}`,
     fetch: async (request) => await fetch(request),
   });
 

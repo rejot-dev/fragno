@@ -27,6 +27,7 @@ import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import type { UploadFragment } from "@/fragno/upload-server";
 import { bytesToHex, sha256Hex } from "@/lib/crypto";
 
+import { backofficeWorkflowActorMetadataSchema } from "./actors";
 import {
   throwMarketplaceUploadRouteError,
   throwUnexpectedMarketplaceUploadResponse,
@@ -86,6 +87,7 @@ const marketplacePublishWorkflowParamsSchema = z.object({
   slug: marketplaceSlugSchema,
   version: marketplaceVersionSchema,
   publishNextVersions: z.boolean().default(false),
+  metadata: backofficeWorkflowActorMetadataSchema,
 });
 
 const marketplacePublishWorkflowOutputSchema = z.object({
@@ -400,6 +402,7 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
                   slug: nextEntry.slug,
                   version: nextEntry.version,
                   publishNextVersions: true,
+                  metadata: event.payload.metadata,
                 },
               },
             ]);

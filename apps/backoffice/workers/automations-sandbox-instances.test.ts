@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi, assert } from "vitest";
 
 import { getSandbox } from "@cloudflare/sandbox";
 
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
@@ -83,11 +84,15 @@ describe("Automations sandbox instance object methods", () => {
     });
     await runtime.drain();
 
-    const terminateResponse = await automations.fetch(
+    const terminateResponse = await automations.fetchWithContext(
       new Request(
-        `http://fragno.test/api/automations-workflows/sandbox-lifecycle/instances/${created.workflowInstanceId}/terminate`,
+        `http://fragno.test/api/workflows/sandbox-lifecycle/instances/${created.workflowInstanceId}/terminate`,
         { method: "POST" },
       ),
+      {
+        execution: createBackofficeSystemExecution({ kind: "org", orgId: "org_123" }),
+        propagationContext: null,
+      },
     );
     assert(terminateResponse.status === 200);
     await runtime.drain();

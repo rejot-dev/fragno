@@ -28,7 +28,7 @@ const createAutomation = (idSeed: string) => {
     {
       databaseAdapter,
       dbRoundtripGuard: true,
-      mountRoute: "/api/automations-workflows",
+      mountRoute: "/api/workflows",
     },
   );
   const automation = createAutomationFragment(

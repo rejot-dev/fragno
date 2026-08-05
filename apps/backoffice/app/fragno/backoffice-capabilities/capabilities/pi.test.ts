@@ -54,9 +54,9 @@ describe("Pi capability", () => {
     });
   });
 
-  test("initializes Pi before exposing its hook repositories", async () => {
+  test("initializes Pi before exposing its hook repository", async () => {
     runtime = await createInMemoryBackofficeRuntime();
-    const hookScope = piCapability.hooks?.find((candidate) => candidate.id === "pi-workflows");
+    const hookScope = piCapability.hooks?.find((candidate) => candidate.id === "pi");
     assert(hookScope);
 
     const repository = await hookScope.getRepository(capabilityContext(runtime));

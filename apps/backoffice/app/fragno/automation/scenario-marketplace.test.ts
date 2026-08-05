@@ -17,11 +17,16 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import {
   TELEGRAM_TEST_COMMAND_MARKETPLACE_README,
   TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
   TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE,
 } from "@/files/content/telegram-test-command";
+import {
+  automationActorsSchema,
+  BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY,
+} from "@/fragno/automation/actors";
 import { marketplaceArtifactUploadName } from "@/fragno/marketplace/artifacts";
 import type {
   MarketplaceCreateDraftListingInput,
@@ -133,6 +138,10 @@ const createMarketplacePublicationWorkflow = async (
   });
   const workflows = createWorkflowsRouteCaller({
     object: ctx.runtime.objects.automations.forOrg("org-1"),
+    context: {
+      execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+      propagationContext: null,
+    },
   });
   const created = await workflows("POST", "/:workflowName/instances", {
     pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
@@ -807,6 +816,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("the ingestion workflow reports the target file conflict", async (ctx) => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
+              context: {
+                execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                propagationContext: null,
+              },
             });
             const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
               pathParams: {
@@ -903,6 +916,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             async (ctx) => {
               const workflows = createWorkflowsRouteCaller({
                 object: ctx.runtime.objects.automations.forOrg("org-1"),
+                context: {
+                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  propagationContext: null,
+                },
               });
               const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
                 pathParams: {
@@ -1557,6 +1574,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
               const workflows = createWorkflowsRouteCaller({
                 object: ctx.runtime.objects.automations.forOrg("org-1"),
+                context: {
+                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  propagationContext: null,
+                },
               });
               const nextInstance = await workflows("GET", "/:workflowName/instances/:instanceId", {
                 pathParams: {
@@ -1588,6 +1609,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             async (ctx) => {
               const workflows = createWorkflowsRouteCaller({
                 object: ctx.runtime.objects.automations.forOrg("org-1"),
+                context: {
+                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  propagationContext: null,
+                },
               });
               const instances = await workflows("GET", "/:workflowName/instances", {
                 pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
@@ -1597,6 +1622,29 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 (instance) => instance.id,
               );
               expect(instanceIds.sort()).toEqual([currentInstanceId, nextInstanceId].sort());
+
+              let firstInstanceActors: ReturnType<typeof automationActorsSchema.parse> | null =
+                null;
+              for (const instanceId of [currentInstanceId, nextInstanceId]) {
+                const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
+                  pathParams: {
+                    workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+                    instanceId,
+                  },
+                });
+                assert(instance.type === "json");
+                const params = instance.data.meta.params as {
+                  metadata?: Record<string, unknown>;
+                };
+                const actors = automationActorsSchema.parse(
+                  params.metadata?.[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
+                );
+                if (firstInstanceActors) {
+                  expect(actors).toEqual(firstInstanceActors);
+                } else {
+                  firstInstanceActors = actors;
+                }
+              }
 
               const currentHistory = await workflows(
                 "GET",
@@ -1695,6 +1743,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("the committed handoff exposes one retrying child instance", async (ctx) => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
+              context: {
+                execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                propagationContext: null,
+              },
             });
             const instances = await workflows("GET", "/:workflowName/instances", {
               pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
@@ -1731,6 +1783,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("the persisted child resumes without another parent handoff", async (ctx) => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
+              context: {
+                execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                propagationContext: null,
+              },
             });
             const history = await workflows("GET", "/:workflowName/instances/:instanceId/history", {
               pathParams: {
@@ -2505,6 +2561,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("invalid publication and ingestion params are rejected", async (ctx) => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
+              context: {
+                execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                propagationContext: null,
+              },
             });
             const invalidPublication = await workflows("POST", "/:workflowName/instances", {
               pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
@@ -2553,6 +2613,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("an existing publication workflow is terminated", async (ctx) => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
+              context: {
+                execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                propagationContext: null,
+              },
             });
             const created = await workflows("POST", "/:workflowName/instances", {
               pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },

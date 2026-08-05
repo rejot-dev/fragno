@@ -3,6 +3,7 @@ import { describe, expect, test, vi, assert } from "vitest";
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import {
   BACKOFFICE_SYSTEM_ACTORS,
+  createBackofficeSystemExecution,
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
 import {
@@ -151,6 +152,7 @@ describe("system automation scenarios", () => {
 
       const workflow = createRouteBackedAutomationWorkflowRuntime({
         object: runtime.objects.automations.singleton(),
+        execution: createBackofficeSystemExecution({ kind: "system" }),
       });
       const listInstances = workflow.listInstances;
       if (!listInstances) {
@@ -367,6 +369,7 @@ describe("system automation scenarios", () => {
           then.assert("workspace initialization workflow runs in system scope", async (ctx) => {
             const systemWorkflow = createRouteBackedAutomationWorkflowRuntime({
               object: ctx.runtime.objects.automations.singleton(),
+              execution: createBackofficeSystemExecution({ kind: "system" }),
             });
             const systemInstances = await systemWorkflow.listInstances?.({
               workflowName: "automation-codemode-script",

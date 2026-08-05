@@ -271,21 +271,13 @@ export default [
             route(":hookId", "routes/backoffice/internals/durable-hooks-scope-detail.tsx"),
           ],
         ),
-        route(
-          "workflows/:orgId",
-          "routes/backoffice/internals/workflows-organisation-redirect.tsx",
-        ),
-        route(
-          "workflows/:orgId/:fragment",
-          "routes/backoffice/internals/workflows-organisation.tsx",
-          [
-            index("routes/backoffice/internals/workflows-organisation-index.tsx"),
-            route(
-              ":workflowName/:instanceId",
-              "routes/backoffice/internals/workflows-organisation-detail.tsx",
-            ),
-          ],
-        ),
+        route("workflows/:orgId", "routes/backoffice/internals/workflows-organisation.tsx", [
+          index("routes/backoffice/internals/workflows-organisation-index.tsx"),
+          route(
+            ":workflowName/:instanceId",
+            "routes/backoffice/internals/workflows-organisation-detail.tsx",
+          ),
+        ]),
       ]),
       route("users", "routes/backoffice/users.tsx"),
       route("settings", "routes/backoffice/settings.tsx"),
@@ -311,13 +303,8 @@ export default [
     route("upload/:orgId/*", "routes/api/upload.ts"),
     route("upload-scoped/:scopeKind/:scopeId/*", "routes/api/upload-scoped.ts"),
     route("pi/:scopeSegment/*", "routes/api/pi.ts"),
-    route("pi-workflows/:scopeSegment/*", "routes/api/workflows.ts"),
-    route(
-      "automations-scoped/:scopeKind/:scopeId/workflows/*",
-      "routes/api/automations-scoped-workflows.ts",
-    ),
+    route("workflows/:scopeSegment/*", "routes/api/workflows.ts"),
     route("automations-scoped/:scopeKind/:scopeId/*", "routes/api/automations-scoped.ts"),
-    route("automations-workflows/:orgId/*", "routes/api/automations-workflows.ts"),
     route("marketplace/*", "routes/api/marketplace.ts"),
   ]),
 ] satisfies RouteConfig;

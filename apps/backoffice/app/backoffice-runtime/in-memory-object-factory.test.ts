@@ -83,12 +83,12 @@ describe("InMemoryObjectFactory", () => {
 
     expect(() =>
       factory.get(
-        { name: "PI" },
+        { name: "AUTOMATIONS" },
         {
           binding: "AUTH",
           scope: { kind: "singleton" },
         },
       ),
-    ).toThrow("does not match requested binding PI");
+    ).toThrow("does not match requested binding AUTOMATIONS");
   });
 });

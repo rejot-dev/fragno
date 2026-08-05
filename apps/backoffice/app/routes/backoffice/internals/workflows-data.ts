@@ -4,7 +4,8 @@ import type { RouterContextProvider } from "react-router";
 
 import type { createWorkflowsFragment } from "@fragno-dev/workflows";
 
-import { getAutomationsDurableObject, getPiDurableObject } from "@/worker-runtime/durable-objects";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import { getAutomationsDurableObject } from "@/worker-runtime/durable-objects";
 
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
@@ -20,29 +21,9 @@ type WorkflowRouteResponse<T> =
   | { type: "json"; status: number; data: T }
   | WorkflowRouteErrorResponse;
 
-export const WORKFLOW_ORG_FRAGMENTS = ["pi", "automations"] as const;
-export type WorkflowOrgFragment = (typeof WORKFLOW_ORG_FRAGMENTS)[number];
 export type WorkflowInstanceStatus = InstanceStatus["status"];
 
-export const WORKFLOW_FRAGMENT_META: Record<
-  WorkflowOrgFragment,
-  {
-    label: string;
-    configurePath: (orgId: string) => string;
-  }
-> = {
-  pi: {
-    label: "Pi",
-    configurePath: (orgId) => `/backoffice/sessions/${orgId}/configuration`,
-  },
-  automations: {
-    label: "Automations",
-    configurePath: (orgId) => `/backoffice/internals/durable-hooks/${orgId}/api`,
-  },
-};
-
 export type WorkflowInstanceSummary = {
-  fragment: WorkflowOrgFragment;
   workflowName: string;
   instanceId: string;
   status: WorkflowInstanceStatus;
@@ -188,31 +169,24 @@ export const parsePageSize = (value: string | null, fallback = DEFAULT_PAGE_SIZE
   return Math.min(MAX_PAGE_SIZE, parsed);
 };
 
-export const resolveWorkflowFragment = (value?: string | null): WorkflowOrgFragment | null => {
-  if (value && WORKFLOW_ORG_FRAGMENTS.includes(value as WorkflowOrgFragment)) {
-    return value as WorkflowOrgFragment;
-  }
-  return null;
-};
-
-const createWorkflowsRouteCaller = (
+const createWorkflowsRouteCaller = async (
   request: Request,
   context: Readonly<RouterContextProvider>,
   orgId: string,
-  fragment: WorkflowOrgFragment,
-): WorkflowsRouteCaller => {
-  const doInstance =
-    fragment === "automations"
-      ? getAutomationsDurableObject(context, orgId)
-      : getPiDurableObject(context, { kind: "org", orgId });
-  const mountRoute =
-    fragment === "automations" ? "/api/automations-workflows" : "/api/pi-workflows";
+): Promise<WorkflowsRouteCaller> => {
+  const scope = { kind: "org" as const, orgId };
+  const execution = await requireBackofficeContext(request, context, scope);
+  const doInstance = getAutomationsDurableObject(context, orgId);
 
   return createRouteCaller<WorkflowsFragment>({
     baseUrl: request.url,
-    mountRoute,
+    mountRoute: "/api/workflows",
     baseHeaders: request.headers,
-    fetch: (outboundRequest) => doInstance.fetch(outboundRequest),
+    fetch: (outboundRequest) =>
+      doInstance.fetchWithContext(outboundRequest, {
+        execution,
+        propagationContext: null,
+      }),
   }) as unknown as WorkflowsRouteCaller;
 };
 
@@ -234,7 +208,6 @@ export async function loadWorkflowInstanceSummaries(options: {
   request: Request;
   context: Readonly<RouterContextProvider>;
   orgId: string;
-  fragment: WorkflowOrgFragment;
   pageSize?: number;
 }): Promise<{
   workflows: string[];
@@ -242,11 +215,10 @@ export async function loadWorkflowInstanceSummaries(options: {
   warnings: string[];
 }> {
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, options.pageSize ?? DEFAULT_PAGE_SIZE));
-  const callRoute = createWorkflowsRouteCaller(
+  const callRoute = await createWorkflowsRouteCaller(
     options.request,
     options.context,
     options.orgId,
-    options.fragment,
   );
 
   const workflowsResponse = await callRoute("GET", "/");
@@ -282,7 +254,6 @@ export async function loadWorkflowInstanceSummaries(options: {
             details: InstanceStatus;
             createdAt?: string | Date | null;
           }) => ({
-            fragment: options.fragment,
             workflowName,
             instanceId: instance.id,
             status: instance.details.status,
@@ -309,15 +280,13 @@ export async function loadWorkflowInstanceDetail(options: {
   request: Request;
   context: Readonly<RouterContextProvider>;
   orgId: string;
-  fragment: WorkflowOrgFragment;
   workflowName: string;
   instanceId: string;
 }): Promise<WorkflowInstanceDetails> {
-  const callRoute = createWorkflowsRouteCaller(
+  const callRoute = await createWorkflowsRouteCaller(
     options.request,
     options.context,
     options.orgId,
-    options.fragment,
   );
 
   const [instanceResponse, historyResponse] = await Promise.all([

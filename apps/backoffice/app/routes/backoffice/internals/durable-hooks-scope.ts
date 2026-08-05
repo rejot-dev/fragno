@@ -17,8 +17,8 @@ export const DURABLE_HOOK_OBJECT_DEFINITIONS = [
   { id: "mcp", binding: "MCP", label: "MCP" },
   { id: "upload", binding: "UPLOAD", label: "Upload" },
   { id: "github", binding: "GITHUB", label: "GitHub" },
-  { id: "pi", binding: "PI", label: "Pi" },
-  { id: "pi-workflows", binding: "PI", label: "Pi · Workflows" },
+  { id: "pi", binding: "AUTOMATIONS", label: "Pi" },
+  { id: "workflows", binding: "AUTOMATIONS", label: "Workflows" },
 ] as const satisfies readonly {
   id: string;
   binding: BackofficeObjectBindingName;
@@ -385,9 +385,9 @@ export const DURABLE_HOOKS_OBJECT_CONFIGURE_META: Partial<
     path: (orgId) => `/backoffice/sessions/${orgId}/configuration`,
     label: "Configure Pi",
   },
-  "pi-workflows": {
-    path: (orgId) => `/backoffice/sessions/${orgId}/configuration`,
-    label: "Configure Pi",
+  workflows: {
+    path: (orgId) => `/backoffice/automations/org/${orgId}/terminal`,
+    label: "Open Automations runtime",
   },
   automations: {
     path: (orgId) => `/backoffice/automations/org/${orgId}/terminal`,

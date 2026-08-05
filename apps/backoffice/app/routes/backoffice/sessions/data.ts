@@ -9,7 +9,7 @@ import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/sc
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
 import type { PiModel, PiRuntimeState, PiThinkingLevel } from "@/fragno/pi/pi-shared";
-import { getPiDurableObject } from "@/worker-runtime/durable-objects";
+import { getScopedAutomationsDurableObject } from "@/worker-runtime/durable-objects";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -24,7 +24,7 @@ const createPiRouteCaller = async (
 ) => {
   const execution = await requireBackofficeContext(request, context, scope);
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
-  const piObject = kernel.scoped("PI", scope, runtime.objects.pi);
+  const piObject = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
 
   return createRouteCaller<PiFragment>({
     baseUrl: request.url,
@@ -83,7 +83,7 @@ export async function fetchPiAdapterIdentity(
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
 ): Promise<string> {
-  const piDo = getPiDurableObject(context, scope);
+  const piDo = getScopedAutomationsDurableObject(context, scope);
   const url = new URL(request.url);
   url.pathname = "/api/pi/_internal";
   url.search = "";
@@ -102,8 +102,8 @@ export async function fetchPiRuntimeState(
   scope: BackofficeContextScope,
 ): Promise<PiRuntimeStateResult> {
   try {
-    const piDo = getPiDurableObject(context, scope);
-    const runtimeState = await piDo.getRuntimeState(scope);
+    const piDo = getScopedAutomationsDurableObject(context, scope);
+    const runtimeState = await piDo.getPiRuntimeState();
     return { runtimeState, runtimeError: null };
   } catch (error) {
     return {

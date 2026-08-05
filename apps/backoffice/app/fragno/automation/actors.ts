@@ -31,6 +31,12 @@ export type AutomationActors = Readonly<{
   delegation: readonly (AutomationActor<"delegate"> | AutomationActor<"assistant">)[];
 }>;
 
+export const BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY = "__backofficeActors";
+
+export type BackofficeWorkflowActorMetadata = {
+  [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: AutomationActors;
+};
+
 const automationInternalEntitySchema = z.strictObject({
   scope: z.literal("internal"),
   type: z.string().trim().min(1),
@@ -98,6 +104,10 @@ export const automationActorsSchema: z.ZodType<AutomationActors> = z
       });
     }
   });
+
+export const backofficeWorkflowActorMetadataSchema = z.strictObject({
+  [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: automationActorsSchema,
+});
 
 export const AUTOMATION_SYSTEM_INITIATOR = {
   scope: "internal",

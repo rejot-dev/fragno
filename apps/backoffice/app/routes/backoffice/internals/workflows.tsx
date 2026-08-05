@@ -1,4 +1,3 @@
-import type { MouseEvent } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
@@ -7,7 +6,7 @@ import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 export function meta() {
   return [
     { title: "Backoffice Workflows" },
-    { name: "description", content: "Inspect workflow state by organisation and fragment scope." },
+    { name: "description", content: "Inspect workflow state by organisation." },
   ];
 }
 
@@ -46,10 +45,9 @@ export default function BackofficeWorkflowsLanding() {
         ) : (
           <section className="grid gap-3 md:grid-cols-3">
             {organizations.map(({ organization }) => {
-              const piPath = `/backoffice/internals/workflows/${organization.id}/pi`;
-              const automationsPath = `/backoffice/internals/workflows/${organization.id}/automations`;
+              const workflowsPath = `/backoffice/internals/workflows/${organization.id}`;
               const handleOrgClick = () => {
-                void navigate(piPath);
+                void navigate(workflowsPath);
               };
 
               return (
@@ -80,24 +78,15 @@ export default function BackofficeWorkflowsLanding() {
                     Inspect workflow instances, current step state, and event history.
                   </p>
 
-                  <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
+                  <div className="mt-auto pt-4">
                     <Link
-                      to={piPath}
-                      onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                      to={workflowsPath}
+                      onClick={(event) => {
                         event.stopPropagation();
                       }}
                       className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
-                      Pi
-                    </Link>
-                    <Link
-                      to={automationsPath}
-                      onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-                        event.stopPropagation();
-                      }}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                    >
-                      Automations
+                      Workflows
                     </Link>
                   </div>
                 </div>

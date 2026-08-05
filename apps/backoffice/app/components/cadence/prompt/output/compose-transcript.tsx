@@ -18,6 +18,7 @@ import { Streamdown } from "streamdown";
 
 import type { WorkflowGraph as CodemodeWorkflowGraph } from "@fragno-dev/workflow-visualizer";
 
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { ClientOnly } from "@/components/client-only";
 import type { PiCollectionSource } from "@/fragno/pi/tanstack/browser-database";
 import { usePiSessionProjection } from "@/fragno/pi/tanstack/use-session-projection";
@@ -496,7 +497,10 @@ function useCodemodeRunOutput(
     }
     const controller = new AbortController();
     let cancelled = false;
-    const base = `/api/automations-workflows/${encodeURIComponent(orgId)}/${encodeURIComponent(
+    const scopeSegment = encodeURIComponent(
+      backofficeContextScopeSinglePathSegment({ kind: "org", orgId }),
+    );
+    const base = `/api/workflows/${scopeSegment}/${encodeURIComponent(
       workflowName,
     )}/instances/${encodeURIComponent(instanceId)}`;
     let timer: ReturnType<typeof setInterval> | null = null;

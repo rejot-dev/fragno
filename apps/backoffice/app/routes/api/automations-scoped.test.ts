@@ -3,9 +3,9 @@ import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 
-const { requireBackofficeContextMock, automationsFetchMock } = vi.hoisted(() => ({
+const { requireBackofficeContextMock, automationsFetchWithContextMock } = vi.hoisted(() => ({
   requireBackofficeContextMock: vi.fn(),
-  automationsFetchMock: vi.fn(),
+  automationsFetchWithContextMock: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
@@ -14,7 +14,7 @@ vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
 
 import { action, loader } from "./automations-scoped";
 
-const automationsObject = { fetch: automationsFetchMock };
+const automationsObject = { fetchWithContext: automationsFetchWithContextMock };
 const runtime = {
   objects: {
     automations: {
@@ -33,9 +33,9 @@ const context = {
 
 beforeEach(() => {
   requireBackofficeContextMock.mockReset();
-  automationsFetchMock.mockReset();
+  automationsFetchWithContextMock.mockReset();
   requireBackofficeContextMock.mockResolvedValue({});
-  automationsFetchMock.mockResolvedValue(new Response("ok"));
+  automationsFetchWithContextMock.mockResolvedValue(new Response("ok"));
 });
 
 describe("scoped Automations outbox proxy", () => {
@@ -55,9 +55,9 @@ describe("scoped Automations outbox proxy", () => {
       kind: "org",
       orgId: "org-1",
     });
-    expect(automationsFetchMock).toHaveBeenCalledOnce();
+    expect(automationsFetchWithContextMock).toHaveBeenCalledOnce();
 
-    const forwardedRequest = automationsFetchMock.mock.calls[0][0] as Request;
+    const forwardedRequest = automationsFetchWithContextMock.mock.calls[0][0] as Request;
     const forwardedUrl = new URL(forwardedRequest.url);
     assert.equal(forwardedUrl.pathname, "/api/automations/_internal/outbox");
     assert.equal(forwardedUrl.search, "");
@@ -77,6 +77,6 @@ describe("scoped Automations outbox proxy", () => {
 
     assert.equal(response.status, 404);
     expect(requireBackofficeContextMock).toHaveBeenCalledOnce();
-    expect(automationsFetchMock).not.toHaveBeenCalled();
+    expect(automationsFetchWithContextMock).not.toHaveBeenCalled();
   });
 });

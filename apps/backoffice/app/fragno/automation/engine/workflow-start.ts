@@ -1,5 +1,8 @@
+import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
+
 import { AUTOMATION_SYSTEM_INITIATOR } from "../actors";
 import type { AutomationEvent, AutomationEventPayload } from "../contracts";
+import { createAutomationRuntimeExecution } from "./runtime-execution";
 import type { AutomationCodemodeWorkflowParams } from "./workflow";
 
 export const AUTOMATION_CODEMODE_WORKFLOW = "automation-codemode-script";
@@ -43,12 +46,18 @@ export const createAutomationCodemodeWorkflowParams = ({
   event: AutomationEvent;
   workflowScriptPath: string;
   instanceId: string;
-}): AutomationCodemodeWorkflowParams => ({
-  automationEvent: event,
-  workflowScriptPath,
-  workflowInstanceId: instanceId,
-  idempotencyKey: instanceId,
-});
+}): AutomationCodemodeWorkflowParams => {
+  const execution = createAutomationRuntimeExecution(event);
+  return {
+    automationEvent: event,
+    workflowScriptPath,
+    workflowInstanceId: instanceId,
+    idempotencyKey: instanceId,
+    metadata: {
+      [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: execution.actors,
+    },
+  };
+};
 
 export const createAutomationCodemodeWorkflowInstanceInput = ({
   event,

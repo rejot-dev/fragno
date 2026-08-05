@@ -34,6 +34,12 @@ export const automationsCapability: BackofficeCapability = {
       getRepository: ({ objects, orgId }) =>
         objects.automations.forOrg(orgId).getDurableHookRepository("automation"),
     },
+    {
+      id: "workflows",
+      label: "Workflows",
+      getRepository: ({ objects, scope }) =>
+        objects.automations.for(scope).getDurableHookRepository("workflows"),
+    },
   ],
   automationEvents: [
     {

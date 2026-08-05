@@ -20,6 +20,7 @@ import {
   type WorkflowSummary,
 } from "@fragno-dev/workflow-visualizer";
 
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { AutomationEventPayload } from "@/fragno/automation/contracts";
 import {
   AUTOMATION_CODEMODE_WORKFLOW,
@@ -328,8 +329,10 @@ export async function runWorkflow({
   });
 
   try {
+    const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
     const runtime = createRouteBackedAutomationWorkflowRuntime({
       object: getAutomationsDurableObject(context, orgId),
+      execution,
     });
     const created = await runtime.createInstance(workflowInput);
     return {

@@ -27,24 +27,19 @@ export const piCapability: BackofficeCapability = {
   ...capability,
   runtimeToolNamespaces: ["pi"],
   connection: {
+    objectBinding: "AUTOMATIONS",
     configurable: false,
     getStatus: async ({ objects, scope }) =>
-      toPiStatus(await objects.pi.for(scope).getRuntimeState(scope)),
+      toPiStatus(await objects.automations.for(scope).getPiRuntimeState()),
     verify: async ({ objects, scope }) =>
-      toPiStatus(await objects.pi.for(scope).getRuntimeState(scope)),
+      toPiStatus(await objects.automations.for(scope).getPiRuntimeState()),
   },
   hooks: [
     {
       id: "pi",
       label: "Pi",
       getRepository: ({ objects, scope }) =>
-        objects.pi.for(scope).getDurableHookRepository(scope, "pi"),
-    },
-    {
-      id: "pi-workflows",
-      label: "Pi workflows",
-      getRepository: ({ objects, scope }) =>
-        objects.pi.for(scope).getDurableHookRepository(scope, "workflows"),
+        objects.automations.for(scope).getDurableHookRepository("pi"),
     },
   ],
 };

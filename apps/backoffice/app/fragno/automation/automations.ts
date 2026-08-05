@@ -16,11 +16,22 @@ import {
 } from "@/backoffice-runtime/kernel";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { createAutomationFragment, type AutomationFragmentConfig } from "@/fragno/automation";
+import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import {
   defineAutomationCodemodeWorkflow,
   definePiCodemodeWorkflow,
 } from "@/fragno/automation/engine/workflow";
-import { PI_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
+import {
+  createPiRuntimeDefinition,
+  type CreatePiRuntimeDefinitionOptions,
+  type PiFragment,
+  type PiRuntimeToolContext,
+} from "@/fragno/pi/pi";
+import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
+import {
+  createPiFragmentRuntime,
+  type PiRuntime,
+} from "@/fragno/runtime-tools/families/pi-runtime";
 
 import { defineMarketplaceIngestWorkflow } from "./marketplace-ingest-workflow";
 import { defineMarketplacePublishWorkflow } from "./marketplace-publish-workflow";
@@ -42,6 +53,7 @@ const AUTOMATIONS_AUTHORIZATION_STATUS_BY_REASON = {
 export type AutomationsRuntime = {
   workflowsFragment: ReturnType<typeof createWorkflowsFragment<BackofficeExecutionContext>>;
   automationFragment: AutomationFragmentWithExecutionContext;
+  piFragment: PiFragment;
   dispatcher: DurableHooksDispatcherDurableObjectHandler | null;
 };
 
@@ -57,21 +69,54 @@ export const createAutomationsRuntime = (
     AutomationFragmentConfig,
     | "env"
     | "runtime"
-    | "createPiAutomationContext"
     | "automationFileSystem"
     | "getAutomationFileSystem"
     | "ownerScope"
     | "sandboxProviders"
-  > & { kernel: BackofficeKernel },
+  > & {
+    kernel: BackofficeKernel;
+    pi: Omit<CreatePiRuntimeDefinitionOptions, "scope" | "kernel" | "runtimeToolContext"> & {
+      createRuntime?(execution: BackofficeExecutionContext, fragment: PiFragment): PiRuntime;
+      createRuntimeToolContext(
+        execution: BackofficeExecutionContext,
+        pi: PiRuntime,
+      ): PiRuntimeToolContext;
+    };
+  },
 ): AutomationsRuntime => {
   const databaseAdapter = runtime.adapters.createAdapter({
     kind: "automations",
   });
   let automationFragment: AutomationFragmentWithExecutionContext | undefined;
+  let piFragment: PiFragment | undefined;
+  const createHostedPiRuntime = (execution: BackofficeExecutionContext): PiRuntime => {
+    if (!piFragment) {
+      throw new Error("Pi fragment is not ready.");
+    }
+    return config.pi.createRuntime
+      ? config.pi.createRuntime(execution, piFragment)
+      : createPiFragmentRuntime({ fragment: piFragment, execution });
+  };
+  const pi = createPiRuntimeDefinition({
+    ...config.pi,
+    scope: config.ownerScope,
+    kernel: config.kernel,
+    runtimeToolContext: (execution) => {
+      return config.pi.createRuntimeToolContext(execution, createHostedPiRuntime(execution));
+    },
+  });
   const workflowsFragment = createWorkflowsFragment<BackofficeExecutionContext>(
     {
       workflows: {
-        AUTOMATION_CODEMODE_SCRIPT: defineAutomationCodemodeWorkflow(config),
+        AUTOMATION_CODEMODE_SCRIPT: defineAutomationCodemodeWorkflow({
+          ...config,
+          createPiAutomationContext: ({ event }) => ({
+            runtime: createHostedPiRuntime({
+              scope: event.scope,
+              actors: event.actors,
+            }),
+          }),
+        }),
         PI_CODEMODE_SCRIPT: definePiCodemodeWorkflow(config),
         MARKETPLACE_PUBLISH: defineMarketplacePublishWorkflow({
           ownerScope: config.ownerScope,
@@ -87,6 +132,7 @@ export const createAutomationsRuntime = (
           sandboxProviders: config.sandboxProviders,
           getAutomationFragment: () => automationFragment,
         }),
+        ...pi.workflows,
       },
       runtime: config.runtime?.fragnoRuntime ?? defaultFragnoRuntime,
       onWorkflowTerminal: async (payload) => {
@@ -108,74 +154,216 @@ export const createAutomationsRuntime = (
     {
       databaseAdapter,
       transactionInstrumentation: runtime.transactionInstrumentation,
-      mountRoute: "/api/automations-workflows",
+      mountRoute: "/api/workflows",
       outbox: { enabled: true },
     },
-  ).withMiddleware(async function authorizePiCodemodeWorkflowCreation(
+  ).withMiddleware(async function authorizeBackofficeWorkflowRoutes(
     { ifMatchesRoute, requestContext, requestState },
     { error },
   ) {
-    return await ifMatchesRoute(
+    if (!requestContext) {
+      return error(
+        {
+          message: "Workflow routes require trusted action context.",
+          code: "context-access-denied",
+        },
+        403,
+      );
+    }
+
+    const authorize = async (
+      operation:
+        | typeof BACKOFFICE_PERMISSION.workflow.read
+        | typeof BACKOFFICE_PERMISSION.workflow.modify,
+      resource: Record<string, unknown>,
+    ) => {
+      try {
+        await config.kernel.assertAuthorized({
+          execution: requestContext,
+          operation,
+          resource,
+        });
+        return undefined;
+      } catch (cause) {
+        if (cause instanceof BackofficeForbiddenError) {
+          return error(
+            { message: cause.message, code: cause.reason },
+            AUTOMATIONS_AUTHORIZATION_STATUS_BY_REASON[cause.reason],
+          );
+        }
+        throw cause;
+      }
+    };
+
+    const createResponse = await ifMatchesRoute(
       "POST",
       "/:workflowName/instances",
       async ({ input, pathParams }) => {
-        if (pathParams.workflowName !== PI_CODEMODE_WORKFLOW) {
-          return undefined;
-        }
-        if (!requestContext) {
+        if (pathParams.workflowName === BACKOFFICE_PI_WORKFLOW_NAME) {
           return error(
             {
-              message: "Pi codemode workflow creation requires trusted action context.",
-              code: "context-access-denied",
+              message: "Interactive Pi sessions must be created through the Pi API.",
+              code: "WORKFLOW_NOT_FOUND",
             },
-            403,
+            404,
           );
         }
-
-        try {
-          await config.kernel.assertAuthorized({
-            execution: requestContext,
-            operation: BACKOFFICE_PERMISSION.workflow.modify,
-            resource: { kind: "workflow", workflowName: PI_CODEMODE_WORKFLOW },
-          });
-        } catch (cause) {
-          if (cause instanceof BackofficeForbiddenError) {
-            return error(
-              { message: cause.message, code: cause.reason },
-              AUTOMATIONS_AUTHORIZATION_STATUS_BY_REASON[cause.reason],
-            );
-          }
-          throw cause;
+        const authorization = await authorize(BACKOFFICE_PERMISSION.workflow.modify, {
+          kind: "workflow",
+          workflowName: pathParams.workflowName,
+        });
+        if (authorization) {
+          return authorization;
         }
-
         const values = await input.valid();
-        if (!values.params || typeof values.params !== "object" || Array.isArray(values.params)) {
-          return error(
-            {
-              message: "Pi codemode workflow params must be an object.",
-              code: "WORKFLOW_PARAMS_INVALID",
-            },
-            400,
-          );
-        }
-
+        const params =
+          values.params && typeof values.params === "object" && !Array.isArray(values.params)
+            ? values.params
+            : {};
         requestState.setBody({
           ...values,
           params: {
-            ...values.params,
-            scope: requestContext.scope,
-            actors: requestContext.actors,
+            ...params,
+            metadata: {
+              ...("metadata" in params &&
+              params.metadata &&
+              typeof params.metadata === "object" &&
+              !Array.isArray(params.metadata)
+                ? params.metadata
+                : {}),
+              [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: requestContext.actors,
+            },
           },
         });
         return undefined;
       },
     );
+    if (createResponse) {
+      return createResponse;
+    }
+
+    const batchResponse = await ifMatchesRoute(
+      "POST",
+      "/:workflowName/instances/batch",
+      async ({ input, pathParams }) => {
+        if (pathParams.workflowName === BACKOFFICE_PI_WORKFLOW_NAME) {
+          return error(
+            {
+              message: "Interactive Pi sessions must be created through the Pi API.",
+              code: "WORKFLOW_NOT_FOUND",
+            },
+            404,
+          );
+        }
+        const authorization = await authorize(BACKOFFICE_PERMISSION.workflow.modify, {
+          kind: "workflow",
+          workflowName: pathParams.workflowName,
+        });
+        if (authorization) {
+          return authorization;
+        }
+        const values = await input.valid();
+        requestState.setBody({
+          ...values,
+          instances: values.instances.map((instance) => ({
+            ...instance,
+            params: {
+              ...(instance.params &&
+              typeof instance.params === "object" &&
+              !Array.isArray(instance.params)
+                ? instance.params
+                : {}),
+              metadata: {
+                ...(instance.params &&
+                typeof instance.params === "object" &&
+                !Array.isArray(instance.params) &&
+                "metadata" in instance.params &&
+                instance.params.metadata &&
+                typeof instance.params.metadata === "object" &&
+                !Array.isArray(instance.params.metadata)
+                  ? instance.params.metadata
+                  : {}),
+                [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: requestContext.actors,
+              },
+            },
+          })),
+        });
+        return undefined;
+      },
+    );
+    if (batchResponse) {
+      return batchResponse;
+    }
+
+    const readRoutes = [
+      ["GET", "/"],
+      ["GET", "/:workflowName/instances"],
+      ["GET", "/:workflowName/instances/:instanceId"],
+      ["GET", "/:workflowName/instances/:instanceId/current-step/emissions"],
+      ["GET", "/:workflowName/instances/:instanceId/history"],
+    ] as const;
+    for (const [method, route] of readRoutes) {
+      const response = await ifMatchesRoute(
+        method,
+        route,
+        async ({ pathParams }, _output) =>
+          await authorize(BACKOFFICE_PERMISSION.workflow.read, {
+            kind: "workflow",
+            workflowName: pathParams.workflowName,
+          }),
+      );
+      if (response) {
+        return response;
+      }
+    }
+
+    const mutationRoutes = [
+      "/:workflowName/instances/:instanceId/retry",
+      "/:workflowName/instances/:instanceId/pause",
+      "/:workflowName/instances/:instanceId/resume",
+      "/:workflowName/instances/:instanceId/terminate",
+      "/:workflowName/instances/:instanceId/events",
+    ] as const;
+    for (const route of mutationRoutes) {
+      const response = await ifMatchesRoute("POST", route, async ({ pathParams }, _output) => {
+        if (pathParams.workflowName === BACKOFFICE_PI_WORKFLOW_NAME) {
+          return error(
+            {
+              message: "Interactive Pi sessions must be mutated through the Pi API.",
+              code: "WORKFLOW_NOT_FOUND",
+            },
+            404,
+          );
+        }
+        return await authorize(BACKOFFICE_PERMISSION.workflow.modify, {
+          kind: "workflow",
+          workflowName: pathParams.workflowName,
+          instanceId: pathParams.instanceId,
+        });
+      });
+      if (response) {
+        return response;
+      }
+    }
+
+    return undefined;
   });
+  piFragment = pi.createFragment({
+    databaseAdapter,
+    workflows: workflowsFragment.services,
+    mountRoute: "/api/pi",
+  });
+
   automationFragment = createAutomationFragment<BackofficeExecutionContext>(
     {
       env: config.env,
       runtime: config.runtime,
-      createPiAutomationContext: config.createPiAutomationContext,
+      createPiAutomationContext: async ({ event }) => ({
+        runtime: createHostedPiRuntime({
+          scope: event.scope,
+          actors: event.actors,
+        }),
+      }),
       automationFileSystem: config.automationFileSystem,
       getAutomationFileSystem: config.getAutomationFileSystem,
       ownerScope: config.ownerScope,
@@ -242,6 +430,7 @@ export const createAutomationsRuntime = (
   return {
     workflowsFragment,
     automationFragment,
+    piFragment,
     dispatcher: null,
   } satisfies AutomationsRuntime;
 };
