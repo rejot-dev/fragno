@@ -1,20 +1,18 @@
 import { expect, test } from "vitest";
 
 import { visualizeWorkflowSource } from "./index.ts";
-import { loadBackofficeAutomationFixtures } from "./test-support/backoffice-automation-fixtures.ts";
+import { WORKFLOW_VISUALIZER_FIXTURES } from "./test-support/workflow-fixtures.ts";
 import {
   renderWorkflowGraphText,
   renderWorkflowMachineDebugText,
   renderWorkflowVisualizationText,
 } from "./text.ts";
 
-test("renders the Backoffice automation fixtures for quick inspection", async () => {
-  const rendered = (await loadBackofficeAutomationFixtures())
-    .map(([path, source]) => {
-      const snapshot = visualizeWorkflowSource(path, source);
-      return `--- ${path} ---\n${renderWorkflowGraphText(snapshot.graph)}`;
-    })
-    .join("\n\n");
+test("renders the stable workflow fixture corpus for quick inspection", () => {
+  const rendered = WORKFLOW_VISUALIZER_FIXTURES.map(([path, source]) => {
+    const snapshot = visualizeWorkflowSource(path, source);
+    return `--- ${path} ---\n${renderWorkflowGraphText(snapshot.graph)}`;
+  }).join("\n\n");
 
   expect(rendered).toMatchInlineSnapshot(`
     "--- automations/telegram-user-linking.workflow.js ---
