@@ -13,10 +13,10 @@ import type {
   WorkflowGraph,
   WorkflowNode,
 } from "./model.ts";
-import { loadBackofficeAutomationFixtures } from "./test-support/backoffice-automation-fixtures.ts";
+import { WORKFLOW_VISUALIZER_FIXTURES } from "./test-support/workflow-fixtures.ts";
 import { tokenizeWorkflowSource } from "./tokenizer.ts";
 
-const AUTOMATIONS = new Map(await loadBackofficeAutomationFixtures());
+const AUTOMATIONS = new Map(WORKFLOW_VISUALIZER_FIXTURES);
 
 const EXPECTED_DURABLE_STEPS: Record<string, string[]> = {
   "automations/telegram-user-linking.workflow.js": [
