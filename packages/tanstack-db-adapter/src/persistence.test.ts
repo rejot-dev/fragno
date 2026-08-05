@@ -52,8 +52,8 @@ function createInsertEntry(options: {
   name: string;
 }): FragnoOutboxEntry {
   const payload = {
-    version: 1,
-    mutations: [
+    version: 2,
+    operations: [
       {
         op: "create",
         schema: appSchema.name,

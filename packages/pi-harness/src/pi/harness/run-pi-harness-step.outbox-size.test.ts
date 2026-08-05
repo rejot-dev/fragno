@@ -204,8 +204,8 @@ const outboxEntriesFromMutations = (mutations: readonly LofiMutation[]): OutboxE
       uowId: `uow-${index}`,
       payload: {
         json: {
-          version: 1,
-          mutations: [mutation],
+          version: 2,
+          operations: [mutation],
         } satisfies OutboxPayload,
       },
       createdAt: new Date(index),

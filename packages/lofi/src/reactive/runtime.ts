@@ -422,6 +422,9 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     client.subscribeEphemeral(({ mutations }) => {
       emitEphemeralMutations(mutations);
     });
+    client.subscribeTruncate(async () => {
+      await refresh();
+    });
     return { source, cursorKey, client };
   };
 

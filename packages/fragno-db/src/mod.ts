@@ -110,7 +110,9 @@ export type {
   OutboxConfig,
   OutboxEntry,
   OutboxPayload,
+  OutboxOperation,
   OutboxMutation,
+  OutboxTruncateNotification,
   OutboxRefMap,
 } from "./outbox/outbox";
 

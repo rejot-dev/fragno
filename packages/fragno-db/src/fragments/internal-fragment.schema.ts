@@ -56,7 +56,7 @@ export const internalSchema = schema("fragno_internal", (s) => {
         .addColumn("uowId", column("string"))
         .addColumn("schema", column("string"))
         .addColumn("table", column("string"))
-        .addColumn("externalId", column("string"))
+        .addColumn("externalId", column("string").nullable())
         .addColumn("op", column("string"))
         .addColumn(
           "createdAt",

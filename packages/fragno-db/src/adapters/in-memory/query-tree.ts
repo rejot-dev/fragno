@@ -14,6 +14,11 @@ import type { AnyColumn, AnyTable } from "../../schema/create";
 import { Column, FragnoId, FragnoReference } from "../../schema/create";
 import { snapshotInMemoryColumnValue } from "./column-value";
 import type { InMemoryNamespaceStore, InMemoryRow, InMemoryTableStore } from "./store";
+
+export type ResolveQueryTreeChildStore = (child: CompiledQueryTreeChildNode) => {
+  namespaceStore: InMemoryNamespaceStore;
+  resolver?: NamingResolver;
+};
 import { normalizeIndexValue } from "./store";
 import { compareNormalizedValues } from "./value-comparison";
 
@@ -334,19 +339,39 @@ const buildChildRawValue = (
   resolver?: NamingResolver,
   now: () => Date = () => new Date(),
   readTracking = false,
+  resolveChildStore?: ResolveQueryTreeChildStore,
 ): unknown => {
-  const childStore = getTableStore(namespaceStore, child.table, resolver);
+  const childContext =
+    child.schema && resolveChildStore ? resolveChildStore(child) : { namespaceStore, resolver };
+  const childNamespaceStore = childContext.namespaceStore;
+  const childResolver = childContext.resolver;
+  const childStore = getTableStore(childNamespaceStore, child.table, childResolver);
   const matchingRows: InMemoryRow[] = [];
 
   for (const row of childStore.rows.values()) {
-    if (
+    if (child.outboxSource) {
+      const childSchema = row[getPhysicalColumnName(child.table, "schema", childResolver)];
+      const childTable = row[getPhysicalColumnName(child.table, "table", childResolver)];
+      const childExternalId = row[getPhysicalColumnName(child.table, "externalId", childResolver)];
+      const parentExternalId =
+        parentRow[
+          getPhysicalColumnName(parentTable, child.outboxSource.parentExternalIdColumn, resolver)
+        ];
+      if (
+        childSchema !== child.outboxSource.schema ||
+        childTable !== child.outboxSource.table ||
+        childExternalId !== parentExternalId
+      ) {
+        continue;
+      }
+    } else if (
       !evaluateQueryTreeCondition(
         child.onIndex,
         child.table,
         row,
         parentTable,
         parentRow,
-        resolver,
+        childResolver,
         now,
       )
     ) {
@@ -360,7 +385,7 @@ const buildChildRawValue = (
         row,
         undefined,
         undefined,
-        resolver,
+        childResolver,
         now,
       )
     ) {
@@ -370,10 +395,18 @@ const buildChildRawValue = (
     matchingRows.push(row);
   }
 
-  const ordered = orderRows(matchingRows, child.table, child.orderByIndex, resolver);
+  const ordered = orderRows(matchingRows, child.table, child.orderByIndex, childResolver);
   const limited = child.pageSize !== undefined ? ordered.slice(0, child.pageSize) : ordered;
   const items = limited.map((row) =>
-    buildQueryTreeRowRaw(child, row, namespaceStore, resolver, now, readTracking),
+    buildQueryTreeRowRaw(
+      child,
+      row,
+      childNamespaceStore,
+      childResolver,
+      now,
+      readTracking,
+      resolveChildStore,
+    ),
   );
 
   if (child.cardinality === "one") {
@@ -390,6 +423,7 @@ export const buildQueryTreeRowRaw = (
   resolver?: NamingResolver,
   now: () => Date = () => new Date(),
   readTracking = false,
+  resolveChildStore?: ResolveQueryTreeChildStore,
 ): InMemoryRow => {
   const output = selectNodeRow(
     row,
@@ -408,6 +442,7 @@ export const buildQueryTreeRowRaw = (
       resolver,
       now,
       readTracking,
+      resolveChildStore,
     );
   }
 
@@ -421,6 +456,7 @@ export const executeQueryTreeRoot = (
   resolver?: NamingResolver,
   now: () => Date = () => new Date(),
   readTracking = false,
+  resolveChildStore?: ResolveQueryTreeChildStore,
 ): InMemoryRow[] => {
   const matches: InMemoryRow[] = [];
 
@@ -437,6 +473,6 @@ export const executeQueryTreeRoot = (
   const limited = root.pageSize !== undefined ? ordered.slice(0, root.pageSize) : ordered;
 
   return limited.map((row) =>
-    buildQueryTreeRowRaw(root, row, namespaceStore, resolver, now, readTracking),
+    buildQueryTreeRowRaw(root, row, namespaceStore, resolver, now, readTracking, resolveChildStore),
   );
 };

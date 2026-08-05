@@ -184,8 +184,8 @@ const createUserOutboxEntry = (options: { versionstamp: string; id: string; name
   versionstamp: options.versionstamp,
   uowId: `uow-${options.versionstamp}`,
   payload: superjson.serialize({
-    version: 1,
-    mutations: [createUserMutation(options)],
+    version: 2,
+    operations: [createUserMutation(options)],
   }),
 });
 

@@ -11,37 +11,45 @@ export type RebaseResult = {
 
 const decodeEntryMutations = (entry: OutboxEntry): LofiMutation[] => {
   const payload = decodeOutboxPayload(entry.payload);
-  return payload.mutations.map((mutation) => {
-    if (mutation.op === "create") {
-      return {
+  const mutations: LofiMutation[] = [];
+  for (const operation of payload.operations) {
+    if (operation.op === "truncate") {
+      continue;
+    }
+
+    if (operation.op === "create") {
+      mutations.push({
         op: "create",
-        schema: mutation.schema,
-        table: mutation.table,
-        externalId: mutation.externalId,
-        values: mutation.values,
-        versionstamp: mutation.versionstamp,
-      };
+        schema: operation.schema,
+        table: operation.table,
+        externalId: operation.externalId,
+        values: operation.values,
+        versionstamp: operation.versionstamp,
+      });
+      continue;
     }
 
-    if (mutation.op === "update") {
-      return {
+    if (operation.op === "update") {
+      mutations.push({
         op: "update",
-        schema: mutation.schema,
-        table: mutation.table,
-        externalId: mutation.externalId,
-        set: mutation.set,
-        versionstamp: mutation.versionstamp,
-      };
+        schema: operation.schema,
+        table: operation.table,
+        externalId: operation.externalId,
+        set: operation.set,
+        versionstamp: operation.versionstamp,
+      });
+      continue;
     }
 
-    return {
+    mutations.push({
       op: "delete",
-      schema: mutation.schema,
-      table: mutation.table,
-      externalId: mutation.externalId,
-      versionstamp: mutation.versionstamp,
-    };
-  });
+      schema: operation.schema,
+      table: operation.table,
+      externalId: operation.externalId,
+      versionstamp: operation.versionstamp,
+    });
+  }
+  return mutations;
 };
 
 export const applyOutboxEntries = async (options: {

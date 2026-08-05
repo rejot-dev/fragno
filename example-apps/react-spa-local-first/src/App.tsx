@@ -2248,7 +2248,7 @@ function parseOutboxCreatedAt(value: OutboxEntry["createdAt"]): number | undefin
 
 function getOutboxMutationCount(entry: OutboxEntry): number | undefined {
   try {
-    return decodeOutboxPayload(entry.payload).mutations.length;
+    return decodeOutboxPayload(entry.payload).operations.length;
   } catch {
     return undefined;
   }

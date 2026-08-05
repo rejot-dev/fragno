@@ -10,12 +10,12 @@ const entries: FragnoOutboxEntry[] = [
   {
     versionstamp: "000000000000000000000001",
     uowId: "uow-1",
-    payload: { json: { version: 1, mutations: [] } },
+    payload: { json: { version: 2, operations: [] } },
   },
   {
     versionstamp: "000000000000000000000002",
     uowId: "uow-2",
-    payload: { json: { version: 1, mutations: [] } },
+    payload: { json: { version: 2, operations: [] } },
   },
 ];
 

@@ -20,8 +20,8 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 1_000): Promise<voi
 };
 
 const makePayload = (externalId: string): OutboxPayload => ({
-  version: 1,
-  mutations: [
+  version: 2,
+  operations: [
     {
       op: "create",
       schema: "app",
@@ -54,8 +54,8 @@ const makeEphemeralStreamEntry = (
   boundary: "start" | "item" | "end",
 ): OutboxEntry =>
   makeEntryFromPayload(versionstamp, `${streamId}-${boundary}`, {
-    version: 1,
-    mutations: [
+    version: 2,
+    operations: [
       {
         op: "create",
         schema: "app",
@@ -79,8 +79,8 @@ const ephemeralStreamTable = {
 describe("LofiClient", () => {
   it("delivers ephemeral table mutations without storing them", async () => {
     const entry = makeEntryFromPayload("vs-1", "mixed", {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",
@@ -254,8 +254,8 @@ describe("LofiClient", () => {
 
   it("delivers replayed ephemeral mutations when durable mutations were already applied", async () => {
     const entry = makeEntryFromPayload("vs-2", "mixed-replay", {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",
@@ -302,8 +302,8 @@ describe("LofiClient", () => {
 
   it("retries ephemeral delivery without checkpointing or reapplying durable mutations", async () => {
     const entry = makeEntryFromPayload("vs-1", "mixed-retry", {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",
@@ -371,8 +371,8 @@ describe("LofiClient", () => {
   // inbox-deduplicated, but must still report the earlier durable write so reactive stores refresh.
   it("reports durable mutations after an ephemeral delivery retry", async () => {
     const entry = makeEntryFromPayload("vs-1", "mixed-retry-refresh", {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",
@@ -518,8 +518,8 @@ describe("LofiClient", () => {
 
   it("rejects outbox mutations containing unresolved DbNow values", async () => {
     const entry = makeEntryFromPayload("vs-1", "event-1", {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",
@@ -553,8 +553,8 @@ describe("LofiClient", () => {
 
   it("does not open an adapter mutation transaction for ephemeral-only entries", async () => {
     const entry = makeEntryFromPayload("vs-1", "event-1", {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",

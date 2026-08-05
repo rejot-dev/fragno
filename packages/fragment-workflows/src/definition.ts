@@ -334,21 +334,36 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         await this.handlerTx()
           .retrieve(({ forSchema }) =>
             forSchema(workflowsSchema).find("workflow_step_emission", (b) =>
-              b.whereIndex(
-                "idx_workflow_step_emission_instance_step_epoch_createdAt_sequence_id",
-                (eb) =>
-                  eb.and(
-                    eb("instanceRef", "=", payload.instanceRef),
-                    eb("stepKey", "=", payload.stepKey),
-                    eb("epoch", "=", payload.epoch),
-                  ),
-              ),
+              b
+                .whereIndex(
+                  "idx_workflow_step_emission_instance_step_epoch_createdAt_sequence_id",
+                  (eb) =>
+                    eb.and(
+                      eb("instanceRef", "=", payload.instanceRef),
+                      eb("stepKey", "=", payload.stepKey),
+                      eb("epoch", "=", payload.epoch),
+                    ),
+                )
+                .withOutboxMutations(),
             ),
           )
           .mutate(({ forSchema, retrieveResult: [rows] }) => {
-            const uow = forSchema(workflowsSchema);
+            const workflows = forSchema(workflowsSchema);
             for (const row of rows) {
-              uow.delete("workflow_step_emission", row.id);
+              workflows.delete("workflow_step_emission", row.id, (b) => b.check().omitOutbox());
+              for (const mutation of row.$outboxMutations) {
+                workflows.outbox.deleteMutation(mutation.id);
+              }
+            }
+
+            if (rows.length > 0) {
+              workflows.outbox.notifyTruncate("workflow_step_emission", {
+                match: {
+                  instanceRef: payload.instanceRef,
+                  stepKey: payload.stepKey,
+                  epoch: payload.epoch,
+                },
+              });
             }
           })
           .execute();

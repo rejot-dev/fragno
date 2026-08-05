@@ -9,7 +9,7 @@ const createEntry = (versionstamp: string): OutboxEntry => ({
   id: FragnoId.fromExternal(`entry-${versionstamp}`, 1),
   versionstamp,
   uowId: `uow-${versionstamp}`,
-  payload: { json: { version: 1, mutations: [] } },
+  payload: { json: { version: 2, operations: [] } },
   createdAt: new Date(),
 });
 

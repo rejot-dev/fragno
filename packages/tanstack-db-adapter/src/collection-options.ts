@@ -144,6 +144,7 @@ export function fragnoCollectionOptions<
 
   const { id, coordinator, target, utils, ...collectionBehavior } = options;
   const idColumnName = target.schema.tables[target.table].getIdColumn().name as keyof Row;
+  const rowMetadataKey = "fragno.outbox.rows.v1";
 
   let checkpoint: FragnoOutboxCheckpoint | undefined;
   let source: FragnoOutboxSource | undefined;
@@ -194,9 +195,42 @@ export function fragnoCollectionOptions<
           | undefined;
         initialized = metadata.collection.get(FRAGNO_OUTBOX_INITIALIZED_METADATA_KEY) === true;
 
+        let materializedRows =
+          (metadata.collection.get(rowMetadataKey) as Record<string, Row> | undefined) ?? {};
+        const persistMaterializedRows = () => {
+          metadata.collection.set(rowMetadataKey, materializedRows);
+        };
         const applyControls = {
           begin: controls.begin,
-          write: controls.write,
+          write(message) {
+            controls.write(message);
+            if (message.type === "delete" && "key" in message) {
+              const key = message.key as string;
+              const { [key]: _removed, ...remaining } = materializedRows;
+              materializedRows = remaining;
+            } else {
+              const row = message.value;
+              const key = row[idColumnName] as string;
+              materializedRows = {
+                ...materializedRows,
+                [key]: message.type === "update" ? { ...materializedRows[key], ...row } : row,
+              };
+            }
+            persistMaterializedRows();
+          },
+          deleteMatching(match, rowMetadata) {
+            for (const [key, row] of Object.entries(materializedRows)) {
+              if (
+                !Object.entries(match).every(([field, value]) => row[field as keyof Row] === value)
+              ) {
+                continue;
+              }
+              controls.write({ type: "delete", key, metadata: rowMetadata });
+              const { [key]: _removed, ...remaining } = materializedRows;
+              materializedRows = remaining;
+            }
+            persistMaterializedRows();
+          },
           metadata,
           commit: controls.commit,
         } satisfies FragnoOutboxApplyControls<Row>;

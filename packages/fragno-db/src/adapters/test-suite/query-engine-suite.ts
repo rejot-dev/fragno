@@ -535,7 +535,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
 
         expect(entries).toHaveLength(1);
         expect(superjson.deserialize<OutboxPayload>(entries[0].payload as SuperJSONResult)).toEqual(
-          { version: 1, mutations: [] },
+          { version: 2, operations: [] },
         );
         expect(mutationRows).toHaveLength(1);
         const mutation = superjson.deserialize<OutboxMutation>(
@@ -595,7 +595,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
 
         expect(entries).toHaveLength(1);
         expect(superjson.deserialize<OutboxPayload>(entries[0].payload as SuperJSONResult)).toEqual(
-          { version: 1, mutations: [] },
+          { version: 2, operations: [] },
         );
         const mutations = mutationRows.map((row) =>
           superjson.deserialize<OutboxMutation>(row.payload as SuperJSONResult),

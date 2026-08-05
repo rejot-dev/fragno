@@ -12,7 +12,7 @@ import {
   type ImplicitDatabaseDependencies,
 } from "../db-fragment-definition-builder";
 import { isHookStatus, type DurableHookPropagationContext, type HookStatus } from "../hooks/hooks";
-import type { OutboxMutation, OutboxPayload } from "../outbox/outbox";
+import type { OutboxOperation, OutboxPayload } from "../outbox/outbox";
 import type { Cursor } from "../query/cursor";
 import { dbNow, type DbNow } from "../query/db-now";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
@@ -634,9 +634,9 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               versionstamp: entry.versionstamp,
               uowId: entry.uowId,
               payload: superjson.serialize({
-                version: 1,
-                mutations: entry.mutations.map((row) =>
-                  superjson.deserialize<OutboxMutation>(row.payload as SuperJSONResult),
+                version: 2,
+                operations: entry.mutations.map((row) =>
+                  superjson.deserialize<OutboxOperation>(row.payload as SuperJSONResult),
                 ),
               } satisfies OutboxPayload),
               refMap: entry.refMap ?? undefined,

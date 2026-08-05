@@ -128,7 +128,7 @@ const createRuntime = async (mutations: readonly LofiMutation[] = []) => {
     versionstamp: "projection-outbox-versionstamp",
     uowId: "projection-outbox-uow",
     payload: {
-      json: { version: 1, mutations: ephemeralMutations } satisfies OutboxPayload,
+      json: { version: 2, operations: ephemeralMutations } satisfies OutboxPayload,
     },
     createdAt: new Date(),
   };

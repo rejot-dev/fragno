@@ -60,8 +60,8 @@ describe("applyFragnoOutboxEntry", () => {
 
     applyFragnoOutboxEntry(
       createEntry({
-        version: 1,
-        mutations: [
+        version: 2,
+        operations: [
           {
             op: "create",
             schema: "app",
@@ -106,8 +106,8 @@ describe("applyFragnoOutboxEntry", () => {
 
     applyFragnoOutboxEntry(
       createEntry({
-        version: 1,
-        mutations: [
+        version: 2,
+        operations: [
           {
             op: "create",
             schema: "app",

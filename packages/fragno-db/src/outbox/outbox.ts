@@ -12,9 +12,23 @@ export type OutboxVersionstampStrategy =
   | "insert-on-duplicate-last-insert-id";
 
 export type OutboxPayload = {
-  version: 1;
-  mutations: OutboxMutation[];
+  version: 2;
+  operations: OutboxOperation[];
 };
+
+export type OutboxOperation = OutboxMutation | OutboxTruncateNotification;
+
+export type OutboxTruncateNotification = {
+  op: "truncate";
+  schema: string;
+  namespace?: string;
+  table: string;
+  externalId?: undefined;
+  match: Record<string, unknown>;
+  versionstamp: string;
+};
+
+export type OutboxTruncateNotificationDraft = Omit<OutboxTruncateNotification, "versionstamp">;
 
 export type OutboxMutation =
   | {

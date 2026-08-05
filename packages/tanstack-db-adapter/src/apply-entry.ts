@@ -23,6 +23,7 @@ export type FragnoOutboxApplyControls<TRow extends object> = {
       set(key: string, value: unknown): void;
     };
   };
+  deleteMatching?(match: Record<string, unknown>, metadata: FragnoOutboxCheckpoint): void;
   commit(): void;
 };
 
@@ -41,6 +42,13 @@ export function applyFragnoOutboxEntry<
 
   controls.begin();
   for (const change of changes) {
+    if (change.type === "truncate") {
+      if (!controls.deleteMatching) {
+        throw new Error("Truncate notification requires deleteMatching controls.");
+      }
+      controls.deleteMatching(change.match, checkpoint);
+      continue;
+    }
     controls.write(toTanStackChangeMessage(change));
   }
   controls.metadata.collection.set(FRAGNO_OUTBOX_CHECKPOINT_METADATA_KEY, checkpoint);

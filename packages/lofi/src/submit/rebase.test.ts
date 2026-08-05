@@ -9,8 +9,8 @@ import type { LofiAdapter, LofiSubmitCommand } from "../types";
 import { rebaseSubmitQueue } from "./rebase";
 
 const makePayload = (versionstamp: string): OutboxPayload => ({
-  version: 1,
-  mutations: [
+  version: 2,
+  operations: [
     {
       op: "update",
       schema: "app",

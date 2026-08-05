@@ -3,7 +3,12 @@ import type { TableToColumnValues } from "@fragno-dev/db/query";
 import type { AnySchema, AnyTable, FragnoId, FragnoReference } from "@fragno-dev/db/schema";
 import superjson, { type SuperJSONResult } from "superjson";
 
-import type { OutboxEntry, OutboxMutation, OutboxPayload } from "@fragno-dev/db";
+import type {
+  OutboxEntry,
+  OutboxMutation,
+  OutboxPayload,
+  OutboxTruncateNotification,
+} from "@fragno-dev/db";
 
 import type { ChangeMessageOrDeleteKeyMessage } from "@tanstack/db";
 
@@ -48,6 +53,11 @@ export type FragnoCollectionChange<TRow extends object> =
       type: "delete";
       key: string;
       metadata: FragnoRowSyncMetadata;
+    }
+  | {
+      type: "truncate";
+      match: Record<string, unknown>;
+      metadata: FragnoRowSyncMetadata;
     };
 
 export type FragnoRowSyncMetadata = {
@@ -61,16 +71,21 @@ export function decodeFragnoOutboxPayload(payload: unknown): OutboxPayload {
   if (!isRecord(decoded)) {
     throw new Error("Invalid Fragno outbox payload.");
   }
-  if (decoded["version"] !== 1) {
+  if (decoded["version"] !== 2) {
     throw new Error(`Unsupported Fragno outbox payload version: ${String(decoded["version"])}.`);
   }
-  if (!Array.isArray(decoded["mutations"])) {
-    throw new Error("Invalid Fragno outbox mutations.");
+  if (!Array.isArray(decoded["operations"])) {
+    throw new Error("Invalid Fragno outbox operations.");
   }
 
-  for (const mutation of decoded["mutations"]) {
+  for (const mutation of decoded["operations"]) {
     const operation = isRecord(mutation) ? mutation["op"] : undefined;
-    if (operation !== "create" && operation !== "update" && operation !== "delete") {
+    if (
+      operation !== "create" &&
+      operation !== "update" &&
+      operation !== "delete" &&
+      operation !== "truncate"
+    ) {
       throw new Error(`Unsupported Fragno outbox mutation operation: ${String(operation)}.`);
     }
   }
@@ -96,8 +111,13 @@ export function projectFragnoOutboxEntry<
 
   const changes: FragnoCollectionChange<FragnoCollectionRow<TSchema["tables"][TTableName]>>[] = [];
 
-  for (const mutation of payload.mutations) {
+  for (const mutation of payload.operations) {
     if (resolveMutationNamespace(mutation) !== targetNamespace || mutation.table !== target.table) {
+      continue;
+    }
+
+    if (mutation.op === "truncate") {
+      changes.push({ type: "truncate", match: mutation.match, metadata });
       continue;
     }
 
@@ -142,6 +162,10 @@ export function projectFragnoOutboxEntry<
 export function toTanStackChangeMessage<TRow extends object>(
   change: FragnoCollectionChange<TRow>,
 ): ChangeMessageOrDeleteKeyMessage<TRow, string> {
+  if (change.type === "truncate") {
+    throw new Error("Truncate changes must be expanded before conversion to TanStack messages.");
+  }
+
   if (change.type === "delete") {
     return {
       type: "delete",
@@ -157,7 +181,7 @@ export function toTanStackChangeMessage<TRow extends object>(
   };
 }
 
-function resolveMutationNamespace(mutation: OutboxMutation): string {
+function resolveMutationNamespace(mutation: OutboxMutation | OutboxTruncateNotification): string {
   return mutation.namespace ?? mutation.schema;
 }
 

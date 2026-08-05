@@ -1,5 +1,7 @@
 import type { DatabaseConstraintError } from "../../errors";
+import { internalSchema } from "../../fragments/internal-fragment.schema";
 import type { TriggeredHook, TriggerHookOptions, HooksMap, HookPayload } from "../../hooks/hooks";
+import type { OutboxTruncateNotificationDraft } from "../../outbox/outbox";
 import type { AnySchema, AnyTable, Index, IdColumn, AnyColumn } from "../../schema/create";
 import { FragnoId, getTableRelations } from "../../schema/create";
 import { generateId } from "../../schema/generate-id";
@@ -238,6 +240,7 @@ export type MutationOperation<
       table: TTable["name"];
       id: FragnoId | string;
       checkVersion: boolean;
+      omitOutbox?: boolean;
     }
   | {
       type: "check";
@@ -272,6 +275,8 @@ export interface CompiledMutation<TOutput> {
    * Idempotency key for the Unit of Work that produced this mutation.
    */
   uowId?: string;
+  /** Ordered outbox controls registered by this unit of work. */
+  outboxNotifications?: readonly OutboxTruncateNotificationDraft[];
   /**
    * The type of mutation operation.
    */
@@ -681,6 +686,7 @@ export class DeleteBuilder {
   readonly #id: FragnoId | string;
 
   #checkVersion = false;
+  #omitOutbox = false;
 
   constructor(tableName: string, id: FragnoId | string) {
     this.#tableName = tableName;
@@ -702,13 +708,20 @@ export class DeleteBuilder {
     return this;
   }
 
+  /** Prevent this source deletion from producing an ordinary outbox delete operation. */
+  omitOutbox(): this {
+    this.#omitOutbox = true;
+    return this;
+  }
+
   /**
    * @internal
    */
-  build(): { id: FragnoId | string; checkVersion: boolean } {
+  build(): { id: FragnoId | string; checkVersion: boolean; omitOutbox: boolean } {
     return {
       id: this.#id,
       checkVersion: this.#checkVersion,
+      omitOutbox: this.#omitOutbox,
     };
   }
 }
@@ -990,6 +1003,9 @@ export interface IUnitOfWork {
   ): void;
 
   getTriggeredHooks(): readonly TriggeredHook[];
+
+  /** @internal Register an ordered outbox notification without adding a database operation. */
+  notifyOutboxTruncate(notification: OutboxTruncateNotificationDraft): void;
 }
 
 /**
@@ -1305,6 +1321,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   // Operations can come from any schema
   #retrievalOps: RetrievalOperation<AnySchema>[] = [];
   #mutationOps: MutationOperation<AnySchema>[] = [];
+  #outboxNotifications: OutboxTruncateNotificationDraft[] = [];
 
   readonly #compiler: UOWCompiler<unknown>;
   readonly #executor: UOWExecutor<unknown, TRawInput>;
@@ -1455,6 +1472,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
 
     child.#retrievalOps = this.#retrievalOps;
     child.#mutationOps = this.#mutationOps;
+    child.#outboxNotifications = this.#outboxNotifications;
     child.#retrievalResults = this.#retrievalResults;
     child.#createdInternalIds = this.#createdInternalIds;
     child.#readTrackingEnabled = this.#readTrackingEnabled;
@@ -1505,6 +1523,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     // Clear operations
     this.#retrievalOps = [];
     this.#mutationOps = [];
+    this.#outboxNotifications = [];
     this.#retrievalResults = undefined;
     this.#createdInternalIds = [];
     this.#readTrackingEnabled = false;
@@ -1718,6 +1737,14 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
         }
       }
 
+      if (this.#outboxNotifications.length > 0) {
+        const firstMutation = mutationBatch[0];
+        if (!firstMutation) {
+          throw new Error("Outbox notifications require at least one mutation operation.");
+        }
+        firstMutation.outboxNotifications = [...this.#outboxNotifications];
+      }
+
       if (this.#config?.dryRun) {
         this.#state = "executed";
         afterRan = true;
@@ -1813,6 +1840,13 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     this.#mutationOps.push(op);
   }
 
+  notifyOutboxTruncate(notification: OutboxTruncateNotificationDraft): void {
+    if (this.state === "executed") {
+      throw new Error(`Cannot register an outbox notification in executed state.`);
+    }
+    this.#outboxNotifications.push(notification);
+  }
+
   /**
    * Get the IDs of created entities after executeMutations() has been called.
    * Returns FragnoId objects with external IDs (always available) and internal IDs
@@ -1874,11 +1908,57 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       }
     }
 
+    if (this.#outboxNotifications.length > 0) {
+      const firstMutation = mutationBatch[0];
+      if (!firstMutation) {
+        throw new Error("Outbox notifications require at least one mutation operation.");
+      }
+      firstMutation.outboxNotifications = [...this.#outboxNotifications];
+    }
+
     return {
       name: this.#name,
       retrievalBatch,
       mutationBatch,
     };
+  }
+}
+
+export class TypedOutboxNotifier<const TSchema extends AnySchema> {
+  readonly #schema: TSchema;
+  readonly #namespace?: string | null;
+  readonly #uow: UnitOfWork;
+
+  constructor(schema: TSchema, namespace: string | null | undefined, uow: UnitOfWork) {
+    this.#schema = schema;
+    this.#namespace = namespace;
+    this.#uow = uow;
+  }
+
+  deleteMutation(id: FragnoId | string): void {
+    this.#uow.addMutationOperation({
+      type: "delete",
+      schema: internalSchema,
+      namespace: null,
+      table: "fragno_db_outbox_mutations",
+      id,
+      checkVersion: false,
+      omitOutbox: true,
+    });
+  }
+
+  notifyTruncate<TTableName extends keyof TSchema["tables"] & string>(
+    table: TTableName,
+    options: { match: Record<string, unknown> },
+  ): void {
+    const schema = this.#namespace ?? "";
+    this.#uow.notifyOutboxTruncate({
+      op: "truncate",
+      schema,
+      ...(this.#namespace ? { namespace: this.#namespace } : {}),
+      table,
+      match: options.match,
+    });
   }
 }
 
@@ -1914,6 +1994,14 @@ export class TypedUnitOfWork<
 
   get schema(): TSchema {
     return this.#schema;
+  }
+
+  get outbox(): TypedOutboxNotifier<TSchema> {
+    return new TypedOutboxNotifier(this.#schema, this.#namespace, this.#uow);
+  }
+
+  notifyOutboxTruncate(notification: OutboxTruncateNotificationDraft): void {
+    this.#uow.notifyOutboxTruncate(notification);
   }
 
   get name(): string | undefined {
@@ -2056,6 +2144,7 @@ export class TypedUnitOfWork<
       this.#schema,
       tableName,
       table as TSchema["tables"][TTableName],
+      this.#namespace,
     );
     builderFn(builder);
     const queryTree = builder.build();
@@ -2117,6 +2206,7 @@ export class TypedUnitOfWork<
       this.#schema,
       tableName,
       table as TSchema["tables"][TTableName],
+      this.#namespace,
     );
     builderFn(builder);
     builder.pageSize(1);
@@ -2192,6 +2282,7 @@ export class TypedUnitOfWork<
       this.#schema,
       tableName,
       table as TSchema["tables"][TTableName],
+      this.#namespace,
     );
     builderFn(builder);
     const queryTree = builder.build();
@@ -2335,7 +2426,7 @@ export class TypedUnitOfWork<
   ): void {
     const builder = new DeleteBuilder(tableName, id);
     builderFn?.(builder);
-    const { id: opId, checkVersion } = builder.build();
+    const { id: opId, checkVersion, omitOutbox } = builder.build();
 
     this.#uow.addMutationOperation({
       type: "delete",
@@ -2344,6 +2435,7 @@ export class TypedUnitOfWork<
       table: tableName,
       id: opId,
       checkVersion,
+      omitOutbox,
     });
   }
 

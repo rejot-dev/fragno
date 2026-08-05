@@ -72,6 +72,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       this.driverConfig,
       this.sqliteStorageMode,
       resolver,
+      (childSchema, childNamespace) => this.getNamingResolver(childSchema, childNamespace),
     );
   }
 

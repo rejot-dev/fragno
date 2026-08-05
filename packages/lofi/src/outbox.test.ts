@@ -16,8 +16,8 @@ import {
 describe("outbox utilities", () => {
   it("decodes payloads and enforces schema presence", () => {
     const payload: OutboxPayload = {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",
@@ -33,8 +33,8 @@ describe("outbox utilities", () => {
     expect(decoded).toEqual(payload);
 
     const missingSchemaPayload = superjson.serialize({
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           table: "users",
@@ -46,12 +46,12 @@ describe("outbox utilities", () => {
     });
 
     expect(() => decodeOutboxPayload(missingSchemaPayload)).toThrow(
-      "Outbox mutation schema is required",
+      "Outbox operation schema is required",
     );
 
     const emptySchemaPayload = superjson.serialize({
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "",
@@ -64,7 +64,7 @@ describe("outbox utilities", () => {
     });
 
     expect(() => decodeOutboxPayload(emptySchemaPayload)).toThrow(
-      "Outbox mutation schema is required",
+      "Outbox operation schema is required",
     );
   });
 

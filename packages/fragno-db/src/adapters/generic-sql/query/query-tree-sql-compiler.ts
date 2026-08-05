@@ -9,7 +9,7 @@ import type {
   QueryTreeOrderBy,
 } from "../../../query/unit-of-work/query-tree";
 import { getQueryTreeSelectedColumnNames } from "../../../query/unit-of-work/query-tree";
-import type { AnyColumn, AnyTable } from "../../../schema/create";
+import type { AnyColumn, AnySchema, AnyTable } from "../../../schema/create";
 import type { DriverConfig } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import { buildCursorCondition } from "./cursor-utils";
@@ -29,17 +29,20 @@ export class QueryTreeSQLCompiler {
   readonly #driverConfig: DriverConfig;
   readonly #sqliteStorageMode?: SQLiteStorageMode;
   readonly #resolver?: NamingResolver;
+  readonly #resolverFactory?: (schema: AnySchema, namespace: string | null) => NamingResolver;
 
   constructor(
     db: AnyKysely,
     driverConfig: DriverConfig,
     sqliteStorageMode?: SQLiteStorageMode,
     resolver?: NamingResolver,
+    resolverFactory?: (schema: AnySchema, namespace: string | null) => NamingResolver,
   ) {
     this.#db = db;
     this.#driverConfig = driverConfig;
     this.#sqliteStorageMode = sqliteStorageMode;
     this.#resolver = resolver;
+    this.#resolverFactory = resolverFactory;
   }
 
   compile(
@@ -66,7 +69,9 @@ export class QueryTreeSQLCompiler {
     const combinedWhere = this.#combineConditions(root.where, cursorCondition);
 
     const rootAlias = "_fragno_root";
-    let query = this.#db.selectFrom(`${this.#getTableName(root.table)} as ${rootAlias}`);
+    let query = this.#db.selectFrom(
+      `${this.#getTableName(root.table, this.#resolver)} as ${rootAlias}`,
+    );
 
     if (combinedWhere) {
       query = query.where((eb) =>
@@ -98,7 +103,7 @@ export class QueryTreeSQLCompiler {
 
     const selections = selectedColumnNames.map((columnName) => {
       const column = root.table.columns[columnName];
-      const physicalName = this.#getColumnName(root.table, column.name);
+      const physicalName = this.#getColumnName(root.table, column.name, this.#resolver);
       return projectSelectedColumn(
         {
           column,
@@ -111,7 +116,15 @@ export class QueryTreeSQLCompiler {
 
     for (const child of root.children) {
       selections.push(
-        this.#buildChildExpression(child, root.table, rootAlias, child.alias, 0, readTracking),
+        this.#buildChildExpression(
+          child,
+          root.table,
+          rootAlias,
+          child.alias,
+          0,
+          readTracking,
+          this.#resolver,
+        ),
       );
     }
 
@@ -125,6 +138,7 @@ export class QueryTreeSQLCompiler {
     path: string,
     depth: number,
     readTracking: boolean,
+    parentResolver?: NamingResolver,
   ) {
     return this.#buildChildValueExpression(
       child,
@@ -133,6 +147,7 @@ export class QueryTreeSQLCompiler {
       path,
       depth,
       readTracking,
+      parentResolver,
     ).as(child.alias);
   }
 
@@ -143,7 +158,9 @@ export class QueryTreeSQLCompiler {
     path: string,
     depth: number,
     readTracking: boolean,
+    parentResolver?: NamingResolver,
   ) {
+    const childResolver = this.#getNodeResolver(child);
     const childAlias = `_fragno_${path.replace(/[^a-zA-Z0-9_]/g, "_")}_${depth}`;
     const jsonObject = this.#buildJsonObjectExpression(
       child,
@@ -151,6 +168,7 @@ export class QueryTreeSQLCompiler {
       path,
       depth,
       readTracking,
+      childResolver,
     );
     let projectedItem = jsonObject;
     if (
@@ -167,8 +185,41 @@ export class QueryTreeSQLCompiler {
     }
 
     let childQuery = this.#db
-      .selectFrom(`${this.#getTableName(child.table)} as ${childAlias}`)
+      .selectFrom(
+        `${child.schema ? this.#getQualifiedTableName(child.table, childResolver) : this.#getTableName(child.table, childResolver)} as ${childAlias}`,
+      )
       .select(projectedItem.as(CHILD_JSON_COLUMN_ALIAS));
+
+    if (child.outboxSource) {
+      const externalIdColumn = child.table.columns["externalId"];
+      const schemaColumn = child.table.columns["schema"];
+      const tableColumn = child.table.columns["table"];
+      const parentColumn = parentTable.columns[child.outboxSource.parentExternalIdColumn];
+      if (!externalIdColumn || !schemaColumn || !tableColumn || !parentColumn) {
+        throw new Error("Invalid withOutboxMutations() query-tree shape.");
+      }
+      childQuery = childQuery.where((eb) =>
+        eb.and([
+          eb(
+            `${childAlias}.${this.#getColumnName(child.table, schemaColumn.name, childResolver)}`,
+            "=",
+            child.outboxSource!.schema,
+          ),
+          eb(
+            `${childAlias}.${this.#getColumnName(child.table, tableColumn.name, childResolver)}`,
+            "=",
+            child.outboxSource!.table,
+          ),
+          eb(
+            `${childAlias}.${this.#getColumnName(child.table, externalIdColumn.name, childResolver)}`,
+            "=",
+            eb.ref(
+              `${parentAlias}.${this.#getColumnName(parentTable, parentColumn.name, parentResolver)}`,
+            ),
+          ),
+        ]),
+      );
+    }
 
     const onIndex = child.onIndex;
     if (onIndex) {
@@ -178,11 +229,12 @@ export class QueryTreeSQLCompiler {
           eb,
           this.#driverConfig,
           this.#sqliteStorageMode,
-          this.#resolver,
+          childResolver,
           child.table,
           childAlias,
           parentTable,
           parentAlias,
+          parentResolver,
         ),
       );
     }
@@ -195,14 +247,20 @@ export class QueryTreeSQLCompiler {
           eb,
           this.#driverConfig,
           this.#sqliteStorageMode,
-          this.#resolver,
+          childResolver,
           child.table,
           childAlias,
         ),
       );
     }
 
-    childQuery = this.#applyOrderByIndex(childQuery, child.table, child.orderByIndex, childAlias);
+    childQuery = this.#applyOrderByIndex(
+      childQuery,
+      child.table,
+      child.orderByIndex,
+      childAlias,
+      childResolver,
+    );
 
     if (child.pageSize !== undefined) {
       childQuery = childQuery.limit(child.pageSize);
@@ -239,6 +297,7 @@ export class QueryTreeSQLCompiler {
     path: string,
     depth: number,
     readTracking: boolean,
+    resolver?: NamingResolver,
   ) {
     const items: Array<{ key: string; expr: unknown }> = [];
 
@@ -248,7 +307,7 @@ export class QueryTreeSQLCompiler {
       readTracking ? [node.table.getIdColumn().name] : [],
     )) {
       const column = node.table.columns[columnName];
-      const physicalName = this.#getColumnName(node.table, column.name);
+      const physicalName = this.#getColumnName(node.table, column.name, resolver);
       items.push({
         key: columnName,
         expr: projectJsonSelectedColumnValue(
@@ -268,6 +327,7 @@ export class QueryTreeSQLCompiler {
         `${path}_${child.alias}`,
         depth + 1,
         readTracking,
+        resolver,
       );
       items.push({
         key: child.alias,
@@ -352,6 +412,7 @@ export class QueryTreeSQLCompiler {
     table: AnyTable,
     orderByIndex: { indexName: string; direction: "asc" | "desc" } | undefined,
     alias: string,
+    resolver: NamingResolver | undefined = this.#resolver,
   ): T {
     if (!orderByIndex) {
       return query;
@@ -360,7 +421,7 @@ export class QueryTreeSQLCompiler {
     let orderedQuery = query;
     for (const column of this.#resolveOrderByColumns(table, orderByIndex.indexName)) {
       orderedQuery = orderedQuery.orderBy(
-        `${alias}.${this.#getColumnName(table, column.name)}`,
+        `${alias}.${this.#getColumnName(table, column.name, resolver)}`,
         orderByIndex.direction,
       );
     }
@@ -381,11 +442,27 @@ export class QueryTreeSQLCompiler {
     return index.columns;
   }
 
-  #getTableName(table: AnyTable): string {
-    return this.#resolver ? this.#resolver.getTableName(table.name) : table.name;
+  #getNodeResolver(node: CompiledQueryTreeChildNode): NamingResolver | undefined {
+    if (!node.schema || !this.#resolverFactory) {
+      return this.#resolver;
+    }
+    return this.#resolverFactory(node.schema, node.namespace ?? null);
   }
 
-  #getColumnName(table: AnyTable, columnName: string): string {
-    return this.#resolver ? this.#resolver.getColumnName(table.name, columnName) : columnName;
+  #getTableName(table: AnyTable, resolver?: NamingResolver): string {
+    return resolver ? resolver.getTableName(table.name) : table.name;
+  }
+
+  #getQualifiedTableName(table: AnyTable, resolver?: NamingResolver): string {
+    const tableName = this.#getTableName(table, resolver);
+    const schemaName = resolver?.getSchemaName();
+    if (schemaName) {
+      return `${schemaName}.${tableName}`;
+    }
+    return this.#driverConfig.databaseType === "postgresql" ? `public.${tableName}` : tableName;
+  }
+
+  #getColumnName(table: AnyTable, columnName: string, resolver?: NamingResolver): string {
+    return resolver ? resolver.getColumnName(table.name, columnName) : columnName;
   }
 }

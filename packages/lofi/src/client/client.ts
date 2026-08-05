@@ -1,4 +1,4 @@
-import type { OutboxEntry, OutboxPayload } from "@fragno-dev/db";
+import type { OutboxEntry, OutboxMutation, OutboxTruncateNotification } from "@fragno-dev/db";
 
 import { decodeOutboxPayload, resolveOutboxRefs } from "../outbox";
 import { assertNoUnresolvedDbNowMutations } from "../query/mutation-values";
@@ -60,6 +60,9 @@ export class LofiClient {
   private readonly ephemeralTableKeys: ReadonlySet<string>;
   private readonly ephemeralStreamPolicies: ReadonlyMap<string, LofiEphemeralStreamPolicy>;
   private readonly ephemeralListeners = new Set<(batch: LofiEphemeralMutationBatch) => void>();
+  private readonly truncateListeners = new Set<
+    (notification: OutboxTruncateNotification) => void | Promise<void>
+  >();
   private readonly activeEphemeralStreams = new Map<string, ActiveEphemeralStream>();
   private readonly onSyncApplied?: (result: LofiSyncResult) => void | Promise<void>;
   private readonly onSyncComplete?: (result: LofiSyncResult) => void | Promise<void>;
@@ -109,6 +112,15 @@ export class LofiClient {
     this.ephemeralListeners.add(listener);
     return () => {
       this.ephemeralListeners.delete(listener);
+    };
+  }
+
+  subscribeTruncate(
+    listener: (notification: OutboxTruncateNotification) => void | Promise<void>,
+  ): () => void {
+    this.truncateListeners.add(listener);
+    return () => {
+      this.truncateListeners.delete(listener);
     };
   }
 
@@ -420,12 +432,28 @@ export class LofiClient {
     appliedDurableMutations: number;
     lastVersionstamp: string;
   }> {
-    const mutations = decodeOutboxEntry(entry);
+    const { mutations, truncations } = decodeOutboxEntry(entry);
     const refResolvedMutations = entry.refMap
       ? mutations.map((mutation) => resolveOutboxRefs(mutation, entry.refMap ?? {}))
       : mutations;
     assertNoUnresolvedDbNowMutations(refResolvedMutations);
     const resolvedMutations = refResolvedMutations;
+
+    for (const truncation of truncations) {
+      const tableKey = ephemeralTableKey(truncation.schema, truncation.table);
+      const policy = this.ephemeralStreamPolicies.get(tableKey);
+      if (policy) {
+        this.activeEphemeralStreams.delete(`${tableKey}:${policy.key(truncation.match)}`);
+      }
+      for (const listener of this.truncateListeners) {
+        await listener(truncation);
+      }
+      if (policy) {
+        for (const listener of this.ephemeralListeners) {
+          this.replayEphemeral(listener);
+        }
+      }
+    }
     const durableMutations: LofiMutation[] = [];
     const ephemeralMutations: LofiMutation[] = [];
     for (const mutation of resolvedMutations) {
@@ -586,12 +614,24 @@ export class LofiClient {
   }
 }
 
-function decodeOutboxEntry(entry: OutboxEntry): LofiMutation[] {
+function decodeOutboxEntry(entry: OutboxEntry): {
+  mutations: LofiMutation[];
+  truncations: OutboxTruncateNotification[];
+} {
   const payload = decodeOutboxPayload(entry.payload);
-  return payload.mutations.map((mutation) => toLofiMutation(mutation));
+  const mutations: LofiMutation[] = [];
+  const truncations: OutboxTruncateNotification[] = [];
+  for (const operation of payload.operations) {
+    if (operation.op === "truncate") {
+      truncations.push(operation);
+    } else {
+      mutations.push(toLofiMutation(operation));
+    }
+  }
+  return { mutations, truncations };
 }
 
-function toLofiMutation(mutation: OutboxPayload["mutations"][number]): LofiMutation {
+function toLofiMutation(mutation: OutboxMutation): LofiMutation {
   if (mutation.op === "create") {
     return {
       op: "create",

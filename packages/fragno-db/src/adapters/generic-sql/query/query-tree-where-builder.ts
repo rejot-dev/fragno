@@ -58,6 +58,7 @@ export function buildQueryTreeWhere(
   childAlias: string,
   parentTable?: AnyTable,
   parentAlias?: string,
+  parentResolver?: NamingResolver,
 ): AnyExpressionWrapper {
   const serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
 
@@ -83,7 +84,7 @@ export function buildQueryTreeWhere(
       return eb(
         getColumnSqlName(left, resolver, childTable, childAlias),
         condition.operator as BinaryOperator,
-        eb.ref(getColumnSqlName(parentColumn, resolver, parentTable, parentAlias)),
+        eb.ref(getColumnSqlName(parentColumn, parentResolver, parentTable, parentAlias)),
       );
     }
 
