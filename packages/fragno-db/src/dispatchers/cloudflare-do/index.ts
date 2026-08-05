@@ -1,6 +1,7 @@
 import { getDurableHooksToken } from "../../hooks/durable-hooks-fragment";
 import { createDurableHooksProcessorGroup } from "../../hooks/durable-hooks-processor";
 import { getDurableHooksRuntimeByToken } from "../../hooks/durable-hooks-runtime";
+import type { DurableHooksInstrumentation } from "../../hooks/hooks";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
 import {
   createDurableHooksDispatcherDurableObject,
@@ -11,6 +12,10 @@ import {
 
 export type DurableHooksProcessorOptions = {
   onProcessError?: (error: unknown) => void;
+  /**
+   * Overrides each fragment's durable-hook instrumentation before the fragments are exposed.
+   */
+  instrumentation?: DurableHooksInstrumentation;
 };
 
 export type {
@@ -25,6 +30,7 @@ export function createDurableHooksProcessor<TEnv>(
 ): DurableHooksDispatcherDurableObjectFactory<TEnv> {
   const processor = createDurableHooksProcessorGroup(fragments, {
     onError: options.onProcessError,
+    instrumentation: options.instrumentation,
   });
   const factory = createDurableHooksDispatcherDurableObject<TEnv>({
     createProcessor: () => processor,

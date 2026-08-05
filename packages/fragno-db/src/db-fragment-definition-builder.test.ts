@@ -978,8 +978,11 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
   });
 
   describe("serviceTx hooks propagation", () => {
-    it("should pass hooks to createServiceTxBuilder", () => {
+    it("should pass hooks and transaction metadata to createServiceTxBuilder", () => {
       const mockAdapter = createMockAdapter();
+      const transactionInstrumentation = {
+        run: <T>(_context: unknown, execute: () => T): T => execute(),
+      };
 
       // Define hooks type
       type TestHooks = {
@@ -1012,7 +1015,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       // Get the contexts which includes serviceTx
       const contexts = definition.createThisContext!({
         config: {},
-        options: { databaseAdapter: mockAdapter },
+        options: { databaseAdapter: mockAdapter, transactionInstrumentation },
         deps,
         storage: mockStorage,
       });
@@ -1026,19 +1029,66 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         serviceDeps: {} as Record<string, never>,
       });
 
-      // Call serviceTx - this should pass hooks to createServiceTxBuilder
-      contexts.serviceContext.serviceTx(testSchema);
+      // Call serviceTx - this should pass hooks and tracing metadata to createServiceTxBuilder
+      contexts.serviceContext.serviceTx(testSchema, { name: "users.create" });
 
-      // Verify createServiceTxBuilder was called with 3 arguments (schema, uow, hooks)
+      // Verify createServiceTxBuilder receives schema, UOW, hooks, and transaction metadata.
       expect(createServiceTxBuilderSpy).toHaveBeenCalledOnce();
       const callArgs = createServiceTxBuilderSpy.mock.calls[0];
-      expect(callArgs).toHaveLength(3);
-      expect(callArgs[0]).toBe(testSchema); // schema
-      expect(callArgs[1]).toBeDefined(); // uow
-      expect(callArgs[2]).toBeDefined(); // hooks - this is what we're testing
+      expect(callArgs).toHaveLength(4);
+      expect(callArgs[0]).toBe(testSchema);
+      expect(callArgs[1]).toBeDefined();
+      expect(callArgs[2]).toBeDefined();
       expect(callArgs[2]).toHaveProperty("onUserCreated");
+      expect(callArgs[3]).toEqual({
+        fragmentName: "db-frag-with-hooks",
+        transactionName: "users.create",
+        transactionInstrumentation,
+      });
 
       createServiceTxBuilderSpy.mockRestore();
+    });
+  });
+
+  describe("handlerTx transaction names", () => {
+    it("applies a top-level handler transaction name when resetting the request Unit of Work", () => {
+      const mockAdapter = createMockAdapter();
+      const definition = defineFragment("db-frag-named-handler")
+        .extend(withDatabase(testSchema))
+        .build();
+      const options = { databaseAdapter: mockAdapter };
+      const deps = definition.dependencies!({ config: {}, options });
+      const requestUow = mockAdapter.createBaseUnitOfWork();
+      const requestStorage = {
+        uow: requestUow,
+        activeHandlerTxDepth: 0,
+      } as DatabaseContextStorage;
+      const storage = {
+        getStore: () => requestStorage,
+        getPropagationContext: () => null,
+      } as unknown as RequestContextStorage<DatabaseContextStorage>;
+      const createHandlerTxBuilderSpy = vi
+        .spyOn(executeUnitOfWork, "createHandlerTxBuilder")
+        .mockReturnValue(
+          {} as unknown as ReturnType<typeof executeUnitOfWork.createHandlerTxBuilder>,
+        );
+
+      try {
+        const contexts = definition.createThisContext!({
+          config: {},
+          options,
+          deps,
+          storage,
+        });
+
+        contexts.handlerContext.handlerTx({ name: "users.create" });
+        const executeOptions = createHandlerTxBuilderSpy.mock.calls[0]?.[0];
+
+        expect(executeOptions?.createUnitOfWork()).toBe(requestUow);
+        expect(requestUow.reset).toHaveBeenCalledWith({ name: "users.create" });
+      } finally {
+        createHandlerTxBuilderSpy.mockRestore();
+      }
     });
   });
 
@@ -1160,6 +1210,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       contexts.handlerContext.handlerTx();
       const callArgs = createHandlerTxBuilderSpy.mock.calls[0]?.[0];
       const mockUow = {
+        idempotencyKey: "request-uow",
         getTriggeredHooks: () => [
           {
             namespace: runtime.config.namespace,
@@ -1180,6 +1231,30 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       });
       expect(notifyContext?.waitUntil).toBe(waitUntilSpy);
       expect(waitUntilSpy).toHaveBeenCalledTimes(1);
+
+      runtime.config.instrumentation = {
+        captureContext: () => null,
+        runAttempt: async (_attempt, execute) => await execute(),
+        async runNotify<T>(): Promise<T> {
+          return undefined as T;
+        },
+      };
+      await callArgs?.onAfterMutate?.(mockUow);
+      await waitUntilSpy.mock.calls[1]?.[0];
+      expect(notifySpy).toHaveBeenCalledTimes(1);
+
+      runtime.config.instrumentation = {
+        captureContext: () => null,
+        runAttempt: async (_attempt, execute) => await execute(),
+        async runNotify<T>(_notification: unknown, execute: () => Promise<T>): Promise<T> {
+          const result = await execute();
+          await execute();
+          return result;
+        },
+      };
+      await callArgs?.onAfterMutate?.(mockUow);
+      await waitUntilSpy.mock.calls[2]?.[0];
+      expect(notifySpy).toHaveBeenCalledTimes(2);
 
       createHandlerTxBuilderSpy.mockRestore();
     });

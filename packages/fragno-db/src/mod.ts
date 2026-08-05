@@ -118,14 +118,6 @@ export type {
   HookHandlerTx,
   HookPayload,
   TriggerHookOptions,
-  DurableHookAttempt,
-  DurableHookEnqueueInfo,
-  DurableHookPropagationContext,
-  DurableHooksInstrumentation,
-  DurableHooksProcessingOptions,
-  StuckHookProcessingInfo,
-  StuckHookProcessingEvent,
-  StuckHookProcessingTimeoutMinutes,
 } from "./hooks/hooks";
 export { defineSyncCommands } from "./sync/commands";
 export type {

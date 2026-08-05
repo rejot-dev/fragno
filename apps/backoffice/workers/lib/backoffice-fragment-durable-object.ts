@@ -22,6 +22,8 @@ import {
   type DurableHookRepository,
 } from "@/fragno/durable-hooks";
 
+import { cloudflareDurableHooksInstrumentation } from "./cloudflare-durable-hooks-instrumentation";
+
 /**
  * Current in-memory state for a config-backed Fragment Durable Object.
  *
@@ -338,6 +340,7 @@ export function createBackofficeFragmentDurableObject<
     getHookFragments: options.getHookFragments,
     hostRuntime: options.hostRuntime,
     mounts: options.mounts,
+    durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
     onProcessError: (error: unknown) => {
       console.error(`${options.name} hook processor error`, error);
     },

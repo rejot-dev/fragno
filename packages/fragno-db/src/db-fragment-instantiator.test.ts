@@ -330,6 +330,67 @@ describe("db-fragment-instantiator", () => {
       assert(result);
     });
 
+    it("should instrument callServices as the parent Unit of Work", async () => {
+      const spans: Array<{ name: string; parent?: string }> = [];
+      const activeSpans: string[] = [];
+      const transactionInstrumentation = {
+        run: <T>(
+          context: {
+            transactionKind: "handler" | "service";
+            transactionName?: string;
+            callback?: string;
+          },
+          execute: () => T,
+        ): T => {
+          const name = [context.transactionKind, context.transactionName, context.callback]
+            .filter(Boolean)
+            .join(".");
+          spans.push({ name, parent: activeSpans.at(-1) });
+          activeSpans.push(name);
+          const result = execute();
+          if (result instanceof Promise) {
+            return result.finally(() => activeSpans.pop()) as T;
+          }
+          activeSpans.pop();
+          return result;
+        },
+      };
+      const definition = defineFragment("test-db-fragment")
+        .extend(withDatabase(testSchema))
+        .providesBaseService(({ defineService }) =>
+          defineService({
+            readSetting: function () {
+              return this.serviceTx(testSchema, { name: "internal.settings.get" })
+                .mutate(() => true)
+                .transform(({ mutateResult }) => mutateResult)
+                .build();
+            },
+          }),
+        )
+        .build();
+      const fragment = instantiate(definition)
+        .withOptions({ databaseAdapter: createMockAdapter(), transactionInstrumentation })
+        .build();
+
+      await fragment.callServices(() => fragment.services.readSetting(), {
+        name: "test.readSetting",
+      });
+
+      expect(spans).toEqual(
+        expect.arrayContaining([
+          { name: "handler.test.readSetting", parent: undefined },
+          {
+            name: "service.internal.settings.get.mutate",
+            parent: "handler.test.readSetting",
+          },
+          {
+            name: "service.internal.settings.get.transform",
+            parent: "handler.test.readSetting",
+          },
+        ]),
+      );
+    });
+
     it("should seed explicit propagation context for callServices", async () => {
       const mockAdapter = createMockAdapter();
       const definition = defineFragment("test-db-fragment")

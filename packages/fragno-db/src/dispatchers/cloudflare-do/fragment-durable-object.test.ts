@@ -1,6 +1,6 @@
 import { describe, expect, it, assert } from "vitest";
 
-import type { HookNotifyContext } from "../../hooks/hooks";
+import type { DurableHooksInstrumentation, HookNotifyContext } from "../../hooks/hooks";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
 import type { DurableHooksDispatcherDurableObjectHandler } from "./dispatcher";
 import {
@@ -23,14 +23,17 @@ type TestDispatcher = DurableHooksDispatcherDurableObjectHandler;
 
 const createRecordingOperations = (dispatcher: TestDispatcher = {}) => {
   const migratedFragments: AnyFragnoInstantiatedDatabaseFragment[] = [];
-  const dispatcherInputs: Array<readonly AnyFragnoInstantiatedDatabaseFragment[]> = [];
+  const dispatcherInputs: Array<{
+    hookFragments: readonly AnyFragnoInstantiatedDatabaseFragment[];
+    instrumentation: DurableHooksInstrumentation | undefined;
+  }> = [];
 
   const operations: FragmentDurableObjectHostOperations<TestEnv> = {
     migrateFragment: async (fragment) => {
       migratedFragments.push(fragment);
     },
-    createDispatcher: ({ hookFragments }) => {
-      dispatcherInputs.push(hookFragments);
+    createDispatcher: ({ hookFragments, instrumentation }) => {
+      dispatcherInputs.push({ hookFragments, instrumentation });
       return dispatcher;
     },
   };
@@ -64,7 +67,9 @@ describe("createFragmentDurableObjectHost", () => {
     expect(runtime).toEqual({ fragment });
     expect(runtimeBuilds).toEqual(["v1"]);
     expect(recording.migratedFragments).toEqual([fragment]);
-    expect(recording.dispatcherInputs).toEqual([[fragment]]);
+    expect(recording.dispatcherInputs).toEqual([
+      { hookFragments: [fragment], instrumentation: undefined },
+    ]);
   });
 
   it("creates a fresh runtime for every initialization", async () => {
@@ -105,7 +110,9 @@ describe("createFragmentDurableObjectHost", () => {
 
     expect(hosted.name).toBe(fragment.name);
     expect(recording.migratedFragments).toEqual([fragment]);
-    expect(recording.dispatcherInputs).toEqual([[fragment]]);
+    expect(recording.dispatcherInputs).toEqual([
+      { hookFragments: [fragment], instrumentation: undefined },
+    ]);
   });
 
   it("defaults hook fragments to migrated fragments with durable hooks configured", async () => {
@@ -124,7 +131,30 @@ describe("createFragmentDurableObjectHost", () => {
     await host.initialize({});
 
     expect(recording.migratedFragments).toEqual([hooksFragment, noHooksFragment]);
-    expect(recording.dispatcherInputs).toEqual([[hooksFragment]]);
+    expect(recording.dispatcherInputs).toEqual([
+      { hookFragments: [hooksFragment], instrumentation: undefined },
+    ]);
+  });
+
+  it("passes host instrumentation to the durable hooks dispatcher", async () => {
+    const fragment = createFragment("test");
+    const recording = createRecordingOperations();
+    const instrumentation: DurableHooksInstrumentation = {
+      captureContext: () => null,
+      runAttempt: async (_attempt, execute) => await execute(),
+    };
+
+    const host = createFragmentDurableObjectHost({
+      state: { storage: { setAlarm: async () => {} } },
+      env: {},
+      createRuntime: () => fragment,
+      durableHooksInstrumentation: instrumentation,
+      operations: recording.operations,
+    });
+
+    await host.initialize({});
+
+    expect(recording.dispatcherInputs).toEqual([{ hookFragments: [fragment], instrumentation }]);
   });
 
   it("wraps direct fragment calls to notify the durable hooks dispatcher", async () => {

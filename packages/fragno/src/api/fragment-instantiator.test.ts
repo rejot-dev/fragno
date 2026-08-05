@@ -1113,6 +1113,59 @@ describe("fragment-instantiator", () => {
       expect(suppressed).toBeNull();
     });
 
+    it("should preserve request lifecycle storage for named callServices", async () => {
+      const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
+      const requestSourceSymbol = Symbol.for("fragno-request-source");
+      const waitUntil = vi.fn();
+
+      const definition = defineFragment("test-fragment")
+        .withRequestStorage(() => ({}))
+        .withThisContext(({ storage }) => {
+          const ctx = {
+            callServices: async <T>(serviceCalls: () => T) => serviceCalls(),
+            get requestLifecycle() {
+              const store = storage.getStore() as Record<symbol, unknown>;
+              return {
+                source: store[requestSourceSymbol],
+                waitUntil: store[requestWaitUntilSymbol],
+              };
+            },
+          };
+          return { serviceContext: ctx, handlerContext: ctx };
+        })
+        .build();
+
+      let callNamedServices: (
+        serviceCalls: () => { source: unknown; waitUntil: unknown },
+      ) => Promise<{ source: unknown; waitUntil: unknown }>;
+      const routes = defineRoutes(definition).create(({ defineRoute }) => [
+        defineRoute({
+          method: "GET",
+          path: "/test",
+          handler: async function (_input, { json }) {
+            const lifecycle = await callNamedServices(() => this.requestLifecycle);
+            return json({
+              source: lifecycle.source,
+              sameWaitUntil: lifecycle.waitUntil === waitUntil,
+            });
+          },
+        }),
+      ]);
+
+      const fragment = instantiate(definition)
+        .withRoutes([routes])
+        .withOptions({ mountRoute: "/api" })
+        .build();
+      callNamedServices = async (serviceCalls) =>
+        await fragment.callServices(serviceCalls, { name: "test.namedCallServices" });
+
+      const response = await fragment.handler(new Request("http://localhost/api/test"), {
+        waitUntil,
+      });
+
+      expect(await response.json()).toEqual({ source: "route", sameWaitUntil: true });
+    });
+
     it("should store lifecycle waitUntil in request storage", async () => {
       const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
       const waitUntil = vi.fn();

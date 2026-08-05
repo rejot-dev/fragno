@@ -93,7 +93,7 @@ export const billingFragmentDefinition = defineFragment("billing")
         const period = billingPeriodForDate(occurredAt);
         const scopeKey = backofficeContextScopeSinglePathSegment(input.scope);
 
-        return this.serviceTx(billingFragmentSchema)
+        return this.serviceTx(billingFragmentSchema, { name: "billing.recordEvent" })
           .retrieve((uow) =>
             uow
               .findFirst("billing_event", (b) =>

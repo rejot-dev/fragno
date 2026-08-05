@@ -1,6 +1,7 @@
 import type { FragnoRequestLifecycleContext } from "@fragno-dev/core";
 
 import { hasDurableHooksConfigured } from "../../hooks/durable-hooks-fragment";
+import type { DurableHooksInstrumentation } from "../../hooks/hooks";
 import { migrate, type AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
 import {
   createDurableHooksProcessor,
@@ -12,6 +13,7 @@ type CreateDispatcherContext<TEnv> = {
   hookFragments: readonly AnyFragnoInstantiatedDatabaseFragment[];
   state: DurableHooksDispatcherDurableObjectState;
   env: TEnv;
+  instrumentation?: DurableHooksInstrumentation;
   onProcessError?: (error: unknown) => void;
 };
 
@@ -55,6 +57,8 @@ type CommonHostOptions<TEnv, TSource, TRuntime> = {
    * alarm-backed hook processing.
    */
   onDispatcherError?: (error: unknown) => void;
+  /** Overrides instrumentation for every durable-hook fragment hosted by this Durable Object. */
+  durableHooksInstrumentation?: DurableHooksInstrumentation;
   /** Called by the durable hook dispatcher when processing or alarm scheduling fails. */
   onProcessError?: (error: unknown) => void;
   /** @internal Override low-level operations in tests or advanced integrations. */
@@ -286,11 +290,13 @@ export function createFragmentDurableObjectHost<TEnv, TSource, TRuntime>(
           hookFragments,
           state: options.state,
           env: options.env,
+          instrumentation: options.durableHooksInstrumentation,
           onProcessError: options.onProcessError,
         });
       }
 
       const createProcessor = createDurableHooksProcessor<TEnv>(hookFragments, {
+        instrumentation: options.durableHooksInstrumentation,
         onProcessError: options.onProcessError,
       });
       return createProcessor(options.state, options.env);

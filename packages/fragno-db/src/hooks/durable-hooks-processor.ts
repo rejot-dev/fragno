@@ -1,7 +1,7 @@
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../mod";
 import { getDurableHooksToken, hasDurableHooksConfigured } from "./durable-hooks-fragment";
 import { getDurableHooksRuntimeByToken } from "./durable-hooks-runtime";
-import { createDurableHooksRunner } from "./hooks";
+import { createDurableHooksRunner, type DurableHooksInstrumentation } from "./hooks";
 
 export type DurableHooksProcessor = {
   processDue: () => Promise<number>;
@@ -10,7 +10,15 @@ export type DurableHooksProcessor = {
   namespace: string;
 };
 
-export type DurableHooksProcessorGroupOptions = {
+export type DurableHooksProcessorOptions = {
+  /**
+   * Overrides the fragment's durable-hook instrumentation for both enqueue-time context capture and
+   * attempt processing. Integrations should set this before exposing the hosted fragment.
+   */
+  instrumentation?: DurableHooksInstrumentation;
+};
+
+export type DurableHooksProcessorGroupOptions = DurableHooksProcessorOptions & {
   onError?: (error: unknown) => void;
 };
 
@@ -28,6 +36,7 @@ function resolveStuckProcessingTimeoutMinutes(value: number | false | undefined)
 
 export function createDurableHooksProcessor(
   fragment: AnyFragnoInstantiatedDatabaseFragment,
+  options: DurableHooksProcessorOptions = {},
 ): DurableHooksProcessor {
   const durableHooksToken = getDurableHooksToken(fragment);
   if (!durableHooksToken) {
@@ -40,6 +49,9 @@ export function createDurableHooksProcessor(
   runtime.dispatcherRegistered = true;
 
   const durableHooks = runtime.config;
+  if (options.instrumentation !== undefined) {
+    durableHooks.instrumentation = options.instrumentation;
+  }
 
   const { namespace, internalFragment } = durableHooks;
   const stuckProcessingTimeoutMinutes = resolveStuckProcessingTimeoutMinutes(
@@ -54,7 +66,10 @@ export function createDurableHooksProcessor(
     drain: async () => runner.drain(),
     getNextWakeAt: async () => {
       return await internalFragment.inContext(async function () {
-        return await this.handlerTx()
+        return await this.handlerTx({
+          name: `internal.hooks.${namespace}.getNextWakeAt`,
+          transactionInstrumentation: durableHooks.transactionInstrumentation,
+        })
           .withServiceCalls(
             () =>
               [
@@ -79,7 +94,9 @@ export function createDurableHooksProcessorGroup(
   if (configuredFragments.length === 0) {
     throw new Error("[fragno-db] No fragments provided for durable hooks processing.");
   }
-  const processors = configuredFragments.map((fragment) => createDurableHooksProcessor(fragment));
+  const processors = configuredFragments.map((fragment) =>
+    createDurableHooksProcessor(fragment, { instrumentation: options.instrumentation }),
+  );
 
   return createDurableHooksProcessorGroupFromProcessors(processors, options);
 }

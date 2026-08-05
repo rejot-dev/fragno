@@ -232,7 +232,9 @@ export class InMemoryAuthObject implements AuthObject {
           },
         },
         organizationHooks: createOrganizationAutomationHooks(this.#runtimeServices),
-        durableHooks: { instrumentation: cloudflareDurableHooksInstrumentation },
+        durableHooks: {
+          instrumentation: cloudflareDurableHooksInstrumentation,
+        },
       },
     );
   }
@@ -244,6 +246,7 @@ export class InMemoryAuthObject implements AuthObject {
 
     try {
       const dispatcherFactory = createDurableHooksProcessor([this.#fragment], {
+        instrumentation: cloudflareDurableHooksInstrumentation,
         onProcessError: (error) => {
           console.error("Auth hook processor error", error);
         },

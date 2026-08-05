@@ -24,6 +24,8 @@ import type {
 import { createBillingServer } from "@/fragno/billing/billing";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
+import { cloudflareDatabaseTransactionInstrumentation } from "./lib/cloudflare-database-transaction-instrumentation";
+import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
 
 type BillingOwnerScope = Extract<BackofficeContextScope, { kind: "org" }>;
 
@@ -50,7 +52,12 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
       name: "Billing",
       state,
       env,
-      createRuntime: () => createBillingServer({ adapters: runtime.adapters }),
+      createRuntime: () =>
+        createBillingServer({
+          adapters: runtime.adapters,
+          transactionInstrumentation: cloudflareDatabaseTransactionInstrumentation,
+        }),
+      durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
       onProcessError: (error) => {
         console.error("Billing hook processor error", error);
       },

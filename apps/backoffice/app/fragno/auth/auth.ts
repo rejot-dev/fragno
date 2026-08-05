@@ -1,4 +1,5 @@
 import { InMemoryAdapter } from "@fragno-dev/db/adapters/in-memory";
+import type { DurableHooksProcessingOptions } from "@fragno-dev/db/hooks";
 import z from "zod";
 
 import {
@@ -10,7 +11,6 @@ import {
   type BeforeCreateUserHook,
   type OrganizationHooks,
 } from "@fragno-dev/auth";
-import type { DurableHooksProcessingOptions } from "@fragno-dev/db";
 
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
 

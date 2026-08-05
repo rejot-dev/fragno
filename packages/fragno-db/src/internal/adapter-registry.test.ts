@@ -5,6 +5,7 @@ import { SqliteDialect } from "kysely";
 
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
+import type { DatabaseTransactionInstrumentation } from "../query/unit-of-work/execute-unit-of-work";
 import { getRegistryForAdapterSync } from "./adapter-registry";
 import { getOutboxConfigForAdapter } from "./outbox-state";
 
@@ -60,6 +61,31 @@ describe("adapter registry", () => {
     await adapterB.close();
     sqliteA.close();
     sqliteB.close();
+  });
+
+  it("rejects conflicting transaction instrumentation for one adapter", async () => {
+    const sqlite = new SQLite(":memory:");
+    const adapter = new SqlAdapter({
+      dialect: new SqliteDialect({ database: sqlite }),
+      driverConfig: new BetterSQLite3DriverConfig(),
+    });
+    const registry = getRegistryForAdapterSync(adapter);
+    const firstInstrumentation: DatabaseTransactionInstrumentation = {
+      run: <T>(_context: unknown, execute: () => T): T => execute(),
+    };
+    const conflictingInstrumentation: DatabaseTransactionInstrumentation = {
+      run: <T>(_context: unknown, execute: () => T): T => execute(),
+    };
+
+    registry.registerTransactionInstrumentation(firstInstrumentation);
+    registry.registerTransactionInstrumentation(firstInstrumentation);
+
+    expect(() => registry.registerTransactionInstrumentation(conflictingInstrumentation)).toThrow(
+      "Conflicting transaction instrumentation registered for one database adapter",
+    );
+
+    await adapter.close();
+    sqlite.close();
   });
 
   it("enables adapter outbox config when a fragment opts in", async () => {

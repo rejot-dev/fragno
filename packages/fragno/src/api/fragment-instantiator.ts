@@ -70,6 +70,11 @@ export type FragnoExecutionContext = {
   propagationContext?: RequestPropagationContext | null;
 };
 
+export type FragnoCallServicesOptions = FragnoExecutionContext & {
+  /** Stable operation name used by database transaction instrumentation. */
+  name?: string;
+};
+
 export type FragnoRequestLifecycleContext<TRequestContext = never> = FragnoExecutionContext & {
   waitUntil?: (promise: Promise<unknown>) => void;
   requestContext?: TRequestContext;
@@ -459,37 +464,49 @@ export class FragnoInstantiatedFragment<
    */
   async callServices<TServiceCalls>(
     serviceCalls: () => TServiceCalls,
-    executionContext?: FragnoExecutionContext,
+    options?: FragnoCallServicesOptions,
   ): Promise<ExtractServiceCallResultsOrSingle<TServiceCalls>> {
     const handlerContext = this.#handlerThisContext as
       | {
-          handlerTx?: () => {
+          callServices?: (
+            serviceCalls: () => TServiceCalls,
+            options?: { name?: string },
+          ) => Promise<unknown>;
+          handlerTx?: (options?: { name?: string }) => {
             withServiceCalls: (fn: () => readonly unknown[]) => { execute: () => Promise<unknown> };
           };
         }
       | undefined;
 
-    if (!handlerContext?.handlerTx) {
+    if (!handlerContext?.callServices && !handlerContext?.handlerTx) {
       throw new Error(
         "callServices is only supported for fragments with handlerTx (database fragments).",
       );
     }
 
+    if (handlerContext.callServices) {
+      const execute = () => handlerContext.callServices!(serviceCalls, { name: options?.name });
+      const result =
+        this.#contextStorage.hasStore() && options?.propagationContext === undefined
+          ? await execute()
+          : await this.#withRequestStorage(execute, "context", undefined, options);
+      return result as ExtractServiceCallResultsOrSingle<TServiceCalls>;
+    }
+
     let callWasArray = false;
-    const execute = () => {
-      return handlerContext.handlerTx!()
+    const execute = () =>
+      handlerContext.handlerTx!({ name: options?.name ?? `${this.name}.callServices` })
         .withServiceCalls(() => {
           const calls = serviceCalls();
           callWasArray = Array.isArray(calls);
           return (callWasArray ? calls : [calls]) as readonly unknown[];
         })
         .execute();
-    };
 
     const result =
-      executionContext === undefined && this.#contextStorage.hasStore()
+      this.#contextStorage.hasStore() && options?.propagationContext === undefined
         ? await execute()
-        : await this.#withRequestStorage(execute, "context", undefined, executionContext);
+        : await this.#withRequestStorage(execute, "context", undefined, options);
 
     if (callWasArray) {
       return result as ExtractServiceCallResultsOrSingle<TServiceCalls>;
@@ -1318,7 +1335,7 @@ interface IFragnoInstantiatedFragment<TRequestContext = never> {
   inContext<T>(callback: () => Promise<T>, executionContext?: FragnoExecutionContext): Promise<T>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  callServices(serviceCalls: () => any, executionContext?: FragnoExecutionContext): Promise<any>;
+  callServices(serviceCalls: () => any, options?: FragnoCallServicesOptions): Promise<any>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlersFor(framework: FullstackFrameworks): any;

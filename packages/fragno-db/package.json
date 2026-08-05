@@ -82,6 +82,14 @@
       "types": "./dist/query/unit-of-work/unit-of-work.d.ts",
       "default": "./dist/query/unit-of-work/unit-of-work.js"
     },
+    "./transaction-instrumentation": {
+      "types": "./dist/query/unit-of-work/execute-unit-of-work.d.ts",
+      "default": "./dist/query/unit-of-work/execute-unit-of-work.js"
+    },
+    "./hooks": {
+      "types": "./dist/hooks/hooks.d.ts",
+      "default": "./dist/hooks/hooks.js"
+    },
     "./mutation-recorder": {
       "types": "./dist/query/unit-of-work/mutation-recorder.d.ts",
       "default": "./dist/query/unit-of-work/mutation-recorder.js"
