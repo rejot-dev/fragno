@@ -64,7 +64,7 @@ const createTurnResult = (sessionId: string, assistantText = "assistant:hello") 
     id: sessionId,
     name: "support",
     status: "waiting" as const,
-    agentName: "assistant",
+    model: "assistant",
     workflowName: "interactive-chat-workflow",
     agent: {
       state,
@@ -86,19 +86,17 @@ const createTurnResult = (sessionId: string, assistantText = "assistant:hello") 
 };
 
 const createPiRuntime = (overrides: Partial<PiRuntime> = {}): PiRuntime => ({
-  createSession: async ({ agent, name, metadata, tags, steeringMode }) => {
-    if (agent === "missing") {
-      throw new Error("Pi harness returned 404: Agent not found");
+  createSession: async ({ model, name, metadata, tags, steeringMode }) => {
+    if (model?.name === "missing") {
+      throw new Error("Pi returned 404: Model not found");
     }
-
     return {
       id: "session-1",
       name: name ?? null,
       status: "waiting",
-      agent,
       workflowName: "interactive-chat-workflow",
       steeringMode: steeringMode ?? "one-at-a-time",
-      metadata: { ...metadata, agentName: agent },
+      metadata: { ...metadata, model },
       tags: tags ?? [],
       createdAt: now,
       updatedAt: now,
@@ -106,14 +104,14 @@ const createPiRuntime = (overrides: Partial<PiRuntime> = {}): PiRuntime => ({
   },
   getSession: async ({ sessionId }) => {
     if (sessionId === "missing") {
-      throw new Error("Pi harness returned 404: Session not found");
+      throw new Error("Pi returned 404: Session not found");
     }
 
     return {
       id: sessionId,
       name: "support",
       status: "waiting",
-      agentName: "assistant",
+      model: "assistant",
       workflowName: "interactive-chat-workflow",
       agent: {
         state: { messages: [] },
@@ -159,7 +157,7 @@ const createPiRuntime = (overrides: Partial<PiRuntime> = {}): PiRuntime => ({
   },
   runTurn: async ({ sessionId, text }) => {
     if (sessionId === "missing") {
-      throw new Error("Pi harness returned 404: Session not found");
+      throw new Error("Pi returned 404: Session not found");
     }
 
     return createTurnResult(sessionId, `assistant:${text}`);
@@ -245,7 +243,7 @@ describe("pi bash command registration", () => {
     const { bash, commandCallsResult } = createPiHost();
 
     const result = await bash.exec(
-      'session_id="$(pi.session.create --agent assistant --name support --tag urgent --print id)"\n' +
+      `session_id="$(pi.session.create --model-json '{"provider":"openai","name":"gpt-5-mini"}' --name support --tag urgent --print id)"\n` +
         'user_id="$(store.get --key telegram/actor-1 --print value)"\n' +
         'store.set --key telegram/actor-2 --value "$user_id" >/dev/null\n' +
         'list_id="$(pi.session.list --limit 1 --print 0.id)"\n' +
@@ -300,7 +298,7 @@ describe("pi bash command registration", () => {
     assert(createHelp.exitCode === 0);
     expect(createHelp.stdout).toContain("pi.session.create");
     expect(createHelp.stdout).toContain("Usage: pi.session.create [options]");
-    expect(createHelp.stdout).toContain("--agent <agent>");
+    expect(createHelp.stdout).toContain("--model-json <json>");
     expect(createHelp.stdout).toContain("--help");
     expect(createHelp.stdout).toContain("--print <selector>");
     expect(createHelp.stdout).toContain("--format <format>");
@@ -371,7 +369,7 @@ describe("pi bash command registration", () => {
             id: "session-1",
             name: args.name ?? null,
             status: "waiting",
-            agent: args.agent,
+            agent: args.model,
             workflowName: "interactive-chat-workflow",
             steeringMode: args.steeringMode ?? "one-at-a-time",
             metadata: args.metadata ?? null,
@@ -386,7 +384,7 @@ describe("pi bash command registration", () => {
             id: args.sessionId,
             name: "support",
             status: "waiting",
-            agentName: "assistant",
+            model: "assistant",
             workflowName: "interactive-chat-workflow",
             agent: {
               state: { messages: [] },
@@ -428,9 +426,9 @@ describe("pi bash command registration", () => {
 
     const result = await bash.exec(
       [
-        `printf "text=%s\\n" "$(pi.session.create --agent assistant --name support --metadata-json '{"team":"alpha"}' --tag urgent --steering-mode one-at-a-time --format text)"`,
-        `printf "json=%s\\n" "$(pi.session.create --agent assistant --name support --metadata-json '{"team":"alpha"}' --tag urgent --steering-mode one-at-a-time --format json)"`,
-        `printf "print=%s\\n" "$(pi.session.create --agent assistant --steering-mode one-at-a-time --print steering-mode)"`,
+        `printf "text=%s\\n" "$(pi.session.create --model-json '{"provider":"openai","name":"gpt-5-mini"}' --name support --metadata-json '{"team":"alpha"}' --tag urgent --steering-mode one-at-a-time --format text)"`,
+        `printf "json=%s\\n" "$(pi.session.create --model-json '{"provider":"openai","name":"gpt-5-mini"}' --name support --metadata-json '{"team":"alpha"}' --tag urgent --steering-mode one-at-a-time --format json)"`,
+        `printf "print=%s\\n" "$(pi.session.create --model-json '{"provider":"openai","name":"gpt-5-mini"}' --steering-mode one-at-a-time --print steering-mode)"`,
         `printf "workflow=%s\\n" "$(pi.session.get --session-id session-1 --events --trace false --turns true --print workflow.status)"`,
         `printf "list_print=%s\\n" "$(pi.session.list --limit 1 --format json --print 0.id)"`,
         `printf "list_text=%s\\n" "$(pi.session.list --limit 1 --format text)"`,
@@ -496,28 +494,22 @@ describe("pi bash command registration", () => {
 
     expect(createCalls).toEqual([
       {
-        agent: "assistant",
+        model: { provider: "openai", name: "gpt-5-mini" },
         name: "support",
         metadata: { team: "alpha" },
         tags: ["urgent"],
         steeringMode: "one-at-a-time",
-        systemMessage: undefined,
       },
       {
-        agent: "assistant",
+        model: { provider: "openai", name: "gpt-5-mini" },
         name: "support",
         metadata: { team: "alpha" },
         tags: ["urgent"],
         steeringMode: "one-at-a-time",
-        systemMessage: undefined,
       },
       {
-        agent: "assistant",
-        name: undefined,
-        metadata: undefined,
-        tags: undefined,
+        model: { provider: "openai", name: "gpt-5-mini" },
         steeringMode: "one-at-a-time",
-        systemMessage: undefined,
       },
     ]);
     expect(getCalls).toEqual([
@@ -645,24 +637,26 @@ describe("pi bash command registration", () => {
     const { bash, commandCallsResult } = createPiHost(
       createPiRuntime({
         listSessions: async () => {
-          throw new Error("Pi harness returned 404: No sessions found");
+          throw new Error("Pi returned 404: No sessions found");
         },
       }),
     );
 
-    const createResult = await bash.exec("pi.session.create --agent missing");
+    const createResult = await bash.exec(
+      `pi.session.create --model-json '{"provider":"openai","name":"missing"}'`,
+    );
     const getResult = await bash.exec("pi.session.get --session-id missing");
     const listResult = await bash.exec("pi.session.list");
     const turnResult = await bash.exec("pi.session.turn --session-id missing --text hello");
 
     assert(createResult.exitCode === 1);
-    expect(createResult.stderr).toContain("Pi harness returned 404: Agent not found");
+    expect(createResult.stderr).toContain("Pi returned 404: Model not found");
     assert(getResult.exitCode === 1);
-    expect(getResult.stderr).toContain("Pi harness returned 404: Session not found");
+    expect(getResult.stderr).toContain("Pi returned 404: Session not found");
     assert(listResult.exitCode === 1);
-    expect(listResult.stderr).toContain("Pi harness returned 404: No sessions found");
+    expect(listResult.stderr).toContain("Pi returned 404: No sessions found");
     assert(turnResult.exitCode === 1);
-    expect(turnResult.stderr).toContain("Pi harness returned 404: Session not found");
+    expect(turnResult.stderr).toContain("Pi returned 404: Session not found");
     expect(commandCallsResult).toEqual([
       {
         command: "pi.session.create",
@@ -753,7 +747,7 @@ describe("createPiRouteRuntime", () => {
     };
     const turnDetail = {
       id: "session-2",
-      agentName: "assistant",
+      model: "assistant",
       workflowName: "interactive-chat-workflow",
       agent: {
         state: { messages: [assistantMessage] },
@@ -799,7 +793,7 @@ describe("createPiRouteRuntime", () => {
                   status: "waiting",
                   name: "route-session",
                   steeringMode: "all",
-                  metadata: { team: "beta", agentName: "default::openai::gpt-5-mini" },
+                  metadata: { team: "beta", model: { provider: "openai", name: "gpt-5-mini" } },
                   tags: ["priority"],
                   createdAt: now.toISOString(),
                   updatedAt: now.toISOString(),
@@ -824,7 +818,7 @@ describe("createPiRouteRuntime", () => {
                   status: "waiting",
                   name: "route-session",
                   steeringMode: "all",
-                  metadata: { team: "beta", agentName: "default::openai::gpt-5-mini" },
+                  metadata: { team: "beta", model: { provider: "openai", name: "gpt-5-mini" } },
                   tags: ["priority"],
                   createdAt: now.toISOString(),
                   updatedAt: now.toISOString(),
@@ -847,7 +841,7 @@ describe("createPiRouteRuntime", () => {
                     status: "waiting",
                     name: "route-session",
                     steeringMode: "all",
-                    metadata: { team: "beta", agentName: "default::openai::gpt-5-mini" },
+                    metadata: { team: "beta", model: { provider: "openai", name: "gpt-5-mini" } },
                     tags: ["priority"],
                     createdAt: now.toISOString(),
                     updatedAt: now.toISOString(),
@@ -896,7 +890,7 @@ describe("createPiRouteRuntime", () => {
     });
 
     const created = await runtime.createSession({
-      agent: "default::openai::gpt-5-mini",
+      model: { provider: "openai", name: "gpt-5-mini" },
       name: "route-session",
       metadata: { team: "beta" },
       tags: ["priority"],
@@ -916,13 +910,13 @@ describe("createPiRouteRuntime", () => {
       name: "route-session",
       workflowName: "interactive-chat-workflow",
       steeringMode: "all",
-      metadata: { team: "beta", agentName: "default::openai::gpt-5-mini" },
+      metadata: { team: "beta", model: { provider: "openai", name: "gpt-5-mini" } },
       tags: ["priority"],
     });
     expect(loaded).toMatchObject({
       id: "session-2",
       workflow: { status: "waiting" },
-      metadata: { team: "beta", agentName: "default::openai::gpt-5-mini" },
+      metadata: { team: "beta", model: { provider: "openai", name: "gpt-5-mini" } },
       workflowName: "interactive-chat-workflow",
     });
     expect(sessions).toEqual([
@@ -932,7 +926,7 @@ describe("createPiRouteRuntime", () => {
         status: "waiting",
         name: "route-session",
         steeringMode: "all",
-        metadata: { team: "beta", agentName: "default::openai::gpt-5-mini" },
+        metadata: { team: "beta", model: { provider: "openai", name: "gpt-5-mini" } },
         tags: ["priority"],
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
@@ -960,7 +954,7 @@ describe("createPiRouteRuntime", () => {
         body: {
           name: "route-session",
           metadata: {
-            agentName: "default::openai::gpt-5-mini",
+            model: { provider: "openai", name: "gpt-5-mini" },
             team: "beta",
           },
           input: {},
@@ -1013,7 +1007,7 @@ describe("createPiRouteRuntime", () => {
     };
     const detail = {
       id: "session-2",
-      agentName: "assistant",
+      model: "assistant",
       workflowName: "interactive-chat-workflow",
       agent: {
         state: { messages: [assistantMessage] },
@@ -1144,7 +1138,7 @@ describe("createPiRouteRuntime", () => {
             ) {
               return Response.json({
                 id: "session-2",
-                agentName: "assistant",
+                model: "assistant",
                 workflowName: "interactive-chat-workflow",
                 agent: {
                   state: {
@@ -1204,7 +1198,7 @@ describe("createPiRouteRuntime", () => {
               path === "/api/pi/workflows/interactive-chat-workflow/sessions?scope=org%3Aacme" &&
               request.method === "POST"
             ) {
-              return new Response(JSON.stringify({ message: "Agent not found" }), {
+              return new Response(JSON.stringify({ message: "Model not found" }), {
                 status: 404,
                 headers: { "content-type": "application/json" },
               });
@@ -1226,17 +1220,17 @@ describe("createPiRouteRuntime", () => {
       execution: createPiTestExecution(scope),
     });
 
-    await expect(runtime.createSession({ agent: "missing::openai::gpt-5-mini" })).rejects.toThrow(
-      "Pi harness returned 404: Agent not found",
-    );
+    await expect(
+      runtime.createSession({ model: { provider: "openai", name: "gpt-5-mini" } }),
+    ).rejects.toThrow("Pi returned 404: Model not found");
     await expect(runtime.getSession({ sessionId: "missing" })).rejects.toThrow(
-      "Pi harness returned 404: Session not found",
+      "Pi returned 404: Session not found",
     );
     await expect(runtime.listSessions({ limit: 5 })).rejects.toThrow(
-      "Pi harness returned 404: Session not found",
+      "Pi returned 404: Session not found",
     );
     await expect(runtime.runTurn({ sessionId: "missing", text: "hello" })).rejects.toThrow(
-      "Pi harness returned 404: Session not found",
+      "Pi returned 404: Session not found",
     );
   });
 
@@ -1256,7 +1250,7 @@ describe("createPiRouteRuntime", () => {
             ) {
               return Response.json({
                 id: "session-2",
-                agentName: "assistant",
+                model: "assistant",
                 workflowName: "interactive-chat-workflow",
                 agent: { state: { messages: [] }, completedStepKeys: [] },
                 status: "waiting",
@@ -1298,7 +1292,7 @@ describe("createPiRouteRuntime", () => {
     });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
-      "Pi harness returned 409: Session not ready",
+      "Pi returned 409: Session not ready",
     );
   });
 
@@ -1350,7 +1344,7 @@ describe("createPiRouteRuntime", () => {
     });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
-      "Pi harness returned 500: Agent end unavailable",
+      "Pi returned 500: Agent end unavailable",
     );
   });
 });

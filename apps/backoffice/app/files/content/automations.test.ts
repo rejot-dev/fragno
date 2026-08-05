@@ -81,10 +81,8 @@ describe("automation content", () => {
   test("DB starter routes start user-editable workflows", () => {
     const routes = STARTER_AUTOMATION_ROUTES;
     const identityClaimCompleted = AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted;
-    const piCapabilityConfigured = AUTOMATION_SOURCE_EVENT_TYPES.pi.capabilityConfigured;
 
     expect(identityClaimCompleted).toBe("identity.claim.completed");
-    expect(piCapabilityConfigured).toBe("capability.configured");
     expect(routes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -130,16 +128,6 @@ describe("automation content", () => {
               keyTemplate: "telegram/claim-workflow/${event.payload.otpId}",
             },
             eventType: "identity-claim-completed",
-          }),
-        }),
-        expect.objectContaining({
-          trigger: expect.objectContaining({
-            source: "pi",
-            eventType: "capability.configured",
-          }),
-          action: expect.objectContaining({
-            remoteWorkflowName: "pi-default-agent-configure",
-            workflowScriptPath: "/workspace/automations/pi-default-agent-configure.workflow.js",
           }),
         }),
       ]),
@@ -206,16 +194,5 @@ describe("automation content", () => {
     expect(workflow).toContain('{ name: "project-files-configure" }');
     expect(workflow).toContain('automationEvent.eventType !== "project.created"');
     expect(workflow).toContain("internal.projectFilesConfigure({ projectId })");
-  });
-
-  test("Pi capability workflow stores the default agent", () => {
-    const workflow = readWorkspaceAutomation(
-      STARTER_AUTOMATION_SCRIPT_PATHS.piDefaultAgentConfigure,
-    );
-
-    expect(workflow).toContain('{ name: "pi-default-agent-configure" }');
-    expect(workflow).toContain('automationEvent.eventType !== "capability.configured"');
-    expect(workflow).toContain('key: "pi/pi-default-agent"');
-    expect(workflow).toContain('category: ["pi"]');
   });
 });

@@ -3,7 +3,6 @@ import type { FileContent } from "../interface";
 export const STARTER_AUTOMATION_SCRIPT_PATHS = {
   telegramUserLinking: "automations/telegram-user-linking.workflow.js",
   telegramUserPiLinking: "automations/telegram-user-pi-linking.workflow.js",
-  piDefaultAgentConfigure: "automations/pi-default-agent-configure.workflow.js",
 } as const;
 
 export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> = {
@@ -150,17 +149,6 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
     }
     const linkedUser = linkedIdentity.userId;
 
-    const defaultAgentBinding = await step.do("lookup default pi agent", async () => {
-      return await store.get({
-        key: "pi/pi-default-agent",
-      });
-    });
-    const defaultAgent = defaultAgentBinding?.value ?? "";
-
-    if (!defaultAgent) {
-      return { skipped: true, reason: "missing-default-agent" };
-    }
-
     const piSessionBinding = await step.do("lookup pi session", async () => {
       return await store.get({
         key: "telegram-pi-session/" + linkedUser,
@@ -187,7 +175,7 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
           const message = error instanceof Error ? error.message : String(error);
           const isMissingSession =
             (message.includes("Pi fragment returned 404:") ||
-              message.includes("Pi harness returned 404:")) &&
+              message.includes("Pi returned 404:")) &&
             message.includes("Session ") &&
             message.includes(" not found.");
           if (!isMissingSession) {
@@ -202,7 +190,6 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
     if (!reusableSession.reusable) {
       const session = await step.do("create pi session", async () => {
         return await pi.createSession({
-          agent: defaultAgent,
           name: "Telegram " + chatId,
           tags: ["telegram", "auto-session"],
           systemMessage:
@@ -271,45 +258,6 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
     });
 
     return { sessionId: piSession.sessionId };
-  },
-);
-`,
-  "automations/pi-default-agent-configure.workflow.js": `defineWorkflow(
-  { name: "pi-default-agent-configure" },
-  async (event, step) => {
-    const automationEvent = event.payload.automationEvent;
-
-    if (
-      automationEvent.source !== "pi" ||
-      automationEvent.eventType !== "capability.configured"
-    ) {
-      return { skipped: true, reason: "not-pi-capability-configured" };
-    }
-
-    const harnessId = automationEvent.payload?.harnesses?.[0]?.id;
-    const modelProvider = automationEvent.payload?.modelCatalog?.[0]?.provider;
-    const modelName = automationEvent.payload?.modelCatalog?.[0]?.name;
-
-    if (
-      typeof harnessId !== "string" ||
-      typeof modelProvider !== "string" ||
-      typeof modelName !== "string"
-    ) {
-      return { skipped: true, reason: "missing-pi-default-agent-parts" };
-    }
-
-    const value = harnessId + "::" + modelProvider + "::" + modelName;
-
-    await step.do("store default pi agent", async () => {
-      await store.set({
-        key: "pi/pi-default-agent",
-        value,
-        description: "Default Pi agent for automation-created sessions.",
-        category: ["pi"],
-      });
-    });
-
-    return { stored: true, value };
   },
 );
 `,

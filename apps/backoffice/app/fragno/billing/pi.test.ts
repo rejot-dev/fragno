@@ -8,7 +8,7 @@ const payload: PiOperationCompletedHookPayload = {
   actor: { userId: "user-1" },
   workflowName: "interactive-chat-workflow",
   sessionId: "session-1",
-  metadata: { agentName: "default" },
+  metadata: { model: "default" },
   stepName: "command:command-1",
   operationId: "interactive-chat-workflow:session-1:command:command-1",
   operation: "prompt",

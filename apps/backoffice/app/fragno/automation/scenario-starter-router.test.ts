@@ -390,7 +390,6 @@ describe("starter automation router scenarios", () => {
                   eventType: "identity-claim-completed",
                 },
               },
-              "pi-default-agent-configure",
             ],
           }),
           then.router.route({
@@ -406,11 +405,7 @@ describe("starter automation router scenarios", () => {
             const routes = await queryOnce((query) =>
               query.from({ route: database.collections.routes }),
             );
-            const expectedIds = [
-              "telegram-test-command",
-              "telegram-identity-claim-completed",
-              "pi-default-agent-configure",
-            ];
+            const expectedIds = ["telegram-test-command", "telegram-identity-claim-completed"];
             const missing = expectedIds.filter(
               (expectedId) => !routes.some((route) => route.id === expectedId),
             );
@@ -762,54 +757,6 @@ describe("starter automation router scenarios", () => {
     );
   });
 
-  test("pi capability.configured stores the default Pi agent", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        name: "starter router stores the default Pi agent",
-
-        files: backofficeFiles.workspaceStarter(),
-
-        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
-
-        steps: ({ when, then }) => [
-          when.capability.configured.pi({
-            orgId: "org-1",
-            harnessId: "default",
-            harnessLabel: "Default",
-            harnessTools: ["bash"],
-            modelProvider: "openai",
-            modelName: "gpt-5-mini",
-            modelLabel: "GPT-5 mini",
-          }),
-
-          then.workflow.instance({
-            remoteWorkflowName: "pi-default-agent-configure",
-            instanceId: "pi-default-agent-configure-pi-capability-configured-org-1",
-            status: "complete",
-            output: { stored: true, value: "default::openai::gpt-5-mini" },
-          }),
-          then.store.entry({
-            orgId: "org-1",
-            key: "pi/pi-default-agent",
-            value: "default::openai::gpt-5-mini",
-          }),
-          then.assert("assert default Pi agent is visible through TanStack DB", async (ctx) => {
-            const database = ctx.tanstack.automations.forOrg("org-1");
-            await database.drain();
-            const entry = await queryOnce((query) =>
-              query
-                .from({ entry: database.collections.kvStore })
-                .where(({ entry }) => eq(entry.key, "pi/pi-default-agent"))
-                .findOne(),
-            );
-            assert.equal(entry?.value, "default::openai::gpt-5-mini");
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
   test("Telegram /pi creates a Pi session for an authorized linked chat", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -851,6 +798,7 @@ describe("starter automation router scenarios", () => {
             orgId: "org-1",
             botUsername: "fragno_bot",
           }),
+          given.pi.defaultAgent({ orgId: "org-1", value: "openai::gpt-5-mini" }),
           given.identity.binding({
             orgId: "org-1",
             externalId: "1001",
@@ -890,18 +838,6 @@ describe("starter automation router scenarios", () => {
             userId: "user-1",
           }),
 
-          when.capability.configured.pi({
-            orgId: "org-1",
-            harnessId: "default",
-            modelProvider: "openai",
-            modelName: "gpt-5-mini",
-          }),
-          then.workflow.instance({
-            remoteWorkflowName: "pi-default-agent-configure",
-            instanceId: "pi-default-agent-configure-pi-capability-configured-org-1",
-            status: "complete",
-          }),
-
           when.telegram.receivesMessage({
             orgId: "org-1",
             updateId: 20_001,
@@ -933,7 +869,7 @@ describe("starter automation router scenarios", () => {
             },
           }),
           then.pi.createdSession({
-            agent: "default::openai::gpt-5-mini",
+            model: { provider: "openai", name: "gpt-5-mini" },
             name: "Telegram 1001",
             sessionId: "pi-session-1",
           }),
@@ -990,10 +926,10 @@ describe("starter automation router scenarios", () => {
     );
   });
 
-  test("Telegram /pi skips a linked chat when no default Pi agent is stored", async () => {
+  test("Telegram /pi creates a session for a fresh organization without stored Pi configuration", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: "starter Telegram /pi skips without a default Pi agent",
+        name: "starter Telegram /pi uses the environment-backed default model",
 
         files: backofficeFiles.workspaceStarter(),
 
@@ -1069,17 +1005,24 @@ describe("starter automation router scenarios", () => {
             from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
-          then.telegram.noMessages(),
-          then.assert("assert Pi was not called", (ctx) => {
-            const calls = ctx.fakes.pi?.createSessionCalls ?? [];
-            if (calls.length !== 0) {
-              throw new Error(`Expected no Pi session creation, got ${calls.length}.`);
-            }
+          then.pi.createdSession({
+            model: { provider: "openai", name: "gpt-5-mini" },
+            name: "Telegram 1001",
+            sessionId: "pi-session-1",
+          }),
+          then.store.entry({
+            orgId: "org-1",
+            key: "telegram-pi-session/user-1",
+            value: "pi-session-1",
+          }),
+          then.telegram.sentMessage({
+            chatId: "1001",
+            text: "Created Pi session: pi-session-1",
           }),
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-pi-linking",
             status: "complete",
-            output: { skipped: true, reason: "missing-default-agent" },
+            output: { sessionId: "pi-session-1" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
@@ -1205,7 +1148,7 @@ describe("starter automation router scenarios", () => {
           }),
           given.pi.defaultAgent({
             orgId: "org-1",
-            value: "default::openai::gpt-5-mini",
+            value: "openai::gpt-5-mini",
           }),
         ],
 
@@ -1257,7 +1200,7 @@ describe("starter automation router scenarios", () => {
           }),
           given.pi.defaultAgent({
             orgId: "org-1",
-            value: "default::openai::gpt-5-mini",
+            value: "openai::gpt-5-mini",
           }),
         ],
 
@@ -1309,7 +1252,7 @@ describe("starter automation router scenarios", () => {
           }),
           given.pi.defaultAgent({
             orgId: "org-1",
-            value: "default::openai::gpt-5-mini",
+            value: "openai::gpt-5-mini",
           }),
         ],
 
@@ -1474,7 +1417,7 @@ describe("starter automation router scenarios", () => {
           }),
           given.pi.defaultAgent({
             orgId: "org-1",
-            value: "default::openai::gpt-5-mini",
+            value: "openai::gpt-5-mini",
           }),
           given.identity.binding({
             orgId: "org-1",
@@ -1524,7 +1467,7 @@ describe("starter automation router scenarios", () => {
           }),
 
           then.pi.createdSession({
-            agent: "default::openai::gpt-5-mini",
+            model: { provider: "openai", name: "gpt-5-mini" },
             name: "Telegram 1001",
             sessionId: "pi-session-1",
           }),
@@ -1606,7 +1549,7 @@ describe("starter automation router scenarios", () => {
           }),
           given.pi.defaultAgent({
             orgId: "org-1",
-            value: "default::openai::gpt-5-mini",
+            value: "openai::gpt-5-mini",
           }),
           given.identity.binding({
             orgId: "org-1",
@@ -1728,7 +1671,7 @@ describe("starter automation router scenarios", () => {
           }),
           given.pi.defaultAgent({
             orgId: "org-1",
-            value: "default::openai::gpt-5-mini",
+            value: "openai::gpt-5-mini",
           }),
           given.identity.binding({
             orgId: "org-1",
@@ -1780,7 +1723,7 @@ describe("starter automation router scenarios", () => {
             }
           }),
           then.pi.createdSession({
-            agent: "default::openai::gpt-5-mini",
+            model: { provider: "openai", name: "gpt-5-mini" },
             name: "Telegram 1001",
             sessionId: "pi-session-1",
           }),
@@ -1849,7 +1792,7 @@ describe("starter automation router scenarios", () => {
             }),
             given.pi.defaultAgent({
               orgId: "org-1",
-              value: "default::openai::gpt-5-mini",
+              value: "openai::gpt-5-mini",
             }),
             given.identity.binding({
               orgId: "org-1",
@@ -1972,7 +1915,7 @@ describe("starter automation router scenarios", () => {
           }),
           given.pi.defaultAgent({
             orgId: "org-1",
-            value: "default::openai::gpt-5-mini",
+            value: "openai::gpt-5-mini",
           }),
           given.identity.binding({
             orgId: "org-1",

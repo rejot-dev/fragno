@@ -1,6 +1,6 @@
 import { Form } from "react-router";
 
-import type { PiHarnessConfig, PiModelOption } from "@/fragno/pi/pi-shared";
+import type { PiModelOption } from "@/fragno/pi/pi-shared";
 
 import { SessionSelect } from "./session-select";
 
@@ -13,11 +13,8 @@ type NewSessionComposerProps = {
   createError: string | null;
   creating: boolean;
   draftPrompt: string;
-  harnesses: PiHarnessConfig[];
-  selectedHarnessId: string;
   selectedModelOption: string;
   onDraftPromptChange: (value: string) => void;
-  onHarnessChange: (value: string) => void;
   onModelChange: (value: string) => void;
 };
 
@@ -27,11 +24,8 @@ export function NewSessionComposer({
   createError,
   creating,
   draftPrompt,
-  harnesses,
-  selectedHarnessId,
   selectedModelOption,
   onDraftPromptChange,
-  onHarnessChange,
   onModelChange,
 }: NewSessionComposerProps) {
   return (
@@ -40,9 +34,9 @@ export function NewSessionComposer({
         New session
       </h2>
 
-      {harnesses.length === 0 ? (
+      {availableModelOptions.length === 0 ? (
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4 text-sm text-pretty text-[var(--bo-muted)]">
-          Configure a harness in Internals → Pi.
+          Sorry, no models are available for you to start a session with. Please check back later.
         </div>
       ) : (
         <Form method="post" action={basePath} className="w-full">
@@ -81,7 +75,7 @@ export function NewSessionComposer({
             />
           </div>
 
-          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
             <SessionSelect
               label="Model"
               name="modelOption"
@@ -93,19 +87,6 @@ export function NewSessionComposer({
               placeholder="No model available"
               value={selectedModelOption}
               onValueChange={onModelChange}
-            />
-
-            <SessionSelect
-              label="Harness"
-              name="harnessId"
-              options={harnesses.map((harness) => ({
-                value: harness.id,
-                label: harness.label,
-                description: `${harness.tools.length} ${harness.tools.length === 1 ? "tool" : "tools"}`,
-              }))}
-              placeholder="Select harness"
-              value={selectedHarnessId}
-              onValueChange={onHarnessChange}
             />
 
             <button

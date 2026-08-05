@@ -14,6 +14,11 @@ AUTH_EMAIL_VERIFICATION_ENABLED=false
 
 DOCS_PUBLIC_BASE_URL=http://localhost:5173/
 
+# Pi model providers (configure at least one)
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
+
 # For the singleton Cloudflare fragment and Browser Run Quick Actions
 CLOUDFLARE_WORKERS_ACCOUNT_ID=example-account-id
 CLOUDFLARE_WORKERS_API_TOKEN=example-api-token

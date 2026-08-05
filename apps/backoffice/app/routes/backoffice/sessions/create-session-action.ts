@@ -3,13 +3,12 @@ import { redirect } from "react-router";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import {
   BACKOFFICE_PI_WORKFLOW_NAME,
-  createPiAgentName,
   findPiModelOption,
   resolvePiModelThinkingLevel,
 } from "@/fragno/pi/pi-shared";
 
 import type { Route } from "./+types/sessions";
-import { createPiSession, fetchPiConfig, sendPiSessionMessage } from "./data";
+import { createPiSession, fetchPiRuntimeState, sendPiSessionMessage } from "./data";
 import type { PiCreateSessionActionData } from "./session-types";
 
 function actionError(message: string): PiCreateSessionActionData {
@@ -38,15 +37,11 @@ export async function createSessionAction({ request, params, context }: Route.Ac
     const value = formData.get(key);
     return typeof value === "string" ? value.trim() : "";
   };
-  const harnessId = getValue("harnessId");
   const modelOption = getValue("modelOption");
   const prompt = getValue("prompt");
 
   if (!prompt) {
     return actionError("Write a message to start the session.");
-  }
-  if (!harnessId) {
-    return actionError("Harness selection is required.");
   }
   if (!modelOption) {
     return actionError("Model selection is required.");
@@ -63,30 +58,23 @@ export async function createSessionAction({ request, params, context }: Route.Ac
     return actionError("Model selection is invalid.");
   }
 
-  const { configState, configError } = await fetchPiConfig(context, scope);
-  if (configError) {
-    return actionError(configError);
+  const { runtimeState, runtimeError } = await fetchPiRuntimeState(context, scope);
+  if (runtimeError) {
+    return actionError(runtimeError);
   }
-  if (!configState?.configured) {
-    return actionError("Pi is not configured yet.");
-  }
-
-  const harness = configState.config?.harnesses?.find((entry) => entry.id === harnessId);
-  if (!harness) {
-    return actionError("Selected harness is unavailable.");
-  }
-  if (!configState.config?.apiKeys?.[modelSelection.provider]) {
+  if (
+    !runtimeState?.modelCatalog.some(
+      (option) =>
+        option.provider === modelSelection.provider && option.name === modelSelection.name,
+    )
+  ) {
     return actionError(`Missing API key for ${modelSelection.provider}.`);
   }
 
   const result = await createPiSession(request, context, scope, {
     workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
     metadata: {
-      agentName: createPiAgentName({
-        harnessId: harness.id,
-        provider: modelSelection.provider,
-        model: modelSelection.name,
-      }),
+      model: { provider: modelSelection.provider, name: modelSelection.name },
     },
     input: {
       thinkingLevel: resolvePiModelThinkingLevel(modelSelection.provider),

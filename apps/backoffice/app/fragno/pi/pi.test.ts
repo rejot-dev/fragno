@@ -141,18 +141,8 @@ describe("Backoffice Pi fragment", () => {
     const runtime = createPiRuntime({
       config: {
         scope: { kind: "org", orgId: "acme-org" },
-        apiKeys: { openai: "test-key" },
-        harnesses: [
-          {
-            id: "default",
-            label: "Default",
-            systemPrompt: "Test system prompt",
-            tools: ["read"],
-          },
-        ],
-        createdAt: "2026-07-08T00:00:00.000Z",
-        updatedAt: "2026-07-08T00:00:00.000Z",
       },
+      apiKeys: { openai: "test-key" },
       adapters: {
         createAdapter: () => new InMemoryAdapter({ idSeed: "pi-invalid-model-test" }),
       } as never,
@@ -171,7 +161,10 @@ describe("Backoffice Pi fragment", () => {
       new Request(`http://test.local/api/pi/workflows/${BACKOFFICE_PI_WORKFLOW_NAME}/sessions`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ metadata: { agentName: "default::openai::bla" }, input: {} }),
+        body: JSON.stringify({
+          metadata: { model: { provider: "openai", name: "bla" } },
+          input: {},
+        }),
       }),
       { requestContext: context.execution },
     );

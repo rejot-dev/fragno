@@ -15,16 +15,15 @@
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
 import {
-  createPiAgentName,
-  PI_MODEL_CATALOG,
-  resolvePiHarnesses,
+  BACKOFFICE_PI_WORKFLOW_NAME,
+  piSessionModel,
   resolvePiModelThinkingLevel,
+  type PiModel,
 } from "@/fragno/pi/pi-shared";
 import {
   createPiSession,
-  fetchPiConfig,
+  fetchPiRuntimeState,
   sendPiSessionMessage,
 } from "@/routes/backoffice/sessions/data";
 
@@ -32,7 +31,7 @@ import {
 export type ComposeSessionRef = {
   id: string;
   workflowName: string;
-  agentName: string;
+  model: PiModel;
 };
 
 export type ComposeActionResult =
@@ -82,45 +81,33 @@ export async function handleComposeAction({
       session: {
         id: existingSessionId,
         workflowName: existingWorkflowName,
-        agentName: String(formData.get("agentName") ?? "").trim(),
+        model:
+          piSessionModel({ model: JSON.parse(String(formData.get("model") ?? "null")) }) ??
+          (() => {
+            throw new Error("The compose session model is invalid.");
+          })(),
       },
     };
   }
 
-  // No session yet — start one. Pick the org's first configured harness and the
-  // first model that has an API key (the same defaults the sessions UI seeds), so
-  // exec doesn't need a picker.
-  const { configState, configError } = await fetchPiConfig(context, scope);
-  if (configError) {
-    return { intent: "compose", ok: false, error: configError };
+  // No session yet — start one with the first model backed by an environment API key.
+  const { runtimeState, runtimeError } = await fetchPiRuntimeState(context, scope);
+  if (runtimeError) {
+    return { intent: "compose", ok: false, error: runtimeError };
   }
-  if (!configState?.configured) {
-    return {
-      intent: "compose",
-      ok: false,
-      error: "Pi is not configured yet. Add an API key and a harness in configuration.",
-    };
+  const modelOption = runtimeState?.modelCatalog[0];
+  if (!modelOption) {
+    return { intent: "compose", ok: false, error: "Set a Pi provider API key in .dev.vars." };
   }
 
-  const harness = resolvePiHarnesses(configState.config?.harnesses)[0];
-  const apiKeys = configState.config?.apiKeys;
-  const model = PI_MODEL_CATALOG.find((option) => Boolean(apiKeys?.[option.provider]));
-  if (!harness || !model) {
-    return { intent: "compose", ok: false, error: "Configure an API key to start composing." };
-  }
-
-  const agentName = createPiAgentName({
-    harnessId: harness.id,
-    provider: model.provider,
-    model: model.name,
-  });
+  const model: PiModel = { provider: modelOption.provider, name: modelOption.name };
 
   // Name the session after the prompt so it's recognisable in the sessions list.
   const name = prompt.length > 60 ? `${prompt.slice(0, 59)}…` : prompt;
 
   const created = await createPiSession(request, context, scope, {
     workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
-    metadata: { agentName },
+    metadata: { model },
     input: {
       thinkingLevel: resolvePiModelThinkingLevel(model.provider),
     },
@@ -148,7 +135,7 @@ export async function handleComposeAction({
     session: {
       id: created.session.id,
       workflowName: created.session.workflowName,
-      agentName,
+      model,
     },
   };
 }

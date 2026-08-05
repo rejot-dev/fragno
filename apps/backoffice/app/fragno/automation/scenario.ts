@@ -51,7 +51,7 @@ import {
 } from "@/fragno/codemode/execute";
 import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
-import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
+import { BACKOFFICE_PI_WORKFLOW_NAME, type PiModel } from "@/fragno/pi/pi-shared";
 import { createPiCollections, type PiCollections } from "@/fragno/pi/tanstack/collections";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -174,7 +174,7 @@ type FakePiSession = {
   id: string;
   name: string | null;
   status: PiSessionStatus;
-  agent: string;
+  model: PiModel;
   workflowName: string;
   createdAt: string;
   updatedAt: string;
@@ -182,7 +182,7 @@ type FakePiSession = {
 };
 
 type PiCreateSessionCall = {
-  agent: string;
+  model: PiModel;
   name: string | null;
   systemMessage?: string;
   sessionId: string;
@@ -425,7 +425,7 @@ type TelegramSentChatActionInput = {
 };
 
 type PiCreatedSessionInput = {
-  agent?: string;
+  model?: PiModel;
   name?: string | null;
   sessionId?: string;
 };
@@ -490,17 +490,12 @@ type PiDefaultAgentInput = {
 
 type PiConfiguredInput = {
   orgId: string;
-  apiKeys?: {
-    openai?: string;
-    anthropic?: string;
-    gemini?: string;
-  };
 };
 
 type PiCreateStoredSessionInput = {
   orgId: string;
   workflowName?: string;
-  agentName?: string;
+  model?: PiModel;
   name?: string;
   captureSessionIdAs?: string;
 };
@@ -654,17 +649,6 @@ type CapabilityConfiguredInput = {
   eventId?: string;
 };
 
-type PiCapabilityConfiguredInput = {
-  orgId: string;
-  harnessId?: string;
-  harnessLabel?: string;
-  harnessTools?: string[];
-  modelProvider?: string;
-  modelName?: string;
-  modelLabel?: string;
-  eventId?: string;
-};
-
 type FileAssertionInput = {
   orgId: string;
   path: string;
@@ -763,9 +747,7 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
       removeMember(input: AuthMemberRemoveInput): BackofficeScenarioStep;
     };
     capability: {
-      configured: ((input: CapabilityConfiguredInput) => BackofficeScenarioStep) & {
-        pi(input: PiCapabilityConfiguredInput): BackofficeScenarioStep;
-      };
+      configured(input: CapabilityConfiguredInput): BackofficeScenarioStep;
     };
     automation: {
       ingestEvent(input: AutomationEvent): BackofficeScenarioStep;
@@ -1023,7 +1005,7 @@ const createFakePiApi = (
     id: session.id,
     name: session.name,
     status: session.status,
-    metadata: { agentName: session.agent },
+    metadata: { model: session.model },
     workflowName: session.workflowName,
     workflow: { status: session.status },
     agent: {
@@ -1066,16 +1048,16 @@ const createFakePiApi = (
     if (request.method === "POST" && pathname === `/api/pi/workflows/${workflowName}/sessions`) {
       const body = (await request.json()) as {
         name?: string | null;
-        metadata?: { agentName?: string };
+        metadata?: { model?: PiModel };
         input?: { systemPrompt?: string };
       };
       const id = `pi-session-${sessions.size + 1}`;
-      const agent = body.metadata?.agentName ?? "default::openai::gpt-5-mini";
+      const model = body.metadata?.model ?? { provider: "openai", name: "gpt-5-mini" };
       const session: FakePiSession = {
         id,
         name: body.name ?? null,
         status: "waiting",
-        agent,
+        model,
         workflowName,
         assistantText: "",
         createdAt: timestamp,
@@ -1083,7 +1065,7 @@ const createFakePiApi = (
       };
       sessions.set(id, session);
       createSessionCalls.push({
-        agent,
+        model,
         name: session.name,
         sessionId: id,
         ...(body.input?.systemPrompt ? { systemMessage: body.input.systemPrompt } : {}),
@@ -1091,7 +1073,7 @@ const createFakePiApi = (
       return Response.json({
         id: session.id,
         name: session.name,
-        metadata: { agentName: session.agent },
+        metadata: { model: session.model },
         workflowName: session.workflowName,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
@@ -1924,30 +1906,6 @@ const buildCapabilityConfiguredEvent = (input: CapabilityConfiguredInput): Autom
   subject: { orgId: input.orgId, capabilityId: input.capabilityId },
 });
 
-const buildPiCapabilityConfiguredEvent = (input: PiCapabilityConfiguredInput): AutomationEvent =>
-  buildCapabilityConfiguredEvent({
-    orgId: input.orgId,
-    source: "pi",
-    capabilityId: "pi",
-    capabilityLabel: "Pi",
-    eventId: input.eventId ?? `pi:capability.configured:${input.orgId}`,
-    payload: {
-      harnesses: [
-        {
-          id: input.harnessId ?? "default",
-          label: input.harnessLabel ?? "Default",
-        },
-      ],
-      modelCatalog: [
-        {
-          provider: input.modelProvider ?? "openai",
-          name: input.modelName ?? "gpt-5-mini",
-          label: input.modelLabel ?? "GPT-5 mini",
-        },
-      ],
-    },
-  });
-
 const buildIdentityClaimCompletedEvent = (input: ConfirmClaimInput): AutomationEvent => {
   const actor = {
     scope: "external" as const,
@@ -2278,10 +2236,7 @@ const buildStepBuilders = <
             }
             ctx.rememberOrg(input.orgId);
             const scope = { kind: "org" as const, orgId: input.orgId };
-            await ctx.runtime.objects.pi.forOrg(input.orgId).setAdminConfig({
-              scope,
-              apiKeys: input.apiKeys ?? { openai: "scenario-openai-key" },
-            });
+            await ctx.runtime.objects.pi.forOrg(input.orgId).getRuntimeState(scope);
           },
         ),
       defaultAgent: (input) =>
@@ -2537,24 +2492,13 @@ const buildStepBuilders = <
         ),
     },
     capability: {
-      configured: Object.assign(
-        (input: CapabilityConfiguredInput) =>
-          createStep(
-            "when",
-            "capability.configured",
-            `ingest ${input.capabilityId} capability.configured for ${input.orgId}`,
-            (ctx) => ingestAutomationEvent(ctx, buildCapabilityConfiguredEvent(input)),
-          ),
-        {
-          pi: (input: PiCapabilityConfiguredInput) =>
-            createStep(
-              "when",
-              "capability.configured.pi",
-              `ingest Pi capability.configured for ${input.orgId}`,
-              (ctx) => ingestAutomationEvent(ctx, buildPiCapabilityConfiguredEvent(input)),
-            ),
-        },
-      ),
+      configured: (input) =>
+        createStep(
+          "when",
+          "capability.configured",
+          `ingest ${input.capabilityId} capability.configured for ${input.orgId}`,
+          (ctx) => ingestAutomationEvent(ctx, buildCapabilityConfiguredEvent(input)),
+        ),
     },
     automation: {
       ingestEvent: (input) =>
@@ -2614,7 +2558,7 @@ const buildStepBuilders = <
                 body: JSON.stringify({
                   name: input.name,
                   metadata: {
-                    agentName: input.agentName ?? "default::openai::gpt-5.6-luna",
+                    model: input.model ?? { provider: "openai", name: "gpt-5.6-luna" },
                   },
                   input: {},
                 }),
@@ -3089,7 +3033,9 @@ const buildStepBuilders = <
             const calls = ctx.fakes.pi?.createSessionCalls ?? [];
             const call = calls.find(
               (candidate) =>
-                (!input.agent || candidate.agent === input.agent) &&
+                (!input.model ||
+                  (candidate.model.provider === input.model.provider &&
+                    candidate.model.name === input.model.name)) &&
                 (typeof input.name === "undefined" || candidate.name === input.name) &&
                 (!input.sessionId || candidate.sessionId === input.sessionId),
             );

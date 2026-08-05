@@ -20,6 +20,9 @@ export type InMemoryBackofficeRuntimeEnv = {
   GITHUB_APP_PRIVATE_KEY?: string;
   CLOUDFLARE_WORKERS_ACCOUNT_ID?: string;
   CLOUDFLARE_WORKERS_API_TOKEN?: string;
+  OPENAI_API_KEY?: string;
+  ANTHROPIC_API_KEY?: string;
+  GEMINI_API_KEY?: string;
 };
 
 type WorkerLoaderFactory = () => {
@@ -90,4 +93,5 @@ export const defaultInMemoryBackofficeRuntimeEnv = (): InMemoryBackofficeRuntime
   GITHUB_APP_PRIVATE_KEY: "in-memory-github-app-private-key",
   CLOUDFLARE_WORKERS_ACCOUNT_ID: "in-memory-cloudflare-account-id",
   CLOUDFLARE_WORKERS_API_TOKEN: "in-memory-cloudflare-api-token",
+  OPENAI_API_KEY: "in-memory-openai-api-key",
 });

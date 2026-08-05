@@ -15,9 +15,7 @@ import {
 } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import type { MasterFileSystem } from "@/files";
-import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
-import { piConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/pi";
 import {
   createPiOperationBillingEvent,
   PiOperationBillingEventValidationError,
@@ -33,14 +31,9 @@ import {
 } from "@/fragno/pi/pi";
 import { createPiCodemodeRuntime } from "@/fragno/pi/pi-codemode";
 import {
-  PI_MODEL_CATALOG,
-  PI_TOOL_IDS,
-  resolvePiHarnesses,
-  type PiConfigState,
-  type PiHarnessConfig,
-  type PiThinkingLevel,
-  type PiToolId,
-  type PiSteeringMode,
+  PI_SUPPORTED_MODELS,
+  type PiApiKeys,
+  type PiRuntimeState,
   type StoredPiConfig,
 } from "@/fragno/pi/pi-shared";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -57,68 +50,8 @@ type PiHookQueueOptions = DurableHookQueueOptions & {
   fragment?: PiHookFragment;
 };
 
-const apiKeySchema = z
-  .string()
-  .trim()
-  .transform((value) => value || undefined)
-  .optional();
-
-const harnessSchema = z.object({
-  id: z
-    .string()
-    .trim()
-    .min(1, "Harness id is required.")
-    .refine((value) => !value.includes("::"), {
-      message: "Harness id cannot contain '::'.",
-    }),
-  label: z.string().trim().min(1, "Harness label is required."),
-  description: z
-    .string()
-    .trim()
-    .transform((value) => value || undefined)
-    .optional(),
-  systemPrompt: z.string().trim().min(1, "Harness system prompt is required."),
-  tools: z
-    .array(z.union([z.enum(PI_TOOL_IDS), z.literal("bash")]))
-    .default([])
-    .transform((tools) =>
-      tools.filter((tool): tool is PiToolId => PI_TOOL_IDS.includes(tool as PiToolId)),
-    ),
-  thinkingLevel: z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]).optional(),
-  steeringMode: z.enum(["all", "one-at-a-time"]).optional(),
-  toolConfig: z.unknown().optional(),
-});
-
-const harnessesSchema = z.array(harnessSchema).superRefine((harnesses, context) => {
-  const ids = new Set<string>();
-  for (const [index, harness] of harnesses.entries()) {
-    if (ids.has(harness.id)) {
-      context.addIssue({
-        code: "custom",
-        message: `Harness id '${harness.id}' is duplicated.`,
-        path: [index, "id"],
-      });
-      continue;
-    }
-    ids.add(harness.id);
-  }
-});
-
 const storedPiConfigSchema: z.ZodType<StoredPiConfig> = z.object({
   scope: backofficeContextScopeSchema,
-  apiKeys: z.object({
-    openai: apiKeySchema,
-    anthropic: apiKeySchema,
-    gemini: apiKeySchema,
-  }),
-  harnesses: harnessesSchema,
-  createdAt: z.string().trim().min(1, "Stored Pi config is missing createdAt."),
-  updatedAt: z.string().trim().min(1, "Stored Pi config is missing updatedAt."),
-});
-
-const setAdminConfigInputSchema = piConfigureInputSchema.extend({
-  scope: backofficeContextScopeSchema,
-  harnesses: harnessesSchema.optional(),
 });
 
 const hookQueueOptionsSchema = z
@@ -138,76 +71,17 @@ const hookQueueOptionsSchema = z
   })
   .optional();
 
-const hasOwn = (record: object | null | undefined, key: PropertyKey) =>
-  Boolean(record && Object.prototype.hasOwnProperty.call(record, key));
-
-const maskSecret = (value?: string) => {
-  if (!value) {
-    return null;
-  }
-  if (value.length <= 8) {
-    return "••••";
-  }
-  return `${value.slice(0, 4)}…${value.slice(-4)}`;
-};
-
-const buildCapabilityConfiguredPayload = (config: StoredPiConfig) => ({
-  capabilityId: "pi",
-  capabilityLabel: "Pi",
-  harnesses: resolvePiHarnesses(config.harnesses).map((harness) => ({
-    id: harness.id,
-    label: harness.label,
-    description: harness.description,
-    tools: harness.tools,
-  })),
-  modelCatalog: PI_MODEL_CATALOG.filter((option) => Boolean(config.apiKeys[option.provider])),
+const piApiKeys = (env: CloudflareEnv): PiApiKeys => ({
+  openai: env.OPENAI_API_KEY,
+  anthropic: env.ANTHROPIC_API_KEY,
+  gemini: env.GEMINI_API_KEY,
 });
 
-const isConfigured = (config: StoredPiConfig | null) => {
-  if (!config) {
-    return false;
-  }
-  const hasKeys = Boolean(
-    config.apiKeys.openai || config.apiKeys.anthropic || config.apiKeys.gemini,
-  );
-  const hasHarnesses = resolvePiHarnesses(config.harnesses).length > 0;
-  return hasKeys && hasHarnesses;
+const buildRuntimeState = (env: CloudflareEnv): PiRuntimeState => {
+  const apiKeys = piApiKeys(env);
+  const modelCatalog = PI_SUPPORTED_MODELS.filter((option) => Boolean(apiKeys[option.provider]));
+  return { configured: modelCatalog.length > 0, modelCatalog };
 };
-
-const buildConfigState = (config: StoredPiConfig | null): PiConfigState => {
-  if (!config) {
-    return { configured: false };
-  }
-
-  return {
-    configured: isConfigured(config),
-    config: {
-      scope: config.scope,
-      apiKeys: {
-        openai: maskSecret(config.apiKeys.openai),
-        anthropic: maskSecret(config.apiKeys.anthropic),
-        gemini: maskSecret(config.apiKeys.gemini),
-      },
-      harnesses: resolvePiHarnesses(config.harnesses),
-      createdAt: config.createdAt,
-      updatedAt: config.updatedAt,
-    },
-  };
-};
-
-const toStoredHarness = (harness: z.infer<typeof harnessSchema>): PiHarnessConfig => ({
-  id: harness.id,
-  label: harness.label,
-  description: harness.description,
-  systemPrompt: harness.systemPrompt,
-  tools: harness.tools,
-  thinkingLevel: harness.thinkingLevel as PiThinkingLevel | undefined,
-  steeringMode: harness.steeringMode as PiSteeringMode | undefined,
-  toolConfig: harness.toolConfig,
-});
-
-const toStoredHarnesses = (harnesses: z.infer<typeof harnessesSchema>) =>
-  harnesses.map(toStoredHarness);
 
 export class InMemoryPiObject implements PiObject {
   readonly #env: CloudflareEnv;
@@ -239,13 +113,8 @@ export class InMemoryPiObject implements PiObject {
       state,
       env,
       parseStored: (raw) => storedPiConfigSchema.parse(raw),
-      isConfigured: (stored): stored is StoredPiConfig => isConfigured(stored),
-      fingerprint: (config) =>
-        JSON.stringify({
-          scope: config.scope,
-          apiKeys: config.apiKeys,
-          harnesses: resolvePiHarnesses(config.harnesses),
-        }),
+      isConfigured: (stored): stored is StoredPiConfig => stored !== null,
+      fingerprint: (config) => JSON.stringify(config.scope),
       createRuntime: (config) => this.#createRuntime(config),
       getMigrationFragments: (runtime) => [runtime.workflowsFragment, runtime.piFragment],
       hostRuntime: (runtime, { hostFragment }) => ({
@@ -262,36 +131,6 @@ export class InMemoryPiObject implements PiObject {
         },
         { id: "pi", target: (runtime) => runtime.piFragment },
       ],
-      outbox: {
-        dispatch: async (item, { stored }) => {
-          if (item.type !== "capability.configured") {
-            return;
-          }
-
-          const { scope } = stored;
-          if (scope.kind !== "org") {
-            return;
-          }
-
-          await this.#runtimeServices.objects.automations.forOrg(scope.orgId).ingestEvent({
-            id: item.id,
-            scope,
-            source: "pi",
-            eventType: "capability.configured",
-            occurredAt: item.createdAt,
-            payload: buildCapabilityConfiguredPayload(stored),
-            actors: {
-              initiator: AUTOMATION_SYSTEM_INITIATOR,
-              principal: null,
-              delegation: [],
-            },
-            subject: {
-              orgId: scope.orgId,
-              capabilityId: "pi",
-            },
-          });
-        },
-      },
     });
 
     void state.blockConcurrencyWhile(async () => {
@@ -320,6 +159,7 @@ export class InMemoryPiObject implements PiObject {
 
     return createPiRuntime({
       config,
+      apiKeys: piApiKeys(this.#env),
       adapters: this.#runtimeServices.adapters,
       codemode: {
         ...createPiCodemodeRuntime(this.#env),
@@ -365,66 +205,30 @@ export class InMemoryPiObject implements PiObject {
     await this.#host.alarm();
   }
 
-  async getAdminConfig(): Promise<PiConfigState> {
-    const config = await this.#host.loadStored();
-    return buildConfigState(config);
+  async getRuntimeState(scope: unknown): Promise<PiRuntimeState> {
+    const parsedScope = backofficeContextScopeSchema.parse(scope);
+    await this.#ensureInitialized(parsedScope);
+    return buildRuntimeState(this.#env);
   }
 
-  async resetAdminConfig(): Promise<PiConfigState> {
-    await this.#state.blockConcurrencyWhile(async () => {
-      await this.#host.clearConfig();
-    });
-    return buildConfigState(null);
-  }
-
-  async setAdminConfig(payload: unknown): Promise<PiConfigState> {
-    const parsed = setAdminConfigInputSchema.parse(payload);
-    const scope = parsed.scope;
-
+  async #ensureInitialized(scope: StoredPiConfig["scope"]): Promise<void> {
     const existing = await this.#host.loadStored();
     this.#host.assertSameScope(existing, scope);
-
-    const now = new Date().toISOString();
-    const parsedApiKeys = parsed.apiKeys ?? {};
-    const stored: StoredPiConfig = {
-      scope,
-      apiKeys: {
-        openai: hasOwn(parsedApiKeys, "openai") ? parsedApiKeys.openai : existing?.apiKeys.openai,
-        anthropic: hasOwn(parsedApiKeys, "anthropic")
-          ? parsedApiKeys.anthropic
-          : existing?.apiKeys.anthropic,
-        gemini: hasOwn(parsedApiKeys, "gemini") ? parsedApiKeys.gemini : existing?.apiKeys.gemini,
-      },
-      harnesses:
-        parsed.harnesses === undefined
-          ? (existing?.harnesses ?? [])
-          : toStoredHarnesses(parsed.harnesses),
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
-
-    try {
-      await this.#state.blockConcurrencyWhile(async () => {
-        const parsedStored = storedPiConfigSchema.parse(stored);
-        await this.#host.storeAndInitialize(parsedStored);
-
-        if (isConfigured(parsedStored)) {
-          await this.#host.dispatch({
-            id: crypto.randomUUID(),
-            type: "capability.configured",
-            createdAt: now,
-          });
-        }
-      });
-    } catch (error) {
-      console.log("Migration failed", { error });
-      throw new Error("Failed to migrate Pi schema.");
+    if (existing) {
+      return;
     }
-
-    return buildConfigState(stored);
+    await this.#state.blockConcurrencyWhile(async () => {
+      const current = await this.#host.loadStored();
+      this.#host.assertSameScope(current, scope);
+      if (!current) {
+        await this.#host.storeAndInitialize({ scope });
+      }
+    });
   }
 
-  getDurableHookRepository(fragment?: PiHookFragment) {
+  async getDurableHookRepository(scope: unknown, fragment?: PiHookFragment) {
+    const parsedScope = backofficeContextScopeSchema.parse(scope);
+    await this.#ensureInitialized(parsedScope);
     const repository = this.#host.getDurableHookRepository<PiHookQueueOptions>(
       ({ runtime }, queueOptions) =>
         queueOptions?.fragment === "workflows" ? runtime.workflowsFragment : runtime.piFragment,
@@ -442,6 +246,7 @@ export class InMemoryPiObject implements PiObject {
   }
 
   async fetchWithContext(request: Request, context: BackofficeActionRpcContext): Promise<Response> {
+    await this.#ensureInitialized(context.execution.scope);
     const { stored } = this.#host.requireConfigured("Pi runtime is not ready.");
     if (!backofficeContextScopesEqual(stored.scope, context.execution.scope)) {
       throw new Error("Backoffice object method scope does not match object address scope.");
@@ -474,20 +279,12 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiObject {
     await this.#object.alarm();
   }
 
-  async getAdminConfig(): Promise<PiConfigState> {
-    return await this.#object.getAdminConfig();
+  async getRuntimeState(scope: unknown): Promise<PiRuntimeState> {
+    return await this.#object.getRuntimeState(scope);
   }
 
-  async resetAdminConfig(): Promise<PiConfigState> {
-    return await this.#object.resetAdminConfig();
-  }
-
-  async setAdminConfig(payload: unknown): Promise<PiConfigState> {
-    return await this.#object.setAdminConfig(payload);
-  }
-
-  getDurableHookRepository(fragment?: PiHookFragment) {
-    return this.#object.getDurableHookRepository(fragment);
+  async getDurableHookRepository(scope: unknown, fragment?: PiHookFragment) {
+    return await this.#object.getDurableHookRepository(scope, fragment);
   }
 
   async fetchWithContext(request: Request, context: BackofficeActionRpcContext): Promise<Response> {

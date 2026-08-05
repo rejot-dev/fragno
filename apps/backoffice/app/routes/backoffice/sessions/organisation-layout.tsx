@@ -1,16 +1,14 @@
-import { useEffect, useState } from "react";
 import { Outlet } from "react-router";
 
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
-import type { PiConfigState } from "@/fragno/pi/pi-shared";
 
 import { fetchAutomationAdapterIdentity } from "../automations/data.server";
 import { createOrganisationScopeOptions } from "../integrations/scope";
 import { throwOrganisationNotFound } from "../route-errors";
 import type { Route } from "./+types/organisation-layout";
-import { fetchPiAdapterIdentity, fetchPiConfig } from "./data";
-import { PiErrorBoundary, PiWorkspaceHeader, type PiLayoutContext, type PiTab } from "./shared";
+import { fetchPiAdapterIdentity, fetchPiRuntimeState } from "./data";
+import { PiErrorBoundary, PiWorkspaceHeader, type PiLayoutContext } from "./shared";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId) {
@@ -29,12 +27,12 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   const scope = { kind: "org" as const, orgId: params.orgId };
-  const { configState, configError } = await fetchPiConfig(context, scope);
+  const { runtimeState, runtimeError } = await fetchPiRuntimeState(context, scope);
   let persistenceSource: PiLayoutContext["persistenceSource"] = null;
   let persistenceError: string | null = null;
   let automationPersistenceSource: AutomationCollectionSource | null = null;
   let automationPersistenceError: string | null = null;
-  if (configState?.configured) {
+  if (runtimeState?.configured) {
     const [piAdapterIdentity, automationAdapterIdentity] = await Promise.allSettled([
       fetchPiAdapterIdentity(request, context, scope),
       fetchAutomationAdapterIdentity(request, context, scope),
@@ -68,8 +66,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     persistenceError,
     automationPersistenceSource,
     automationPersistenceError,
-    configState,
-    configError,
+    runtimeState,
+    runtimeError,
   };
 }
 
@@ -93,33 +91,17 @@ export default function BackofficeOrganisationPiLayout({
     persistenceError,
     automationPersistenceSource,
     automationPersistenceError,
-    configState: initialConfigState,
-    configError: initialConfigError,
+    runtimeState,
+    runtimeError,
   } = loaderData;
   const orgId = scope.orgId;
-  const [configState, setConfigState] = useState<PiConfigState | null>(initialConfigState);
-  const [configError, setConfigError] = useState<string | null>(initialConfigError);
 
-  useEffect(() => {
-    setConfigState(initialConfigState);
-    setConfigError(initialConfigError);
-  }, [initialConfigError, initialConfigState, orgId]);
-
-  let activeTab: PiTab = "configuration";
   const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
   const pathSegments = currentPath.split("/").filter(Boolean);
   const orgIndex = pathSegments.lastIndexOf(orgId);
   const activeSegment =
     orgIndex >= 0 ? pathSegments[orgIndex + 1] : pathSegments[pathSegments.length - 1];
-  if (activeSegment === "sessions") {
-    activeTab = "sessions";
-  } else if (activeSegment === "harnesses") {
-    activeTab = "harnesses";
-  } else if (activeSegment === "configuration") {
-    activeTab = "configuration";
-  }
-
-  const isSessions = activeTab === "sessions";
+  const isSessions = activeSegment === "sessions";
 
   return (
     <div
@@ -133,7 +115,6 @@ export default function BackofficeOrganisationPiLayout({
         orgId={orgId}
         organisationName={organisation?.name ?? orgId}
         organisationOptions={loaderData.organisationOptions}
-        activeTab={activeTab}
       />
       <div className={isSessions ? "flex min-h-0 flex-1 flex-col" : undefined}>
         <Outlet
@@ -143,10 +124,8 @@ export default function BackofficeOrganisationPiLayout({
             persistenceError,
             automationPersistenceSource,
             automationPersistenceError,
-            configState,
-            configError,
-            setConfigState,
-            setConfigError,
+            runtimeState,
+            runtimeError,
           }}
         />
       </div>

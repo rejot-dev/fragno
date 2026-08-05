@@ -8,11 +8,11 @@ import { piRuntimeTools, type PiRuntime } from "./pi";
 
 const createRuntime = (): PiRuntime =>
   ({
-    createSession: vi.fn(async ({ agent, name }) => ({
+    createSession: vi.fn(async ({ model, name }) => ({
       id: "session-1",
       name: name ?? null,
       status: "waiting",
-      metadata: { agentName: agent },
+      metadata: { model },
       workflowName: "interactive-chat-workflow",
       createdAt: new Date("2026-06-03T00:00:00.000Z"),
       updatedAt: new Date("2026-06-03T00:00:00.000Z"),
@@ -23,7 +23,7 @@ const createRuntime = (): PiRuntime =>
         id: "session-1",
         name: null,
         status: "waiting",
-        metadata: { agentName: "assistant" },
+        metadata: { model: { provider: "openai", name: "gpt-5.6-luna" } },
         workflowName: "interactive-chat-workflow",
         createdAt: new Date("2026-06-03T00:00:00.000Z"),
         updatedAt: new Date("2026-06-03T00:00:00.000Z"),
@@ -44,7 +44,7 @@ const createSessionDetail = (sessionId: string) => ({
   workflowName: "interactive-chat-workflow",
   createdAt: new Date("2026-06-03T00:00:00.000Z"),
   updatedAt: new Date("2026-06-03T00:00:00.000Z"),
-  metadata: { agentName: "assistant" },
+  metadata: { model: { provider: "openai", name: "gpt-5.6-luna" } },
   workflow: { status: "waiting" },
   agent: { state: { messages: [] }, completedStepKeys: [] },
 });
@@ -65,8 +65,8 @@ describe("pi runtime tools", () => {
     expect(
       createSession.inputSchema.parse(
         createSession.adapters!.bash!.parse([
-          "--agent",
-          "assistant",
+          "--model-json",
+          '{"provider":"openai","name":"gpt-5.6-luna"}',
           "--name",
           "support",
           "--tag",
@@ -80,7 +80,7 @@ describe("pi runtime tools", () => {
         ]),
       ),
     ).toEqual({
-      agent: "assistant",
+      model: { provider: "openai", name: "gpt-5.6-luna" },
       name: "support",
       metadata: { ticket: "123" },
       tags: ["urgent", "customer"],
@@ -91,11 +91,11 @@ describe("pi runtime tools", () => {
   test("accepts serialized runtime dates and exposes ISO date strings", async () => {
     const [createSession] = piRuntimeTools;
     const runtime = {
-      createSession: vi.fn(async ({ agent, name }) => ({
+      createSession: vi.fn(async ({ model, name }) => ({
         id: "session-1",
         name: name ?? null,
         status: "waiting",
-        metadata: { agentName: agent },
+        metadata: { model },
         workflowName: "interactive-chat-workflow",
         createdAt: "2026-06-03T00:00:00.000Z",
         updatedAt: new Date("2026-06-03T00:01:00.000Z"),
@@ -107,12 +107,15 @@ describe("pi runtime tools", () => {
       });
 
     await expect(
-      createSession.execute({ agent: "assistant", name: "Support" }, context),
+      createSession.execute(
+        { model: { provider: "openai", name: "gpt-5.6-luna" }, name: "Support" },
+        context,
+      ),
     ).resolves.toEqual({
       id: "session-1",
       name: "Support",
       status: "waiting",
-      metadata: { agentName: "assistant" },
+      metadata: { model: { provider: "openai", name: "gpt-5.6-luna" } },
       workflowName: "interactive-chat-workflow",
       createdAt: "2026-06-03T00:00:00.000Z",
       updatedAt: "2026-06-03T00:01:00.000Z",
@@ -140,10 +143,10 @@ describe("pi runtime tools", () => {
   test("accepts session create responses without a legacy top-level status", async () => {
     const createSession = piRuntimeTools[0];
     const runtime = {
-      createSession: vi.fn(async ({ agent, name }) => ({
+      createSession: vi.fn(async ({ model, name }) => ({
         id: "session-1",
         name: name ?? null,
-        metadata: { agentName: agent },
+        metadata: { model },
         workflowName: "interactive-chat-workflow",
         createdAt: new Date("2026-06-03T00:00:00.000Z"),
         updatedAt: new Date("2026-06-03T00:00:00.000Z"),
@@ -155,13 +158,19 @@ describe("pi runtime tools", () => {
       });
 
     await expect(
-      createSession.execute({ agent: "assistant", name: "Support" }, context),
+      createSession.execute(
+        { model: { provider: "openai", name: "gpt-5.6-luna" }, name: "Support" },
+        context,
+      ),
     ).resolves.toMatchObject({
       id: "session-1",
-      metadata: { agentName: "assistant" },
+      metadata: { model: { provider: "openai", name: "gpt-5.6-luna" } },
       name: "Support",
     });
-    expect(runtime.createSession).toHaveBeenCalledWith({ agent: "assistant", name: "Support" });
+    expect(runtime.createSession).toHaveBeenCalledWith({
+      model: { provider: "openai", name: "gpt-5.6-luna" },
+      name: "Support",
+    });
   });
 
   test("accepts current Pi session detail contract", async () => {

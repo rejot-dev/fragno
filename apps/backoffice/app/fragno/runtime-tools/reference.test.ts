@@ -214,7 +214,14 @@ describe("runtime tool reference generation", () => {
           inputType: "PiCreateSessionInput",
           outputType: "PiCreateSessionOutput",
           bashCommand: "pi.session.create",
-          bashOptions: ["agent", "name", "system-message", "tag", "metadata-json", "steering-mode"],
+          bashOptions: [
+            "model-json",
+            "name",
+            "system-message",
+            "tag",
+            "metadata-json",
+            "steering-mode",
+          ],
         },
         {
           id: "pi.session.get",

@@ -1,14 +1,10 @@
-import { Suspense, use, useCallback, useMemo, useState } from "react";
+import { Suspense, use, useCallback, useState } from "react";
 import { Outlet, useActionData, useNavigation, useParams } from "react-router";
 
 import { BackofficeSystemState } from "@/components/backoffice";
 import { ClientOnly } from "@/components/client-only";
 import { getAutomationBrowserDatabase } from "@/fragno/automation/tanstack/browser-database";
-import {
-  BACKOFFICE_PI_WORKFLOW_NAME,
-  PI_MODEL_CATALOG,
-  resolvePiHarnesses,
-} from "@/fragno/pi/pi-shared";
+import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
 import type { PiSessionListingState } from "@/fragno/pi/tanstack/session-listing";
 import { usePiSessionListing } from "@/fragno/pi/tanstack/use-session-listing";
 
@@ -56,11 +52,11 @@ function PiSessionsLoading() {
 
 function PiSessionsUnavailable({ layoutContext }: { layoutContext: PiLayoutContext }) {
   const message =
-    layoutContext.configError ??
+    layoutContext.runtimeError ??
     layoutContext.persistenceError ??
-    (layoutContext.configState?.configured
+    (layoutContext.runtimeState?.configured
       ? "Local session persistence is unavailable."
-      : "Configure Pi first.");
+      : "Set a Pi provider API key in .dev.vars.");
 
   return (
     <BackofficeSystemState
@@ -116,20 +112,14 @@ function PiSessionsWorkspaceView({
   const actionData = useActionData() as PiCreateSessionActionData | undefined;
   const navigation = useNavigation();
   const { sessionId, workflowName } = useParams();
-  const { scope, configState } = layoutContext;
+  const { scope, runtimeState } = layoutContext;
   const basePath = `/backoffice/sessions/${encodeURIComponent(scope.orgId)}/sessions`;
   const { sessions, workflowStatuses } = listingState.snapshot;
   const listingError = listingState.status === "error" ? listingState.error : null;
   const creating =
     navigation.state === "submitting" && navigation.formData?.get("intent") === "create-session";
-  const harnesses = resolvePiHarnesses(configState?.config?.harnesses);
-  const apiKeys = configState?.config?.apiKeys;
-  const availableModelOptions = useMemo(
-    () => PI_MODEL_CATALOG.filter((option) => Boolean(apiKeys?.[option.provider])),
-    [apiKeys],
-  );
+  const availableModelOptions = runtimeState?.modelCatalog ?? [];
 
-  const [preferredHarnessId, setPreferredHarnessId] = useState("");
   const [preferredModelOption, setPreferredModelOption] = useState("");
   const [draftPrompt, setDraftPrompt] = useState("");
   const [workspaceStates, setWorkspaceStates] = useState<SessionWorkspaceStateBySession>({});
@@ -142,9 +132,6 @@ function PiSessionsWorkspaceView({
     [],
   );
 
-  const selectedHarnessId = harnesses.some((harness) => harness.id === preferredHarnessId)
-    ? preferredHarnessId
-    : (harnesses[0]?.id ?? "");
   const selectedModelOption = availableModelOptions.some(
     (option) => `${option.provider}::${option.name}` === preferredModelOption,
   )
@@ -166,11 +153,8 @@ function PiSessionsWorkspaceView({
       createError={createError}
       creating={creating}
       draftPrompt={draftPrompt}
-      harnesses={harnesses}
-      selectedHarnessId={selectedHarnessId}
       selectedModelOption={selectedModelOption}
       onDraftPromptChange={setDraftPrompt}
-      onHarnessChange={setPreferredHarnessId}
       onModelChange={setPreferredModelOption}
     />
   );
@@ -204,7 +188,6 @@ function PiSessionsWorkspaceView({
         context={{
           scope,
           persistenceSource: source,
-          harnesses,
           basePath,
           createSessionPanel,
           workspaceStates,

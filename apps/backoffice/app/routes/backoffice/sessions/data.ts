@@ -8,7 +8,7 @@ import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
-import type { PiConfigState, PiThinkingLevel } from "@/fragno/pi/pi-shared";
+import type { PiModel, PiRuntimeState, PiThinkingLevel } from "@/fragno/pi/pi-shared";
 import { getPiDurableObject } from "@/worker-runtime/durable-objects";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -38,9 +38,9 @@ const createPiRouteCaller = async (
   });
 };
 
-type PiConfigResult = {
-  configState: PiConfigState | null;
-  configError: string | null;
+type PiRuntimeStateResult = {
+  runtimeState: PiRuntimeState | null;
+  runtimeError: string | null;
 };
 
 type PiSessionsResult = {
@@ -97,18 +97,18 @@ export async function fetchPiAdapterIdentity(
   return transport.getAdapterIdentity({ signal: request.signal });
 }
 
-export async function fetchPiConfig(
+export async function fetchPiRuntimeState(
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
-): Promise<PiConfigResult> {
+): Promise<PiRuntimeStateResult> {
   try {
     const piDo = getPiDurableObject(context, scope);
-    const configState = await piDo.getAdminConfig();
-    return { configState, configError: null };
+    const runtimeState = await piDo.getRuntimeState(scope);
+    return { runtimeState, runtimeError: null };
   } catch (error) {
     return {
-      configState: null,
-      configError: error instanceof Error ? error.message : "Failed to load configuration.",
+      runtimeState: null,
+      runtimeError: error instanceof Error ? error.message : "Failed to initialize Pi.",
     };
   }
 }
@@ -186,7 +186,7 @@ export async function createPiSession(
   scope: BackofficeContextScope,
   payload: {
     workflowName?: string;
-    metadata: { agentName: string };
+    metadata: { model: PiModel };
     input: {
       systemPrompt?: string;
       thinkingLevel?: PiThinkingLevel;
