@@ -230,6 +230,33 @@
     padding: 0.35rem 0.5rem;
     text-align: left;
   }
+
+  .bo-file-markdown [data-streamdown="code-block"] {
+    gap: 0;
+    overflow: hidden;
+    border-radius: 0;
+    background: var(--bo-panel-2);
+    padding: 0;
+  }
+
+  .bo-file-markdown [data-streamdown="code-block-header"] {
+    border-bottom: 1px solid var(--bo-border);
+    padding-inline: 0.75rem;
+  }
+
+  .bo-file-markdown [data-streamdown="code-block-body"] {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0.75rem;
+  }
+
+  .bo-file-markdown [data-streamdown="code-block-body"] pre {
+    margin: 0;
+    border: 0;
+    background: transparent;
+    padding: 0;
+  }
 }
 
 @layer base {

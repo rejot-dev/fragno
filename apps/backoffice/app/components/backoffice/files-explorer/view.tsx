@@ -5,6 +5,9 @@ import {
   File as FileIcon,
   Folder,
   HardDrive,
+  Info,
+  PanelLeftClose,
+  PanelLeftOpen,
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
@@ -117,6 +120,7 @@ export function FilesExplorerView({
   const [expandedDirectoryPaths, setExpandedDirectoryPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const [isMobileTreeCollapsed, setIsMobileTreeCollapsed] = useState(false);
   const [explicitlyCollapsedPaths, setExplicitlyCollapsedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -169,7 +173,7 @@ export function FilesExplorerView({
     rootSelection === "summary" && selectedDetail?.node.kind === "root" ? selectedDetail : null;
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       {loadError ? <MessageTone tone="error">{loadError}</MessageTone> : null}
 
       {tree.length === 0 ? (
@@ -180,8 +184,28 @@ export function FilesExplorerView({
           description="Files will appear here when a collection becomes available."
         />
       ) : (
-        <section className="grid min-h-[22rem] gap-px overflow-hidden bg-[var(--bo-border)] shadow-[0_0_0_1px_var(--bo-border)] lg:grid-cols-[18rem_minmax(0,1fr)]">
-          <aside className="bg-[var(--bo-panel-2)] p-3">
+        <section className="grid min-h-[22rem] flex-1 gap-px overflow-hidden bg-[var(--bo-border)] shadow-[0_0_0_1px_var(--bo-border)] lg:min-h-0 lg:grid-cols-[18rem_minmax(0,1fr)]">
+          <button
+            type="button"
+            aria-expanded={!isMobileTreeCollapsed}
+            aria-controls="files-explorer-tree"
+            onClick={() => {
+              setIsMobileTreeCollapsed((collapsed) => !collapsed);
+            }}
+            className="flex min-h-10 items-center justify-between bg-[var(--bo-panel-2)] px-3 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[background-color,color] duration-150 ease-out hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none lg:hidden"
+          >
+            <span>{isMobileTreeCollapsed ? "Show file tree" : "Hide file tree"}</span>
+            {isMobileTreeCollapsed ? (
+              <PanelLeftOpen className="size-4" aria-hidden="true" />
+            ) : (
+              <PanelLeftClose className="size-4" aria-hidden="true" />
+            )}
+          </button>
+
+          <aside
+            id="files-explorer-tree"
+            className={`${isMobileTreeCollapsed ? "hidden lg:block" : "block"} backoffice-scroll min-h-0 overflow-y-auto bg-[var(--bo-panel-2)] p-3`}
+          >
             <div className="flex min-h-8 items-center justify-between gap-3 px-1">
               <p className="font-mono text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
                 {treeLabel}
@@ -197,6 +221,7 @@ export function FilesExplorerView({
                   key={node.path}
                   node={node}
                   selectedPath={selectedPath}
+                  isFileSelected={selectedDetail?.node.kind === "file"}
                   buildNodeTo={buildNodeTo}
                   onNodeSelect={onNodeSelect}
                   rootIcon={rootIcon}
@@ -210,7 +235,7 @@ export function FilesExplorerView({
             </nav>
           </aside>
 
-          <div className="min-w-0 bg-[var(--bo-panel)]">
+          <div className="min-h-0 min-w-0 bg-[var(--bo-panel)]">
             {selectedRoot ? (
               <RootSelectionState
                 detail={selectedRoot}
@@ -265,8 +290,8 @@ function ExplorerNodeDetailPanel({
   );
 
   return (
-    <section className="min-h-full p-4 md:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-4 pb-4">
+    <section className="flex h-full min-h-0 flex-col p-4 md:p-5">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4 pb-4">
         <div className="flex min-w-0 items-start gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center bg-[var(--bo-panel-2)] text-[var(--bo-accent)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
             <DetailIcon className="size-[18px]" aria-hidden="true" />
@@ -280,19 +305,52 @@ function ExplorerNodeDetailPanel({
             </Heading>
           </div>
         </div>
-        {downloadHref ? (
-          <a
-            href={downloadHref}
-            className="bo-control-surface inline-flex min-h-10 items-center gap-2 bg-[var(--bo-panel-2)] px-3.5 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
-          >
-            <Download className="h-3.5 w-3.5" aria-hidden="true" />
-            Download
-          </a>
-        ) : null}
+        <div className="relative flex items-center gap-2">
+          {downloadHref ? (
+            <a
+              href={downloadHref}
+              className="bo-control-surface inline-flex min-h-10 items-center gap-2 bg-[var(--bo-panel-2)] px-3.5 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
+            >
+              <Download className="h-3.5 w-3.5" aria-hidden="true" />
+              Download
+            </a>
+          ) : null}
+          <details className="group relative">
+            <summary className="bo-control-surface flex size-10 cursor-pointer list-none items-center justify-center bg-[var(--bo-panel-2)] text-[var(--bo-muted)] transition-[scale,background-color,color,box-shadow] duration-150 ease-out marker:content-none hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96] [&::-webkit-details-marker]:hidden">
+              <Info className="size-4" aria-hidden="true" />
+              <span className="sr-only">File information</span>
+            </summary>
+            <div className="backoffice-scroll absolute top-12 right-0 z-20 max-h-[calc(100dvh-8rem)] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain bg-[var(--bo-panel)] p-3 shadow-[0_12px_32px_rgba(0,0,0,0.2),0_0_0_1px_var(--bo-border)]">
+              <p className="font-mono text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+                File information
+              </p>
+              <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+                {detail.fields.map((field) => (
+                  <div
+                    key={`${field.label}-${field.value}`}
+                    className="min-w-0 bg-[var(--bo-panel-2)] px-3 py-2.5"
+                  >
+                    <dt className="font-mono text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+                      {field.label}
+                    </dt>
+                    <dd className="mt-1.5 text-xs break-all text-[var(--bo-muted)]">
+                      {field.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              {Object.keys(displayedMetadata).length > 0 ? (
+                <pre className="backoffice-scroll mt-3 max-h-56 overflow-auto bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] leading-5 text-[var(--bo-muted)]">
+                  {JSON.stringify(displayedMetadata, null, 2)}
+                </pre>
+              ) : null}
+            </div>
+          </details>
+        </div>
       </div>
 
       {contentRenderer ? (
-        <div className="mt-5 bg-[var(--bo-panel-2)] p-3 shadow-[inset_0_0_0_1px_var(--bo-border)] md:p-4">
+        <div className="mt-2 flex min-h-0 flex-1 flex-col bg-[var(--bo-panel-2)] p-3 shadow-[inset_0_0_0_1px_var(--bo-border)] md:p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="font-mono text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               {contentRenderer.label}
@@ -303,32 +361,9 @@ function ExplorerNodeDetailPanel({
               </p>
             ) : null}
           </div>
-          <div className="mt-3">{contentRenderer.render(contentPreview)}</div>
-        </div>
-      ) : null}
-
-      <dl className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {detail.fields.map((field) => (
-          <div
-            key={`${field.label}-${field.value}`}
-            className="min-w-0 bg-[var(--bo-panel-2)] px-3 py-2.5 shadow-[inset_0_0_0_1px_var(--bo-border)]"
-          >
-            <dt className="font-mono text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-              {field.label}
-            </dt>
-            <dd className="mt-1.5 text-xs break-all text-[var(--bo-muted)]">{field.value}</dd>
+          <div className="mt-3 min-h-0 flex-1 overflow-auto">
+            {contentRenderer.render(contentPreview)}
           </div>
-        ))}
-      </dl>
-
-      {Object.keys(displayedMetadata).length > 0 ? (
-        <div className="mt-5">
-          <p className="font-mono text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-            Metadata
-          </p>
-          <pre className="backoffice-scroll mt-3 max-h-72 overflow-auto bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] leading-5 text-[var(--bo-muted)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
-            {JSON.stringify(displayedMetadata, null, 2)}
-          </pre>
         </div>
       ) : null}
     </section>
@@ -372,6 +407,7 @@ function RootSelectionState({
 function FilesTreeNodeRow({
   node,
   selectedPath,
+  isFileSelected,
   buildNodeTo,
   onNodeSelect,
   rootIcon: RootIcon,
@@ -383,6 +419,7 @@ function FilesTreeNodeRow({
 }: {
   node: FilesExplorerNode;
   selectedPath: string | null;
+  isFileSelected: boolean;
   buildNodeTo: (path: string) => To;
   onNodeSelect?: (node: FilesExplorerNode) => void;
   rootIcon: LucideIcon;
@@ -464,8 +501,18 @@ function FilesTreeNodeRow({
           )}
           <Link
             to={buildNodeTo(node.path)}
-            onClick={() => {
-              if (node.kind === "directory" && hasChildren) {
+            onClick={(event) => {
+              const containsSelectedFile =
+                node.kind === "directory" &&
+                isFileSelected &&
+                isAncestorPath(node.path, selectedPath);
+
+              if (containsSelectedFile) {
+                onSetCollapsed(node, !isCollapsed);
+                event.preventDefault();
+                return;
+              }
+              if (node.kind === "directory") {
                 onSetCollapsed(node, false);
               }
               onNodeSelect?.(node);
@@ -494,6 +541,7 @@ function FilesTreeNodeRow({
               key={child.path}
               node={child}
               selectedPath={selectedPath}
+              isFileSelected={isFileSelected}
               buildNodeTo={buildNodeTo}
               onNodeSelect={onNodeSelect}
               rootIcon={RootIcon}

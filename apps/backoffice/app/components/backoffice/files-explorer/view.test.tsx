@@ -50,7 +50,8 @@ describe("FilesExplorerView", () => {
 
     assert(markup.includes("Marketplace artifact files"));
     assert(markup.includes("README.md"));
-    assert(markup.includes("# Published artifact"));
+    assert(markup.includes("<h1"));
+    assert(markup.includes("Published artifact"));
     assert(!markup.includes("Download"));
   });
 
@@ -223,24 +224,34 @@ describe("FilesExplorerView", () => {
     assert(screen.queryByRole("link", { name: "notes" }) === null);
   });
 
+  test("collapses and restores the complete file tree on smaller screens", () => {
+    render(<ExplorerHarness source={source} initialSelectedPath={filePath} />);
+
+    const toggle = screen.getByRole("button", { name: "Hide file tree" });
+    const tree = document.getElementById("files-explorer-tree");
+    assert(tree);
+    assert.equal(toggle.getAttribute("aria-expanded"), "true");
+
+    fireEvent.click(toggle);
+    assert.equal(toggle.getAttribute("aria-expanded"), "false");
+    assert(tree.className.includes("hidden lg:block"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Show file tree" }));
+    assert(!tree.className.includes("hidden lg:block"));
+  });
+
   test("starts folders collapsed and expands them when their row is selected", () => {
     const nestedSource = createNestedWorkspaceSource();
     render(<ExplorerHarness source={nestedSource} initialSelectedPath="/workspace" />);
 
-    screen.getByRole("link", { name: "notes" });
+    const folderLink = screen.getByRole("link", { name: "notes" });
     assert(screen.queryByText("todo.txt") === null);
 
-    fireEvent.click(screen.getByRole("link", { name: "notes" }));
+    fireEvent.click(folderLink);
     screen.getByText("todo.txt");
-
-    fireEvent.click(screen.getByRole("link", { name: "notes" }));
-    screen.getByText("todo.txt");
-
-    fireEvent.click(screen.getByRole("button", { name: "Collapse notes" }));
-    assert(screen.queryByText("todo.txt") === null);
   });
 
-  test("selects a selected file's parent folder without closing it", () => {
+  test("keeps a selected file open when its parent folder is pressed", () => {
     const nestedSource = createNestedWorkspaceSource();
     render(
       <ExplorerHarness source={nestedSource} initialSelectedPath="/workspace/notes/todo.txt" />,
@@ -249,8 +260,39 @@ describe("FilesExplorerView", () => {
     assert(screen.getAllByText("todo.txt").length > 0);
     fireEvent.click(screen.getByRole("link", { name: "notes" }));
 
-    screen.getByText("todo.txt");
-    assert(screen.getByRole("link", { name: "notes" }).getAttribute("aria-current") === "page");
+    screen.getByRole("heading", { name: "todo.txt" });
+    assert(screen.queryByRole("link", { name: "todo.txt" }) === null);
+  });
+
+  test("navigates to unrelated folders while a file is selected", () => {
+    const nestedSource: FilesExplorerSource = {
+      ...createNestedWorkspaceSource(),
+      tree: createFileTree([
+        {
+          kind: "file",
+          path: "notes/todo.txt",
+          sizeBytes: 4,
+          contentType: "text/plain",
+          updatedAt: null,
+          metadata: null,
+        },
+        {
+          kind: "file",
+          path: "archive/done.txt",
+          sizeBytes: 4,
+          contentType: "text/plain",
+          updatedAt: null,
+          metadata: null,
+        },
+      ]),
+    };
+    render(
+      <ExplorerHarness source={nestedSource} initialSelectedPath="/workspace/notes/todo.txt" />,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "archive" }));
+
+    screen.getByRole("heading", { name: "archive" });
   });
 
   test("renders downloads only when the caller supplies a download route", () => {

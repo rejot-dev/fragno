@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Streamdown } from "streamdown";
 
 export type FilesContentPreview = {
   title: string;
@@ -18,9 +19,26 @@ const TextRenderer: FilesContentRenderer = {
   label: "Text preview",
   render(preview) {
     return (
-      <pre className="backoffice-scroll max-h-[32rem] overflow-auto font-mono text-[12px] leading-6 whitespace-pre-wrap text-[var(--bo-fg)]">
+      <pre className="backoffice-scroll h-full overflow-auto font-mono text-[12px] leading-6 whitespace-pre-wrap text-[var(--bo-fg)]">
         {preview.textContent ?? ""}
       </pre>
+    );
+  },
+};
+
+const MarkdownRenderer: FilesContentRenderer = {
+  id: "markdown",
+  label: "Markdown preview",
+  render(preview) {
+    return (
+      <Streamdown
+        mode="streaming"
+        className="bo-file-markdown bo-session-markdown min-h-full text-sm leading-7 text-pretty"
+        controls={{ code: true, table: true }}
+        skipHtml
+      >
+        {preview.textContent ?? ""}
+      </Streamdown>
     );
   },
 };
@@ -43,7 +61,7 @@ const ImageRenderer: FilesContentRenderer = {
       <img
         src={src}
         alt={preview.title}
-        className="max-h-[32rem] max-w-full bg-[var(--bo-panel)] object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+        className="h-full max-h-full max-w-full bg-[var(--bo-panel)] object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
       />
     );
   },
@@ -51,7 +69,7 @@ const ImageRenderer: FilesContentRenderer = {
 
 const FILES_CONTENT_RENDERERS_BY_CONTENT_TYPE = new Map<string, FilesContentRenderer>([
   ["text/plain", TextRenderer],
-  ["text/markdown", TextRenderer],
+  ["text/markdown", MarkdownRenderer],
   ["text/x-shellscript", TextRenderer],
   ["text/typescript", TextRenderer],
   ["application/json", TextRenderer],
@@ -65,7 +83,7 @@ const FILES_CONTENT_RENDERERS_BY_CONTENT_TYPE = new Map<string, FilesContentRend
 export function resolveFilesContentRenderer(
   preview: FilesContentPreview,
 ): FilesContentRenderer | null {
-  const normalizedContentType = preview.contentType?.toLowerCase() ?? null;
+  const normalizedContentType = normalizeMediaType(preview.contentType);
 
   if (normalizedContentType) {
     const exactRenderer = FILES_CONTENT_RENDERERS_BY_CONTENT_TYPE.get(normalizedContentType);
@@ -96,10 +114,14 @@ function getImageSource(preview: FilesContentPreview): string | null {
       return candidate;
     }
   }
-  if (preview.contentType?.toLowerCase() === "image/svg+xml" && preview.textContent) {
+  if (normalizeMediaType(preview.contentType) === "image/svg+xml" && preview.textContent) {
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(preview.textContent)}`;
   }
   return null;
+}
+
+function normalizeMediaType(contentType: string | null): string | null {
+  return contentType?.split(";", 1)[0]?.trim().toLowerCase() || null;
 }
 
 function isAllowedImageSource(candidate: string): boolean {
