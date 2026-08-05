@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     plugins: [
-      cloudflare({ viteEnvironment: { name: "ssr" } }),
+      cloudflare({ viteEnvironment: { name: "ssr" }, inspectorPort: false }),
       tailwindcss(),
       reactRouter(),
       devtoolsJson(),
