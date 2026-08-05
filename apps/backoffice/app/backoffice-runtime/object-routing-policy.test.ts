@@ -44,8 +44,10 @@ describe("object routing policy", () => {
   });
 
   it("routes user-scoped objects from event subjects without org qualification", () => {
-    expect(resolveUserScopedObjectAddress("PI", event({ subject: { userId: "user-1" } }))).toEqual({
-      binding: "PI",
+    expect(
+      resolveUserScopedObjectAddress("AUTOMATIONS", event({ subject: { userId: "user-1" } })),
+    ).toEqual({
+      binding: "AUTOMATIONS",
       scope: { kind: "user", userId: "user-1" },
     });
   });
@@ -53,11 +55,11 @@ describe("object routing policy", () => {
   it("routes project-scoped objects from org-qualified event subjects", () => {
     expect(
       resolveProjectScopedObjectAddress(
-        "PI",
+        "AUTOMATIONS",
         event({ subject: { orgId: "org-1", projectId: "project-1" } }),
       ),
     ).toEqual({
-      binding: "PI",
+      binding: "AUTOMATIONS",
       scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
     });
   });
@@ -78,7 +80,9 @@ describe("object routing policy", () => {
   });
 
   it("rejects actor-only events when user routing has no subject user id", () => {
-    expect(() => resolveUserScopedObjectAddress("PI", event())).toThrow("missing subject user id");
+    expect(() => resolveUserScopedObjectAddress("AUTOMATIONS", event())).toThrow(
+      "missing subject user id",
+    );
   });
 
   it("rejects actor-only events when no org id exists", () => {

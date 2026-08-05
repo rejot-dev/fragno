@@ -10,6 +10,7 @@ import {
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
+import type { PiRuntime } from "./families/pi-runtime";
 import { createRouteBackedRuntimeContext } from "./route-backed-runtime-context";
 
 const createRuntime = (): BackofficeRuntimeServices => {
@@ -17,6 +18,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
   const objects = {
     automations: {
       singleton: () => automationsObject,
+      forOrg: () => automationsObject,
     },
     cloudflare: {
       singleton: () => {
@@ -40,7 +42,6 @@ const createRuntime = (): BackofficeRuntimeServices => {
         marketplace: false,
         telegram: false,
         otp: false,
-        pi: false,
         resend: false,
         reson8: false,
         mcp: false,
@@ -55,6 +56,21 @@ const createRuntime = (): BackofficeRuntimeServices => {
 };
 
 describe("createRouteBackedRuntimeContext", () => {
+  test("preserves an injected Pi runtime in scoped child contexts", () => {
+    const runtime = createRuntime();
+    const piRuntime = {} as PiRuntime;
+    const context = createRouteBackedRuntimeContext({
+      runtime,
+      kernel: new BackofficeKernel(runtime),
+      execution: createBackofficeSystemExecution({ kind: "system" }),
+      pi: { runtime: piRuntime },
+    });
+
+    const scoped = context.createBackofficeScopedContext({ kind: "system" });
+
+    expect(scoped.pi?.runtime).toBe(piRuntime);
+  });
+
   test("keeps the context available when the Cloudflare singleton cannot be resolved", () => {
     const runtime = createRuntime();
     const context = createRouteBackedRuntimeContext({

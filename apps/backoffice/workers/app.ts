@@ -15,7 +15,6 @@ import { GitHub } from "./github.do";
 import { Marketplace } from "./marketplace.do";
 import { Mcp } from "./mcp.do";
 import { Otp } from "./otp.do";
-import { Pi } from "./pi.do";
 import { Resend } from "./resend.do";
 import { Reson8 } from "./reson8.do";
 import { Sandbox } from "./sandbox.do";
@@ -36,7 +35,6 @@ export { Sandbox };
 export { GitHub };
 export { GitHubWebhookRouter };
 export { Mcp };
-export { Pi };
 export { Otp };
 export { Reson8 };
 

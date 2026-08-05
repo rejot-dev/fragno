@@ -4,21 +4,12 @@ import { BackofficePageHeader } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/workflows-organisation";
-import {
-  loadWorkflowInstanceSummaries,
-  parsePageSize,
-  resolveWorkflowFragment,
-  WORKFLOW_FRAGMENT_META,
-  WORKFLOW_ORG_FRAGMENTS,
-  WorkflowApiError,
-  type WorkflowOrgFragment,
-} from "./workflows-data";
+import { loadWorkflowInstanceSummaries, parsePageSize, WorkflowApiError } from "./workflows-data";
 import { formatTimestamp, getWorkflowStatusBadgeClasses } from "./workflows-shared";
 
 type WorkflowsOrgLoaderData = {
   orgId: string;
   organisationName: string | null;
-  fragment: WorkflowOrgFragment;
   configured: boolean;
   workflows: string[];
   instances: Awaited<ReturnType<typeof loadWorkflowInstanceSummaries>>["instances"];
@@ -33,11 +24,6 @@ export async function loader({
   url,
 }: Route.LoaderArgs): Promise<WorkflowsOrgLoaderData> {
   if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const fragment = resolveWorkflowFragment(params.fragment);
-  if (!fragment) {
     throw new Response("Not Found", { status: 404 });
   }
 
@@ -59,14 +45,12 @@ export async function loader({
       request,
       context,
       orgId: params.orgId,
-      fragment,
       pageSize,
     });
 
     return {
       orgId: params.orgId,
       organisationName: organisation.name ?? null,
-      fragment,
       configured: true,
       workflows,
       instances,
@@ -83,7 +67,6 @@ export async function loader({
     return {
       orgId: params.orgId,
       organisationName: organisation.name ?? null,
-      fragment,
       configured: !isNotConfigured,
       workflows: [],
       instances: [],
@@ -99,7 +82,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export default function BackofficeWorkflowsOrganisation() {
-  const { orgId, organisationName, fragment, configured, workflows, instances, warnings, error } =
+  const { orgId, organisationName, configured, workflows, instances, warnings, error } =
     useLoaderData<typeof loader>();
   const location = useLocation();
   const params = useParams();
@@ -112,23 +95,6 @@ export default function BackofficeWorkflowsOrganisation() {
   const detailVisibility = isDetailRoute ? "block" : "hidden lg:block";
 
   const baseScopePath = `/backoffice/internals/workflows/${orgId}`;
-  const fragmentBasePath = `${baseScopePath}/${fragment}`;
-  const fragmentMeta = WORKFLOW_FRAGMENT_META[fragment];
-  const fragmentLabel = fragmentMeta.label;
-  const configurePath = fragmentMeta.configurePath(orgId);
-
-  const searchParams = new URLSearchParams(location.search);
-  const fragmentTabHref = (fragmentId: WorkflowOrgFragment) => {
-    const query = searchParams.toString();
-    const tabBasePath = `${baseScopePath}/${fragmentId}`;
-    return query ? `${tabBasePath}?${query}` : tabBasePath;
-  };
-  const fragmentTabs = WORKFLOW_ORG_FRAGMENTS.map((fragmentId) => ({
-    id: fragmentId,
-    label: WORKFLOW_FRAGMENT_META[fragmentId].label,
-    to: fragmentTabHref(fragmentId),
-    disabled: false,
-  }));
 
   return (
     <div className="min-w-0 space-y-4">
@@ -152,47 +118,6 @@ export default function BackofficeWorkflowsOrganisation() {
         }
       />
 
-      <div
-        role="tablist"
-        aria-label="Workflow fragments"
-        className="flex flex-wrap items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2"
-      >
-        {fragmentTabs.map((tab) => {
-          const isActive = fragment === tab.id;
-          const className = isActive
-            ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)]"
-            : tab.disabled
-              ? "cursor-not-allowed border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted-2)] opacity-60"
-              : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
-
-          if (tab.disabled) {
-            return (
-              <span
-                key={tab.id}
-                role="tab"
-                aria-selected={isActive}
-                aria-disabled="true"
-                className={className}
-              >
-                {tab.label}
-              </span>
-            );
-          }
-
-          return (
-            <Link
-              key={tab.id}
-              to={tab.to}
-              role="tab"
-              aria-selected={isActive}
-              className={className}
-            >
-              {tab.label}
-            </Link>
-          );
-        })}
-      </div>
-
       <section className="grid min-w-0 gap-4 lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
         <div
           className={`${listVisibility} min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
@@ -202,9 +127,7 @@ export default function BackofficeWorkflowsOrganisation() {
               <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                 Workflow queue
               </p>
-              <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
-                {fragmentLabel} workflow instances
-              </h2>
+              <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Workflow instances</h2>
               <p className="mt-1 text-xs text-[var(--bo-muted-2)]">
                 {workflows.length} workflow{workflows.length === 1 ? "" : "s"} registered
               </p>
@@ -221,17 +144,11 @@ export default function BackofficeWorkflowsOrganisation() {
               </div>
             ) : !configured ? (
               <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-                {fragmentLabel} is not configured for this organisation yet.
-                <Link
-                  to={configurePath}
-                  className="ml-2 inline-flex text-[var(--bo-accent)] hover:text-[var(--bo-accent-strong)]"
-                >
-                  Configure {fragmentLabel}
-                </Link>
+                Workflows are not configured for this organisation yet.
               </div>
             ) : workflows.length === 0 ? (
               <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-                No workflows are registered for this fragment runtime.
+                No workflows are registered for this organisation.
               </div>
             ) : instances.length === 0 ? (
               <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
@@ -244,7 +161,7 @@ export default function BackofficeWorkflowsOrganisation() {
                     const isSelected =
                       selectedWorkflowName === instance.workflowName &&
                       selectedInstanceId === instance.instanceId;
-                    const detailPath = `${fragmentBasePath}/${encodeURIComponent(instance.workflowName)}/${encodeURIComponent(instance.instanceId)}`;
+                    const detailPath = `${baseScopePath}/${encodeURIComponent(instance.workflowName)}/${encodeURIComponent(instance.instanceId)}`;
                     const detailHref = location.search
                       ? `${detailPath}${location.search}`
                       : detailPath;

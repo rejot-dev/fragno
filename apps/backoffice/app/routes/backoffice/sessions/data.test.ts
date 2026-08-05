@@ -143,7 +143,7 @@ describe("Pi session route caller", () => {
     });
 
     expect(requireBackofficeContextMock).toHaveBeenCalledWith(request, context, scope);
-    expect(kernel.scoped).toHaveBeenCalledWith("PI", scope, {});
+    expect(kernel.scoped).toHaveBeenCalledWith("AUTOMATIONS", scope, undefined);
     expect(fetchWithContext).toHaveBeenCalledOnce();
     const [forwardedRequest, actionContext] = fetchWithContext.mock.calls[0]!;
     assert.instanceOf(forwardedRequest, Request);

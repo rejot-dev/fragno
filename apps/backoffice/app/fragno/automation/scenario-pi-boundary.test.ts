@@ -3,6 +3,7 @@ import { describe, expect, test, vi, assert } from "vitest";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 
 import {
+  createBackofficeSystemExecution,
   createBackofficeUserExecution,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
@@ -54,12 +55,16 @@ const loadPiSessionExecution = async (
   sessionId: string,
 ): Promise<BackofficeExecutionContext> => {
   const scope = { kind: "org" as const, orgId };
-  const response = await ctx.runtime.objects.pi
+  const response = await ctx.runtime.objects.automations
     .forOrg(orgId)
-    .fetch(
+    .fetchWithContext(
       new Request(
-        `https://pi.test/api/pi-workflows/${BACKOFFICE_PI_WORKFLOW_NAME}/instances/${sessionId}?scope=org%3A${orgId}`,
+        `https://pi.test/api/workflows/${BACKOFFICE_PI_WORKFLOW_NAME}/instances/${sessionId}?scope=org%3A${orgId}`,
       ),
+      {
+        execution: createBackofficeSystemExecution(scope),
+        propagationContext: null,
+      },
     );
 
   assert(response.status === 200);
@@ -137,7 +142,7 @@ const createScenarioPiSession = async ({
   metadata?: Record<string, unknown>;
 }) => {
   const scope = { kind: "org" as const, orgId };
-  const response = await ctx.runtime.objects.pi.forOrg(orgId).fetchWithContext(
+  const response = await ctx.runtime.objects.automations.forOrg(orgId).fetchWithContext(
     new Request(
       `https://pi.test/api/pi/workflows/${BACKOFFICE_PI_WORKFLOW_NAME}/sessions?scope=org%3A${orgId}`,
       {
@@ -179,7 +184,7 @@ describe("scenario Pi boundary", () => {
         fakes: ({ fake }) => ({ pi: fake.pi() }),
         steps: ({ then }) => [
           then.assert("raw Pi session fetch is denied", async (ctx) => {
-            const response = await ctx.runtime.objects.pi
+            const response = await ctx.runtime.objects.automations
               .forOrg("org-1")
               .fetch(sessionListRequest());
             assert(response.status === 403);
@@ -188,7 +193,7 @@ describe("scenario Pi boundary", () => {
             });
           }),
           then.assert("deferred user context resolves current authority", async (ctx) => {
-            const response = await ctx.runtime.objects.pi
+            const response = await ctx.runtime.objects.automations
               .forOrg("org-1")
               .fetchWithContext(sessionListRequest(), {
                 execution: createBackofficeUserExecution({
@@ -254,7 +259,7 @@ describe("scenario Pi boundary", () => {
               throw new Error("Pi session id was not captured.");
             }
 
-            const response = await ctx.runtime.objects.pi
+            const response = await ctx.runtime.objects.automations
               .forOrg("org-1")
               .fetchWithContext(piCommandRequest("org-1", sessionId), {
                 execution: createBackofficeUserExecution({
@@ -266,27 +271,35 @@ describe("scenario Pi boundary", () => {
             assert(response.status === 202);
             await expect(response.json()).resolves.toMatchObject({ accepted: true });
           }),
-          then.assert("missing or malformed persisted actors fail closed", async (ctx) => {
-            const response = await ctx.runtime.objects.pi.forOrg("org-1").fetch(
-              new Request(
-                `https://pi.test/api/pi-workflows/${BACKOFFICE_PI_WORKFLOW_NAME}/instances?scope=org%3Aorg-1`,
-                {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify({
-                    id: "legacy-session",
-                    params: {
-                      metadata: { model: { provider: "openai", name: "gpt-5.6-luna" } },
-                      __piSession: { name: null },
+          then.assert(
+            "generic workflow creation cannot bypass the Pi session boundary",
+            async (ctx) => {
+              const scope = { kind: "org" as const, orgId: "org-1" };
+              const response = await ctx.runtime.objects.automations
+                .forOrg("org-1")
+                .fetchWithContext(
+                  new Request(
+                    `https://pi.test/api/workflows/${BACKOFFICE_PI_WORKFLOW_NAME}/instances`,
+                    {
+                      method: "POST",
+                      headers: { "content-type": "application/json" },
+                      body: JSON.stringify({
+                        id: "bypass-session",
+                        params: {
+                          metadata: { model: { provider: "openai", name: "gpt-5.6-luna" } },
+                          __piSession: { name: null },
+                        },
+                      }),
                     },
-                  }),
-                },
-              ),
-            );
-            assert(response.status === 200);
-
-            await expect(loadPiSessionExecution(ctx, "org-1", "legacy-session")).rejects.toThrow();
-          }),
+                  ),
+                  {
+                    execution: createBackofficeUserExecution({ scope, userId: "owner" }),
+                    propagationContext: null,
+                  },
+                );
+              assert(response.status === 404);
+            },
+          ),
         ],
       }),
     );

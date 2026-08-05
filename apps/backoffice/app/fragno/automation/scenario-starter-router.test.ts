@@ -4,6 +4,7 @@ import { isWorkflowStepStartedControlPayload } from "@fragno-dev/workflows/step-
 
 import { and, eq, queryOnce } from "@tanstack/react-db";
 
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE } from "@/files/content/telegram-test-command";
 
@@ -252,8 +253,10 @@ describe("starter automation router scenarios", () => {
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then }) => [
           then.assert("assert live step controls synchronize", async (ctx) => {
+            const scope = { kind: "org" as const, orgId: "org-1" };
             const workflow = createRouteBackedAutomationWorkflowRuntime({
-              object: ctx.runtime.objects.automations.forOrg("org-1"),
+              object: ctx.runtime.objects.automations.forOrg(scope.orgId),
+              execution: createBackofficeSystemExecution(scope),
             });
             await workflow.createInstance({
               workflowName: "automation-codemode-script",

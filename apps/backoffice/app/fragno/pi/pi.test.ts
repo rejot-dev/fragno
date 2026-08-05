@@ -1,6 +1,8 @@
 import { describe, expect, test, assert } from "vitest";
 
+import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { InMemoryAdapter } from "@fragno-dev/db";
+import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
@@ -14,7 +16,7 @@ import type { UploadFileRecord } from "@/fragno/upload/file-record";
 
 import { createTestMasterFileSystem } from "../automation/engine/test-master-file-system.test-utils";
 import {
-  createPiRuntime,
+  createPiRuntimeDefinition,
   createPiToolFactory,
   createPiToolRegistry,
   type PiRuntimeToolContext,
@@ -33,7 +35,6 @@ const testRuntimeConfig: BackofficeRuntimeConfig = {
     marketplace: false,
     telegram: false,
     otp: false,
-    pi: false,
     resend: false,
     reson8: false,
     mcp: false,
@@ -138,26 +139,31 @@ const createMockRuntimeToolContext = (): PiRuntimeToolContext => ({
 describe("Backoffice Pi fragment", () => {
   test("rejects unknown model names before creating the session", async () => {
     const context = createContext();
-    const runtime = createPiRuntime({
-      config: {
-        scope: { kind: "org", orgId: "acme-org" },
-      },
+    const adapter = new InMemoryAdapter({ idSeed: "pi-invalid-model-test" });
+    const definition = createPiRuntimeDefinition({
+      scope: { kind: "org", orgId: "acme-org" },
+      kernel: context.kernel,
       apiKeys: { openai: "test-key" },
-      adapters: {
-        createAdapter: () => new InMemoryAdapter({ idSeed: "pi-invalid-model-test" }),
-      } as never,
       sessionFileSystems: new Map(),
       sessionFileSystemContext: context,
       runtimeToolContext: createMockRuntimeToolContext(),
       codemode: {
-        env: {} as never,
         execute: async () => {
           throw new Error("codemode not available in test");
         },
       },
     });
 
-    const response = await runtime.piFragment.handler(
+    const workflowsFragment = createWorkflowsFragment(
+      { workflows: definition.workflows, runtime: defaultFragnoRuntime },
+      { databaseAdapter: adapter },
+    );
+    const piFragment = definition.createFragment({
+      databaseAdapter: adapter,
+      workflows: workflowsFragment.services,
+    });
+
+    const response = await piFragment.handler(
       new Request(`http://test.local/api/pi/workflows/${BACKOFFICE_PI_WORKFLOW_NAME}/sessions`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -175,8 +181,8 @@ describe("Backoffice Pi fragment", () => {
       message: "Model openai/bla not found.",
     });
 
-    const listResponse = await runtime.workflowsFragment.callServices(() =>
-      runtime.workflowsFragment.services.listInstances({
+    const listResponse = await workflowsFragment.callServices(() =>
+      workflowsFragment.services.listInstances({
         workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
       }),
     );

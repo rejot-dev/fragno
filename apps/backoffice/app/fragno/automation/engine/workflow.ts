@@ -3,12 +3,18 @@ import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
+  type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { FileSystemError } from "@/files/fs-errors";
 import { MasterFileSystem } from "@/files/master-file-system";
+import {
+  BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY,
+  type BackofficeWorkflowActorMetadata,
+} from "@/fragno/automation/actors";
+import { automationActorsSchema } from "@/fragno/automation/actors";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 import type { PiCodemodeWorkflowParams } from "@/fragno/pi/pi-codemode-workflow";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
@@ -18,7 +24,7 @@ import type { AutomationTriggerBinding } from "../../runtime-tools/automation-ty
 import { AUTOMATION_WORKSPACE_ROOT, type AutomationFileSystemConfig } from "../catalog";
 import { resolveAutomationFileSystem } from "../catalog";
 import type { AutomationEvent } from "../contracts";
-import { type AutomationRuntimeHostContext } from "./runtime";
+import { type AutomationPiBashContext, type AutomationRuntimeHostContext } from "./runtime";
 import { createAutomationRuntimeExecution } from "./runtime-execution";
 import { AUTOMATION_CODEMODE_WORKFLOW, PI_CODEMODE_WORKFLOW } from "./workflow-start";
 
@@ -36,21 +42,32 @@ export type AutomationCodemodeWorkflowParams = {
   workflowInstanceId: string;
   binding?: AutomationTriggerBinding;
   idempotencyKey?: string;
+  metadata: BackofficeWorkflowActorMetadata;
 };
 
-const createWorkflowAutomationContext = ({
+const createWorkflowAutomationContext = async ({
   runtime,
   params,
+  createPiAutomationContext,
 }: {
   runtime: BackofficeRuntimeServices;
   params: AutomationCodemodeWorkflowParams;
-}): AutomationRuntimeHostContext => {
+  createPiAutomationContext?: (input: {
+    event: AutomationEvent;
+    idempotencyKey: string;
+  }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
+}): Promise<AutomationRuntimeHostContext> => {
   const kernel = new BackofficeKernel(runtime);
   const execution = createAutomationRuntimeExecution(params.automationEvent);
+  const pi = await createPiAutomationContext?.({
+    event: params.automationEvent,
+    idempotencyKey: params.idempotencyKey ?? params.workflowInstanceId,
+  });
   const runtimeContext = createRouteBackedRuntimeContext({
     runtime,
     kernel,
     execution,
+    ...(pi ? { pi } : {}),
   });
   const eventRuntime = createEventRuntime({
     objects: runtime.objects,
@@ -122,7 +139,14 @@ const isMissingWorkflowScriptError = (error: unknown) => {
 };
 
 export const defineAutomationCodemodeWorkflow = (
-  config: AutomationFileSystemConfig & { env?: CloudflareEnv; runtime?: BackofficeRuntimeServices },
+  config: AutomationFileSystemConfig & {
+    env?: CloudflareEnv;
+    runtime?: BackofficeRuntimeServices;
+    createPiAutomationContext?: (input: {
+      event: AutomationEvent;
+      idempotencyKey: string;
+    }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
+  },
 ) =>
   defineRemoteWorkflow({ name: AUTOMATION_CODEMODE_WORKFLOW }, async (event, remote) => {
     if (!config.env?.LOADER) {
@@ -158,9 +182,10 @@ export const defineAutomationCodemodeWorkflow = (
       throw new Error("Workflow-backed codemode automation requires Backoffice runtime services.");
     }
 
-    const context = createWorkflowAutomationContext({
+    const context = await createWorkflowAutomationContext({
       runtime: config.runtime,
       params,
+      createPiAutomationContext: config.createPiAutomationContext,
     });
     const result = await executeWorkflowCodemodeAutomation({
       script,
@@ -181,6 +206,7 @@ export const defineAutomationCodemodeWorkflow = (
 export const definePiCodemodeWorkflow = (config: {
   env?: BackofficeCodemodeEnv & CloudflareEnv;
   runtime?: BackofficeRuntimeServices;
+  ownerScope: BackofficeContextScope;
 }) =>
   defineRemoteWorkflow({ name: PI_CODEMODE_WORKFLOW }, async (event, remote) => {
     if (!config.env?.LOADER) {
@@ -191,6 +217,12 @@ export const definePiCodemodeWorkflow = (config: {
     const { executePiCodemodeWorkflow } = await import("./codemode");
     return await executePiCodemodeWorkflow({
       params,
+      execution: {
+        scope: config.ownerScope,
+        actors: automationActorsSchema.parse(
+          params.metadata?.[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
+        ),
+      },
       masterFs: new MasterFileSystem({
         mounts: [],
       }),

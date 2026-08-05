@@ -891,7 +891,6 @@ const createScopedMcpRuntimeServices = (
         marketplace: false,
         telegram: false,
         otp: false,
-        pi: false,
         resend: false,
         reson8: false,
         mcp: true,

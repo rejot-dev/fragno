@@ -11,7 +11,6 @@ import { InMemoryGitHubObject } from "../../workers/github.do";
 import { InMemoryMarketplaceObject } from "../../workers/marketplace.do";
 import { InMemoryMcpObject } from "../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../workers/otp.do";
-import { InMemoryPiObject } from "../../workers/pi.do";
 import { InMemoryResendObject } from "../../workers/resend.do";
 import { InMemoryReson8Object } from "../../workers/reson8.do";
 import { InMemoryTelegramObject } from "../../workers/telegram.do";
@@ -243,12 +242,6 @@ const inMemoryObjectFactories = {
       env,
       runtime,
     }),
-  PI: ({ state, env, runtime }) =>
-    new InMemoryPiObject({
-      state,
-      env: env as never,
-      runtime,
-    }),
   AUTOMATIONS: ({ state, env, runtime, getAutomationFileSystem }) =>
     new InMemoryAutomationsObject({
       state,
@@ -384,7 +377,6 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
         marketplace: this.#hasNamespace("MARKETPLACE"),
         telegram: this.#hasNamespace("TELEGRAM"),
         otp: this.#hasNamespace("OTP"),
-        pi: this.#hasNamespace("PI"),
         resend: this.#hasNamespace("RESEND"),
         reson8: this.#hasNamespace("RESON8"),
         mcp: this.#hasNamespace("MCP"),

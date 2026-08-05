@@ -6,7 +6,10 @@ import {
   createBackofficeUserExecution,
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
-import type { BackofficeObjectRegistry, PiObject } from "@/backoffice-runtime/object-registry";
+import type {
+  BackofficeObjectRegistry,
+  AutomationsObject,
+} from "@/backoffice-runtime/object-registry";
 
 import { createBashHost } from "../bash-host";
 import type { RegisteredAutomationsRuntime } from "../bash-host";
@@ -23,11 +26,13 @@ import {
 
 const now = new Date("2026-01-01T00:00:00.000Z");
 
-const createPiObjects = (env: Pick<CloudflareEnv, "PI">): BackofficeObjectRegistry =>
+const createAutomationsObjects = (
+  env: Pick<CloudflareEnv, "AUTOMATIONS">,
+): BackofficeObjectRegistry =>
   ({
-    pi: {
+    automations: {
       forOrg: (orgId: string) => {
-        const object = env.PI.get(env.PI.idFromName(orgId));
+        const object = env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(orgId));
         return {
           ...object,
           fetchWithContext: async (request: Request) => await object.fetch(request),
@@ -714,7 +719,7 @@ describe("createPiRouteRuntime", () => {
     const object = {
       fetch: fetchWithContext,
       fetchWithContext,
-    } as unknown as PiObject;
+    } as unknown as AutomationsObject;
 
     await createPiRouteRuntime({
       object,
@@ -769,7 +774,7 @@ describe("createPiRouteRuntime", () => {
     }> = [];
 
     const env = {
-      PI: {
+      AUTOMATIONS: {
         idFromName: (orgId: string) => `pi:${orgId}`,
         get: () => ({
           fetch: async (request: Request) => {
@@ -884,7 +889,7 @@ describe("createPiRouteRuntime", () => {
 
     const scope = { kind: "org", orgId: "acme" } as const;
     const runtime = createPiRouteRuntime({
-      object: createPiObjects(env).pi.forOrg("acme"),
+      object: createAutomationsObjects(env).automations.forOrg("acme"),
       scope,
       execution: createPiTestExecution(scope),
     });
@@ -1026,7 +1031,7 @@ describe("createPiRouteRuntime", () => {
     let commandHandled = false;
 
     const env = {
-      PI: {
+      AUTOMATIONS: {
         idFromName: (orgId: string) => `pi:${orgId}`,
         get: () => ({
           fetch: async (request: Request) => {
@@ -1063,7 +1068,7 @@ describe("createPiRouteRuntime", () => {
 
     const scope = { kind: "org", orgId: "acme" } as const;
     const runtime = createPiRouteRuntime({
-      object: createPiObjects(env).pi.forOrg("acme"),
+      object: createAutomationsObjects(env).automations.forOrg("acme"),
       scope,
       execution: createPiTestExecution(scope),
     });
@@ -1124,7 +1129,7 @@ describe("createPiRouteRuntime", () => {
     };
 
     const env = {
-      PI: {
+      AUTOMATIONS: {
         idFromName: (orgId: string) => `pi:${orgId}`,
         get: () => ({
           fetch: async (request: Request) => {
@@ -1172,7 +1177,7 @@ describe("createPiRouteRuntime", () => {
 
     const scope = { kind: "org", orgId: "acme" } as const;
     const runtime = createPiRouteRuntime({
-      object: createPiObjects(env).pi.forOrg("acme"),
+      object: createAutomationsObjects(env).automations.forOrg("acme"),
       scope,
       execution: createPiTestExecution(scope),
     });
@@ -1187,7 +1192,7 @@ describe("createPiRouteRuntime", () => {
 
   it("turns Pi route failures into command-friendly errors", async () => {
     const env = {
-      PI: {
+      AUTOMATIONS: {
         idFromName: (orgId: string) => `pi:${orgId}`,
         get: () => ({
           fetch: async (request: Request) => {
@@ -1215,7 +1220,7 @@ describe("createPiRouteRuntime", () => {
 
     const scope = { kind: "org", orgId: "acme" } as const;
     const runtime = createPiRouteRuntime({
-      object: createPiObjects(env).pi.forOrg("acme"),
+      object: createAutomationsObjects(env).automations.forOrg("acme"),
       scope,
       execution: createPiTestExecution(scope),
     });
@@ -1236,7 +1241,7 @@ describe("createPiRouteRuntime", () => {
 
   it("surfaces pi.session.turn prompt route failures", async () => {
     const env = {
-      PI: {
+      AUTOMATIONS: {
         idFromName: (orgId: string) => `pi:${orgId}`,
         get: () => ({
           fetch: async (request: Request) => {
@@ -1286,7 +1291,7 @@ describe("createPiRouteRuntime", () => {
 
     const scope = { kind: "org", orgId: "acme" } as const;
     const runtime = createPiRouteRuntime({
-      object: createPiObjects(env).pi.forOrg("acme"),
+      object: createAutomationsObjects(env).automations.forOrg("acme"),
       scope,
       execution: createPiTestExecution(scope),
     });
@@ -1298,7 +1303,7 @@ describe("createPiRouteRuntime", () => {
 
   it("surfaces pi.session.turn wait-for-agent-end failures", async () => {
     const env = {
-      PI: {
+      AUTOMATIONS: {
         idFromName: (orgId: string) => `pi:${orgId}`,
         get: () => ({
           fetch: async (request: Request) => {
@@ -1338,7 +1343,7 @@ describe("createPiRouteRuntime", () => {
 
     const scope = { kind: "org", orgId: "acme" } as const;
     const runtime = createPiRouteRuntime({
-      object: createPiObjects(env).pi.forOrg("acme"),
+      object: createAutomationsObjects(env).automations.forOrg("acme"),
       scope,
       execution: createPiTestExecution(scope),
     });

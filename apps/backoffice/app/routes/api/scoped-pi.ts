@@ -22,7 +22,7 @@ export async function forwardScopedPiRequest({
   request: Request;
   context: Readonly<RouterContextProvider>;
   params: ScopedPiRouteParams;
-  mountRoute: "/api/pi" | "/api/pi-workflows";
+  mountRoute: "/api/pi" | "/api/workflows";
 }): Promise<Response> {
   if (!params.scopeSegment) {
     return new Response("Missing Pi scope", { status: 400 });
@@ -40,13 +40,13 @@ export async function forwardScopedPiRequest({
   const execution = await requireBackofficeContext(request, context, scope);
 
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
-  const piObject = kernel.scoped("PI", scope, runtime.objects.pi);
+  const automationsObject = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
   const suffix = params["*"] ? `/${params["*"]}` : "";
   const url = new URL(request.url);
   url.pathname = `${mountRoute}${suffix}`;
   url.searchParams.set("scope", backofficeContextScopeSinglePathSegment(scope));
 
-  return await piObject.fetchWithContext(new Request(url.toString(), request), {
+  return await automationsObject.fetchWithContext(new Request(url.toString(), request), {
     execution,
     propagationContext: null,
   });

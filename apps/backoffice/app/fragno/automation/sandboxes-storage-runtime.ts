@@ -1,4 +1,12 @@
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import {
+  createBackofficeServiceExecution,
+  createBackofficeSystemExecution,
+  type BackofficeContextScope,
+} from "@/backoffice-runtime/context";
+import {
+  BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY,
+  type BackofficeWorkflowActorMetadata,
+} from "@/fragno/automation/actors";
 import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
 
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
@@ -35,7 +43,9 @@ import { automationFragmentSchema } from "./schema";
 
 export const SANDBOX_LIFECYCLE_WORKFLOW_NAME = "sandbox-lifecycle" as const;
 
-export type SandboxLifecycleWorkflowParams = SandboxInstanceRequestInput;
+export type SandboxLifecycleWorkflowParams = SandboxInstanceRequestInput & {
+  metadata: BackofficeWorkflowActorMetadata;
+};
 
 type AutomationSandboxServicesOptions = {
   workflows: AutomationWorkflowsService;
@@ -197,11 +207,24 @@ export const createAutomationSandboxServices = (
     requestSandboxInstance(args: SandboxInstanceRequestInput) {
       const input = sandboxInstanceRequestInputSchema.parse(args);
       const workflows = options.workflows;
+      const execution =
+        options.ownerScope.kind === "system"
+          ? createBackofficeSystemExecution(options.ownerScope)
+          : createBackofficeServiceExecution({
+              scope: options.ownerScope,
+              service: {
+                type: "object",
+                id: `automations:${options.ownerScope.kind}`,
+              },
+            });
       const workflowParams = {
         ...input,
         keepAlive: input.keepAlive ?? false,
         startupCommand: input.startupCommand || "true",
         startupTimeoutMs: input.startupTimeoutMs ?? 15_000,
+        metadata: {
+          [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: execution.actors,
+        },
       } satisfies SandboxLifecycleWorkflowParams;
 
       return this.serviceTx(automationFragmentSchema)

@@ -6,13 +6,13 @@ import type {
   BackofficeContextScope,
   BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import type { PiObject } from "@/backoffice-runtime/object-registry";
+import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { BACKOFFICE_PI_WORKFLOW_NAME, type PiModel } from "@/fragno/pi/pi-shared";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-errors";
 
-type PiFragment = ReturnType<typeof createPiHarness>;
+type PiFragment = ReturnType<typeof createPiHarness<BackofficeExecutionContext>>;
 
 export type PiSessionCreateArgs = {
   model?: PiModel;
@@ -82,7 +82,7 @@ const createPiRouteCaller = ({
   scope,
   execution,
 }: {
-  object: PiObject;
+  object: AutomationsObject;
   scope: BackofficeContextScope;
   execution: BackofficeExecutionContext;
 }) =>
@@ -100,137 +100,155 @@ const createPiRouteCaller = ({
     },
   });
 
+type PiRouteCaller = PiFragment["callRoute"];
+
+const createPiRuntime = (callRoute: PiRouteCaller): PiRuntime => ({
+  createSession: async (args) => {
+    const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
+      pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME },
+      body: {
+        name: args.name,
+        metadata: { ...args.metadata, ...(args.model ? { model: args.model } : {}) },
+        input: {
+          systemPrompt: args.systemMessage,
+        },
+      },
+    });
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return response.data;
+    }
+    return throwOnRouteRuntimeError(response, {
+      runtimeLabel: "Pi",
+      label: "pi.session.create",
+    });
+  },
+  getSession: async ({ sessionId, events, trace, turns }) => {
+    const query: Record<string, string> = {};
+    if (typeof events === "boolean") {
+      query.events = String(events);
+    }
+    if (typeof trace === "boolean") {
+      query.trace = String(trace);
+    }
+    if (typeof turns === "boolean") {
+      query.turns = String(turns);
+    }
+
+    const response = await callRoute("GET", "/workflows/:workflowName/sessions/:sessionId", {
+      pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME, sessionId },
+      query,
+    });
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return response.data;
+    }
+    return throwOnRouteRuntimeError(response, {
+      runtimeLabel: "Pi",
+      label: "pi.session.get",
+    });
+  },
+  listSessions: async ({ limit }) => {
+    const query: Record<string, string> = {};
+    if (typeof limit === "number") {
+      query.limit = String(limit);
+    }
+
+    const response = await callRoute("GET", "/workflows/:workflowName/sessions", {
+      pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME },
+      query,
+    });
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return response.data;
+    }
+    return throwOnRouteRuntimeError(response, {
+      runtimeLabel: "Pi",
+      label: "pi.session.list",
+    });
+  },
+  runTurn: async ({ sessionId, text }) => {
+    const normalizedSessionId = sessionId.trim();
+    if (!normalizedSessionId) {
+      throw new Error("pi.session.turn requires a session id");
+    }
+
+    const normalizedText = text.trim();
+    if (!normalizedText) {
+      throw new Error("pi.session.turn requires non-empty text");
+    }
+
+    const pathParams = {
+      workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
+      sessionId: normalizedSessionId,
+    };
+    const waitResponse = callRoute(
+      "GET",
+      "/workflows/:workflowName/sessions/:sessionId/wait-for-agent-end",
+      {
+        pathParams,
+        query: { timeoutMs: "60000" },
+      },
+    );
+    void waitResponse.catch(() => undefined);
+
+    const promptResponse = await callRoute(
+      "POST",
+      "/workflows/:workflowName/sessions/:sessionId/command",
+      {
+        pathParams,
+        body: {
+          kind: "prompt",
+          input: { text: normalizedText },
+        },
+      },
+    );
+    if (promptResponse.type !== "json" || !isSuccessStatus(promptResponse.status)) {
+      return throwOnRouteRuntimeError(promptResponse, {
+        runtimeLabel: "Pi",
+        label: "pi.session.turn prompt",
+      });
+    }
+
+    const detailResponse = await waitResponse;
+    if (detailResponse.type !== "json" || !isSuccessStatus(detailResponse.status)) {
+      return throwOnRouteRuntimeError(detailResponse, {
+        runtimeLabel: "Pi",
+        label: "pi.session.turn wait-for-agent-end",
+      });
+    }
+
+    const detail = detailResponse.data;
+
+    return {
+      ...detail,
+      assistantText: extractAssistantText(detail.agent.state.messages),
+      commandStatus: promptResponse.data.status,
+      stream: [],
+      terminalState: detail.agent.state,
+    };
+  },
+});
+
 export const createPiRouteRuntime = ({
   object,
   scope,
   execution,
 }: {
-  object: PiObject;
+  object: AutomationsObject;
   scope: BackofficeContextScope;
   execution: BackofficeExecutionContext;
+}): PiRuntime => createPiRuntime(createPiRouteCaller({ object, scope, execution }));
+
+export const createPiFragmentRuntime = ({
+  fragment,
+  execution,
+}: {
+  fragment: PiFragment;
+  execution: BackofficeExecutionContext;
 }): PiRuntime => {
-  const callRoute = createPiRouteCaller({ object, scope, execution });
+  const callRoute: PiRouteCaller = (method, path, inputOptions) =>
+    fragment.callRoute(method, path, inputOptions, {
+      requestContext: execution,
+      propagationContext: null,
+    });
 
-  return {
-    createSession: async (args) => {
-      const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
-        pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME },
-        body: {
-          name: args.name,
-          metadata: { ...args.metadata, ...(args.model ? { model: args.model } : {}) },
-          input: {
-            systemPrompt: args.systemMessage,
-          },
-        },
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data;
-      }
-      return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Pi",
-        label: "pi.session.create",
-      });
-    },
-    getSession: async ({ sessionId, events, trace, turns }) => {
-      const query: Record<string, string> = {};
-      if (typeof events === "boolean") {
-        query.events = String(events);
-      }
-      if (typeof trace === "boolean") {
-        query.trace = String(trace);
-      }
-      if (typeof turns === "boolean") {
-        query.turns = String(turns);
-      }
-
-      const response = await callRoute("GET", "/workflows/:workflowName/sessions/:sessionId", {
-        pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME, sessionId },
-        query,
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data;
-      }
-      return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Pi",
-        label: "pi.session.get",
-      });
-    },
-    listSessions: async ({ limit }) => {
-      const query: Record<string, string> = {};
-      if (typeof limit === "number") {
-        query.limit = String(limit);
-      }
-
-      const response = await callRoute("GET", "/workflows/:workflowName/sessions", {
-        pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME },
-        query,
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data;
-      }
-      return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Pi",
-        label: "pi.session.list",
-      });
-    },
-    runTurn: async ({ sessionId, text }) => {
-      const normalizedSessionId = sessionId.trim();
-      if (!normalizedSessionId) {
-        throw new Error("pi.session.turn requires a session id");
-      }
-
-      const normalizedText = text.trim();
-      if (!normalizedText) {
-        throw new Error("pi.session.turn requires non-empty text");
-      }
-
-      const pathParams = {
-        workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
-        sessionId: normalizedSessionId,
-      };
-      const waitResponse = callRoute(
-        "GET",
-        "/workflows/:workflowName/sessions/:sessionId/wait-for-agent-end",
-        {
-          pathParams,
-          query: { timeoutMs: "60000" },
-        },
-      );
-      const promptResponse = await callRoute(
-        "POST",
-        "/workflows/:workflowName/sessions/:sessionId/command",
-        {
-          pathParams,
-          body: {
-            kind: "prompt",
-            input: { text: normalizedText },
-          },
-        },
-      );
-      if (promptResponse.type !== "json" || !isSuccessStatus(promptResponse.status)) {
-        return throwOnRouteRuntimeError(promptResponse, {
-          runtimeLabel: "Pi",
-          label: "pi.session.turn prompt",
-        });
-      }
-
-      const detailResponse = await waitResponse;
-      if (detailResponse.type !== "json" || !isSuccessStatus(detailResponse.status)) {
-        return throwOnRouteRuntimeError(detailResponse, {
-          runtimeLabel: "Pi",
-          label: "pi.session.turn wait-for-agent-end",
-        });
-      }
-
-      const detail = detailResponse.data;
-
-      return {
-        ...detail,
-        assistantText: extractAssistantText(detail.agent.state.messages),
-        commandStatus: promptResponse.data.status,
-        stream: [],
-        terminalState: detail.agent.state,
-      };
-    },
-  };
+  return createPiRuntime(callRoute);
 };

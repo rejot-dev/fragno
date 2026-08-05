@@ -25,6 +25,7 @@ import type {
   BackofficeActionRpcContext,
   BackofficeObjectAddress,
   BackofficeObjectBindingName,
+  AutomationsObject,
 } from "@/backoffice-runtime/object-registry";
 import {
   BACKOFFICE_PERMISSION,
@@ -53,6 +54,7 @@ import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { BACKOFFICE_PI_WORKFLOW_NAME, type PiModel } from "@/fragno/pi/pi-shared";
 import { createPiCollections, type PiCollections } from "@/fragno/pi/tanstack/collections";
+import { createPiRouteRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
@@ -67,6 +69,7 @@ import {
   type ScenarioCollectionDatabase,
 } from "@/fragno/tanstack/scenario-collection-database";
 
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { listHookScopes } from "../backoffice-capabilities/backoffice-capabilities";
 import {
@@ -1501,19 +1504,27 @@ const getStore = (ctx: BackofficeScenarioContext, orgId: string) => {
 
 const SYSTEM_WORKFLOW_TARGET_ID = "__system__";
 
-const getWorkflow = (ctx: BackofficeScenarioContext, orgId: string) =>
-  orgId === SYSTEM_WORKFLOW_TARGET_ID
-    ? createRouteBackedAutomationWorkflowRuntime({
-        object: ctx.runtime.objects.automations.singleton(),
-      })
-    : createRouteBackedAutomationWorkflowRuntime({
-        object: ctx.runtime.objects.automations.forOrg(orgId),
-      });
-
-const getRouter = (ctx: BackofficeScenarioContext, orgId: string) =>
-  createRouteBackedAutomationRouterRuntime({
-    object: ctx.runtime.objects.automations.forOrg(orgId),
+const getWorkflow = (ctx: BackofficeScenarioContext, orgId: string) => {
+  const scope =
+    orgId === SYSTEM_WORKFLOW_TARGET_ID
+      ? ({ kind: "system" } as const)
+      : ({ kind: "org", orgId } as const);
+  return createRouteBackedAutomationWorkflowRuntime({
+    object:
+      scope.kind === "system"
+        ? ctx.runtime.objects.automations.singleton()
+        : ctx.runtime.objects.automations.forOrg(scope.orgId),
+    execution: createBackofficeSystemExecution(scope),
   });
+};
+
+const getRouter = (ctx: BackofficeScenarioContext, orgId: string) => {
+  const scope = { kind: "org" as const, orgId };
+  return createRouteBackedAutomationRouterRuntime({
+    object: ctx.runtime.objects.automations.forOrg(orgId),
+    execution: createBackofficeSystemExecution(scope),
+  });
+};
 
 const getHooks = (ctx: BackofficeScenarioContext, orgId: string) =>
   createRouteBackedDurableHooksRuntime({
@@ -1565,7 +1576,7 @@ const createScenarioPiTanStackFetch = (
     appendBackofficeScopeQuery(forwardedUrl, scope);
 
     const kernel = new BackofficeKernel(runtime.services);
-    const pi = kernel.scoped("PI", scope, runtime.objects.pi);
+    const pi = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
     return await pi.fetch(new Request(forwardedUrl.toString(), request));
   };
 };
@@ -1616,8 +1627,8 @@ const hookFragmentBindings: Record<string, BackofficeObjectBindingName> = {
   github: "GITHUB",
   mcp: "MCP",
   otp: "OTP",
-  pi: "PI",
-  "pi-workflows": "PI",
+  pi: "AUTOMATIONS",
+  workflows: "AUTOMATIONS",
   resend: "RESEND",
   telegram: "TELEGRAM",
   upload: "UPLOAD",
@@ -2235,8 +2246,7 @@ const buildStepBuilders = <
               throw new Error("Persisted Pi scenarios cannot use fake.pi().");
             }
             ctx.rememberOrg(input.orgId);
-            const scope = { kind: "org" as const, orgId: input.orgId };
-            await ctx.runtime.objects.pi.forOrg(input.orgId).getRuntimeState(scope);
+            await ctx.runtime.objects.automations.forOrg(input.orgId).getPiRuntimeState();
           },
         ),
       defaultAgent: (input) =>
@@ -2551,23 +2561,25 @@ const buildStepBuilders = <
               `http://scenario.local/api/pi/workflows/${encodeURIComponent(workflowName)}/sessions`,
             );
             appendBackofficeScopeQuery(url, scope);
-            const response = await ctx.runtime.objects.pi.forOrg(input.orgId).fetchWithContext(
-              new Request(url, {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({
-                  name: input.name,
-                  metadata: {
-                    model: input.model ?? { provider: "openai", name: "gpt-5.6-luna" },
-                  },
-                  input: {},
+            const response = await ctx.runtime.objects.automations
+              .forOrg(input.orgId)
+              .fetchWithContext(
+                new Request(url, {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({
+                    name: input.name,
+                    metadata: {
+                      model: input.model ?? { provider: "openai", name: "gpt-5.6-luna" },
+                    },
+                    input: {},
+                  }),
                 }),
-              }),
-              {
-                execution: createBackofficeUserExecution({ scope, userId: "user-1" }),
-                propagationContext: null,
-              },
-            );
+                {
+                  execution: createBackofficeUserExecution({ scope, userId: "user-1" }),
+                  propagationContext: null,
+                },
+              );
             if (!response.ok) {
               throw new Error(
                 `Pi session creation failed (${response.status}): ${await response.text()}`,
@@ -3820,25 +3832,39 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
   }
 
   if (fakes.pi) {
-    objectFactories.PI = ({ runtime }) => {
+    objectFactories.AUTOMATIONS = ({ state, env, runtime, getAutomationFileSystem }) => {
+      const object = new InMemoryAutomationsObject({
+        state,
+        env,
+        runtime,
+        getAutomationFileSystem,
+        createPiRuntime: (execution) =>
+          createPiRouteRuntime({
+            object: {
+              fetchWithContext: async (request, context) =>
+                await fakes.pi!.fetchWithContext(request, context),
+            } as AutomationsObject,
+            scope: execution.scope,
+            execution,
+          }),
+      });
       const kernel = new BackofficeKernel(runtime);
 
-      return {
-        fetch: (request: Request) => fakes.pi!.fetch(request),
-        fetchWithContext: async (request: Request, context: BackofficeActionRpcContext) => {
-          const sessionRoute =
-            /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/([^/]+))?$/u.exec(
-              new URL(request.url).pathname,
-            );
-          const operation =
-            sessionRoute && request.method === "GET"
-              ? BACKOFFICE_PERMISSION.pi.read
-              : sessionRoute && request.method === "POST"
-                ? BACKOFFICE_PERMISSION.pi.modify
-                : null;
+      const fetchPiWithContext = async (request: Request, context: BackofficeActionRpcContext) => {
+        const sessionRoute =
+          /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/([^/]+))?$/u.exec(
+            new URL(request.url).pathname,
+          );
+        const operation =
+          sessionRoute && request.method === "GET"
+            ? BACKOFFICE_PERMISSION.pi.read
+            : sessionRoute && request.method === "POST"
+              ? BACKOFFICE_PERMISSION.pi.modify
+              : null;
 
-          if (operation) {
-            const action = {
+        if (operation) {
+          try {
+            await kernel.assertAuthorized({
               execution: context.execution,
               operation,
               resource: {
@@ -3850,38 +3876,39 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
                 workflowName: sessionRoute?.[1],
                 sessionId: sessionRoute?.[2],
               },
-            };
-            try {
-              await kernel.assertAuthorized(action);
-            } catch (cause) {
-              if (cause instanceof BackofficeForbiddenError) {
-                return Response.json(
-                  { message: cause.message, code: cause.reason },
-                  { status: cause.reason === "authority-unavailable" ? 503 : 403 },
-                );
-              }
-              throw cause;
+            });
+          } catch (cause) {
+            if (cause instanceof BackofficeForbiddenError) {
+              return Response.json(
+                { message: cause.message, code: cause.reason },
+                { status: cause.reason === "authority-unavailable" ? 503 : 403 },
+              );
             }
+            throw cause;
           }
+        }
 
-          return await fakes.pi!.fetchWithContext(request, context);
-        },
-        alarm: async () => undefined,
-        getAdminConfig: async () => ({ configured: true }),
-        resetAdminConfig: async () => ({ configured: false }),
-        setAdminConfig: async () => ({ configured: true }),
-        getDurableHookRepository: () => ({
-          getHookQueue: async () => ({
-            configured: false,
-            hooksEnabled: false,
-            namespace: null,
-            items: [],
-            cursor: undefined,
-            hasNextPage: false,
-          }),
-          getHook: async () => null,
-        }),
+        return await fakes.pi!.fetchWithContext(request, context);
       };
+
+      return new Proxy(object, {
+        get(target, property, receiver) {
+          if (property === "fetchWithContext") {
+            return async (request: Request, context: BackofficeActionRpcContext) =>
+              new URL(request.url).pathname.startsWith("/api/pi")
+                ? await fetchPiWithContext(request, context)
+                : await target.fetchWithContext(request, context);
+          }
+          if (property === "getPiRuntimeState") {
+            return async () => ({ configured: true, modelCatalog: [] });
+          }
+          const value = Reflect.get(target, property, receiver) as unknown;
+          if (typeof value !== "function") {
+            return value;
+          }
+          return (...args: unknown[]): unknown => Reflect.apply(value, target, args) as unknown;
+        },
+      });
     };
   }
 

@@ -38,6 +38,6 @@ export const createWorkflowsRouteCaller = (
 ): ReturnType<typeof createRouteCaller<WorkflowsFragment>> =>
   createRouteCaller<WorkflowsFragment>({
     baseUrl: "https://automations.do",
-    mountRoute: "/api/automations-workflows",
+    mountRoute: "/api/workflows",
     fetch: createAutomationsDoFetch(options),
   });

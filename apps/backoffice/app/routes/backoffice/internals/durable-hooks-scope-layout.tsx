@@ -102,11 +102,13 @@ const loadDurableHookQueue = async ({
       return repository.getHookQueue(queueOptions);
     }
     case "pi": {
-      const repository = await objects.pi.for(selection.scope).getDurableHookRepository("pi");
+      const repository = await objects.automations
+        .for(selection.scope)
+        .getDurableHookRepository("pi");
       return repository.getHookQueue(queueOptions);
     }
-    case "pi-workflows": {
-      const repository = await objects.pi
+    case "workflows": {
+      const repository = await objects.automations
         .for(selection.scope)
         .getDurableHookRepository("workflows");
       return repository.getHookQueue(queueOptions);

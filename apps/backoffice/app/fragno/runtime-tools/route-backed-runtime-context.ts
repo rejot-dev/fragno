@@ -104,6 +104,7 @@ export const createRouteBackedRuntimeContext = ({
           scope,
           ...(execution.userAuthority ? { userAuthority: execution.userAuthority } : {}),
         },
+        pi,
       });
     },
     backoffice: isBackofficeRoutableScope(execution.scope)
@@ -139,7 +140,7 @@ export const createRouteBackedRuntimeContext = ({
     automations: {
       runtime: {
         ...createRouteBackedAutomationStoreRuntime({ object: automationsObject, execution }),
-        ...createRouteBackedAutomationRouterRuntime({ object: automationsObject }),
+        ...createRouteBackedAutomationRouterRuntime({ object: automationsObject, execution }),
       },
     },
     identity: {
@@ -198,13 +199,11 @@ export const createRouteBackedRuntimeContext = ({
         : createUnavailableOtpRuntime(unavailableMessage("OTP", execution)),
     },
     pi: pi ?? {
-      runtime: selectedOrg
-        ? createPiRouteRuntime({
-            object: kernel.scoped("PI", execution.scope, runtime.objects.pi),
-            scope: execution.scope,
-            execution,
-          })
-        : unavailableRuntime<PiRuntime>(unavailableMessage("PI", execution)),
+      runtime: createPiRouteRuntime({
+        object: automationsObject,
+        scope: execution.scope,
+        execution,
+      }),
     },
     reson8: {
       runtime: selectedOrg

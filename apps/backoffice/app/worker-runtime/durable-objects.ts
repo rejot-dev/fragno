@@ -10,7 +10,6 @@ import type {
   MarketplaceObject,
   McpObject,
   OtpObject,
-  PiObject,
   ResendObject,
   Reson8Object,
   TelegramObject,
@@ -76,10 +75,10 @@ export const getUploadDurableObject = (
   orgId: string,
 ): UploadObject => getBackofficeObjects(context).upload.forOrg(orgId);
 
-export const getPiDurableObject = (
+export const getScopedAutomationsDurableObject = (
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
-): PiObject => getBackofficeObjects(context).pi.for(scope);
+): BackofficeRpcObject<AutomationsObject> => getBackofficeObjects(context).automations.for(scope);
 
 export const getGitHubDurableObject = (
   context: Readonly<RouterContextProvider>,

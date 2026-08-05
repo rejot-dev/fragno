@@ -4,6 +4,7 @@ import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/aut
 import {
   BACKOFFICE_SYSTEM_ACTORS,
   createBackofficeServiceExecution,
+  createBackofficeSystemExecution,
   createBackofficeUserExecution,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
@@ -13,6 +14,7 @@ import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-regis
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE } from "@/files/content/telegram-test-command";
+import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { loadAutomationCatalog } from "@/fragno/automation/catalog";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 import { createAutomationRuntimeExecution } from "@/fragno/automation/engine/runtime-execution";
@@ -61,7 +63,6 @@ const config: BackofficeRuntimeConfig = {
     marketplace: false,
     telegram: false,
     otp: false,
-    pi: false,
     resend: false,
     reson8: false,
     mcp: false,
@@ -515,7 +516,7 @@ describe("Automations fetchWithContext authorization", () => {
     const runtime = await createInMemoryBackofficeRuntime({
       authorityResolver: {
         async resolvePrincipalPermissions() {
-          return [BACKOFFICE_PERMISSION.workflow.modify];
+          return [BACKOFFICE_PERMISSION.workflow.read, BACKOFFICE_PERMISSION.workflow.modify];
         },
         async resolveActorCapabilityGrants() {
           return [];
@@ -546,11 +547,12 @@ describe("Automations fetchWithContext authorization", () => {
         id: "trusted-pi-codemode",
         remoteWorkflowName: "forged-run",
         params: {
-          scope,
-          actors: forgedActors,
           code: "async () => undefined",
           sessionId: "session-1",
           toolCallId: "tool-call-1",
+          metadata: {
+            [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: forgedActors,
+          },
         },
       };
 
@@ -577,7 +579,7 @@ describe("Automations fetchWithContext authorization", () => {
         }),
       ).resolves.toMatchObject({ type: "json", data: { id: body.id } });
 
-      const instance = await rawCall("GET", "/:workflowName/instances/:instanceId", {
+      const instance = await trustedCall("GET", "/:workflowName/instances/:instanceId", {
         pathParams: { workflowName: PI_CODEMODE_WORKFLOW, instanceId: body.id },
       });
       expect(instance).toMatchObject({
@@ -585,8 +587,9 @@ describe("Automations fetchWithContext authorization", () => {
         data: {
           meta: {
             params: {
-              scope,
-              actors: execution.actors,
+              metadata: {
+                [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: execution.actors,
+              },
             },
           },
         },
@@ -748,6 +751,9 @@ describe("Automations object scope binding", () => {
 
       const workflows = createWorkflowsRouteCaller({
         object: automations,
+        context: {
+          execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+        },
       });
       const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
         pathParams: {
@@ -808,6 +814,9 @@ describe("Automations object scope binding", () => {
       const automations = runtime.objects.automations.forOrg("org-1");
       const workflows = createWorkflowsRouteCaller({
         object: automations,
+        context: {
+          execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+        },
       });
       const created = await workflows("POST", "/:workflowName/instances", {
         pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },

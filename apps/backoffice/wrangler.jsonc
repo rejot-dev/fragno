@@ -132,10 +132,6 @@
         "class_name": "GitHubWebhookRouter",
       },
       {
-        "name": "PI",
-        "class_name": "Pi",
-      },
-      {
         "name": "AUTOMATIONS",
         "class_name": "Automations",
       },
@@ -237,6 +233,10 @@
     {
       "tag": "v22",
       "new_sqlite_classes": ["Cloudflare"],
+    },
+    {
+      "tag": "v23",
+      "deleted_classes": ["Pi"],
     },
   ],
 }

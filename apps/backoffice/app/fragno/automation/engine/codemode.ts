@@ -5,7 +5,6 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { MasterFileSystem } from "@/files/master-file-system";
-import { automationActorsSchema } from "@/fragno/automation/actors";
 import {
   runBackofficeCodemode,
   type BackofficeCodemodeEnv,
@@ -113,6 +112,7 @@ export const executeWorkflowCodemodeAutomation = async ({
 
 export const executePiCodemodeWorkflow = async ({
   params,
+  execution,
   masterFs,
   env,
   runtime,
@@ -120,17 +120,13 @@ export const executePiCodemodeWorkflow = async ({
   remote,
 }: {
   params: PiCodemodeWorkflowParams;
+  execution: BackofficeExecutionContext;
   masterFs: MasterFileSystem;
   env: BackofficeCodemodeEnv & CloudflareEnv;
   runtime?: BackofficeRuntimeServices;
   workflowEvent: WorkflowEvent<unknown>;
   remote: RemoteWorkflowStepHost;
 }): Promise<unknown> => {
-  const execution: BackofficeExecutionContext = {
-    scope: params.scope,
-    actors: automationActorsSchema.parse(params.actors),
-  };
-
   if (!runtime) {
     throw new Error("Pi codemode workflow requires Backoffice runtime services.");
   }

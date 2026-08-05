@@ -3,7 +3,6 @@ import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { GitHub } from "workers/github.do";
 import type { Mcp } from "workers/mcp.do";
 import type { Otp } from "workers/otp.do";
-import type { Pi } from "workers/pi.do";
 import type { Resend } from "workers/resend.do";
 import type { Reson8 } from "workers/reson8.do";
 import type { TelegramAdminConfigResponse } from "workers/telegram.do";
@@ -78,6 +77,7 @@ import type {
   MarketplacePublishVersionResult,
   MarketplaceUpdateListingInput,
 } from "@/fragno/marketplace/contracts";
+import type { PiRuntimeState } from "@/fragno/pi/pi-shared";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import type { SandboxInstanceStatus } from "@/sandbox/contracts";
 
@@ -260,6 +260,7 @@ export type AutomationsObject = FetchObject &
     getSandboxInstance(input: { id: string }): Promise<SandboxInstanceRecord | null>;
     requestSandboxInstance(input: SandboxInstanceRequestInput): Promise<SandboxInstanceRecord>;
     requestSandboxInstanceStop(input: { id: string }): Promise<SandboxInstanceRecord | null>;
+    getPiRuntimeState(): Promise<PiRuntimeState>;
   };
 
 export type TelegramObject = FetchObject &
@@ -295,14 +296,6 @@ export type OtpObject = FetchObject &
     confirmIdentityClaim(input: unknown): Promise<AwaitedMethodReturn<Otp, "confirmIdentityClaim">>;
   };
 
-export type PiObject = FetchObject &
-  AlarmableObject &
-  DurableHookObject & {
-    getRuntimeState(
-      scope: BackofficeContextScope,
-    ): Promise<AwaitedMethodReturn<Pi, "getRuntimeState">>;
-    fetchWithContext(request: Request, context: BackofficeActionRpcContext): Promise<Response>;
-  };
 export type ResendObject = FetchObject &
   AlarmableObject &
   DurableHookObject &
@@ -383,7 +376,6 @@ export type BackofficeObjectBindingName =
   | "MARKETPLACE"
   | "TELEGRAM"
   | "OTP"
-  | "PI"
   | "RESEND"
   | "RESON8"
   | "MCP"
@@ -426,8 +418,6 @@ export const backofficeObjectScopePolicy = {
   MCP: ["org", "user", "project"],
   UPLOAD: ["org", "named", "user", "project"],
   GITHUB: ["org"],
-
-  PI: ["org"],
 
   GITHUB_WEBHOOK_ROUTER: ["singleton"],
   CLOUDFLARE: ["singleton"],
@@ -757,7 +747,6 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   marketplace: scoped(factory, binding<MarketplaceObject>("MARKETPLACE")),
   telegram: scopedInitialized(factory, initializedBinding<TelegramObject>("TELEGRAM")),
   otp: scoped(factory, binding<OtpObject>("OTP")),
-  pi: scoped(factory, binding<PiObject>("PI")),
   resend: scoped(factory, binding<ResendObject>("RESEND")),
   reson8: scoped(factory, binding<Reson8Object>("RESON8")),
   mcp: scoped(factory, binding<McpObject>("MCP")),

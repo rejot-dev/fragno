@@ -36,7 +36,7 @@ describe("sendBackofficeWorkflowEvent", () => {
     const request = requests[0];
     assert(
       new URL(request.url).pathname ===
-        "/api/automations-scoped/project/org-1%3Aproject%252Fone/workflows/reson8-setup/instances/instance-1/events",
+        "/api/workflows/project%3Aorg-1%3Aproject%252Fone/reson8-setup/instances/instance-1/events",
     );
     expect(await request.json()).toEqual({
       id: "event-1",

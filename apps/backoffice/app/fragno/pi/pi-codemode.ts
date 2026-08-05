@@ -2,6 +2,11 @@ import { runBackofficeCodemode, type BackofficeCodemodeEnv } from "../codemode/e
 import type { PiCodemodeRuntime } from "./pi";
 
 export const createPiCodemodeRuntime = (env: BackofficeCodemodeEnv): PiCodemodeRuntime => ({
-  env,
-  execute: (input) => runBackofficeCodemode(input),
+  execute: (input) => runBackofficeCodemode({ ...input, env }),
+});
+
+export const createUnavailablePiCodemodeRuntime = (): PiCodemodeRuntime => ({
+  execute: async () => {
+    throw new Error("Pi codemode is unavailable because the Worker Loader is not configured.");
+  },
 });

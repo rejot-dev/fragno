@@ -15,6 +15,7 @@ import {
   type MarketplaceArtifactManifest,
 } from "@/fragno/marketplace/contracts";
 
+import { backofficeWorkflowActorMetadataSchema } from "./actors";
 import type { AutomationHookServiceContext } from "./internal-hooks";
 import { automationFragmentSchema } from "./schema";
 
@@ -87,6 +88,7 @@ export type MarketplaceIngestionRequestInput = z.infer<
 export const marketplaceIngestionWorkflowInputSchema =
   marketplaceIngestionRequestInputSchema.extend({
     version: marketplaceVersionSchema,
+    metadata: backofficeWorkflowActorMetadataSchema,
   });
 
 export class MarketplaceIngestionTargetAccessError extends Error {
