@@ -80,7 +80,6 @@ export const createCodemodeStaticArtifacts = async ({
     : [];
 
   const files = createCodemodeTypeFiles({
-    configuredCapabilityIds: configuredCapabilities,
     families,
     mcpServers,
     stateTypes: STATE_TYPES,

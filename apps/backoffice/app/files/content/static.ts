@@ -69,13 +69,11 @@ Inline workflow definitions start automatically. Persist a workflow file only wh
 
 ## Closed-world preflight
 
-Treat the generated TypeScript declarations as a closed world.
+Declarations tell you what can be called; runtime checks tell you what is currently usable.
 
-- Read provider paths referenced by the generated codemode declarations.
-- Every provider and method used in codemode must appear in a loaded declaration.
-- The referenced provider paths are the complete capability set for the current context; absent providers are unavailable.
-
-Before durable execution, preflight every provider operation, concrete target scope, and continuation event type. Preflight is complete when every call has a declaration, every scope has identifiers from input or retrieved data, and every continuation has an exact event type. Start durable work only after preflight completes; report an unavailable requirement as blocking.
+- \`/providers\` contains the complete, stable Backoffice API.
+- \`/sources\` contains dynamically discovered APIs for the current context.
+- Before executing, confirm the method exists, required services are configured, scopes are concrete, and event types are exact; report an unavailable requirement as blocking.
 
 Classify execution errors from their messages. Correct and re-execute declaration or input mismatches; report permission, configuration, and backend failures with the observed error. Report success only from an executed result.
 
