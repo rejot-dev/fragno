@@ -527,10 +527,66 @@ function createServiceTx<
   };
 }
 
+export type DatabaseTransactionKind = "handler" | "service";
+
+export type DatabaseTransactionCallback =
+  | "serviceCalls"
+  | "retrieve"
+  | "afterRetrieve"
+  | "earlyReturn"
+  | "transformRetrieve"
+  | "mutate"
+  | "transform";
+
+export type DatabaseTransactionInstrumentationContext = {
+  fragmentName?: string;
+  transactionKind: DatabaseTransactionKind;
+  transactionName?: string;
+  idempotencyKey?: string;
+  callback?: DatabaseTransactionCallback;
+};
+
+/**
+ * Runtime-neutral boundary for tracing transaction execution and user-defined transaction callbacks.
+ * Implementations must invoke `execute` exactly once and preserve its return value or error.
+ */
+export interface DatabaseTransactionInstrumentation {
+  run<T>(context: DatabaseTransactionInstrumentationContext, execute: () => T): T;
+}
+
+export type DatabaseTransactionInstrumentationErrorCode =
+  | "TRANSACTION_INSTRUMENTATION_MISSING_EXECUTE"
+  | "TRANSACTION_INSTRUMENTATION_MULTIPLE_EXECUTE"
+  | "TRANSACTION_INSTRUMENTATION_LATE_EXECUTE";
+
+export class DatabaseTransactionInstrumentationError extends Error {
+  readonly code: DatabaseTransactionInstrumentationErrorCode;
+
+  constructor(code: DatabaseTransactionInstrumentationErrorCode) {
+    super(`[fragno-db] Database transaction instrumentation contract violated: ${code}.`);
+    this.name = "DatabaseTransactionInstrumentationError";
+    this.code = code;
+  }
+}
+
+export type ServiceTxOptions = {
+  /** Stable, author-defined name used by database instrumentation and Unit of Work diagnostics. */
+  name?: string;
+};
+
 /**
  * Options for executing transactions
  */
 export interface ExecuteTxOptions {
+  /** Stable, author-defined name used by database instrumentation and Unit of Work diagnostics. */
+  name?: string;
+
+  /** Fragment name attached to transaction instrumentation. */
+  fragmentName?: string;
+
+  /** Optional tracing integration for the transaction and its user-defined callbacks. */
+  transactionInstrumentation?: DatabaseTransactionInstrumentation;
+
   /**
    * Factory function that creates or resets a UOW instance for each attempt
    */
@@ -569,6 +625,123 @@ export interface ExecuteTxOptions {
    */
   planMode?: boolean;
 }
+
+type DatabaseTransactionInstrumentationOptions = {
+  fragmentName?: string;
+  transactionName?: string;
+  idempotencyKey?: string;
+  transactionInstrumentation?: DatabaseTransactionInstrumentation;
+};
+
+const runWithTransactionInstrumentation = <T>(
+  options: DatabaseTransactionInstrumentationOptions,
+  transactionKind: DatabaseTransactionKind,
+  execute: () => T,
+  callback?: DatabaseTransactionCallback,
+): T => {
+  if (!options.transactionInstrumentation) {
+    return execute();
+  }
+
+  let executeCalls = 0;
+  let executionResult: T | undefined;
+  let executionFailed = false;
+  let executionError: unknown;
+  let instrumentationSettled = false;
+  let contractError: DatabaseTransactionInstrumentationError | undefined;
+
+  const executeOnce = (): T => {
+    if (instrumentationSettled) {
+      throw new DatabaseTransactionInstrumentationError("TRANSACTION_INSTRUMENTATION_LATE_EXECUTE");
+    }
+
+    executeCalls += 1;
+    if (executeCalls > 1) {
+      contractError ??= new DatabaseTransactionInstrumentationError(
+        "TRANSACTION_INSTRUMENTATION_MULTIPLE_EXECUTE",
+      );
+      throw contractError;
+    }
+
+    try {
+      executionResult = execute();
+      return executionResult;
+    } catch (error) {
+      executionFailed = true;
+      executionError = error;
+      throw error;
+    }
+  };
+
+  let instrumentationFailed = false;
+  let instrumentationError: unknown;
+  let instrumentationResult: T | undefined;
+  try {
+    instrumentationResult = options.transactionInstrumentation.run(
+      {
+        fragmentName: options.fragmentName,
+        transactionKind,
+        transactionName: options.transactionName,
+        idempotencyKey: options.idempotencyKey,
+        callback,
+      },
+      executeOnce,
+    );
+  } catch (error) {
+    instrumentationFailed = true;
+    instrumentationError = error;
+  } finally {
+    instrumentationSettled = true;
+  }
+
+  if (executeCalls === 0) {
+    if (instrumentationResult instanceof Promise) {
+      void instrumentationResult.catch(() => undefined);
+    }
+    throw new DatabaseTransactionInstrumentationError(
+      "TRANSACTION_INSTRUMENTATION_MISSING_EXECUTE",
+    );
+  }
+  if (contractError) {
+    if (executionResult instanceof Promise) {
+      void executionResult.catch(() => undefined);
+    }
+    if (instrumentationResult instanceof Promise && instrumentationResult !== executionResult) {
+      void instrumentationResult.catch(() => undefined);
+    }
+    throw contractError;
+  }
+  if (executionFailed) {
+    throw executionError;
+  }
+
+  if (executionResult instanceof Promise) {
+    const executionPromise = executionResult as Promise<Awaited<T>>;
+    return executionPromise.then(
+      (value) => {
+        if (instrumentationFailed) {
+          throw instrumentationError;
+        }
+        return Promise.resolve(instrumentationResult).then(() => value);
+      },
+      (error: unknown) =>
+        Promise.resolve(instrumentationResult).then(
+          () => {
+            throw error;
+          },
+          () => {
+            // The transaction error remains authoritative when instrumentation observes it.
+            throw error;
+          },
+        ),
+    ) as T;
+  }
+
+  if (instrumentationFailed) {
+    throw instrumentationError;
+  }
+  return executionResult as T;
+};
 
 /**
  * Recursively collect all TxResults from a service call tree.
@@ -1251,6 +1424,7 @@ interface ServiceTxBuilderState<
   schema: TSchema;
   baseUow: IUnitOfWork;
   hooks?: THooks;
+  instrumentation: DatabaseTransactionInstrumentationOptions;
   withServiceCallsFn?: () => TServiceCalls;
   retrieveFn?: (
     uow: TypedUnitOfWork<TSchema, [], unknown, THooks>,
@@ -1561,32 +1735,66 @@ export class ServiceTxBuilder<
       TTransformResult,
       THooks
     > = {
-      serviceCalls: state.withServiceCallsFn,
-      retrieve: state.retrieveFn,
-      retrieveSuccess: state.transformRetrieveFn,
+      serviceCalls: state.withServiceCallsFn
+        ? () =>
+            runWithTransactionInstrumentation(
+              state.instrumentation,
+              "service",
+              state.withServiceCallsFn!,
+              "serviceCalls",
+            )
+        : undefined,
+      retrieve: state.retrieveFn
+        ? (uow) =>
+            runWithTransactionInstrumentation(
+              state.instrumentation,
+              "service",
+              () => state.retrieveFn!(uow),
+              "retrieve",
+            )
+        : undefined,
+      retrieveSuccess: state.transformRetrieveFn
+        ? (retrieveResult, serviceResult) =>
+            runWithTransactionInstrumentation(
+              state.instrumentation,
+              "service",
+              () => state.transformRetrieveFn!(retrieveResult, serviceResult),
+              "transformRetrieve",
+            )
+        : undefined,
       mutate: state.mutateFn
-        ? (ctx) => {
-            return state.mutateFn!({
-              uow: ctx.uow,
-              retrieveResult: ctx.retrieveResult,
-              serviceIntermediateResult: ctx.serviceIntermediateResult,
-            });
-          }
+        ? (ctx) =>
+            runWithTransactionInstrumentation(
+              state.instrumentation,
+              "service",
+              () =>
+                state.mutateFn!({
+                  uow: ctx.uow,
+                  retrieveResult: ctx.retrieveResult,
+                  serviceIntermediateResult: ctx.serviceIntermediateResult,
+                }),
+              "mutate",
+            )
         : undefined,
       success: state.transformFn
-        ? (ctx) => {
-            return state.transformFn!({
-              retrieveResult: ctx.retrieveResult,
-              mutateResult: ctx.mutateResult,
-              serviceResult: ctx.serviceResult,
-              serviceIntermediateResult: ctx.serviceIntermediateResult,
-            } as BuilderTransformContextWithMutate<
-              TRetrieveSuccessResult,
-              TMutateResult,
-              ExtractServiceFinalResults<TServiceCalls>,
-              ExtractServiceRetrieveResults<TServiceCalls>
-            >);
-          }
+        ? (ctx) =>
+            runWithTransactionInstrumentation(
+              state.instrumentation,
+              "service",
+              () =>
+                state.transformFn!({
+                  retrieveResult: ctx.retrieveResult,
+                  mutateResult: ctx.mutateResult,
+                  serviceResult: ctx.serviceResult,
+                  serviceIntermediateResult: ctx.serviceIntermediateResult,
+                } as BuilderTransformContextWithMutate<
+                  TRetrieveSuccessResult,
+                  TMutateResult,
+                  ExtractServiceFinalResults<TServiceCalls>,
+                  ExtractServiceRetrieveResults<TServiceCalls>
+                >),
+              "transform",
+            )
         : undefined,
     };
 
@@ -1630,6 +1838,7 @@ export function createServiceTxBuilder<TSchema extends AnySchema, THooks extends
   schema: TSchema,
   baseUow: IUnitOfWork,
   hooks?: THooks,
+  instrumentation: DatabaseTransactionInstrumentationOptions = {},
 ): ServiceTxBuilder<
   TSchema,
   readonly [],
@@ -1647,6 +1856,10 @@ export function createServiceTxBuilder<TSchema extends AnySchema, THooks extends
     schema,
     baseUow,
     hooks,
+    instrumentation: {
+      ...instrumentation,
+      idempotencyKey: baseUow.idempotencyKey,
+    },
   });
 }
 
@@ -2010,6 +2223,12 @@ export class HandlerTxBuilder<
   > {
     const state = this.#state;
 
+    const instrumentation: DatabaseTransactionInstrumentationOptions = {
+      fragmentName: state.options.fragmentName,
+      transactionName: state.options.name,
+      transactionInstrumentation: state.options.transactionInstrumentation,
+    };
+
     // Convert builder state to legacy callbacks format
     const callbacks: HandlerTxCallbacks<
       TRetrieveResults,
@@ -2019,49 +2238,113 @@ export class HandlerTxBuilder<
       TTransformResult,
       THooks
     > = {
-      serviceCalls: state.withServiceCallsFn,
-      afterRetrieve: state.afterRetrieveFn,
-      retrieve: state.retrieveFn
-        ? (context) => {
-            return state.retrieveFn!({
-              forSchema: context.forSchema,
-              idempotencyKey: context.idempotencyKey,
-              currentAttempt: context.currentAttempt,
-            });
-          }
+      serviceCalls: state.withServiceCallsFn
+        ? () =>
+            runWithTransactionInstrumentation(
+              instrumentation,
+              "handler",
+              state.withServiceCallsFn!,
+              "serviceCalls",
+            )
         : undefined,
-      earlyReturn: state.earlyReturnFn,
-      retrieveSuccess: state.transformRetrieveFn,
+      afterRetrieve: state.afterRetrieveFn
+        ? (uow, retrieveResult) =>
+            runWithTransactionInstrumentation(
+              instrumentation,
+              "handler",
+              () => state.afterRetrieveFn!(uow, retrieveResult),
+              "afterRetrieve",
+            )
+        : undefined,
+      retrieve: state.retrieveFn
+        ? (context) =>
+            runWithTransactionInstrumentation(
+              instrumentation,
+              "handler",
+              () =>
+                state.retrieveFn!({
+                  forSchema: context.forSchema,
+                  idempotencyKey: context.idempotencyKey,
+                  currentAttempt: context.currentAttempt,
+                }),
+              "retrieve",
+            )
+        : undefined,
+      earlyReturn: state.earlyReturnFn
+        ? (context) =>
+            runWithTransactionInstrumentation(
+              instrumentation,
+              "handler",
+              () => state.earlyReturnFn!(context),
+              "earlyReturn",
+            )
+        : undefined,
+      retrieveSuccess: state.transformRetrieveFn
+        ? (retrieveResult, serviceResult) =>
+            runWithTransactionInstrumentation(
+              instrumentation,
+              "handler",
+              () => state.transformRetrieveFn!(retrieveResult, serviceResult),
+              "transformRetrieve",
+            )
+        : undefined,
       mutate: state.mutateFn
-        ? (ctx) => {
-            return state.mutateFn!({
-              forSchema: ctx.forSchema,
-              idempotencyKey: ctx.idempotencyKey,
-              currentAttempt: ctx.currentAttempt,
-              retrieveResult: ctx.retrieveResult,
-              serviceIntermediateResult: ctx.serviceIntermediateResult,
-            });
-          }
+        ? (ctx) =>
+            runWithTransactionInstrumentation(
+              instrumentation,
+              "handler",
+              () =>
+                state.mutateFn!({
+                  forSchema: ctx.forSchema,
+                  idempotencyKey: ctx.idempotencyKey,
+                  currentAttempt: ctx.currentAttempt,
+                  retrieveResult: ctx.retrieveResult,
+                  serviceIntermediateResult: ctx.serviceIntermediateResult,
+                }),
+              "mutate",
+            )
         : undefined,
       success: state.transformFn
-        ? (ctx) => {
-            return state.transformFn!({
-              retrieveResult: ctx.retrieveResult,
-              mutateResult: ctx.mutateResult,
-              serviceResult: ctx.serviceResult,
-              serviceIntermediateResult: ctx.serviceIntermediateResult,
-            } as BuilderTransformContextWithMutate<
-              TRetrieveSuccessResult,
-              TMutateResult,
-              ExtractServiceFinalResults<TServiceCalls>,
-              ExtractServiceRetrieveResults<TServiceCalls>
-            >);
-          }
+        ? (ctx) =>
+            runWithTransactionInstrumentation(
+              instrumentation,
+              "handler",
+              () =>
+                state.transformFn!({
+                  retrieveResult: ctx.retrieveResult,
+                  mutateResult: ctx.mutateResult,
+                  serviceResult: ctx.serviceResult,
+                  serviceIntermediateResult: ctx.serviceIntermediateResult,
+                } as BuilderTransformContextWithMutate<
+                  TRetrieveSuccessResult,
+                  TMutateResult,
+                  ExtractServiceFinalResults<TServiceCalls>,
+                  ExtractServiceRetrieveResults<TServiceCalls>
+                >),
+              "transform",
+            )
         : undefined,
     };
 
+    let preparedUow: IUnitOfWork | undefined;
+    const createInstrumentedUnitOfWork = () => {
+      const uow = state.options.createUnitOfWork();
+      instrumentation.idempotencyKey = uow.idempotencyKey;
+      return uow;
+    };
+    const createUnitOfWork = () => {
+      if (preparedUow) {
+        const uow = preparedUow;
+        preparedUow = undefined;
+        return uow;
+      }
+      return createInstrumentedUnitOfWork();
+    };
     const run = () =>
-      executeTx(callbacks as Parameters<typeof executeTx>[0], state.options) as Promise<
+      executeTx(callbacks as Parameters<typeof executeTx>[0], {
+        ...state.options,
+        createUnitOfWork,
+      }) as Promise<
         AwaitedPromisesInObject<
           InferBuilderResultType<
             TRetrieveResults,
@@ -2077,7 +2360,14 @@ export class HandlerTxBuilder<
         >
       >;
 
-    return state.executeWrapper ? state.executeWrapper(run) : run();
+    const runInstrumented = () => {
+      if (instrumentation.transactionInstrumentation) {
+        preparedUow = createInstrumentedUnitOfWork();
+      }
+      return runWithTransactionInstrumentation(instrumentation, "handler", run);
+    };
+
+    return state.executeWrapper ? state.executeWrapper(runInstrumented) : runInstrumented();
   }
 }
 

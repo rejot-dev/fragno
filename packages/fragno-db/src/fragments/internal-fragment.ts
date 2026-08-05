@@ -126,7 +126,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       get(namespace: string, key: string) {
         const fullKey = `${namespace}.${key}`;
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.settings.get" })
           .retrieve((uow) =>
             uow.findFirst(SETTINGS_TABLE_NAME, (b) =>
               b.whereIndex("unique_key", (eb) => eb("key", "=", fullKey)),
@@ -144,7 +144,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       set(namespace: string, key: string, value: string) {
         const fullKey = `${namespace}.${key}`;
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.settings.set" })
           .retrieve((uow) =>
             uow.findFirst(SETTINGS_TABLE_NAME, (b) =>
               b.whereIndex("unique_key", (eb) => eb("key", "=", fullKey)),
@@ -169,7 +169,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       getOrCreate(namespace: string, key: string, value: string) {
         const fullKey = `${namespace}.${key}`;
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.settings.getOrCreate" })
           .retrieve((uow) =>
             uow.findFirst(SETTINGS_TABLE_NAME, (b) =>
               b.whereIndex("unique_key", (eb) => eb("key", "=", fullKey)),
@@ -190,7 +190,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       setIfMissing(namespace: string, key: string, value: string) {
         const fullKey = `${namespace}.${key}`;
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.settings.setIfMissing" })
           .retrieve((uow) =>
             uow.findFirst(SETTINGS_TABLE_NAME, (b) =>
               b.whereIndex("unique_key", (eb) => eb("key", "=", fullKey)),
@@ -213,7 +213,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        * Delete a setting by ID.
        */
       delete(id: FragnoId) {
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.settings.delete" })
           .mutate(({ uow }) => {
             uow.delete(SETTINGS_TABLE_NAME, id);
           })
@@ -229,7 +229,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       getPendingHookEvents(namespace: string) {
         const now = dbNow();
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.hooks.getPending" })
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
               b.whereIndex("idx_namespace_status_retry", (eb) =>
@@ -265,7 +265,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       claimPendingHookEvents(namespace: string) {
         const now = dbNow();
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.hooks.claimPending" })
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
               b.whereIndex("idx_namespace_status_retry", (eb) =>
@@ -323,7 +323,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
       claimStuckProcessingHookEvents(namespace: string, staleBefore: DbNow) {
         const now = dbNow();
 
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.hooks.claimStuck" })
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
               b.whereIndex("idx_namespace_status_last_attempt", (eb) =>
@@ -398,7 +398,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
         const processingStatus = includeProcessing ? "processing" : "__disabled__";
         const staleBefore = now.plus({ minutes: -timeoutMinutesValue });
 
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.hooks.getNextWakeAt" })
           .retrieve((uow) =>
             uow
               .forSchema(internalSchema)
@@ -491,7 +491,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
         const shouldRetry = retryPolicy.shouldRetry(newAttempts - 1);
         const now = dbNow();
 
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.hooks.markFailed" })
           .mutate(({ uow }) => {
             if (shouldRetry) {
               const delayMs = retryPolicy.getDelayMs(newAttempts - 1);
@@ -527,7 +527,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        * Mark a hook event as processing (to prevent concurrent execution).
        */
       markHookProcessing(eventId: FragnoId) {
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.hooks.markProcessing" })
           .mutate(({ uow }) => {
             uow.update("fragno_hooks", eventId, (b) =>
               b.set({ status: "processing", lastAttemptAt: dbNow() }).check(),
@@ -540,7 +540,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        * Get a hook event by ID (for testing/verification purposes).
        */
       getHookById(eventId: FragnoId) {
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.hooks.getById" })
           .retrieve((uow) =>
             uow.findFirst("fragno_hooks", (b) =>
               b.whereIndex("primary", (eb) => eb("id", "=", eventId)),
@@ -559,7 +559,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
       ) {
         const pageSize = resolveHookPageSize(options.pageSize);
 
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.hooks.listPage" })
           .retrieve((uow) =>
             uow.findWithCursor("fragno_hooks", (b) => {
               const query = b
@@ -582,7 +582,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        * Get all hook events for a namespace (for testing/verification purposes).
        */
       getHooksByNamespace(namespace: string) {
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.hooks.listByNamespace" })
           .retrieve((uow) =>
             uow.find("fragno_hooks", (b) =>
               b.whereIndex("idx_namespace_status_retry", (eb) => eb("namespace", "=", namespace)),
@@ -601,7 +601,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
       list({ afterVersionstamp, limit }: { afterVersionstamp?: string; limit?: number } = {}) {
         const afterValue = afterVersionstamp?.toLowerCase();
 
-        return this.serviceTx(internalSchema)
+        return this.serviceTx(internalSchema, { name: "internal.outbox.list" })
           .retrieve((uow) =>
             uow.find("fragno_db_outbox", (b) => {
               let builder = afterValue
@@ -648,7 +648,7 @@ export async function getSchemaVersionFromDatabase(
   try {
     const readSchemaVersion = async (targetNamespace: string): Promise<number | undefined> => {
       const setting = await fragment.inContext(async function () {
-        return await this.handlerTx()
+        return await this.handlerTx({ name: "internal.settings.getSchemaVersion" })
           .withServiceCalls(
             () =>
               [fragment.services.settingsService.get(targetNamespace, "schema_version")] as const,

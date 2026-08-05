@@ -1,8 +1,14 @@
 import { describe, it, expect, assert, expectTypeOf } from "vitest";
 
+import SQLite from "better-sqlite3";
+import { SqliteDialect } from "kysely";
+
+import { BetterSQLite3DriverConfig } from "../../adapters/generic-sql/driver-config";
+import { SqlAdapter } from "../../adapters/generic-sql/generic-sql-adapter";
 import { column, schema, idColumn, FragnoId } from "../../schema/create";
 import { createIndexedBuilder } from "../condition-builder";
 import { Cursor } from "../cursor";
+import { createHandlerTxBuilder } from "./execute-unit-of-work";
 import {
   type UOWCompiler,
   type UOWDecoder,
@@ -1350,6 +1356,94 @@ describe("Instrumentation", () => {
       t.addColumn("id", idColumn()).addColumn("name", "string").addColumn("email", "string"),
     ),
   );
+
+  it("updates the instrumentation name when a Unit of Work is reset for a transaction", async () => {
+    const observedNames: Array<string | undefined> = [];
+    const executor = {
+      executeRetrievalPhase: async () => [[]],
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+    const uow = new UnitOfWork(createMockCompiler(), executor, createMockDecoder(), undefined, {
+      instrumentation: {
+        beforeRetrieve: ({ uowName }) => {
+          observedNames.push(uowName);
+        },
+      },
+    });
+
+    uow.reset({ name: "users.create" });
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
+    await uow.executeRetrieve();
+
+    expect(observedNames).toEqual(["users.create"]);
+  });
+
+  it("preserves the instrumentation name when reset has no defined name", async () => {
+    const observedNames: Array<string | undefined> = [];
+    const executor = {
+      executeRetrievalPhase: async () => [[]],
+      executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+    };
+    const uow = new UnitOfWork(
+      createMockCompiler(),
+      executor,
+      createMockDecoder(),
+      "users.create",
+      {
+        instrumentation: {
+          beforeRetrieve: ({ uowName }) => {
+            observedNames.push(uowName);
+          },
+        },
+      },
+    );
+
+    uow.reset({});
+    uow.reset({ name: undefined });
+    uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
+    await uow.executeRetrieve();
+
+    expect(observedNames).toEqual(["users.create"]);
+  });
+
+  it("propagates a named transaction through the real SQL adapter Unit of Work", async () => {
+    const sqlite = new SQLite(":memory:");
+    const observedNames: Array<string | undefined> = [];
+    const adapter = new SqlAdapter({
+      dialect: new SqliteDialect({ database: sqlite }),
+      driverConfig: new BetterSQLite3DriverConfig(),
+      uowConfig: {
+        instrumentation: {
+          beforeMutate: ({ uowName }) => {
+            observedNames.push(uowName);
+          },
+        },
+      },
+    });
+
+    try {
+      await adapter
+        .prepareMigrations(testSchema, null)
+        .execute(0, undefined, { updateVersionInMigration: false });
+
+      await createHandlerTxBuilder({
+        name: "users.create",
+        createUnitOfWork: () => adapter.createBaseUnitOfWork("users.create"),
+      })
+        .mutate(({ forSchema }) => {
+          forSchema(testSchema).create("users", {
+            name: "Alice",
+            email: "alice@example.com",
+          });
+        })
+        .execute();
+
+      expect(observedNames).toEqual(["users.create"]);
+    } finally {
+      await adapter.close();
+      sqlite.close();
+    }
+  });
 
   it("should run instrumentation hooks around retrieve and mutate phases", async () => {
     const calls: string[] = [];

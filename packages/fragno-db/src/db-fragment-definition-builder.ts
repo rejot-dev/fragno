@@ -32,6 +32,7 @@ import {
   type HookNotifier,
   type HookNotifyContext,
   type DurableHooksInstrumentation,
+  type DurableHookNotification,
   type DurableHooksProcessingOptions,
   createDurableHooksRunner,
 } from "./hooks/hooks";
@@ -42,7 +43,9 @@ import {
   HandlerTxBuilder,
   type AwaitedPromisesInObject,
   type ExtractServiceFinalResults,
+  type DatabaseTransactionInstrumentation,
   type ExecuteTxOptions,
+  type ServiceTxOptions,
   type TxResult,
 } from "./query/unit-of-work/execute-unit-of-work";
 import type { IUnitOfWork, TypedUnitOfWork } from "./query/unit-of-work/unit-of-work";
@@ -72,6 +75,9 @@ type ExtractServiceFinalResultOrSingle<T> = T extends readonly (
 
 type RegistryResolver = {
   getRegistryForAdapterSync: <TUOWConfig>(adapter: DatabaseAdapter<TUOWConfig>) => {
+    registerTransactionInstrumentation: (
+      instrumentation: DatabaseTransactionInstrumentation,
+    ) => void;
     registerSchema: (
       schema: RegistrySchemaInfo,
       fragment: RegistryFragmentMeta,
@@ -126,6 +132,10 @@ export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
    * Optional durable hooks processing configuration.
    */
   durableHooks?: DurableHooksProcessingOptions;
+  /**
+   * Optional runtime-neutral tracing for named handler/service transactions and their callbacks.
+   */
+  transactionInstrumentation?: DatabaseTransactionInstrumentation;
   /**
    * Optional override for database namespace. If provided (including null), it is used as-is
    * without sanitization — the caller is responsible for providing a valid namespace.
@@ -197,6 +207,7 @@ export type DatabaseServiceContext<THooks extends HooksMap> = RequestThisContext
    */
   serviceTx<TSchema extends AnySchema>(
     schema: TSchema,
+    options?: ServiceTxOptions,
   ): ServiceTxBuilder<
     TSchema,
     readonly [],
@@ -249,6 +260,7 @@ export type DatabaseHandlerContext<THooks extends HooksMap = {}> = RequestThisCo
      * Factory to create service calls inside the active context.
      */
     serviceCalls: () => TServiceCalls,
+    options?: { name?: string },
   ): Promise<ExtractServiceFinalResultOrSingle<TServiceCalls>>;
 };
 
@@ -420,22 +432,113 @@ function buildDurableHooksLogContext(context?: DurableHooksLogContext) {
   return logContext;
 }
 
+async function runInstrumentedHookNotification(
+  instrumentation: DurableHooksInstrumentation,
+  notification: DurableHookNotification,
+  execute: () => Promise<void>,
+): Promise<void> {
+  let executeCalls = 0;
+  let execution: Promise<void> | undefined;
+  let repeatedExecutionError: Error | undefined;
+  let instrumentationSettled = false;
+
+  const rejectExecution = (error: Error): Promise<void> => {
+    const rejection = Promise.reject(error);
+    void rejection.catch(() => undefined);
+    return rejection;
+  };
+  const executeOnce = (): Promise<void> => {
+    if (instrumentationSettled) {
+      return rejectExecution(
+        new Error("Durable hooks instrumentation called execute() after runNotify() settled."),
+      );
+    }
+
+    executeCalls += 1;
+    if (executeCalls > 1) {
+      repeatedExecutionError ??= new Error(
+        "Durable hooks instrumentation called execute() more than once from runNotify().",
+      );
+      return rejectExecution(repeatedExecutionError);
+    }
+
+    execution = Promise.resolve().then(execute);
+    return execution;
+  };
+
+  let instrumentationRejected = false;
+  let instrumentationError: unknown;
+  try {
+    await instrumentation.runNotify!(notification, executeOnce);
+  } catch (error) {
+    instrumentationRejected = true;
+    instrumentationError = error;
+  } finally {
+    instrumentationSettled = true;
+  }
+
+  if (!execution) {
+    throw new Error(
+      "Durable hooks instrumentation did not call execute() from runNotify().",
+      instrumentationRejected ? { cause: instrumentationError } : undefined,
+    );
+  }
+
+  const executionResult = await execution.then(
+    () => ({ status: "fulfilled" as const }),
+    (reason: unknown) => ({ status: "rejected" as const, reason }),
+  );
+
+  if (executeCalls !== 1) {
+    throw (
+      repeatedExecutionError ??
+      new Error("Durable hooks instrumentation violated the runNotify() execute contract.")
+    );
+  }
+  if (executionResult.status === "rejected") {
+    throw executionResult.reason;
+  }
+  if (instrumentationRejected) {
+    throw instrumentationError;
+  }
+}
+
 function notifyDurableHooks(
   notifier: HookNotifier,
   namespace: string,
   notifyContext: HookNotifyContext,
   logContextFields: Record<string, unknown>,
-  options?: { crossNamespace?: boolean },
+  options: {
+    crossNamespace?: boolean;
+    instrumentation?: DurableHooksInstrumentation;
+    correlationId: string;
+    queued: number;
+  },
 ) {
-  const crossNamespace = options?.crossNamespace ?? false;
+  const crossNamespace = options.crossNamespace ?? false;
   const suffix = crossNamespace ? " (cross-namespace)" : "";
   const notifyStart = Date.now();
   DurableHooksLogger.debug(`Durable hooks notify requested${suffix}`, {
     namespace,
     fields: logContextFields,
   });
+  const notification: DurableHookNotification = {
+    namespace,
+    correlationId: options.correlationId,
+    source: notifyContext.source,
+    route: notifyContext.route,
+    crossNamespace,
+    queued: options.queued,
+  };
+  const executeNotify = async () => {
+    await notifier.notify(notifyContext);
+  };
   const notifyPromise = Promise.resolve()
-    .then(() => notifier.notify(notifyContext))
+    .then(() =>
+      options.instrumentation?.runNotify
+        ? runInstrumentedHookNotification(options.instrumentation, notification, executeNotify)
+        : executeNotify(),
+    )
     .then((processed) => {
       DurableHooksLogger.debug(`Durable hooks notify completed${suffix}`, {
         namespace,
@@ -500,6 +603,11 @@ function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
       hooksConfig.namespace,
       notifyContext,
       logContextFields,
+      {
+        instrumentation: hooksConfig.instrumentation,
+        correlationId: uow.idempotencyKey,
+        queued: ownNamespaceTriggeredCount,
+      },
     );
   } else if (hooksConfig && !autoSchedule && ownNamespaceTriggeredCount > 0) {
     DurableHooksLogger.debug("Durable hooks notify skipped (autoSchedule=false)", {
@@ -573,6 +681,9 @@ function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
     }
     notifyDurableHooks(notifier, namespace, notifyContext, logContextFields, {
       crossNamespace: true,
+      instrumentation: runtime.config.instrumentation,
+      correlationId: uow.idempotencyKey,
+      queued: triggeredCountByNamespace.get(namespace) ?? 0,
     });
   }
 }
@@ -1124,6 +1235,10 @@ export class DatabaseFragmentDefinitionBuilder<
         const registry = this.#registryResolver.getRegistryForAdapterSync(
           dbContext.databaseAdapter,
         );
+        const transactionInstrumentation = context.options.transactionInstrumentation;
+        if (transactionInstrumentation) {
+          registry.registerTransactionInstrumentation(transactionInstrumentation);
+        }
         const outboxOptions = context.options.outbox;
         registry.registerSchema(
           {
@@ -1255,6 +1370,7 @@ export class DatabaseFragmentDefinitionBuilder<
         internalFragment: registryResolver.getInternalFragment(hookAdapter),
         autoSchedule,
         instrumentation,
+        transactionInstrumentation: context.options.transactionInstrumentation,
         handlerTx: (execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">) => {
           const userOnBeforeMutate = execOptions?.onBeforeMutate;
           const userOnAfterMutate = execOptions?.onAfterMutate;
@@ -1275,8 +1391,12 @@ export class DatabaseFragmentDefinitionBuilder<
           return createHandlerTxBuilder<THooks>(
             {
               ...execOptions,
+              fragmentName: baseDef.name,
+              transactionInstrumentation:
+                execOptions?.transactionInstrumentation ??
+                context.options.transactionInstrumentation,
               createUnitOfWork: () => {
-                const baseUow = dbContextForHooks.createBaseUnitOfWork();
+                const baseUow = dbContextForHooks.createBaseUnitOfWork(execOptions?.name);
                 baseUow.registerSchema(
                   hooksConfig.internalFragment.$internal.deps.schema,
                   hooksConfig.internalFragment.$internal.deps.namespace,
@@ -1369,14 +1489,21 @@ export class DatabaseFragmentDefinitionBuilder<
         : (hooksConfig?.internalFragment ?? registryResolver?.getInternalFragment(databaseAdapter));
 
       // Builder API: serviceTx using createServiceTxBuilder
-      function serviceTx<TSchema extends AnySchema>(schema: TSchema) {
+      function serviceTx<TSchema extends AnySchema>(
+        schema: TSchema,
+        transactionOptions: ServiceTxOptions = {},
+      ) {
         const uow = storage.getStore()?.uow;
         if (!uow) {
           throw new Error(
             "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
           );
         }
-        return createServiceTxBuilder<TSchema, THooks>(schema, uow, hooksConfig?.hooks);
+        return createServiceTxBuilder<TSchema, THooks>(schema, uow, hooksConfig?.hooks, {
+          fragmentName: baseDef.name,
+          transactionName: transactionOptions.name,
+          transactionInstrumentation: options.transactionInstrumentation,
+        });
       }
 
       const serviceContext: DatabaseServiceContext<THooks> = {
@@ -1495,10 +1622,13 @@ export class DatabaseFragmentDefinitionBuilder<
         const builder = createHandlerTxBuilder<THooks>(
           {
             ...execOptions,
+            fragmentName: baseDef.name,
+            transactionInstrumentation:
+              execOptions?.transactionInstrumentation ?? options.transactionInstrumentation,
             createUnitOfWork: () => {
               const txStorage = childStorage ?? currentStorage;
               if (isNestedHandlerTx) {
-                const nestedUow = databaseAdapter.createBaseUnitOfWork();
+                const nestedUow = databaseAdapter.createBaseUnitOfWork(execOptions?.name);
                 nestedUow.registerSchema(
                   (deps as ImplicitDatabaseDependencies).schema,
                   (deps as ImplicitDatabaseDependencies).namespace,
@@ -1512,7 +1642,7 @@ export class DatabaseFragmentDefinitionBuilder<
                 txStorage.uow = nestedUow;
                 return nestedUow;
               }
-              txStorage.uow.reset();
+              txStorage.uow.reset({ name: execOptions?.name });
               if (internalFragment) {
                 txStorage.uow.registerSchema(
                   internalFragment.$internal.deps.schema,
@@ -1607,9 +1737,12 @@ export class DatabaseFragmentDefinitionBuilder<
           | readonly (TxResult<unknown, unknown> | undefined)[],
       >(
         serviceCalls: () => TServiceCalls,
+        callOptions?: { name?: string },
       ): Promise<ExtractServiceFinalResultOrSingle<TServiceCalls>> {
         let callWasArray = false;
-        const resultPromise = handlerTx()
+        const resultPromise = handlerTx({
+          name: callOptions?.name ?? `${baseDef.name}.callServices`,
+        })
           .withServiceCalls(() => {
             const calls = serviceCalls();
             callWasArray = Array.isArray(calls);

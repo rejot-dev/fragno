@@ -40,6 +40,7 @@ import type { MarketplaceFragment } from "@/fragno/marketplace/index";
 import { createMarketplaceServer } from "@/fragno/marketplace/marketplace";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
+import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
 
 export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceObject {
   readonly #state: BackofficeObjectState;
@@ -62,6 +63,7 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
       state,
       env,
       createRuntime: () => createMarketplaceServer({ adapters: runtime.adapters }),
+      durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
       onProcessError: (error) => {
         console.error("Marketplace hook processor error", error);
       },

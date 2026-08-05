@@ -772,8 +772,8 @@ export interface IUnitOfWork {
   signalReadyForRetrieval(): void;
   signalReadyForMutation(): void;
 
-  // Reset for retry support
-  reset(): void;
+  // Reset for retry support. Passing options updates transaction-scoped diagnostics metadata.
+  reset(options?: { name?: string }): void;
 
   // Schema-specific view (for cross-schema operations)
   // The optional hooks parameter is for type inference only - pass your hooks map
@@ -1103,7 +1103,7 @@ class UOWChildCoordinator<TRawInput> {
  * ```
  */
 export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
-  readonly #name?: string;
+  #name?: string;
   readonly #config?: UnitOfWorkConfig;
   readonly #idempotencyKey: string;
 
@@ -1304,9 +1304,13 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
    * Reset the UOW to initial state for retry support.
    * Clears operations, resets state, and resets phase promises.
    */
-  reset(): void {
+  reset(options?: { name?: string }): void {
     if (this.#coordinator.isRestricted) {
       throw new Error("reset() cannot be called on restricted child UOWs");
+    }
+
+    if (options?.name !== undefined) {
+      this.#name = options.name;
     }
 
     // Clear operations
@@ -1797,8 +1801,8 @@ export class TypedUnitOfWork<
     this.#uow.signalReadyForMutation();
   }
 
-  reset(): void {
-    this.#uow.reset();
+  reset(options?: { name?: string }): void {
+    this.#uow.reset(options);
   }
 
   forSchema<TOtherSchema extends AnySchema, TOtherHooks extends HooksMap = {}>(

@@ -97,6 +97,7 @@ import {
   type BackofficeObjectState,
   type BackofficeOutboxItem,
 } from "./lib/backoffice-fragment-durable-object";
+import { cloudflareDatabaseTransactionInstrumentation } from "./lib/cloudflare-database-transaction-instrumentation";
 
 export type AutomationsFileSystemResolver = (input: {
   execution: BackofficeExecutionContext;
@@ -254,6 +255,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
         createAutomationsRuntime(
           {
             adapters: this.#runtimeServices.adapters,
+            transactionInstrumentation: cloudflareDatabaseTransactionInstrumentation,
           },
           {
             env: this.#env,

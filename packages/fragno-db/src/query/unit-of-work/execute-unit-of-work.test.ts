@@ -12,7 +12,11 @@ import {
   serviceCalls,
   ConcurrencyConflictError,
 } from "./execute-unit-of-work";
-import type { AwaitedPromisesInObject, TxResult } from "./execute-unit-of-work";
+import type {
+  AwaitedPromisesInObject,
+  DatabaseTransactionInstrumentationError,
+  TxResult,
+} from "./execute-unit-of-work";
 import {
   ExponentialBackoffRetryPolicy,
   LinearBackoffRetryPolicy,
@@ -635,6 +639,236 @@ describe("Unified Tx API", () => {
       expect(users).toHaveLength(2);
       assert(users[0].email === "alice@example.com");
       assert(users[1].name === "Bob");
+    });
+
+    it("instruments a named handler transaction and its callbacks", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown> = {
+        executeRetrievalPhase: async () => [[]],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const decoder = createMockDecoder();
+      const contexts: unknown[] = [];
+      const transactionInstrumentation = {
+        run: <T>(context: unknown, execute: () => T): T => {
+          contexts.push(context);
+          return execute();
+        },
+      };
+
+      await createHandlerTxBuilder({
+        name: "users.list",
+        fragmentName: "users-fragment",
+        transactionInstrumentation,
+        createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+      })
+        .retrieve(({ forSchema }) =>
+          forSchema(testSchema).find("users", (b) => b.whereIndex("idx_email")),
+        )
+        .transformRetrieve(([users]) => users)
+        .execute();
+
+      expect(contexts).toEqual([
+        {
+          fragmentName: "users-fragment",
+          transactionKind: "handler",
+          transactionName: "users.list",
+          idempotencyKey: expect.any(String),
+          callback: undefined,
+        },
+        {
+          fragmentName: "users-fragment",
+          transactionKind: "handler",
+          transactionName: "users.list",
+          idempotencyKey: expect.any(String),
+          callback: "retrieve",
+        },
+        {
+          fragmentName: "users-fragment",
+          transactionKind: "handler",
+          transactionName: "users.list",
+          idempotencyKey: expect.any(String),
+          callback: "transformRetrieve",
+        },
+      ]);
+      assert.equal(
+        new Set(contexts.map((context) => (context as { idempotencyKey: string }).idempotencyKey))
+          .size,
+        1,
+      );
+    });
+
+    it("rejects instrumentation that skips transaction execution", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown> = {
+        executeRetrievalPhase: vi.fn(async () => []),
+        executeMutationPhase: vi.fn(async () => ({ success: true, createdInternalIds: [] })),
+      };
+      const decoder = createMockDecoder();
+
+      const builder = createHandlerTxBuilder({
+        transactionInstrumentation: {
+          run: () => undefined as never,
+        },
+        createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+      });
+
+      expect(() => builder.execute()).toThrow(
+        expect.objectContaining({
+          code: "TRANSACTION_INSTRUMENTATION_MISSING_EXECUTE",
+        } satisfies Partial<DatabaseTransactionInstrumentationError>),
+      );
+      expect(executor.executeRetrievalPhase).not.toHaveBeenCalled();
+      expect(executor.executeMutationPhase).not.toHaveBeenCalled();
+    });
+
+    it("rejects instrumentation that invokes transaction execution more than once", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown> = {
+        executeRetrievalPhase: vi.fn(async () => []),
+        executeMutationPhase: vi.fn(async () => ({ success: true, createdInternalIds: [] })),
+      };
+      const decoder = createMockDecoder();
+      const builder = createHandlerTxBuilder({
+        transactionInstrumentation: {
+          run<T>(_context: unknown, execute: () => T): T {
+            const result = execute();
+            try {
+              execute();
+            } catch {
+              // Simulate instrumentation swallowing its own contract violation.
+            }
+            return result;
+          },
+        },
+        createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+      });
+
+      expect(() => builder.execute()).toThrow(
+        expect.objectContaining({
+          code: "TRANSACTION_INSTRUMENTATION_MULTIPLE_EXECUTE",
+        }),
+      );
+    });
+
+    it("instruments callbacks for a named service transaction", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown> = {
+        executeRetrievalPhase: async () => [[]],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const decoder = createMockDecoder();
+      const contexts: unknown[] = [];
+      const transactionInstrumentation = {
+        run: <T>(context: unknown, execute: () => T): T => {
+          contexts.push(context);
+          return execute();
+        },
+      };
+      let currentUow: IUnitOfWork | undefined;
+
+      await createHandlerTxBuilder({
+        createUnitOfWork: () => {
+          currentUow = createUnitOfWork(compiler, executor, decoder);
+          return currentUow;
+        },
+      })
+        .withServiceCalls(() => [
+          createServiceTxBuilder(testSchema, currentUow!, undefined, {
+            fragmentName: "users-fragment",
+            transactionName: "users.find",
+            transactionInstrumentation,
+          })
+            .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
+            .transformRetrieve(([users]) => users)
+            .build(),
+        ])
+        .execute();
+
+      expect(contexts).toEqual([
+        {
+          fragmentName: "users-fragment",
+          transactionKind: "service",
+          transactionName: "users.find",
+          idempotencyKey: expect.any(String),
+          callback: "retrieve",
+        },
+        {
+          fragmentName: "users-fragment",
+          transactionKind: "service",
+          transactionName: "users.find",
+          idempotencyKey: expect.any(String),
+          callback: "transformRetrieve",
+        },
+      ]);
+      assert.equal(
+        new Set(contexts.map((context) => (context as { idempotencyKey: string }).idempotencyKey))
+          .size,
+        1,
+      );
+    });
+
+    it("does not overlap callback spans for multiple service calls", async () => {
+      const compiler = createMockCompiler();
+      const executor: UOWExecutor<unknown> = {
+        executeRetrievalPhase: async () => [[], []],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const decoder = createMockDecoder();
+      const events: string[] = [];
+      const transactionInstrumentation = {
+        run<T>(context: { transactionName?: string; callback?: string }, execute: () => T): T {
+          const span = `${context.transactionName}:${context.callback}`;
+          events.push(`${span}:start`);
+          try {
+            const result = execute();
+            if (result instanceof Promise) {
+              return result.finally(() => events.push(`${span}:end`)) as T;
+            }
+            events.push(`${span}:end`);
+            return result;
+          } catch (error) {
+            events.push(`${span}:end`);
+            throw error;
+          }
+        },
+      };
+      let currentUow: IUnitOfWork | undefined;
+
+      const createServiceCall = (transactionName: string) =>
+        createServiceTxBuilder(testSchema, currentUow!, undefined, {
+          fragmentName: "users-fragment",
+          transactionName,
+          transactionInstrumentation,
+        })
+          .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
+          .transformRetrieve(async ([users]) => {
+            await Promise.resolve();
+            return users;
+          })
+          .build();
+
+      await createHandlerTxBuilder({
+        createUnitOfWork: () => {
+          currentUow = createUnitOfWork(compiler, executor, decoder);
+          return currentUow;
+        },
+      })
+        .withServiceCalls(
+          () => [createServiceCall("users.first"), createServiceCall("users.second")] as const,
+        )
+        .execute();
+
+      expect(events).toEqual([
+        "users.first:retrieve:start",
+        "users.first:retrieve:end",
+        "users.second:retrieve:start",
+        "users.second:retrieve:end",
+        "users.first:transformRetrieve:start",
+        "users.first:transformRetrieve:end",
+        "users.second:transformRetrieve:start",
+        "users.second:transformRetrieve:end",
+      ]);
     });
 
     it("should call onAfterRetrieve with full results", async () => {

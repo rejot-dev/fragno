@@ -2,6 +2,7 @@ import {
   createDurableHooksProcessor,
   type DurableHooksDispatcherDurableObjectHandler,
 } from "@fragno-dev/db/dispatchers/cloudflare-do";
+import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
@@ -106,6 +107,7 @@ export const createAutomationsRuntime = (
     },
     {
       databaseAdapter,
+      transactionInstrumentation: runtime.transactionInstrumentation,
       mountRoute: "/api/automations-workflows",
       outbox: { enabled: true },
     },
@@ -181,6 +183,7 @@ export const createAutomationsRuntime = (
     },
     {
       databaseAdapter,
+      transactionInstrumentation: runtime.transactionInstrumentation,
       mountRoute: "/api/automations",
       outbox: { enabled: true },
     },
@@ -248,8 +251,10 @@ export const createAutomationsDispatcher = (
   automationFragment: AutomationFragmentWithExecutionContext,
   state: DurableObjectState,
   env: CloudflareEnv,
+  instrumentation: DurableHooksInstrumentation,
 ): DurableHooksDispatcherDurableObjectHandler => {
   const dispatcherFactory = createDurableHooksProcessor([workflowsFragment, automationFragment], {
+    instrumentation,
     onProcessError: (error) => {
       console.error("Automations durable hook processor error", error);
     },

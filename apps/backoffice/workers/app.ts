@@ -64,8 +64,8 @@ System.Settings.Set({ useAcceleration: false });
 
 export default {
   async fetch(request, env, ctx) {
-    const context = new RouterContextProvider();
     const runtime = createCloudflareBackofficeRuntimeServices(env);
+    const context = new RouterContextProvider();
     context.set(BackofficeWorkerContext, {
       runtime,
       kernel: new BackofficeKernel(runtime),

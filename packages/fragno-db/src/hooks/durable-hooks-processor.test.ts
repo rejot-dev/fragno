@@ -9,7 +9,11 @@ import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { internalSchema } from "../fragments/internal-fragment";
 import { getInternalFragment } from "../internal/adapter-registry";
-import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
+import type {
+  DatabaseTransactionInstrumentation,
+  DatabaseTransactionInstrumentationContext,
+  TxResult,
+} from "../query/unit-of-work/execute-unit-of-work";
 import { schema, column, idColumn } from "../schema/create";
 import { withDatabase } from "../with-database";
 import {
@@ -17,6 +21,7 @@ import {
   createDurableHooksProcessorGroup,
   createDurableHooksProcessorGroupFromProcessors,
 } from "./durable-hooks-processor";
+import type { DurableHooksInstrumentation } from "./hooks";
 
 const testSchema = schema("test", (s) =>
   s.addTable("items", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
@@ -57,7 +62,10 @@ const noHooksFragmentDefinition = defineFragment("no-hooks")
 describe("createDurableHooksProcessor", () => {
   let adapter: SqlAdapter;
 
-  function instantiateFragment(options: { databaseAdapter: SqlAdapter }) {
+  function instantiateFragment(options: {
+    databaseAdapter: SqlAdapter;
+    transactionInstrumentation?: DatabaseTransactionInstrumentation;
+  }) {
     return instantiate(testFragmentDefinition).withConfig({}).withOptions(options).build();
   }
 
@@ -118,6 +126,77 @@ describe("createDurableHooksProcessor", () => {
     expect(processed).toBe(1);
   });
 
+  it("names internal durable-hook processor transactions", async () => {
+    const contexts: DatabaseTransactionInstrumentationContext[] = [];
+    const transactionInstrumentation: DatabaseTransactionInstrumentation = {
+      run: (context, execute) => {
+        contexts.push(context);
+        return execute();
+      },
+    };
+    const instrumentedFragment = instantiateFragment({
+      databaseAdapter: adapter,
+      transactionInstrumentation,
+    });
+    const processor = createDurableHooksProcessor(instrumentedFragment);
+
+    await processor.getNextWakeAt();
+    const internalFragment = getInternalFragment(adapter);
+    await internalFragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          forSchema(internalSchema).create("fragno_hooks", {
+            namespace: "test",
+            hookName: "onTest",
+            payload: { instrumentedTransactionNames: true },
+            status: "pending",
+            attempts: 0,
+            maxAttempts: 1,
+            lastAttemptAt: null,
+            nextRetryAt: null,
+            error: null,
+            nonce: "internal-transaction-names",
+          });
+        })
+        .execute();
+    });
+    await processor.processDue();
+
+    expect(
+      contexts
+        .filter(
+          (context) => context.callback === undefined && context.transactionName !== undefined,
+        )
+        .map((context) => context.transactionName),
+    ).toEqual([
+      "internal.hooks.test.getNextWakeAt",
+      "internal.hooks.test.claimDue",
+      "internal.hooks.test.finalizeAttempts",
+    ]);
+    expect(contexts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fragmentName: "$fragno-internal-fragment",
+          transactionKind: "service",
+          transactionName: "internal.hooks.getNextWakeAt",
+          callback: "retrieve",
+        }),
+        expect.objectContaining({
+          fragmentName: "$fragno-internal-fragment",
+          transactionKind: "service",
+          transactionName: "internal.hooks.claimPending",
+          callback: "retrieve",
+        }),
+        expect.objectContaining({
+          fragmentName: "$fragno-internal-fragment",
+          transactionKind: "service",
+          transactionName: "internal.hooks.claimStuck",
+          callback: "retrieve",
+        }),
+      ]),
+    );
+  });
+
   it("should wake for stale processing hooks", async () => {
     const processor = createDurableHooksProcessor(fragment);
     expect(processor).not.toBeNull();
@@ -148,6 +227,40 @@ describe("createDurableHooksProcessor", () => {
     const wakeAt = await processor.getNextWakeAt();
     expect(wakeAt).toBeInstanceOf(Date);
     expect(wakeAt!.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("overrides instrumentation before enqueue and attempt processing", async () => {
+    const propagationContext = {
+      traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-1111111111111111-01",
+    };
+    const instrumentation: DurableHooksInstrumentation = {
+      captureContext: vi.fn(() => propagationContext),
+      runAttempt: vi.fn(async (_attempt, execute) => await execute()),
+    };
+    const processor = createDurableHooksProcessor(fragment, { instrumentation });
+
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          forSchema(testSchema).triggerHook("onTest", { instrumented: true });
+        })
+        .execute();
+    });
+    await processor.drain();
+
+    expect(instrumentation.captureContext).toHaveBeenCalledWith({
+      namespace: "test",
+      hookName: "onTest",
+      idempotencyKey: expect.any(String),
+    });
+    expect(instrumentation.runAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        namespace: "test",
+        hookName: "onTest",
+        propagationContext,
+      }),
+      expect.any(Function),
+    );
   });
 
   it("allows bound fragment services to run inside durable hooks", async () => {

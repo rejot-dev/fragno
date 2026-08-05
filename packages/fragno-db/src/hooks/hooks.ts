@@ -2,6 +2,7 @@ import type { InternalFragmentInstance } from "../fragments/internal-fragment";
 import { internalSchema } from "../fragments/internal-fragment.schema";
 import { dbNow, isDbNow, type DbNow } from "../query/db-now";
 import type {
+  DatabaseTransactionInstrumentation,
   ExecuteTxOptions,
   HandlerTxBuilder,
 } from "../query/unit-of-work/execute-unit-of-work";
@@ -123,8 +124,17 @@ export type DurableHookAttempt = {
   propagationContext: DurableHookPropagationContext | null;
 };
 
+export type DurableHookNotification = {
+  namespace: string;
+  correlationId: string;
+  source: HookNotifySource;
+  route?: string | null;
+  crossNamespace: boolean;
+  queued: number;
+};
+
 /**
- * Optional integration boundary for durable-hook context propagation and attempt instrumentation.
+ * Optional integration boundary for durable-hook context propagation and lifecycle instrumentation.
  */
 export interface DurableHooksInstrumentation {
   /** Capture the current ambient context without producing side effects. */
@@ -134,6 +144,8 @@ export interface DurableHooksInstrumentation {
    * Implementations must call `execute` exactly once and preserve its result or error.
    */
   runAttempt<T>(attempt: DurableHookAttempt, execute: () => Promise<T>): Promise<T>;
+  /** Wrap one dispatcher notification without changing whether notification succeeds. */
+  runNotify?<T>(notification: DurableHookNotification, execute: () => Promise<T>): Promise<T>;
 }
 
 /**
@@ -219,6 +231,8 @@ export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
    * Optional durable-hook context propagation and attempt instrumentation.
    */
   instrumentation?: DurableHooksInstrumentation;
+  /** Database transaction instrumentation used for internal durable-hook storage operations. */
+  transactionInstrumentation?: DatabaseTransactionInstrumentation;
   /**
    * Re-queue hooks that have been in `processing` for at least this many minutes.
    * Use `false` to disable stuck-processing recovery entirely.
@@ -527,7 +541,10 @@ export async function processHooks<THooks extends HooksMap>(
   let stuckEvents: StuckHookProcessingEvent[] = [];
 
   const result = await internalFragment.inContext(async function () {
-    return await this.handlerTx()
+    return await this.handlerTx({
+      name: `internal.hooks.${namespace}.claimDue`,
+      transactionInstrumentation: config.transactionInstrumentation,
+    })
       .withServiceCalls(() => {
         const pending = internalFragment.services.hookService.claimPendingHookEvents(namespace);
         const stuck = includeStuckProcessing
@@ -709,7 +726,10 @@ export async function processHooks<THooks extends HooksMap>(
 
   // Mark events as completed/failed
   await internalFragment.inContext(async function () {
-    await this.handlerTx()
+    await this.handlerTx({
+      name: `internal.hooks.${namespace}.finalizeAttempts`,
+      transactionInstrumentation: config.transactionInstrumentation,
+    })
       .mutate(({ forSchema }) => {
         const uow = forSchema(internalSchema);
         const now = dbNow();

@@ -26,6 +26,10 @@
       "types": "./dist/api/api.d.ts",
       "default": "./dist/api/api.js"
     },
+    "./fragment-instantiator": {
+      "types": "./dist/api/fragment-instantiator.d.ts",
+      "default": "./dist/api/fragment-instantiator.js"
+    },
     "./test": {
       "types": "./dist/test/test.d.ts",
       "default": "./dist/test/test.js"

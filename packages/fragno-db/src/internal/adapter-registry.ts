@@ -11,6 +11,7 @@ import {
   createInternalFragmentOutboxRoutes,
   createInternalFragmentSyncRoutes,
 } from "../fragments/internal-fragment.routes";
+import type { DatabaseTransactionInstrumentation } from "../query/unit-of-work/execute-unit-of-work";
 import type { SyncCommandDefinition, SyncCommandTargetRegistration } from "../sync/types";
 import { enableOutboxForSchema, getOutboxStateForAdapter, type OutboxState } from "./outbox-state";
 
@@ -45,6 +46,8 @@ type AdapterRegistry = {
   fragments: Map<string, FragmentMeta>;
   outboxState: OutboxState;
   syncCommandTargets: Map<string, SyncCommandTarget>;
+  transactionInstrumentation?: DatabaseTransactionInstrumentation;
+  registerTransactionInstrumentation: (instrumentation: DatabaseTransactionInstrumentation) => void;
   registerSchema: (
     schema: SchemaInfo,
     fragment: FragmentMeta,
@@ -137,9 +140,20 @@ const buildInternalFragment = (
     createInternalFragmentSyncRoutes(),
   ];
 
+  const transactionInstrumentation: DatabaseTransactionInstrumentation = {
+    run: (context, execute) => {
+      const instrumentation = registry.transactionInstrumentation;
+      return instrumentation ? instrumentation.run(context, execute) : execute();
+    },
+  };
+
   return instantiate(internalFragmentDef)
     .withConfig({ registry })
-    .withOptions({ databaseAdapter: adapter, databaseNamespace: null })
+    .withOptions({
+      databaseAdapter: adapter,
+      databaseNamespace: null,
+      transactionInstrumentation,
+    })
     .withRoutes(routes)
     .build();
 };
@@ -157,6 +171,18 @@ const createRegistry = (adapter: DatabaseAdapter<unknown>): AdapterRegistry => {
     fragments,
     outboxState,
     syncCommandTargets,
+    transactionInstrumentation: undefined,
+    registerTransactionInstrumentation: (instrumentation) => {
+      if (
+        registry.transactionInstrumentation &&
+        registry.transactionInstrumentation !== instrumentation
+      ) {
+        throw new Error(
+          "[fragno-db] Conflicting transaction instrumentation registered for one database adapter.",
+        );
+      }
+      registry.transactionInstrumentation = instrumentation;
+    },
     registerSchema: (schema, fragment, options) => {
       const namespaceKey = getNamespaceKey(schema);
       const existing = schemas.get(namespaceKey);

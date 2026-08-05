@@ -32,6 +32,7 @@ import {
 } from "@/fragno/otp";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
+import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
 
 export type IssueEmailVerificationInput = {
   userId: string;
@@ -267,6 +268,7 @@ export class InMemoryOtpObject implements OtpObject {
             },
           },
         ),
+      durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
       onProcessError: (error) => {
         console.error("OTP hook processor error", error);
       },

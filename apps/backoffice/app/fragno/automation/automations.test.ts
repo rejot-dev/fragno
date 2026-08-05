@@ -10,12 +10,18 @@ vi.mock("@fragno-dev/db/dispatchers/cloudflare-do", () => ({
 
 import { createAutomationsDispatcher } from "./automations";
 
+const createInstrumentation = () => ({
+  captureContext: vi.fn(() => null),
+  runAttempt: vi.fn(async (_attempt, execute) => await execute()),
+});
+
 describe("createAutomationsDispatcher", () => {
   beforeEach(() => {
     createDurableHooksProcessorMock.mockReset();
   });
 
-  test("returns the durable hooks dispatcher when initialization succeeds", () => {
+  test("returns the instrumented durable hooks dispatcher when initialization succeeds", () => {
+    const instrumentation = createInstrumentation();
     const dispatcher = {
       notify: vi.fn(async () => undefined),
       alarm: vi.fn(async () => undefined),
@@ -29,11 +35,17 @@ describe("createAutomationsDispatcher", () => {
         {} as never,
         {} as DurableObjectState,
         {} as CloudflareEnv,
+        instrumentation,
       ),
     ).toBe(dispatcher);
+    expect(createDurableHooksProcessorMock).toHaveBeenCalledWith([{}, {}], {
+      instrumentation,
+      onProcessError: expect.any(Function),
+    });
   });
 
   test("rethrows dispatcher initialization failures instead of disabling processing", () => {
+    const instrumentation = createInstrumentation();
     createDurableHooksProcessorMock.mockReturnValue(() => {
       throw new Error("dispatcher init failed");
     });
@@ -44,6 +56,7 @@ describe("createAutomationsDispatcher", () => {
         {} as never,
         {} as DurableObjectState,
         {} as CloudflareEnv,
+        instrumentation,
       ),
     ).toThrow("dispatcher init failed");
   });

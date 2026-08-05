@@ -294,7 +294,9 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
         });
       }),
       internalIngestEvent: defineHook(async function (payload: AutomationEventIngestionPayload) {
-        const { routes, store } = await this.handlerTx()
+        const { routes, store } = await this.handlerTx({
+          name: "automations.internalIngestEvent",
+        })
           .retrieve(({ forSchema }) => {
             const uow = forSchema(automationFragmentSchema);
             return uow
@@ -445,7 +447,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           .build();
       },
       ingestEvent: function (event: AutomationEvent) {
-        return this.serviceTx(automationFragmentSchema)
+        return this.serviceTx(automationFragmentSchema, { name: "automations.ingestEvent" })
           .retrieve((uow) =>
             uow.findFirst("automation_event_definition", (b) =>
               b.whereIndex("primary", (eb) =>
