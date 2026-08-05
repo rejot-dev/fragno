@@ -22,7 +22,7 @@
     "@assistant-ui/react": "^0.15.1",
     "@base-ui/react": "^1.2.0",
     "@cfworker/json-schema": "^4.1.1",
-    "@cloudflare/sandbox": "^0.7.12",
+    "@cloudflare/sandbox": "^0.12.4",
     "@cloudflare/worker-bundler": "0.2.2",
     "@earendil-works/pi-agent-core": "^0.82.1",
     "@earendil-works/pi-ai": "^0.82.1",
@@ -69,10 +69,10 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
-    "@cloudflare/shell": "^0.3.8",
-    "@cloudflare/vite-plugin": "^1.35.0",
-    "@cloudflare/vitest-pool-workers": "^0.15.2",
-    "@cloudflare/workers-types": "^4.20260504.1",
+    "@cloudflare/shell": "^0.4.3",
+    "@cloudflare/vite-plugin": "^1.50.0",
+    "@cloudflare/vitest-pool-workers": "^0.20.1",
+    "@cloudflare/workers-types": "^5.20260804.1",
     "@fragno-dev/test": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@react-router/dev": "^8.2.0",
@@ -90,6 +90,6 @@
     "vite": "catalog:",
     "vite-plugin-devtools-json": "^1.0.0",
     "vitest": "catalog:",
-    "wrangler": "^4.87.0"
+    "wrangler": "^4.118.0"
   }
 }
