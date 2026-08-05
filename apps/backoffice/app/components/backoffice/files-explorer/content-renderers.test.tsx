@@ -4,7 +4,40 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { resolveFilesContentRenderer, type FilesContentPreview } from "./content-renderers";
 
-describe("files content image rendering", () => {
+describe("files content rendering", () => {
+  test("renders Markdown files with the shared Streamdown renderer", () => {
+    const preview: FilesContentPreview = {
+      title: "README.md",
+      contentType: "text/markdown",
+      metadata: null,
+      textContent: "# Explorer heading\n\n- One\n- Two",
+    };
+
+    const renderer = resolveFilesContentRenderer(preview);
+    assert(renderer);
+    const markup = renderToStaticMarkup(renderer.render(preview));
+
+    assert.equal(renderer.id, "markdown");
+    assert(markup.includes("Explorer heading"));
+    assert(markup.includes("bo-session-markdown"));
+    assert(markup.includes("bo-file-markdown"));
+    assert(markup.includes("<h1"));
+  });
+
+  test("ignores media type parameters when selecting a renderer", () => {
+    const preview: FilesContentPreview = {
+      title: "README.md",
+      contentType: "Text/Markdown; charset=utf-8",
+      metadata: null,
+      textContent: "# Parameterized Markdown",
+    };
+
+    const renderer = resolveFilesContentRenderer(preview);
+
+    assert(renderer);
+    assert.equal(renderer.id, "markdown");
+  });
+
   test("uses the first allowed metadata image source", () => {
     const preview = createImagePreview({
       previewUrl: "https://images.example.com/unsafe.png",

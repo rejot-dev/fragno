@@ -72,7 +72,7 @@ export default function BackofficeFilesScopeLayout({ loaderData }: Route.Compone
   } satisfies FilesLayoutContext;
 
   return (
-    <div className="space-y-4">
+    <div className="flex h-[calc(100dvh-7.25rem)] min-h-0 flex-col gap-4 overflow-hidden sm:h-[calc(100dvh-5rem)]">
       <FilesWorkspaceHeader
         selectedScope={loaderData.selectedScope}
         scopeOptions={loaderData.scopeOptions}
