@@ -1,6 +1,5 @@
 import { describe, expect, test, assert } from "vitest";
 
-import { backofficeCapabilities } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import {
   CODEMODE_STATE_DTS_PATH,
   CODEMODE_SYSTEM_DTS_PATH,
@@ -591,10 +590,9 @@ describe("runtime tool reference generation", () => {
     expect(types).toContain("declare const telegram");
   });
 
-  test("renders split codemode declarations with every capability enabled", () => {
+  test("renders split codemode declarations for every static provider", () => {
     expect(() =>
       createCodemodeTypeFiles({
-        configuredCapabilityIds: backofficeCapabilities.map((capability) => capability.id),
         families: runtimeToolFamilies,
         stateTypes: STATE_TYPES,
       }),
@@ -629,7 +627,6 @@ describe("runtime tool reference generation", () => {
 
   test("renders recursive automation route matchers in generated router provider types", () => {
     const files = createCodemodeTypeFiles({
-      configuredCapabilityIds: ["automations"],
       families: runtimeToolFamilies,
       stateTypes: "declare const state: unknown;",
     });
@@ -737,8 +734,12 @@ describe("runtime tool reference generation", () => {
     expect(webTypes).toContain('action: "markdown"');
     expect(webTypes).not.toContain('action: "json"');
     expect(webTypes).not.toContain('action: "links"');
-    assert(!files.some((file) => file.path === "/static/codemode/providers/pi.d.ts"));
-    assert(!files.some((file) => file.path === "/static/codemode/providers/telegram.d.ts"));
+    expect(readGeneratedFile(files, "/static/codemode/providers/pi.d.ts")).toContain(
+      "declare const pi",
+    );
+    expect(readGeneratedFile(files, "/static/codemode/providers/telegram.d.ts")).toContain(
+      "declare const telegram",
+    );
   });
 
   test("renders scoped context handles", () => {
@@ -757,30 +758,22 @@ describe("runtime tool reference generation", () => {
     expect(types).not.toContain("org-only");
   });
 
-  test("renders sandbox provider types from the sandbox capability", () => {
-    const piFiles = createCodemodeTypeFiles({
-      configuredCapabilityIds: ["pi"],
-      families: runtimeToolFamilies,
-      stateTypes: "declare const state: unknown;",
-    });
-    const sandboxFiles = createCodemodeTypeFiles({
-      configuredCapabilityIds: ["sandbox"],
+  test("renders capability provider types from the start", () => {
+    const files = createCodemodeTypeFiles({
       families: runtimeToolFamilies,
       stateTypes: "declare const state: unknown;",
     });
 
-    expect(readGeneratedFile(piFiles, "/static/codemode/providers/pi.d.ts")).toContain(
+    expect(readGeneratedFile(files, "/static/codemode/providers/pi.d.ts")).toContain(
       "declare const pi",
     );
-    assert(!piFiles.some((file) => file.path === "/static/codemode/providers/sandbox.d.ts"));
-    expect(readGeneratedFile(sandboxFiles, "/static/codemode/providers/sandbox.d.ts")).toContain(
+    expect(readGeneratedFile(files, "/static/codemode/providers/sandbox.d.ts")).toContain(
       "declare const sandbox",
     );
   });
 
-  test("renders prepared Upload lifecycle provider types when Upload is configured", () => {
+  test("renders prepared Upload lifecycle provider types from the start", () => {
     const files = createCodemodeTypeFiles({
-      configuredCapabilityIds: ["upload"],
       families: runtimeToolFamilies,
       stateTypes: "declare const state: unknown;",
     });
@@ -799,7 +792,6 @@ describe("runtime tool reference generation", () => {
 
   test("renders installed MCP providers with dash-safe server slugs", () => {
     const files = createCodemodeTypeFiles({
-      configuredCapabilityIds: ["mcp"],
       families: runtimeToolFamilies,
       stateTypes: "declare const state: unknown;",
       mcpServers: [
@@ -821,7 +813,7 @@ describe("runtime tool reference generation", () => {
         },
       ],
     });
-    const types = readGeneratedFile(files, "/static/codemode/providers/mcp_cloudflare_mcp.d.ts");
+    const types = readGeneratedFile(files, "/static/codemode/sources/mcp_cloudflare_mcp.d.ts");
 
     expect(types).toContain("declare const mcp_cloudflare_mcp");
     expect(types).toContain("search_docs(input: McpCloudflareMcpSearchDocsInput)");

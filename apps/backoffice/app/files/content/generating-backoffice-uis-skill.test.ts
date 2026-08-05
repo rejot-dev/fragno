@@ -253,10 +253,14 @@ describe("generating Backoffice UIs skill", () => {
     expect(systemGuidance).toContain("Do not wrap `defineWorkflow` inside an async function");
     expect(systemGuidance).toContain("the returned handle alone is not completion");
     expect(systemGuidance).toContain(
-      "Treat the generated TypeScript declarations as a closed world",
+      "Declarations tell you what can be called; runtime checks tell you what is currently usable",
+    );
+    expect(systemGuidance).toContain("`/providers` contains the complete, stable Backoffice API");
+    expect(systemGuidance).toContain(
+      "`/sources` contains dynamically discovered APIs for the current context",
     );
     expect(systemGuidance).toContain(
-      "preflight every provider operation, concrete target scope, and continuation event type",
+      "confirm the method exists, required services are configured, scopes are concrete, and event types are exact",
     );
     expect(systemGuidance).toContain("report an unavailable requirement as blocking");
     expect(systemGuidance).toContain("Classify execution errors from their messages");

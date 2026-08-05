@@ -754,21 +754,21 @@ describe("system automation scenarios", () => {
           then.files.contains({
             orgId: "org-1",
             path: "/static/codemode/system.d.ts",
-            text: "/static/codemode/providers/mcp_cloudflare_mcp.d.ts",
+            text: "/static/codemode/sources/mcp_cloudflare_mcp.d.ts",
           }),
           then.files.contains({
             orgId: "org-1",
-            path: "/static/codemode/providers/mcp_cloudflare_mcp.d.ts",
+            path: "/static/codemode/sources/mcp_cloudflare_mcp.d.ts",
             text: "declare const mcp_cloudflare_mcp",
           }),
           then.files.contains({
             orgId: "org-1",
-            path: "/static/codemode/providers/mcp_cloudflare_mcp.d.ts",
+            path: "/static/codemode/sources/mcp_cloudflare_mcp.d.ts",
             text: "search_docs(input: McpCloudflareMcpSearchDocsInput)",
           }),
           then.files.contains({
             orgId: "org-1",
-            path: "/static/codemode/providers/mcp_cloudflare_mcp.d.ts",
+            path: "/static/codemode/sources/mcp_cloudflare_mcp.d.ts",
             text: "query: string",
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
