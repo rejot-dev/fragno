@@ -5,6 +5,11 @@ import type { HTTPMethod } from "./api";
 import type { FragnoResponse } from "./fragno-response";
 import { parseFragnoResponse } from "./fragno-response";
 import { buildPath, type ExtractPathParams } from "./internal/path";
+import {
+  applyPreparedRequestBodyContentType,
+  createRequestInitWithBody,
+  prepareInferredRequestBody,
+} from "./request-body";
 import type { AnyFragnoRouteConfig, RouteCallMatch, RouteCallPath } from "./route";
 import type { RouteHandlerInputOptions } from "./route-handler-input-options";
 
@@ -16,7 +21,6 @@ export type RouteCallerConfig = {
   redirect?: RequestRedirect;
 };
 
-type ArrayBufferViewOfArrayBuffer = ArrayBufferView & { buffer: ArrayBuffer };
 type RouteCallerRawBody = BodyInit | ArrayBufferView;
 
 type FragmentLike = {
@@ -43,10 +47,6 @@ export type RouteCallerForFragment<TFragment extends FragmentLike> = TFragment e
   : TFragment extends { callRoute: (...args: never[]) => Promise<unknown> }
     ? TFragment["callRoute"]
     : never;
-
-function isArrayBufferView(value: unknown): value is ArrayBufferViewOfArrayBuffer {
-  return ArrayBuffer.isView(value) && value.buffer instanceof ArrayBuffer;
-}
 
 function buildMountedPath(mountRoute: string, pathname: string): string {
   const normalizedMount =
@@ -109,42 +109,18 @@ export function createRouteCaller<TFragment extends FragmentLike>(
     const url = new URL(buildMountedPath(mountRoute, pathname), baseUrl);
     url.search = searchParams.toString();
 
-    let body: BodyInit | undefined;
-    if (inputOptions && "body" in inputOptions) {
-      const rawBody = (inputOptions as { body?: unknown }).body;
-
-      if (
-        typeof rawBody === "string" ||
-        rawBody instanceof URLSearchParams ||
-        rawBody instanceof FormData ||
-        rawBody instanceof Blob ||
-        rawBody instanceof ReadableStream ||
-        rawBody instanceof ArrayBuffer ||
-        isArrayBufferView(rawBody)
-      ) {
-        body = rawBody;
-        if (!hasExplicitContentType) {
-          headers.delete("content-type");
-        }
-      } else if (rawBody !== undefined) {
-        body = JSON.stringify(rawBody);
-        if (!hasExplicitContentType) {
-          headers.set("content-type", "application/json");
-        }
-      }
+    const rawBody =
+      inputOptions && "body" in inputOptions
+        ? (inputOptions as { body?: unknown }).body
+        : undefined;
+    const preparedBody = prepareInferredRequestBody(rawBody);
+    if (!hasExplicitContentType) {
+      applyPreparedRequestBodyContentType(headers, preparedBody);
     }
 
-    const requestInit: RequestInit & { duplex?: "half" } = {
-      method,
-      headers,
-      body,
-      redirect,
-    };
-    if (body instanceof ReadableStream) {
-      requestInit.duplex = "half";
-    }
-
-    const response = await fetch(new Request(url, requestInit));
+    const response = await fetch(
+      new Request(url, createRequestInitWithBody(method, headers, preparedBody.body, { redirect })),
+    );
 
     return parseFragnoResponse(response);
   };

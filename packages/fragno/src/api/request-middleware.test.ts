@@ -761,6 +761,61 @@ describe("Request Middleware", () => {
 
     assert(response.status === 200);
     expect(receivedContext).toBe(applicationContext);
+
+    receivedContext = undefined;
+    const directResponse = await instance.callRoute("GET", "/data", undefined, {
+      requestContext: applicationContext,
+    });
+
+    assert(directResponse.type === "json");
+    expect(receivedContext).toBe(applicationContext);
+  });
+
+  test("direct route middleware can read the serialized request body", async () => {
+    const fragment = defineFragment("test-lib").build();
+    const routes = [
+      defineRoute({
+        method: "POST",
+        path: "/json",
+        inputSchema: z.object({ name: z.string() }),
+        handler: async (_, { json }) => json({ ok: true }),
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/text",
+        contentType: "application/octet-stream",
+        inputSchema: z.instanceof(Blob),
+        handler: async (_, { json }) => json({ ok: true }),
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/stream",
+        contentType: "application/octet-stream",
+        inputSchema: z.instanceof(Uint8Array),
+        handler: async (_, { json }) => json({ ok: true }),
+      }),
+    ] as const;
+    const observedBodies: unknown[] = [];
+    const instance = instantiate(fragment)
+      .withConfig({})
+      .withRoutes(routes)
+      .build()
+      .withMiddleware(async ({ path, request }) => {
+        if (path === "/json") {
+          observedBodies.push(await request.json());
+        } else if (path === "/text") {
+          observedBodies.push(await request.text());
+        } else if (path === "/stream") {
+          assert(request.body);
+          observedBodies.push(new Uint8Array(await new Response(request.body).arrayBuffer()));
+        }
+      });
+
+    await instance.callRoute("POST", "/json", { body: { name: "Ada" } });
+    await instance.callRoute("POST", "/text", { body: new Blob(["plain text"]) });
+    await instance.callRoute("POST", "/stream", { body: new Uint8Array([1, 2, 3]) });
+
+    expect(observedBodies).toEqual([{ name: "Ada" }, "plain text", new Uint8Array([1, 2, 3])]);
   });
 
   test("ifMatchesRoute properly awaits async handlers", async () => {

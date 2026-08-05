@@ -13,6 +13,11 @@ import type { ExtractPathParams } from "./internal/path";
 import { getMountRoute } from "./internal/route";
 import { MutableRequestState } from "./mutable-request-state";
 import {
+  applyPreparedRequestBodyContentType,
+  createRequestInitWithBody,
+  prepareRouteRequestBody,
+} from "./request-body";
+import {
   extractW3CRequestPropagationContext,
   RequestContextStorage,
   type RequestPropagationContext,
@@ -754,12 +759,13 @@ export class FragnoInstantiatedFragment<
       TPath,
       CallRouteMatch<TRoutes, TMethod, TPath>["inputSchema"]
     >,
+    lifecycleContext?: FragnoRequestLifecycleContext<TRequestContext>,
   ): Promise<
     FragnoResponse<
       InferOrUnknown<NonNullable<CallRouteMatch<TRoutes, TMethod, TPath>["outputSchema"]>>
     >
   > {
-    const response = await this.callRouteRaw(method, path, inputOptions);
+    const response = await this.callRouteRaw(method, path, inputOptions, lifecycleContext);
     return parseFragnoResponse(response);
   }
 
@@ -774,6 +780,7 @@ export class FragnoInstantiatedFragment<
       TPath,
       CallRouteMatch<TRoutes, TMethod, TPath>["inputSchema"]
     >,
+    lifecycleContext?: FragnoRequestLifecycleContext<TRequestContext>,
   ): Promise<Response> {
     // Find route in this.#routes
     const route = this.#routes.find((r) => r.method === method && r.path === path);
@@ -801,21 +808,13 @@ export class FragnoInstantiatedFragment<
 
     const requestHeaders =
       headers instanceof Headers ? headers : headers ? new Headers(headers) : new Headers();
-    const lifecycleContext: FragnoRequestLifecycleContext = {
-      propagationContext: extractW3CRequestPropagationContext(requestHeaders),
+    const requestLifecycleContext: FragnoRequestLifecycleContext<TRequestContext> = {
+      ...lifecycleContext,
+      propagationContext:
+        lifecycleContext?.propagationContext === undefined
+          ? extractW3CRequestPropagationContext(requestHeaders)
+          : lifecycleContext.propagationContext,
     };
-
-    // Construct RequestInputContext
-    const inputContext = new RequestInputContext({
-      path: route.path,
-      method: route.method,
-      pathParams: pathParams as ExtractPathParams<typeof route.path>,
-      searchParams,
-      headers: requestHeaders,
-      parsedBody: body,
-      inputSchema: route.inputSchema,
-      shouldValidateInput: true, // Enable validation for production use
-    });
 
     const fullRoutePath =
       this.#mountRoute && this.#mountRoute !== "/"
@@ -828,34 +827,54 @@ export class FragnoInstantiatedFragment<
       fullPath: fullRoutePath,
     };
 
-    // Construct RequestOutputContext
-    const outputContext = new RequestOutputContext(route.outputSchema, {
-      runJsonStreamCallback: (callback) =>
-        this.#withRequestStorage(callback, "stream", routeInfo, lifecycleContext),
+    const requestState = new MutableRequestState({
+      pathParams: pathParams as Record<string, string>,
+      searchParams,
+      body: body as RequestBodyType,
+      headers: requestHeaders,
     });
+    const routeMatch = { data: route, params: pathParams } as ReturnType<typeof findRoute>;
+    const concreteRoutePath = Object.entries(pathParams as Record<string, string>).reduce(
+      (currentPath, [name, value]) => currentPath.replace(`:${name}`, encodeURIComponent(value)),
+      fullRoutePath,
+    );
+    const requestUrl = new URL(concreteRoutePath, "http://fragno.local");
+    requestUrl.search = searchParams.toString();
 
-    // Execute handler
-    const executeHandler = async (): Promise<Response> => {
-      try {
-        // Use handler context (full capabilities)
-        const thisContext = this.#handlerThisContext ?? ({} as RequestThisContext);
-        return await route.handler.call(thisContext, inputContext, outputContext);
-      } catch (error) {
-        console.error("Error in callRoute handler", error);
+    const preparedBody =
+      method === "GET" || method === "HEAD"
+        ? prepareRouteRequestBody(undefined, route.contentType)
+        : prepareRouteRequestBody(body, route.contentType);
+    if (!requestHeaders.has("content-type")) {
+      applyPreparedRequestBodyContentType(requestHeaders, preparedBody);
+    }
+    const request = new Request(
+      requestUrl,
+      createRequestInitWithBody(method, requestHeaders, preparedBody.body),
+    );
 
-        if (error instanceof FragnoApiError) {
-          return error.toResponse();
-        }
-
-        return Response.json(
-          { error: "Internal server error", code: "INTERNAL_SERVER_ERROR" },
-          { status: 500 },
-        );
+    const executeRequest = async (): Promise<Response> => {
+      const middlewareResult = await this.#executeMiddleware(
+        request,
+        routeMatch,
+        requestState,
+        requestLifecycleContext.requestContext,
+      );
+      if (middlewareResult !== undefined) {
+        return middlewareResult;
       }
+
+      return await this.#executeHandler(
+        request,
+        routeMatch,
+        requestState,
+        undefined,
+        requestLifecycleContext,
+      );
     };
 
     // Wrap with request storage context if provided
-    return this.#withRequestStorage(executeHandler, "route", routeInfo, lifecycleContext);
+    return this.#withRequestStorage(executeRequest, "route", routeInfo, requestLifecycleContext);
   }
 
   /**
@@ -1345,11 +1364,21 @@ interface IFragnoInstantiatedFragment<TRequestContext = never> {
     lifecycleContext?: FragnoRequestLifecycleContext<TRequestContext>,
   ): Promise<Response>;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  callRoute(method: HTTPMethod, path: string, inputOptions?: any): Promise<any>;
+  /* oxlint-disable typescript/no-explicit-any */
+  callRoute(
+    method: HTTPMethod,
+    path: string,
+    inputOptions?: any,
+    lifecycleContext?: FragnoRequestLifecycleContext<TRequestContext>,
+  ): Promise<any>;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  callRouteRaw(method: HTTPMethod, path: string, inputOptions?: any): Promise<Response>;
+  callRouteRaw(
+    method: HTTPMethod,
+    path: string,
+    inputOptions?: any,
+    lifecycleContext?: FragnoRequestLifecycleContext<TRequestContext>,
+  ): Promise<Response>;
+  /* oxlint-enable typescript/no-explicit-any */
 }
 
 /**

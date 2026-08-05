@@ -8,7 +8,6 @@ import type {
   HTTPMethod,
   NonGetHTTPMethod,
   RequestThisContext,
-  RouteContentType,
 } from "../api/api";
 import type { FragmentDefinition } from "../api/fragment-definition-builder";
 import {
@@ -19,6 +18,7 @@ import {
   type MaybeExtractPathParamsOrWiden,
 } from "../api/internal/path";
 import { getMountRoute } from "../api/internal/route";
+import { createRequestInitWithBody, prepareClientRequestBody } from "../api/request-body";
 import { RequestInputContext } from "../api/request-input-context";
 import { RequestOutputContext } from "../api/request-output-context";
 import {
@@ -54,110 +54,6 @@ import {
 const GET_HOOK_SYMBOL = Symbol("fragno-get-hook");
 const MUTATOR_HOOK_SYMBOL = Symbol("fragno-mutator-hook");
 const STORE_SYMBOL = Symbol("fragno-store");
-
-/**
- * Check if a value contains files that should be sent as FormData.
- * @internal
- */
-function containsFiles(value: unknown): boolean {
-  if (value instanceof File || value instanceof Blob) {
-    return true;
-  }
-
-  if (value instanceof FormData) {
-    return true;
-  }
-
-  if (typeof value === "object" && value !== null) {
-    return Object.values(value).some(
-      (v) => v instanceof File || v instanceof Blob || v instanceof FormData,
-    );
-  }
-
-  return false;
-}
-
-/**
- * Convert an object containing files to FormData.
- * Handles nested File/Blob values by appending them directly.
- * Other values are JSON-stringified.
- * @internal
- */
-function toFormData(value: object): FormData {
-  const formData = new FormData();
-
-  for (const [key, val] of Object.entries(value)) {
-    if (val instanceof File) {
-      formData.append(key, val, val.name);
-    } else if (val instanceof Blob) {
-      formData.append(key, val);
-    } else if (val !== undefined && val !== null) {
-      // For non-file values, stringify if needed
-      formData.append(key, typeof val === "string" ? val : JSON.stringify(val));
-    }
-  }
-
-  return formData;
-}
-
-/**
- * Prepare request body and headers for sending.
- * Handles FormData (file uploads) vs JSON data.
- * @internal
- */
-function prepareRequestBody(
-  body: unknown,
-  contentType?: RouteContentType,
-): { body: BodyInit | undefined; headers?: HeadersInit } {
-  if (body === undefined) {
-    return { body: undefined };
-  }
-
-  if (contentType === "application/octet-stream") {
-    if (
-      body instanceof ReadableStream ||
-      body instanceof Blob ||
-      body instanceof File ||
-      body instanceof ArrayBuffer ||
-      body instanceof Uint8Array
-    ) {
-      return { body: body as BodyInit, headers: { "Content-Type": "application/octet-stream" } };
-    }
-
-    throw new Error(
-      "Octet-stream routes only accept Blob, File, ArrayBuffer, Uint8Array, or ReadableStream bodies.",
-    );
-  }
-
-  // If already FormData, send as-is (browser sets Content-Type with boundary)
-  if (body instanceof FormData) {
-    return { body };
-  }
-
-  // If body is directly a File or Blob, wrap it in FormData
-  if (body instanceof File) {
-    const formData = new FormData();
-    formData.append("file", body, body.name);
-    return { body: formData };
-  }
-
-  if (body instanceof Blob) {
-    const formData = new FormData();
-    formData.append("file", body);
-    return { body: formData };
-  }
-
-  // If object contains files, convert to FormData
-  if (typeof body === "object" && body !== null && containsFiles(body)) {
-    return { body: toFormData(body) };
-  }
-
-  // Otherwise, JSON-stringify
-  return {
-    body: JSON.stringify(body),
-    headers: { "Content-Type": "application/json" },
-  };
-}
 
 async function schemaAllowsUndefined(schema: StandardSchemaV1): Promise<boolean> {
   try {
@@ -1256,24 +1152,18 @@ export class ClientBuilder<
 
       let response: Response;
       try {
-        const { body: preparedBody, headers: bodyHeaders } = prepareRequestBody(
-          body,
-          route.contentType,
-        );
-
-        // Merge headers: fetcherOptions headers + body-specific headers (e.g., Content-Type for JSON)
-        // For FormData, bodyHeaders is undefined and browser sets Content-Type with boundary automatically
-        const mergedHeaders = mergeRequestHeaders(fetcherOptions?.headers, bodyHeaders);
-
-        const requestOptions: RequestInit & { duplex?: "half" } = {
-          ...fetcherOptions,
+        const preparedBody = prepareClientRequestBody(body, route.contentType);
+        const bodyHeaders =
+          preparedBody.contentType === undefined || preparedBody.contentType === null
+            ? undefined
+            : { "Content-Type": preparedBody.contentType };
+        const headers = mergeRequestHeaders(fetcherOptions?.headers, bodyHeaders);
+        const requestOptions = createRequestInitWithBody(
           method,
-          body: preparedBody,
-          ...(mergedHeaders ? { headers: mergedHeaders } : {}),
-        };
-        if (preparedBody instanceof ReadableStream) {
-          requestOptions.duplex = "half";
-        }
+          headers ?? {},
+          preparedBody.body,
+          fetcherOptions,
+        );
         response = await fetcher(url, requestOptions);
       } catch (error) {
         throw FragnoClientFetchError.fromUnknownFetchError(error);
