@@ -165,6 +165,7 @@ export function addRoute<
 export { FragnoApiError, FragnoApiValidationError } from "./error";
 export {
   createRouteCaller,
+  type RawRouteCallerForFragment,
   type RouteCallerConfig,
   type RouteCallerForFragment,
 } from "./route-caller";

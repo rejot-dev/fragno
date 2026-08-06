@@ -28,7 +28,24 @@ type FragmentLike = {
   callRoute?: (...args: never[]) => Promise<unknown>;
 };
 
-export type RouteCallerForFragment<TFragment extends FragmentLike> = TFragment extends {
+type ParsedRouteCaller<TRoutes extends readonly AnyFragnoRouteConfig[]> = <
+  TMethod extends HTTPMethod,
+  TPath extends RouteCallPath<TRoutes, TMethod>,
+>(
+  method: TMethod,
+  path: TPath,
+  inputOptions?: RouteHandlerInputOptions<
+    TPath,
+    RouteCallMatch<TRoutes, TMethod, TPath>["inputSchema"],
+    TMethod extends "GET" | "HEAD" ? never : RouteCallerRawBody
+  >,
+) => Promise<
+  FragnoResponse<
+    InferOrUnknown<NonNullable<RouteCallMatch<TRoutes, TMethod, TPath>["outputSchema"]>>
+  >
+>;
+
+export type RawRouteCallerForFragment<TFragment extends FragmentLike> = TFragment extends {
   routes: infer TRoutes extends readonly AnyFragnoRouteConfig[];
 }
   ? <TMethod extends HTTPMethod, TPath extends RouteCallPath<TRoutes, TMethod>>(
@@ -39,11 +56,13 @@ export type RouteCallerForFragment<TFragment extends FragmentLike> = TFragment e
         RouteCallMatch<TRoutes, TMethod, TPath>["inputSchema"],
         TMethod extends "GET" | "HEAD" ? never : RouteCallerRawBody
       >,
-    ) => Promise<
-      FragnoResponse<
-        InferOrUnknown<NonNullable<RouteCallMatch<TRoutes, TMethod, TPath>["outputSchema"]>>
-      >
-    >
+    ) => Promise<Response>
+  : never;
+
+export type RouteCallerForFragment<TFragment extends FragmentLike> = TFragment extends {
+  routes: infer TRoutes extends readonly AnyFragnoRouteConfig[];
+}
+  ? ParsedRouteCaller<TRoutes> & { raw: RawRouteCallerForFragment<TFragment> }
   : TFragment extends { callRoute: (...args: never[]) => Promise<unknown> }
     ? TFragment["callRoute"]
     : never;
@@ -67,7 +86,7 @@ export function createRouteCaller<TFragment extends FragmentLike>(
   const baseHeaders = config.baseHeaders ? new Headers(config.baseHeaders) : undefined;
   const redirect = config.redirect ?? "manual";
 
-  const callRoute = async <TPath extends string>(
+  const buildRouteRequest = <TPath extends string>(
     method: HTTPMethod,
     path: TPath,
     inputOptions?: RouteHandlerInputOptions<
@@ -75,7 +94,7 @@ export function createRouteCaller<TFragment extends FragmentLike>(
       StandardSchemaV1 | undefined,
       RouteCallerRawBody
     >,
-  ): Promise<FragnoResponse<unknown>> => {
+  ): Request => {
     const headers = baseHeaders ? new Headers(baseHeaders) : new Headers();
     const explicitHeaders = inputOptions?.headers
       ? inputOptions.headers instanceof Headers
@@ -90,7 +109,6 @@ export function createRouteCaller<TFragment extends FragmentLike>(
     }
 
     const hasExplicitContentType = explicitHeaders?.has("content-type") ?? false;
-
     const searchParams =
       inputOptions?.query instanceof URLSearchParams
         ? new URLSearchParams(inputOptions.query)
@@ -118,12 +136,32 @@ export function createRouteCaller<TFragment extends FragmentLike>(
       applyPreparedRequestBodyContentType(headers, preparedBody);
     }
 
-    const response = await fetch(
-      new Request(url, createRequestInitWithBody(method, headers, preparedBody.body, { redirect })),
+    return new Request(
+      url,
+      createRequestInitWithBody(method, headers, preparedBody.body, { redirect }),
     );
-
-    return parseFragnoResponse(response);
   };
 
-  return callRoute as RouteCallerForFragment<TFragment>;
+  const callRouteRaw = async <TPath extends string>(
+    method: HTTPMethod,
+    path: TPath,
+    inputOptions?: RouteHandlerInputOptions<
+      TPath,
+      StandardSchemaV1 | undefined,
+      RouteCallerRawBody
+    >,
+  ): Promise<Response> => await fetch(buildRouteRequest(method, path, inputOptions));
+
+  const callRoute = async <TPath extends string>(
+    method: HTTPMethod,
+    path: TPath,
+    inputOptions?: RouteHandlerInputOptions<
+      TPath,
+      StandardSchemaV1 | undefined,
+      RouteCallerRawBody
+    >,
+  ): Promise<FragnoResponse<unknown>> =>
+    parseFragnoResponse(await callRouteRaw(method, path, inputOptions));
+
+  return Object.assign(callRoute, { raw: callRouteRaw }) as RouteCallerForFragment<TFragment>;
 }

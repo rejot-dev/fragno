@@ -80,6 +80,38 @@ describe("createRouteCaller", () => {
     expect(new Uint8Array(await request.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
   });
 
+  test("returns native responses through the raw caller", async () => {
+    const routes = [
+      defineRoute({
+        method: "GET",
+        path: "/files/:fileId/content",
+        handler: async () => new Response("workflow source", { status: 206 }),
+      }),
+    ] as const;
+    type FakeFragment = { routes: readonly (typeof routes)[number][] };
+
+    const callRoute = createRouteCaller<FakeFragment>({
+      baseUrl: "https://example.com",
+      mountRoute: "/api",
+      fetch: async (request) => {
+        assert(new URL(request.url).pathname === "/api/files/file-1/content");
+        return new Response("workflow source", {
+          status: 206,
+          headers: { "content-type": "text/javascript" },
+        });
+      },
+    });
+
+    const response = await callRoute.raw("GET", "/files/:fileId/content", {
+      pathParams: { fileId: "file-1" },
+    });
+
+    expectTypeOf(response).toEqualTypeOf<Response>();
+    assert(response.status === 206);
+    assert(response.headers.get("content-type") === "text/javascript");
+    assert((await response.text()) === "workflow source");
+  });
+
   test("infers route-specific inputs and outputs from fragment routes", async () => {
     const routes = [
       defineRoute({
