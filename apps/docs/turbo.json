@@ -6,6 +6,9 @@
     },
     "types:check": {
       "dependsOn": ["^build", "types:generate"]
+    },
+    "lint:package": {
+      "dependsOn": ["$TURBO_EXTENDS$", "types:generate"]
     }
   }
 }
