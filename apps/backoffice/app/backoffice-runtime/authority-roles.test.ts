@@ -22,6 +22,8 @@ const automationRuntimePermissions = [
   BACKOFFICE_PERMISSION.otp.create,
   BACKOFFICE_PERMISSION.pi.modify,
   BACKOFFICE_PERMISSION.pi.read,
+  BACKOFFICE_PERMISSION.router.modify,
+  BACKOFFICE_PERMISSION.router.read,
   BACKOFFICE_PERMISSION.store.modify,
   BACKOFFICE_PERMISSION.store.read,
   BACKOFFICE_PERMISSION.telegram.send,

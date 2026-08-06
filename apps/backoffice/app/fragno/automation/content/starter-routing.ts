@@ -143,23 +143,6 @@ export const STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInput[] = 
     }),
   },
   {
-    id: "telegram-test-command",
-    name: "Telegram /test command",
-    enabled: true,
-    trigger: {
-      kind: "event",
-      source: "telegram",
-      eventType: "message.received",
-      matcher: { path: "$.payload.text", op: "eq", value: "/test" },
-    },
-    priority: 110,
-    action: startWorkflowAction({
-      remoteWorkflowName: "telegram-test-command",
-      workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
-      instanceIdTemplate: "telegram-test-${event.id}",
-    }),
-  },
-  {
     id: "telegram-identity-claim-completed",
     name: "Forward Telegram identity claim completion",
     enabled: true,

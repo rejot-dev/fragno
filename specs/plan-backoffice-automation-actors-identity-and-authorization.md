@@ -1474,6 +1474,23 @@ role currently grants only `store.modify`.
 Continue replacing broad system authority with narrowly identified service actors and explicit
 grants. Reserve unrestricted system execution for infrastructure recovery and migration operations.
 
+### Marketplace installation workflow authority
+
+**Security note:** Marketplace installer artifacts are publisher-controlled JavaScript. They
+currently execute with target-scoped system authority so installation can write files and reconcile
+Automation routes. Preserving the requesting user's actors for emitted-event attribution does not
+constrain this execution authority; provenance and authorization remain separate concerns. This
+means an installer must be treated as arbitrary code holding broad mutation access, even when its
+publication metadata and installation event were produced by trusted server code.
+
+Do not trust installer-authored ownership fields such as `managedBy.listingId`, `version`, or actor
+metadata. The installation runtime must derive Marketplace identity from trusted ingestion context
+and enforce it at the mutation boundary. Replace general system-powered route mutation with a
+constrained installation capability, preferably an atomic Marketplace route reconciliation operation
+that injects ownership, preserves allowed user state, and rejects unmanaged or cross-listing
+collisions. Apply the same rule to filesystem and future installation mutations: expose only the
+operations and target scope required by installation rather than the general system runtime.
+
 ### External IDs in traces
 
 **Decision:** kernel and durable-hook spans omit actor, principal, external-identity, and resource
@@ -1549,7 +1566,7 @@ hard to identify.
 - [`apps/backoffice/app/fragno/automation/definition.ts`](../apps/backoffice/app/fragno/automation/definition.ts)
 - [`apps/backoffice/app/fragno/automation/event-routes.ts`](../apps/backoffice/app/fragno/automation/event-routes.ts)
 - [`apps/backoffice/app/fragno/automation/content/starter-routing.ts`](../apps/backoffice/app/fragno/automation/content/starter-routing.ts)
-- [`apps/backoffice/app/fragno/automation/engine/workflow.ts`](../apps/backoffice/app/fragno/automation/engine/workflow.ts)
+- [`apps/backoffice/app/fragno/automation/engine/automation-codemode-workflow.ts`](../apps/backoffice/app/fragno/automation/engine/automation-codemode-workflow.ts)
 - [`apps/backoffice/app/fragno/runtime-tools/families/event-runtime.ts`](../apps/backoffice/app/fragno/runtime-tools/families/event-runtime.ts)
 
 ### Store and identity-linking flow

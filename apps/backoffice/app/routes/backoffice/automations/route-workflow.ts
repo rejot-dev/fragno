@@ -31,21 +31,12 @@ export const automationRouteWorkflowIdentity = (
   throw new Error("Unsupported automation route action kind.");
 };
 
-const workflowScriptPathFromParams = (params: unknown) => {
-  if (!params || typeof params !== "object" || Array.isArray(params)) {
-    return null;
-  }
-
-  const workflowScriptPath = (params as Record<string, unknown>).workflowScriptPath;
-  return typeof workflowScriptPath === "string" ? workflowScriptPath : null;
-};
-
 export const automationRouteMatchesWorkflowInstance = (
   route: AutomationRouteDefinition,
   instance: {
     workflowName: string;
     remoteWorkflowName: string | null;
-    params: unknown;
+    workflowScriptPath: string | null;
   },
 ) => {
   const identity = automationRouteWorkflowIdentity(route);
@@ -57,7 +48,7 @@ export const automationRouteMatchesWorkflowInstance = (
     instance.workflowName === identity.workflowName &&
     instance.remoteWorkflowName === identity.remoteWorkflowName &&
     (identity.workflowScriptPath === null ||
-      workflowScriptPathFromParams(instance.params) === identity.workflowScriptPath)
+      instance.workflowScriptPath === identity.workflowScriptPath)
   );
 };
 

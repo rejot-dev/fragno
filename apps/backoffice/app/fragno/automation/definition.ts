@@ -421,6 +421,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                   trigger: route.trigger,
                   action: route.action,
                   description: route.description ?? null,
+                  metadata: null,
                   createdAt: uow.now(),
                   updatedAt: uow.now(),
                 });

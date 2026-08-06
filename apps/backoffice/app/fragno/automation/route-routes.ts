@@ -3,6 +3,7 @@ import { z } from "zod";
 import { defineRoutes } from "@fragno-dev/core";
 import { isUniqueConstraintError } from "@fragno-dev/db";
 
+import { AUTOMATION_SYSTEM_INITIATOR, type AutomationActors } from "./actors";
 import { automationFragmentDefinition } from "./definition";
 import { isAutomationScheduleError } from "./route-triggers";
 import {
@@ -10,6 +11,24 @@ import {
   automationRouteSchema,
   automationRouteUpdatePayloadSchema,
 } from "./routing-schemas";
+
+const SYSTEM_ROUTE_MUTATION_ACTORS = {
+  initiator: AUTOMATION_SYSTEM_INITIATOR,
+  principal: null,
+  delegation: [],
+} as const;
+
+const mutationActorsByRequest = new WeakMap<Request, AutomationActors>();
+
+export const setAutomationRouteMutationActors = (
+  request: Request,
+  actors: AutomationActors,
+): void => {
+  mutationActorsByRequest.set(request, actors);
+};
+
+const getAutomationRouteMutationActors = (request: Request | undefined): AutomationActors =>
+  (request && mutationActorsByRequest.get(request)) ?? SYSTEM_ROUTE_MUTATION_ACTORS;
 
 const routeError = (cause: unknown) =>
   isAutomationScheduleError(cause)
@@ -57,11 +76,14 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
       path: "/routes",
       inputSchema: automationRouteCreateInputSchema,
       outputSchema: automationRouteSchema,
-      handler: async function ({ input }, { json, error }) {
+      handler: async function ({ input, request }, { json, error }) {
         const payload = await input.valid();
         try {
           const route = await this.handlerTx()
-            .withServiceCalls(() => [services.createRoute(payload)] as const)
+            .withServiceCalls(
+              () =>
+                [services.createRoute(payload, getAutomationRouteMutationActors(request))] as const,
+            )
             .transform(({ serviceResult: [result] }) => result)
             .execute();
 
@@ -89,12 +111,18 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
       path: "/routes/:routeId",
       inputSchema: automationRouteUpdatePayloadSchema,
       outputSchema: automationRouteSchema,
-      handler: async function ({ pathParams, input }, { json, error }) {
+      handler: async function ({ pathParams, input, request }, { json, error }) {
         const payload = await input.valid();
         try {
           const route = await this.handlerTx()
             .withServiceCalls(
-              () => [services.updateRoute({ ...payload, id: pathParams.routeId })] as const,
+              () =>
+                [
+                  services.updateRoute(
+                    { ...payload, id: pathParams.routeId },
+                    getAutomationRouteMutationActors(request),
+                  ),
+                ] as const,
             )
             .transform(({ serviceResult: [result] }) => result)
             .execute();

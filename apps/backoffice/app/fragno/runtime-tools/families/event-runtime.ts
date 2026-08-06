@@ -5,6 +5,7 @@ import {
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 
+import type { AutomationActors } from "../../automation/actors";
 import type { AutomationEvent } from "../../automation/contracts";
 import type { EventRuntime } from "./event";
 
@@ -15,6 +16,7 @@ export type CreateEventRuntimeOptions = {
   parentEvent?: AutomationEvent;
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
+  emittedEventActors?: AutomationActors;
 };
 
 const normalizeEventPayload = (payload: Record<string, unknown> | undefined) =>
@@ -62,7 +64,7 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       eventType,
       occurredAt: new Date().toISOString(),
       payload: normalizeEventPayload(payload),
-      actors: options.execution.actors,
+      actors: options.emittedEventActors ?? options.execution.actors,
       subject:
         resolvedTargetScope.kind === "project"
           ? {

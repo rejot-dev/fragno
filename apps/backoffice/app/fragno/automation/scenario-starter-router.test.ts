@@ -48,6 +48,25 @@ const marketplaceTelegramTestWorkspace = () =>
       telegramTestCommandEntry.files["automations/telegram-test-command.workflow.js"],
   });
 
+const telegramTestCommandRoute = {
+  id: "telegram-test-command",
+  name: "Telegram /test command",
+  enabled: true,
+  trigger: {
+    kind: "event" as const,
+    source: "telegram",
+    eventType: "message.received",
+    matcher: { path: "$.payload.text", op: "eq" as const, value: "/test" },
+  },
+  priority: 110,
+  action: {
+    kind: "start_workflow" as const,
+    remoteWorkflowName: "telegram-test-command",
+    workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
+    instanceIdTemplate: "telegram-test-${event.id}",
+  },
+};
+
 const customAutomationEvent = ({
   id,
   source = "custom",
@@ -209,7 +228,10 @@ describe("starter automation router scenarios", () => {
                 id: "tanstack-workflow-event",
                 text: "/test",
               }),
-              workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
+              script: {
+                kind: "file",
+                path: "/workspace/automations/telegram-test-command.workflow.js",
+              },
             },
           }),
           then.assert("assert workflow instance and waiting step are visible", async (ctx) => {
@@ -282,10 +304,11 @@ describe("starter automation router scenarios", () => {
               remoteWorkflowName: "tanstack-live-step",
               instanceId: "tanstack-live-step-run",
               params: {
-                automationEvent: customAutomationEvent({
-                  id: "tanstack-live-step-event",
-                }),
-                workflowScriptPath: "/workspace/automations/tanstack-live-step.workflow.js",
+                automationEvent: customAutomationEvent({ id: "tanstack-live-step-event" }),
+                script: {
+                  kind: "file",
+                  path: "/workspace/automations/tanstack-live-step.workflow.js",
+                },
               },
             });
 
@@ -393,20 +416,6 @@ describe("starter automation router scenarios", () => {
             orgId: "org-1",
             include: [
               {
-                id: "telegram-test-command",
-                trigger: {
-                  kind: "event",
-                  source: "telegram",
-                  eventType: "message.received",
-                  matcher: { path: "$.payload.text", op: "eq", value: "/test" },
-                },
-                action: {
-                  kind: "start_workflow",
-                  remoteWorkflowName: "telegram-test-command",
-                  workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
-                },
-              },
-              {
                 id: "telegram-identity-claim-completed",
                 action: {
                   kind: "send_workflow_event",
@@ -433,7 +442,7 @@ describe("starter automation router scenarios", () => {
             const routes = await queryOnce((query) =>
               query.from({ route: database.collections.routes }),
             );
-            const expectedIds = ["telegram-test-command", "telegram-identity-claim-completed"];
+            const expectedIds = ["telegram-identity-claim-completed"];
             const missing = expectedIds.filter(
               (expectedId) => !routes.some((route) => route.id === expectedId),
             );
@@ -457,16 +466,9 @@ describe("starter automation router scenarios", () => {
 
         steps: ({ when, then }) => [
           when.router.seedStarter({ orgId: "org-1" }),
-          when.router.updateRoute({
-            orgId: "org-1",
-            id: "telegram-test-command",
-            enabled: false,
-          }),
-          then.router.route({
-            orgId: "org-1",
-            id: "telegram-test-command",
-            enabled: false,
-          }),
+          when.router.createRoute({ orgId: "org-1", ...telegramTestCommandRoute }),
+          when.router.updateRoute({ orgId: "org-1", id: "telegram-test-command", enabled: false }),
+          then.router.route({ orgId: "org-1", id: "telegram-test-command", enabled: false }),
 
           when.automation.ingestEvent(telegramMessageEvent({ id: "disabled-test", text: "/test" })),
 
@@ -491,6 +493,7 @@ describe("starter automation router scenarios", () => {
 
         steps: ({ when, then }) => [
           when.router.seedStarter({ orgId: "org-1" }),
+          when.router.createRoute({ orgId: "org-1", ...telegramTestCommandRoute }),
           when.router.updateRoute({
             orgId: "org-1",
             id: "telegram-test-command",
@@ -782,10 +785,11 @@ describe("starter automation router scenarios", () => {
             remoteWorkflowName: "custom-waiter",
             instanceId: "waiter-1",
             params: {
-              automationEvent: customAutomationEvent({
-                id: "waiter-bootstrap",
-              }),
-              workflowScriptPath: "/workspace/automations/custom-waiter.workflow.js",
+              automationEvent: customAutomationEvent({ id: "waiter-bootstrap" }),
+              script: {
+                kind: "file",
+                path: "/workspace/automations/custom-waiter.workflow.js",
+              },
             },
           }),
           then.workflow.instance({
@@ -1435,7 +1439,10 @@ describe("starter automation router scenarios", () => {
                 id: "telegram:message:unrelated-pi-command",
                 text: "/help",
               }),
-              workflowScriptPath: "/workspace/automations/telegram-user-pi-linking.workflow.js",
+              script: {
+                kind: "file",
+                path: "/workspace/automations/telegram-user-pi-linking.workflow.js",
+              },
             },
           }),
 
@@ -2094,6 +2101,7 @@ describe("starter automation router scenarios", () => {
         ],
 
         steps: ({ when, then }) => [
+          when.router.createRoute({ orgId: "org-1", ...telegramTestCommandRoute }),
           when.telegram.receivesMessage({
             orgId: "org-1",
             updateId: 20_005,
@@ -2128,7 +2136,10 @@ describe("starter automation router scenarios", () => {
                   delegation: [],
                 },
               },
-              workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
+              script: {
+                kind: "file",
+                path: "/workspace/automations/telegram-test-command.workflow.js",
+              },
               workflowInstanceId: "telegram-test-message-20005",
             },
           }),
@@ -2188,7 +2199,10 @@ describe("starter automation router scenarios", () => {
                 id: "telegram:message:non-test-command",
                 text: "/start",
               }),
-              workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
+              script: {
+                kind: "file",
+                path: "/workspace/automations/telegram-test-command.workflow.js",
+              },
             },
           }),
 

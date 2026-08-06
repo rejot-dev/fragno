@@ -13,23 +13,21 @@ import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-run
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
-import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { loadAutomationCatalog } from "@/fragno/automation/catalog";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
+import { PI_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/pi-codemode-workflow";
 import { createAutomationRuntimeExecution } from "@/fragno/automation/engine/runtime-execution";
-import { PI_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
+import { UNTRUSTED_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/untrusted-codemode-workflow";
+import { AUTOMATION_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
 import {
   buildMarketplaceIngestionWorkflowInstanceId,
   MARKETPLACE_INGEST_WORKFLOW_NAME,
 } from "@/fragno/automation/marketplace-ingest-workflow";
 import {
-  buildMarketplacePublicationWorkflowInstanceId,
-  MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-} from "@/fragno/automation/marketplace-publish-workflow";
-import {
   createAutomationsRouteCaller,
   createWorkflowsRouteCaller,
 } from "@/fragno/automation/route-callers";
+import { WORKFLOW_COMPLETION_PARAM } from "@/fragno/automation/workflow-completion";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 
@@ -532,11 +530,11 @@ describe("Automations fetchWithContext authorization", () => {
     }
   });
 
-  test("rejects raw Pi codemode creation and overwrites caller-authored actors in trusted creation", async () => {
+  test("rejects public workflow completion targets", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
       authorityResolver: {
         async resolvePrincipalPermissions() {
-          return [BACKOFFICE_PERMISSION.workflow.read, BACKOFFICE_PERMISSION.workflow.modify];
+          return [BACKOFFICE_PERMISSION.workflow.modify];
         },
         async resolveActorCapabilityGrants() {
           return [];
@@ -546,79 +544,152 @@ describe("Automations fetchWithContext authorization", () => {
 
     try {
       const scope = { kind: "org" as const, orgId: "org-1" };
-      const execution = createBackofficeUserExecution({
-        scope,
-        userId: "user-1",
+      const call = createWorkflowsRouteCaller({
+        object: runtime.objects.automations.forOrg(scope.orgId),
+        context: {
+          execution: createBackofficeUserExecution({ scope, userId: "user-1" }),
+        },
       });
-      const automations = runtime.objects.automations.forOrg(scope.orgId);
-      const forgedActors = {
-        initiator: {
-          scope: "internal" as const,
-          type: "system",
-          id: "backoffice",
-          role: "initiator" as const,
-        },
-        principal: {
-          scope: "internal" as const,
-          type: "automation",
-          id: "forged-automation",
-          role: "principal" as const,
-        },
-        delegation: [],
-      };
-      const body = {
-        id: "trusted-pi-codemode",
-        remoteWorkflowName: "forged-run",
-        params: {
-          code: "async () => undefined",
-          sessionId: "session-1",
-          toolCallId: "tool-call-1",
-          metadata: {
-            [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: forgedActors,
-          },
+      const params = {
+        [WORKFLOW_COMPLETION_PARAM]: {
+          workflowName: "target-workflow",
+          instanceId: "target-instance",
         },
       };
 
-      const rawCall = createWorkflowsRouteCaller({ object: automations });
       await expect(
-        rawCall("POST", "/:workflowName/instances", {
-          pathParams: { workflowName: PI_CODEMODE_WORKFLOW },
-          body,
+        call("POST", "/:workflowName/instances", {
+          pathParams: { workflowName: AUTOMATION_CODEMODE_WORKFLOW },
+          body: { id: "forged-completion", params },
         }),
       ).resolves.toMatchObject({
         type: "error",
-        status: 403,
-        error: { code: "context-access-denied" },
-      });
-
-      const trustedCall = createWorkflowsRouteCaller({
-        object: automations,
-        context: { execution },
+        status: 400,
+        error: { code: "WORKFLOW_COMPLETION_TARGET_NOT_ALLOWED" },
       });
       await expect(
-        trustedCall("POST", "/:workflowName/instances", {
-          pathParams: { workflowName: PI_CODEMODE_WORKFLOW },
-          body,
+        call("POST", "/:workflowName/instances/batch", {
+          pathParams: { workflowName: AUTOMATION_CODEMODE_WORKFLOW },
+          body: { instances: [{ id: "forged-completion", params }] },
         }),
-      ).resolves.toMatchObject({ type: "json", data: { id: body.id } });
+      ).resolves.toMatchObject({
+        type: "error",
+        status: 400,
+        error: { code: "WORKFLOW_COMPLETION_TARGET_NOT_ALLOWED" },
+      });
+    } finally {
+      await runtime.cleanup();
+    }
+  });
 
-      const instance = await trustedCall("GET", "/:workflowName/instances/:instanceId", {
-        pathParams: {
-          workflowName: PI_CODEMODE_WORKFLOW,
-          instanceId: body.id,
+  test("rejects public single and batch creation of Pi codemode workflows", async () => {
+    const runtime = await createInMemoryBackofficeRuntime({
+      authorityResolver: {
+        async resolvePrincipalPermissions() {
+          return [BACKOFFICE_PERMISSION.workflow.modify];
+        },
+        async resolveActorCapabilityGrants() {
+          return [];
+        },
+      },
+    });
+
+    try {
+      const scope = { kind: "org" as const, orgId: "org-1" };
+      const call = createWorkflowsRouteCaller({
+        object: runtime.objects.automations.forOrg(scope.orgId),
+        context: {
+          execution: createBackofficeUserExecution({ scope, userId: "user-1" }),
         },
       });
-      expect(instance).toMatchObject({
-        type: "json",
-        data: {
-          meta: {
-            params: {
-              metadata: {
-                [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: execution.actors,
-              },
-            },
-          },
+      const params = {
+        code: "async () => undefined",
+        sessionId: "session-1",
+        toolCallId: "tool-call-1",
+        metadata: {},
+      };
+
+      await expect(
+        call("POST", "/:workflowName/instances", {
+          pathParams: { workflowName: PI_CODEMODE_WORKFLOW },
+          body: { id: "forged-pi-codemode", params },
+        }),
+      ).resolves.toMatchObject({
+        type: "error",
+        status: 404,
+        error: { code: "WORKFLOW_NOT_FOUND" },
+      });
+      await expect(
+        call("POST", "/:workflowName/instances/batch", {
+          pathParams: { workflowName: PI_CODEMODE_WORKFLOW },
+          body: { instances: [{ id: "forged-pi-codemode", params }] },
+        }),
+      ).resolves.toMatchObject({
+        type: "error",
+        status: 404,
+        error: { code: "WORKFLOW_NOT_FOUND" },
+      });
+    } finally {
+      await runtime.cleanup();
+    }
+  });
+
+  test("rejects public creation of untrusted codemode workflows", async () => {
+    const runtime = await createInMemoryBackofficeRuntime({
+      authorityResolver: {
+        async resolvePrincipalPermissions() {
+          return [BACKOFFICE_PERMISSION.workflow.modify];
         },
+        async resolveActorCapabilityGrants() {
+          return [];
+        },
+      },
+    });
+
+    try {
+      const scope = { kind: "org" as const, orgId: "org-1" };
+      const call = createWorkflowsRouteCaller({
+        object: runtime.objects.automations.forOrg(scope.orgId),
+        context: {
+          execution: createBackofficeUserExecution({ scope, userId: "user-1" }),
+        },
+      });
+      const params = {
+        source: "defineWorkflow({ name: 'forged' }, async () => undefined)",
+        scriptPath: ".marketplace/install.workflow.js",
+        automationEvent: {
+          id: "forged-installation",
+          scope,
+          source: "marketplace",
+          eventType: "installation.requested",
+          occurredAt: "2026-08-06T12:00:00.000Z",
+          payload: {},
+          actors: createBackofficeSystemExecution(scope).actors,
+          subject: { orgId: scope.orgId },
+        },
+        workflowEventPayload: {},
+        metadata: {},
+      };
+
+      await expect(
+        call("POST", "/:workflowName/instances", {
+          pathParams: { workflowName: UNTRUSTED_CODEMODE_WORKFLOW },
+          body: { id: "forged-installation", params },
+        }),
+      ).resolves.toMatchObject({
+        type: "error",
+        status: 404,
+        error: { code: "WORKFLOW_NOT_FOUND" },
+      });
+      await expect(
+        call("POST", "/:workflowName/instances/batch", {
+          pathParams: { workflowName: UNTRUSTED_CODEMODE_WORKFLOW },
+          body: { instances: [{ id: "forged-installation", params }] },
+        }),
+      ).resolves.toMatchObject({
+        type: "error",
+        status: 404,
+        error: { code: "WORKFLOW_NOT_FOUND" },
       });
     } finally {
       await runtime.cleanup();
@@ -711,11 +782,17 @@ describe("Automations object scope binding", () => {
         slug: "telegram-test-command",
       });
       await expect(
-        automations.requestMarketplaceIngestion({
-          listingId,
-          targetScope: { kind: "user", userId: "user-1" },
-        }),
-      ).resolves.toMatchObject({ state: "requested", version: "1.1.0" });
+        automations.requestMarketplaceIngestion(
+          {
+            listingId,
+            targetScope: { kind: "user", userId: "user-1" },
+          },
+          {
+            execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+            propagationContext: null,
+          },
+        ),
+      ).resolves.toMatchObject({ state: "requested", version: "1.2.1" });
       await runtime.drain();
 
       await expect(
@@ -723,7 +800,7 @@ describe("Automations object scope binding", () => {
           targetScope: { kind: "user", userId: "user-1" },
           listingId,
         }),
-      ).resolves.toMatchObject({ version: "1.1.0" });
+      ).resolves.toMatchObject({ version: "1.2.1" });
 
       const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
       contentUrl.searchParams.set("provider", "database");
@@ -771,13 +848,19 @@ describe("Automations object scope binding", () => {
       const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
         targetScope: { kind: "user", userId: "user-1" },
         listingId,
-        version: "1.1.0",
+        version: "1.2.1",
       });
       await expect(
-        automations.requestMarketplaceIngestion({
-          listingId,
-          targetScope: { kind: "user", userId: "user-1" },
-        }),
+        automations.requestMarketplaceIngestion(
+          {
+            listingId,
+            targetScope: { kind: "user", userId: "user-1" },
+          },
+          {
+            execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+            propagationContext: null,
+          },
+        ),
       ).resolves.toMatchObject({ state: "requested", workflowInstanceId });
 
       await runtime.drain();
@@ -822,82 +905,20 @@ describe("Automations object scope binding", () => {
 
     try {
       await expect(
-        runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
-          listingId: marketplaceListingId({
-            ownerScope: { kind: "system" },
-            slug: "telegram-test-command",
-          }),
-          targetScope: {
-            kind: "project",
-            orgId: "org-2",
-            projectId: "project-1",
-          },
-        }),
-      ).rejects.toThrow("Marketplace ingestion target belongs to another organization.");
-    } finally {
-      await runtime.cleanup();
-    }
-  });
-
-  test("returns the failure from an existing marketplace publication workflow", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
-
-    try {
-      const listingId = marketplaceListingId({
-        ownerScope: { kind: "system" },
-        slug: "telegram-test-command",
-      });
-      const workflowInstanceId = buildMarketplacePublicationWorkflowInstanceId({
-        listingId,
-        version: "1.0.0",
-      });
-      const automations = runtime.objects.automations.forOrg("org-1");
-      const workflows = createWorkflowsRouteCaller({
-        object: automations,
-        context: {
-          execution: createBackofficeSystemExecution({
-            kind: "org",
-            orgId: "org-1",
-          }),
-        },
-      });
-      const created = await workflows("POST", "/:workflowName/instances", {
-        pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
-        body: {
-          id: workflowInstanceId,
-          params: {
-            slug: "missing-entry",
-            version: "1.0.0",
-          },
-        },
-      });
-      assert(created.type === "json");
-
-      await runtime.drain();
-
-      await expect(automations.requestStaticMarketplacePublications()).resolves.toEqual({
-        publications: [
+        runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion(
           {
-            listingId,
-            slug: "telegram-test-command",
-            version: "1.0.0",
-            workflowInstanceId,
-            state: "failed",
-            workflowStatus: "errored",
-            error: {
-              name: "NonRetryableError",
-              message: "Static marketplace entry missing-entry@1.0.0 was not found.",
-            },
+            listingId: marketplaceListingId({
+              ownerScope: { kind: "system" },
+              slug: "telegram-test-command",
+            }),
+            targetScope: { kind: "project", orgId: "org-2", projectId: "project-1" },
           },
-          expect.objectContaining({
-            listingId,
-            slug: "telegram-test-command",
-            version: "1.1.0",
-            state: "queued",
-            blockedByVersion: "1.0.0",
-          }),
-        ],
-      });
+          {
+            execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+            propagationContext: null,
+          },
+        ),
+      ).rejects.toThrow("Marketplace ingestion target belongs to another organization.");
     } finally {
       await runtime.cleanup();
     }

@@ -1,32 +1,28 @@
-import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
+import type { RemoteWorkflowStepHost } from "@fragno-dev/workflows/remote-workflow";
+import { defineRemoteWorkflow, type WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
-  type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { FileSystemError } from "@/files/fs-errors";
 import { MasterFileSystem } from "@/files/master-file-system";
-import {
-  BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY,
-  type BackofficeWorkflowActorMetadata,
-} from "@/fragno/automation/actors";
-import { automationActorsSchema } from "@/fragno/automation/actors";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
-import type { PiCodemodeWorkflowParams } from "@/fragno/pi/pi-codemode-workflow";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
-import type { AutomationTriggerBinding } from "../../runtime-tools/automation-types";
 import { AUTOMATION_WORKSPACE_ROOT, type AutomationFileSystemConfig } from "../catalog";
 import { resolveAutomationFileSystem } from "../catalog";
 import type { AutomationEvent } from "../contracts";
 import { type AutomationPiBashContext, type AutomationRuntimeHostContext } from "./runtime";
 import { createAutomationRuntimeExecution } from "./runtime-execution";
-import { AUTOMATION_CODEMODE_WORKFLOW, PI_CODEMODE_WORKFLOW } from "./workflow-start";
+import {
+  AUTOMATION_CODEMODE_WORKFLOW,
+  type AutomationCodemodeWorkflowParams,
+} from "./workflow-start";
 
 const createAutomationFileSystemExecution = (event: AutomationEvent): BackofficeExecutionContext =>
   event.scope.kind === "system"
@@ -36,37 +32,38 @@ const createAutomationFileSystemExecution = (event: AutomationEvent): Backoffice
         service: { type: "automation", id: `automation:${event.id}` },
       });
 
-export type AutomationCodemodeWorkflowParams = {
-  automationEvent: AutomationEvent;
+type AutomationWorkflowContextParams = Pick<
+  AutomationCodemodeWorkflowParams,
+  "automationEvent" | "workflowInstanceId" | "binding" | "idempotencyKey"
+> & {
   workflowScriptPath: string;
-  workflowInstanceId: string;
-  binding?: AutomationTriggerBinding;
-  idempotencyKey?: string;
-  metadata: BackofficeWorkflowActorMetadata;
 };
 
 const createWorkflowAutomationContext = async ({
   runtime,
   params,
+  execution = createAutomationRuntimeExecution(params.automationEvent),
   createPiAutomationContext,
 }: {
   runtime: BackofficeRuntimeServices;
-  params: AutomationCodemodeWorkflowParams;
+  params: AutomationWorkflowContextParams;
+  execution?: BackofficeExecutionContext;
   createPiAutomationContext?: (input: {
     event: AutomationEvent;
     idempotencyKey: string;
   }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
 }): Promise<AutomationRuntimeHostContext> => {
   const kernel = new BackofficeKernel(runtime);
-  const execution = createAutomationRuntimeExecution(params.automationEvent);
   const pi = await createPiAutomationContext?.({
     event: params.automationEvent,
     idempotencyKey: params.idempotencyKey ?? params.workflowInstanceId,
   });
+  const emittedEventActors = createAutomationRuntimeExecution(params.automationEvent).actors;
   const runtimeContext = createRouteBackedRuntimeContext({
     runtime,
     kernel,
     execution,
+    emittedEventActors,
     ...(pi ? { pi } : {}),
   });
   const eventRuntime = createEventRuntime({
@@ -74,6 +71,7 @@ const createWorkflowAutomationContext = async ({
     parentEvent: params.automationEvent,
     kernel,
     execution,
+    emittedEventActors,
   });
   const automationRuntime = {
     ...runtimeContext.automations.runtime,
@@ -130,6 +128,79 @@ const createWorkflowAutomationContext = async ({
   };
 };
 
+export const executeAutomationWorkflowSource = async ({
+  script,
+  automationEvent,
+  workflowScriptPath,
+  workflowEvent,
+  remote,
+  config,
+  execution,
+  masterFs,
+}: {
+  script: string;
+  automationEvent: AutomationEvent;
+  workflowScriptPath: string;
+  workflowEvent: WorkflowEvent<unknown>;
+  remote: RemoteWorkflowStepHost;
+  config: AutomationFileSystemConfig & {
+    env?: CloudflareEnv;
+    runtime?: BackofficeRuntimeServices;
+    createPiAutomationContext?: (input: {
+      event: AutomationEvent;
+      idempotencyKey: string;
+    }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
+  };
+  execution?: BackofficeExecutionContext;
+  masterFs?: MasterFileSystem;
+}): Promise<unknown> => {
+  if (!config.env?.LOADER) {
+    throw new Error("Workflow-backed codemode automation requires the Cloudflare Worker Loader.");
+  }
+  if (!config.runtime) {
+    throw new Error("Workflow-backed codemode automation requires Backoffice runtime services.");
+  }
+
+  const resolvedFs =
+    masterFs ??
+    (await resolveAutomationFileSystem(config, {
+      execution: execution ?? createAutomationFileSystemExecution(automationEvent),
+      purpose: "runtime",
+    }));
+  if (!(resolvedFs instanceof MasterFileSystem)) {
+    throw new Error("Automation filesystem must be a MasterFileSystem.");
+  }
+
+  const [context, { executeWorkflowCodemodeAutomation }] = await Promise.all([
+    createWorkflowAutomationContext({
+      runtime: config.runtime,
+      params: {
+        automationEvent,
+        workflowScriptPath,
+        workflowInstanceId: workflowEvent.instanceId,
+        idempotencyKey: workflowEvent.instanceId,
+      },
+      execution,
+      createPiAutomationContext: config.createPiAutomationContext,
+    }),
+    import("./codemode"),
+  ]);
+  const result = await executeWorkflowCodemodeAutomation({
+    script,
+    context,
+    masterFs: resolvedFs,
+    env: config.env as BackofficeCodemodeEnv,
+    workflowEvent,
+    remote,
+  });
+
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || "Workflow-backed codemode automation failed.");
+  }
+
+  return result.result;
+};
+
 const isMissingWorkflowScriptError = (error: unknown) => {
   if (error instanceof FileSystemError) {
     return error.code === "ENOENT";
@@ -154,6 +225,10 @@ export const defineAutomationCodemodeWorkflow = (
     }
 
     const params = event.payload as AutomationCodemodeWorkflowParams;
+    if (params.script.kind !== "file") {
+      throw new Error("Automation codemode workflows require a file-backed script.");
+    }
+
     const resolvedFs = await resolveAutomationFileSystem(config, {
       execution: createAutomationFileSystemExecution(params.automationEvent),
       purpose: "runtime",
@@ -164,7 +239,7 @@ export const defineAutomationCodemodeWorkflow = (
 
     let script: string;
     try {
-      script = await resolvedFs.readFile(params.workflowScriptPath, "utf-8");
+      script = await resolvedFs.readFile(params.script.path, "utf-8");
     } catch (error) {
       if (!isMissingWorkflowScriptError(error)) {
         throw error;
@@ -173,62 +248,21 @@ export const defineAutomationCodemodeWorkflow = (
       return {
         skipped: true,
         reason: "workflow-script-not-found",
-        workflowScriptPath: params.workflowScriptPath,
+        workflowScriptPath: params.script.path,
       };
     }
 
-    const { executeWorkflowCodemodeAutomation } = await import("./codemode");
-    if (!config.runtime) {
-      throw new Error("Workflow-backed codemode automation requires Backoffice runtime services.");
-    }
-
-    const context = await createWorkflowAutomationContext({
-      runtime: config.runtime,
-      params,
-      createPiAutomationContext: config.createPiAutomationContext,
-    });
-    const result = await executeWorkflowCodemodeAutomation({
+    return await executeAutomationWorkflowSource({
       script,
-      context,
-      masterFs: resolvedFs,
-      env: config.env as BackofficeCodemodeEnv,
-      workflowEvent: event,
-      remote,
-    });
-
-    if (result.exitCode !== 0) {
-      throw new Error(result.stderr || "Workflow-backed codemode automation failed.");
-    }
-
-    return result.result;
-  });
-
-export const definePiCodemodeWorkflow = (config: {
-  env?: BackofficeCodemodeEnv & CloudflareEnv;
-  runtime?: BackofficeRuntimeServices;
-  ownerScope: BackofficeContextScope;
-}) =>
-  defineRemoteWorkflow({ name: PI_CODEMODE_WORKFLOW }, async (event, remote) => {
-    if (!config.env?.LOADER) {
-      throw new Error("Pi codemode workflow requires the Cloudflare Worker Loader.");
-    }
-
-    const params = event.payload as PiCodemodeWorkflowParams;
-    const { executePiCodemodeWorkflow } = await import("./codemode");
-    return await executePiCodemodeWorkflow({
-      params,
-      execution: {
-        scope: config.ownerScope,
-        actors: automationActorsSchema.parse(
-          params.metadata?.[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
-        ),
+      automationEvent: params.automationEvent,
+      workflowScriptPath: params.script.path,
+      workflowEvent: {
+        instanceId: event.instanceId,
+        timestamp: event.timestamp,
+        payload: event.payload,
       },
-      masterFs: new MasterFileSystem({
-        mounts: [],
-      }),
-      env: config.env,
-      runtime: config.runtime,
-      workflowEvent: event,
       remote,
+      config,
+      masterFs: resolvedFs,
     });
   });

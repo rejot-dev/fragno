@@ -23,6 +23,7 @@ import {
   useSearchParams,
   type ShouldRevalidateFunctionArgs,
 } from "react-router";
+import { z } from "zod";
 
 import { eq, or, useLiveQuery } from "@tanstack/react-db";
 
@@ -62,6 +63,9 @@ const DASHBOARD_SEARCH_NAVIGATION_OPTIONS = {
 } as const;
 
 const EMPTY_WORKFLOW_SOURCE = { script: null, scriptError: null };
+const codemodeWorkflowScriptReferenceSchema = z.object({
+  script: z.object({ path: z.string() }),
+});
 
 type DashboardWorkflowInstance = {
   id: string;
@@ -72,7 +76,7 @@ type DashboardWorkflowInstance = {
   createdAt: Date;
   updatedAt: Date;
   completedAt: Date | null;
-  params: unknown;
+  workflowScriptPath: string | null;
 };
 
 type DashboardRoute = AutomationRouteDefinition;
@@ -726,7 +730,15 @@ export default function BackofficeAutomationDashboard() {
     ...route,
     nextOccurrenceAt: route.nextOccurrenceAt?.toISOString() ?? null,
   }));
-  const workflowInstances = (workflowsQuery.data ?? []) as DashboardWorkflowInstance[];
+  const workflowInstances: DashboardWorkflowInstance[] = (workflowsQuery.data ?? []).map(
+    ({ params, ...instance }) => {
+      const scriptReference = codemodeWorkflowScriptReferenceSchema.safeParse(params);
+      return {
+        ...instance,
+        workflowScriptPath: scriptReference.success ? scriptReference.data.script.path : null,
+      };
+    },
+  );
   const sources = dashboardSources(routes);
   const requestedSourceId = normalizedSourceId(searchParams.get(SOURCE_FILTER_PARAM) ?? "");
   const activeSource = sources.find((source) => source.id === requestedSourceId) ?? null;

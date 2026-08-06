@@ -6,12 +6,14 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 
 const {
   getAuthMeMock,
+  requireBackofficeContextMock,
   getPublishedListingMock,
   getArtifactManifestMock,
   listMarketplaceIngestionsMock,
   requestMarketplaceIngestionMock,
 } = vi.hoisted(() => ({
   getAuthMeMock: vi.fn(),
+  requireBackofficeContextMock: vi.fn(),
   getPublishedListingMock: vi.fn(),
   getArtifactManifestMock: vi.fn(),
   listMarketplaceIngestionsMock: vi.fn(),
@@ -19,6 +21,9 @@ const {
 }));
 
 vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
+vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
+  requireBackofficeContext: requireBackofficeContextMock,
+}));
 
 import {
   backofficeContextScopeRouteId,
@@ -110,12 +115,31 @@ const runAction = (input: {
 
 beforeEach(() => {
   getAuthMeMock.mockReset();
+  requireBackofficeContextMock.mockReset();
   getPublishedListingMock.mockReset();
   getArtifactManifestMock.mockReset();
   listMarketplaceIngestionsMock.mockReset();
   requestMarketplaceIngestionMock.mockReset();
   forOrgMock.mockClear();
   getAuthMeMock.mockResolvedValue(authenticatedUser);
+  requireBackofficeContextMock.mockImplementation(async (_request, _context, scope) => ({
+    scope,
+    actors: {
+      initiator: {
+        scope: "internal",
+        type: "backoffice",
+        id: "interactive",
+        role: "initiator",
+      },
+      principal: {
+        scope: "internal",
+        type: "user",
+        id: authenticatedUser.user.id,
+        role: "principal",
+      },
+      delegation: [],
+    },
+  }));
   getPublishedListingMock.mockResolvedValue({
     listing: {
       listingId,
@@ -356,11 +380,14 @@ describe("marketplace ingestion action", () => {
 
     expect(result).toMatchObject({ ok: true, result: { state: "requested" } });
     expect(forOrgMock).toHaveBeenCalledWith("org-1");
-    expect(requestMarketplaceIngestionMock).toHaveBeenCalledWith({
-      listingId,
-      targetScope: { kind: "org", orgId: "org-1" },
-      version: "1.0.0",
-    });
+    expect(requestMarketplaceIngestionMock).toHaveBeenCalledWith(
+      {
+        listingId,
+        targetScope: { kind: "org", orgId: "org-1" },
+        version: "1.0.0",
+      },
+      expect.objectContaining({ propagationContext: null }),
+    );
   });
 
   test("ignores forged destination fields and trusts the selected route scope", async () => {
@@ -373,11 +400,14 @@ describe("marketplace ingestion action", () => {
 
     expect(result).toMatchObject({ ok: true });
     expect(forOrgMock).toHaveBeenCalledWith("org-1");
-    expect(requestMarketplaceIngestionMock).toHaveBeenCalledWith({
-      listingId,
-      targetScope: { kind: "org", orgId: "org-1" },
-      version: undefined,
-    });
+    expect(requestMarketplaceIngestionMock).toHaveBeenCalledWith(
+      {
+        listingId,
+        targetScope: { kind: "org", orgId: "org-1" },
+        version: undefined,
+      },
+      expect.objectContaining({ propagationContext: null }),
+    );
   });
 
   test("requests ingestion into the project selected in the route", async () => {
@@ -387,11 +417,14 @@ describe("marketplace ingestion action", () => {
 
     expect(result).toMatchObject({ ok: true });
     expect(forOrgMock).toHaveBeenCalledWith("org-1");
-    expect(requestMarketplaceIngestionMock).toHaveBeenCalledWith({
-      listingId,
-      targetScope,
-      version: undefined,
-    });
+    expect(requestMarketplaceIngestionMock).toHaveBeenCalledWith(
+      {
+        listingId,
+        targetScope,
+        version: undefined,
+      },
+      expect.objectContaining({ propagationContext: null }),
+    );
   });
 
   test("surfaces failed workflow results as action failures", async () => {

@@ -60,7 +60,7 @@ export type AutomationWorkflowRun = {
   workflowName: string;
   remoteWorkflowName: string | null;
   status: string;
-  params: unknown;
+  workflowScriptPath: string | null;
   output: unknown;
   createdAt: WorkflowRunTimestamp;
   updatedAt: WorkflowRunTimestamp;
@@ -120,7 +120,7 @@ export function projectScriptWorkflowRuns({
         !workflowName ||
         !ACTIVE_WORKFLOW_STATUSES.has(instance.status) ||
         !workflowNames.has(workflowName) ||
-        workflowScriptPathFromParams(instance.params) !== absolutePath
+        instance.workflowScriptPath !== absolutePath
       ) {
         return [];
       }
@@ -386,15 +386,6 @@ function workflowStepParentKeyFromIdentity(stepKey: string): string | null | und
   } catch {
     return undefined;
   }
-}
-
-function workflowScriptPathFromParams(params: unknown): string | null {
-  if (!params || typeof params !== "object" || Array.isArray(params)) {
-    return null;
-  }
-
-  const workflowScriptPath = (params as Record<string, unknown>).workflowScriptPath;
-  return typeof workflowScriptPath === "string" ? workflowScriptPath : null;
 }
 
 function workflowStepError(step: WorkflowRunStep): string | undefined {

@@ -17,6 +17,7 @@ import {
 import { BackofficeStatusLight } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 import { getAuthMe } from "@/fragno/auth/auth-server";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { MarketplaceIngestionRequestResult } from "@/fragno/automation";
 import { marketplaceListingId, marketplaceListingSlug } from "@/fragno/marketplace/owner";
 import {
@@ -245,11 +246,18 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     .runtime.objects.automations.forOrg(installationTarget.organizationId);
 
   try {
-    const result = await automations.requestMarketplaceIngestion({
-      listingId: listingIdResult.data,
-      targetScope: installationTarget.targetScope,
-      version: String(formData.get("version") ?? "").trim() || undefined,
+    const execution = await requireBackofficeContext(request, context, {
+      kind: "org",
+      orgId: installationTarget.organizationId,
     });
+    const result = await automations.requestMarketplaceIngestion(
+      {
+        listingId: listingIdResult.data,
+        targetScope: installationTarget.targetScope,
+        version: String(formData.get("version") ?? "").trim() || undefined,
+      },
+      { execution, propagationContext: null },
+    );
     if (result.state === "failed") {
       return { ok: false, message: result.error.message } satisfies IngestionActionData;
     }

@@ -56,7 +56,7 @@ describe("automation script workflow run presentation", () => {
     const matching = workflowRun({ instanceId: "matching", status: "waiting" });
     const wrongPath = workflowRun({
       instanceId: "wrong-path",
-      params: { workflowScriptPath: "/workspace/automations/other.workflow.js" },
+      workflowScriptPath: "/workspace/automations/other.workflow.js",
     });
     const wrongWorkflow = workflowRun({
       instanceId: "wrong-workflow",
@@ -606,7 +606,7 @@ function workflowRun(overrides: Partial<AutomationWorkflowRun> = {}): Automation
     workflowName: "automation-codemode-script",
     remoteWorkflowName: "demo",
     status: "active",
-    params: { workflowScriptPath: absolutePath },
+    workflowScriptPath: absolutePath,
     output: null,
     createdAt: "2026-07-24T09:00:00.000Z",
     updatedAt: "2026-07-24T10:00:00.000Z",

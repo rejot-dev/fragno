@@ -2,7 +2,11 @@ import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
 import type { AutomationEvent } from "./contracts";
 import type { AutomationEventDefinition } from "./event-definitions";
-import type { AutomationRouteAction, AutomationRouteTrigger } from "./routing";
+import type {
+  AutomationRouteAction,
+  AutomationRouteMetadata,
+  AutomationRouteTrigger,
+} from "./routing";
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
@@ -180,5 +184,8 @@ export const automationFragmentSchema = schema("automations", (s) => {
         .addColumn("acceptedBindingVersion", column("integer"))
         .addColumn("acceptedAt", column("timestamp"))
         .createIndex("idx_external_identity_claim_consumption_binding", ["bindingId"]);
+    })
+    .alterTable("automation_route", (t) => {
+      return t.addColumn("metadata", jsonColumn<AutomationRouteMetadata>().nullable());
     });
 });

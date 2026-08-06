@@ -45,7 +45,7 @@ describe("automation route workflow presentation", () => {
       automationRouteMatchesWorkflowInstance(route, {
         workflowName: "automation-codemode-script",
         remoteWorkflowName: "telegram-user-linking",
-        params: { workflowScriptPath: "/workspace/automations/unrelated.workflow.js" },
+        workflowScriptPath: "/workspace/automations/unrelated.workflow.js",
       }),
     );
   });
@@ -59,16 +59,14 @@ describe("automation route workflow presentation", () => {
     const instance = {
       workflowName: "automation-codemode-script",
       remoteWorkflowName: null,
-      params: {
-        workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
-      },
+      workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
     };
 
     assert(automationRouteMatchesWorkflowInstance(route, instance));
     assert(
       !automationRouteMatchesWorkflowInstance(route, {
         ...instance,
-        params: { workflowScriptPath: "/workspace/automations/other.workflow.js" },
+        workflowScriptPath: "/workspace/automations/other.workflow.js",
       }),
     );
   });

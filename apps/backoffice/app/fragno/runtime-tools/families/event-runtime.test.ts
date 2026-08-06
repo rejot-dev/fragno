@@ -5,6 +5,7 @@ import { InMemoryAdapter } from "@fragno-dev/db";
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import {
   createBackofficeServiceExecution,
+  createBackofficeSystemExecution,
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
 import {
@@ -122,6 +123,31 @@ describe("createEventRuntime.emitEvent", () => {
         },
         payload: { ok: true },
       }),
+    );
+  });
+
+  it("attributes emitted events separately from the privileged execution authority", async () => {
+    const triggerIngestEvent = vi.fn(async () => undefined);
+    const objects = {
+      automations: {
+        forOrg: vi.fn(() => ({ triggerIngestEvent })),
+      },
+    } as unknown as BackofficeObjectRegistry;
+    const attributedActors = createBackofficeUserExecution({
+      scope: { kind: "org", orgId: "org-1" },
+      userId: "marketplace-installer",
+    }).actors;
+    const runtime = createEventRuntime({
+      objects,
+      kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
+      execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+      emittedEventActors: attributedActors,
+    });
+
+    await runtime.emitEvent({ eventType: "installation.event", source: "marketplace" });
+
+    expect(triggerIngestEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ actors: attributedActors }),
     );
   });
 
