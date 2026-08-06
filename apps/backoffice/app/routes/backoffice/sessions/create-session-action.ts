@@ -1,12 +1,14 @@
 import { redirect } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import {
   BACKOFFICE_PI_WORKFLOW_NAME,
   findPiModelOption,
   resolvePiModelThinkingLevel,
 } from "@/fragno/pi/pi-shared";
 
+import { automationScopeFromRouteParams } from "../automations/scope";
 import type { Route } from "./+types/sessions";
 import { createPiSession, fetchPiRuntimeState, sendPiSessionMessage } from "./data";
 import type { PiCreateSessionActionData } from "./session-types";
@@ -16,22 +18,8 @@ function actionError(message: string): PiCreateSessionActionData {
 }
 
 export async function createSessionAction({ request, params, context }: Route.ActionArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const me = await getAuthMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(new URL("/backoffice/login", request.url), 302);
-  }
-
-  const organisation =
-    me.organizations.find((entry) => entry.organization.id === params.orgId)?.organization ?? null;
-  if (!organisation) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const scope = { kind: "org" as const, orgId: params.orgId };
+  const scope = automationScopeFromRouteParams(params);
+  await requireBackofficeContext(request, context, scope);
   const formData = await request.formData();
   const getValue = (key: string) => {
     const value = formData.get(key);
@@ -94,7 +82,7 @@ export async function createSessionAction({ request, params, context }: Route.Ac
     result.session.id,
     { text: prompt, commandKind: "prompt" },
   );
-  const detailPath = `/backoffice/sessions/${params.orgId}/sessions/${encodeURIComponent(result.session.workflowName)}/${encodeURIComponent(result.session.id)}`;
+  const detailPath = `/backoffice/sessions/${backofficeContextScopeRoutePath(scope)}/sessions/${encodeURIComponent(result.session.workflowName)}/${encodeURIComponent(result.session.id)}`;
 
   if (messageResult.error) {
     return redirect(`${detailPath}?initialPromptError=${encodeURIComponent(messageResult.error)}`);

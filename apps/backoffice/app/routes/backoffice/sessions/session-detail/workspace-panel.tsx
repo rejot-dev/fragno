@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import type { SourceRange } from "@fragno-dev/workflow-visualizer-tokens";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import {
   ProgressiveOverflowControls,
@@ -50,13 +51,13 @@ export function SessionWorkspacePanel({
   item,
   workflowCollections,
   workflowCollectionsError,
-  orgId,
+  scope,
   onClose,
 }: {
   item: SessionWorkspaceItem;
   workflowCollections?: WorkflowRunCollections;
   workflowCollectionsError?: string | null;
-  orgId: string;
+  scope: BackofficeContextScope;
   onClose: () => void;
 }) {
   const [toolbarElement, setToolbarElement] = useState<HTMLElement | null>(null);
@@ -171,7 +172,7 @@ export function SessionWorkspacePanel({
             runReference={item.view.run}
             workflowCollections={workflowCollections}
             workflowCollectionsError={workflowCollectionsError}
-            orgId={orgId}
+            scope={scope}
           />
         )}
       </section>
@@ -338,7 +339,7 @@ function SessionWorkflowWorkspace({
   runReference,
   workflowCollections,
   workflowCollectionsError,
-  orgId,
+  scope,
 }: {
   projection: WorkflowGraphProjection;
   viewMode: ScriptViewMode;
@@ -346,7 +347,7 @@ function SessionWorkflowWorkspace({
   runReference: WorkflowRunReference | null;
   workflowCollections?: WorkflowRunCollections;
   workflowCollectionsError?: string | null;
-  orgId: string;
+  scope: BackofficeContextScope;
 }) {
   const [selectedSource, setSelectedSource] = useState<SourceRange>();
   const showCode = viewMode === "code" || viewMode === "split";
@@ -394,7 +395,7 @@ function SessionWorkflowWorkspace({
             runtimeToolCallsByStepId={EMPTY_RUNTIME_TOOL_CALLS}
             selectedRun={workflowRun.selectedRun}
             scrollViewport={graphViewport}
-            currentScope={{ kind: "org", orgId }}
+            currentScope={scope.kind === "system" ? undefined : scope}
             workflowEventSender={async ({
               eventId,
               workflowName,
@@ -405,7 +406,7 @@ function SessionWorkflowWorkspace({
               await sendBackofficeWorkflowEvent({
                 eventId,
                 reference: {
-                  scope: { kind: "org", orgId },
+                  scope,
                   workflowName,
                   instanceId,
                 },

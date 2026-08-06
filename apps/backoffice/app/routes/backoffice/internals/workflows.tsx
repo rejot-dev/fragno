@@ -45,7 +45,7 @@ export default function BackofficeWorkflowsLanding() {
         ) : (
           <section className="grid gap-3 md:grid-cols-3">
             {organizations.map(({ organization }) => {
-              const workflowsPath = `/backoffice/internals/workflows/${organization.id}`;
+              const workflowsPath = `/backoffice/internals/workflows/org/${encodeURIComponent(organization.id)}`;
               const handleOrgClick = () => {
                 void navigate(workflowsPath);
               };

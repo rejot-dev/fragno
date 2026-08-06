@@ -51,7 +51,7 @@ function WorkspaceHarness({
     <SessionWorkspacePanel
       item={item}
       workflowCollectionsError={workflowCollectionsError}
-      orgId="org-1"
+      scope={{ kind: "org", orgId: "org-1" }}
       onClose={() => {
         setOpen(false);
       }}

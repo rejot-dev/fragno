@@ -17,7 +17,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  return redirect(`/backoffice/sessions/${orgId}/sessions`);
+  return redirect(`/backoffice/sessions/org/${encodeURIComponent(orgId)}/sessions`);
 }
 
 export default function BackofficeSessionsIndex() {

@@ -4,8 +4,9 @@ import type { RouterContextProvider } from "react-router";
 
 import type { createWorkflowsFragment } from "@fragno-dev/workflows";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import { getAutomationsDurableObject } from "@/worker-runtime/durable-objects";
+import { getScopedAutomationsDurableObject } from "@/worker-runtime/durable-objects";
 
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
@@ -172,11 +173,10 @@ export const parsePageSize = (value: string | null, fallback = DEFAULT_PAGE_SIZE
 const createWorkflowsRouteCaller = async (
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  scope: BackofficeContextScope,
 ): Promise<WorkflowsRouteCaller> => {
-  const scope = { kind: "org" as const, orgId };
   const execution = await requireBackofficeContext(request, context, scope);
-  const doInstance = getAutomationsDurableObject(context, orgId);
+  const doInstance = getScopedAutomationsDurableObject(context, scope);
 
   return createRouteCaller<WorkflowsFragment>({
     baseUrl: request.url,
@@ -207,7 +207,7 @@ const toApiError = (
 export async function loadWorkflowInstanceSummaries(options: {
   request: Request;
   context: Readonly<RouterContextProvider>;
-  orgId: string;
+  scope: BackofficeContextScope;
   pageSize?: number;
 }): Promise<{
   workflows: string[];
@@ -218,7 +218,7 @@ export async function loadWorkflowInstanceSummaries(options: {
   const callRoute = await createWorkflowsRouteCaller(
     options.request,
     options.context,
-    options.orgId,
+    options.scope,
   );
 
   const workflowsResponse = await callRoute("GET", "/");
@@ -279,14 +279,14 @@ export async function loadWorkflowInstanceSummaries(options: {
 export async function loadWorkflowInstanceDetail(options: {
   request: Request;
   context: Readonly<RouterContextProvider>;
-  orgId: string;
+  scope: BackofficeContextScope;
   workflowName: string;
   instanceId: string;
 }): Promise<WorkflowInstanceDetails> {
   const callRoute = await createWorkflowsRouteCaller(
     options.request,
     options.context,
-    options.orgId,
+    options.scope,
   );
 
   const [instanceResponse, historyResponse] = await Promise.all([
