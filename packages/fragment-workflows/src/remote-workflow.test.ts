@@ -291,6 +291,88 @@ describe("remote workflow step host", () => {
     });
   });
 
+  test("remote step tx can create an event for another workflow instance", async () => {
+    const ParentWorkflow = defineWorkflow(
+      { name: "remote-event-parent-workflow" },
+      async (_event, step) => {
+        const child = await step.waitForEvent<{ value: number }>("join child", {
+          type: "child:complete",
+        });
+        return { value: child.payload.value };
+      },
+    );
+    const RemoteChildWorkflow = defineRemoteWorkflow<
+      "remote-event-child-workflow",
+      { parentId: string; value: number },
+      { completed: true }
+    >({ name: "remote-event-child-workflow" }, async (event, host) => {
+      await host.do(null, "complete child", undefined, async (tx) => {
+        tx.workflowServiceCalls(() => [
+          {
+            type: "createEvent",
+            workflowName: "remote-event-parent-workflow",
+            instanceId: event.payload.parentId,
+            eventId: `${event.instanceId}:complete`,
+            eventType: "child:complete",
+            payload: { value: event.payload.value },
+          },
+        ]);
+      });
+      return { completed: true };
+    });
+    const harness = await createWorkflowsTestHarness({
+      workflows: { PARENT: ParentWorkflow, CHILD: RemoteChildWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const parentId = await harness.createInstance("PARENT", { id: "remote-event-parent-1" });
+    await harness.runUntilIdle({
+      workflowName: "remote-event-parent-workflow",
+      instanceId: parentId,
+      reason: "create",
+    });
+    await expect(harness.getStatus("PARENT", parentId)).resolves.toMatchObject({
+      status: "waiting",
+    });
+
+    const childId = await harness.createInstance("CHILD", {
+      id: "remote-event-child-1",
+      params: { parentId, value: 42 },
+      remoteWorkflowName: "remote-event-child-body",
+    });
+    await harness.runUntilIdle({
+      workflowName: "remote-event-child-workflow",
+      instanceId: childId,
+      reason: "create",
+    });
+
+    await expect(harness.getStatus("CHILD", childId)).resolves.toMatchObject({
+      status: "complete",
+      output: { completed: true },
+    });
+    await expect(harness.getHistory("PARENT", parentId)).resolves.toMatchObject({
+      events: [
+        expect.objectContaining({
+          id: "remote-event-child-1:complete",
+          type: "child:complete",
+          payload: { value: 42 },
+        }),
+      ],
+    });
+
+    await harness.runUntilIdle({
+      workflowName: "remote-event-parent-workflow",
+      instanceId: parentId,
+      reason: "event",
+    });
+    await expect(harness.getStatus("PARENT", parentId)).resolves.toMatchObject({
+      status: "complete",
+      output: { value: 42 },
+    });
+  });
+
   test("supports Promise.all, Promise.race, Promise.any, and Promise.allSettled in remote steps", async () => {
     const RemotePromiseWorkflow = defineRemoteWorkflow(
       { name: "remote-promise-combinators" },

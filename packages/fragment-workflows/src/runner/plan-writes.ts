@@ -4,6 +4,7 @@ import type { HandlerTxContext, HooksMap, IUnitOfWork, TypedUnitOfWork } from "@
 
 import { buildScopedInstanceRowId } from "../instance-ref";
 import { workflowsSchema } from "../schema";
+import { WORKFLOW_EVENT_ACTOR_USER } from "../system-events";
 import type {
   AnyTxResult,
   WorkflowRegistryEntry,
@@ -145,9 +146,30 @@ function applyWorkflowServiceCalls(
 
   for (const queuedCall of calls) {
     const call = validateAndNormalizeWorkflowOperation(workflowsByName, queuedCall);
+    const instanceRef = buildScopedInstanceRowId(call.workflowName, call.instanceId);
 
-    const instanceRef = schemaUow.create("workflow_instance", {
-      id: buildScopedInstanceRowId(call.workflowName, call.instanceId),
+    if (call.type === "createEvent") {
+      schemaUow.create("workflow_event", {
+        id: call.eventId,
+        instanceRef,
+        actor: WORKFLOW_EVENT_ACTOR_USER,
+        type: call.eventType,
+        payload: call.payload ?? null,
+        deliveredAt: null,
+        consumedByStepKey: null,
+      });
+
+      uow.triggerHook(namespace, "onWorkflowEnqueued", {
+        workflowName: call.workflowName,
+        instanceId: call.instanceId,
+        instanceRef,
+        reason: "event",
+      });
+      continue;
+    }
+
+    const createdInstanceRef = schemaUow.create("workflow_instance", {
+      id: instanceRef,
       workflowName: call.workflowName,
       remoteWorkflowName: call.remoteWorkflowName ?? null,
       instanceId: call.instanceId,
@@ -163,7 +185,7 @@ function applyWorkflowServiceCalls(
     uow.triggerHook(namespace, "onWorkflowEnqueued", {
       workflowName: call.workflowName,
       instanceId: call.instanceId,
-      instanceRef: String(instanceRef),
+      instanceRef: String(createdInstanceRef),
       reason: "create",
     });
   }

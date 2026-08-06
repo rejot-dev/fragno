@@ -80,13 +80,23 @@ export type WorkflowStepEmission<TPayload = unknown> = {
   createdAt: Date;
 };
 
-export type WorkflowStepWorkflowOperation = {
-  type: "createInstance";
-  workflowName: string;
-  instanceId: string;
-  params: unknown;
-  remoteWorkflowName?: string | null;
-};
+export type WorkflowStepWorkflowOperation =
+  | {
+      type: "createInstance";
+      workflowName: string;
+      instanceId: string;
+      params: unknown;
+      remoteWorkflowName?: string | null;
+    }
+  | {
+      /** Atomically send an event to a non-remote workflow instance. */
+      type: "createEvent";
+      workflowName: string;
+      instanceId: string;
+      eventId: string;
+      eventType: string;
+      payload?: unknown;
+    };
 
 export type WorkflowStepConsumeTx<THooks extends HooksMap = HooksMap> = {
   serviceCalls: (factory: () => readonly AnyTxResult[]) => void;

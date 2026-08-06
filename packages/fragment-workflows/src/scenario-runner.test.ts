@@ -96,6 +96,149 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
+  test("starts racing child workflows and joins their completion events", async () => {
+    const ChildWorkflow = defineWorkflow<
+      "scenario-racing-child",
+      { parentId: string; child: "alpha" | "beta"; value: number },
+      { child: "alpha" | "beta"; value: number }
+    >({ name: "scenario-racing-child" }, async (event, step) => {
+      await step.do("complete child", (tx) => {
+        tx.workflowServiceCalls(() => [
+          {
+            type: "createEvent",
+            workflowName: "scenario-racing-parent",
+            instanceId: event.payload.parentId,
+            eventId: `${event.instanceId}:complete`,
+            eventType: `child:${event.payload.child}:complete`,
+            payload: { child: event.payload.child, value: event.payload.value },
+          },
+        ]);
+      });
+
+      return { child: event.payload.child, value: event.payload.value };
+    });
+
+    const ParentWorkflow = defineWorkflow(
+      { name: "scenario-racing-parent" },
+      async (event, step) => {
+        await step.do("start children", (tx) => {
+          tx.workflowServiceCalls(() => [
+            {
+              type: "createInstance",
+              workflowName: "scenario-racing-child",
+              instanceId: `${event.instanceId}:alpha`,
+              params: { parentId: event.instanceId, child: "alpha", value: 21 },
+            },
+            {
+              type: "createInstance",
+              workflowName: "scenario-racing-child",
+              instanceId: `${event.instanceId}:beta`,
+              params: { parentId: event.instanceId, child: "beta", value: 34 },
+            },
+          ]);
+        });
+
+        const [alpha, beta] = await Promise.all([
+          step.waitForEvent<{ child: "alpha"; value: number }>("join alpha", {
+            type: "child:alpha:complete",
+          }),
+          step.waitForEvent<{ child: "beta"; value: number }>("join beta", {
+            type: "child:beta:complete",
+          }),
+        ]);
+
+        return { values: [alpha.payload.value, beta.payload.value] };
+      },
+    );
+
+    const workflows = { PARENT: ParentWorkflow, CHILD: ChildWorkflow };
+
+    const scenario = defineScenario<
+      typeof workflows,
+      Record<string, never>,
+      undefined,
+      Record<string, never>,
+      ["parent", "alpha", "beta"]
+    >({
+      name: "racing-child-workflows-join",
+      workflows,
+      runners: ["parent", "alpha", "beta"],
+      steps: ({ workflow, runners, concurrent }) => [
+        runners.parent.initializeAndRunUntilIdle({ workflow: "PARENT", id: "parent-1" }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("PARENT", "parent-1"),
+          assert: (status) => expect(status).toMatchObject({ status: "waiting" }),
+        }),
+        concurrent({
+          alpha: [
+            runners.alpha.runUntilIdle({
+              workflow: "CHILD",
+              instanceId: "parent-1:alpha",
+              reason: "create",
+            }),
+          ],
+          beta: [
+            runners.beta.runUntilIdle({
+              workflow: "CHILD",
+              instanceId: "parent-1:beta",
+              reason: "create",
+            }),
+          ],
+        }),
+        workflow.read({
+          read: async (ctx) => ({
+            alpha: await ctx.state.getStatus("CHILD", "parent-1:alpha"),
+            beta: await ctx.state.getStatus("CHILD", "parent-1:beta"),
+            events: await ctx.state.getEvents("PARENT", "parent-1"),
+          }),
+          assert: (state) => {
+            expect(state.alpha).toMatchObject({ status: "complete" });
+            expect(state.beta).toMatchObject({ status: "complete" });
+            expect(state.events).toHaveLength(2);
+          },
+        }),
+        runners.parent.runUntilIdle({
+          workflow: "PARENT",
+          instanceId: "parent-1",
+          reason: "event",
+        }),
+        runners.parent.runUntilIdle({
+          workflow: "PARENT",
+          instanceId: "parent-1",
+          reason: "event",
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("PARENT", "parent-1"),
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { values: [21, 34] },
+            });
+          },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getEvents("PARENT", "parent-1"),
+          assert: (events) => {
+            expect(events).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  type: "child:alpha:complete",
+                  consumedByStepKey: "waitForEvent:join alpha",
+                }),
+                expect.objectContaining({
+                  type: "child:beta:complete",
+                  consumedByStepKey: "waitForEvent:join beta",
+                }),
+              ]),
+            );
+          },
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
   test("records a completed step", async () => {
     const StepWorkflow = defineWorkflow({ name: "step-workflow" }, async (_event, step) => {
       const value = await step.do("compute", () => 42);
