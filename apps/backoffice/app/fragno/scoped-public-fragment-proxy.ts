@@ -4,8 +4,8 @@ import {
   backofficeScopeFromSinglePathSegment,
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
-import { authorizeAccessTokenForScope } from "@/fragno/auth/access-token.server";
 import { getAuthMe } from "@/fragno/auth/auth-server";
+import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 
 import { buildBackofficeLoginPath } from "../routes/backoffice/auth-navigation";
 import { appendBackofficeScopeQuery } from "./scoped-public-fragment-routes";
@@ -228,7 +228,7 @@ export const forwardScopedPublicRequest = async <TObject extends FetchableBackof
   const publicPathSuffix = url.pathname.startsWith(prefix) ? url.pathname.slice(prefix.length) : "";
   const auth = proxy.isAnonymousRequest?.(request, scope, publicPathSuffix)
     ? { ok: true as const, headers: [] }
-    : await authorizeAccessTokenForScope(request, context, scope);
+    : await authorizeBackofficeContext(request, context, scope);
   if (!auth.ok) {
     return auth.response;
   }

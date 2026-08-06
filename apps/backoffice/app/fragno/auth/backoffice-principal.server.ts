@@ -8,7 +8,11 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 
-import { requireAuthPrincipal, type BackofficeAuthPrincipal } from "./access-token.server";
+import {
+  authorizeAuthPrincipal,
+  requireAuthPrincipal,
+  type BackofficeAuthPrincipal,
+} from "./access-token.server";
 
 const assertAuthenticatedUserCanAccessScope = (
   auth: BackofficeAuthPrincipal,
@@ -31,12 +35,10 @@ const assertAuthenticatedUserCanAccessScope = (
   );
 };
 
-export const requireBackofficeContext = async (
-  request: Request,
-  routerContext: Readonly<RouterContextProvider>,
+export const createBackofficeExecutionForPrincipal = (
+  auth: BackofficeAuthPrincipal,
   scope: BackofficeContextScope,
-): Promise<BackofficeExecutionContext> => {
-  const auth = await requireAuthPrincipal(request, routerContext);
+): BackofficeExecutionContext => {
   assertAuthenticatedUserCanAccessScope(auth, scope);
   if (auth.auth.credentialKind !== "jwt" || !auth.auth.expiresAt) {
     throw new Error("Backoffice execution requires a verified access-token credential.");
@@ -51,4 +53,40 @@ export const requireBackofficeContext = async (
       expiresAt: auth.auth.expiresAt,
     },
   });
+};
+
+export const requireBackofficeContext = async (
+  request: Request,
+  routerContext: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+): Promise<BackofficeExecutionContext> => {
+  const auth = await requireAuthPrincipal(request, routerContext);
+  return createBackofficeExecutionForPrincipal(auth, scope);
+};
+
+export const authorizeBackofficeContext = async (
+  request: Request,
+  routerContext: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+): Promise<
+  | { ok: true; execution: BackofficeExecutionContext; headers: Array<[string, string]> }
+  | { ok: false; response: Response }
+> => {
+  const authorization = await authorizeAuthPrincipal(request, routerContext);
+  if (!authorization.ok) {
+    return authorization;
+  }
+
+  try {
+    return {
+      ok: true,
+      execution: createBackofficeExecutionForPrincipal(authorization.principal, scope),
+      headers: authorization.headers,
+    };
+  } catch (error) {
+    if (error instanceof BackofficeForbiddenError) {
+      return { ok: false, response: new Response(error.message, { status: 403 }) };
+    }
+    throw error;
+  }
 };
