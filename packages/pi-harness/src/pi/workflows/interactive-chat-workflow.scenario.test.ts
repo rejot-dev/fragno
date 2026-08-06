@@ -81,6 +81,17 @@ const createTextStreamFn = (text: string) => () => {
   return stream;
 };
 
+const createErrorStreamFn =
+  (errorMessage: string): StreamFn =>
+  () => {
+    const stream = createAssistantMessageEventStream();
+    const message = createAssistantMessage("");
+    message.stopReason = "error";
+    message.errorMessage = errorMessage;
+    stream.push({ type: "error", reason: "error", error: message });
+    return stream;
+  };
+
 const createGatedTextStreamFn =
   (text: string, completionGate: Promise<void>): StreamFn =>
   () => {
@@ -117,6 +128,19 @@ const agentMessageText = (message: AgentMessage): string => {
         .flatMap((content) => (content.type === "text" ? [content.text] : []))
         .join("");
 };
+
+const createCompactionInitialMessages = (): AgentMessage[] =>
+  Array.from({ length: 4 }, (_, turn) => [
+    {
+      role: "user" as const,
+      content: `turn-${turn} `.repeat(7_000),
+      timestamp: Date.UTC(2026, 6, 1, 12, turn * 2),
+    },
+    {
+      ...createAssistantMessage(`response-${turn}`),
+      timestamp: Date.UTC(2026, 6, 1, 12, turn * 2 + 1),
+    },
+  ]).flat();
 
 const harnessEventFromEmission = (emission: {
   payload: unknown;
@@ -404,6 +428,759 @@ describe("Interactive chat workflow scenarios", () => {
                 role: "assistant",
                 content: [{ type: "text", text: "hello from harness" }],
               });
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("keeps the session alive when there is nothing to compact", async () => {
+    const streamFn = vi.fn(createTextStreamFn("continued after skipped compaction"));
+    const interactiveChatWorkflow = createInteractiveChatWorkflow({
+      name: "interactive-chat-empty-compaction-workflow",
+      options: {
+        model: mockModel,
+        models: createModelsForStreamFn(mockModel, streamFn),
+      },
+    });
+    const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
+
+    await runScenario(
+      defineScenario({
+        name: "pi-harness-interactive-chat-empty-compaction",
+        workflows: createPiWorkflows({ workflows: config.workflows }),
+        vars: () => ({ sessionId: undefined as string | undefined }),
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piHarnessDefinition)
+              .withConfig(config)
+              .withRoutes([piRoutesFactory])
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        clients: ({ clientConfig }) => ({
+          user: createPiFragmentClients(clientConfig("pi", { runner: "user" })),
+        }),
+        runners: ["agent", "user"],
+        steps: ({ workflow, runners, clients }) => [
+          workflow.read({
+            read: async () => {
+              const session = await clients.user.useCreateSession.mutateQuery({
+                path: { workflowName: interactiveChatWorkflow.name },
+                body: { name: "Empty compaction session", input: {} },
+              });
+              assert(session && !Array.isArray(session), "expected session response");
+              return session.id;
+            },
+            storeAs: "sessionId",
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "create",
+          }),
+          workflow.read({
+            read: async (ctx) =>
+              clients.user.useCommandSession.mutateQuery({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+                body: { kind: "compact", input: {} },
+              }),
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "event",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus(interactiveChatWorkflow.name, ctx.vars.sessionId!),
+              steps: await ctx.state.getSteps(interactiveChatWorkflow.name, ctx.vars.sessionId!),
+            }),
+            assert: ({ status, steps }) => {
+              assert(status.status === "waiting");
+              expect(streamFn).not.toHaveBeenCalled();
+              expect(steps).toContainEqual(
+                expect.objectContaining({
+                  name: expect.stringMatching(/^command:/),
+                  status: "completed",
+                  result: expect.objectContaining({
+                    type: "harness-run",
+                    value: {
+                      kind: "compact",
+                      commandId: expect.any(String),
+                      status: "rejected",
+                      code: "nothing_to_compact",
+                      message: "Nothing to compact.",
+                    },
+                  }),
+                }),
+              );
+            },
+          }),
+          workflow.read({
+            read: async (ctx) =>
+              clients.user.useCommandSession.mutateQuery({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+                body: { kind: "prompt", input: { text: "continue" } },
+              }),
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "event",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus(interactiveChatWorkflow.name, ctx.vars.sessionId!),
+              detail: await clients.user.useSessionDetail.query({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+              }),
+            }),
+            assert: ({ status, detail }) => {
+              assert(status.status === "waiting");
+              expect(streamFn).toHaveBeenCalledTimes(1);
+              assert(detail && !Array.isArray(detail), "expected session detail response");
+              expect(detail.agent.state.messages.at(-1)).toMatchObject({
+                role: "assistant",
+                content: [{ type: "text", text: "continued after skipped compaction" }],
+              });
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("keeps the session alive when compaction summarization fails", async () => {
+    const streamFn = vi.fn(createErrorStreamFn("provider unavailable"));
+    const interactiveChatWorkflow = createInteractiveChatWorkflow({
+      name: "interactive-chat-failed-compaction-workflow",
+      options: {
+        model: mockModel,
+        models: createModelsForStreamFn(mockModel, streamFn),
+      },
+    });
+    const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
+    const initialMessages = createCompactionInitialMessages();
+
+    await runScenario(
+      defineScenario({
+        name: "pi-harness-interactive-chat-failed-compaction",
+        workflows: createPiWorkflows({ workflows: config.workflows }),
+        vars: () => ({ sessionId: undefined as string | undefined }),
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piHarnessDefinition)
+              .withConfig(config)
+              .withRoutes([piRoutesFactory])
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        clients: ({ clientConfig }) => ({
+          user: createPiFragmentClients(clientConfig("pi", { runner: "user" })),
+        }),
+        runners: ["agent", "user"],
+        steps: ({ workflow, runners, clients }) => [
+          workflow.read({
+            read: async () => {
+              const session = await clients.user.useCreateSession.mutateQuery({
+                path: { workflowName: interactiveChatWorkflow.name },
+                body: {
+                  name: "Failed compaction session",
+                  input: { initialMessages },
+                },
+              });
+              assert(session && !Array.isArray(session), "expected session response");
+              return session.id;
+            },
+            storeAs: "sessionId",
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "create",
+          }),
+          workflow.read({
+            read: async (ctx) =>
+              clients.user.useCommandSession.mutateQuery({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+                body: { kind: "compact", input: {} },
+              }),
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "event",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus(interactiveChatWorkflow.name, ctx.vars.sessionId!),
+              steps: await ctx.state.getSteps(interactiveChatWorkflow.name, ctx.vars.sessionId!),
+            }),
+            assert: ({ status, steps }) => {
+              assert(status.status === "waiting");
+              expect(streamFn).toHaveBeenCalledTimes(1);
+              expect(steps).toContainEqual(
+                expect.objectContaining({
+                  name: expect.stringMatching(/^command:/),
+                  status: "completed",
+                  result: expect.objectContaining({
+                    type: "harness-run",
+                    value: {
+                      kind: "compact",
+                      commandId: expect.any(String),
+                      status: "rejected",
+                      code: "compaction_failed",
+                      message: "Summarization failed: provider unavailable",
+                    },
+                  }),
+                }),
+              );
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("restores successful compaction context after a runner restart", async () => {
+    const observedProviderContexts: string[][] = [];
+    let providerCallIndex = 0;
+    const streamFn = vi.fn<StreamFn>((_model, context) => {
+      observedProviderContexts.push(context.messages.map(modelMessageText));
+      const callIndex = providerCallIndex;
+      providerCallIndex += 1;
+      return createTextStreamFn(
+        callIndex === 0 ? "Durable manual compaction summary." : "continued after restart",
+      )();
+    });
+    const interactiveChatWorkflow = createInteractiveChatWorkflow({
+      name: "interactive-chat-compaction-restart-workflow",
+      options: {
+        model: mockModel,
+        models: createModelsForStreamFn(mockModel, streamFn),
+      },
+    });
+    const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
+    const initialMessages = createCompactionInitialMessages();
+
+    await runScenario(
+      defineScenario({
+        name: "pi-harness-interactive-chat-compaction-restart",
+        workflows: createPiWorkflows({ workflows: config.workflows }),
+        vars: () => ({ sessionId: undefined as string | undefined }),
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piHarnessDefinition)
+              .withConfig(config)
+              .withRoutes([piRoutesFactory])
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        clients: ({ clientConfig }) => ({
+          user: createPiFragmentClients(clientConfig("pi", { runner: "user" })),
+        }),
+        runners: ["agent", "user"],
+        steps: ({ workflow, runners, clients }) => [
+          workflow.read({
+            read: async () => {
+              const session = await clients.user.useCreateSession.mutateQuery({
+                path: { workflowName: interactiveChatWorkflow.name },
+                body: {
+                  name: "Compaction restart session",
+                  input: { initialMessages },
+                },
+              });
+              assert(session && !Array.isArray(session), "expected session response");
+              return session.id;
+            },
+            storeAs: "sessionId",
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "create",
+          }),
+          runners.agent.restart(),
+          workflow.read({
+            read: async (ctx) =>
+              clients.user.useCommandSession.mutateQuery({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+                body: {
+                  kind: "compact",
+                  input: { customInstructions: "Keep the deployment details." },
+                },
+              }),
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "event",
+          }),
+          runners.agent.restart(),
+          workflow.read({
+            read: async (ctx) =>
+              clients.user.useCommandSession.mutateQuery({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+                body: { kind: "prompt", input: { text: "continue after restart" } },
+              }),
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "event",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus(interactiveChatWorkflow.name, ctx.vars.sessionId!),
+              steps: await ctx.state.getSteps(interactiveChatWorkflow.name, ctx.vars.sessionId!),
+              detail: await clients.user.useSessionDetail.query({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+              }),
+            }),
+            assert: ({ status, steps, detail }) => {
+              assert(status.status === "waiting");
+              assert(detail && !Array.isArray(detail), "expected session detail response");
+              expect(streamFn).toHaveBeenCalledTimes(2);
+              expect(observedProviderContexts[0]?.join("\n")).toContain(
+                "Additional focus: Keep the deployment details.",
+              );
+              expect(observedProviderContexts[1]?.[0]).toContain(
+                "Durable manual compaction summary.",
+              );
+              expect(detail.agent.state.messages[0]).toMatchObject({
+                role: "compactionSummary",
+                summary: "Durable manual compaction summary.",
+              });
+              expect(detail.agent.state.messages.at(-1)).toMatchObject({
+                role: "assistant",
+                content: [{ type: "text", text: "continued after restart" }],
+              });
+              expect(steps).toContainEqual(
+                expect.objectContaining({
+                  name: expect.stringMatching(/^command:/),
+                  status: "completed",
+                  result: expect.objectContaining({
+                    type: "harness-run",
+                    value: {
+                      kind: "compact",
+                      commandId: expect.any(String),
+                      status: "succeeded",
+                    },
+                    appendedEntries: expect.arrayContaining([
+                      expect.objectContaining({
+                        type: "compaction",
+                        summary: "Durable manual compaction summary.",
+                      }),
+                    ]),
+                  }),
+                }),
+              );
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("repeats compaction through interactive commands without losing prior context", async () => {
+    const observedProviderContexts: string[][] = [];
+    const providerResponses = [
+      "First interactive compaction summary.",
+      "continued after first compaction",
+      "Second interactive compaction summary.",
+      "continued after second compaction",
+    ];
+    let providerCallIndex = 0;
+    const streamFn = vi.fn<StreamFn>((_model, context) => {
+      observedProviderContexts.push(context.messages.map(modelMessageText));
+      const response = providerResponses[providerCallIndex];
+      providerCallIndex += 1;
+      assert(response, "unexpected provider call");
+      return createTextStreamFn(response)();
+    });
+    const interactiveChatWorkflow = createInteractiveChatWorkflow({
+      name: "interactive-chat-repeated-compaction-workflow",
+      options: {
+        model: mockModel,
+        models: createModelsForStreamFn(mockModel, streamFn),
+      },
+    });
+    const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
+    const initialMessages = createCompactionInitialMessages();
+    const largeContinuation = "later-context ".repeat(6_000);
+
+    await runScenario(
+      defineScenario({
+        name: "pi-harness-interactive-chat-repeated-compaction",
+        workflows: createPiWorkflows({ workflows: config.workflows }),
+        vars: () => ({ sessionId: undefined as string | undefined }),
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piHarnessDefinition)
+              .withConfig(config)
+              .withRoutes([piRoutesFactory])
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        clients: ({ clientConfig }) => ({
+          user: createPiFragmentClients(clientConfig("pi", { runner: "user" })),
+        }),
+        runners: ["agent", "user"],
+        steps: ({ workflow, runners, clients }) => [
+          workflow.read({
+            read: async () => {
+              const session = await clients.user.useCreateSession.mutateQuery({
+                path: { workflowName: interactiveChatWorkflow.name },
+                body: {
+                  name: "Repeated compaction session",
+                  input: { initialMessages },
+                },
+              });
+              assert(session && !Array.isArray(session), "expected session response");
+              return session.id;
+            },
+            storeAs: "sessionId",
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "create",
+          }),
+          workflow.read({
+            read: async (ctx) =>
+              clients.user.useCommandSession.mutateQuery({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+                body: {
+                  kind: "compact",
+                  input: { customInstructions: "Keep the first implementation plan." },
+                },
+              }),
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "event",
+          }),
+          workflow.read({
+            read: async (ctx) =>
+              clients.user.useCommandSession.mutateQuery({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+                body: { kind: "prompt", input: { text: largeContinuation } },
+              }),
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "event",
+          }),
+          workflow.read({
+            read: async (ctx) =>
+              clients.user.useCommandSession.mutateQuery({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+                body: {
+                  kind: "compact",
+                  input: { customInstructions: "Keep the updated implementation plan." },
+                },
+              }),
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "event",
+          }),
+          workflow.read({
+            read: async (ctx) =>
+              clients.user.useCommandSession.mutateQuery({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+                body: { kind: "prompt", input: { text: "continue one more time" } },
+              }),
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "event",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus(interactiveChatWorkflow.name, ctx.vars.sessionId!),
+              steps: await ctx.state.getSteps(interactiveChatWorkflow.name, ctx.vars.sessionId!),
+              history: await ctx.state.getHistory(
+                interactiveChatWorkflow.name,
+                ctx.vars.sessionId!,
+              ),
+              detail: await clients.user.useSessionDetail.query({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+              }),
+            }),
+            assert: ({ status, steps, history, detail }) => {
+              assert(status.status === "waiting");
+              assert(detail && !Array.isArray(detail), "expected session detail response");
+              expect(streamFn).toHaveBeenCalledTimes(4);
+              expect(observedProviderContexts[0]?.join("\n")).toContain(
+                "Additional focus: Keep the first implementation plan.",
+              );
+              expect(observedProviderContexts[1]?.[0]).toContain(
+                "First interactive compaction summary.",
+              );
+              expect(observedProviderContexts[2]?.join("\n")).toContain(
+                "First interactive compaction summary.",
+              );
+              expect(observedProviderContexts[2]?.join("\n")).toContain(
+                "Additional focus: Keep the updated implementation plan.",
+              );
+              expect(observedProviderContexts[3]?.[0]).toContain(
+                "Second interactive compaction summary.",
+              );
+              expect(detail.agent.state.messages[0]).toMatchObject({
+                role: "compactionSummary",
+                summary: "Second interactive compaction summary.",
+              });
+              expect(detail.agent.state.messages.at(-1)).toMatchObject({
+                role: "assistant",
+                content: [{ type: "text", text: "continued after second compaction" }],
+              });
+              expect(
+                steps.filter((step) => step.type === "do" && step.name.startsWith("command:")),
+              ).toHaveLength(4);
+              expect(steps).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    result: expect.objectContaining({
+                      value: expect.objectContaining({ kind: "compact", status: "succeeded" }),
+                      appendedEntries: expect.arrayContaining([
+                        expect.objectContaining({
+                          type: "compaction",
+                          summary: "First interactive compaction summary.",
+                        }),
+                      ]),
+                    }),
+                  }),
+                  expect.objectContaining({
+                    result: expect.objectContaining({
+                      value: expect.objectContaining({ kind: "compact", status: "succeeded" }),
+                      appendedEntries: expect.arrayContaining([
+                        expect.objectContaining({
+                          type: "compaction",
+                          summary: "Second interactive compaction summary.",
+                        }),
+                      ]),
+                    }),
+                  }),
+                ]),
+              );
+              expect(history.events.filter((event) => event.type === "command")).toHaveLength(4);
+              assert(history.events.every((event) => event.consumedByStepKey !== null));
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("queues a compaction command received during an active prompt", async () => {
+    const firstResponse = createCompletionGate();
+    const observedProviderContexts: string[][] = [];
+    let providerCallIndex = 0;
+    const streamFn = vi.fn<StreamFn>((model, context, options) => {
+      observedProviderContexts.push(context.messages.map(modelMessageText));
+      const callIndex = providerCallIndex;
+      providerCallIndex += 1;
+      return callIndex === 0
+        ? createGatedTextStreamFn("active prompt response", firstResponse.promise)(
+            model,
+            context,
+            options,
+          )
+        : createTextStreamFn("Queued compaction summary.")();
+    });
+    const interactiveChatWorkflow = createInteractiveChatWorkflow({
+      name: "interactive-chat-queued-compaction-workflow",
+      options: {
+        model: mockModel,
+        models: createModelsForStreamFn(mockModel, streamFn),
+      },
+    });
+    const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
+    const initialMessages = createCompactionInitialMessages();
+
+    await runScenario(
+      defineScenario({
+        name: "pi-harness-interactive-chat-queued-compaction",
+        workflows: createPiWorkflows({ workflows: config.workflows }),
+        vars: () => ({ sessionId: undefined as string | undefined }),
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piHarnessDefinition)
+              .withConfig(config)
+              .withRoutes([piRoutesFactory])
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        clients: ({ clientConfig }) => ({
+          user: createPiFragmentClients(clientConfig("pi", { runner: "user" })),
+        }),
+        runners: ["agent", "user"],
+        steps: ({ workflow, runners, concurrent, clients }) => [
+          workflow.read({
+            read: async () => {
+              const session = await clients.user.useCreateSession.mutateQuery({
+                path: { workflowName: interactiveChatWorkflow.name },
+                body: {
+                  name: "Queued compaction session",
+                  input: { initialMessages },
+                },
+              });
+              assert(session && !Array.isArray(session), "expected session response");
+              return session.id;
+            },
+            storeAs: "sessionId",
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "create",
+          }),
+          workflow.read({
+            read: async (ctx) =>
+              clients.user.useCommandSession.mutateQuery({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+                body: { kind: "prompt", input: { text: "active prompt" } },
+              }),
+          }),
+          concurrent({
+            agent: [
+              runners.agent.runUntilIdle({
+                workflow: interactiveChatWorkflow.name,
+                instanceId: (ctx) => ctx.vars.sessionId!,
+                reason: "event",
+              }),
+            ],
+            user: [
+              runners.user.waitForEmission({
+                workflow: interactiveChatWorkflow.name,
+                instanceId: (ctx) => ctx.vars.sessionId!,
+                match: (emission) =>
+                  matchesHarnessMessage(
+                    emission,
+                    "message_start",
+                    "assistant",
+                    "active prompt response",
+                  ),
+              }),
+              workflow.read({
+                read: async (ctx) =>
+                  clients.user.useCommandSession.mutateQuery({
+                    path: {
+                      workflowName: interactiveChatWorkflow.name,
+                      sessionId: ctx.vars.sessionId!,
+                    },
+                    body: {
+                      kind: "compact",
+                      input: { customInstructions: "Preserve the queued prompt result." },
+                    },
+                  }),
+              }),
+              workflow.read({
+                read: async () => {
+                  firstResponse.release();
+                },
+              }),
+              runners.user.waitForEmission({
+                workflow: interactiveChatWorkflow.name,
+                instanceId: (ctx) => ctx.vars.sessionId!,
+                match: (emission) =>
+                  typeof emission.payload === "object" &&
+                  emission.payload !== null &&
+                  "kind" in emission.payload &&
+                  emission.payload.kind === "pi-session-command-start" &&
+                  "command" in emission.payload &&
+                  typeof emission.payload.command === "object" &&
+                  emission.payload.command !== null &&
+                  "kind" in emission.payload.command &&
+                  emission.payload.command.kind === "compact",
+              }),
+            ],
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus(interactiveChatWorkflow.name, ctx.vars.sessionId!),
+              steps: await ctx.state.getSteps(interactiveChatWorkflow.name, ctx.vars.sessionId!),
+              history: await ctx.state.getHistory(
+                interactiveChatWorkflow.name,
+                ctx.vars.sessionId!,
+              ),
+            }),
+            assert: ({ status, steps, history }) => {
+              assert(status.status === "waiting");
+              expect(streamFn).toHaveBeenCalledTimes(2);
+              expect(observedProviderContexts[1]?.join("\n")).toContain(
+                "Additional focus: Preserve the queued prompt result.",
+              );
+              expect(
+                steps.filter((step) => step.type === "do" && step.name.startsWith("command:")),
+              ).toHaveLength(2);
+              expect(steps).toContainEqual(
+                expect.objectContaining({
+                  name: expect.stringMatching(/^command:/),
+                  status: "completed",
+                  result: expect.objectContaining({
+                    value: {
+                      kind: "compact",
+                      commandId: expect.any(String),
+                      status: "succeeded",
+                    },
+                    appendedEntries: expect.arrayContaining([
+                      expect.objectContaining({
+                        type: "compaction",
+                        summary: "Queued compaction summary.",
+                      }),
+                    ]),
+                  }),
+                }),
+              );
+              expect(history.events.filter((event) => event.type === "command")).toHaveLength(2);
+              assert(history.events.every((event) => event.consumedByStepKey !== null));
             },
           }),
         ],

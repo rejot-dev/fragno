@@ -37,6 +37,11 @@ export type PiHarnessMessageUpdateEmission = {
   update: PiHarnessMessageUpdate;
 };
 
+export const piToolCallArgumentsText = (toolCall: ToolCall): string | undefined => {
+  const partialJson = (toolCall as ToolCall & { partialJson?: unknown }).partialJson;
+  return typeof partialJson === "string" ? partialJson : undefined;
+};
+
 export const piHarnessMessageUpdateFromPiEvent = (
   event: Extract<AgentHarnessEvent, { type: "message_update" }>,
 ): PiHarnessMessageUpdate => ({

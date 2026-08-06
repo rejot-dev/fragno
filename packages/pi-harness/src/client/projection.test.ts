@@ -113,7 +113,6 @@ const createRuntime = async (mutations: readonly LofiMutation[] = []) => {
             payload: {
               kind: "harness-operation-start",
               operationId: `projection-test:${index}`,
-              operation: { kind: "prompt", args: [] },
               replay: { protocol: "pi-harness-operation", version: 1 },
             },
           },
@@ -347,7 +346,7 @@ const harnessRunResult = (entries: readonly SessionTreeEntry[]) => ({
   type: "harness-run",
   operation: "prompt",
   appendedEntries: entries,
-  leafId: entries.at(-1)?.id,
+  leafId: entries.at(-1)?.id ?? null,
 });
 
 const messageTextContent = (message: AgentMessage): string => {
@@ -418,14 +417,14 @@ describe("Pi harness workflow projection", () => {
       responses: [fauxAssistantMessage(fauxText("Hi there."), { timestamp: 1 })],
     });
 
-    expect(projection.state.messages).toHaveLength(2);
-    expect(projection.state.messages[0]).toMatchObject({ role: "user" });
-    assert(messageTextContent(projection.state.messages[0]) === "say hi");
-    expect(projection.state.messages[1]).toMatchObject({ role: "assistant" });
-    assert(messageTextContent(projection.state.messages[1]) === "Hi there.");
+    expect(projection.contextMessages).toHaveLength(2);
+    expect(projection.contextMessages[0]).toMatchObject({ role: "user" });
+    assert(messageTextContent(projection.contextMessages[0]) === "say hi");
+    expect(projection.contextMessages[1]).toMatchObject({ role: "assistant" });
+    assert(messageTextContent(projection.contextMessages[1]) === "Hi there.");
   });
 
-  it("projects a completed turn as ready for more input", async () => {
+  it("projects a completed workflow as non-interactive", async () => {
     const projection = await projectFauxPrompt({
       sessionId: "ready-turn",
       operation: { kind: "prompt", args: ["continue"] },
@@ -433,8 +432,8 @@ describe("Pi harness workflow projection", () => {
     });
 
     assert(projection.status === "ready");
-    assert(projection.readyForInput);
-    expect(projection.statusText).toBeNull();
+    assert(!projection.readyForInput);
+    expect(projection.activity).toBeNull();
     expect(projection.draftAgentMessage).toBeNull();
   });
 
@@ -449,8 +448,8 @@ describe("Pi harness workflow projection", () => {
       ],
     });
 
-    expect(projection.state.messages).toHaveLength(2);
-    expect(projection.state.messages[1]).toMatchObject({
+    expect(projection.contextMessages).toHaveLength(2);
+    expect(projection.contextMessages[1]).toMatchObject({
       role: "assistant",
       content: [
         { type: "thinking", thinking: "Need to read config." },
@@ -476,7 +475,7 @@ describe("Pi harness workflow projection", () => {
     });
 
     await withFauxCheckpointProjection(run, "thinking-checkpoint", "after-plan", (projection) => {
-      expect(projection.state.messages.map(messageTextContent)).toEqual(["plan"]);
+      expect(projection.contextMessages.map(messageTextContent)).toEqual(["plan"]);
       expect(projection.draftAgentMessage).toMatchObject({
         activity: "thinking",
         assistant: {
@@ -484,7 +483,7 @@ describe("Pi harness workflow projection", () => {
           content: [{ type: "thinking", thinking: "Plan" }],
         },
       });
-      assert(projection.statusText === "Thinking…");
+      assert(projection.activity === "thinking");
       assert(!projection.readyForInput);
     });
   });
@@ -508,10 +507,10 @@ describe("Pi harness workflow projection", () => {
         "checkpoint-message-start",
         "message-start",
         (projection) => {
-          expect(projection.state.messages.map(messageTextContent)).toEqual(["hello"]);
+          expect(projection.contextMessages.map(messageTextContent)).toEqual(["hello"]);
           expect(projection.draftAgentMessage).toMatchObject({ activity: "starting", tools: {} });
           expect(projection.draftAgentMessage?.assistant).toBeUndefined();
-          assert(projection.statusText === "Working…");
+          assert(projection.activity === "starting");
           assert(!projection.readyForInput);
         },
       );
@@ -538,12 +537,12 @@ describe("Pi harness workflow projection", () => {
         "checkpoint-thinking-start",
         "thinking-start",
         (projection) => {
-          expect(projection.state.messages.map(messageTextContent)).toEqual(["think"]);
+          expect(projection.contextMessages.map(messageTextContent)).toEqual(["think"]);
           expect(projection.draftAgentMessage).toMatchObject({
             activity: "thinking",
             assistant: { content: [{ type: "thinking", thinking: "" }] },
           });
-          assert(projection.statusText === "Thinking…");
+          assert(projection.activity === "thinking");
         },
       );
     });
@@ -567,12 +566,12 @@ describe("Pi harness workflow projection", () => {
         "checkpoint-thinking-delta",
         "thinking-delta",
         (projection) => {
-          expect(projection.state.messages.map(messageTextContent)).toEqual(["plan"]);
+          expect(projection.contextMessages.map(messageTextContent)).toEqual(["plan"]);
           expect(projection.draftAgentMessage).toMatchObject({
             activity: "thinking",
             assistant: { content: [{ type: "thinking", thinking: "Plan" }] },
           });
-          assert(projection.statusText === "Thinking…");
+          assert(projection.activity === "thinking");
         },
       );
     });
@@ -597,12 +596,12 @@ describe("Pi harness workflow projection", () => {
         "checkpoint-thinking-end",
         "thinking-end",
         (projection) => {
-          expect(projection.state.messages.map(messageTextContent)).toEqual(["think"]);
+          expect(projection.contextMessages.map(messageTextContent)).toEqual(["think"]);
           expect(projection.draftAgentMessage).toMatchObject({
             activity: "thinking",
             assistant: { content: [{ type: "thinking", thinking: "Plan" }] },
           });
-          assert(projection.statusText === "Thinking…");
+          assert(projection.activity === "thinking");
         },
       );
     });
@@ -632,7 +631,7 @@ describe("Pi harness workflow projection", () => {
             activity: "writing",
             assistant: { content: [{ type: "text", text: "" }] },
           });
-          assert(projection.statusText === "Writing…");
+          assert(projection.activity === "writing");
         },
       );
     });
@@ -659,12 +658,12 @@ describe("Pi harness workflow projection", () => {
         "checkpoint-text-delta",
         "text-delta",
         (projection) => {
-          expect(projection.state.messages.map(messageTextContent)).toEqual(["hello"]);
+          expect(projection.contextMessages.map(messageTextContent)).toEqual(["hello"]);
           expect(projection.draftAgentMessage).toMatchObject({
             activity: "writing",
             assistant: { content: [{ type: "text", text: "Hell" }] },
           });
-          assert(projection.statusText === "Writing…");
+          assert(projection.activity === "writing");
         },
       );
     });
@@ -682,12 +681,12 @@ describe("Pi harness workflow projection", () => {
       });
 
       await withFauxCheckpointProjection(run, "checkpoint-text-end", "text-end", (projection) => {
-        expect(projection.state.messages.map(messageTextContent)).toEqual(["hello"]);
+        expect(projection.contextMessages.map(messageTextContent)).toEqual(["hello"]);
         expect(projection.draftAgentMessage).toMatchObject({
           activity: "writing",
           assistant: { content: [{ type: "text", text: "Hello." }] },
         });
-        assert(projection.statusText === "Writing…");
+        assert(projection.activity === "writing");
       });
     });
 
@@ -724,7 +723,7 @@ describe("Pi harness workflow projection", () => {
               "call-write": { id: "call-write", name: "write_file", args: {}, status: "starting" },
             },
           });
-          assert(projection.statusText === "Writing tool call…");
+          assert(projection.activity === "tool_calling");
         },
       );
     });
@@ -762,7 +761,7 @@ describe("Pi harness workflow projection", () => {
               "call-write": { id: "call-write", name: "write_file", args: {}, status: "starting" },
             },
           });
-          assert(projection.statusText === "Writing tool call…");
+          assert(projection.activity === "tool_calling");
         },
       );
     });
@@ -815,7 +814,7 @@ describe("Pi harness workflow projection", () => {
               },
             },
           });
-          assert(projection.statusText === "Writing tool call…");
+          assert(projection.activity === "tool_calling");
         },
       );
     });
@@ -860,7 +859,7 @@ describe("Pi harness workflow projection", () => {
               },
             },
           });
-          assert(projection.statusText === "Running tool calls…");
+          assert(projection.activity === "running_tools");
           assert(!projection.readyForInput);
         },
       );
@@ -907,7 +906,7 @@ describe("Pi harness workflow projection", () => {
               },
             },
           });
-          assert(projection.statusText === "Running tool calls…");
+          assert(projection.activity === "running_tools");
           assert(!projection.readyForInput);
         },
       );
@@ -948,7 +947,7 @@ describe("Pi harness workflow projection", () => {
             },
           },
         });
-        assert(projection.statusText === "Working…");
+        assert(projection.activity === "working");
       });
     });
 
@@ -1030,7 +1029,7 @@ describe("Pi harness workflow projection", () => {
         "checkpoint-tool-result-end",
         "tool-result-end",
         (projection) => {
-          expect(projection.state.messages.map(messageTextContent)).toEqual([
+          expect(projection.contextMessages.map(messageTextContent)).toEqual([
             "write",
             "write_file",
             "wrote /tmp/file.txt",
@@ -1073,9 +1072,9 @@ describe("Pi harness workflow projection", () => {
         "checkpoint-assistant-end",
         "assistant-end",
         (projection) => {
-          expect(projection.state.messages.map(messageTextContent)).toEqual(["hello", "Hello."]);
+          expect(projection.contextMessages.map(messageTextContent)).toEqual(["hello", "Hello."]);
           expect(projection.draftAgentMessage).toBeNull();
-          expect(projection.statusText).toBeNull();
+          expect(projection.activity).toBeNull();
         },
       );
     });
@@ -1102,7 +1101,7 @@ describe("Pi harness workflow projection", () => {
         "assistant-end",
         (projection) => {
           expect(projection.draftAgentMessage).toBeNull();
-          expect(projection.statusText).toBeNull();
+          expect(projection.activity).toBeNull();
         },
       );
     });
@@ -1186,7 +1185,7 @@ describe("Pi harness workflow projection", () => {
 
       assert(projection.readyForInput);
       assert(projection.status === "ready");
-      expect(projection.statusText).toBeNull();
+      expect(projection.activity).toBeNull();
     });
 
     it("uses Working… when active live work has no visible draft", async () => {
@@ -1196,7 +1195,7 @@ describe("Pi harness workflow projection", () => {
 
       expect(projection.draftAgentMessage).toBeNull();
       assert(!projection.readyForInput);
-      assert(projection.statusText === "Working…");
+      assert(projection.activity === "working");
     });
 
     it("projects workflow instance joins into a Pi session projection source", async () => {
@@ -1224,42 +1223,51 @@ describe("Pi harness workflow projection", () => {
         ],
       });
 
-      expect(projection.state.messages.map(messageTextContent)).toEqual(["committed"]);
+      expect(projection.contextMessages.map(messageTextContent)).toEqual(["committed"]);
     });
 
-    it("keeps initialState visible when local lofi is bootstrapped but not caught up", async () => {
+    it("keeps the server baseline visible when local lofi is not caught up", async () => {
       const projection = await projectWorkflowMutations("missing-initial-state", [], {
-        initialState: {
-          messages: [
-            { role: "user", content: "server prompt", timestamp: 1 },
-            fauxAssistantMessage(fauxText("server reply"), { timestamp: 1 }),
+        baseline: {
+          sessionEntries: [
+            sessionMessageEntry("server-user", "server prompt", { role: "user" }),
+            sessionMessageEntry("server-assistant", "server reply", {
+              parentId: "server-user",
+            }),
           ],
+          completedStepKeys: [],
+          compactOutcomesByCommandId: {},
+          latestCommandCompactOutcome: null,
         },
       });
 
-      assert(!projection.sessionFound);
-      expect(projection.state.messages.map(messageTextContent)).toEqual([
+      assert(projection.status === "not-found");
+      expect(projection.contextMessages.map(messageTextContent)).toEqual([
         "server prompt",
         "server reply",
       ]);
     });
 
-    it("keeps initialState visible when only the workflow instance is local", async () => {
+    it("keeps the server baseline visible when only the workflow instance is local", async () => {
       const projection = await projectManualWorkflow(
         "local-instance-only",
         {},
         {
-          initialState: {
-            messages: [
-              { role: "user", content: "server prompt", timestamp: 1 },
-              fauxAssistantMessage(fauxText("server reply"), { timestamp: 1 }),
+          baseline: {
+            sessionEntries: [
+              sessionMessageEntry("server-user", "server prompt", { role: "user" }),
+              sessionMessageEntry("server-assistant", "server reply", {
+                parentId: "server-user",
+              }),
             ],
+            completedStepKeys: ["do:first-command"],
+            compactOutcomesByCommandId: {},
+            latestCommandCompactOutcome: null,
           },
-          initialCompletedStepKeys: ["do:first-command"],
         },
       );
 
-      expect(projection.state.messages.map(messageTextContent)).toEqual([
+      expect(projection.contextMessages.map(messageTextContent)).toEqual([
         "server prompt",
         "server reply",
       ]);
@@ -1272,10 +1280,10 @@ describe("Pi harness workflow projection", () => {
         responses: [fauxAssistantMessage(fauxText("Hello."), { timestamp: 1 })],
       });
 
-      expect(projection.state.messages.map(messageTextContent)).toEqual(["hello", "Hello."]);
+      expect(projection.contextMessages.map(messageTextContent)).toEqual(["hello", "Hello."]);
       expect(projection.draftAgentMessage).toBeNull();
-      expect(projection.statusText).toBeNull();
-      assert(projection.readyForInput);
+      expect(projection.activity).toBeNull();
+      assert(!projection.readyForInput);
     });
 
     it("projects one run across live and emission-deleted checkpoint snapshots", async () => {
@@ -1301,7 +1309,7 @@ describe("Pi harness workflow projection", () => {
         sessionId,
         "assistant-text",
         (projection) => {
-          expect(projection.state.messages.map(messageTextContent)).toEqual(["stay visible"]);
+          expect(projection.contextMessages.map(messageTextContent)).toEqual(["stay visible"]);
           expect(projection.draftAgentMessage).toMatchObject({ activity: "writing" });
           assert(!projection.readyForInput);
         },
@@ -1315,7 +1323,7 @@ describe("Pi harness workflow projection", () => {
         sessionId,
         "assistant-end",
         (projection) => {
-          expect(projection.state.messages.map(messageTextContent)).toEqual([
+          expect(projection.contextMessages.map(messageTextContent)).toEqual([
             "stay visible",
             "Still visible.",
           ]);
@@ -1331,7 +1339,7 @@ describe("Pi harness workflow projection", () => {
         sessionId,
         "assistant-end",
         (projection) => {
-          expect(projection.state.messages.map(messageTextContent)).toEqual([
+          expect(projection.contextMessages.map(messageTextContent)).toEqual([
             "stay visible",
             "Still visible.",
           ]);
@@ -1346,13 +1354,13 @@ describe("Pi harness workflow projection", () => {
 
       const recording = await run.done;
       const completedProjection = await projectWorkflowMutations(sessionId, recording.mutations);
-      expect(completedProjection.state.messages.map(messageTextContent)).toEqual([
+      expect(completedProjection.contextMessages.map(messageTextContent)).toEqual([
         "stay visible",
         "Still visible.",
       ]);
       expect(completedProjection.draftAgentMessage).toBeNull();
-      expect(completedProjection.statusText).toBeNull();
-      assert(completedProjection.readyForInput);
+      expect(completedProjection.activity).toBeNull();
+      assert(!completedProjection.readyForInput);
     });
 
     it("keeps messages visible in indexeddb after completed step emissions are deleted", async () => {
@@ -1376,7 +1384,7 @@ describe("Pi harness workflow projection", () => {
       liveCheckpoint.resume();
       const recording = await run.done;
       const completedProjection = await projectWorkflowMutations(sessionId, recording.mutations);
-      expect(completedProjection.state.messages.map(messageTextContent)).toEqual([
+      expect(completedProjection.contextMessages.map(messageTextContent)).toEqual([
         "stay visible",
         "Still visible.",
       ]);
@@ -1385,7 +1393,7 @@ describe("Pi harness workflow projection", () => {
         sessionId,
         run.mutationsWithDeletedStepEmissions(recording.mutations),
       );
-      expect(afterEmissionDeletionProjection.state.messages.map(messageTextContent)).toEqual([
+      expect(afterEmissionDeletionProjection.contextMessages.map(messageTextContent)).toEqual([
         "stay visible",
         "Still visible.",
       ]);
@@ -1411,7 +1419,7 @@ describe("Pi harness workflow projection", () => {
 
       try {
         const liveProjection = await projectWorkflowMutations(sessionId, checkpoint.mutations);
-        expect(liveProjection.state.messages.map(messageTextContent)).toEqual(["stay visible"]);
+        expect(liveProjection.contextMessages.map(messageTextContent)).toEqual(["stay visible"]);
         expect(liveProjection.draftAgentMessage).toMatchObject({ activity: "writing" });
       } finally {
         checkpoint.resume();
@@ -1428,16 +1436,16 @@ describe("Pi harness workflow projection", () => {
       expect(completedStepCreate.values).not.toHaveProperty("createdAt");
 
       const completedProjection = await projectWorkflowMutations(sessionId, recording.mutations);
-      expect(completedProjection.state.messages.map(messageTextContent)).toEqual([
+      expect(completedProjection.contextMessages.map(messageTextContent)).toEqual([
         "stay visible",
         "Still visible.",
       ]);
       expect(completedProjection.draftAgentMessage).toBeNull();
-      expect(completedProjection.statusText).toBeNull();
-      assert(completedProjection.readyForInput);
+      expect(completedProjection.activity).toBeNull();
+      assert(!completedProjection.readyForInput);
     });
 
-    it("overlays initialState before local incomplete step emissions", async () => {
+    it("overlays the server baseline before local incomplete step emissions", async () => {
       const initialMessage = {
         role: "user",
         content: "previous turn",
@@ -1464,12 +1472,24 @@ describe("Pi harness workflow projection", () => {
           "checkpoint-initial-overlay",
           checkpoint.mutations,
           {
-            initialState: { messages: [initialMessage] },
-            initialCompletedStepKeys: ["already-completed"],
+            baseline: {
+              sessionEntries: [
+                {
+                  type: "message",
+                  id: "initial-message",
+                  parentId: null,
+                  timestamp: new Date(0).toISOString(),
+                  message: initialMessage,
+                },
+              ],
+              completedStepKeys: ["already-completed"],
+              compactOutcomesByCommandId: {},
+              latestCommandCompactOutcome: null,
+            },
           },
         );
 
-        expect(projection.state.messages.map(messageTextContent)).toEqual([
+        expect(projection.contextMessages.map(messageTextContent)).toEqual([
           "previous turn",
           "current turn",
         ]);
@@ -1483,10 +1503,10 @@ describe("Pi harness workflow projection", () => {
     it("returns a not-found projection for a missing workflow instance", async () => {
       const projection = await projectWorkflowMutations("missing-session", []);
 
-      assert(!projection.sessionFound);
-      assert(projection.status === "error");
+      assert(projection.status === "not-found");
+      assert(projection.status === "not-found");
       expect(projection.error).toBeInstanceOf(Error);
-      expect(projection.statusText).toBeNull();
+      expect(projection.activity).toBeNull();
     });
 
     it("scopes draft tools to the current assistant message across tool rounds", async () => {
@@ -1527,7 +1547,7 @@ describe("Pi harness workflow projection", () => {
         "checkpoint-second-tool-round",
         "second-round-tool-start",
         (projection) => {
-          expect(projection.state.messages.map((message) => message.role)).toEqual([
+          expect(projection.contextMessages.map((message) => message.role)).toEqual([
             "user",
             "assistant",
             "toolResult",
@@ -1652,7 +1672,7 @@ describe("Pi harness workflow projection", () => {
               "call-fast": { status: "done", isError: false },
             },
           });
-          assert(projection.statusText === "Running tool calls…");
+          assert(projection.activity === "running_tools");
           assert(!projection.readyForInput);
         },
       );
@@ -1789,7 +1809,7 @@ describe("Pi harness workflow projection", () => {
         ],
       });
 
-      expect(projection.state.messages.map(messageTextContent)).toEqual(["B1", "B2", "A1"]);
+      expect(projection.contextMessages.map(messageTextContent)).toEqual(["B1", "B2", "A1"]);
       expect(projection.draftAgentMessage).toBeNull();
     });
 
@@ -1802,20 +1822,19 @@ describe("Pi harness workflow projection", () => {
             payload: {
               kind: "harness-operation-start",
               operationId: "operation-1",
-              operation: { kind: "prompt", args: ["hello"] },
               replay: { protocol: "pi-harness-operation", version: 1 },
             },
           },
         ],
       });
 
-      expect(projection.state.messages).toEqual([]);
+      expect(projection.contextMessages).toEqual([]);
       expect(projection.draftAgentMessage).toBeNull();
       assert(!projection.readyForInput);
-      assert(projection.statusText === "Working…");
+      assert(projection.activity === "working");
     });
 
-    it("ignores emissions for initialCompletedStepKeys", async () => {
+    it("ignores emissions already represented by the server baseline", async () => {
       const initialMessage = {
         role: "user",
         content: "already committed",
@@ -1847,14 +1866,26 @@ describe("Pi harness workflow projection", () => {
           "checkpoint-ignore-initial-step",
           checkpoint.mutations,
           {
-            initialState: { messages: [initialMessage] },
-            initialCompletedStepKeys: [stepKey],
+            baseline: {
+              sessionEntries: [
+                {
+                  type: "message",
+                  id: "initial-message",
+                  parentId: null,
+                  timestamp: new Date(0).toISOString(),
+                  message: initialMessage,
+                },
+              ],
+              completedStepKeys: [stepKey],
+              compactOutcomesByCommandId: {},
+              latestCommandCompactOutcome: null,
+            },
           },
         );
 
-        expect(projection.state.messages.map(messageTextContent)).toEqual(["already committed"]);
+        expect(projection.contextMessages.map(messageTextContent)).toEqual(["already committed"]);
         expect(projection.draftAgentMessage).toBeNull();
-        expect(projection.statusText).toBeNull();
+        expect(projection.activity).toBeNull();
       } finally {
         checkpoint.resume();
         await run.done;
@@ -1901,7 +1932,7 @@ describe("Pi harness workflow projection", () => {
         ],
       });
 
-      expect(projection.state.messages.map(messageTextContent)).toEqual([
+      expect(projection.contextMessages.map(messageTextContent)).toEqual([
         "Updated first",
         "Second",
       ]);
@@ -1954,17 +1985,17 @@ describe("Pi harness workflow projection", () => {
         ],
       });
 
-      expect(projection.state.messages.map(messageTextContent)).toEqual(["Root", "Branch B"]);
+      expect(projection.contextMessages.map(messageTextContent)).toEqual(["Root", "Branch B"]);
     });
 
     it("does not mark errored or failed instances ready for input", async () => {
       for (const status of ["errored", "failed"] as const) {
         const projection = await projectManualWorkflow(`manual-${status}`, { status });
 
-        assert(projection.sessionFound);
+        assert(projection.status === "ready");
         assert(projection.status === "ready");
         assert(!projection.readyForInput);
-        expect(projection.statusText).toBeNull();
+        expect(projection.activity).toBeNull();
       }
     });
 
@@ -1981,7 +2012,7 @@ describe("Pi harness workflow projection", () => {
       });
 
       assert(!projection.readyForInput);
-      assert(projection.statusText === "Working…");
+      assert(projection.activity === "working");
     });
   });
 
@@ -1993,10 +2024,10 @@ describe("Pi harness workflow projection", () => {
       tools: [writeFileTool],
     });
 
-    expect(projection.state.messages).toHaveLength(4);
-    expect(projection.state.messages[0]).toMatchObject({ role: "user" });
-    assert(messageTextContent(projection.state.messages[0]) === "write a file");
-    expect(projection.state.messages[1]).toMatchObject({
+    expect(projection.contextMessages).toHaveLength(4);
+    expect(projection.contextMessages[0]).toMatchObject({ role: "user" });
+    assert(messageTextContent(projection.contextMessages[0]) === "write a file");
+    expect(projection.contextMessages[1]).toMatchObject({
       role: "assistant",
       content: [
         {
@@ -2007,15 +2038,15 @@ describe("Pi harness workflow projection", () => {
         },
       ],
     });
-    expect(projection.state.messages[2]).toMatchObject({
+    expect(projection.contextMessages[2]).toMatchObject({
       role: "toolResult",
       toolCallId: "call-write",
       toolName: "write_file",
       content: [{ type: "text", text: "wrote /tmp/file.txt" }],
       details: { phase: "done" },
     });
-    expect(projection.state.messages[3]).toMatchObject({ role: "assistant" });
-    assert(messageTextContent(projection.state.messages[3]) === "Done.");
+    expect(projection.contextMessages[3]).toMatchObject({ role: "assistant" });
+    assert(messageTextContent(projection.contextMessages[3]) === "Done.");
     expect(projection.draftAgentMessage).toBeNull();
   });
 });

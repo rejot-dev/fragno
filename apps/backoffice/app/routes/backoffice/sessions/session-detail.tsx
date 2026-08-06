@@ -1,3 +1,4 @@
+import { estimatePiContextUsage } from "@fragno-dev/pi-harness/context-usage";
 import type { PiSession } from "@fragno-dev/pi-harness/types";
 import type { PiWorkflowSessionProjectionState } from "@fragno-dev/pi-harness/workflow-session-projection";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -12,6 +13,8 @@ import {
 
 import { createPiClient } from "@/fragno/pi/pi-client";
 import { findPiModelOption, piSessionModel } from "@/fragno/pi/pi-shared";
+import { piSessionActivityLabel } from "@/fragno/pi/session-activity";
+import { projectPiSessionInteraction } from "@/fragno/pi/session-interaction";
 import { usePiSessionProjection } from "@/fragno/pi/tanstack/use-session-projection";
 import { scopedPublicMountPath } from "@/fragno/scoped-public-fragment-routes";
 
@@ -42,6 +45,52 @@ const TERMINAL_SESSION_LABELS: Record<string, string> = {
   terminated: "Session stopped",
 };
 
+function getSessionStatusText({
+  disabledReason,
+  compacting,
+  sending,
+  projectedStatusText,
+}: {
+  disabledReason: string | null;
+  compacting: boolean;
+  sending: boolean;
+  projectedStatusText: string | null;
+}): string | null {
+  if (disabledReason !== null) {
+    return disabledReason;
+  }
+  if (compacting) {
+    return "Compacting…";
+  }
+  if (sending) {
+    return "Sending…";
+  }
+  return projectedStatusText;
+}
+
+function getSessionModelLabel(session: PiSession) {
+  const model = piSessionModel(session.metadata);
+  return model
+    ? (findPiModelOption(model.provider, model.name)?.label ?? model.name)
+    : session.workflowName;
+}
+
+function getWorkspaceStateKey(scope: PiSessionsOutletContext["scope"], session: PiSession) {
+  return [scope.orgId, session.workflowName, session.id].map(encodeURIComponent).join(":");
+}
+
+function useSessionDisplayOptions() {
+  const [displayOptions, setDisplayOptions] = useState({
+    showToolCalls: true,
+    showThinking: true,
+    showUsage: false,
+  });
+  const updateDisplayOption = (key: keyof typeof displayOptions) => (value: boolean) => {
+    setDisplayOptions((current) => ({ ...current, [key]: value }));
+  };
+  return { displayOptions, updateDisplayOption };
+}
+
 export default function BackofficeOrganisationPiSessionDetail() {
   const { workflowName, sessionId } = useParams();
   const { scope, persistenceSource } = useOutletContext<PiSessionsOutletContext>();
@@ -68,6 +117,14 @@ function PiSessionDetailLoading() {
       Loading local Pi session…
     </div>
   );
+}
+
+function SessionProjectionError({ error }: { error: string | null }) {
+  return error ? (
+    <div className="mx-4 mt-3 border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 py-2 text-sm text-[var(--bo-failed)]">
+      {error}
+    </div>
+  ) : null;
 }
 
 function SynchronizedPiSessionDetail({
@@ -129,35 +186,43 @@ function PiSessionDetailView({
 }) {
   const { workspaceStates, updateWorkspaceState, workflowCollections, workflowCollectionsError } =
     useOutletContext<PiSessionsOutletContext>();
-  const [displayOptions, setDisplayOptions] = useState({
-    showToolCalls: true,
-    showThinking: true,
-    showUsage: false,
-  });
+  const { displayOptions, updateDisplayOption } = useSessionDisplayOptions();
   const [commandKind, setCommandKind] = useState<"followUp" | "steer">("followUp");
+  const [composerAction, setComposerAction] = useState<"message" | "compact">("message");
+  const [submittingCompaction, setSubmittingCompaction] = useState(false);
+  const [pendingCompactionCommandId, setPendingCompactionCommandId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const runtimeRef = useRef<AssistantRuntime | null>(null);
   const pi = useMemo(() => createPiClient(scope), [scope]);
   const commandSession = pi.useCommandSession();
-  const messages = projection.state.messages;
+  const messages = projection.timelineMessages;
+  const contextMessages = projection.contextMessages;
+  const contextUsage = useMemo(() => estimatePiContextUsage(contextMessages), [contextMessages]);
   const sending = commandSession.loading ?? false;
   const disabledReason = instanceStatus ? (TERMINAL_SESSION_LABELS[instanceStatus] ?? null) : null;
   const sessionDisabled = disabledReason !== null;
   const initialPromptError = searchParams.get("initialPromptError");
   const sendError = sessionDisabled ? null : (commandSession.error?.message ?? initialPromptError);
-  const readyForInput = !sessionDisabled && !sending && projection.readyForInput;
-  const statusText = sessionDisabled
-    ? disabledReason
-    : sending
-      ? "Sending…"
-      : projection.statusText;
-  const running = !sessionDisabled && (sending || !projection.readyForInput);
-  const needsNudge = !sessionDisabled && !sending && !readyForInput && statusText === "Working…";
+  const pendingCompactionOutcome = pendingCompactionCommandId
+    ? (projection.compactOutcomesByCommandId[pendingCompactionCommandId] ?? null)
+    : null;
+  const { compacting, readyForInput, running, needsNudge } = projectPiSessionInteraction({
+    sessionDisabled,
+    sending,
+    localCompactionPending:
+      submittingCompaction ||
+      (pendingCompactionCommandId !== null && pendingCompactionOutcome === null),
+    projection,
+  });
+  const statusText = getSessionStatusText({
+    disabledReason,
+    compacting,
+    sending,
+    projectedStatusText:
+      projection.status === "loading" ? "Loading…" : piSessionActivityLabel(projection.activity),
+  });
 
-  const model = piSessionModel(session.metadata);
-  const modelLabel = model
-    ? (findPiModelOption(model.provider, model.name)?.label ?? model.name)
-    : session.workflowName;
+  const modelLabel = getSessionModelLabel(session);
 
   const assistantMessages = useMemo(
     () =>
@@ -177,9 +242,7 @@ function PiSessionDetailView({
       }),
     [messages, projection.draftAgentMessage],
   );
-  const workspaceStateKey = [scope.orgId, session.workflowName, session.id]
-    .map(encodeURIComponent)
-    .join(":");
+  const workspaceStateKey = getWorkspaceStateKey(scope, session);
   const workspaceState = workspaceStates[workspaceStateKey] ?? createSessionWorkspaceState();
   const workspaceItemIds = useMemo(
     () => new Set(workspaceItems.map((item) => item.id)),
@@ -279,6 +342,53 @@ function PiSessionDetailView({
     };
   }, [runtime]);
 
+  const handleCompact = useCallback(async () => {
+    if (!readyForInput) {
+      return;
+    }
+
+    const composer = runtimeRef.current?.thread.composer;
+    const customInstructions = composer?.getState().text.trim();
+    setSubmittingCompaction(true);
+    try {
+      const acknowledgement = await commandSession.mutate({
+        path: { workflowName: session.workflowName, sessionId: session.id },
+        body: {
+          kind: "compact",
+          input: customInstructions ? { customInstructions } : {},
+        },
+      });
+      if (acknowledgement && !Array.isArray(acknowledgement)) {
+        setPendingCompactionCommandId(acknowledgement.commandId);
+      }
+    } catch {
+      // The mutator exposes submission failures through commandSession.error.
+    } finally {
+      setSubmittingCompaction(false);
+    }
+  }, [commandSession, readyForInput, session.id, session.workflowName]);
+
+  const handledCompactionCommandIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      pendingCompactionCommandId === null ||
+      pendingCompactionOutcome?.status !== "succeeded" ||
+      handledCompactionCommandIdRef.current === pendingCompactionCommandId
+    ) {
+      return;
+    }
+
+    handledCompactionCommandIdRef.current = pendingCompactionCommandId;
+    runtimeRef.current?.thread.composer.setText("");
+  }, [pendingCompactionCommandId, pendingCompactionOutcome]);
+
+  const selectedComposerAction =
+    pendingCompactionOutcome?.status === "succeeded" ? "message" : composerAction;
+  const handleComposerActionChange = (action: "message" | "compact") => {
+    setPendingCompactionCommandId(null);
+    setComposerAction(action);
+  };
+
   const handleContinue = () =>
     commandSession.mutate({
       path: { workflowName: session.workflowName, sessionId: session.id },
@@ -290,10 +400,6 @@ function PiSessionDetailView({
       path: { workflowName: session.workflowName, sessionId: session.id },
       body: { kind: "abort", reason: "Stopped from backoffice UI" },
     });
-
-  const updateDisplayOption = (key: keyof typeof displayOptions) => (value: boolean) => {
-    setDisplayOptions((current) => ({ ...current, [key]: value }));
-  };
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -315,11 +421,7 @@ function PiSessionDetailView({
           }
         />
 
-        {projectionError ? (
-          <div className="mx-4 mt-3 border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 py-2 text-sm text-[var(--bo-failed)]">
-            {projectionError}
-          </div>
-        ) : null}
+        <SessionProjectionError error={projectionError} />
 
         <SessionWorkspaceNavigationProvider value={workspaceNavigation}>
           <SessionWorkspaceSplit
@@ -330,6 +432,7 @@ function PiSessionDetailView({
                 error={sendError}
                 modelLabel={modelLabel}
                 needsNudge={needsNudge}
+                onCompact={handleCompact}
                 onContinue={handleContinue}
                 onStop={handleStop}
                 readyForInput={readyForInput}
@@ -339,7 +442,12 @@ function PiSessionDetailView({
                 showUsage={displayOptions.showUsage}
                 statusText={statusText}
                 commandKind={commandKind}
+                composerAction={selectedComposerAction}
+                compacting={compacting}
+                compactOutcome={projection.latestCommandCompactOutcome}
+                contextTokens={contextUsage.tokens}
                 onCommandKindChange={setCommandKind}
+                onComposerActionChange={handleComposerActionChange}
               />
             }
             right={

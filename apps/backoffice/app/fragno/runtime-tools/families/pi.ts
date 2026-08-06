@@ -62,7 +62,6 @@ const sessionDetailBaseOutputSchema = sessionBaseOutputSchema.extend({
   workflow: workflowStatusOutputSchema,
   agent: z.object({
     state: piAgentStateSnapshotOutputSchema,
-    completedStepKeys: z.array(z.string()),
   }),
 });
 

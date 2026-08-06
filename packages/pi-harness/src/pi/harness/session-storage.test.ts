@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import {
   AgentHarness,
@@ -17,7 +17,7 @@ import {
   createWorkflowBackedSessionEntryIdAllocator,
   WorkflowBackedSessionStorage,
 } from "./session-storage";
-import { createModelsForStreamFn } from "./test-models";
+import { createModelsForStreamFn, mockAgentHarnessCompaction } from "./test-models";
 
 const metadata = { id: "session-1", createdAt: "2026-06-24T00:00:00.000Z" };
 const entryIds = (prefix: string, startIndex = 0) =>
@@ -112,6 +112,129 @@ const prettySession = async (
 };
 
 describe("WorkflowBackedSessionStorage", () => {
+  it("keeps original retained-tail entries visible for repeated compaction", async () => {
+    const firstUser = userMessage("first prompt");
+    const firstAssistant = assistantMessage("first reply");
+    const secondUser = userMessage("second prompt");
+    const entries: SessionTreeEntry[] = [
+      {
+        type: "message",
+        id: "user-1",
+        parentId: null,
+        timestamp: "2026-06-24T00:00:00.000Z",
+        message: firstUser,
+      },
+      {
+        type: "message",
+        id: "assistant-1",
+        parentId: "user-1",
+        timestamp: "2026-06-24T00:00:01.000Z",
+        message: firstAssistant,
+      },
+      {
+        type: "compaction",
+        id: "compaction-1",
+        parentId: "assistant-1",
+        timestamp: "2026-06-24T00:00:02.000Z",
+        summary: "Earlier context",
+        firstKeptEntryId: "user-1",
+        tokensBefore: 10_000,
+        retainedTail: [firstUser, firstAssistant],
+        fromHook: false,
+      },
+      {
+        type: "message",
+        id: "user-2",
+        parentId: "compaction-1",
+        timestamp: "2026-06-24T00:00:03.000Z",
+        message: secondUser,
+      },
+    ];
+    const storage = new WorkflowBackedSessionStorage({
+      metadata,
+      entries,
+      entryIds: entryIds("next"),
+    });
+
+    await expect(storage.getPathToRootOrCompaction("user-2")).resolves.toMatchObject([
+      { id: "user-1" },
+      { id: "assistant-1" },
+      { id: "compaction-1" },
+      { id: "user-2" },
+    ]);
+
+    const context = await new Session(storage).buildContext();
+    expect(context.messages.map((message) => message.role)).toEqual([
+      "compactionSummary",
+      "user",
+      "assistant",
+      "user",
+    ]);
+  });
+
+  it("feeds a previous retained tail into the next compaction preparation", async () => {
+    const storage = new WorkflowBackedSessionStorage({
+      metadata,
+      entryIds: entryIds("repeated-compaction"),
+    });
+    const session = new Session(storage);
+    const summarizationPrompts: string[] = [];
+    const summarizationStream = createTextStreamFn("Second compacted history");
+    const models = createModelsForStreamFn(mockModel, (_model, context, _options) => {
+      summarizationPrompts.push(
+        context.messages
+          .flatMap((message) =>
+            typeof message.content === "string"
+              ? [message.content]
+              : message.content.flatMap((content) =>
+                  content.type === "text" ? [content.text] : [],
+                ),
+          )
+          .join("\n"),
+      );
+      return summarizationStream();
+    });
+    const harness = new AgentHarness({ session, models, model: mockModel });
+
+    for (let turn = 0; turn < 10; turn += 1) {
+      await harness.appendMessage(userMessage(`initial-turn-${turn}:${"x".repeat(9_000)}`));
+      await harness.appendMessage(assistantMessage(`initial-response-${turn}`));
+    }
+
+    const unsubscribeFirstMock = mockAgentHarnessCompaction(harness, {
+      summary: "First compacted history",
+    });
+    const firstResult = await harness.compact();
+    unsubscribeFirstMock();
+    const firstRetainedTail = firstResult.retainedTail ?? [];
+    expect(firstRetainedTail.length).toBeGreaterThan(0);
+    const previousRetainedMarker = messageText(firstRetainedTail[0] as AgentMessage).slice(0, 20);
+
+    for (let turn = 0; turn < 5; turn += 1) {
+      await harness.appendMessage(userMessage(`later-turn-${turn}:${"y".repeat(9_000)}`));
+      await harness.appendMessage(assistantMessage(`later-response-${turn}`));
+    }
+
+    const secondResult = await harness.compact();
+
+    expect(summarizationPrompts).toHaveLength(1);
+    expect(summarizationPrompts[0]).toContain(previousRetainedMarker);
+    expect(summarizationPrompts[0]).toContain("First compacted history");
+    assert(secondResult.summary === "Second compacted history");
+    expect(secondResult.firstKeptEntryId).not.toBe(firstResult.firstKeptEntryId);
+
+    const context = await session.buildContext();
+    expect(context.messages[0]).toMatchObject({
+      role: "compactionSummary",
+      summary: "Second compacted history",
+    });
+    expect(context.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "user", content: expect.anything() }),
+      ]),
+    );
+  });
+
   it("appends message entries and exposes the active path", async () => {
     const appended: SessionTreeEntry[] = [];
     const storage = new WorkflowBackedSessionStorage({

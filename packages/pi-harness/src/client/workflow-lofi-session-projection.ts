@@ -8,25 +8,27 @@ import {
   type LofiRuntime,
 } from "@fragno-dev/lofi";
 
-import type { PiAgentStateSnapshot } from "../pi/types";
+import type { PiAgentStateSnapshot, PiWorkflowStatus } from "../pi/types";
 import {
   createPiWorkflowSessionLiveState,
-  emptyPiWorkflowSessionProjectionState,
-  overlayPiWorkflowSessionLiveState,
-  projectPiWorkflowSession,
+  isPiWorkflowStepActive,
+  projectPiWorkflowSessionLiveOverlay,
   reducePiWorkflowSessionEmission,
   settleCompletedPiWorkflowSessionLiveSteps,
-  type PiSessionProjectionError,
+} from "../pi/workflow-session-live-projection";
+import {
+  createLoadingPiWorkflowSessionProjection,
+  projectPiWorkflowSession,
   type PiSessionProjectionStatus,
+  type PiWorkflowSessionProjectionBaseline,
   type PiWorkflowSessionProjectionEmission,
   type PiWorkflowSessionProjectionState,
 } from "../pi/workflow-session-projection";
-import type { PiHarnessStepResult } from "../pi/workflows/workflow-agent-harness";
 
 export type PiSessionProjectionSourceState = {
   state: PiAgentStateSnapshot;
   status: PiSessionProjectionStatus;
-  error: PiSessionProjectionError | null;
+  error: Error | null;
 };
 
 const workflowInstanceProjectionQuery =
@@ -53,18 +55,14 @@ type WorkflowInstanceProjectionRow =
 
 type PiHarnessWorkflowInstanceProjectionRow = Omit<
   NonNullable<WorkflowInstanceProjectionRow>,
-  "workflowSteps"
+  "status" | "workflowSteps"
 > & {
-  workflowSteps: Array<
-    Omit<NonNullable<WorkflowInstanceProjectionRow>["workflowSteps"][number], "result"> & {
-      result: PiHarnessStepResult | null;
-    }
-  >;
+  status: PiWorkflowStatus;
+  workflowSteps: NonNullable<WorkflowInstanceProjectionRow>["workflowSteps"];
 };
 
 type SessionProjectionOptions = {
-  initialState?: PiAgentStateSnapshot;
-  initialCompletedStepKeys?: readonly string[];
+  baseline?: PiWorkflowSessionProjectionBaseline;
 };
 
 type PiWorkflowLofiEmission = {
@@ -187,32 +185,35 @@ export const createSessionProjectionDataStore = (
           liveState.projection,
           new Set(durableData.completedStepKeys),
         );
-        liveState.projection.activeLiveWork ||= projectedInstance.workflowSteps.some(
-          (step) =>
-            step.status !== "completed" &&
-            !(
-              step.status === "waiting" &&
-              step.type === "waitForEvent" &&
-              step.waitEventType === "command"
-            ),
-        );
+        liveState.projection.activeLiveWork ||=
+          projectedInstance.workflowSteps.some(isPiWorkflowStepActive);
       },
 
       // Keep durable messages authoritative while layering the current in-flight Pi state on top.
       overlay: (durableData, liveState, { retrieved: { instance } }) => {
-        if (!instance) {
+        if (!instance || durableData.status !== "ready") {
           return durableData;
         }
         const projectedInstance = instance as PiHarnessWorkflowInstanceProjectionRow;
-        return overlayPiWorkflowSessionLiveState(
-          durableData,
-          projectedInstance,
-          projectedInstance.workflowSteps,
-          liveState.projection,
-        );
+        return {
+          ...durableData,
+          ...projectPiWorkflowSessionLiveOverlay({
+            contextMessages: durableData.contextMessages,
+            timelineMessages: durableData.timelineMessages,
+            instanceStatus: projectedInstance.status,
+            workflowSteps: projectedInstance.workflowSteps,
+            live: liveState.projection,
+          }),
+        };
       },
     })
-    .withInitialData(emptyPiWorkflowSessionProjectionState(options.initialState));
+    .withInitialData(
+      createLoadingPiWorkflowSessionProjection({
+        workflowName,
+        sessionId,
+        baseline: options.baseline,
+      }),
+    );
 
 export const readPiWorkflowLofiSessionProjection = async (
   runtime: LofiRuntime,
@@ -225,5 +226,9 @@ export const readPiWorkflowLofiSessionProjection = async (
   );
 
   const data = projectWorkflowInstanceRow(instance, args.workflowName, args.sessionId);
-  return { state: data.state, status: data.status, error: data.error };
+  return {
+    state: { messages: data.contextMessages },
+    status: data.status,
+    error: data.error,
+  };
 };

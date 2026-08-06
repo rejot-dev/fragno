@@ -48,6 +48,8 @@ const createCommandPayload = (
       return { commandId, kind: command.kind, input: command.input };
     case "promptFromTemplate":
       return { commandId, kind: command.kind, input: command.input };
+    case "compact":
+      return { commandId, kind: command.kind, input: command.input };
     case "steer":
       return { commandId, kind: command.kind, input: command.input };
     case "followUp":
@@ -81,7 +83,6 @@ const toSessionDetail = (snapshot: PiSessionDetailSnapshot): PiSessionDetail => 
   },
   agent: {
     state: { messages: snapshot.messages },
-    completedStepKeys: [...snapshot.completedStepKeys],
   },
 });
 

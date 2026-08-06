@@ -27,6 +27,7 @@
     "**/worker-configuration.d.ts",
     "**/.astro/**",
     "**/next-env.d.ts",
+    "apps/backoffice/content/static/codemode/system.d.ts",
     "packages/docs/.source/**"
   ],
   "rules": {

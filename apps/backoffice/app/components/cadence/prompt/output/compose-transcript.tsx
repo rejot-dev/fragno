@@ -9,7 +9,7 @@
  */
 
 import {
-  emptyPiWorkflowSessionProjectionState,
+  createLoadingPiWorkflowSessionProjection,
   type PiWorkflowSessionProjectionState,
 } from "@fragno-dev/pi-harness/workflow-session-projection";
 import { AlertTriangle, ChevronRight, Sparkles, Terminal, Workflow, Wrench } from "lucide-react";
@@ -20,6 +20,7 @@ import type { WorkflowGraph as CodemodeWorkflowGraph } from "@fragno-dev/workflo
 
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { ClientOnly } from "@/components/client-only";
+import { piSessionActivityLabel } from "@/fragno/pi/session-activity";
 import type { PiCollectionSource } from "@/fragno/pi/tanstack/browser-database";
 import { usePiSessionProjection } from "@/fragno/pi/tanstack/use-session-projection";
 import type { ComposeSessionRef } from "@/routes/cadence/compose-action";
@@ -226,7 +227,10 @@ export function ComposeTranscript(props: ComposeTranscriptProps) {
   const fallback = (
     <ComposeTranscriptView
       {...props}
-      projection={emptyPiWorkflowSessionProjectionState()}
+      projection={createLoadingPiWorkflowSessionProjection({
+        workflowName: props.session.workflowName,
+        sessionId: props.session.id,
+      })}
       projectionError={null}
     />
   );
@@ -264,14 +268,17 @@ function ComposeTranscriptView({
 }) {
   const orgId =
     source.scope.kind === "org" || source.scope.kind === "project" ? source.scope.orgId : null;
-  const messages = projection.state.messages;
+  const messages = projection.contextMessages;
   const rows = useMemo(() => toRows(messages), [messages]);
 
   // Drive the working indicator off genuine agent activity, not connection state.
   // The send and any in-flight tool calls survive a reconnect because collection
   // persistence restores the latest durable projection before network catch-up.
-  const working = !projection.readyForInput;
-  const workingStatusText = projection.statusText || "Working…";
+  const working = projection.status === "loading" || projection.activity !== null;
+  const workingStatusText =
+    projection.status === "loading"
+      ? "Loading…"
+      : (piSessionActivityLabel(projection.activity) ?? "Working…");
   const fatalError = projection.error?.message ?? projectionError;
 
   // React to the agent's workflow tool *results* (not calls — calls stream in

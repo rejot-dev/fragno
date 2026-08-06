@@ -13,6 +13,7 @@ export default defineConfig([
       "./src/client/solid.ts",
       "./src/client/vanilla.ts",
       "./src/client/vue.ts",
+      "./src/pi/context-usage.ts",
       "./src/pi/route-schemas.ts",
       "./src/pi/workflow-session-projection.ts",
     ],
@@ -35,6 +36,7 @@ export default defineConfig([
   {
     ignoreWatch: ["./dist"],
     entry: [
+      "./src/pi/context-usage.ts",
       "./src/pi/definition.ts",
       "./src/pi/factory.ts",
       "./src/pi/harness/pi-operation-completed.ts",

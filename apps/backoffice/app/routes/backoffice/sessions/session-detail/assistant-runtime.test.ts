@@ -25,6 +25,35 @@ describe("formatToolArgumentsDisplayText", () => {
 });
 
 describe("createAssistantUiMessages", () => {
+  test("converts compaction summaries into readable assistant timeline entries", () => {
+    const converted = createAssistantUiMessages({
+      draftAgentMessage: null,
+      readyForInput: true,
+      statusText: null,
+      messages: [
+        {
+          role: "compactionSummary",
+          summary: "## Goal\nPreserve the current implementation plan.",
+          tokensBefore: 42_000,
+          timestamp: 1,
+        } as never,
+      ],
+    });
+
+    expect(converted).toEqual([
+      expect.objectContaining({
+        role: "assistant",
+        content: [{ type: "text", text: "## Goal\nPreserve the current implementation plan." }],
+        metadata: {
+          custom: {
+            kind: "compaction",
+            tokensBefore: 42_000,
+          },
+        },
+      }),
+    ]);
+  });
+
   test("converts thinking into reasoning and joins tool results to their calls", () => {
     const converted = createAssistantUiMessages({
       draftAgentMessage: null,

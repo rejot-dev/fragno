@@ -443,6 +443,8 @@ describe("pi-harness routes", () => {
     );
 
     expect(detail.data.agent.state.messages).toEqual([]);
+    expect(detail.data.agent).not.toHaveProperty("sessionEntries");
+    expect(detail.data.agent).not.toHaveProperty("completedStepKeys");
     expect(detail.data).not.toHaveProperty("trace");
     expect(detail.data).not.toHaveProperty("turns");
     expect(detail.data).not.toHaveProperty("commandHistory");

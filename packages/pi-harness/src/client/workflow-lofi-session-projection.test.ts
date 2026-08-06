@@ -65,6 +65,7 @@ const harnessResult = (
 ) => ({
   type: "harness-run",
   appendedEntries: entries,
+  leafId: entries.at(-1)?.id ?? null,
 });
 
 const workflowInstanceMutation = (): LofiMutation => ({
@@ -238,7 +239,7 @@ describe("createSessionProjectionDataStore", () => {
 
     await storeStateMatching(store, (state) => state.data.status === "ready");
 
-    expect(store.get().data.state.messages.map(messageText)).toEqual(["indexed committed"]);
+    expect(store.get().data.contextMessages.map(messageText)).toEqual(["indexed committed"]);
     unsubscribe();
   });
 
@@ -248,7 +249,6 @@ describe("createSessionProjectionDataStore", () => {
       workflowEmissionMutation("operation-start", 0, {
         kind: "harness-operation-start",
         operationId: "interactive-chat:session-1:agent-turn-1",
-        operation: { kind: "prompt", args: ["hello"] },
         replay: { protocol: "pi-harness-operation", version: 1 },
       }),
       workflowEmissionMutation("emission-start", 1, {
@@ -360,7 +360,7 @@ describe("createSessionProjectionDataStore", () => {
 
     const state = await storeStateMatching(store, (current) => current.synced);
 
-    expect(state.data.state.messages.map(messageText)).toEqual(["winner committed"]);
+    expect(state.data.contextMessages.map(messageText)).toEqual(["winner committed"]);
     expect(state.data.draftAgentMessage).toBeNull();
     unsubscribe();
   });
@@ -371,7 +371,6 @@ describe("createSessionProjectionDataStore", () => {
       workflowEmissionMutation("operation-start", 0, {
         kind: "harness-operation-start",
         operationId: "interactive-chat:session-1:agent-turn-1",
-        operation: { kind: "prompt", args: ["hello"] },
         replay: { protocol: "pi-harness-operation", version: 1 },
       }),
       workflowEmissionMutation("message-start", 1, {
@@ -424,13 +423,73 @@ describe("createSessionProjectionDataStore", () => {
     unsubscribeSecond();
   });
 
+  it("rebuilds active compaction state after the runtime reloads before the store mounts", async () => {
+    const commandStepKey = "command:compact-1";
+    const entry = outboxEntry([
+      workflowInstanceMutation(),
+      workflowEmissionMutation(
+        "operation-start",
+        0,
+        {
+          kind: "harness-operation-start",
+          operationId: "interactive-chat:session-1:command:compact-1",
+          replay: { protocol: "pi-harness-operation", version: 1 },
+        },
+        { stepKey: commandStepKey },
+      ),
+      workflowEmissionMutation(
+        "command-start",
+        1,
+        {
+          kind: "pi-session-command-start",
+          command: { commandId: "compact-1", kind: "compact" },
+        },
+        { stepKey: commandStepKey },
+      ),
+    ]);
+    const adapter = new IndexedDbAdapter({
+      dbName: "pi-harness-compaction-reload-test",
+      endpointName: "pi-harness-test",
+      schemas: [{ schema: workflowsSchema }],
+    });
+    const createRuntimeForReload = () =>
+      createLofiRuntime({
+        endpointName: "pi-harness-test",
+        adapter,
+        outboxUrl: "https://example.com/outbox",
+        ephemeralTables: [piWorkflowStepEmissionEphemeralTable],
+        fetch: (async (input) => {
+          const url = new URL(typeof input === "string" ? input : input.toString());
+          return new Response(
+            JSON.stringify(url.searchParams.has("afterVersionstamp") ? [] : [entry]),
+          );
+        }) as typeof fetch,
+      });
+
+    await createRuntimeForReload().syncOnce();
+
+    const reloadedRuntime = createRuntimeForReload();
+    await reloadedRuntime.syncOnce();
+    const store = createSessionProjectionDataStore(reloadedRuntime, workflowName, sessionId);
+    const unsubscribe = store.subscribe(() => undefined);
+
+    const state = await storeStateMatching(
+      store,
+      (current) => current.data.activeCommand?.kind === "compact",
+    );
+
+    expect(state.data.activeCommand).toEqual({ commandId: "compact-1", kind: "compact" });
+    assert(state.data.activity === "working");
+    assert(!state.data.readyForInput);
+    unsubscribe();
+  });
+
   it("rebuilds an active Pi draft after the runtime reloads before the store mounts", async () => {
     const entry = outboxEntry([
       workflowInstanceMutation(),
       workflowEmissionMutation("operation-start", 0, {
         kind: "harness-operation-start",
         operationId: "interactive-chat:session-1:agent-turn-1",
-        operation: { kind: "prompt", args: ["hello"] },
         replay: { protocol: "pi-harness-operation", version: 1 },
       }),
       workflowEmissionMutation("message-start", 1, {
@@ -515,13 +574,18 @@ describe("createSessionProjectionDataStore", () => {
       workflowName,
       sessionId,
       {
-        initialState: { messages: [userMessage("server prompt")] },
+        baseline: {
+          sessionEntries: [messageEntry("server-prompt", "server prompt")],
+          completedStepKeys: [],
+          compactOutcomesByCommandId: {},
+          latestCommandCompactOutcome: null,
+        },
       },
     );
     const unsubscribe = store.subscribe(() => undefined);
 
     assert(store.get().data.status === "loading");
-    expect(store.get().data.state.messages.map(messageText)).toEqual(["server prompt"]);
+    expect(store.get().data.contextMessages.map(messageText)).toEqual(["server prompt"]);
 
     await storeStateMatching(store, (state) => state.data.status === "ready");
     unsubscribe();

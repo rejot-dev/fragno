@@ -16,6 +16,22 @@ describe("piSessionCommandPayloadSchema", () => {
     );
   });
 
+  test("accepts manual compaction instructions", () => {
+    assert(
+      commandInputSchema.safeParse({
+        kind: "compact",
+        input: { customInstructions: "Keep the current implementation plan." },
+      }).success,
+    );
+    assert(
+      piSessionCommandPayloadSchema.safeParse({
+        commandId: "command-1",
+        kind: "compact",
+        input: { customInstructions: "Keep the current implementation plan." },
+      }).success,
+    );
+  });
+
   test("rejects nextTurn as a session command", () => {
     assert(
       !commandInputSchema.safeParse({

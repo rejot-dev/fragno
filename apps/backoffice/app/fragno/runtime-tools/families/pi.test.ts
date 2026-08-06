@@ -46,7 +46,7 @@ const createSessionDetail = (sessionId: string) => ({
   updatedAt: new Date("2026-06-03T00:00:00.000Z"),
   metadata: { model: { provider: "openai", name: "gpt-5.6-luna" } },
   workflow: { status: "waiting" },
-  agent: { state: { messages: [] }, completedStepKeys: [] },
+  agent: { state: { messages: [] } },
 });
 
 describe("pi runtime tools", () => {
@@ -182,10 +182,7 @@ describe("pi runtime tools", () => {
       });
 
     await expect(getSession.execute({ sessionId: "session-1" }, context)).resolves.toMatchObject({
-      agent: {
-        completedStepKeys: [],
-        state: { messages: [] },
-      },
+      agent: { state: { messages: [] } },
     });
     expect(runtime.getSession).toHaveBeenCalledWith({ sessionId: "session-1" });
   });
@@ -200,7 +197,7 @@ describe("pi runtime tools", () => {
     await expect(
       piRuntimeTools[3].execute({ sessionId: "session-1", text: "Hello" }, context),
     ).resolves.toMatchObject({
-      agent: { completedStepKeys: [] },
+      agent: { state: { messages: [] } },
       assistantText: "echo: Hello",
     });
     expect(runtime.runTurn).toHaveBeenCalledWith({ sessionId: "session-1", text: "Hello" });
