@@ -12,20 +12,14 @@ const forwardToResend = async (
     return new Response("Missing Resend scope", { status: 400 });
   }
 
-  let scope: { kind: "system" } | { kind: "org"; orgId: string };
+  let scope;
   try {
-    const resolvedScope = backofficeContextScopeFromSinglePathSegment(scopeSegment);
-    if (resolvedScope.kind !== "system" && resolvedScope.kind !== "org") {
-      return new Response("Invalid Resend scope", { status: 404 });
-    }
-    scope = resolvedScope;
+    scope = backofficeContextScopeFromSinglePathSegment(scopeSegment);
   } catch {
     return new Response("Invalid Resend scope", { status: 404 });
   }
 
-  const objects = context.get(BackofficeWorkerContext).runtime.objects;
-  const resendDo =
-    scope.kind === "system" ? objects.resend.singleton() : objects.resend.forOrg(scope.orgId);
+  const resendDo = context.get(BackofficeWorkerContext).runtime.objects.resend.for(scope);
   const url = new URL(request.url);
   const prefix = `/api/resend/${scopeSegment}`;
   if (url.pathname.startsWith(prefix)) {

@@ -134,7 +134,11 @@ export const createInternalRuntime = ({
 }): InternalRuntime => {
   return {
     seedWorkspaceStarterFiles: async (input) =>
-      await seedWorkspaceStarterFiles({ objects, orgId, force: input?.force }),
+      await seedWorkspaceStarterFiles({
+        objects,
+        scope: { kind: "org", orgId },
+        force: input?.force,
+      }),
     seedStarterAutomationRoutes: async () =>
       await objects.automations.forOrg(orgId).seedStarterAutomationRoutes(),
     pushStaticMarketplaceEntries: async () =>

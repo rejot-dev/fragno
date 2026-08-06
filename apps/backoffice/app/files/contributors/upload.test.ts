@@ -956,7 +956,11 @@ describe("upload file contributor", () => {
     });
 
     await expect(
-      seedWorkspaceStarterFiles({ objects, orgId: "acme-org", force: true }),
+      seedWorkspaceStarterFiles({
+        objects,
+        scope: { kind: "org", orgId: "acme-org" },
+        force: true,
+      }),
     ).resolves.toMatchObject({
       force: true,
       overwritten: expect.arrayContaining([

@@ -1,4 +1,5 @@
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { WORKSPACE_STARTER_CONTENT } from "@/files/content/starter";
 import { createUploadFileSystem } from "@/files/contributors/upload";
@@ -72,19 +73,19 @@ export type WorkspaceStarterFilesSeedOutput = {
 
 export const seedWorkspaceStarterFiles = async ({
   objects,
-  orgId,
+  scope,
   force = false,
 }: {
   objects: BackofficeObjectRegistry;
-  orgId: string;
+  scope: BackofficeContextScope;
   force?: boolean;
 }): Promise<WorkspaceStarterFilesSeedOutput> => {
-  const uploadDo = objects.upload.forOrg(orgId);
+  const uploadDo = objects.upload.for(scope);
   const uploadConfig = await uploadDo.getAdminConfig();
   const provider = uploadConfig.defaultProvider ?? "database";
   const fileContext = createSystemFilesContext({
     objects,
-    execution: createBackofficeSystemExecution({ kind: "org", orgId }),
+    execution: createBackofficeSystemExecution(scope),
     staticFileArtifacts: () => ({}),
   });
   const fs = createUploadFileSystem(fileContext, {
