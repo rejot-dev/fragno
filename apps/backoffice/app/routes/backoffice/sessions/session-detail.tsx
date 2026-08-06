@@ -11,6 +11,7 @@ import {
   type AssistantRuntime,
 } from "@assistant-ui/react";
 
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { createPiClient } from "@/fragno/pi/pi-client";
 import { findPiModelOption, piSessionModel } from "@/fragno/pi/pi-shared";
 import { piSessionActivityLabel } from "@/fragno/pi/session-activity";
@@ -76,7 +77,9 @@ function getSessionModelLabel(session: PiSession) {
 }
 
 function getWorkspaceStateKey(scope: PiSessionsOutletContext["scope"], session: PiSession) {
-  return [scope.orgId, session.workflowName, session.id].map(encodeURIComponent).join(":");
+  return [backofficeContextScopeSinglePathSegment(scope), session.workflowName, session.id]
+    .map(encodeURIComponent)
+    .join(":");
 }
 
 function useSessionDisplayOptions() {
@@ -101,7 +104,7 @@ export default function BackofficeOrganisationPiSessionDetail() {
 
   return (
     <SynchronizedPiSessionDetail
-      key={`${scope.orgId}:${workflowName}:${sessionId}`}
+      key={`${backofficeContextScopeSinglePathSegment(scope)}:${workflowName}:${sessionId}`}
       scope={scope}
       source={persistenceSource}
       workflowName={workflowName}
@@ -425,7 +428,7 @@ function PiSessionDetailView({
 
         <SessionWorkspaceNavigationProvider value={workspaceNavigation}>
           <SessionWorkspaceSplit
-            storageKey={`backoffice:pi-session-workspace:${scope.orgId}`}
+            storageKey={`backoffice:pi-session-workspace:${backofficeContextScopeSinglePathSegment(scope)}`}
             left={
               <SessionThread
                 disabledReason={disabledReason}
@@ -457,7 +460,7 @@ function PiSessionDetailView({
                   item={selectedWorkspaceItem}
                   workflowCollections={workflowCollections}
                   workflowCollectionsError={workflowCollectionsError}
-                  orgId={scope.orgId}
+                  scope={scope}
                   onClose={closeWorkspace}
                 />
               ) : null

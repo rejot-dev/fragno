@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 import { Link, useLoaderData, useSearchParams } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 
+import { automationScopeFromRouteParams } from "../automations/scope";
 import type { Route } from "./+types/workflows-organisation-detail";
 import { loadWorkflowInstanceDetail, WorkflowApiError } from "./workflows-data";
 import {
@@ -28,37 +30,26 @@ const resolveDetailTab = (value: string | null): WorkflowDetailTab => {
 };
 
 type WorkflowDetailLoaderData = Awaited<ReturnType<typeof loadWorkflowInstanceDetail>> & {
-  orgId: string;
+  scopePath: string;
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId || !params.workflowName || !params.instanceId) {
+  if (!params.workflowName || !params.instanceId) {
     throw new Response("Not Found", { status: 404 });
   }
-
-  const me = await getAuthMe(request, context);
-  if (!me?.user) {
-    throw Response.redirect(new URL("/backoffice/login", request.url), 302);
-  }
-
-  const organisation =
-    me.organizations.find((entry) => entry.organization.id === params.orgId)?.organization ?? null;
-  if (!organisation) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
+  const scope = automationScopeFromRouteParams(params);
+  await requireBackofficeContext(request, context, scope);
   try {
     const detail = await loadWorkflowInstanceDetail({
       request,
       context,
-      orgId: params.orgId,
+      scope,
       workflowName: params.workflowName,
       instanceId: params.instanceId,
     });
-
     return {
       ...detail,
-      orgId: params.orgId,
+      scopePath: backofficeContextScopeRoutePath(scope),
     } satisfies WorkflowDetailLoaderData;
   } catch (error) {
     if (error instanceof WorkflowApiError) {
@@ -70,7 +61,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
 export default function BackofficeWorkflowsOrganisationDetail() {
   const detail = useLoaderData<typeof loader>();
-  const basePath = `/backoffice/internals/workflows/${detail.orgId}`;
+  const basePath = `/backoffice/internals/workflows/${detail.scopePath}`;
   const currentStep = detail.meta.currentStep;
   const outputText = formatJson(detail.details.output);
   const paramsText = formatJson(detail.meta.params);

@@ -1,32 +1,19 @@
 import { Outlet } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
 
 import { fetchAutomationAdapterIdentity } from "../automations/data.server";
-import { createOrganisationScopeOptions } from "../integrations/scope";
-import { throwOrganisationNotFound } from "../route-errors";
+import { automationScopeFromRouteParams } from "../automations/scope";
 import type { Route } from "./+types/organisation-layout";
 import { fetchPiAdapterIdentity, fetchPiRuntimeState } from "./data";
 import { PiErrorBoundary, PiWorkspaceHeader, type PiLayoutContext } from "./shared";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const scope = automationScopeFromRouteParams(params);
+  const execution = await requireBackofficeContext(request, context, scope);
 
-  const me = await getAuthMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(new URL("/backoffice/login", request.url), 302);
-  }
-
-  const organisation =
-    me.organizations.find((entry) => entry.organization.id === params.orgId)?.organization ?? null;
-  if (!organisation) {
-    throwOrganisationNotFound(params.orgId);
-  }
-
-  const scope = { kind: "org" as const, orgId: params.orgId };
   const { runtimeState, runtimeError } = await fetchPiRuntimeState(context, scope);
   let persistenceSource: PiLayoutContext["persistenceSource"] = null;
   let persistenceError: string | null = null;
@@ -46,10 +33,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
           : "Failed to load Pi session persistence.";
     }
     if (automationAdapterIdentity.status === "fulfilled") {
-      automationPersistenceSource = {
-        scope,
-        adapterIdentity: automationAdapterIdentity.value,
-      };
+      automationPersistenceSource = { scope, adapterIdentity: automationAdapterIdentity.value };
     } else {
       automationPersistenceError =
         automationAdapterIdentity.reason instanceof Error
@@ -60,8 +44,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   return {
     scope,
-    organisation,
-    organisationOptions: createOrganisationScopeOptions(me.organizations),
+    scopeLabel:
+      execution.scope.kind === "system" ? "System" : backofficeContextScopeRoutePath(scope),
     persistenceSource,
     persistenceError,
     automationPersistenceSource,
@@ -72,21 +56,26 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  const orgId = loaderData?.scope.orgId ?? "organisation";
-  return [{ title: `Pi Sessions · ${orgId}` }];
+  return [{ title: `Pi Sessions · ${loaderData?.scopeLabel ?? "scope"}` }];
 }
 
 export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
   return <PiErrorBoundary error={error} params={params} />;
 }
 
-export default function BackofficeOrganisationPiLayout({
-  loaderData,
-  matches,
-}: Route.ComponentProps) {
+export const isPiSessionsPath = (
+  scope: Parameters<typeof backofficeContextScopeRoutePath>[0],
+  pathname: string,
+) => {
+  const sessionsBasePath = `/backoffice/sessions/${backofficeContextScopeRoutePath(scope)}/sessions`;
+  const normalizedPath = pathname.replace(/\/+$/, "");
+  return normalizedPath === sessionsBasePath || normalizedPath.startsWith(`${sessionsBasePath}/`);
+};
+
+export default function BackofficeScopedPiLayout({ loaderData, matches }: Route.ComponentProps) {
   const {
     scope,
-    organisation,
+    scopeLabel,
     persistenceSource,
     persistenceError,
     automationPersistenceSource,
@@ -94,14 +83,9 @@ export default function BackofficeOrganisationPiLayout({
     runtimeState,
     runtimeError,
   } = loaderData;
-  const orgId = scope.orgId;
 
-  const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
-  const pathSegments = currentPath.split("/").filter(Boolean);
-  const orgIndex = pathSegments.lastIndexOf(orgId);
-  const activeSegment =
-    orgIndex >= 0 ? pathSegments[orgIndex + 1] : pathSegments[pathSegments.length - 1];
-  const isSessions = activeSegment === "sessions";
+  const currentPath = matches[matches.length - 1]?.pathname ?? "";
+  const isSessions = isPiSessionsPath(scope, currentPath);
 
   return (
     <div
@@ -111,11 +95,7 @@ export default function BackofficeOrganisationPiLayout({
           : "space-y-4"
       }
     >
-      <PiWorkspaceHeader
-        orgId={orgId}
-        organisationName={organisation?.name ?? orgId}
-        organisationOptions={loaderData.organisationOptions}
-      />
+      <PiWorkspaceHeader scope={scope} scopeLabel={scopeLabel} />
       <div className={isSessions ? "flex min-h-0 flex-1 flex-col" : undefined}>
         <Outlet
           context={{

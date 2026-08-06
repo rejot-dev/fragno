@@ -1,6 +1,10 @@
 import { Suspense, use, useCallback, useState } from "react";
 import { Outlet, useActionData, useNavigation, useParams } from "react-router";
 
+import {
+  backofficeContextScopeRoutePath,
+  backofficeContextScopeSinglePathSegment,
+} from "@/backoffice-runtime/scope-codec";
 import { BackofficeSystemState } from "@/components/backoffice";
 import { ClientOnly } from "@/components/client-only";
 import { getAutomationBrowserDatabase } from "@/fragno/automation/tanstack/browser-database";
@@ -113,7 +117,7 @@ function PiSessionsWorkspaceView({
   const navigation = useNavigation();
   const { sessionId, workflowName } = useParams();
   const { scope, runtimeState } = layoutContext;
-  const basePath = `/backoffice/sessions/${encodeURIComponent(scope.orgId)}/sessions`;
+  const basePath = `/backoffice/sessions/${backofficeContextScopeRoutePath(scope)}/sessions`;
   const { sessions, workflowStatuses } = listingState.snapshot;
   const listingError = listingState.status === "error" ? listingState.error : null;
   const creating =
@@ -161,7 +165,7 @@ function PiSessionsWorkspaceView({
 
   return (
     <SessionListSplit
-      storageKey={`backoffice:pi-session-list-width:${scope.orgId}`}
+      storageKey={`backoffice:pi-session-list-width:${backofficeContextScopeSinglePathSegment(scope)}`}
       mobileNavigation={
         <MobileSessionStrip
           basePath={basePath}

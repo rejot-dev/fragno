@@ -1,15 +1,17 @@
 import { Link, Outlet, useLoaderData, useLocation, useParams } from "react-router";
 
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import { BackofficePageHeader } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 
+import { automationScopeFromRouteParams } from "../automations/scope";
 import type { Route } from "./+types/workflows-organisation";
 import { loadWorkflowInstanceSummaries, parsePageSize, WorkflowApiError } from "./workflows-data";
 import { formatTimestamp, getWorkflowStatusBadgeClasses } from "./workflows-shared";
 
 type WorkflowsOrgLoaderData = {
-  orgId: string;
-  organisationName: string | null;
+  scopePath: string;
+  scopeLabel: string;
   configured: boolean;
   workflows: string[];
   instances: Awaited<ReturnType<typeof loadWorkflowInstanceSummaries>>["instances"];
@@ -23,66 +25,45 @@ export async function loader({
   context,
   url,
 }: Route.LoaderArgs): Promise<WorkflowsOrgLoaderData> {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const me = await getAuthMe(request, context);
-  if (!me?.user) {
-    throw Response.redirect(new URL("/backoffice/login", request.url), 302);
-  }
-
-  const organisation =
-    me.organizations.find((entry) => entry.organization.id === params.orgId)?.organization ?? null;
-  if (!organisation) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
+  const scope = automationScopeFromRouteParams(params);
+  await requireBackofficeContext(request, context, scope);
+  const scopePath = backofficeContextScopeRoutePath(scope);
+  const scopeLabel = scopePath;
   const pageSize = parsePageSize(url.searchParams.get("pageSize"));
 
   try {
     const { workflows, instances, warnings } = await loadWorkflowInstanceSummaries({
       request,
       context,
-      orgId: params.orgId,
+      scope,
       pageSize,
     });
-
-    return {
-      orgId: params.orgId,
-      organisationName: organisation.name ?? null,
-      configured: true,
-      workflows,
-      instances,
-      warnings,
-      error: null,
-    } satisfies WorkflowsOrgLoaderData;
+    return { scopePath, scopeLabel, configured: true, workflows, instances, warnings, error: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load workflows.";
     const isNotConfigured =
       error instanceof WorkflowApiError &&
       error.status === 400 &&
       message.toLowerCase().includes("not configured");
-
     return {
-      orgId: params.orgId,
-      organisationName: organisation.name ?? null,
+      scopePath,
+      scopeLabel,
       configured: !isNotConfigured,
       workflows: [],
       instances: [],
       warnings: [],
       error: isNotConfigured ? null : message,
-    } satisfies WorkflowsOrgLoaderData;
+    };
   }
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  const orgLabel = loaderData?.organisationName ?? loaderData?.orgId ?? "organisation";
+  const orgLabel = loaderData?.scopeLabel ?? "scope";
   return [{ title: `Workflows · ${orgLabel}` }];
 }
 
 export default function BackofficeWorkflowsOrganisation() {
-  const { orgId, organisationName, configured, workflows, instances, warnings, error } =
+  const { scopePath, scopeLabel, configured, workflows, instances, warnings, error } =
     useLoaderData<typeof loader>();
   const location = useLocation();
   const params = useParams();
@@ -94,7 +75,7 @@ export default function BackofficeWorkflowsOrganisation() {
   const listVisibility = isDetailRoute ? "hidden lg:block" : "block";
   const detailVisibility = isDetailRoute ? "block" : "hidden lg:block";
 
-  const baseScopePath = `/backoffice/internals/workflows/${orgId}`;
+  const baseScopePath = `/backoffice/internals/workflows/${scopePath}`;
 
   return (
     <div className="min-w-0 space-y-4">
@@ -103,11 +84,11 @@ export default function BackofficeWorkflowsOrganisation() {
           { label: "Backoffice", to: "/backoffice" },
           { label: "Internals", to: "/backoffice/internals" },
           { label: "Workflows", to: "/backoffice/internals/workflows" },
-          { label: organisationName ?? orgId },
+          { label: scopeLabel },
         ]}
         eyebrow="Internals"
-        title={`Workflow instances · ${organisationName ?? orgId}`}
-        description="Review workflow execution state, current step, and event history for this organisation."
+        title={`Workflow instances · ${scopeLabel}`}
+        description="Review workflow execution state, current step, and event history for this scope."
         actions={
           <Link
             to="/backoffice/internals/workflows"
@@ -148,7 +129,7 @@ export default function BackofficeWorkflowsOrganisation() {
               </div>
             ) : workflows.length === 0 ? (
               <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-                No workflows are registered for this organisation.
+                No workflows are registered for this scope.
               </div>
             ) : instances.length === 0 ? (
               <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">

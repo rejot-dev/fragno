@@ -1,15 +1,11 @@
 import { redirect } from "react-router";
 
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+
+import { automationScopeFromRouteParams } from "../automations/scope";
 import type { Route } from "./+types/organisation-index";
 
 export async function loader({ params }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  return redirect(`/backoffice/sessions/${params.orgId}/sessions`);
-}
-
-export default function BackofficeOrganisationPiIndex() {
-  return null;
+  const scope = automationScopeFromRouteParams(params);
+  return redirect(`/backoffice/sessions/${backofficeContextScopeRoutePath(scope)}/sessions`);
 }

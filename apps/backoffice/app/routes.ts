@@ -237,7 +237,7 @@ export default [
         ],
       ),
       route("sessions", "routes/backoffice/sessions/index.tsx"),
-      route("sessions/:orgId", "routes/backoffice/sessions/organisation-layout.tsx", [
+      route("sessions/:scopeKind/:scopeId", "routes/backoffice/sessions/organisation-layout.tsx", [
         index("routes/backoffice/sessions/organisation-index.tsx"),
         route("sessions", "routes/backoffice/sessions/sessions.tsx", [
           index("routes/backoffice/sessions/sessions-index.tsx"),
@@ -274,13 +274,17 @@ export default [
             route(":hookId", "routes/backoffice/internals/durable-hooks-scope-detail.tsx"),
           ],
         ),
-        route("workflows/:orgId", "routes/backoffice/internals/workflows-organisation.tsx", [
-          index("routes/backoffice/internals/workflows-organisation-index.tsx"),
-          route(
-            ":workflowName/:instanceId",
-            "routes/backoffice/internals/workflows-organisation-detail.tsx",
-          ),
-        ]),
+        route(
+          "workflows/:scopeKind/:scopeId",
+          "routes/backoffice/internals/workflows-organisation.tsx",
+          [
+            index("routes/backoffice/internals/workflows-organisation-index.tsx"),
+            route(
+              ":workflowName/:instanceId",
+              "routes/backoffice/internals/workflows-organisation-detail.tsx",
+            ),
+          ],
+        ),
       ]),
       route("users", "routes/backoffice/users.tsx"),
       route("settings", "routes/backoffice/settings.tsx"),
