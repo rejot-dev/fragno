@@ -2,9 +2,6 @@ export default {
   ignore: {
     rules: ["deslop/unused-dependency"],
     files: [
-      // Reliability smoke scripts are executable test artifacts, not package source.
-      "workflows-smoke-artifacts/**",
-      "**/workflows-smoke-artifacts/**",
       // These helpers intentionally model unsafe or effect-driven behavior in tests.
       "src/testing/streamable-http-mcp-server.ts",
       "src/util/test-utils.tsx",

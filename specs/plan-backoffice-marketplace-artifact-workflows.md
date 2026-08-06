@@ -643,7 +643,7 @@ For each vertical slice:
 pnpm --dir apps/backoffice run types:check
 pnpm --dir apps/backoffice test
 pnpm --dir apps/backoffice run build
-pnpm run lint:type-aware-fix
+pnpm run lint:fix
 pnpm run format:changed
 git diff --check
 ```

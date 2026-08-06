@@ -17,7 +17,11 @@
     "./zod-v4-object-factories": "./zod-v4-object-factories.js"
   },
   "scripts": {
-    "types:check": "tsc --noEmit"
+    "types:check": "tsc --noEmit",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",

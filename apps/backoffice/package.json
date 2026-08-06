@@ -16,7 +16,11 @@
     "types:check:watch": "tsc -b --noEmit --watch",
     "types:generate": "wrangler types --env-interface CloudflareEnv --env-file .dev.vars.example && react-router typegen",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.1",

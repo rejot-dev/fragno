@@ -27,7 +27,11 @@
     "db:fragno:generate:all": "pnpm run db:fragno:generate && pnpm run db:fragno:generate:sqlite && pnpm run db:fragno:generate:mysql",
     "db:drizzle:generate": "drizzle-kit generate --config ./drizzle.config.ts",
     "db:drizzle:generate:sqlite": "drizzle-kit generate --config ./drizzle.sqlite.config.ts",
-    "db:drizzle:generate:mysql": "drizzle-kit generate --config ./drizzle.mysql.config.ts"
+    "db:drizzle:generate:mysql": "drizzle-kit generate --config ./drizzle.mysql.config.ts",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.15",

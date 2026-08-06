@@ -14,7 +14,11 @@
     "build": "run-p types:check \"build-only {@}\" --",
     "preview": "vite preview",
     "build-only": "vite build",
-    "types:check": "vue-tsc --build"
+    "types:check": "vue-tsc --build",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
     "@fragno-dev/example-fragment": "workspace:*",

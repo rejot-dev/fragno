@@ -11,9 +11,8 @@ Resolved:
 
 ## 1. Overview
 
-This spec addresses the **workflow smoke-test failures** in
-`packages/fragment-workflows/workflows-smoke-artifacts/report.md`, focusing on correctness and
-reliability in the workflows fragment, durable hooks dispatcher, and Postgres example app.
+This spec addresses historical workflow smoke-test failures, focusing on correctness and reliability
+in the workflows fragment, durable hooks dispatcher, and Postgres example app.
 
 The fixes cover:
 

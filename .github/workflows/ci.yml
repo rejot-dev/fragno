@@ -27,14 +27,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check formatting
-        run: pnpm run format:check
-
-      - name: Check types & build
-        run: pnpm exec turbo run types:check build
-
-      - name: Run type-aware lint
-        run: pnpm run lint:type-aware
+      - name: Check quality and build
+        run: pnpm exec turbo run format:check lint types:check build
 
   test:
     runs-on: ubuntu-latest
