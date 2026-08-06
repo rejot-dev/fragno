@@ -1,9 +1,10 @@
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { createBackofficeFileSystem } from "@/files/create-file-system";
-import { authorizeAccessTokenForOrganization } from "@/fragno/auth/access-token.server";
-import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-dts";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
+import { automationScopeFromRouteParams } from "../backoffice/automations/scope";
 import type { Route } from "./+types/codemode-system-md";
 
 const localHostnames = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -24,7 +25,7 @@ const readOrgSystemGuidance = async ({
   execution,
 }: {
   context: Route.LoaderArgs["context"];
-  execution: Awaited<ReturnType<typeof requireBackofficeContext>>;
+  execution: BackofficeExecutionContext;
 }) => {
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const fs = await createBackofficeFileSystem({
@@ -40,26 +41,20 @@ const readOrgSystemGuidance = async ({
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   assertDevOnlyLocalRequest(request);
 
-  const orgId = params.orgId?.trim();
-  if (!orgId) {
-    throw new Response("Missing organisation id", { status: 400 });
+  const scope = automationScopeFromRouteParams(params);
+  const authorization = await authorizeBackofficeContext(request, context, scope);
+  if (!authorization.ok) {
+    return authorization.response;
   }
-
-  const auth = await authorizeAccessTokenForOrganization(request, context, orgId);
-  if (!auth.ok) {
-    return auth.response;
-  }
-
-  const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
+  const { execution } = authorization;
 
   const systemGuidance = await readOrgSystemGuidance({ context, execution });
   const headers = new Headers({
     "cache-control": "no-store",
     "content-type": "text/markdown; charset=utf-8",
   });
-  for (const [name, value] of auth.headers) {
+  for (const [name, value] of authorization.headers) {
     headers.append(name, value);
   }
-
   return new Response(systemGuidance, { headers });
 }

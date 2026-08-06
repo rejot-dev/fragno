@@ -5,7 +5,6 @@ import {
   type AuthPrincipalWithSessionContext,
 } from "@fragno-dev/auth";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
   ACCESS_TOKEN_AUDIENCE,
   ACCESS_TOKEN_ISSUER,
@@ -178,39 +177,18 @@ const authFailureResponse = (
     { status: 401 },
   );
 
-const principalHasScopeAccess = (
-  principal: BackofficeAuthPrincipal,
-  scope: BackofficeContextScope,
-) => {
-  const tokenContext = parseBackofficeAccessTokenContext(principal.auth.sessionContext);
-  if (scope.kind === "user") {
-    return principal.user.id === scope.userId;
-  }
-  if (scope.kind === "org" || scope.kind === "project") {
-    return tokenContext?.organizationIds.includes(scope.orgId) ?? false;
-  }
-  return false;
-};
-
-export const authorizeAccessTokenForScope = async (
+export const authorizeAuthPrincipal = async (
   request: Request,
   context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
 ): Promise<
   | { ok: true; principal: BackofficeAuthPrincipal; headers: Array<[string, string]> }
   | { ok: false; response: Response }
 > => {
   try {
     const auth = await resolveAuthPrincipal(request, context);
-    if (!auth.ok) {
-      return { ok: false, response: authFailureResponse(auth.reason) };
-    }
-
-    if (!principalHasScopeAccess(auth.principal, scope)) {
-      return { ok: false, response: new Response("Forbidden", { status: 403 }) };
-    }
-
-    return { ok: true, principal: auth.principal, headers: auth.headers };
+    return auth.ok
+      ? { ok: true, principal: auth.principal, headers: auth.headers }
+      : { ok: false, response: authFailureResponse(auth.reason) };
   } catch (error) {
     if (error instanceof Response) {
       return { ok: false, response: error };
@@ -218,9 +196,3 @@ export const authorizeAccessTokenForScope = async (
     throw error;
   }
 };
-
-export const authorizeAccessTokenForOrganization = async (
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  orgId: string,
-) => await authorizeAccessTokenForScope(request, context, { kind: "org", orgId });

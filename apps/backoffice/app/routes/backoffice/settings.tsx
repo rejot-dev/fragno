@@ -1,13 +1,11 @@
 import { useOutletContext } from "react-router";
 
 import { resolveBackofficeUserAuthorityRole } from "@/backoffice-runtime/authority-roles";
-import {
-  createBackofficeUserExecution,
-  type BackofficeContextScope,
-} from "@/backoffice-runtime/context";
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficeBreadcrumbs } from "@/components/backoffice/breadcrumbs";
 import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
 import { requireAuthPrincipal } from "@/fragno/auth/access-token.server";
+import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -44,7 +42,6 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     throw new Response("Verified access-token authority is required", { status: 401 });
   }
 
-  const expiresAt = auth.auth.expiresAt;
   const organizationIds = auth.auth.sessionContext.organizationIds;
   const authority = {
     userId: auth.user.id,
@@ -56,15 +53,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const scopes = await Promise.all(
     permissionScopeDefinitions(auth.user.id, auth.user.role, organizationIds).map(
       async ({ key, scope }) => {
-        const execution = createBackofficeUserExecution({
-          scope,
-          userId: auth.user.id,
-          verifiedAccessToken: {
-            role: auth.user.role,
-            organizationIds,
-            expiresAt,
-          },
-        });
+        const execution = createBackofficeExecutionForPrincipal(auth, scope);
         const principal = execution.actors.principal;
         if (!principal) {
           throw new Error("User authority inspection requires a principal.");

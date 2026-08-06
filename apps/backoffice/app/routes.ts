@@ -288,9 +288,9 @@ export default [
     ]),
   ]),
 
-  route("__dev/codemode/:orgId/SYSTEM.md", "routes/dev/codemode-system-md.ts"),
-  route("__dev/codemode/:orgId/bash", "routes/dev/codemode-bash.ts"),
-  route("__dev/codemode/:orgId", "routes/dev/codemode.ts"),
+  route("__dev/codemode/:scopeKind/:scopeId/SYSTEM.md", "routes/dev/codemode-system-md.ts"),
+  route("__dev/codemode/:scopeKind/:scopeId/bash", "routes/dev/codemode-bash.ts"),
+  route("__dev/codemode/:scopeKind/:scopeId", "routes/dev/codemode.ts"),
 
   ...prefix("api", [
     route("auth/*", "routes/api/auth.ts"),

@@ -1,13 +1,14 @@
 import { z } from "zod";
 
 import { createBackofficeFileSystem } from "@/files/create-file-system";
-import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
+import { automationScopeFromRouteParams } from "../backoffice/automations/scope";
 import type { Route } from "./+types/codemode";
 
 const localHostnames = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -36,12 +37,12 @@ export async function loader() {
 export async function action({ request, context, params }: Route.ActionArgs) {
   assertDevOnlyLocalRequest(request);
 
-  const orgId = params.orgId?.trim();
-  if (!orgId) {
-    throw new Response("Missing organisation id", { status: 400 });
+  const scope = automationScopeFromRouteParams(params);
+  const authorization = await authorizeBackofficeContext(request, context, scope);
+  if (!authorization.ok) {
+    return authorization.response;
   }
-
-  const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
+  const { execution } = authorization;
 
   const body = devCodemodeBodySchema.parse(await request.json());
 
@@ -71,6 +72,9 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   });
 
   const headers = new Headers({ "cache-control": "no-store" });
+  for (const [name, value] of authorization.headers) {
+    headers.append(name, value);
+  }
 
   return Response.json(
     {
