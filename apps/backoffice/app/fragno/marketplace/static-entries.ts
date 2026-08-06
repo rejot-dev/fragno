@@ -1,96 +1,102 @@
-import {
-  TELEGRAM_TEST_COMMAND_MARKETPLACE_README,
-  TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
-  TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE,
-} from "@/files/content/telegram-test-command";
+import { z } from "zod";
 
-import type {
-  MarketplaceStaticArtifactEntry,
-  MarketplaceStaticArtifactListing,
-  MarketplaceStaticArtifactVersion,
-} from "./artifacts";
+import type { MarketplaceStaticArtifactEntry, MarketplaceStaticArtifactListing } from "./artifacts";
+import {
+  marketplaceListingMetadataSchema,
+  marketplaceOwnerSchema,
+  marketplaceSlugSchema,
+  marketplaceVersionSchema,
+} from "./contracts";
 import { compareMarketplaceVersions } from "./version";
 
-export const STATIC_MARKETPLACE_ENTRIES = [
-  {
-    owner: {
-      scope: { kind: "system" },
-      publisherName: "Fragno",
-    },
-    slug: "telegram-test-command",
-    metadata: {
-      name: "Telegram test command",
-      summary: "Send a delayed Telegram reply when a chat receives the /test command.",
-      description:
-        "A small durable workflow for verifying that Telegram events, workflow sleeps, and delayed replies are configured correctly.",
-      category: "communication",
-      tags: ["telegram", "testing", "workflow"],
-    },
-    rootFiles: {
-      "README.md": TELEGRAM_TEST_COMMAND_MARKETPLACE_README,
-    },
-    versions: [
-      {
-        version: "1.0.0",
-        files: {
-          "automations/telegram-test-command.workflow.js": TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
-        },
-      },
-      {
-        version: "1.1.0",
-        files: {
-          "automations/telegram-test-command.workflow.js":
-            TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE,
-        },
-      },
-    ],
-  },
-] as const satisfies readonly MarketplaceStaticArtifactListing[];
+export const marketplaceManifestSchema = z.object({
+  owner: marketplaceOwnerSchema,
+  slug: marketplaceSlugSchema,
+  metadata: marketplaceListingMetadataSchema,
+  versions: z
+    .array(marketplaceVersionSchema)
+    .min(1)
+    .refine(
+      (versions) => new Set(versions).size === versions.length,
+      "Marketplace manifest versions must be unique.",
+    ),
+});
 
-export const listStaticMarketplaceEntries = (): MarketplaceStaticArtifactEntry[] =>
+const manifests = import.meta.glob<string>("../../../content/marketplace/*/manifest.json", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+});
+const artifacts = Object.entries(
+  import.meta.glob<string>(
+    ["../../../content/marketplace/**/*", "!../../../content/marketplace/*/manifest.json"],
+    {
+      eager: true,
+      query: "?raw",
+      import: "default",
+    },
+  ),
+);
+
+export const STATIC_MARKETPLACE_ENTRIES = Object.entries(manifests).map(
+  ([manifestPath, source]): MarketplaceStaticArtifactListing => {
+    const manifest = marketplaceManifestSchema.parse(JSON.parse(source));
+    const listingDirectory = manifestPath.slice(0, -"manifest.json".length);
+    const listingFiles = artifacts
+      .filter(([path]) => path.startsWith(listingDirectory))
+      .map(([path, content]) => [path.slice(listingDirectory.length), content] as const);
+
+    return {
+      owner: manifest.owner,
+      slug: manifest.slug,
+      metadata: manifest.metadata,
+      rootFiles: Object.fromEntries(listingFiles.filter(([path]) => !path.startsWith("versions/"))),
+      versions: manifest.versions.map((version) => {
+        const versionDirectory = `versions/${version}/`;
+        return {
+          version,
+          files: Object.fromEntries(
+            listingFiles
+              .filter(([path]) => path.startsWith(versionDirectory))
+              .map(([path, content]) => [path.slice(versionDirectory.length), content]),
+          ),
+        };
+      }),
+    };
+  },
+);
+
+const staticMarketplaceVersions: MarketplaceStaticArtifactEntry[] =
   STATIC_MARKETPLACE_ENTRIES.flatMap((listing) =>
-    listing.versions.map((version) => createStaticMarketplaceEntry(listing, version)),
+    listing.versions.map((version) => ({
+      owner: listing.owner,
+      slug: listing.slug,
+      metadata: listing.metadata,
+      rootFiles: listing.rootFiles,
+      version: version.version,
+      files: version.files,
+    })),
   );
+
+export const listStaticMarketplaceEntries = (): MarketplaceStaticArtifactEntry[] => [
+  ...staticMarketplaceVersions,
+];
 
 export const getStaticMarketplaceEntry = (input: {
   slug: string;
   version: string;
-}): MarketplaceStaticArtifactEntry | null => {
-  const listing = findStaticMarketplaceListing(input);
-  const version = listing?.versions.find((candidate) => candidate.version === input.version);
-  return listing && version ? createStaticMarketplaceEntry(listing, version) : null;
-};
+}): MarketplaceStaticArtifactEntry | null =>
+  staticMarketplaceVersions.find(
+    (entry) => entry.slug === input.slug && entry.version === input.version,
+  ) ?? null;
 
 export const getNextStaticMarketplaceEntry = (input: {
   slug: string;
   version: string;
-}): MarketplaceStaticArtifactEntry | null => {
-  const listing = findStaticMarketplaceListing(input);
-  const nextVersion = listing?.versions
-    .filter((candidate) => compareMarketplaceVersions(candidate.version, input.version) > 0)
-    .sort((left, right) => compareMarketplaceVersions(left.version, right.version))[0];
-
-  return listing && nextVersion ? createStaticMarketplaceEntry(listing, nextVersion) : null;
-};
-
-const findStaticMarketplaceListing = (input: {
-  slug: string;
-  version: string;
-}): MarketplaceStaticArtifactListing | null =>
-  STATIC_MARKETPLACE_ENTRIES.find(
-    (listing) =>
-      listing.slug === input.slug &&
-      listing.versions.some((version) => version.version === input.version),
-  ) ?? null;
-
-const createStaticMarketplaceEntry = (
-  listing: MarketplaceStaticArtifactListing,
-  version: MarketplaceStaticArtifactVersion,
-): MarketplaceStaticArtifactEntry => ({
-  owner: listing.owner,
-  slug: listing.slug,
-  metadata: listing.metadata,
-  rootFiles: listing.rootFiles,
-  version: version.version,
-  files: version.files,
-});
+}): MarketplaceStaticArtifactEntry | null =>
+  staticMarketplaceVersions
+    .filter(
+      (entry) =>
+        entry.slug === input.slug && compareMarketplaceVersions(entry.version, input.version) > 0,
+    )
+    .sort((left, right) => compareMarketplaceVersions(left.version, right.version))[0] ?? null;

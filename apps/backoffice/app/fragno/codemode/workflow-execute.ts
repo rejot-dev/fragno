@@ -35,6 +35,8 @@ type WorkflowWorkerResult<TOutput> =
   | { ok: true; result: TOutput }
   | { ok: false; suspension: RemoteWorkflowSuspension };
 
+type CodemodeWorkflowEvent<TParams> = WorkflowEvent<TParams> & { id?: string };
+
 const isRemoteWorkflowSuspendedError = (
   error: unknown,
 ): error is { reason: RemoteWorkflowSuspension["reason"] } => {
@@ -49,7 +51,7 @@ const isRemoteWorkflowSuspendedError = (
 
 type WorkflowWorkerEntrypoint<TParams, TOutput> = {
   run(
-    event: WorkflowEvent<TParams>,
+    event: CodemodeWorkflowEvent<TParams>,
     stepTarget: WorkflowStepTarget,
     dispatchers: Record<string, unknown>,
   ): Promise<WorkflowWorkerResult<TOutput>>;
@@ -276,7 +278,7 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
   dependencies,
 }: {
   code: string;
-  event: WorkflowEvent<TParams>;
+  event: CodemodeWorkflowEvent<TParams>;
   remote: RemoteWorkflowStepHost;
   env: BackofficeCodemodeEnv;
 } & BackofficeCodemodeWorkflowOptions): Promise<TOutput> => {
@@ -322,7 +324,10 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
     rpcTargets: { dispatchers, stepTarget },
     run: async (entrypoint, rpcTargets) =>
       await entrypoint.run(
-        event,
+        {
+          ...event,
+          id: event.id ?? event.instanceId,
+        },
         rpcTargets.stepTarget as WorkflowStepTarget,
         rpcTargets.dispatchers as Record<string, unknown>,
       ),
@@ -336,7 +341,7 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
 export const runBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = unknown>(
   input: {
     code: string;
-    event: WorkflowEvent<TParams>;
+    event: CodemodeWorkflowEvent<TParams>;
     remote: RemoteWorkflowStepHost;
     env: BackofficeCodemodeEnv;
   } & BackofficeCodemodeWorkflowOptions,

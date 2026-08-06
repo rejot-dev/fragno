@@ -99,7 +99,7 @@ export const executeWorkflowCodemodeAutomation = async ({
   const toolContext = createBackofficeToolContext(context);
   const result = await runBackofficeCodemodeWorkflow({
     code: script,
-    event: workflowEvent,
+    event: { ...workflowEvent, id: context.automation.event.id },
     remote,
     fs: executionFs,
     env,

@@ -15,14 +15,13 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   };
 });
 
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
+vi.mock("cloudflare:workers", () => ({
+  DurableObject,
+  RpcTarget,
+  WorkerEntrypoint,
+}));
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
-import {
-  TELEGRAM_TEST_COMMAND_MARKETPLACE_README,
-  TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
-  TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE,
-} from "@/files/content/telegram-test-command";
 import {
   automationActorsSchema,
   BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY,
@@ -66,10 +65,27 @@ const MARKETPLACE_UNCHANGED_FILE_KEY = "prompts/marketplace.md";
 const MARKETPLACE_UNCHANGED_FILE_SOURCE = "# Marketplace\n";
 const MARKETPLACE_REMOVED_FILE_KEY = "prompts/removed-in-next-version.md";
 const MARKETPLACE_REMOVED_FILE_SOURCE = "# Removed in the next Marketplace version\n";
-const UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE;
-const STATIC_TELEGRAM_TEST_COMMAND = STATIC_MARKETPLACE_ENTRIES[0];
-const BASE_STATIC_MARKETPLACE_VERSION = STATIC_TELEGRAM_TEST_COMMAND.versions[0];
-const UPDATED_STATIC_MARKETPLACE_VERSION = STATIC_TELEGRAM_TEST_COMMAND.versions[1];
+const STATIC_TELEGRAM_TEST_COMMAND = STATIC_MARKETPLACE_ENTRIES.find(
+  (entry) => entry.slug === "telegram-test-command",
+);
+if (!STATIC_TELEGRAM_TEST_COMMAND) {
+  throw new Error("Expected the built-in Telegram test command Marketplace entry.");
+}
+const BASE_STATIC_MARKETPLACE_VERSION = STATIC_TELEGRAM_TEST_COMMAND.versions.find(
+  (version) => version.version === "1.0.0",
+);
+const UPDATED_STATIC_MARKETPLACE_VERSION = STATIC_TELEGRAM_TEST_COMMAND.versions.find(
+  (version) => version.version === "1.1.0",
+);
+if (!BASE_STATIC_MARKETPLACE_VERSION || !UPDATED_STATIC_MARKETPLACE_VERSION) {
+  throw new Error("Expected both Telegram test command Marketplace versions.");
+}
+const TELEGRAM_TEST_COMMAND_MARKETPLACE_README =
+  STATIC_TELEGRAM_TEST_COMMAND.rootFiles?.["README.md"];
+const TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE =
+  BASE_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_ARTIFACT_FILE_KEY];
+const UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE =
+  UPDATED_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_ARTIFACT_FILE_KEY];
 
 type MarketplaceWorkflowListEntry = { id: string };
 type MarketplaceWorkflowHistoryStep = {
@@ -139,7 +155,10 @@ const createMarketplacePublicationWorkflow = async (
   const workflows = createWorkflowsRouteCaller({
     object: ctx.runtime.objects.automations.forOrg("org-1"),
     context: {
-      execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+      execution: createBackofficeSystemExecution({
+        kind: "org",
+        orgId: "org-1",
+      }),
       propagationContext: null,
     },
   });
@@ -165,7 +184,10 @@ const writeUploadFile = async (input: {
   form.set("filename", input.fileKey.split("/").at(-1) ?? "artifact");
   form.set("file", new File([input.content], input.fileKey.split("/").at(-1) ?? "artifact"));
   const response = await input.upload.fetch(
-    new Request("https://upload.test/api/upload/files", { method: "POST", body: form }),
+    new Request("https://upload.test/api/upload/files", {
+      method: "POST",
+      body: form,
+    }),
   );
   assert(response.ok);
 };
@@ -230,8 +252,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 slug: "telegram-test-command",
               });
               const marketplace = ctx.runtime.objects.marketplace.singleton();
-              const detail = await marketplace.getPublishedListing({ listingId });
-              const manifest = await marketplace.getArtifactManifest({ listingId });
+              const detail = await marketplace.getPublishedListing({
+                listingId,
+              });
+              const manifest = await marketplace.getArtifactManifest({
+                listingId,
+              });
 
               assert(detail);
               expect(detail.listing).toMatchObject({
@@ -325,7 +351,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             };
             expect(repeated.publications).toEqual(
               first.publications.map(({ workflowInstanceId }) =>
-                expect.objectContaining({ workflowInstanceId, state: "published" }),
+                expect.objectContaining({
+                  workflowInstanceId,
+                  state: "published",
+                }),
               ),
             );
           }),
@@ -409,13 +438,23 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 listingId,
                 targetScope: { kind: "org", orgId: "org-1" },
               }),
-            ).resolves.toMatchObject({ state: "requested", version: "1.1.0" });
+            ).resolves.toMatchObject({
+              state: "requested",
+              version: "1.1.0",
+            });
             await expect(
               automations.requestMarketplaceIngestion({
                 listingId,
-                targetScope: { kind: "project", orgId: "org-1", projectId: project.id },
+                targetScope: {
+                  kind: "project",
+                  orgId: "org-1",
+                  projectId: project.id,
+                },
               }),
-            ).resolves.toMatchObject({ state: "requested", version: "1.1.0" });
+            ).resolves.toMatchObject({
+              state: "requested",
+              version: "1.1.0",
+            });
 
             ctx.vars.projectId = project.id;
           }),
@@ -599,14 +638,18 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                     request.method === "POST" &&
                     url.pathname.endsWith("/uploads")
                   ) {
-                    const payload = (await request.clone().json()) as { fileKey: string };
+                    const payload = (await request.clone().json()) as {
+                      fileKey: string;
+                    };
                     createAttempts.set(
                       payload.fileKey,
                       (createAttempts.get(payload.fileKey) ?? 0) + 1,
                     );
                     const response = await super.fetch(request);
                     if (response.ok) {
-                      const created = (await response.clone().json()) as { uploadId: string };
+                      const created = (await response.clone().json()) as {
+                        uploadId: string;
+                      };
                       uploadFileKeys.set(created.uploadId, payload.fileKey);
                     }
                     return response;
@@ -817,7 +860,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
               context: {
-                execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                execution: createBackofficeSystemExecution({
+                  kind: "org",
+                  orgId: "org-1",
+                }),
                 propagationContext: null,
               },
             });
@@ -917,7 +963,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               const workflows = createWorkflowsRouteCaller({
                 object: ctx.runtime.objects.automations.forOrg("org-1"),
                 context: {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  execution: createBackofficeSystemExecution({
+                    kind: "org",
+                    orgId: "org-1",
+                  }),
                   propagationContext: null,
                 },
               });
@@ -1058,7 +1107,9 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   createUploadAttempts += 1;
                   const response = await super.fetch(request);
                   if (response.ok) {
-                    const created = (await response.clone().json()) as { uploadId: string };
+                    const created = (await response.clone().json()) as {
+                      uploadId: string;
+                    };
                     uploadIds.push(created.uploadId);
                   }
                   if (response.ok && loseFirstCreateResponse) {
@@ -1545,7 +1596,11 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 .requestStaticMarketplacePublications(),
             ).resolves.toMatchObject({
               publications: [
-                { version: "1.0.0", state: "requested", workflowInstanceId: currentInstanceId },
+                {
+                  version: "1.0.0",
+                  state: "requested",
+                  workflowInstanceId: currentInstanceId,
+                },
                 {
                   version: "1.1.0",
                   state: "queued",
@@ -1575,7 +1630,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               const workflows = createWorkflowsRouteCaller({
                 object: ctx.runtime.objects.automations.forOrg("org-1"),
                 context: {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  execution: createBackofficeSystemExecution({
+                    kind: "org",
+                    orgId: "org-1",
+                  }),
                   propagationContext: null,
                 },
               });
@@ -1610,12 +1668,17 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               const workflows = createWorkflowsRouteCaller({
                 object: ctx.runtime.objects.automations.forOrg("org-1"),
                 context: {
-                  execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  execution: createBackofficeSystemExecution({
+                    kind: "org",
+                    orgId: "org-1",
+                  }),
                   propagationContext: null,
                 },
               });
               const instances = await workflows("GET", "/:workflowName/instances", {
-                pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
+                pathParams: {
+                  workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+                },
               });
               assert(instances.type === "json");
               const instanceIds = (instances.data.instances as MarketplaceWorkflowListEntry[]).map(
@@ -1744,12 +1807,17 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
               context: {
-                execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                execution: createBackofficeSystemExecution({
+                  kind: "org",
+                  orgId: "org-1",
+                }),
                 propagationContext: null,
               },
             });
             const instances = await workflows("GET", "/:workflowName/instances", {
-              pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
+              pathParams: {
+                workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+              },
             });
             assert(instances.type === "json");
             const instanceIds = (instances.data.instances as MarketplaceWorkflowListEntry[]).map(
@@ -1784,7 +1852,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
               context: {
-                execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                execution: createBackofficeSystemExecution({
+                  kind: "org",
+                  orgId: "org-1",
+                }),
                 propagationContext: null,
               },
             });
@@ -1941,7 +2012,9 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   });
                 const latest = await ctx.runtime.objects.marketplace
                   .singleton()
-                  .getLatestPublishedVersions({ listingIds: [MARKETPLACE_LISTING_ID] });
+                  .getLatestPublishedVersions({
+                    listingIds: [MARKETPLACE_LISTING_ID],
+                  });
 
                 expect(ingestion).toMatchObject({ version: "1.0.0" });
                 expect(latest).toEqual({ [MARKETPLACE_LISTING_ID]: "1.1.0" });
@@ -2227,11 +2300,15 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                     request.method === "POST" &&
                     url.pathname.endsWith("/uploads")
                   ) {
-                    const payload = (await request.clone().json()) as { fileKey?: string };
+                    const payload = (await request.clone().json()) as {
+                      fileKey?: string;
+                    };
                     if (payload.fileKey === MARKETPLACE_ARTIFACT_FILE_KEY) {
                       changeAssertedFileDuringPreparation = false;
                       await writeUploadFile({
-                        upload: { fetch: (nextRequest) => super.fetch(nextRequest) },
+                        upload: {
+                          fetch: (nextRequest) => super.fetch(nextRequest),
+                        },
                         fileKey: MARKETPLACE_UNCHANGED_FILE_KEY,
                         content: "locally changed after planning",
                       });
@@ -2562,15 +2639,23 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
               context: {
-                execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                execution: createBackofficeSystemExecution({
+                  kind: "org",
+                  orgId: "org-1",
+                }),
                 propagationContext: null,
               },
             });
             const invalidPublication = await workflows("POST", "/:workflowName/instances", {
-              pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
+              pathParams: {
+                workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+              },
               body: {
                 id: "invalid-marketplace-publication",
-                params: { slug: "Invalid Slug", version: "not-semver" } as never,
+                params: {
+                  slug: "Invalid Slug",
+                  version: "not-semver",
+                } as never,
               },
             });
             assert(invalidPublication.type === "error");
@@ -2578,7 +2663,9 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             assert(invalidPublication.error.code === "WORKFLOW_PARAMS_INVALID");
 
             const invalidIngestion = await workflows("POST", "/:workflowName/instances", {
-              pathParams: { workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME },
+              pathParams: {
+                workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+              },
               body: {
                 id: "invalid-marketplace-ingestion",
                 params: { listingId: MARKETPLACE_LISTING_ID } as never,
@@ -2614,12 +2701,17 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             const workflows = createWorkflowsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
               context: {
-                execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                execution: createBackofficeSystemExecution({
+                  kind: "org",
+                  orgId: "org-1",
+                }),
                 propagationContext: null,
               },
             });
             const created = await workflows("POST", "/:workflowName/instances", {
-              pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
+              pathParams: {
+                workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+              },
               body: {
                 id: workflowInstanceId,
                 params: {
