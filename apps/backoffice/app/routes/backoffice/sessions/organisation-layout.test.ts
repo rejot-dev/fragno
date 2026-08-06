@@ -1,6 +1,6 @@
 import { assert, describe, test } from "vitest";
 
-import { isPiSessionsPath } from "./organisation-layout";
+import { isPiSessionsPath } from "./path";
 
 describe("isPiSessionsPath", () => {
   const scope = { kind: "project" as const, orgId: "org-1", projectId: "project-1" };

@@ -1,5 +1,6 @@
 import { Link, useOutletContext } from "react-router";
 
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
@@ -82,7 +83,7 @@ export default function BackofficeConnectionsMcp() {
 
               <div className="mt-4">
                 <Link
-                  to={`/backoffice/connections/mcp/${organization.id}`}
+                  to={`/backoffice/automations/${backofficeContextScopeRoutePath({ kind: "org", orgId: organization.id })}/mcp`}
                   className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                 >
                   Manage MCP

@@ -1,6 +1,6 @@
 import { Outlet } from "react-router";
 
-import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
 
@@ -8,6 +8,7 @@ import { fetchAutomationAdapterIdentity } from "../automations/data.server";
 import { automationScopeFromRouteParams } from "../automations/scope";
 import type { Route } from "./+types/organisation-layout";
 import { fetchPiAdapterIdentity, fetchPiRuntimeState } from "./data";
+import { isPiSessionsPath } from "./path";
 import { PiErrorBoundary, PiWorkspaceHeader, type PiLayoutContext } from "./shared";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
@@ -44,8 +45,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   return {
     scope,
-    scopeLabel:
-      execution.scope.kind === "system" ? "System" : backofficeContextScopeRoutePath(scope),
+    scopeLabel: backofficeContextScopeLabel(execution.scope),
     persistenceSource,
     persistenceError,
     automationPersistenceSource,
@@ -62,15 +62,6 @@ export function meta({ loaderData }: Route.MetaArgs) {
 export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
   return <PiErrorBoundary error={error} params={params} />;
 }
-
-export const isPiSessionsPath = (
-  scope: Parameters<typeof backofficeContextScopeRoutePath>[0],
-  pathname: string,
-) => {
-  const sessionsBasePath = `/backoffice/sessions/${backofficeContextScopeRoutePath(scope)}/sessions`;
-  const normalizedPath = pathname.replace(/\/+$/, "");
-  return normalizedPath === sessionsBasePath || normalizedPath.startsWith(`${sessionsBasePath}/`);
-};
 
 export default function BackofficeScopedPiLayout({ loaderData, matches }: Route.ComponentProps) {
   const {

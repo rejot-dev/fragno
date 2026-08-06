@@ -1,5 +1,6 @@
 import { redirect } from "react-router";
 
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/index";
@@ -17,7 +18,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  return redirect(`/backoffice/sessions/org/${encodeURIComponent(orgId)}/sessions`);
+  const scopePath = backofficeContextScopeRoutePath({ kind: "org", orgId });
+  return redirect(`/backoffice/sessions/${scopePath}/sessions`);
 }
 
 export default function BackofficeSessionsIndex() {

@@ -220,11 +220,6 @@ export default [
         route("sandboxes", "routes/backoffice/automations/sandboxes.tsx"),
       ]),
 
-      route("connections/mcp/:orgId", "routes/backoffice/connections/mcp/organisation-layout.tsx", [
-        index("routes/backoffice/connections/mcp/organisation-index.tsx"),
-        route("configuration", "routes/backoffice/connections/mcp/configuration.tsx"),
-        route("oauth-complete", "routes/backoffice/connections/mcp/oauth-complete.tsx"),
-      ]),
       route(
         "connections/upload/:orgId",
         "routes/backoffice/connections/upload/organisation-layout.tsx",
