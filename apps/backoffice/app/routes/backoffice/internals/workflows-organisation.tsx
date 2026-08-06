@@ -1,5 +1,6 @@
 import { Link, Outlet, useLoaderData, useLocation, useParams } from "react-router";
 
+import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import { BackofficePageHeader } from "@/components/backoffice";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
@@ -28,7 +29,7 @@ export async function loader({
   const scope = automationScopeFromRouteParams(params);
   await requireBackofficeContext(request, context, scope);
   const scopePath = backofficeContextScopeRoutePath(scope);
-  const scopeLabel = scopePath;
+  const scopeLabel = backofficeContextScopeLabel(scope);
   const pageSize = parsePageSize(url.searchParams.get("pageSize"));
 
   try {
@@ -58,8 +59,8 @@ export async function loader({
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  const orgLabel = loaderData?.scopeLabel ?? "scope";
-  return [{ title: `Workflows · ${orgLabel}` }];
+  const scopeLabel = loaderData?.scopeLabel ?? "scope";
+  return [{ title: `Workflows · ${scopeLabel}` }];
 }
 
 export default function BackofficeWorkflowsOrganisation() {
@@ -125,7 +126,7 @@ export default function BackofficeWorkflowsOrganisation() {
               </div>
             ) : !configured ? (
               <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-                Workflows are not configured for this organisation yet.
+                Workflows are not configured for this scope yet.
               </div>
             ) : workflows.length === 0 ? (
               <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">

@@ -85,7 +85,13 @@ export const authorizeBackofficeContext = async (
     };
   } catch (error) {
     if (error instanceof BackofficeForbiddenError) {
-      return { ok: false, response: new Response(error.message, { status: 403 }) };
+      return {
+        ok: false,
+        response: new Response(error.message, {
+          status: 403,
+          headers: authorization.headers,
+        }),
+      };
     }
     throw error;
   }

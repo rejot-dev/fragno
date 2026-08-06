@@ -12,6 +12,21 @@ export type BackofficeContextScope =
   | { kind: "user"; userId: string }
   | { kind: "project"; orgId: string; projectId: string };
 
+export const backofficeContextScopeLabel = (scope: BackofficeContextScope): string => {
+  switch (scope.kind) {
+    case "system":
+      return "System";
+    case "org":
+      return scope.orgId;
+    case "user":
+      return scope.userId;
+    case "project":
+      return `${scope.orgId} / ${scope.projectId}`;
+  }
+
+  throw new Error("Unsupported Backoffice context scope kind.");
+};
+
 export const backofficeContextScopesEqual = (
   left: BackofficeContextScope,
   right: BackofficeContextScope,

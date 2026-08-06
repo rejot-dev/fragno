@@ -1,5 +1,6 @@
 import { Link, useNavigate, useOutletContext } from "react-router";
 
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
@@ -45,7 +46,11 @@ export default function BackofficeWorkflowsLanding() {
         ) : (
           <section className="grid gap-3 md:grid-cols-3">
             {organizations.map(({ organization }) => {
-              const workflowsPath = `/backoffice/internals/workflows/org/${encodeURIComponent(organization.id)}`;
+              const scopePath = backofficeContextScopeRoutePath({
+                kind: "org",
+                orgId: organization.id,
+              });
+              const workflowsPath = `/backoffice/internals/workflows/${scopePath}`;
               const handleOrgClick = () => {
                 void navigate(workflowsPath);
               };

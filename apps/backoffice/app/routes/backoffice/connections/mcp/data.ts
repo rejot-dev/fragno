@@ -7,10 +7,16 @@ import {
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
 import type { McpFragment } from "@/fragno/mcp";
-import { getMcpDurableObject } from "@/worker-runtime/durable-objects";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import type { McpConfigState } from "./shared";
+export type McpConfigState = {
+  configured: boolean;
+  config?: {
+    publicBaseUrl?: string | null;
+    createdAt?: string;
+    updatedAt?: string;
+  };
+};
 
 export type McpServerCache = {
   protocolVersion?: string | null;
@@ -126,12 +132,6 @@ const createMcpRouteCallerForScope = (
   });
 };
 
-const createMcpRouteCaller = (
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  orgId: string,
-) => createMcpRouteCallerForScope(request, context, { kind: "org", orgId });
-
 export async function ensureMcpConfiguredForScope(
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
@@ -150,21 +150,6 @@ export async function fetchMcpConfigForScope(
 ): Promise<{ configState: McpConfigState | null; configError: string | null }> {
   try {
     const mcpDo = getMcpObjectForScope(context, scope);
-    return { configState: await mcpDo.getAdminConfig(), configError: null };
-  } catch (error) {
-    return {
-      configState: null,
-      configError: error instanceof Error ? error.message : "Unable to load MCP configuration.",
-    };
-  }
-}
-
-export async function fetchMcpConfig(
-  context: Readonly<RouterContextProvider>,
-  orgId: string,
-): Promise<{ configState: McpConfigState | null; configError: string | null }> {
-  try {
-    const mcpDo = getMcpDurableObject(context, orgId);
     return { configState: await mcpDo.getAdminConfig(), configError: null };
   } catch (error) {
     return {
@@ -195,26 +180,10 @@ export async function fetchMcpServersForScope(
   }
 }
 
-export async function fetchMcpServers(
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  orgId: string,
-): Promise<{ servers: McpServerSummary[]; serversError: string | null }> {
-  return fetchMcpServersForScope(request, context, { kind: "org", orgId });
-}
-
 export function createMcpActionRouteCallerForScope(
   request: Request,
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
 ): RouteCallerForFragment<McpFragment> {
   return createMcpRouteCallerForScope(request, context, scope);
-}
-
-export function createMcpActionRouteCaller(
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  orgId: string,
-): RouteCallerForFragment<McpFragment> {
-  return createMcpRouteCaller(request, context, orgId);
 }

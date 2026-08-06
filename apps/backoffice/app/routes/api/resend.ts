@@ -1,4 +1,5 @@
 import { backofficeContextScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/resend";
@@ -19,6 +20,11 @@ const forwardToResend = async (
     return new Response("Invalid Resend scope", { status: 404 });
   }
 
+  const authorization = await authorizeBackofficeContext(request, context, scope);
+  if (!authorization.ok) {
+    return authorization.response;
+  }
+
   const resendDo = context.get(BackofficeWorkerContext).runtime.objects.resend.for(scope);
   const url = new URL(request.url);
   const prefix = `/api/resend/${scopeSegment}`;
@@ -27,7 +33,16 @@ const forwardToResend = async (
     url.pathname = `/api/resend${suffix}`;
   }
   const proxyRequest = new Request(url.toString(), request);
-  return resendDo.fetch(proxyRequest);
+  const response = await resendDo.fetch(proxyRequest);
+  const headers = new Headers(response.headers);
+  for (const [name, value] of authorization.headers) {
+    headers.append(name, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 };
 
 /**

@@ -76,7 +76,7 @@ export function PiErrorBoundary({ error }: { error: unknown; params: unknown }) 
         ]}
         eyebrow="Agents"
         title="Pi sessions unavailable"
-        description="The requested organisation session workspace could not be opened."
+        description="The requested session workspace could not be opened."
       />
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">

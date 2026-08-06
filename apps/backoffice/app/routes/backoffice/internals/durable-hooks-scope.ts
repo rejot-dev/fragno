@@ -4,7 +4,10 @@ import type {
   BackofficeObjectScopeKind,
 } from "@/backoffice-runtime/object-registry";
 import { isBackofficeObjectScopeAllowed } from "@/backoffice-runtime/object-registry";
-import { backofficeContextScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import {
+  backofficeContextScopeFromSinglePathSegment,
+  backofficeContextScopeRoutePath,
+} from "@/backoffice-runtime/scope-codec";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 
 export const DURABLE_HOOK_OBJECT_DEFINITIONS = [
@@ -370,7 +373,8 @@ export const DURABLE_HOOKS_OBJECT_CONFIGURE_META: Partial<
     label: "Configure Resend",
   },
   mcp: {
-    path: (orgId) => `/backoffice/connections/mcp/${orgId}/configuration`,
+    path: (orgId) =>
+      `/backoffice/automations/${backofficeContextScopeRoutePath({ kind: "org", orgId })}/mcp`,
     label: "Configure MCP",
   },
   upload: {
