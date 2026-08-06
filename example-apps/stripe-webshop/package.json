@@ -22,7 +22,11 @@
     "db:seed": "bun src/db/seed-users.ts",
     "auth:generate": "bunx @better-auth/cli generate --config src/lib/auth/auth.ts --output src/db/auth.schema.ts",
     "stripe:webhook": "stripe listen --forward-to localhost:3000/api/stripe/webhook",
-    "stripe:sync-products": "bun src/scripts/sync-products-to-stripe.ts"
+    "stripe:sync-products": "bun src/scripts/sync-products-to-stripe.ts",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.15",

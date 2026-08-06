@@ -1518,7 +1518,7 @@ pnpm --filter @fragno-apps/backoffice-rr exec vitest run <slice-test-files>
 
 pnpm exec turbo types:check --filter=@fragno-apps/backoffice-rr --output-logs=errors-only
 pnpm exec turbo build --filter=@fragno-apps/backoffice-rr --output-logs=errors-only
-pnpm run lint:type-aware-fix
+pnpm run lint:fix
 pnpm run format:changed
 git diff --check
 ```

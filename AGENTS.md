@@ -119,7 +119,7 @@ E.g.
 - `pnpm exec turbo build --filter=@fragno-dev/db --output-logs=errors-only`
 - `pnpm exec turbo test --filter=./packages/fragment-workflows --output-logs=errors-only`
 
-Oxlint: `pnpm run lint:type-aware-fix`
+Oxlint: `pnpm run lint:fix`
 Oxfmt: `pnpm run format:changed`
 
 DO NOT USE React Doctor, unless asked.

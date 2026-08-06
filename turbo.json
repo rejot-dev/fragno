@@ -32,8 +32,81 @@
       "cache": false,
       "persistent": true
     },
+    "quality:config": {
+      "inputs": [
+        "$TURBO_ROOT$/.gitignore",
+        "$TURBO_ROOT$/.oxfmtrc.json",
+        "$TURBO_ROOT$/.oxlintrc.json",
+        "$TURBO_ROOT$/.prettierignore",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/packages-private/oxlint-plugins/**",
+        "!$TURBO_ROOT$/packages-private/oxlint-plugins/.turbo/**",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/prettier.unsupported.config.mjs",
+        "$TURBO_ROOT$/scripts/run-package-quality.mjs"
+      ]
+    },
+    "format": {
+      "dependsOn": ["format:package", "//#format:root"],
+      "cache": false
+    },
+    "format:package": {
+      "cache": false
+    },
+    "format:check": {
+      "dependsOn": ["format:check:package", "//#format:check:root"]
+    },
+    "format:check:package": {
+      "dependsOn": ["quality:config"]
+    },
     "lint": {
-      "outputs": []
+      "dependsOn": ["lint:package", "//#lint:root"]
+    },
+    "lint:package": {
+      "dependsOn": ["quality:config", "^build"]
+    },
+    "lint:fix": {
+      "dependsOn": ["lint:fix:package", "//#lint:fix:root"],
+      "cache": false
+    },
+    "lint:fix:package": {
+      "cache": false
+    },
+    "//#quality:root-inputs": {
+      "inputs": [
+        "$TURBO_ROOT$/**",
+        "!$TURBO_ROOT$/apps/**",
+        "!$TURBO_ROOT$/example-apps/**",
+        "!$TURBO_ROOT$/example-fragments/**",
+        "!$TURBO_ROOT$/packages/**",
+        "!$TURBO_ROOT$/packages-private/typescript-config/**",
+        "!$TURBO_ROOT$/packages-private/vitest-config/**",
+        "!$TURBO_ROOT$/.git/**",
+        "!$TURBO_ROOT$/node_modules/**",
+        "!$TURBO_ROOT$/**/.turbo/**",
+        "!$TURBO_ROOT$/.fallow/cache/**",
+        "!$TURBO_ROOT$/.fallow/cache.bin",
+        "!$TURBO_ROOT$/.fallow/churn.bin",
+        "!$TURBO_ROOT$/.fp/**",
+        "!$TURBO_ROOT$/.letta/**",
+        "!$TURBO_ROOT$/.superset/**",
+        "!$TURBO_ROOT$/**/*.sqlite*",
+        "!$TURBO_ROOT$/**/.DS_Store"
+      ]
+    },
+    "//#format:root": {
+      "cache": false
+    },
+    "//#format:check:root": {
+      "dependsOn": ["//#quality:root-inputs"],
+      "inputs": ["$TURBO_ROOT$/package.json"]
+    },
+    "//#lint:root": {
+      "dependsOn": ["//#quality:root-inputs"],
+      "inputs": ["$TURBO_ROOT$/package.json"]
+    },
+    "//#lint:fix:root": {
+      "cache": false
     }
   }
 }

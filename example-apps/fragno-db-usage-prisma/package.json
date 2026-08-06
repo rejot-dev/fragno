@@ -26,7 +26,11 @@
     "db:generate:fragno": "fragno-cli db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
     "db:migrate:fragno": "fragno-cli db migrate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
     "db:generate": "pnpm run db:generate:fragno && pnpm run db:generate:prisma-client",
-    "test": "vitest run"
+    "test": "vitest run",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
     "@fragno-dev/db": "workspace:*",

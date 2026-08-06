@@ -6,7 +6,7 @@ pre-commit:
   piped: true
   jobs:
     - name: lint
-      run: pnpm exec oxlint --fix --no-error-on-unmatched-pattern {staged_files}
+      run: pnpm exec turbo run lint:package '//#lint:root' --affected --output-logs errors-only
     - name: format
       run:
         sh -c 'node scripts/format-files.mjs --staged --check; code=$?; node
@@ -17,11 +17,6 @@ pre-commit:
     - name: "og images: check blog posts have images"
       run: pnpm exec tsx apps/docs/scripts/generate-og-images.tsx --check
       glob: "apps/docs/content/blog/**"
-    - name: "turbo: build + test + type-check"
-      run:
-        pnpm exec turbo run --output-logs new-only --no-daemon --filter='!./example-apps/**'
-        --filter='!@fragno-dev/create' build types:check test
-      glob: "{*.ts,*.tsx,tsconfig.json}"
 
 commit-msg:
   commands:

@@ -69,7 +69,11 @@
     "types:check": "tsc --noEmit",
     "build": "tsdown",
     "test": "vitest run",
-    "cli": "tsx src/cli/cli.ts"
+    "cli": "tsx src/cli/cli.ts",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.75.4",

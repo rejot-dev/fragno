@@ -26,7 +26,11 @@
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "test": "vitest run",
-    "types:check": "tsc --noEmit"
+    "types:check": "tsc --noEmit",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
     "@clack/prompts": "^0.11.0",

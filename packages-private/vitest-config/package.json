@@ -19,7 +19,11 @@
   "scripts": {
     "collect-json-reports": "node --import tsx src/scripts/collect-json-outputs.ts",
     "merge-json-reports": "nyc merge coverage/raw coverage/merged/merged-coverage.json",
-    "report": "nyc report -t coverage/merged --report-dir coverage/report --reporter=html --exclude-after-remap false && echo -e '\nopen ./coverage/report/index.html'"
+    "report": "nyc report -t coverage/merged --report-dir coverage/report --reporter=html --exclude-after-remap false && echo -e '\nopen ./coverage/report/index.html'",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
     "@vitest/coverage-istanbul": "^4.1.0"

@@ -10,8 +10,11 @@
     "dev": "next dev --port 3001",
     "build": "next build",
     "start": "next start",
-    "lint": "pnpm exec oxlint .",
-    "types:check": "tsc --noEmit"
+    "types:check": "tsc --noEmit",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
     "@fragno-dev/example-fragment": "workspace:*",

@@ -12,7 +12,11 @@
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
     "types:check": "react-router typegen && tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
     "@aws-sdk/hash-node": "^3.374.0",

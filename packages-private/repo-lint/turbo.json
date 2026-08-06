@@ -1,9 +1,0 @@
-{
-  "extends": ["//"],
-  "tasks": {
-    "lint": {
-      "inputs": ["$TURBO_ROOT$/**"],
-      "outputs": []
-    }
-  }
-}
