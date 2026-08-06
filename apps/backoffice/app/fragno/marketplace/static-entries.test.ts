@@ -115,6 +115,87 @@ describe("static Marketplace entries", () => {
                 },
                 "version": "1.1.0",
               },
+              {
+                "files": {
+                  ".marketplace/install.workflow.js": "defineWorkflow({ name: "install-telegram-test-command" }, async (event, step) => {
+        const workflowScriptPath =
+          event.payload.installedFiles["automations/telegram-test-command.workflow.js"];
+        if (!workflowScriptPath) {
+          throw new Error("Telegram test command workflow was not installed.");
+        }
+
+        await step.do("ensure Telegram /test route", async () => {
+          const desired = {
+            id: "telegram-test-command",
+            name: "Telegram /test command",
+            trigger: {
+              kind: "event",
+              source: "telegram",
+              eventType: "message.received",
+              matcher: { path: "$.payload.text", op: "eq", value: "/test" },
+            },
+            priority: 110,
+            action: {
+              kind: "start_workflow",
+              remoteWorkflowName: "telegram-test-command",
+              workflowScriptPath,
+              instanceIdTemplate: "telegram-test-\${event.id}",
+            },
+            managedBy: {
+              kind: "marketplace",
+              listingId: event.payload.listingId,
+              resourceKey: "telegram-test-command-route",
+              version: event.payload.version,
+            },
+          };
+          const existing = await router.get({ id: desired.id });
+          if (!existing) {
+            return await router.create({ ...desired, enabled: true });
+          }
+
+          const managedBy = existing.metadata?.managedBy;
+          const ownedByThisInstallation =
+            managedBy?.kind === "marketplace" &&
+            managedBy.listingId === event.payload.listingId &&
+            managedBy.resourceKey === desired.managedBy.resourceKey;
+          if (!ownedByThisInstallation) {
+            throw new Error(
+              "Automation route 'telegram-test-command' already exists and is not managed by this Marketplace installation.",
+            );
+          }
+
+          return await router.update({
+            ...desired,
+            enabled: existing.enabled,
+          });
+        });
+      });
+      ",
+                  "automations/telegram-test-command.workflow.js": "defineWorkflow({ name: "telegram-test-command" }, async (event, step) => {
+        const automationEvent = event.payload.automationEvent;
+        const text = automationEvent.payload.text;
+        const chatId = automationEvent.payload.chatId;
+
+        if (text !== "/test") {
+          return { skipped: true, reason: "not-test-command" };
+        }
+
+        await step.sleep("wait 3 seconds", "3 seconds");
+
+        await step.do("send delayed test reply", async () => {
+          await telegram.sendMessage({
+            chatId,
+            text: "Telegram integration verified after a 3 second delay.",
+            parseMode: "Markdown",
+          });
+        });
+
+        return { sent: true };
+      });
+      ",
+                },
+                "version": "1.2.1",
+              },
             ],
           },
         ],
@@ -223,6 +304,112 @@ describe("static Marketplace entries", () => {
             "slug": "telegram-test-command",
             "version": "1.1.0",
           },
+          {
+            "files": {
+              ".marketplace/install.workflow.js": "defineWorkflow({ name: "install-telegram-test-command" }, async (event, step) => {
+        const workflowScriptPath =
+          event.payload.installedFiles["automations/telegram-test-command.workflow.js"];
+        if (!workflowScriptPath) {
+          throw new Error("Telegram test command workflow was not installed.");
+        }
+
+        await step.do("ensure Telegram /test route", async () => {
+          const desired = {
+            id: "telegram-test-command",
+            name: "Telegram /test command",
+            trigger: {
+              kind: "event",
+              source: "telegram",
+              eventType: "message.received",
+              matcher: { path: "$.payload.text", op: "eq", value: "/test" },
+            },
+            priority: 110,
+            action: {
+              kind: "start_workflow",
+              remoteWorkflowName: "telegram-test-command",
+              workflowScriptPath,
+              instanceIdTemplate: "telegram-test-\${event.id}",
+            },
+            managedBy: {
+              kind: "marketplace",
+              listingId: event.payload.listingId,
+              resourceKey: "telegram-test-command-route",
+              version: event.payload.version,
+            },
+          };
+          const existing = await router.get({ id: desired.id });
+          if (!existing) {
+            return await router.create({ ...desired, enabled: true });
+          }
+
+          const managedBy = existing.metadata?.managedBy;
+          const ownedByThisInstallation =
+            managedBy?.kind === "marketplace" &&
+            managedBy.listingId === event.payload.listingId &&
+            managedBy.resourceKey === desired.managedBy.resourceKey;
+          if (!ownedByThisInstallation) {
+            throw new Error(
+              "Automation route 'telegram-test-command' already exists and is not managed by this Marketplace installation.",
+            );
+          }
+
+          return await router.update({
+            ...desired,
+            enabled: existing.enabled,
+          });
+        });
+      });
+      ",
+              "automations/telegram-test-command.workflow.js": "defineWorkflow({ name: "telegram-test-command" }, async (event, step) => {
+        const automationEvent = event.payload.automationEvent;
+        const text = automationEvent.payload.text;
+        const chatId = automationEvent.payload.chatId;
+
+        if (text !== "/test") {
+          return { skipped: true, reason: "not-test-command" };
+        }
+
+        await step.sleep("wait 3 seconds", "3 seconds");
+
+        await step.do("send delayed test reply", async () => {
+          await telegram.sendMessage({
+            chatId,
+            text: "Telegram integration verified after a 3 second delay.",
+            parseMode: "Markdown",
+          });
+        });
+
+        return { sent: true };
+      });
+      ",
+            },
+            "metadata": {
+              "category": "communication",
+              "description": "A small durable workflow for verifying that Telegram events, workflow sleeps, and delayed replies are configured correctly.",
+              "name": "Telegram test command",
+              "summary": "Send a delayed Telegram reply when a chat receives the /test command.",
+              "tags": [
+                "telegram",
+                "testing",
+                "workflow",
+              ],
+            },
+            "owner": {
+              "publisherName": "Fragno",
+              "scope": {
+                "kind": "system",
+              },
+            },
+            "rootFiles": {
+              "README.md": "# Telegram test command
+
+      This Marketplace item installs a durable workflow that responds to the \`/test\` Telegram command
+      after a three-second delay.
+      ",
+            },
+            "slug": "telegram-test-command",
+            "version": "1.2.1",
+          },
         ],
       }
     `);
@@ -248,7 +435,112 @@ describe("static Marketplace entries", () => {
       }),
     }).toMatchInlineSnapshot(`
       {
-        "afterLatest": null,
+        "afterLatest": {
+          "files": {
+            ".marketplace/install.workflow.js": "defineWorkflow({ name: "install-telegram-test-command" }, async (event, step) => {
+        const workflowScriptPath =
+          event.payload.installedFiles["automations/telegram-test-command.workflow.js"];
+        if (!workflowScriptPath) {
+          throw new Error("Telegram test command workflow was not installed.");
+        }
+
+        await step.do("ensure Telegram /test route", async () => {
+          const desired = {
+            id: "telegram-test-command",
+            name: "Telegram /test command",
+            trigger: {
+              kind: "event",
+              source: "telegram",
+              eventType: "message.received",
+              matcher: { path: "$.payload.text", op: "eq", value: "/test" },
+            },
+            priority: 110,
+            action: {
+              kind: "start_workflow",
+              remoteWorkflowName: "telegram-test-command",
+              workflowScriptPath,
+              instanceIdTemplate: "telegram-test-\${event.id}",
+            },
+            managedBy: {
+              kind: "marketplace",
+              listingId: event.payload.listingId,
+              resourceKey: "telegram-test-command-route",
+              version: event.payload.version,
+            },
+          };
+          const existing = await router.get({ id: desired.id });
+          if (!existing) {
+            return await router.create({ ...desired, enabled: true });
+          }
+
+          const managedBy = existing.metadata?.managedBy;
+          const ownedByThisInstallation =
+            managedBy?.kind === "marketplace" &&
+            managedBy.listingId === event.payload.listingId &&
+            managedBy.resourceKey === desired.managedBy.resourceKey;
+          if (!ownedByThisInstallation) {
+            throw new Error(
+              "Automation route 'telegram-test-command' already exists and is not managed by this Marketplace installation.",
+            );
+          }
+
+          return await router.update({
+            ...desired,
+            enabled: existing.enabled,
+          });
+        });
+      });
+      ",
+            "automations/telegram-test-command.workflow.js": "defineWorkflow({ name: "telegram-test-command" }, async (event, step) => {
+        const automationEvent = event.payload.automationEvent;
+        const text = automationEvent.payload.text;
+        const chatId = automationEvent.payload.chatId;
+
+        if (text !== "/test") {
+          return { skipped: true, reason: "not-test-command" };
+        }
+
+        await step.sleep("wait 3 seconds", "3 seconds");
+
+        await step.do("send delayed test reply", async () => {
+          await telegram.sendMessage({
+            chatId,
+            text: "Telegram integration verified after a 3 second delay.",
+            parseMode: "Markdown",
+          });
+        });
+
+        return { sent: true };
+      });
+      ",
+          },
+          "metadata": {
+            "category": "communication",
+            "description": "A small durable workflow for verifying that Telegram events, workflow sleeps, and delayed replies are configured correctly.",
+            "name": "Telegram test command",
+            "summary": "Send a delayed Telegram reply when a chat receives the /test command.",
+            "tags": [
+              "telegram",
+              "testing",
+              "workflow",
+            ],
+          },
+          "owner": {
+            "publisherName": "Fragno",
+            "scope": {
+              "kind": "system",
+            },
+          },
+          "rootFiles": {
+            "README.md": "# Telegram test command
+
+      This Marketplace item installs a durable workflow that responds to the \`/test\` Telegram command
+      after a three-second delay.
+      ",
+          },
+          "slug": "telegram-test-command",
+          "version": "1.2.1",
+        },
         "exact": {
           "files": {
             "automations/telegram-test-command.workflow.js": "defineWorkflow({ name: "telegram-test-command" }, async (event, step) => {

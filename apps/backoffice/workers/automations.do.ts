@@ -726,8 +726,10 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
 
   async requestMarketplaceIngestion(
     rawInput: MarketplaceIngestionRequestInput,
+    context: BackofficeActionRpcContext,
   ): Promise<MarketplaceIngestionRequestResult> {
     const scope = this.#requireScope();
+    assertAutomationObjectScope(scope, context.execution.scope);
     if (scope.kind !== "org") {
       throw new Error("Marketplace ingestion requires an organization Automations object.");
     }
@@ -792,8 +794,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
             ...input,
             version,
             metadata: {
-              [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]:
-                createAutomationsObjectExecution(scope).actors,
+              [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: context.execution.actors,
             },
           },
         },

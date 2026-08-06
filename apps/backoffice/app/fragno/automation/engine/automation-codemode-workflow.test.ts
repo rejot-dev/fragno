@@ -1,19 +1,25 @@
 import { describe, expect, test, assert } from "vitest";
 
-import {
-  createAutomationCodemodeWorkflowInstanceInput,
-  createManualAutomationEvent,
-} from "./workflow-start";
+import { AUTOMATION_SYSTEM_INITIATOR } from "../actors";
+import type { AutomationEvent } from "../contracts";
+import { createAutomationCodemodeWorkflowInstanceInput } from "./workflow-start";
 
-describe("automation workflow start helpers", () => {
+describe("automation codemode workflow", () => {
   test("manual workflow params carry the instance id into workflowInstanceId", () => {
-    const event = createManualAutomationEvent({
-      orgId: "org-1",
+    const event: AutomationEvent = {
+      id: "run-org-1-test",
+      scope: { kind: "org", orgId: "org-1" },
       source: "manual",
       eventType: "manual.run",
+      occurredAt: "2026-08-06T12:00:00.000Z",
       payload: { value: 42 },
-      id: "run-org-1-test",
-    });
+      actors: {
+        initiator: AUTOMATION_SYSTEM_INITIATOR,
+        principal: null,
+        delegation: [],
+      },
+      subject: { orgId: "org-1" },
+    };
     const input = createAutomationCodemodeWorkflowInstanceInput({
       event,
       workflowScriptPath: "/workspace/automations/demo.workflow.js",
@@ -23,6 +29,10 @@ describe("automation workflow start helpers", () => {
 
     assert(input.instanceId === "run-org-1-test");
     expect(input.params.workflowInstanceId).toBe(input.instanceId);
+    expect(input.params.script).toEqual({
+      kind: "file",
+      path: "/workspace/automations/demo.workflow.js",
+    });
     expect(input.params.automationEvent.payload).toEqual({ value: 42 });
     expect(input.params.idempotencyKey).toBe(input.instanceId);
   });

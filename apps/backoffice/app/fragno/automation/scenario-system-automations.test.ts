@@ -396,14 +396,6 @@ describe("system automation scenarios", () => {
                   workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
                 },
               },
-              {
-                id: "telegram-test-command",
-                action: {
-                  kind: "start_workflow",
-                  remoteWorkflowName: "telegram-test-command",
-                  workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
-                },
-              },
             ],
           }),
 
@@ -640,7 +632,10 @@ describe("system automation scenarios", () => {
             instanceId: "workspace-file-initialization-skip",
             params: {
               automationEvent: systemUnrelatedEvent,
-              workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
+              script: {
+                kind: "file",
+                path: "/system/automations/workspace-file-initialization.workflow.js",
+              },
             },
           }),
 

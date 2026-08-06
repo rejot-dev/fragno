@@ -21,12 +21,10 @@ import {
 } from "@fragno-dev/workflow-visualizer";
 
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import type { AutomationEventPayload } from "@/fragno/automation/contracts";
+import type { AutomationEvent, AutomationEventPayload } from "@/fragno/automation/contracts";
 import {
   AUTOMATION_CODEMODE_WORKFLOW,
   createAutomationCodemodeWorkflowInstanceInput,
-  createManualAutomationEvent,
-  sanitizeWorkflowInstanceId,
 } from "@/fragno/automation/engine/workflow-start";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
@@ -313,14 +311,18 @@ export async function runWorkflow({
     };
   }
 
-  const instanceId = sanitizeWorkflowInstanceId(`run-${orgId}-${crypto.randomUUID()}`);
-  const automationEvent = createManualAutomationEvent({
-    orgId,
+  const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
+  const instanceId = `run-${orgId}-${crypto.randomUUID()}`.replaceAll(/[^A-Za-z0-9_-]/g, "-");
+  const automationEvent: AutomationEvent = {
+    id: instanceId,
+    scope: { kind: "org", orgId },
     source,
     eventType,
+    occurredAt: new Date().toISOString(),
     payload,
-    id: instanceId,
-  });
+    actors: execution.actors,
+    subject: { orgId },
+  };
   const workflowInput = createAutomationCodemodeWorkflowInstanceInput({
     event: automationEvent,
     workflowScriptPath: view.source.absolutePath,
@@ -329,7 +331,6 @@ export async function runWorkflow({
   });
 
   try {
-    const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
     const runtime = createRouteBackedAutomationWorkflowRuntime({
       object: getAutomationsDurableObject(context, orgId),
       execution,

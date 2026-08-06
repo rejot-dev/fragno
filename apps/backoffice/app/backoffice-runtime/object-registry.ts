@@ -218,6 +218,7 @@ export type AutomationsObject = FetchObject &
     requestStaticMarketplacePublications(): Promise<MarketplaceStaticPublicationResult>;
     requestMarketplaceIngestion(
       input: MarketplaceIngestionRequestInput,
+      context: BackofficeActionRpcContext,
     ): Promise<MarketplaceIngestionRequestResult>;
     getMarketplaceIngestion(
       input: MarketplaceIngestionLookupInput,

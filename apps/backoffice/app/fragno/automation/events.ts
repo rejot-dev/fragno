@@ -3,7 +3,7 @@ import { z } from "zod";
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 
 import { automationActorsSchema } from "./actors";
-import type { AutomationEventSubject } from "./contracts";
+import type { AutomationEvent, AutomationEventSubject } from "./contracts";
 
 const idSchema = z.preprocess((value) => {
   if (typeof value === "string") {
@@ -25,7 +25,7 @@ const automationEventSubjectSchema: z.ZodType<AutomationEventSubject> = z
   })
   .catchall(z.unknown());
 
-const automationEventRecordSchema = z.object({
+export const automationEventSchema = z.object({
   id: idSchema,
   scope: backofficeContextScopeSchema,
   source: z.string().trim().min(1),
@@ -34,6 +34,9 @@ const automationEventRecordSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
   actors: automationActorsSchema,
   subject: z.preprocess((value) => value ?? null, automationEventSubjectSchema.nullable()),
+}) satisfies z.ZodType<AutomationEvent>;
+
+const automationEventRecordSchema = automationEventSchema.extend({
   createdAt: z.iso.datetime().optional(),
 });
 

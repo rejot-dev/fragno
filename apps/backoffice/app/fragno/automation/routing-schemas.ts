@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { automationActorsSchema } from "./actors";
 import { AUTOMATION_CODEMODE_WORKFLOW } from "./engine/workflow-start";
 import { automationScheduleCadenceSchema } from "./route-triggers";
 import { isAutomationActorProvenancePath } from "./routing";
@@ -8,6 +9,7 @@ import type {
   AutomationEventMatcher,
   AutomationRouteDefinition,
   AutomationForwardEventAction,
+  AutomationRouteManagedBy,
   AutomationRouteTrigger,
   AutomationRouteAction,
   AutomationRouteScopeTemplate,
@@ -173,6 +175,21 @@ export const automationRouteActionSchema = z
     codemodeInputId: "AutomationRouteActionInput",
   }) satisfies z.ZodType<AutomationRouteAction>;
 
+export const automationRouteManagedBySchema: z.ZodType<AutomationRouteManagedBy> = z
+  .strictObject({
+    kind: z.literal("marketplace"),
+    listingId: z.string().trim().min(1),
+    resourceKey: z.string().trim().min(1),
+    version: z.string().trim().min(1),
+  })
+  .meta({ id: "AutomationRouteManagedBy" });
+
+const automationRouteMetadataSchema = z.strictObject({
+  createdByActors: automationActorsSchema,
+  updatedByActors: automationActorsSchema,
+  managedBy: automationRouteManagedBySchema.nullable(),
+});
+
 const automationRouteTriggerSchema: z.ZodType<AutomationRouteTrigger> = z
   .discriminatedUnion("kind", [
     z.object({
@@ -197,6 +214,7 @@ export const automationRouteSchema: z.ZodType<AutomationRouteDefinition> = z
     trigger: automationRouteTriggerSchema,
     action: automationRouteActionSchema,
     description: z.string().nullable().optional(),
+    metadata: automationRouteMetadataSchema.nullable(),
     nextOccurrenceAt: z.iso.datetime().nullable(),
   })
   .meta({ id: "AutomationRoute" });
@@ -209,6 +227,7 @@ export const automationRouteCreateInputSchema = z.object({
   trigger: automationRouteTriggerSchema,
   action: automationRouteActionSchema,
   description: z.string().nullable().optional(),
+  managedBy: automationRouteManagedBySchema.nullable().optional(),
 });
 
 const automationRouteUpdateObjectSchema = z.object({
@@ -219,6 +238,7 @@ const automationRouteUpdateObjectSchema = z.object({
   trigger: automationRouteTriggerSchema.optional(),
   action: automationRouteActionSchema.optional(),
   description: z.string().nullable().optional(),
+  managedBy: automationRouteManagedBySchema.nullable().optional(),
 });
 
 export const automationRouteUpdatePayloadSchema = automationRouteUpdateObjectSchema

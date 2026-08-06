@@ -1,5 +1,6 @@
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
+import type { AutomationActors } from "./actors";
 import type { AutomationInternalHooks } from "./internal-hooks";
 import { normalizeAutomationRoute } from "./route-records";
 import {
@@ -26,6 +27,7 @@ const authoredRouteEqual = (
     trigger: unknown;
     action: unknown;
     description?: string | null;
+    managedBy: unknown;
   },
   right: {
     name: string;
@@ -34,6 +36,7 @@ const authoredRouteEqual = (
     trigger: unknown;
     action: unknown;
     description?: string | null;
+    managedBy: unknown;
   },
 ) =>
   left.name === right.name &&
@@ -41,7 +44,8 @@ const authoredRouteEqual = (
   left.priority === right.priority &&
   JSON.stringify(left.trigger) === JSON.stringify(right.trigger) &&
   JSON.stringify(left.action) === JSON.stringify(right.action) &&
-  (left.description ?? null) === (right.description ?? null);
+  (left.description ?? null) === (right.description ?? null) &&
+  JSON.stringify(left.managedBy) === JSON.stringify(right.managedBy);
 
 export const createAutomationRouteServices = (
   defineService: <TService>(
@@ -86,7 +90,7 @@ export const createAutomationRouteServices = (
         .build();
     },
 
-    createRoute(input: AutomationRouteCreateInput) {
+    createRoute(input: AutomationRouteCreateInput, actors: AutomationActors) {
       const route = automationRouteCreateInputSchema.parse(input);
       if (route.trigger.kind === "schedule") {
         validateAutomationScheduleCadence(route.trigger.cadence);
@@ -102,6 +106,11 @@ export const createAutomationRouteServices = (
             trigger: route.trigger,
             action: route.action,
             description: route.description ?? null,
+            metadata: {
+              createdByActors: actors,
+              updatedByActors: actors,
+              managedBy: route.managedBy ?? null,
+            },
             createdAt: uow.now(),
             updatedAt: uow.now(),
           });
@@ -121,13 +130,27 @@ export const createAutomationRouteServices = (
             }
           }
 
-          return { ...route, nextOccurrenceAt: null };
+          return {
+            id: route.id,
+            name: route.name,
+            enabled: route.enabled,
+            priority: route.priority,
+            trigger: route.trigger,
+            action: route.action,
+            description: route.description ?? null,
+            metadata: {
+              createdByActors: actors,
+              updatedByActors: actors,
+              managedBy: route.managedBy ?? null,
+            },
+            nextOccurrenceAt: null,
+          };
         })
         .transform(({ mutateResult }) => mutateResult)
         .build();
     },
 
-    updateRoute(input: AutomationRouteUpdateInput) {
+    updateRoute(input: AutomationRouteUpdateInput, actors: AutomationActors) {
       const patch = automationRouteUpdateInputSchema.parse(input);
       if (patch.trigger?.kind === "schedule") {
         validateAutomationScheduleCadence(patch.trigger.cadence);
@@ -158,8 +181,17 @@ export const createAutomationRouteServices = (
             action: patch.action ?? current.action,
             description:
               "description" in patch ? (patch.description ?? null) : (current.description ?? null),
+            managedBy:
+              "managedBy" in patch
+                ? (patch.managedBy ?? null)
+                : (current.metadata?.managedBy ?? null),
           };
-          if (authoredRouteEqual(current, merged)) {
+          if (
+            authoredRouteEqual(
+              { ...current, managedBy: current.metadata?.managedBy ?? null },
+              merged,
+            )
+          ) {
             return current;
           }
 
@@ -185,6 +217,11 @@ export const createAutomationRouteServices = (
                 trigger: merged.trigger,
                 action: merged.action,
                 description: merged.description,
+                metadata: {
+                  createdByActors: current.metadata?.createdByActors ?? actors,
+                  updatedByActors: actors,
+                  managedBy: merged.managedBy,
+                },
                 updatedAt: uow.now(),
               })
               .check(),
@@ -218,7 +255,18 @@ export const createAutomationRouteServices = (
           }
 
           return {
-            ...merged,
+            id: merged.id,
+            name: merged.name,
+            enabled: merged.enabled,
+            priority: merged.priority,
+            trigger: merged.trigger,
+            action: merged.action,
+            description: merged.description,
+            metadata: {
+              createdByActors: current.metadata?.createdByActors ?? actors,
+              updatedByActors: actors,
+              managedBy: merged.managedBy,
+            },
             nextOccurrenceAt:
               isScheduled && merged.enabled && !needsInitialization
                 ? current.nextOccurrenceAt

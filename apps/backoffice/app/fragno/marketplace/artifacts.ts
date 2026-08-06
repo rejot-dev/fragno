@@ -5,6 +5,10 @@ import { marketplaceListingIdSchema, marketplaceVersionSchema } from "./contract
 
 const TEXT_ENCODER = new TextEncoder();
 
+export const MARKETPLACE_INSTALL_WORKFLOW_PATH = ".marketplace/install.workflow.js";
+export const isMarketplaceInternalArtifactPath = (relativePath: string) =>
+  relativePath === ".marketplace" || relativePath.startsWith(".marketplace/");
+
 export type MarketplaceStaticArtifactVersion = Pick<MarketplaceStaticEntry, "version"> & {
   files: Readonly<Record<string, string>>;
 };

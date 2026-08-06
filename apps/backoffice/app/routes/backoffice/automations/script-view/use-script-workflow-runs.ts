@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { z } from "zod";
 
 import type { WorkflowVisualizationSnapshot } from "@fragno-dev/workflow-visualizer-tokens";
 
@@ -12,6 +13,10 @@ import {
   selectScriptWorkflowRun,
   type AutomationWorkflowRun,
 } from "./workflow-run-presentation";
+
+const codemodeWorkflowScriptReferenceSchema = z.object({
+  script: z.object({ path: z.string() }),
+});
 
 export type WorkflowRunCollections = Pick<
   AutomationCollections,
@@ -150,8 +155,20 @@ export function useWorkflowRunRecords({
         ? "Workflow synchronization failed."
         : null;
 
+  type PersistedAutomationWorkflowRun = Omit<AutomationWorkflowRun, "workflowScriptPath"> & {
+    params: unknown;
+  };
+  const persistedInstances = (runsQuery.data ?? []) as unknown as PersistedAutomationWorkflowRun[];
+  const instances: AutomationWorkflowRun[] = persistedInstances.map(({ params, ...instance }) => {
+    const scriptReference = codemodeWorkflowScriptReferenceSchema.safeParse(params);
+    return {
+      ...instance,
+      workflowScriptPath: scriptReference.success ? scriptReference.data.script.path : null,
+    };
+  });
+
   return {
-    instances: (runsQuery.data ?? []) as AutomationWorkflowRun[],
+    instances,
     error,
     isLoading: Boolean(selector && collections && !runsQuery.isReady),
   };

@@ -16,6 +16,7 @@ import {
 import type { AutomationEvent } from "./contracts";
 import type { AutomationWorkflowsService } from "./definition";
 import { createAutomationFragment } from "./index";
+import { setAutomationRouteMutationActors } from "./route-routes";
 
 const createAutomation = async (
   options: {
@@ -114,13 +115,6 @@ describe("automation routes /routes", () => {
               remoteWorkflowName: "telegram-user-linking",
             }),
           }),
-          expect.objectContaining({
-            id: "telegram-test-command",
-            action: expect.objectContaining({
-              kind: "start_workflow",
-              remoteWorkflowName: "telegram-test-command",
-            }),
-          }),
         ]),
       );
     }
@@ -165,6 +159,12 @@ describe("automation routes /routes", () => {
           workflowScriptPath: "/workspace/automations/telegram-hello.workflow.js",
           instanceIdTemplate: "telegram-hello-${event}",
         },
+        managedBy: {
+          kind: "marketplace",
+          listingId: "system#telegram-hello",
+          resourceKey: "telegram-hello-route",
+          version: "1.0.0",
+        },
       },
     });
 
@@ -178,6 +178,16 @@ describe("automation routes /routes", () => {
       priority: 1000,
     });
     expect(createResponse.data.action).not.toHaveProperty("workflowName");
+    expect(createResponse.data.metadata).toMatchObject({
+      createdByActors: BACKOFFICE_SYSTEM_ACTORS,
+      updatedByActors: BACKOFFICE_SYSTEM_ACTORS,
+      managedBy: {
+        kind: "marketplace",
+        listingId: "system#telegram-hello",
+        resourceKey: "telegram-hello-route",
+        version: "1.0.0",
+      },
+    });
 
     const updateResponse = await fragment.callRoute("PATCH", "/routes/:routeId", {
       pathParams: { routeId: "telegram-hello" },
@@ -205,6 +215,78 @@ describe("automation routes /routes", () => {
         }),
       });
     }
+  });
+
+  test("ignores caller-supplied route mutation actors", async () => {
+    const callerSuppliedActors = {
+      initiator: actor,
+      principal: null,
+      delegation: [],
+    } as const;
+    const response = await fragment.callRoute("POST", "/routes", {
+      body: {
+        id: "caller-attribution",
+        name: "Caller attribution",
+        enabled: true,
+        priority: 1000,
+        trigger: {
+          kind: "event",
+          source: "custom",
+          eventType: "received",
+          matcher: null,
+        },
+        action: {
+          kind: "start_workflow",
+          remoteWorkflowName: "caller-attribution",
+          workflowScriptPath: "/workspace/automations/caller-attribution.workflow.js",
+          instanceIdTemplate: "caller-attribution-${event.id}",
+        },
+        mutationActors: callerSuppliedActors,
+      } as never,
+    });
+
+    assert(response.type === "json");
+    expect(response.data.metadata).toMatchObject({
+      createdByActors: BACKOFFICE_SYSTEM_ACTORS,
+      updatedByActors: BACKOFFICE_SYSTEM_ACTORS,
+    });
+  });
+
+  test("uses route mutation actors attached by trusted middleware", async () => {
+    const trustedActors = {
+      initiator: actor,
+      principal: null,
+      delegation: [],
+    } as const;
+    const contextualFragment = (await createAutomation()).withMiddleware(({ request }) => {
+      setAutomationRouteMutationActors(request, trustedActors);
+    });
+    const response = await contextualFragment.callRoute("POST", "/routes", {
+      body: {
+        id: "trusted-attribution",
+        name: "Trusted attribution",
+        enabled: true,
+        priority: 1000,
+        trigger: {
+          kind: "event",
+          source: "custom",
+          eventType: "received",
+          matcher: null,
+        },
+        action: {
+          kind: "start_workflow",
+          remoteWorkflowName: "trusted-attribution",
+          workflowScriptPath: "/workspace/automations/trusted-attribution.workflow.js",
+          instanceIdTemplate: "trusted-attribution-${event.id}",
+        },
+      },
+    });
+
+    assert(response.type === "json");
+    expect(response.data.metadata).toMatchObject({
+      createdByActors: trustedActors,
+      updatedByActors: trustedActors,
+    });
   });
 
   test("system routes can forward events to an organization scope", async () => {

@@ -29,7 +29,11 @@ const manifests = import.meta.glob<string>("../../../content/marketplace/*/manif
 });
 const artifacts = Object.entries(
   import.meta.glob<string>(
-    ["../../../content/marketplace/**/*", "!../../../content/marketplace/*/manifest.json"],
+    [
+      "../../../content/marketplace/**/*",
+      "../../../content/marketplace/**/.marketplace/**/*",
+      "!../../../content/marketplace/*/manifest.json",
+    ],
     {
       eager: true,
       query: "?raw",

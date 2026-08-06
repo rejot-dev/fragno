@@ -101,16 +101,6 @@ describe("automation content", () => {
             eventType: "message.received",
           }),
           action: expect.objectContaining({
-            remoteWorkflowName: "telegram-test-command",
-            workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
-          }),
-        }),
-        expect.objectContaining({
-          trigger: expect.objectContaining({
-            source: "telegram",
-            eventType: "message.received",
-          }),
-          action: expect.objectContaining({
             remoteWorkflowName: "telegram-user-pi-linking",
             workflowScriptPath: "/workspace/automations/telegram-user-pi-linking.workflow.js",
           }),

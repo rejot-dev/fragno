@@ -8,6 +8,7 @@ type AutomationRouteRow = {
   trigger: AutomationRouteTrigger;
   action: AutomationRouteDefinition["action"];
   description: string | null;
+  metadata: AutomationRouteDefinition["metadata"];
 };
 
 type AutomationRouteScheduleStateRow = {
@@ -34,6 +35,7 @@ export const normalizeAutomationRoute = (
     trigger: row.trigger,
     action: row.action,
     description: row.description,
+    metadata: row.metadata,
     nextOccurrenceAt: scheduleState?.nextOccurrenceAt?.toISOString() ?? null,
   };
 };

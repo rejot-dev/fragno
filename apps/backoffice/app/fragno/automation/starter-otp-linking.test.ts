@@ -102,7 +102,10 @@ const identityClaimCompletedEvent = ({
 const telegramLinkingWorkflowParams = (input: { instanceId: string; event: AutomationEvent }) => ({
   automationEvent: input.event,
   workflowInstanceId: input.instanceId,
-  workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
+  script: {
+    kind: "file" as const,
+    path: "/workspace/automations/telegram-user-linking.workflow.js",
+  },
 });
 
 describe("starter OTP linking automation in memory", () => {

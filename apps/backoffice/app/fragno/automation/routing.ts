@@ -89,6 +89,19 @@ type AutomationRouteScheduleTrigger = {
 
 export type AutomationRouteTrigger = AutomationRouteEventTrigger | AutomationRouteScheduleTrigger;
 
+export type AutomationRouteManagedBy = {
+  kind: "marketplace";
+  listingId: string;
+  resourceKey: string;
+  version: string;
+};
+
+export type AutomationRouteMetadata = {
+  createdByActors: AutomationEvent["actors"];
+  updatedByActors: AutomationEvent["actors"];
+  managedBy: AutomationRouteManagedBy | null;
+};
+
 export type AutomationRouteDefinition = {
   id: string;
   name: string;
@@ -97,6 +110,7 @@ export type AutomationRouteDefinition = {
   trigger: AutomationRouteTrigger;
   action: AutomationRouteAction;
   description?: string | null;
+  metadata?: AutomationRouteMetadata | null;
   nextOccurrenceAt: string | null;
 };
 

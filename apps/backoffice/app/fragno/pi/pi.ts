@@ -26,7 +26,7 @@ import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { createBackofficeFileSystem, type MasterFileSystem } from "@/files";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { automationActorsSchema } from "@/fragno/automation/actors";
-import { PI_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
+import { PI_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/pi-codemode-workflow";
 import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-dts";
 
 import type {

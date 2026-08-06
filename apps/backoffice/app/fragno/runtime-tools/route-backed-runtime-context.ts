@@ -2,6 +2,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
+import type { AutomationActors } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
 import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
 import { createRouteBackedAutomationIdentityRuntime } from "@/fragno/automation/external-identities-route-runtime";
@@ -41,6 +42,7 @@ export type RouteBackedRuntimeContextOptions = {
   runtime: BackofficeRuntimeServices;
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
+  emittedEventActors?: AutomationActors;
   pi?: { runtime: PiRuntime } | null;
 };
 
@@ -81,6 +83,7 @@ export const createRouteBackedRuntimeContext = ({
   runtime,
   kernel,
   execution,
+  emittedEventActors,
   pi,
 }: RouteBackedRuntimeContextOptions): InteractiveRuntimeToolContext => {
   const org = ownerOrgScope(execution);
@@ -104,6 +107,7 @@ export const createRouteBackedRuntimeContext = ({
           scope,
           ...(execution.userAuthority ? { userAuthority: execution.userAuthority } : {}),
         },
+        emittedEventActors,
         pi,
       });
     },
@@ -135,6 +139,7 @@ export const createRouteBackedRuntimeContext = ({
         objects: runtime.objects,
         kernel,
         execution,
+        emittedEventActors,
       }),
     },
     automations: {

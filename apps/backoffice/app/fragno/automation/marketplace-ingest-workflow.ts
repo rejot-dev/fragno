@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import {
   createBackofficeServiceExecution,
+  createBackofficeSystemExecution,
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import type { UploadObject } from "@/backoffice-runtime/object-registry";
@@ -19,7 +20,11 @@ import {
   UploadFileWriteConflictError,
   type PreparedUploadFileWrite,
 } from "@/files/contributors/upload";
-import { normalizeMarketplaceArtifactPath } from "@/fragno/marketplace/artifacts";
+import {
+  isMarketplaceInternalArtifactPath,
+  MARKETPLACE_INSTALL_WORKFLOW_PATH,
+  normalizeMarketplaceArtifactPath,
+} from "@/fragno/marketplace/artifacts";
 import {
   marketplaceListingIdSchema,
   marketplaceVersionSchema,
@@ -28,6 +33,9 @@ import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import type { UploadFragment } from "@/fragno/upload-server";
 import { sha256Hex } from "@/lib/crypto";
 
+import type { AutomationFileSystemConfig } from "./catalog";
+import type { AutomationEvent } from "./contracts";
+import { UNTRUSTED_CODEMODE_WORKFLOW } from "./engine/untrusted-codemode-workflow";
 import type { createAutomationFragment } from "./index";
 import {
   marketplaceFileContentsMatch,
@@ -51,8 +59,14 @@ import {
   throwMarketplaceUploadRouteError,
   throwUnexpectedMarketplaceUploadResponse,
 } from "./marketplace-upload-errors";
+import {
+  WORKFLOW_COMPLETED_EVENT_TYPE,
+  type WorkflowCompletedEventPayload,
+  withWorkflowCompletionTarget,
+} from "./workflow-completion";
 
 export const MARKETPLACE_INGEST_WORKFLOW_NAME = "marketplace-ingest";
+const MARKETPLACE_INSTALL_REMOTE_WORKFLOW_NAME = "marketplace-install";
 const MARKETPLACE_ARTIFACT_LIST_PAGE_SIZE = 500;
 const MARKETPLACE_ARTIFACT_MAX_LIST_PAGES = 5;
 const TEXT_ENCODER = new TextEncoder();
@@ -181,11 +195,28 @@ export const buildMarketplaceIngestionWorkflowInstanceId = async (input: {
     ),
   )}`;
 
-type MarketplaceIngestWorkflowConfig = {
+type MarketplaceIngestWorkflowConfig = AutomationFileSystemConfig & {
   ownerScope: BackofficeContextScope;
+  env?: CloudflareEnv;
   runtime?: BackofficeRuntimeServices;
   getAutomationFragment: () => ReturnType<typeof createAutomationFragment> | undefined;
 };
+
+type MarketplaceInstallationWorkflowInput = {
+  listingId: string;
+  version: string;
+  previousVersion: string | null;
+  targetScope: BackofficeRoutableScope;
+  installationRoot: "/workspace";
+  installedFiles: Record<string, string>;
+  previousInstalledFiles: Record<string, string>;
+};
+
+const marketplaceInstalledFiles = (files: MarketplaceIngestionSourceFile[]) =>
+  Object.fromEntries(files.map((file) => [file.relativePath, `/workspace/${file.relativePath}`]));
+
+const marketplaceInstallationSubject = (scope: BackofficeRoutableScope) =>
+  scope.kind === "user" ? { userId: scope.userId } : { orgId: scope.orgId };
 
 export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflowConfig) =>
   defineWorkflow(
@@ -428,11 +459,19 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
         );
       }
 
-      const sourceFiles = artifactFiles.requested;
-      if (sourceFiles.length === 0) {
+      const requestedArtifactFiles = artifactFiles.requested;
+      if (requestedArtifactFiles.length === 0) {
         throw new NonRetryableError("Marketplace artifact contains no files.");
       }
-      const previousSourceFiles = artifactFiles.installed;
+      const installationWorkflowFile = requestedArtifactFiles.find(
+        (file) => file.relativePath === MARKETPLACE_INSTALL_WORKFLOW_PATH,
+      );
+      const sourceFiles = requestedArtifactFiles.filter(
+        (file) => !isMarketplaceInternalArtifactPath(file.relativePath),
+      );
+      const previousSourceFiles = artifactFiles.installed.filter(
+        (file) => !isMarketplaceInternalArtifactPath(file.relativePath),
+      );
       const requestedSourceFilesByPath = new Map(
         sourceFiles.map((source) => [source.relativePath, source]),
       );
@@ -470,13 +509,7 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
         },
       );
 
-      const execution = createBackofficeServiceExecution({
-        scope: input.targetScope,
-        service: {
-          type: "automation",
-          id: `marketplace-ingest:${artifact.listingId}@${artifact.version}`,
-        },
-      });
+      const execution = createBackofficeSystemExecution(input.targetScope);
       const targetFileSystem = createUploadFileSystem(
         createSystemFilesContext({
           objects: runtime.objects,
@@ -650,6 +683,81 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
           }
         },
       );
+
+      if (installationWorkflowFile) {
+        const installationInput: MarketplaceInstallationWorkflowInput = {
+          listingId: artifact.listingId,
+          version: artifact.version,
+          previousVersion: artifact.previousVersion,
+          targetScope: input.targetScope,
+          installationRoot: "/workspace",
+          installedFiles: marketplaceInstalledFiles(sourceFiles),
+          previousInstalledFiles: marketplaceInstalledFiles(previousSourceFiles),
+        };
+        const installationWorkflowInstanceId = `${event.instanceId}:installation`;
+        const installationActors = createBackofficeServiceExecution({
+          scope: input.targetScope,
+          service: {
+            type: "automation",
+            id: `automation:${installationWorkflowInstanceId}`,
+          },
+        }).actors;
+        const installationEvent: AutomationEvent = {
+          id: installationWorkflowInstanceId,
+          scope: input.targetScope,
+          source: "marketplace",
+          eventType: "installation.requested",
+          occurredAt: event.timestamp.toISOString(),
+          payload: installationInput,
+          actors: installationActors,
+          subject: marketplaceInstallationSubject(input.targetScope),
+        };
+
+        await step.do("start marketplace installation workflow", (tx) => {
+          tx.workflowServiceCalls(() => [
+            {
+              type: "createInstance",
+              workflowName: UNTRUSTED_CODEMODE_WORKFLOW,
+              remoteWorkflowName: MARKETPLACE_INSTALL_REMOTE_WORKFLOW_NAME,
+              instanceId: installationWorkflowInstanceId,
+              params: withWorkflowCompletionTarget(
+                {
+                  source: {
+                    object: { kind: "name", name: artifact.uploadName },
+                    provider: UPLOAD_PROVIDER_DATABASE,
+                    key: installationWorkflowFile.fileKey,
+                  },
+                  scriptPath: MARKETPLACE_INSTALL_WORKFLOW_PATH,
+                  automationEvent: installationEvent,
+                  workflowEventPayload: installationInput,
+                  metadata: input.metadata,
+                },
+                {
+                  workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+                  instanceId: event.instanceId,
+                },
+              ),
+            },
+          ]);
+        });
+
+        const completion = await step.waitForEvent<WorkflowCompletedEventPayload>(
+          "wait for marketplace installation workflow",
+          { type: WORKFLOW_COMPLETED_EVENT_TYPE },
+        );
+        if (
+          completion.payload.workflowName !== UNTRUSTED_CODEMODE_WORKFLOW ||
+          completion.payload.instanceId !== installationWorkflowInstanceId
+        ) {
+          throw new NonRetryableError("Received an unexpected workflow completion event.");
+        }
+        if (completion.payload.status !== "complete") {
+          throw new NonRetryableError(
+            completion.payload.error?.message ??
+              `Marketplace installation workflow ended with status '${completion.payload.status}'.`,
+          );
+        }
+      }
 
       await step.do(
         "record successful marketplace ingestion",

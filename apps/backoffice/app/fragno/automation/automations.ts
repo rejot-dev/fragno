@@ -17,17 +17,16 @@ import {
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { createAutomationFragment, type AutomationFragmentConfig } from "@/fragno/automation";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
-import {
-  defineAutomationCodemodeWorkflow,
-  definePiCodemodeWorkflow,
-} from "@/fragno/automation/engine/workflow";
+import { defineAutomationCodemodeWorkflow } from "@/fragno/automation/engine/automation-codemode-workflow";
+import { definePiCodemodeWorkflow } from "@/fragno/automation/engine/pi-codemode-workflow";
+import { defineUntrustedCodemodeWorkflow } from "@/fragno/automation/engine/untrusted-codemode-workflow";
+import { AUTOMATION_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
 import {
   createPiRuntimeDefinition,
   type CreatePiRuntimeDefinitionOptions,
   type PiFragment,
   type PiRuntimeToolContext,
 } from "@/fragno/pi/pi";
-import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
 import {
   createPiFragmentRuntime,
   type PiRuntime,
@@ -35,8 +34,14 @@ import {
 
 import { defineMarketplaceIngestWorkflow } from "./marketplace-ingest-workflow";
 import { defineMarketplacePublishWorkflow } from "./marketplace-publish-workflow";
+import { setAutomationRouteMutationActors } from "./route-routes";
 import { defineSandboxLifecycleWorkflow } from "./sandbox-lifecycle-workflow";
 import { SANDBOX_LIFECYCLE_WORKFLOW_NAME } from "./sandboxes-storage-runtime";
+import {
+  parseWorkflowCompletionTarget,
+  WORKFLOW_COMPLETED_EVENT_TYPE,
+  WORKFLOW_COMPLETION_PARAM,
+} from "./workflow-completion";
 
 type AutomationFragmentWithExecutionContext = ReturnType<
   typeof createAutomationFragment<BackofficeExecutionContext>
@@ -117,6 +122,15 @@ export const createAutomationsRuntime = (
             }),
           }),
         }),
+        UNTRUSTED_CODEMODE_SCRIPT: defineUntrustedCodemodeWorkflow({
+          ...config,
+          createPiAutomationContext: ({ event }) => ({
+            runtime: createHostedPiRuntime({
+              scope: event.scope,
+              actors: event.actors,
+            }),
+          }),
+        }),
         PI_CODEMODE_SCRIPT: definePiCodemodeWorkflow(config),
         MARKETPLACE_PUBLISH: defineMarketplacePublishWorkflow({
           ownerScope: config.ownerScope,
@@ -124,7 +138,10 @@ export const createAutomationsRuntime = (
         }),
         MARKETPLACE_INGEST: defineMarketplaceIngestWorkflow({
           ownerScope: config.ownerScope,
+          env: config.env,
           runtime: config.runtime,
+          automationFileSystem: config.automationFileSystem,
+          getAutomationFileSystem: config.getAutomationFileSystem,
           getAutomationFragment: () => automationFragment,
         }),
         SANDBOX_LIFECYCLE: defineSandboxLifecycleWorkflow({
@@ -136,18 +153,41 @@ export const createAutomationsRuntime = (
       },
       runtime: config.runtime?.fragnoRuntime ?? defaultFragnoRuntime,
       onWorkflowTerminal: async (payload) => {
-        if (payload.workflowName !== SANDBOX_LIFECYCLE_WORKFLOW_NAME) {
-          return;
-        }
-        if (!automationFragment) {
-          throw new Error("Sandbox lifecycle terminal hook requires the automations fragment.");
+        if (payload.workflowName === SANDBOX_LIFECYCLE_WORKFLOW_NAME) {
+          if (!automationFragment) {
+            throw new Error("Sandbox lifecycle terminal hook requires the automations fragment.");
+          }
+
+          const fragment = automationFragment;
+          await fragment.callServices(() =>
+            fragment.services.stopSandboxInstanceForTerminalWorkflow({
+              workflowInstanceId: payload.instanceId,
+            }),
+          );
         }
 
-        const fragment = automationFragment;
-        await fragment.callServices(() =>
-          fragment.services.stopSandboxInstanceForTerminalWorkflow({
-            workflowInstanceId: payload.instanceId,
-          }),
+        const completionTarget = parseWorkflowCompletionTarget(payload.params);
+        if (!completionTarget) {
+          return;
+        }
+
+        await workflowsFragment.callServices(() =>
+          workflowsFragment.services.sendEvent(
+            completionTarget.workflowName,
+            completionTarget.instanceId,
+            {
+              id: `workflow-completed:${payload.instanceRef}`,
+              type: WORKFLOW_COMPLETED_EVENT_TYPE,
+              payload: {
+                workflowName: payload.workflowName,
+                instanceId: payload.instanceId,
+                status: payload.status,
+                ...(payload.output === undefined ? {} : { output: payload.output }),
+                ...(payload.error === undefined ? {} : { error: payload.error }),
+              },
+              ignoreTerminal: true,
+            },
+          ),
         );
       },
     },
@@ -170,6 +210,24 @@ export const createAutomationsRuntime = (
         403,
       );
     }
+
+    const rejectNonPublicWorkflowMutation = (workflowName: string) => {
+      const isTrustedSystemExecution =
+        requestContext.actors.initiator.scope === "internal" &&
+        requestContext.actors.initiator.type === "system" &&
+        requestContext.actors.principal === null;
+      if (workflowName === AUTOMATION_CODEMODE_WORKFLOW || isTrustedSystemExecution) {
+        return undefined;
+      }
+
+      return error(
+        {
+          message: "This workflow can only be mutated through its owning internal service.",
+          code: "WORKFLOW_NOT_FOUND",
+        },
+        404,
+      );
+    };
 
     const authorize = async (
       operation:
@@ -199,14 +257,9 @@ export const createAutomationsRuntime = (
       "POST",
       "/:workflowName/instances",
       async ({ input, pathParams }) => {
-        if (pathParams.workflowName === BACKOFFICE_PI_WORKFLOW_NAME) {
-          return error(
-            {
-              message: "Interactive Pi sessions must be created through the Pi API.",
-              code: "WORKFLOW_NOT_FOUND",
-            },
-            404,
-          );
+        const internalWorkflowResponse = rejectNonPublicWorkflowMutation(pathParams.workflowName);
+        if (internalWorkflowResponse) {
+          return internalWorkflowResponse;
         }
         const authorization = await authorize(BACKOFFICE_PERMISSION.workflow.modify, {
           kind: "workflow",
@@ -220,6 +273,15 @@ export const createAutomationsRuntime = (
           values.params && typeof values.params === "object" && !Array.isArray(values.params)
             ? values.params
             : {};
+        if (Object.hasOwn(params, WORKFLOW_COMPLETION_PARAM)) {
+          return error(
+            {
+              message: "Workflow completion targets can only be set by internal services.",
+              code: "WORKFLOW_COMPLETION_TARGET_NOT_ALLOWED",
+            },
+            400,
+          );
+        }
         requestState.setBody({
           ...values,
           params: {
@@ -246,14 +308,9 @@ export const createAutomationsRuntime = (
       "POST",
       "/:workflowName/instances/batch",
       async ({ input, pathParams }) => {
-        if (pathParams.workflowName === BACKOFFICE_PI_WORKFLOW_NAME) {
-          return error(
-            {
-              message: "Interactive Pi sessions must be created through the Pi API.",
-              code: "WORKFLOW_NOT_FOUND",
-            },
-            404,
-          );
+        const internalWorkflowResponse = rejectNonPublicWorkflowMutation(pathParams.workflowName);
+        if (internalWorkflowResponse) {
+          return internalWorkflowResponse;
         }
         const authorization = await authorize(BACKOFFICE_PERMISSION.workflow.modify, {
           kind: "workflow",
@@ -263,6 +320,23 @@ export const createAutomationsRuntime = (
           return authorization;
         }
         const values = await input.valid();
+        if (
+          values.instances.some(
+            ({ params }) =>
+              params &&
+              typeof params === "object" &&
+              !Array.isArray(params) &&
+              Object.hasOwn(params, WORKFLOW_COMPLETION_PARAM),
+          )
+        ) {
+          return error(
+            {
+              message: "Workflow completion targets can only be set by internal services.",
+              code: "WORKFLOW_COMPLETION_TARGET_NOT_ALLOWED",
+            },
+            400,
+          );
+        }
         requestState.setBody({
           ...values,
           instances: values.instances.map((instance) => ({
@@ -326,14 +400,9 @@ export const createAutomationsRuntime = (
     ] as const;
     for (const route of mutationRoutes) {
       const response = await ifMatchesRoute("POST", route, async ({ pathParams }, _output) => {
-        if (pathParams.workflowName === BACKOFFICE_PI_WORKFLOW_NAME) {
-          return error(
-            {
-              message: "Interactive Pi sessions must be mutated through the Pi API.",
-              code: "WORKFLOW_NOT_FOUND",
-            },
-            404,
-          );
+        const internalWorkflowResponse = rejectNonPublicWorkflowMutation(pathParams.workflowName);
+        if (internalWorkflowResponse) {
+          return internalWorkflowResponse;
         }
         return await authorize(BACKOFFICE_PERMISSION.workflow.modify, {
           kind: "workflow",
@@ -378,10 +447,19 @@ export const createAutomationsRuntime = (
     {
       workflows: workflowsFragment.services,
     },
-  ).withMiddleware(async function authorizeAutomationStoreMutations(
-    { ifMatchesRoute, requestContext },
+  ).withMiddleware(async function authorizeAutomationMutations(
+    { ifMatchesRoute, request, requestContext },
     { error },
   ) {
+    const attachRouteMutationActors = () => {
+      if (requestContext) {
+        setAutomationRouteMutationActors(request, requestContext.actors);
+      }
+    };
+
+    await ifMatchesRoute("POST", "/routes", attachRouteMutationActors);
+    await ifMatchesRoute("PATCH", "/routes/:routeId", attachRouteMutationActors);
+
     const authorizeStoreMutation = async (readInput: () => Promise<{ key: string }>) => {
       if (!requestContext) {
         return error(
