@@ -504,6 +504,12 @@ export type WorkflowTerminalHookPayload = {
   instanceId: string;
   instanceRef: string;
   status: "complete" | "errored" | "terminated";
+  params: unknown;
+  output?: unknown;
+  error?: {
+    name: string;
+    message: string;
+  };
 };
 
 export type WorkflowsHooks = {

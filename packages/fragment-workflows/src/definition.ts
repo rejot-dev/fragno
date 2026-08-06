@@ -795,6 +795,16 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               instanceId: instance.instanceId,
               instanceRef: String(instance.id),
               status: "terminated",
+              params: instance.params,
+              ...(instance.output == null ? {} : { output: instance.output }),
+              ...(instance.errorName || instance.errorMessage
+                ? {
+                    error: {
+                      name: instance.errorName ?? "Error",
+                      message: instance.errorMessage ?? "",
+                    },
+                  }
+                : {}),
             } satisfies WorkflowTerminalHookPayload);
             return buildInstanceStatus({
               status: "terminated",

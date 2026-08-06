@@ -138,6 +138,8 @@ describe("workflows scenario DSL", () => {
                   workflowName: "sleep-workflow",
                   instanceId: "terminal-hook-1",
                   status: "complete",
+                  params: { note: "alpha" },
+                  output: { note: "alpha" },
                 }),
               }),
             ]),
