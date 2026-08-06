@@ -209,13 +209,14 @@ describe("executeCodemodeAutomation", () => {
           }),
           script: `defineWorkflow(
             { name: "configure-upload-connection" },
-            async (_event, step) => {
-              return await step.do("configure upload database connection", async () => {
-                return await connections.configure({
+            async (event, step) => {
+              return await step.do("configure upload database connection", async () => ({
+                ...(await connections.configure({
                   id: "upload",
                   payload: { provider: "database" },
-                });
-              });
+                })),
+                eventId: event.id,
+              }));
             },
           );`,
         }),
@@ -246,6 +247,7 @@ describe("executeCodemodeAutomation", () => {
           id: "upload",
           configured: true,
           config: { provider: "database" },
+          eventId: "event-workflow-configure-upload",
         }),
       }),
     });

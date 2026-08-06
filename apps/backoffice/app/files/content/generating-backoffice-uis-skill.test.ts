@@ -119,7 +119,7 @@ describe("generating Backoffice UIs skill", () => {
     expect(catalogReference).toContain("Props type:");
     expect(catalogReference).toContain("- columns: 1-12 items");
     expect(catalogReference).toContain("- rows[].*: at most 2000 characters");
-    expect(skill).toContain("Raw HTML, scripts, iframes, embeds, arbitrary URLs");
+    expect(skill).toMatch(/Raw HTML, scripts, iframes, embeds, arbitrary\s+URLs/u);
     expect(skill).toContain('read expressions such as `{ "$state": "/path" }` at any depth');
     expect(skill).toContain('`{ "$bindState": "/path" }` only as the complete top-level value');
 
@@ -249,7 +249,7 @@ describe("generating Backoffice UIs skill", () => {
     expect(systemGuidance).toContain("Immediate work uses a top-level async function");
     expect(systemGuidance).toContain('state.find("/workspace"');
     expect(systemGuidance).not.toContain('state.find("/events"');
-    expect(systemGuidance).toContain("Define a durable workflow directly at the top level");
+    expect(systemGuidance).toMatch(/Define a durable workflow\s+directly at the top level/u);
     expect(systemGuidance).toContain("Do not wrap `defineWorkflow` inside an async function");
     expect(systemGuidance).toContain("the returned handle alone is not completion");
     expect(systemGuidance).toContain(
@@ -259,18 +259,18 @@ describe("generating Backoffice UIs skill", () => {
     expect(systemGuidance).toContain(
       "`/sources` contains dynamically discovered APIs for the current context",
     );
-    expect(systemGuidance).toContain(
-      "confirm the method exists, required services are configured, scopes are concrete, and event types are exact",
+    expect(systemGuidance).toMatch(
+      /confirm the method exists, required services are configured, scopes are\s+concrete, and event types are exact/u,
     );
     expect(systemGuidance).toContain("report an unavailable requirement as blocking");
     expect(systemGuidance).toContain("Classify execution errors from their messages");
-    expect(systemGuidance).toContain("Report success only from an executed result");
+    expect(systemGuidance).toMatch(/Report\s+success only from an executed result/u);
     expect(systemGuidance).toContain("A scope is the ownership and authorization boundary");
     expect(systemGuidance).toContain("context.current.store.get(...)");
     expect(systemGuidance).toContain("context.org(orgId)");
     expect(systemGuidance).toContain("context.user(userId)");
     expect(systemGuidance).toContain("context.project(projectId)");
-    expect(systemGuidance).toContain("only visible in system/admin contexts");
+    expect(systemGuidance).toMatch(/only visible in\s+system\/admin contexts/u);
     expect(systemGuidance).toContain("must return JSON-serializable values");
     expect(systemGuidance).not.toMatch(/bash/iu);
     expect(systemGuidance).not.toContain("BackofficeUiResult");

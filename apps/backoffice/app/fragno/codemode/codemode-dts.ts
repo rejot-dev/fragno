@@ -13,6 +13,8 @@ import {
 } from "@/fragno/runtime-tools/reference";
 import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime-tools";
 
+import codemodeSystemTypesTemplate from "../../../content/static/codemode/system.d.ts?raw";
+
 const CODEMODE_TYPES_DIR_PATH = "/static/codemode";
 export const CODEMODE_SYSTEM_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/system.d.ts`;
 export const CODEMODE_STATE_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/state.d.ts`;
@@ -61,6 +63,18 @@ const renderReference = (path: string) => {
 
 const renderDtsContent = (...sections: string[]) => `${sections.join("\n")}\n`;
 
+const renderCodemodeSystemTypes = ({
+  references,
+  scopedContext,
+}: {
+  references: string;
+  scopedContext: string;
+}) =>
+  codemodeSystemTypesTemplate
+    .replace("/* __BACKOFFICE_CODEMODE_REFERENCES__ */", references)
+    .replace("/* __BACKOFFICE_CODEMODE_SCOPED_CONTEXT__ */", scopedContext)
+    .trimEnd();
+
 const getStaticRuntimeToolReferences = (families: readonly BackofficeRuntimeToolFamily[]) => {
   const staticFamilies: BackofficeRuntimeToolFamily[] = [];
 
@@ -108,7 +122,10 @@ export const createCodemodeTypeFiles = ({
     ([namespace, namespaceReferences]) => ({
       path: typePathForNamespace(CODEMODE_PROVIDER_TYPES_DIR_PATH, namespace),
       content: renderDtsContent(
-        renderCodemodeProviderNamespaceTypes({ namespace, references: namespaceReferences }),
+        renderCodemodeProviderNamespaceTypes({
+          namespace,
+          references: namespaceReferences,
+        }),
       ),
     }),
   );
@@ -116,7 +133,10 @@ export const createCodemodeTypeFiles = ({
     ([namespace, namespaceReferences]) => ({
       path: typePathForNamespace(CODEMODE_SOURCE_TYPES_DIR_PATH, namespace),
       content: renderDtsContent(
-        renderCodemodeProviderNamespaceTypes({ namespace, references: namespaceReferences }),
+        renderCodemodeProviderNamespaceTypes({
+          namespace,
+          references: namespaceReferences,
+        }),
       ),
     }),
   );
@@ -134,9 +154,10 @@ export const createCodemodeTypeFiles = ({
     {
       path: CODEMODE_SYSTEM_DTS_PATH,
       content: renderDtsContent(
-        ...referencePaths.map(renderReference),
-        "",
-        renderCodemodeScopedContextTypes(allNamespaces),
+        renderCodemodeSystemTypes({
+          references: referencePaths.map(renderReference).join("\n"),
+          scopedContext: renderCodemodeScopedContextTypes(allNamespaces),
+        }),
       ),
     },
     {

@@ -13,7 +13,6 @@ import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-run
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
-import { TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE } from "@/files/content/telegram-test-command";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { loadAutomationCatalog } from "@/fragno/automation/catalog";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
@@ -32,6 +31,7 @@ import {
   createWorkflowsRouteCaller,
 } from "@/fragno/automation/route-callers";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -48,7 +48,11 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   };
 });
 
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
+vi.mock("cloudflare:workers", () => ({
+  DurableObject,
+  RpcTarget,
+  WorkerEntrypoint,
+}));
 
 import { createDefaultAutomationFileSystem } from "./automations.do";
 
@@ -167,7 +171,9 @@ describe("Automations fetchWithContext authorization", () => {
         },
         subject: { userId: scope.userId },
       });
-      const automations = runtime.objects.automations.forUser({ userId: scope.userId });
+      const automations = runtime.objects.automations.forUser({
+        userId: scope.userId,
+      });
       const callRoute = createAutomationsRouteCaller({
         object: automations,
         context: { execution },
@@ -210,7 +216,10 @@ describe("Automations fetchWithContext authorization", () => {
 
     try {
       const scope = { kind: "system" as const };
-      const execution = createBackofficeUserExecution({ scope, userId: "admin-1" });
+      const execution = createBackofficeUserExecution({
+        scope,
+        userId: "admin-1",
+      });
       const automations = runtime.objects.automations.singleton();
       const callActionRoute = createAutomationsRouteCaller({
         object: automations,
@@ -226,7 +235,9 @@ describe("Automations fetchWithContext authorization", () => {
         data: { key: "system/key", value: "value" },
       });
       await expect(
-        callActionRoute("POST", "/store/delete", { body: { key: "system/key" } }),
+        callActionRoute("POST", "/store/delete", {
+          body: { key: "system/key" },
+        }),
       ).resolves.toMatchObject({
         type: "json",
         data: { ok: true, key: "system/key" },
@@ -250,11 +261,9 @@ describe("Automations fetchWithContext authorization", () => {
         error: { code: "principal-permission-denied" },
       });
 
-      const deniedEntry = await createAutomationsRouteCaller({ object: automations })(
-        "GET",
-        "/store/get",
-        { query: { key: "system/denied" } },
-      );
+      const deniedEntry = await createAutomationsRouteCaller({
+        object: automations,
+      })("GET", "/store/get", { query: { key: "system/denied" } });
       expect(deniedEntry).toMatchObject({ type: "error", status: 404 });
     } finally {
       await runtime.cleanup();
@@ -319,7 +328,10 @@ describe("Automations fetchWithContext authorization", () => {
 
     try {
       const scope = { kind: "user" as const, userId: "user-1" };
-      const execution = createBackofficeUserExecution({ scope, userId: scope.userId });
+      const execution = createBackofficeUserExecution({
+        scope,
+        userId: scope.userId,
+      });
       const callRoute = createAutomationsRouteCaller({
         object: runtime.objects.automations.forUser({ userId: scope.userId }),
         context: { execution },
@@ -346,7 +358,10 @@ describe("Automations fetchWithContext authorization", () => {
 
     try {
       const scope = { kind: "user" as const, userId: "user-1" };
-      const execution = createBackofficeUserExecution({ scope, userId: scope.userId });
+      const execution = createBackofficeUserExecution({
+        scope,
+        userId: scope.userId,
+      });
       const callRoute = createAutomationsRouteCaller({
         object: runtime.objects.automations.forUser({ userId: scope.userId }),
         context: { execution },
@@ -383,7 +398,10 @@ describe("Automations fetchWithContext authorization", () => {
 
     try {
       const scope = { kind: "user" as const, userId: "user-1" };
-      const userExecution = createBackofficeUserExecution({ scope, userId: scope.userId });
+      const userExecution = createBackofficeUserExecution({
+        scope,
+        userId: scope.userId,
+      });
       const execution: BackofficeExecutionContext = {
         ...userExecution,
         actors: {
@@ -422,7 +440,9 @@ describe("Automations fetchWithContext authorization", () => {
 
     try {
       const scope = { kind: "user" as const, userId: "user-1" };
-      const automations = runtime.objects.automations.forUser({ userId: scope.userId });
+      const automations = runtime.objects.automations.forUser({
+        userId: scope.userId,
+      });
       const callRoute = createAutomationsRouteCaller({ object: automations });
 
       await expect(
@@ -481,7 +501,9 @@ describe("Automations fetchWithContext authorization", () => {
         scope,
         service: { type: "automation", id: "automation:event-1" },
       });
-      const automations = runtime.objects.automations.forUser({ userId: scope.userId });
+      const automations = runtime.objects.automations.forUser({
+        userId: scope.userId,
+      });
 
       const malformedResponse = await automations.fetchWithContext(
         new Request("https://automations.do/api/automations/store/set", {
@@ -501,11 +523,9 @@ describe("Automations fetchWithContext authorization", () => {
       });
       expect(resolvePrincipalPermissions).not.toHaveBeenCalled();
 
-      const response = await createAutomationsRouteCaller({ object: automations })(
-        "GET",
-        "/store/get",
-        { query: { key: "user/key" } },
-      );
+      const response = await createAutomationsRouteCaller({
+        object: automations,
+      })("GET", "/store/get", { query: { key: "user/key" } });
       expect(response).toMatchObject({ type: "error", status: 404 });
     } finally {
       await runtime.cleanup();
@@ -526,7 +546,10 @@ describe("Automations fetchWithContext authorization", () => {
 
     try {
       const scope = { kind: "org" as const, orgId: "org-1" };
-      const execution = createBackofficeUserExecution({ scope, userId: "user-1" });
+      const execution = createBackofficeUserExecution({
+        scope,
+        userId: "user-1",
+      });
       const automations = runtime.objects.automations.forOrg(scope.orgId);
       const forgedActors = {
         initiator: {
@@ -580,7 +603,10 @@ describe("Automations fetchWithContext authorization", () => {
       ).resolves.toMatchObject({ type: "json", data: { id: body.id } });
 
       const instance = await trustedCall("GET", "/:workflowName/instances/:instanceId", {
-        pathParams: { workflowName: PI_CODEMODE_WORKFLOW, instanceId: body.id },
+        pathParams: {
+          workflowName: PI_CODEMODE_WORKFLOW,
+          instanceId: body.id,
+        },
       });
       expect(instance).toMatchObject({
         type: "json",
@@ -603,7 +629,9 @@ describe("Automations fetchWithContext authorization", () => {
     const runtime = await createInMemoryBackofficeRuntime();
 
     try {
-      const automations = runtime.objects.automations.forUser({ userId: "user-1" });
+      const automations = runtime.objects.automations.forUser({
+        userId: "user-1",
+      });
       const execution = createBackofficeServiceExecution({
         scope: { kind: "user", userId: "user-2" },
         service: { type: "automation", id: "automation:event-1" },
@@ -619,11 +647,9 @@ describe("Automations fetchWithContext authorization", () => {
         }),
       ).rejects.toThrow("Backoffice object method scope does not match object address scope.");
 
-      const response = await createAutomationsRouteCaller({ object: automations })(
-        "GET",
-        "/store/get",
-        { query: { key: "user/key" } },
-      );
+      const response = await createAutomationsRouteCaller({
+        object: automations,
+      })("GET", "/store/get", { query: { key: "user/key" } });
       expect(response).toMatchObject({ type: "error", status: 404 });
     } finally {
       await runtime.cleanup();
@@ -706,7 +732,14 @@ describe("Automations object scope binding", () => {
         .forUser({ userId: "user-1" })
         .fetch(new Request(contentUrl));
       assert(content.ok);
-      await expect(content.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE);
+      const marketplaceEntry = getStaticMarketplaceEntry({
+        slug: "telegram-test-command",
+        version: "1.1.0",
+      });
+      assert(marketplaceEntry);
+      await expect(content.text()).resolves.toBe(
+        marketplaceEntry.files["automations/telegram-test-command.workflow.js"],
+      );
     } finally {
       await runtime.cleanup();
     }
@@ -752,7 +785,10 @@ describe("Automations object scope binding", () => {
       const workflows = createWorkflowsRouteCaller({
         object: automations,
         context: {
-          execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+          execution: createBackofficeSystemExecution({
+            kind: "org",
+            orgId: "org-1",
+          }),
         },
       });
       const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
@@ -791,7 +827,11 @@ describe("Automations object scope binding", () => {
             ownerScope: { kind: "system" },
             slug: "telegram-test-command",
           }),
-          targetScope: { kind: "project", orgId: "org-2", projectId: "project-1" },
+          targetScope: {
+            kind: "project",
+            orgId: "org-2",
+            projectId: "project-1",
+          },
         }),
       ).rejects.toThrow("Marketplace ingestion target belongs to another organization.");
     } finally {
@@ -815,7 +855,10 @@ describe("Automations object scope binding", () => {
       const workflows = createWorkflowsRouteCaller({
         object: automations,
         context: {
-          execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+          execution: createBackofficeSystemExecution({
+            kind: "org",
+            orgId: "org-1",
+          }),
         },
       });
       const created = await workflows("POST", "/:workflowName/instances", {

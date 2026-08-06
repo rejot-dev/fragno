@@ -6,7 +6,7 @@ import { and, eq, queryOnce } from "@tanstack/react-db";
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
-import { TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE } from "@/files/content/telegram-test-command";
+import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 
 import type { AutomationEvent } from "./contracts";
 
@@ -25,14 +25,27 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   };
 });
 
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
+vi.mock("cloudflare:workers", () => ({
+  DurableObject,
+  RpcTarget,
+  WorkerEntrypoint,
+}));
 
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
+const telegramTestCommandEntry = getStaticMarketplaceEntry({
+  slug: "telegram-test-command",
+  version: "1.0.0",
+});
+if (!telegramTestCommandEntry) {
+  throw new Error("Expected the built-in Telegram test command Marketplace entry.");
+}
+
 const marketplaceTelegramTestWorkspace = () =>
   backofficeFiles.workspaceStarter({
-    "automations/telegram-test-command.workflow.js": TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
+    "automations/telegram-test-command.workflow.js":
+      telegramTestCommandEntry.files["automations/telegram-test-command.workflow.js"],
   });
 
 const customAutomationEvent = ({
@@ -141,7 +154,10 @@ describe("starter automation router scenarios", () => {
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, when }) => [
           when.automation.ingestEvent(
-            customAutomationEvent({ id: "tanstack-event-1", payload: { ok: true } }),
+            customAutomationEvent({
+              id: "tanstack-event-1",
+              payload: { ok: true },
+            }),
           ),
           then.assert("assert event is visible through TanStack DB", async (ctx) => {
             const database = ctx.tanstack.automations.forOrg("org-1");
@@ -156,7 +172,10 @@ describe("starter automation router scenarios", () => {
             assert.equal(event?.eventType, "thing.happened");
           }),
           when.automation.ingestEvent(
-            customAutomationEvent({ id: "tanstack-event-2", payload: { updated: true } }),
+            customAutomationEvent({
+              id: "tanstack-event-2",
+              payload: { updated: true },
+            }),
           ),
           then.assert("assert a started TanStack DB scope catches up", async (ctx) => {
             const database = ctx.tanstack.automations.forOrg("org-1");
@@ -263,7 +282,9 @@ describe("starter automation router scenarios", () => {
               remoteWorkflowName: "tanstack-live-step",
               instanceId: "tanstack-live-step-run",
               params: {
-                automationEvent: customAutomationEvent({ id: "tanstack-live-step-event" }),
+                automationEvent: customAutomationEvent({
+                  id: "tanstack-live-step-event",
+                }),
                 workflowScriptPath: "/workspace/automations/tanstack-live-step.workflow.js",
               },
             });
@@ -293,7 +314,9 @@ describe("starter automation router scenarios", () => {
 
                 const emissions = await queryOnce((query) =>
                   query
-                    .from({ emission: database.collections.workflowStepEmissions })
+                    .from({
+                      emission: database.collections.workflowStepEmissions,
+                    })
                     .where(({ emission }) => eq(emission.instanceRef, instance.id)),
                 );
                 return (
@@ -328,7 +351,9 @@ describe("starter automation router scenarios", () => {
               assert.equal(completedStep?.status, "completed");
 
               const remainingEmissions = await queryOnce((query) =>
-                query.from({ emission: database.collections.workflowStepEmissions }),
+                query.from({
+                  emission: database.collections.workflowStepEmissions,
+                }),
               );
               assert.equal(remainingEmissions.length, 0);
             } finally {
@@ -432,8 +457,16 @@ describe("starter automation router scenarios", () => {
 
         steps: ({ when, then }) => [
           when.router.seedStarter({ orgId: "org-1" }),
-          when.router.updateRoute({ orgId: "org-1", id: "telegram-test-command", enabled: false }),
-          then.router.route({ orgId: "org-1", id: "telegram-test-command", enabled: false }),
+          when.router.updateRoute({
+            orgId: "org-1",
+            id: "telegram-test-command",
+            enabled: false,
+          }),
+          then.router.route({
+            orgId: "org-1",
+            id: "telegram-test-command",
+            enabled: false,
+          }),
 
           when.automation.ingestEvent(telegramMessageEvent({ id: "disabled-test", text: "/test" })),
 
@@ -558,7 +591,10 @@ describe("starter automation router scenarios", () => {
           }),
 
           when.automation.ingestEvent(
-            customAutomationEvent({ id: "alpha-1", payload: { kind: "alpha" } }),
+            customAutomationEvent({
+              id: "alpha-1",
+              payload: { kind: "alpha" },
+            }),
           ),
           when.automation.ingestEvent(
             customAutomationEvent({ id: "beta-1", payload: { kind: "beta" } }),
@@ -593,7 +629,11 @@ describe("starter automation router scenarios", () => {
             remoteWorkflowName: "custom-alpha",
             instanceId: "custom-alpha-beta-1",
           }),
-          then.store.entry({ orgId: "org-1", key: "custom/alpha-1", value: "alpha" }),
+          then.store.entry({
+            orgId: "org-1",
+            key: "custom/alpha-1",
+            value: "alpha",
+          }),
           then.assert(
             "assert custom workflow store output is visible through TanStack DB",
             async (ctx) => {
@@ -633,7 +673,11 @@ describe("starter automation router scenarios", () => {
               kind: "event",
               source: "custom",
               eventType: "thing.happened",
-              matcher: { path: "$.payload.kind", op: "eq", value: "missing-file" },
+              matcher: {
+                path: "$.payload.kind",
+                op: "eq",
+                value: "missing-file",
+              },
             },
             priority: 50,
             action: {
@@ -647,7 +691,10 @@ describe("starter automation router scenarios", () => {
 
         steps: ({ when, then }) => [
           when.automation.ingestEvent(
-            customAutomationEvent({ id: "missing-file-1", payload: { kind: "missing-file" } }),
+            customAutomationEvent({
+              id: "missing-file-1",
+              payload: { kind: "missing-file" },
+            }),
           ),
 
           then.workflow.instance({
@@ -698,7 +745,11 @@ describe("starter automation router scenarios", () => {
 );
 `,
           }),
-          given.store.entry({ orgId: "org-1", key: "waiter/alpha", value: "waiter-1" }),
+          given.store.entry({
+            orgId: "org-1",
+            key: "waiter/alpha",
+            value: "waiter-1",
+          }),
           given.router.route({
             orgId: "org-1",
             id: "custom-signal-forwarder",
@@ -715,7 +766,10 @@ describe("starter automation router scenarios", () => {
               kind: "send_workflow_event",
               workflowName: "automation-codemode-script",
               remoteWorkflowName: "custom-waiter",
-              target: { kind: "stored_instance_id", keyTemplate: "waiter/${event.payload.key}" },
+              target: {
+                kind: "stored_instance_id",
+                keyTemplate: "waiter/${event.payload.key}",
+              },
               eventType: "custom-signal",
               payload: "$event",
             },
@@ -728,7 +782,9 @@ describe("starter automation router scenarios", () => {
             remoteWorkflowName: "custom-waiter",
             instanceId: "waiter-1",
             params: {
-              automationEvent: customAutomationEvent({ id: "waiter-bootstrap" }),
+              automationEvent: customAutomationEvent({
+                id: "waiter-bootstrap",
+              }),
               workflowScriptPath: "/workspace/automations/custom-waiter.workflow.js",
             },
           }),
@@ -753,7 +809,11 @@ describe("starter automation router scenarios", () => {
             status: "complete",
             output: { received: "delivered" },
           }),
-          then.store.entry({ orgId: "org-1", key: "signal/alpha", value: "delivered" }),
+          then.store.entry({
+            orgId: "org-1",
+            key: "signal/alpha",
+            value: "delivered",
+          }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
       }),
@@ -801,7 +861,10 @@ describe("starter automation router scenarios", () => {
             orgId: "org-1",
             botUsername: "fragno_bot",
           }),
-          given.pi.defaultAgent({ orgId: "org-1", value: "openai::gpt-5-mini" }),
+          given.pi.defaultAgent({
+            orgId: "org-1",
+            value: "openai::gpt-5-mini",
+          }),
           given.identity.binding({
             orgId: "org-1",
             externalId: "1001",
@@ -1270,9 +1333,15 @@ describe("starter automation router scenarios", () => {
           }),
 
           then.telegram.noMessages(),
-          then.workflow.missing({ remoteWorkflowName: "telegram-user-linking" }),
-          then.workflow.missing({ remoteWorkflowName: "telegram-test-command" }),
-          then.workflow.missing({ remoteWorkflowName: "telegram-user-pi-linking" }),
+          then.workflow.missing({
+            remoteWorkflowName: "telegram-user-linking",
+          }),
+          then.workflow.missing({
+            remoteWorkflowName: "telegram-test-command",
+          }),
+          then.workflow.missing({
+            remoteWorkflowName: "telegram-user-pi-linking",
+          }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
       }),
@@ -1308,16 +1377,28 @@ describe("starter automation router scenarios", () => {
                 chat: { id: 1001, type: "private" },
                 from: { id: 2001, is_bot: false, first_name: "Ada" },
                 date: 1_780_000_000,
-                old_chat_member: { status: "member", user: { id: 123, is_bot: true } },
-                new_chat_member: { status: "kicked", user: { id: 123, is_bot: true } },
+                old_chat_member: {
+                  status: "member",
+                  user: { id: 123, is_bot: true },
+                },
+                new_chat_member: {
+                  status: "kicked",
+                  user: { id: 123, is_bot: true },
+                },
               },
             },
           }),
 
           then.telegram.noMessages(),
-          then.workflow.missing({ remoteWorkflowName: "telegram-user-linking" }),
-          then.workflow.missing({ remoteWorkflowName: "telegram-test-command" }),
-          then.workflow.missing({ remoteWorkflowName: "telegram-user-pi-linking" }),
+          then.workflow.missing({
+            remoteWorkflowName: "telegram-user-linking",
+          }),
+          then.workflow.missing({
+            remoteWorkflowName: "telegram-test-command",
+          }),
+          then.workflow.missing({
+            remoteWorkflowName: "telegram-user-pi-linking",
+          }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
       }),
