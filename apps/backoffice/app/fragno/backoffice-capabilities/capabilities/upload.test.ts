@@ -51,11 +51,14 @@ describe("workspace starter file seeding", () => {
     };
     const objects = {
       upload: {
+        for: vi.fn(() => uploadDo),
         forOrg: vi.fn(() => uploadDo),
       },
     } as unknown as BackofficeObjectRegistry;
 
-    await expect(seedWorkspaceStarterFiles({ objects, orgId: "org-1" })).resolves.toMatchObject({
+    await expect(
+      seedWorkspaceStarterFiles({ objects, scope: { kind: "org", orgId: "org-1" } }),
+    ).resolves.toMatchObject({
       provider: "database",
       created: expect.arrayContaining(["/workspace/AGENTS.md"]),
     });

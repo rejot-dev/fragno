@@ -125,21 +125,10 @@ interface ResendRouteCaller {
   ): Promise<FragnoResponse<ResendThreadMutationOutput>>;
 }
 
-type ResendTarget = string | BackofficeContextScope;
+type ResendTarget = BackofficeContextScope;
 
-const getResendObject = (context: Readonly<RouterContextProvider>, target: ResendTarget) => {
-  const objects = context.get(BackofficeWorkerContext).runtime.objects;
-  if (typeof target === "string") {
-    return objects.resend.forOrg(target);
-  }
-  if (target.kind === "system") {
-    return objects.resend.singleton();
-  }
-  if (target.kind === "org" || target.kind === "project") {
-    return objects.resend.forOrg(target.orgId);
-  }
-  return objects.resend.forOrg(target.userId);
-};
+const getResendObject = (context: Readonly<RouterContextProvider>, scope: ResendTarget) =>
+  context.get(BackofficeWorkerContext).runtime.objects.resend.for(scope);
 
 const createResendRouteCaller = (
   request: Request,
