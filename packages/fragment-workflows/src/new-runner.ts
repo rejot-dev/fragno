@@ -531,7 +531,10 @@ async function markInstanceErrored(
           })
           .check();
       });
-      triggerWorkflowTerminalHook(uow, instance, "errored");
+      triggerWorkflowTerminalHook(uow, instance, {
+        status: "errored",
+        error: { name: error.name, message: error.message },
+      });
       updated = true;
     },
   })

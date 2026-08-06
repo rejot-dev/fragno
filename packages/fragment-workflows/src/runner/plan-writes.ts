@@ -297,9 +297,18 @@ export function applyOutcome(
 
   if (outcome.type !== "suspended") {
     if (outcome.type === "completed") {
-      triggerWorkflowTerminalHook(uow, instance, "complete");
+      triggerWorkflowTerminalHook(uow, instance, {
+        status: "complete",
+        ...(outcome.output == null ? {} : { output: outcome.output }),
+      });
     } else if (outcome.type === "errored") {
-      triggerWorkflowTerminalHook(uow, instance, "errored");
+      triggerWorkflowTerminalHook(uow, instance, {
+        status: "errored",
+        error: {
+          name: outcome.error.name,
+          message: outcome.error.message,
+        },
+      });
     }
     return;
   }
@@ -335,13 +344,14 @@ export function applyOutcome(
 export function triggerWorkflowTerminalHook(
   uow: IUnitOfWork,
   instance: WorkflowInstanceRecord,
-  status: WorkflowTerminalHookPayload["status"],
+  terminal: Pick<WorkflowTerminalHookPayload, "status" | "output" | "error">,
 ) {
   const namespace = uow.forSchema(workflowsSchema).namespace ?? workflowsSchema.name;
   uow.triggerHook(namespace, "onWorkflowTerminal", {
     workflowName: instance.workflowName,
     instanceId: instance.instanceId,
     instanceRef: String(instance.id),
-    status,
+    params: instance.params,
+    ...terminal,
   } satisfies WorkflowTerminalHookPayload);
 }
