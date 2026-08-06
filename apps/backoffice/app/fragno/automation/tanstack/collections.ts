@@ -28,6 +28,10 @@ export type AutomationCollections = {
     typeof automationFragmentSchema,
     "automation_event_definition"
   >;
+  externalIdentityBindings: FragnoCollection<
+    typeof automationFragmentSchema,
+    "external_identity_binding"
+  >;
   workflowInstances: FragnoCollection<typeof workflowsSchema, "workflow_instance">;
   workflowSteps: FragnoCollection<typeof workflowsSchema, "workflow_step">;
   workflowEvents: FragnoCollection<typeof workflowsSchema, "workflow_event">;
@@ -59,6 +63,7 @@ export function createAutomationCollections(options: {
     events: createAutomationTableCollection("automation_event"),
     marketplaceIngestions: createAutomationTableCollection("marketplace_ingestion"),
     eventDefinitions: createAutomationTableCollection("automation_event_definition"),
+    externalIdentityBindings: createAutomationTableCollection("external_identity_binding"),
     workflowInstances: options.createCollection({
       id: options.collectionId("workflows.workflow_instance"),
       coordinator: options.coordinator,

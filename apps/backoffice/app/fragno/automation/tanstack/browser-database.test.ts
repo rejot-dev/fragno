@@ -25,6 +25,16 @@ describe("Automation collection sources", () => {
         ]),
     );
     assert(
+      description.collectionId("external_identity_binding") ===
+        JSON.stringify([
+          "backoffice",
+          "automations",
+          "org:org-1",
+          "adapter-1",
+          "external_identity_binding",
+        ]),
+    );
+    assert(
       description.collectionId("workflows.workflow_step") ===
         JSON.stringify([
           "backoffice",

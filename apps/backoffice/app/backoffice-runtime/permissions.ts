@@ -35,6 +35,7 @@ export const BACKOFFICE_PERMISSION = {
   },
   identity: {
     bind: { namespace: "identity", permission: "bind" },
+    read: { namespace: "identity", permission: "read" },
     resolve: { namespace: "identity", permission: "resolve" },
     revoke: { namespace: "identity", permission: "revoke" },
   },

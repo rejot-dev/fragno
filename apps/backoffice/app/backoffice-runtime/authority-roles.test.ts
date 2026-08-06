@@ -35,6 +35,7 @@ const automationAuthoringPermissions = [
   BACKOFFICE_PERMISSION.events.manage,
   BACKOFFICE_PERMISSION.events.read,
   BACKOFFICE_PERMISSION.hooks.read,
+  BACKOFFICE_PERMISSION.identity.read,
   BACKOFFICE_PERMISSION.otp.create,
   BACKOFFICE_PERMISSION.pi.modify,
   BACKOFFICE_PERMISSION.pi.read,
@@ -97,6 +98,15 @@ describe("Backoffice authority role grants", () => {
       BACKOFFICE_PERMISSION.connections.read,
       ...automationAuthoringPermissions.slice(1),
     ]);
+  });
+
+  test("allows human automation owners to inspect identity bindings", () => {
+    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["user-owner"]).toContain(
+      BACKOFFICE_PERMISSION.identity.read,
+    );
+    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["organization-member"]).toContain(
+      BACKOFFICE_PERMISSION.identity.read,
+    );
   });
 
   test.each(["agent", "capability"] as const)(

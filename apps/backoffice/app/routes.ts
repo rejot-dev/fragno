@@ -208,7 +208,10 @@ export default [
         route("terminal", "routes/backoffice/automations/terminal.tsx"),
         route("scripts", "routes/backoffice/automations/scripts.tsx"),
         route("router", "routes/backoffice/automations/router.tsx"),
-        route("store", "routes/backoffice/automations/store.tsx"),
+        route("store", "routes/backoffice/automations/store-layout.tsx", [
+          index("routes/backoffice/automations/store.tsx"),
+          route("identity-bindings", "routes/backoffice/automations/identity-bindings.tsx"),
+        ]),
         route("api", "routes/backoffice/automations/api.tsx"),
         route("integrations", "routes/backoffice/automations/integrations.tsx"),
         route("events", "routes/backoffice/automations/events.tsx"),

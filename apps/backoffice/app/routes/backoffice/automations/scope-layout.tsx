@@ -37,7 +37,11 @@ import {
   resolveAutomationUiScope,
   toBackofficeScope,
 } from "./scope";
-import { AutomationErrorBoundary, AutomationWorkspaceHeader } from "./shared";
+import {
+  AutomationErrorBoundary,
+  AutomationSubpageTabs,
+  AutomationWorkspaceHeader,
+} from "./shared";
 
 type ProjectActionData = { ok: false; message: string };
 
@@ -390,6 +394,10 @@ export default function BackofficeAutomationScopeLayout({
   const [searchParams] = useSearchParams();
   const isCreatingProject = searchParams.get("createProject") === "1";
   const scopeBasePath = automationScopeBasePath(loaderData.selectedScope);
+  const activeStoreTab = currentPath.split("/").includes("identity-bindings")
+    ? "identity-bindings"
+    : "key-value";
+  const storeBasePath = automationScopeTabPath(loaderData.selectedScope, "store");
 
   return (
     <div className="space-y-4">
@@ -400,6 +408,35 @@ export default function BackofficeAutomationScopeLayout({
         createProjectPath={`${currentPath}?createProject=1`}
         isCreatingProject={isCreatingProject}
         activeTab={activeTab}
+        subpage={
+          activeTab === "store" && !isCreatingProject
+            ? {
+                title: "Store",
+                description:
+                  "Key-value state and external identity bindings for this automation scope.",
+                pathForScope: (scope) => {
+                  const basePath = automationScopeTabPath(scope, "store");
+                  return activeStoreTab === "identity-bindings"
+                    ? `${basePath}/identity-bindings`
+                    : basePath;
+                },
+                navigation: (
+                  <AutomationSubpageTabs
+                    tabs={[
+                      { id: "key-value", label: "Key-value", to: storeBasePath },
+                      {
+                        id: "identity-bindings",
+                        label: "Identity bindings",
+                        to: `${storeBasePath}/identity-bindings`,
+                      },
+                    ]}
+                    activeTab={activeStoreTab}
+                    ariaLabel="Automation store sections"
+                  />
+                ),
+              }
+            : undefined
+        }
       />
       {isCreatingProject ? (
         <CreateProjectPanel actionPath={scopeBasePath} cancelPath={currentPath} />
