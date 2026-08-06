@@ -73,7 +73,6 @@ const createTurnResult = (sessionId: string, assistantText = "assistant:hello") 
     workflowName: "interactive-chat-workflow",
     agent: {
       state,
-      completedStepKeys: [],
     },
     steeringMode: "one-at-a-time" as const,
     metadata: null,
@@ -120,7 +119,6 @@ const createPiRuntime = (overrides: Partial<PiRuntime> = {}): PiRuntime => ({
       workflowName: "interactive-chat-workflow",
       agent: {
         state: { messages: [] },
-        completedStepKeys: [],
       },
       steeringMode: "one-at-a-time",
       metadata: null,
@@ -393,7 +391,6 @@ describe("pi bash command registration", () => {
             workflowName: "interactive-chat-workflow",
             agent: {
               state: { messages: [] },
-              completedStepKeys: [],
             },
             steeringMode: "one-at-a-time",
             metadata: null,
@@ -756,7 +753,6 @@ describe("createPiRouteRuntime", () => {
       workflowName: "interactive-chat-workflow",
       agent: {
         state: { messages: [assistantMessage] },
-        completedStepKeys: [],
       },
       status: "waiting",
       name: "route-session",
@@ -818,7 +814,6 @@ describe("createPiRouteRuntime", () => {
                   workflowName: "interactive-chat-workflow",
                   agent: {
                     state: { messages: [] },
-                    completedStepKeys: [],
                   },
                   status: "waiting",
                   name: "route-session",
@@ -1016,7 +1011,6 @@ describe("createPiRouteRuntime", () => {
       workflowName: "interactive-chat-workflow",
       agent: {
         state: { messages: [assistantMessage] },
-        completedStepKeys: [],
       },
       status: "waiting",
       name: "route-session",
@@ -1149,7 +1143,6 @@ describe("createPiRouteRuntime", () => {
                   state: {
                     messages: [previousAssistantMessage, toolResultMessage, finalAssistantMessage],
                   },
-                  completedStepKeys: [],
                 },
                 status: "waiting",
                 name: "route-session",
@@ -1257,7 +1250,7 @@ describe("createPiRouteRuntime", () => {
                 id: "session-2",
                 model: "assistant",
                 workflowName: "interactive-chat-workflow",
-                agent: { state: { messages: [] }, completedStepKeys: [] },
+                agent: { state: { messages: [] } },
                 status: "waiting",
                 name: "route-session",
                 steeringMode: "all",

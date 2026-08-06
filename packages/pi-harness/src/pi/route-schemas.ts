@@ -46,14 +46,12 @@ const workflowStatusSchema = z.object({
 
 const piAgentStateSnapshotSchema = z.object({
   messages: z.array(agentMessageSchema),
-  errorMessage: z.string().optional(),
 });
 
 const sessionDetailSchema = sessionBaseSchema.extend({
   workflow: workflowStatusSchema,
   agent: z.object({
     state: piAgentStateSnapshotSchema,
-    completedStepKeys: z.array(z.string()),
   }),
 });
 
@@ -80,6 +78,10 @@ const commandInputSchema = z.discriminatedUnion("kind", [
     kind: z.literal("promptFromTemplate"),
     input: z.object({ name: z.string(), args: z.array(z.string()).optional() }),
   }),
+  z.object({
+    kind: z.literal("compact"),
+    input: z.object({ customInstructions: z.string().optional() }),
+  }),
   z.object({ kind: z.literal("abort"), reason: z.string().optional() }),
   z.object({ kind: z.literal("steer"), input: promptInputSchema }),
   z.object({ kind: z.literal("followUp"), input: promptInputSchema }),
@@ -98,6 +100,11 @@ const piSessionCommandPayloadSchema: z.ZodType<PiSessionCommandPayload> = z.disc
       commandId: z.string(),
       kind: z.literal("promptFromTemplate"),
       input: z.object({ name: z.string(), args: z.array(z.string()).optional() }),
+    }),
+    z.object({
+      commandId: z.string(),
+      kind: z.literal("compact"),
+      input: z.object({ customInstructions: z.string().optional() }),
     }),
     z.object({ commandId: z.string(), kind: z.literal("abort"), reason: z.string().optional() }),
     z.object({ commandId: z.string(), kind: z.literal("steer"), input: promptInputSchema }),

@@ -32,6 +32,11 @@
       "types": "./dist/browser/client/workflow-lofi-session-projection.d.ts",
       "default": "./dist/browser/client/workflow-lofi-session-projection.js"
     },
+    "./context-usage": {
+      "types": "./dist/browser/pi/context-usage.d.ts",
+      "browser": "./dist/browser/pi/context-usage.js",
+      "default": "./dist/node/pi/context-usage.js"
+    },
     "./definition": {
       "types": "./dist/node/pi/definition.d.ts",
       "default": "./dist/node/pi/definition.js"

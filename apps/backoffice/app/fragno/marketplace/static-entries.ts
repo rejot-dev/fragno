@@ -42,9 +42,15 @@ export const STATIC_MARKETPLACE_ENTRIES = Object.entries(manifests).map(
   ([manifestPath, source]): MarketplaceStaticArtifactListing => {
     const manifest = marketplaceManifestSchema.parse(JSON.parse(source));
     const listingDirectory = manifestPath.slice(0, -"manifest.json".length);
-    const listingFiles = artifacts
-      .filter(([path]) => path.startsWith(listingDirectory))
-      .map(([path, content]) => [path.slice(listingDirectory.length), content] as const);
+    const listingFiles = artifacts.reduce<Array<readonly [string, string]>>(
+      (files, [path, content]) => {
+        if (path.startsWith(listingDirectory)) {
+          files.push([path.slice(listingDirectory.length), content]);
+        }
+        return files;
+      },
+      [],
+    );
 
     return {
       owner: manifest.owner,
@@ -56,9 +62,12 @@ export const STATIC_MARKETPLACE_ENTRIES = Object.entries(manifests).map(
         return {
           version,
           files: Object.fromEntries(
-            listingFiles
-              .filter(([path]) => path.startsWith(versionDirectory))
-              .map(([path, content]) => [path.slice(versionDirectory.length), content]),
+            listingFiles.reduce<Array<readonly [string, string]>>((files, [path, content]) => {
+              if (path.startsWith(versionDirectory)) {
+                files.push([path.slice(versionDirectory.length), content]);
+              }
+              return files;
+            }, []),
           ),
         };
       }),

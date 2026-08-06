@@ -262,9 +262,9 @@ export class WorkflowBackedSessionStorage<
         break;
       }
       if (current.type === "compaction") {
-        if (current.retainedTail) {
-          break;
-        }
+        // Retained tails are context snapshots, not replacements for their original tree entries.
+        // Repeated compaction must keep walking to the first retained entry so Pi can summarize
+        // that history instead of counting it while treating it as inaccessible.
         stopAtEntryId = current.firstKeptEntryId ?? null;
       }
       if (!current.parentId) {

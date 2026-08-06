@@ -20,7 +20,7 @@ describe("projectPiSessionCollectionRows", () => {
     });
 
     assert(projection.status === "loading");
-    expect(projection.state).toEqual({ messages: [] });
+    expect(projection.contextMessages).toEqual([]);
     expect(projection.completedStepKeys).toEqual([]);
     expect(projection.error).toBeNull();
   });
@@ -32,9 +32,9 @@ describe("projectPiSessionCollectionRows", () => {
       synchronized: true,
     });
 
-    assert(projection.status === "error");
-    expect(projection.error?.message).toContain("session-1 was not found");
-    expect(projection.state).toEqual({ messages: [] });
+    assert(projection.status === "not-found");
+    expect(projection.error.message).toContain("session-1 was not found");
+    expect(projection.contextMessages).toEqual([]);
   });
 
   it("removes speculative downstream Pi emissions from a losing execution", () => {
@@ -57,7 +57,10 @@ describe("projectPiSessionCollectionRows", () => {
           stepKey: "do:contested",
           executionId: "losing-execution",
           epoch: "losing-contested-epoch",
-          payload: { phase: "contested" },
+          payload: {
+            kind: "pi-session-command-start",
+            command: { commandId: "compact-1", kind: "compact" },
+          },
           createdAt: new Date("2026-07-30T12:00:00.000Z"),
         },
         {
@@ -79,6 +82,7 @@ describe("projectPiSessionCollectionRows", () => {
     });
 
     expect(projection.draftAgentMessage).toBeNull();
+    expect(projection.activeCommand).toBeNull();
   });
 
   it("keeps a projected local instance non-interactive until all related rows synchronize", () => {
@@ -90,7 +94,7 @@ describe("projectPiSessionCollectionRows", () => {
 
     assert(projection.status === "loading");
     assert(!projection.readyForInput);
-    assert(projection.statusText === "Loading…");
-    expect(projection.state).toEqual({ messages: [] });
+    expect(projection.activity).toBeNull();
+    expect(projection.contextMessages).toEqual([]);
   });
 });

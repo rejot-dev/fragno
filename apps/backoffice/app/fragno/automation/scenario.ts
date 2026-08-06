@@ -1022,7 +1022,6 @@ const createFakePiApi = (
             ]
           : [],
       },
-      completedStepKeys: [],
     },
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,

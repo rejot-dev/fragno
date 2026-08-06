@@ -40,7 +40,7 @@ import { createSessionProjectionDataStore } from "../../client/workflow-lofi-ses
 import { piSchema } from "../../schema";
 import { recordFauxPiHarnessPrompt } from "../pi-test-utils";
 import {
-  emptyPiWorkflowSessionProjectionState,
+  createLoadingPiWorkflowSessionProjection,
   projectPiWorkflowSession,
   type PiWorkflowSessionProjectionState,
 } from "../workflow-session-projection";
@@ -183,7 +183,7 @@ const createMeasuredSessionProjectionDataStore = (
           ),
       ),
     {
-      initialData: emptyPiWorkflowSessionProjectionState(),
+      initialData: createLoadingPiWorkflowSessionProjection({ workflowName, sessionId }),
       map: ([rawInstance]) => {
         const startedAt = performance.now();
         metrics.projectionRuns += 1;
@@ -296,7 +296,7 @@ const createOutboxFetcher = (getEntries: () => readonly OutboxEntry[]): typeof f
   }) as typeof fetch;
 
 const assistantTextLength = (projection: PiWorkflowSessionProjectionState): number => {
-  const message = projection.draftAgentMessage?.assistant ?? projection.state.messages.at(-1);
+  const message = projection.draftAgentMessage?.assistant ?? projection.contextMessages.at(-1);
   if (message?.role !== "assistant") {
     return 0;
   }

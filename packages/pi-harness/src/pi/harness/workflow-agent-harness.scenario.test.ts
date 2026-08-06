@@ -42,7 +42,7 @@ import {
 } from "../workflows/workflow-agent-harness";
 import { schedulePiOperationCompletedHook } from "./pi-operation-completed";
 import { sessionEntriesLeafId } from "./session-storage";
-import { createModelsForStreamFn } from "./test-models";
+import { createModelsForStreamFn, mockAgentHarnessCompaction } from "./test-models";
 
 const mockModel: Model<Api> = {
   id: "test-model",
@@ -181,6 +181,18 @@ const createToolCallStreamFn =
 
 const messageText = (message: AssistantMessage): string =>
   message.content.flatMap((content) => (content.type === "text" ? [content.text] : [])).join("");
+
+const agentMessageText = (message: AgentMessage): string => {
+  if (!("content" in message)) {
+    return "";
+  }
+  if (typeof message.content === "string") {
+    return message.content;
+  }
+  return message.content
+    .flatMap((content) => (content.type === "text" ? [content.text] : []))
+    .join("");
+};
 
 const toPreviousEmissions = (payloads: readonly unknown[]): WorkflowStepEmission[] =>
   payloads.map((payload, sequence) => ({
@@ -2218,6 +2230,214 @@ describe("workflow-backed AgentHarness scenario", () => {
                 role: "toolResult",
                 content: [{ type: "text", text: "classified:handoff" }],
                 details: { stoppedBy: "workflow-option" },
+              });
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("persists manual compaction and restores its context for the next prompt", async () => {
+    const largeContinuation = "continue ".repeat(7_000);
+    const observedContexts: Array<Array<{ role: string; text: string }>> = [];
+    const streamFn = vi.fn<StreamFn>((model, context, options) => {
+      observedContexts.push(
+        context.messages.map((message) => ({
+          role: message.role,
+          text:
+            typeof message.content === "string"
+              ? message.content
+              : message.content
+                  .flatMap((content) => (content.type === "text" ? [content.text] : []))
+                  .join(""),
+        })),
+      );
+      return createTextStreamFn("continued after compaction")(model, context, options);
+    });
+    const compactWorkflow = defineWorkflow(
+      { name: "workflow-agent-harness-manual-compaction" },
+      async (event, step) => {
+        const initialMessages: AgentMessage[] = [];
+        for (let turn = 0; turn < 4; turn += 1) {
+          initialMessages.push({
+            role: "user",
+            content: `turn-${turn} `.repeat(7_000),
+            timestamp: Date.UTC(2026, 6, 1, 12, turn * 2),
+          });
+          initialMessages.push({
+            ...createAssistantMessage(`response-${turn}`),
+            timestamp: Date.UTC(2026, 6, 1, 12, turn * 2 + 1),
+          });
+        }
+
+        let state = createPiHarnessSessionState({
+          metadata: {
+            id: event.instanceId,
+            createdAt: event.timestamp.toISOString(),
+          },
+          initialMessages,
+        });
+        const models = createModelsForStreamFn(mockModel, streamFn);
+
+        const compactResult = await step.do("compact", async (tx) => {
+          const { session, storage, options } = restoreWorkflowBackedSession({
+            operationId: `${event.instanceId}:compact`,
+            state,
+            previousEmissions: await tx.previousEmissions(),
+            models,
+          });
+          const harness = new AgentHarness({ models, model: mockModel, ...options });
+          mockAgentHarnessCompaction(harness, {
+            summary: "Earlier turns established the durable compaction contract.",
+            details: { source: "scenario-test" },
+          });
+
+          return await withWorkflowAgentHarness({
+            session,
+            storage,
+            harness,
+            tx,
+            runDurableStep: () => harness.compact("Keep the compaction contract."),
+          });
+        });
+        state = applyWorkflowAgentHarnessStepResult(state, compactResult);
+
+        const promptResult = await step.do("prompt-after-compact", async (tx) => {
+          const { session, storage, options } = restoreWorkflowBackedSession({
+            operationId: `${event.instanceId}:prompt-after-compact`,
+            state,
+            previousEmissions: await tx.previousEmissions(),
+            models,
+          });
+          const harness = new AgentHarness({ models, model: mockModel, ...options });
+
+          return await withWorkflowAgentHarness({
+            session,
+            storage,
+            harness,
+            tx,
+            runDurableStep: () => harness.prompt(largeContinuation),
+          });
+        });
+        state = applyWorkflowAgentHarnessStepResult(state, promptResult);
+
+        const secondCompactResult = await step.do("compact-again", async (tx) => {
+          const { session, storage, options } = restoreWorkflowBackedSession({
+            operationId: `${event.instanceId}:compact-again`,
+            state,
+            previousEmissions: await tx.previousEmissions(),
+            models,
+          });
+          const harness = new AgentHarness({ models, model: mockModel, ...options });
+          let summarizedTexts: string[] = [];
+          let previousSummary: string | undefined;
+          mockAgentHarnessCompaction(harness, (compactEvent) => {
+            summarizedTexts = compactEvent.preparation.messagesToSummarize.map(agentMessageText);
+            previousSummary = compactEvent.preparation.previousSummary;
+            return { summary: "Updated durable compaction contract." };
+          });
+
+          return await withWorkflowAgentHarness({
+            session,
+            storage,
+            harness,
+            tx,
+            runDurableStep: async () => ({
+              compact: await harness.compact("Keep updating the compaction contract."),
+              summarizedTexts,
+              previousSummary,
+            }),
+          });
+        });
+        state = applyWorkflowAgentHarnessStepResult(state, secondCompactResult);
+
+        const secondPromptResult = await step.do("prompt-after-second-compact", async (tx) => {
+          const { session, storage, options } = restoreWorkflowBackedSession({
+            operationId: `${event.instanceId}:prompt-after-second-compact`,
+            state,
+            previousEmissions: await tx.previousEmissions(),
+            models,
+          });
+          const harness = new AgentHarness({ models, model: mockModel, ...options });
+
+          return await withWorkflowAgentHarness({
+            session,
+            storage,
+            harness,
+            tx,
+            runDurableStep: () => harness.prompt("continue again"),
+          });
+        });
+        state = applyWorkflowAgentHarnessStepResult(state, secondPromptResult);
+
+        const compactionEntries = state.entries.filter((entry) => entry.type === "compaction");
+        const firstCompactionEntry = compactionEntries[0];
+        const secondCompactionEntry = compactionEntries[1];
+        assert(firstCompactionEntry?.type === "compaction");
+        assert(secondCompactionEntry?.type === "compaction");
+        return {
+          firstSummary: firstCompactionEntry.summary,
+          firstDetails: firstCompactionEntry.details,
+          firstRetainedRoles: firstCompactionEntry.retainedTail?.map((message) => message.role),
+          firstAssistantText: messageText(promptResult.value),
+          secondSummary: secondCompactionEntry.summary,
+          secondAssistantText: messageText(secondPromptResult.value),
+          secondPreviousSummary: secondCompactResult.value.previousSummary,
+          secondSummarizedEarlierTurn: secondCompactResult.value.summarizedTexts.some((text) =>
+            text.includes("turn-"),
+          ),
+        };
+      },
+    );
+
+    await runScenario(
+      defineScenario({
+        name: "workflow-agent-harness-manual-compaction",
+        workflows: { MANUAL_COMPACTION: compactWorkflow },
+        steps: ({ workflow, runner }) => [
+          runner.initializeAndRunUntilIdle({
+            workflow: "MANUAL_COMPACTION",
+            id: "manual-compaction-session",
+          }),
+          workflow.read({
+            read: async (ctx) =>
+              ctx.state.getStatus("MANUAL_COMPACTION", "manual-compaction-session"),
+            assert: (status) => {
+              assert(status.status === "complete");
+              expect(status.output).toEqual({
+                firstSummary: "Earlier turns established the durable compaction contract.",
+                firstDetails: { source: "scenario-test" },
+                firstRetainedRoles: ["user", "assistant", "user", "assistant"],
+                firstAssistantText: "continued after compaction",
+                secondSummary: "Updated durable compaction contract.",
+                secondAssistantText: "continued after compaction",
+                secondPreviousSummary: "Earlier turns established the durable compaction contract.",
+                secondSummarizedEarlierTurn: true,
+              });
+              expect(streamFn).toHaveBeenCalledTimes(2);
+              expect(observedContexts).toHaveLength(2);
+              expect(observedContexts[0]?.map(({ role }) => role)).toEqual([
+                "user",
+                "user",
+                "assistant",
+                "user",
+                "assistant",
+                "user",
+              ]);
+              expect(observedContexts[0]?.[0]?.text).toContain(
+                "Earlier turns established the durable compaction contract.",
+              );
+              expect(observedContexts[0]?.at(-1)).toEqual({
+                role: "user",
+                text: largeContinuation,
+              });
+              expect(observedContexts[1]?.[0]?.text).toContain(
+                "Updated durable compaction contract.",
+              );
+              expect(observedContexts[1]?.at(-1)).toEqual({
+                role: "user",
+                text: "continue again",
               });
             },
           }),

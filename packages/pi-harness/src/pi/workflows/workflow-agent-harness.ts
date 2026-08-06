@@ -10,6 +10,7 @@ import type {
   AgentHarnessOptions,
   AgentHarnessTool,
   AgentMessage,
+  CompactionPreparation,
   PromptTemplate,
   SessionMetadata,
   SessionTreeEntry,
@@ -53,10 +54,9 @@ export type PiHarnessEventEmission = {
   event: AgentHarnessEvent;
 };
 
-export type PiHarnessOperationStartEmission<TOperation = PiHarnessOperation> = {
+export type PiHarnessOperationStartEmission = {
   kind: "harness-operation-start";
   operationId: string;
-  operation: TOperation;
   replay: {
     protocol: "pi-harness-operation";
     version: 1;
@@ -69,11 +69,11 @@ export type PiHarnessOperationCompleteEmission<TResult = PiHarnessStepResult> = 
   result: TResult;
 };
 
-export type PiHarnessEmission<TResult = PiHarnessStepResult, TOperation = PiHarnessOperation> =
+export type PiHarnessEmission<TResult = PiHarnessStepResult> =
   | PiHarnessSessionEntryEmission
   | PiHarnessEventEmission
   | PiHarnessMessageUpdateEmission
-  | PiHarnessOperationStartEmission<TOperation>
+  | PiHarnessOperationStartEmission
   | PiHarnessOperationCompleteEmission<TResult>;
 
 /**
@@ -154,12 +154,7 @@ export const createPiHarnessSessionState = (
 
 type AppendEntryListener = NonNullable<WorkflowBackedSessionStorageOptions["onAppendEntry"]>;
 
-type WorkflowAgentHarnessInvocation = { kind: "callback" };
-
-type WorkflowAgentHarnessEmission = PiHarnessEmission<
-  WorkflowAgentHarnessStepResult,
-  WorkflowAgentHarnessInvocation
->;
+type WorkflowAgentHarnessEmission = PiHarnessEmission<WorkflowAgentHarnessStepResult>;
 
 type TrustedWorkflowAgentHarnessEmission = WorkflowStepEmission<WorkflowAgentHarnessEmission>;
 
@@ -539,6 +534,9 @@ const assertTerminalAssistantSucceeded = (entries: readonly SessionTreeEntry[]):
   );
 };
 
+export const hasSummarizableCompactionHistory = (preparation: CompactionPreparation): boolean =>
+  preparation.messagesToSummarize.length > 0 || preparation.turnPrefixMessages.length > 0;
+
 const emissionFromHarnessEvent = (
   event: AgentHarnessEvent,
 ): PiHarnessEventEmission | PiHarnessMessageUpdateEmission => {
@@ -584,7 +582,6 @@ export const withWorkflowAgentHarness = async <TResult>({
     tx.emit({
       kind: "harness-operation-start",
       operationId,
-      operation: { kind: "callback" },
       replay: { protocol: "pi-harness-operation", version: 1 },
     } satisfies WorkflowAgentHarnessEmission);
 

@@ -1,6 +1,11 @@
 import { lazyStream } from "@earendil-works/pi-ai/api/lazy";
 
-import type { StreamFn } from "@earendil-works/pi-agent-core";
+import type {
+  AgentHarness,
+  CompactResult,
+  SessionBeforeCompactEvent,
+  StreamFn,
+} from "@earendil-works/pi-agent-core";
 import {
   createModels,
   createProvider,
@@ -9,6 +14,26 @@ import {
   type Models,
   type ProviderStreams,
 } from "@earendil-works/pi-ai";
+
+export type MockCompactionResult = Pick<CompactResult, "summary"> &
+  Partial<Omit<CompactResult, "summary">>;
+
+/** Provide a deterministic manual-compaction result without making a summarization model call. */
+export const mockAgentHarnessCompaction = (
+  harness: AgentHarness,
+  result: MockCompactionResult | ((event: SessionBeforeCompactEvent) => MockCompactionResult),
+): (() => void) =>
+  harness.on("session_before_compact", (event) => {
+    const mockedResult = typeof result === "function" ? result(event) : result;
+    return {
+      compaction: {
+        firstKeptEntryId: event.preparation.firstKeptEntryId,
+        tokensBefore: event.preparation.tokensBefore,
+        retainedTail: event.preparation.retainedTail,
+        ...mockedResult,
+      },
+    };
+  });
 
 const injectedTestStreamAuth = {
   apiKey: {

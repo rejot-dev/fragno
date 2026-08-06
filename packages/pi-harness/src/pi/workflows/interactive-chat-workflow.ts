@@ -1,15 +1,29 @@
 import type { WorkflowDuration, WorkflowEvent } from "@fragno-dev/workflows/workflow";
-import { defineWorkflow } from "@fragno-dev/workflows/workflow";
+import { defineWorkflow, NonRetryableError } from "@fragno-dev/workflows/workflow";
 import { z } from "zod";
 
-import { AgentHarness, type AgentMessage, type ThinkingLevel } from "@earendil-works/pi-agent-core";
+import {
+  AgentHarness,
+  AgentHarnessError,
+  CompactionError,
+  DEFAULT_COMPACTION_SETTINGS,
+  prepareCompaction,
+  type AgentMessage,
+  type ThinkingLevel,
+} from "@earendil-works/pi-agent-core";
 
 import { schedulePiOperationCompletedHook } from "../harness/pi-operation-completed";
 import { agentMessageSchema, piSessionCommandPayloadSchema } from "../route-schemas";
-import type { PiSessionMetadata } from "../types";
+import type { PiSessionCommandStartEmission } from "../session-command-protocol";
+import {
+  PI_SESSION_COMMAND_STEP_PREFIX,
+  type PiCompactCommandOutcome,
+  type PiSessionMetadata,
+} from "../types";
 import {
   applyWorkflowAgentHarnessStepResult,
   createPiHarnessSessionState,
+  hasSummarizableCompactionHistory,
   restoreWorkflowBackedSession,
   withWorkflowAgentHarness,
   type WorkflowAgentHarnessOptions,
@@ -86,8 +100,8 @@ export const createInteractiveChatWorkflow = (config: CreateInteractiveChatWorkf
         });
         const command = piSessionCommandPayloadSchema.parse(commandEvent.payload);
 
-        // Controls can only target the live harness registered inside an active operation. The
-        // durable wait has already consumed idle controls, so they do not start a new operation.
+        // Controls can only target the live harness registered for an active invocation. The
+        // durable wait has already consumed idle controls, so they do not start a new step.
         switch (command.kind) {
           case "abort":
           case "steer":
@@ -96,19 +110,20 @@ export const createInteractiveChatWorkflow = (config: CreateInteractiveChatWorkf
           case "prompt":
           case "skill":
           case "promptFromTemplate":
+          case "compact":
             break;
         }
 
-        const operation = {
-          stepName: `command:${command.commandId}`,
+        const invocation = {
+          stepName: `${PI_SESSION_COMMAND_STEP_PREFIX}${command.commandId}`,
           operationId: `${workflowName}:${event.instanceId}:command:${command.commandId}`,
         };
-        const committedResult = await step.do(operation.stepName, async (tx) => {
+        const committedResult = await step.do(invocation.stepName, async (tx) => {
           // Current-attempt emissions contain session entries that may have been written before a
           // worker restart. Restoration either replays a completed result or rolls an interrupted
           // prompt back to its original parent before retrying it.
           const { session, storage, options } = restoreWorkflowBackedSession({
-            operationId: operation.operationId,
+            operationId: invocation.operationId,
             state: sessionState,
             previousEmissions: await tx.previousEmissions(),
             models: harnessOptions.models,
@@ -124,8 +139,7 @@ export const createInteractiveChatWorkflow = (config: CreateInteractiveChatWorkf
             harness,
             tx,
             observeLiveEvents: (onLiveEvent) => {
-              // Operation commands stay unconsumed so the outer loop executes them as the next
-              // durable step.
+              // Durable commands stay unconsumed so the outer loop executes them as the next step.
               onLiveEvent("command", async (event) => {
                 const controlCommand = piSessionCommandPayloadSchema.parse(event.payload);
 
@@ -149,11 +163,17 @@ export const createInteractiveChatWorkflow = (config: CreateInteractiveChatWorkf
                   case "prompt":
                   case "skill":
                   case "promptFromTemplate":
+                  case "compact":
                     break;
                 }
               });
             },
             runDurableStep: async () => {
+              tx.emit({
+                kind: "pi-session-command-start",
+                command: { commandId: command.commandId, kind: command.kind },
+              } satisfies PiSessionCommandStartEmission);
+
               switch (command.kind) {
                 case "prompt":
                   return await harness.prompt(
@@ -167,9 +187,69 @@ export const createInteractiveChatWorkflow = (config: CreateInteractiveChatWorkf
                   );
                 case "promptFromTemplate":
                   return await harness.promptFromTemplate(command.input.name, command.input.args);
+                case "compact": {
+                  const preparationResult = prepareCompaction(
+                    await session.getBranch(),
+                    DEFAULT_COMPACTION_SETTINGS,
+                  );
+                  if (!preparationResult.ok) {
+                    if (preparationResult.error.code === "invalid_session") {
+                      throw new NonRetryableError(
+                        `PI_COMPACTION_INVALID_SESSION: ${preparationResult.error.message}`,
+                      );
+                    }
+                    throw preparationResult.error;
+                  }
+                  if (
+                    !preparationResult.value ||
+                    !hasSummarizableCompactionHistory(preparationResult.value)
+                  ) {
+                    return {
+                      kind: "compact",
+                      commandId: command.commandId,
+                      status: "rejected",
+                      code: "nothing_to_compact",
+                      message: "Nothing to compact.",
+                    } satisfies PiCompactCommandOutcome;
+                  }
+
+                  try {
+                    await harness.compact(command.input.customInstructions);
+                    return {
+                      kind: "compact",
+                      commandId: command.commandId,
+                      status: "succeeded",
+                    } satisfies PiCompactCommandOutcome;
+                  } catch (error) {
+                    if (!(error instanceof AgentHarnessError) || error.code !== "compaction") {
+                      throw error;
+                    }
+                    if (!(error.cause instanceof CompactionError)) {
+                      throw error;
+                    }
+
+                    switch (error.cause.code) {
+                      case "aborted":
+                      case "summarization_failed":
+                        return {
+                          kind: "compact",
+                          commandId: command.commandId,
+                          status: "rejected",
+                          code: "compaction_failed",
+                          message: error.cause.message,
+                        } satisfies PiCompactCommandOutcome;
+                      case "invalid_session":
+                        throw new NonRetryableError(
+                          `PI_COMPACTION_INVALID_SESSION: ${error.cause.message}`,
+                        );
+                      case "unknown":
+                        throw error;
+                    }
+                  }
+                }
               }
 
-              throw new Error("Unsupported Pi session operation command.");
+              throw new Error("Unsupported durable Pi session command.");
             },
             // Accounting is registered before the adapter accepts or rejects the terminal
             // assistant, so failed model calls are still recorded by the terminal-error
@@ -181,8 +261,8 @@ export const createInteractiveChatWorkflow = (config: CreateInteractiveChatWorkf
                 workflowName,
                 sessionId: sessionState.metadata.id,
                 metadata: params.metadata ?? null,
-                stepName: operation.stepName,
-                operationId: operation.operationId,
+                stepName: invocation.stepName,
+                operationId: invocation.operationId,
                 operation: command.kind,
                 operationEntries,
               });

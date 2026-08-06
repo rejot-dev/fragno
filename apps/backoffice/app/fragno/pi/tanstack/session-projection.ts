@@ -1,14 +1,14 @@
+import type { PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
 import {
-  emptyPiWorkflowSessionProjectionState,
+  createLoadingPiWorkflowSessionProjection,
   projectPiWorkflowSession,
   type PiWorkflowSessionProjectionEmission,
   type PiWorkflowSessionProjectionState,
-  type PiWorkflowSessionProjectionStep,
 } from "@fragno-dev/pi-harness/workflow-session-projection";
 import { selectCanonicalWorkflowStepEmissions } from "@fragno-dev/workflows/step-emission-control";
 
 type PiWorkflowInstanceProjectionRow = {
-  status: string;
+  status: PiWorkflowStatus;
 };
 
 type PiWorkflowStepProjectionRow = {
@@ -45,7 +45,7 @@ export function projectPiSessionCollectionRows({
   synchronized: boolean;
 }): PiWorkflowSessionProjectionState {
   if (!instance && !synchronized) {
-    return emptyPiWorkflowSessionProjectionState();
+    return createLoadingPiWorkflowSessionProjection({ workflowName, sessionId });
   }
 
   const canonicalEmissions = selectCanonicalWorkflowStepEmissions({
@@ -61,7 +61,7 @@ export function projectPiSessionCollectionRows({
       type: step.type,
       status: step.status,
       waitEventType: step.waitEventType,
-      result: step.result as PiWorkflowSessionProjectionStep["result"],
+      result: step.result,
     })),
     workflowStepEmissions: canonicalEmissions.map((emission) => ({
       stepKey: emission.stepKey,
@@ -70,14 +70,15 @@ export function projectPiSessionCollectionRows({
     })),
   });
 
-  if (synchronized || projection.status === "error") {
+  if (synchronized || projection.status === "not-found") {
     return projection;
   }
 
   return {
     ...projection,
     status: "loading",
+    error: null,
     readyForInput: false,
-    statusText: projection.statusText ?? "Loading…",
+    activity: null,
   };
 }

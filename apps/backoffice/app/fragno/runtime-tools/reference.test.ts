@@ -2186,7 +2186,6 @@ describe("runtime tool reference generation", () => {
                   messages: unknown[];
                   errorMessage?: string;
                 };
-            completedStepKeys: string[];
           };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";
@@ -2238,7 +2237,6 @@ describe("runtime tool reference generation", () => {
                   messages: unknown[];
                   errorMessage?: string;
                 };
-            completedStepKeys: string[];
           };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";
@@ -4379,7 +4377,6 @@ describe("runtime tool reference generation", () => {
                   messages: unknown[];
                   errorMessage?: string;
                 };
-            completedStepKeys: string[];
           };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";
@@ -4431,7 +4428,6 @@ describe("runtime tool reference generation", () => {
                   messages: unknown[];
                   errorMessage?: string;
                 };
-            completedStepKeys: string[];
           };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";
@@ -4874,7 +4870,6 @@ describe("runtime tool reference generation", () => {
                   messages: unknown[];
                   errorMessage?: string;
                 };
-            completedStepKeys: string[];
           };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";
@@ -4926,7 +4921,6 @@ describe("runtime tool reference generation", () => {
                   messages: unknown[];
                   errorMessage?: string;
                 };
-            completedStepKeys: string[];
           };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";

@@ -125,22 +125,38 @@ export type PiOperationCompletedHookPayload = {
 /** Maximum total Base64 characters persisted in one Pi command event. */
 export const MAX_PI_COMMAND_IMAGE_DATA_LENGTH = 8 * 1024 * 1024;
 
+export const PI_SESSION_COMMAND_STEP_PREFIX = "command:";
+
 export type PiPromptInput = {
   text: string;
   images?: Array<{ type: "image"; data: string; mimeType: string }>;
 };
 
+export type PiCompactCommandOutcome =
+  | {
+      kind: "compact";
+      commandId: string;
+      status: "succeeded";
+    }
+  | {
+      kind: "compact";
+      commandId: string;
+      status: "rejected";
+      code: "nothing_to_compact" | "compaction_failed";
+      message: string;
+    };
+
 export type PiSessionCommandPayload =
   | { commandId: string; kind: "prompt"; input: PiPromptInput }
   | { commandId: string; kind: "skill"; input: { name: string; additionalInstructions?: string } }
   | { commandId: string; kind: "promptFromTemplate"; input: { name: string; args?: string[] } }
+  | { commandId: string; kind: "compact"; input: { customInstructions?: string } }
   | { commandId: string; kind: "abort"; reason?: string }
   | { commandId: string; kind: "steer"; input: PiPromptInput }
   | { commandId: string; kind: "followUp"; input: PiPromptInput };
 
 export type PiAgentStateSnapshot = {
   messages: AgentMessage[];
-  errorMessage?: string;
 };
 
 export type PiSessionDetail = PiSession & {
@@ -151,7 +167,6 @@ export type PiSessionDetail = PiSession & {
   };
   agent: {
     state: PiAgentStateSnapshot;
-    completedStepKeys: string[];
   };
 };
 

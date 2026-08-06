@@ -20,6 +20,8 @@ export type PiToolCallArtifact = {
 };
 
 export type PiAssistantMessageMetadata = {
+  kind?: "assistant" | "compaction";
+  tokensBefore?: number;
   errorMessage?: string;
   statusText?: string | null;
   stopReason?: Extract<AgentMessage, { role: "assistant" }>["stopReason"];
@@ -191,6 +193,23 @@ export function createAssistantUiMessages({
       .map((block) => convertContentBlock(block, toolResultsByCallId, draftToolsByCallId))
       .filter((block): block is AssistantContentBlock => block !== null);
 
+    if (message.role === "compactionSummary") {
+      converted.push({
+        id: `pi-compaction-${message.timestamp}-${index}`,
+        role: "assistant",
+        content: [{ type: "text", text: message.summary }],
+        createdAt: messageDate(message.timestamp, index),
+        status: { type: "complete", reason: "stop" },
+        metadata: {
+          custom: {
+            kind: "compaction",
+            tokensBefore: message.tokensBefore,
+          } satisfies PiAssistantMessageMetadata,
+        },
+      });
+      return;
+    }
+
     if (message.role === "user") {
       converted.push({
         id: `pi-user-${message.timestamp ?? index}-${index}`,
@@ -235,6 +254,7 @@ export function createAssistantUiMessages({
               : { type: "complete", reason: "stop" },
       metadata: {
         custom: {
+          kind: "assistant",
           errorMessage: visibleErrorMessage,
           statusText: shouldStream ? statusText : null,
           stopReason: message.stopReason,

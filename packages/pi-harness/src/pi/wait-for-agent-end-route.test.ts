@@ -195,7 +195,6 @@ describe("pi-harness wait-for-agent-end route", () => {
     expect(textMessages(response.data.agent.state.messages, "assistant")).toEqual([
       "partial then final",
     ]);
-    expect(response.data.agent.completedStepKeys).toEqual(expect.any(Array));
     expect(response.data.agent).not.toHaveProperty("events");
   });
 

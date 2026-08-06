@@ -8,6 +8,7 @@ import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 import type { AgentMessage, SessionTreeEntry } from "@earendil-works/pi-agent-core";
 
 import { piSchema } from "../schema";
+import { latestCompletedPiHarnessEntries } from "./session-entry-projection";
 import {
   PiSessionDataUnavailableError,
   projectPiSessionFromWorkflowInstance,
@@ -16,11 +17,9 @@ import {
   type PiOperationCompletedHookPayload,
 } from "./types";
 import {
-  latestCompletedPiHarnessEntries,
   projectPiWorkflowSession,
   type PiWorkflowSessionProjectionStep,
 } from "./workflow-session-projection";
-import type { PiHarnessStepResult } from "./workflows/workflow-agent-harness";
 
 export type PiHarnessHooksMap = {
   onOperationCompleted: HookFn<PiOperationCompletedHookPayload>;
@@ -31,8 +30,6 @@ export type PiSessionDetailSnapshot = {
   workflowStatus: InstanceStatus;
   messages: AgentMessage[];
   sessionEntries: readonly SessionTreeEntry[];
-  /** Step keys whose persisted results are already represented in `messages`. */
-  completedStepKeys: ReadonlySet<string>;
 };
 
 export const piHarnessDefinition = defineFragment<PiFragmentConfig>("pi-harness")
@@ -71,7 +68,7 @@ export const piHarnessDefinition = defineFragment<PiFragmentConfig>("pi-harness"
               type: step.type,
               status: step.status,
               waitEventType: step.waitEventType,
-              result: (step.result ?? null) as PiHarnessStepResult | null,
+              result: step.result ?? null,
             }));
             const selectedEpochs = selectWorkflowStepCommittedEpochs(history.emissions);
             const selectedEmissions = history.emissions.filter((emission) => {
@@ -95,9 +92,8 @@ export const piHarnessDefinition = defineFragment<PiFragmentConfig>("pi-harness"
             return {
               session,
               workflowStatus,
-              messages: projection.state.messages,
+              messages: projection.contextMessages,
               sessionEntries: latestCompletedPiHarnessEntries(workflowSteps),
-              completedStepKeys: new Set(projection.completedStepKeys),
             };
           })
           .build();

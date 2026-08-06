@@ -4,7 +4,12 @@ import { drainDurableHooks } from "@fragno-dev/test";
 
 import { createModelsForStreamFn } from "./harness/test-models";
 import { exportSessionStorageToJsonl, PI_JSONL_EXPORT_CWD } from "./pi-jsonl-export";
-import { buildHarness, createTextStreamFn, mockModel } from "./pi-test-utils";
+import {
+  buildHarness,
+  createAssistantMessage,
+  createTextStreamFn,
+  mockModel,
+} from "./pi-test-utils";
 import type { PiFragmentConfig } from "./types";
 import { createInteractiveChatWorkflow } from "./workflows/interactive-chat-workflow";
 
@@ -116,6 +121,103 @@ describe("pi JSONL export", () => {
       expect(messages).toMatchObject([{ role: "user" }, { role: "assistant" }]);
       expect(textContent(messages[0])).toEqual(["hello export"]);
       expect(textContent(messages[1])).toEqual(["assistant:export"]);
+    } finally {
+      await harness.test.cleanup();
+    }
+  });
+
+  it("runs manual compaction commands and includes the compaction entry in JSONL exports", async () => {
+    const interactiveChatWorkflow = createInteractiveChatWorkflow({
+      name: "interactive-chat-manual-compaction-export",
+      options: {
+        model: mockModel,
+        models: createModelsForStreamFn(
+          mockModel,
+          createTextStreamFn("Earlier turns established the export contract."),
+        ),
+      },
+    });
+    const harness = await buildHarness(
+      { workflows: [interactiveChatWorkflow] },
+      { autoTickHooks: true },
+    );
+
+    try {
+      const initialMessages = Array.from({ length: 4 }, (_, turn) => [
+        {
+          role: "user" as const,
+          content: `turn-${turn} `.repeat(7_000),
+          timestamp: Date.UTC(2026, 6, 1, 12, turn * 2),
+        },
+        {
+          ...createAssistantMessage(`response-${turn}`),
+          timestamp: Date.UTC(2026, 6, 1, 12, turn * 2 + 1),
+        },
+      ]).flat();
+      const create = await harness.fragments.pi.callRoute(
+        "POST",
+        "/workflows/:workflowName/sessions",
+        {
+          pathParams: { workflowName: interactiveChatWorkflow.name },
+          body: {
+            name: "Compacted Session",
+            input: { initialMessages },
+          },
+        },
+      );
+      assert(create.type === "json");
+      const sessionId = create.data.id;
+
+      await harness.workflows.runUntilIdle({
+        workflowName: interactiveChatWorkflow.name,
+        instanceId: sessionId,
+        reason: "create",
+      });
+      const command = await harness.fragments.pi.callRoute(
+        "POST",
+        "/workflows/:workflowName/sessions/:sessionId/command",
+        {
+          pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
+          body: {
+            kind: "compact",
+            input: { customInstructions: "Keep the export contract." },
+          },
+        },
+      );
+      assert(command.type === "json");
+      expect(command.data).toMatchObject({ accepted: true });
+
+      await drainDurableHooks(harness.workflows.fragment, { mode: "singlePass" });
+      await harness.workflows.runUntilIdle({
+        workflowName: interactiveChatWorkflow.name,
+        instanceId: sessionId,
+        reason: "event",
+      });
+
+      const response = await harness.fragments.pi.callRouteRaw(
+        "GET",
+        "/workflows/:workflowName/sessions/:sessionId/export/pi-jsonl",
+        {
+          pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
+          query: {},
+        },
+      );
+
+      assert(response.status === 200);
+      const compaction = parseJsonl(await response.text()).find(
+        (entry) => entry["type"] === "compaction",
+      );
+      expect(compaction).toMatchObject({
+        type: "compaction",
+        summary: "Earlier turns established the export contract.",
+        retainedTail: [
+          { role: "user" },
+          { role: "assistant" },
+          { role: "user" },
+          { role: "assistant" },
+        ],
+      });
+      expect(compaction?.["tokensBefore"]).toEqual(expect.any(Number));
     } finally {
       await harness.test.cleanup();
     }

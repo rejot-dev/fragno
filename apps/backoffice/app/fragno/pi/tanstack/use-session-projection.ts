@@ -1,4 +1,7 @@
-import { projectPiSessionFromWorkflowInstance } from "@fragno-dev/pi-harness/types";
+import {
+  projectPiSessionFromWorkflowInstance,
+  type PiWorkflowStatus,
+} from "@fragno-dev/pi-harness/types";
 import { use } from "react";
 
 import { and, eq, toArray, useLiveQuery } from "@tanstack/react-db";
@@ -85,7 +88,7 @@ export function usePiSessionProjection({
   const projection = projectPiSessionCollectionRows({
     workflowName,
     sessionId,
-    instance: projectionRows ? { status: projectionRows.instanceStatus } : null,
+    instance: projectionRows ? { status: projectionRows.instanceStatus as PiWorkflowStatus } : null,
     workflowSteps: projectionRows?.workflowSteps ?? [],
     workflowStepEmissions: projectionRows?.workflowStepEmissions ?? [],
     synchronized: projectionQuery.isReady,
