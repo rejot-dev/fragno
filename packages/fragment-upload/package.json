@@ -51,6 +51,10 @@
       "types": "./dist/node/schema.d.ts",
       "default": "./dist/node/schema.js"
     },
+    "./text-index": {
+      "types": "./dist/node/text-index.d.ts",
+      "default": "./dist/node/text-index.js"
+    },
     "./helpers": {
       "types": "./dist/browser/client/helpers.d.ts",
       "default": "./dist/browser/client/helpers.js"

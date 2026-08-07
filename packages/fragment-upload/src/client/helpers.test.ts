@@ -1,4 +1,4 @@
-import { describe, expect, it, assert } from "vitest";
+import { describe, expect, it, assert, vi } from "vitest";
 
 import { createUploadHelpers } from "./helpers";
 
@@ -767,7 +767,7 @@ describe("upload client helpers", () => {
     ).rejects.toThrow(/Download provider is required/);
   });
 
-  it("searchFiles posts glob, query, provider, and options", async () => {
+  it("searchFiles hydrates the candidate page returned by the text index", async () => {
     const calls: { url: string; body: unknown }[] = [];
     const helpers = createUploadHelpers({
       buildUrl: (path) => `https://local${path}`,
@@ -790,6 +790,8 @@ describe("upload client helpers", () => {
               },
             ],
             scannedFiles: 1,
+            consumedCandidates: 1,
+            skippedCandidates: [],
           });
         }
 
@@ -809,6 +811,7 @@ describe("upload client helpers", () => {
       contextAfter: 2,
       maxMatches: 50,
       maxCandidateFiles: 100,
+      maxBytes: 4 * 1024 * 1024,
     });
 
     expect(calls).toEqual([
@@ -819,33 +822,46 @@ describe("upload client helpers", () => {
           glob: "/workspace/**/*.ts",
           query: "createWorkflow",
           maxCandidateFiles: 100,
-          options: {
-            caseSensitive: false,
-            contextBefore: 2,
-            contextAfter: 2,
-            maxMatches: 50,
-          },
         },
       },
       {
         url: "https://local/files/search/hydrate",
         body: {
           provider: TEST_PROVIDER,
-          glob: "/workspace/**/*.ts",
+          candidateKeys: ["workspace/src/workflows.ts"],
           query: "createWorkflow",
-          maxCandidateFiles: 100,
           options: {
             caseSensitive: false,
             contextBefore: 2,
             contextAfter: 2,
             maxMatches: 50,
           },
+          maxBytes: 4 * 1024 * 1024,
         },
       },
     ]);
     assert(result.candidates[0]?.key === "workspace/src/workflows.ts");
     assert(result.matches[0]?.path === "workspace/src/workflows.ts");
   });
+
+  it.each([0, -1, Number.NaN])(
+    "rejects an invalid search hydration byte budget of %s",
+    async (maxBytes) => {
+      const fetcher = vi.fn<typeof fetch>();
+      const helpers = createUploadHelpers({
+        buildUrl: (path) => `https://local${path}`,
+        fetcher,
+      });
+
+      await expect(
+        helpers.hydrateSearchMatches(["workspace/src/workflows.ts"], "createWorkflow", {
+          provider: TEST_PROVIDER,
+          maxBytes,
+        }),
+      ).rejects.toThrow("Search byte budget must be a positive number");
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
 
   it("requires callers to specify a file key when creating uploads", async () => {
     const helpers = createUploadHelpers({

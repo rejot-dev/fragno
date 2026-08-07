@@ -16,6 +16,7 @@ export default defineConfig([
       "./src/storage/db.ts",
       "./src/storage/errors.ts",
       "./src/schema.ts",
+      "./src/text-index.ts",
       "./src/types.ts",
     ],
     dts: true,
