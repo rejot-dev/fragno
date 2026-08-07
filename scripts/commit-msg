@@ -3,17 +3,69 @@
 # Commit messages must adhere to https://www.conventionalcommits.org/
 # This script is adapted from: https://github.com/joaobsjunior/sh-conventional-commits/blob/main/commit-msg
 
+MAX_COLUMNS=72
+FILE=$1
+FORMATTED_FILE="${FILE}.formatted.$$"
 
-# Regex to validate the type pattern
-REGEX="^((Merge[ a-z-]* branch.*)|(Revert*)|(fixup! .*)|((build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\(.*\))?!?: .*))"
+# Keep the subject and Git-generated comments unchanged. Wrap prose and list
+# items in the body, while leaving trailers and indented blocks intact.
+awk -v width="$MAX_COLUMNS" '
+function print_wrapped(line,    prefix, rest, word_count, words, output, candidate, i) {
+  prefix = ""
+  rest = line
 
-FILE=`cat $1` # File containing the commit message
+  if (match(rest, /^[[:space:]]*([-*+] |[0-9]+[.)] )/)) {
+    prefix = substr(rest, 1, RLENGTH)
+    rest = substr(rest, RLENGTH + 1)
+  }
 
-echo "Commit Message: ${FILE}"
+  word_count = split(rest, words, /[[:space:]]+/)
+  output = prefix
 
-if ! [[ $FILE =~ $REGEX ]]; then
-	echo >&2 "ERROR: Commit aborted for not following the Conventional Commit standard (https://www.conventionalcommits.org). ​"
-	exit 1
-else
-	echo >&2 "Valid commit message."
+  for (i = 1; i <= word_count; i++) {
+    if (words[i] == "") {
+      continue
+    }
+
+    candidate = output == prefix ? output words[i] : output " " words[i]
+    if (length(candidate) <= width || output == prefix) {
+      output = candidate
+      continue
+    }
+
+    print output
+    output = sprintf("%*s%s", length(prefix), "", words[i])
+  }
+
+  print output
+}
+
+NR == 1 || /^#/ || /^[[:space:]]/ || /^[A-Za-z0-9-]+: / || /^$/ {
+  print
+  next
+}
+
+{
+  print_wrapped($0)
+}
+' "$FILE" > "$FORMATTED_FILE" || exit 1
+
+mv "$FORMATTED_FILE" "$FILE"
+
+SUBJECT=$(head -n 1 "$FILE")
+REGEX='^((Revert.*)|(fixup! .*)|((build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\(.*\))?!?: .*))$'
+
+echo "Commit Message:"
+cat "$FILE"
+
+if [ "${#SUBJECT}" -gt "$MAX_COLUMNS" ]; then
+  echo >&2 "ERROR: Commit subject exceeds ${MAX_COLUMNS} columns."
+  exit 1
 fi
+
+if ! printf '%s\n' "$SUBJECT" | grep -Eq "$REGEX"; then
+  echo >&2 "ERROR: Commit aborted for not following the Conventional Commit standard (https://www.conventionalcommits.org)."
+  exit 1
+fi
+
+echo >&2 "Valid commit message."

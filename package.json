@@ -32,6 +32,7 @@
     "types:check": "turbo run types:check --output-logs=errors-only",
     "types:check:watch": "turbo watch types:check",
     "test": "turbo run test --output-logs=errors-only",
+    "test:commit-msg": "scripts/commit-msg.test.sh",
     "test:watch": "turbo run test:watch --output-logs=errors-only",
     "test:coverage": "turbo run test && turbo run collect-json-reports merge-json-reports report --filter=@fragno-private/vitest-config",
     "fallow:audit": "fallow audit --root . --config \"$PWD/.fallowrc.jsonc\" --changed-since HEAD --summary --fail-on-issues",
