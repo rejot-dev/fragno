@@ -312,7 +312,17 @@ export class DynamicWorkerExecutor {
       globalOutbound,
     }));
 
-    return await run(worker.getEntrypoint() as unknown as TEntrypoint, rpcTargets);
+    const entrypoint = worker.getEntrypoint();
+    try {
+      const rpcResult = run(entrypoint as unknown as TEntrypoint, rpcTargets);
+      try {
+        return await rpcResult;
+      } finally {
+        (rpcResult as unknown as Partial<Disposable>)[Symbol.dispose]?.();
+      }
+    } finally {
+      (entrypoint as unknown as Partial<Disposable>)[Symbol.dispose]?.();
+    }
   }
 
   async evaluateWorkerBundle(
