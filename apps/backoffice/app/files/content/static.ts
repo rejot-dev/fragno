@@ -5,18 +5,8 @@ import { BACKOFFICE_CAPABILITY_FILE_CONTENT } from "./backoffice-capability-file
 import { GENERAL_SKILL_CONTENT } from "./skills";
 import { STATIC_AUTOMATION_CONTENT } from "./static-automations";
 
-export const renderStaticGuidance = ({
-  codemodeDts,
-  stateDts,
-  workflowAuthoringDts,
-}: {
-  codemodeDts: string;
-  stateDts: string;
-  workflowAuthoringDts: string;
-}) =>
-  STATIC_GUIDANCE_MD.replace("__BACKOFFICE_CODEMODE_DTS__", codemodeDts.trimEnd())
-    .replace("__BACKOFFICE_CODEMODE_STATE_DTS__", stateDts.trimEnd())
-    .replace("__BACKOFFICE_CODEMODE_WORKFLOW_AUTHORING_DTS__", workflowAuthoringDts.trimEnd());
+export const renderStaticGuidance = ({ codemodeDts }: { codemodeDts: string }) =>
+  STATIC_GUIDANCE_MD.replace("__BACKOFFICE_CODEMODE_DTS__", codemodeDts.trimEnd());
 
 const STATIC_GUIDANCE_MD = systemGuidanceTemplate;
 
