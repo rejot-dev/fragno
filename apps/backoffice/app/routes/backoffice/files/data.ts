@@ -6,6 +6,7 @@ import type {
   FilesExplorerSelectedContent,
   FilesExplorerSource,
 } from "@/components/backoffice/files-explorer";
+import type { FilesExplorerSearchGroup } from "@/components/backoffice/files-explorer/view";
 import type { FileTreeEntry } from "@/file-collection/file-collection";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
@@ -40,6 +41,8 @@ type FilesExplorerLoaderData = {
   selectedPath: string | null;
   selectedContent: FilesExplorerSelectedContent | null;
   loadError: string | null;
+  searchQuery: string;
+  searchGroups: FilesExplorerSearchGroup[];
 };
 
 export async function resolveAuthorizedFilesRouteScope({
@@ -92,6 +95,7 @@ export async function loadFilesExplorerData({
   const registrations = await createFilesOverviewCollections({ request, context, scope });
   const loadedCollections = await loadCollectionSources(registrations);
   const requestedPath = routeRequestedPath?.trim() || null;
+  const searchQuery = new URL(request.url).searchParams.get("q")?.trim() ?? "";
   const defaultPath =
     loadedCollections.collections.find(
       ({ source }) => source.rootPath === FILES_EXPLORER_DEFAULT_PATH,
@@ -126,12 +130,60 @@ export async function loadFilesExplorerData({
       : null;
   }
 
+  const search = searchQuery
+    ? await searchCollectionSources(loadedCollections.collections, searchQuery)
+    : { groups: [], errors: [] };
+  if (search.errors.length > 0) {
+    loadError = appendLoadError(loadError, search.errors.join(" "));
+  }
+
   return {
     sources: orderExplorerSources(synchronizedSources.sources),
     selectedPath,
     selectedContent: selection ? await readSelectedTextContent(selection) : null,
     loadError,
+    searchQuery,
+    searchGroups: search.groups,
   };
+}
+
+async function searchCollectionSources(
+  collections: readonly LoadedCollection[],
+  query: string,
+): Promise<{ groups: FilesExplorerSearchGroup[]; errors: string[] }> {
+  const results = await Promise.allSettled(
+    collections.map(
+      async ({ registration, source }): Promise<FilesExplorerSearchGroup> => ({
+        rootPath: source.rootPath,
+        rootTitle: source.rootTitle,
+        matches: (
+          await registration.collection.search(query, {
+            contextBefore: 1,
+            contextAfter: 1,
+            maxMatches: 50,
+          })
+        ).map((match) => ({
+          ...match,
+          path: `${source.rootPath}/${match.path}`,
+        })),
+      }),
+    ),
+  );
+  const groups: FilesExplorerSearchGroup[] = [];
+  const errors: string[] = [];
+
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      groups.push(result.value);
+      return;
+    }
+
+    const title = collections[index]?.source.rootTitle ?? "File collection";
+    const message = result.reason instanceof Error ? result.reason.message : "Unknown error.";
+    errors.push(`${title} could not be searched: ${message}`);
+  });
+
+  return { groups, errors };
 }
 
 type LoadedCollection = {

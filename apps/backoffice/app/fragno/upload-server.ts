@@ -170,6 +170,9 @@ export function createUploadServerForProvider(
   return createUploadFragment(
     {
       storage,
+      ...(providerConfig.provider === UPLOAD_PROVIDER_DATABASE
+        ? { textIndex: { enabled: true } }
+        : {}),
       ...withDefined(limits, [
         "directUploadThresholdBytes",
         "multipartThresholdBytes",

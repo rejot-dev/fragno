@@ -2,7 +2,7 @@ import { afterAll, assert, beforeAll, beforeEach, describe, expect, test } from 
 
 import { createDatabaseStorageAdapter } from "@fragno-dev/upload/storage/db";
 
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import {
   createUploadFragment,
   uploadFragmentDefinition,
@@ -44,6 +44,7 @@ const buildUploadTest = () =>
               databaseAdapter: adapter,
               providerName: "database",
             }),
+            textIndex: { enabled: true },
           },
           { databaseAdapter: adapter, mountRoute: "/api/upload" },
         ),
@@ -139,6 +140,35 @@ describe("Upload file collection", () => {
     assert(requests[1]?.searchParams.get("key") === "workspace/reports/q1.txt");
   });
 
+  test("searches indexed Upload file contents below the collection prefix", async () => {
+    const { object, requests } = createUploadObject();
+    await uploadFile(object, {
+      fileKey: "workspace/reports/q1.txt",
+      content: "Revenue grew in the first quarter.",
+    });
+    await uploadFile(object, {
+      fileKey: "outside.txt",
+      content: "Revenue outside the workspace.",
+    });
+    await drainDurableHooks(uploadTest.fragments.upload.fragment);
+    requests.length = 0;
+
+    const matches = await createCollection(object, "workspace").search("revenue");
+
+    expect(requests.map((request) => request.pathname)).toEqual([
+      "/api/upload/files/search",
+      "/api/upload/files/search/hydrate",
+    ]);
+    expect(matches).toEqual([
+      expect.objectContaining({
+        path: "reports/q1.txt",
+        line: 1,
+        column: 1,
+        text: "Revenue",
+      }),
+    ]);
+  });
+
   test("retrieves a complete Upload tree across metadata pages", async () => {
     const { object, requests } = createUploadObject();
 
@@ -214,9 +244,7 @@ describe("Upload file collection", () => {
     async (path) => {
       let retrievalCount = 0;
       const collection = createUploadFileCollection({
-        routes: async () => {
-          throw new Error("Tree retrieval is not expected in this test.");
-        },
+        routes: createUnexpectedRouteCaller(),
         provider: "database",
         prefix: "workspace",
         getFileResponse: async () => {
@@ -329,11 +357,17 @@ function createCollection(
 
 function createContentResponseCollection(response: Response) {
   return createUploadFileCollection({
-    routes: async () => {
-      throw new Error("Tree retrieval is not expected in this test.");
-    },
+    routes: createUnexpectedRouteCaller(),
     provider: "database",
     getFileResponse: async () => response,
+  });
+}
+
+function createUnexpectedRouteCaller() {
+  return createUploadRouteCaller({
+    fetch: async () => {
+      throw new Error("Upload route retrieval is not expected in this test.");
+    },
   });
 }
 

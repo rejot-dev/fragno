@@ -1,31 +1,16 @@
+import type { UploadRouteCaller } from "@/fragno/upload-server";
+
 import { assertValidFileCollectionPath, createFileTree } from "./create-file-tree";
 import {
   createUploadFileTreeEntries,
   normalizeFileCollectionPrefix,
-  type UploadFileTreeRecord,
 } from "./create-upload-file-tree";
-import type { FileCollection, FileContent, FileTreeEntry } from "./file-collection";
-
-type UploadFilesRouteResponse =
-  | {
-      type: "json";
-      status: number;
-      data: {
-        files: UploadFileTreeRecord[];
-        cursor?: string;
-        hasNextPage: boolean;
-      };
-    }
-  | {
-      type: "error";
-      status: number;
-      error: {
-        message: string;
-        code: string;
-      };
-    }
-  | { type: "empty"; status: number }
-  | { type: "jsonStream"; status: number };
+import type {
+  FileCollection,
+  FileContent,
+  FileSearchMatch,
+  FileTreeEntry,
+} from "./file-collection";
 
 /**
  * Creates a collection backed by the Upload fragment.
@@ -39,19 +24,7 @@ type UploadFilesRouteResponse =
  * calls are supported.
  */
 export function createUploadFileCollection(input: {
-  routes(
-    method: "GET",
-    path: "/files",
-    options: {
-      query: {
-        provider: string;
-        prefix?: string;
-        cursor?: string;
-        pageSize: string;
-        status: "ready";
-      };
-    },
-  ): Promise<UploadFilesRouteResponse>;
+  routes: UploadRouteCaller;
   provider: string;
   prefix?: string;
   maxPages?: number;
@@ -117,6 +90,60 @@ export function createUploadFileCollection(input: {
           fileKey: `${prefix}${path}`,
         }),
       );
+    },
+    async search(query, options = {}) {
+      const candidateResponse = await input.routes("POST", "/files/search", {
+        body: {
+          provider: input.provider,
+          glob: `${prefix}**`,
+          query,
+          maxCandidateFiles: 20,
+        },
+      });
+
+      if (candidateResponse.type === "error") {
+        throw new UploadFileCollectionError(candidateResponse.error.message, {
+          code: candidateResponse.error.code,
+          status: candidateResponse.status,
+        });
+      }
+      if (candidateResponse.type !== "json") {
+        throw new Error(
+          `Upload file search route returned an unexpected ${candidateResponse.type} response.`,
+        );
+      }
+      if (candidateResponse.data.candidates.length === 0) {
+        return [];
+      }
+
+      const hydrateResponse = await input.routes("POST", "/files/search/hydrate", {
+        body: {
+          provider: input.provider,
+          candidateKeys: candidateResponse.data.candidates.map((candidate) => candidate.key),
+          query,
+          options,
+          maxBytes: 30 * 1024 * 1024,
+        },
+      });
+
+      if (hydrateResponse.type === "error") {
+        throw new UploadFileCollectionError(hydrateResponse.error.message, {
+          code: hydrateResponse.error.code,
+          status: hydrateResponse.status,
+        });
+      }
+      if (hydrateResponse.type !== "json") {
+        throw new Error(
+          `Upload file search hydration route returned an unexpected ${hydrateResponse.type} response.`,
+        );
+      }
+
+      return hydrateResponse.data.matches.flatMap<FileSearchMatch>((match) => {
+        if (!match.path.startsWith(prefix)) {
+          return [];
+        }
+        return [{ ...match, path: match.path.slice(prefix.length) }];
+      });
     },
   };
 }

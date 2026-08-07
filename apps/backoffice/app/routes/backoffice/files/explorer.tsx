@@ -7,6 +7,7 @@ import {
   FilesExplorerView,
   type FilesExplorerSource,
 } from "@/components/backoffice/files-explorer";
+import type { FilesExplorerSearchGroup } from "@/components/backoffice/files-explorer/view";
 import { ClientOnly } from "@/components/client-only";
 import { createUploadFileTree } from "@/file-collection/create-upload-file-tree";
 import { resolveSynchronizedFileTree } from "@/file-collection/resolve-synchronized-file-tree";
@@ -69,6 +70,8 @@ function SynchronizedFilesExplorer({
   selectedPath,
   selectedContent,
   loadError,
+  searchQuery,
+  searchGroups,
   selectedScope,
   synchronizedSource,
 }: FilesExplorerRouteViewProps & {
@@ -134,6 +137,8 @@ function SynchronizedFilesExplorer({
       selectedPath={selectedPath}
       selectedContent={selectedContent}
       loadError={appendErrors(loadError, synchronizationError, selectedPathError)}
+      searchQuery={searchQuery}
+      searchGroups={searchGroups}
       selectedScope={selectedScope}
     />
   );
@@ -144,6 +149,8 @@ type FilesExplorerRouteViewProps = {
   selectedPath: string | null;
   selectedContent: { path: string; text: string } | null;
   loadError: string | null;
+  searchQuery: string;
+  searchGroups: FilesExplorerSearchGroup[];
   selectedScope: FilesUiScope;
 };
 
@@ -152,6 +159,8 @@ function FilesExplorerRouteView({
   selectedPath,
   selectedContent,
   loadError,
+  searchQuery,
+  searchGroups,
   selectedScope,
 }: FilesExplorerRouteViewProps) {
   return (
@@ -160,6 +169,7 @@ function FilesExplorerRouteView({
       selectedPath={selectedPath}
       selectedContent={selectedContent}
       loadError={loadError}
+      contentSearch={{ query: searchQuery, groups: searchGroups }}
       defaultCollapsedRootPaths={["/static", "/system"]}
       buildNodeTo={(path) => ({ pathname: filesExplorerPath(selectedScope, path) })}
       buildDownloadHref={(path) => filesDownloadPath(selectedScope, path)}

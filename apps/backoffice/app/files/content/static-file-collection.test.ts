@@ -25,6 +25,23 @@ describe("Backoffice static file collection", () => {
     expect(loadStaticFileArtifacts).toHaveBeenCalledTimes(1);
   });
 
+  test("searches built-in and loaded static file contents", async () => {
+    const collection = createBackofficeStaticFileCollection(() => ({
+      "codemode/system.d.ts": "declare const configured: true;",
+    }));
+
+    const matches = await collection.search("configured");
+
+    expect(matches).toContainEqual(
+      expect.objectContaining({
+        path: "codemode/system.d.ts",
+        line: 1,
+        column: 15,
+        text: "configured",
+      }),
+    );
+  });
+
   test("streams built-in static content", async () => {
     const collection = createBackofficeStaticFileCollection(() => ({}));
     const file = await collection.getFile("SYSTEM.md");
