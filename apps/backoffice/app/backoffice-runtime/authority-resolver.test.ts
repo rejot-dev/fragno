@@ -5,8 +5,10 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import {
   createBackofficeAuthorityResolver,
   type BackofficeIdentityDirectory,
+  withBackofficeActorCapabilityGrants,
 } from "./authority-resolver";
 import { BACKOFFICE_AUTHORITY_ROLE_GRANTS } from "./authority-roles";
+import { BACKOFFICE_PERMISSION } from "./permissions";
 
 class MemoryIdentityDirectory implements BackofficeIdentityDirectory {
   lookupCount = 0;
@@ -299,6 +301,25 @@ describe("createBackofficeAuthorityResolver", () => {
         },
       }),
     ).resolves.toEqual(BACKOFFICE_AUTHORITY_ROLE_GRANTS.automation);
+  });
+
+  test("uses runtime-supplied grants for one trusted capability delegate", async () => {
+    const baseResolver = createBackofficeAuthorityResolver(new MemoryIdentityDirectory());
+    const actor = {
+      scope: "internal" as const,
+      type: "capability",
+      id: "untrusted-codemode-script",
+      role: "delegate" as const,
+    };
+    const resolver = withBackofficeActorCapabilityGrants({
+      resolver: baseResolver,
+      actor,
+      grants: [BACKOFFICE_PERMISSION.router.modify, BACKOFFICE_PERMISSION.router.read],
+    });
+
+    await expect(
+      resolver.resolveActorCapabilityGrants({ actor, execution: organizationExecution }),
+    ).resolves.toEqual([BACKOFFICE_PERMISSION.router.modify, BACKOFFICE_PERMISSION.router.read]);
   });
 
   test("grants capabilities only to trusted internal runtime actors", async () => {

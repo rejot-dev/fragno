@@ -9,6 +9,7 @@ import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 
 import { AUTOMATION_SYSTEM_INITIATOR } from "../actors";
+import { createAutomationRuntimeExecution } from "../authority";
 import type { AutomationEvent } from "../contracts";
 import {
   createAutomationRuntime as createRouteBackedAutomationRuntime,
@@ -70,6 +71,15 @@ const createTestEvent = (
   },
 });
 
+const createTestExecution = (event: AutomationEvent) =>
+  createAutomationRuntimeExecution({
+    event,
+    authority: {
+      mode: { kind: "organization-automation" },
+      automationId: "automation-route:bash-test",
+    },
+  });
+
 const createDeferred = <T = void>() => {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -104,6 +114,7 @@ const createTestAutomationScriptHostContext = ({
     runtime: automationRuntime,
     kernel: testKernel,
     pi: null,
+    execution: createTestExecution(event),
   });
 
 describe("bash command runner", () => {
@@ -154,6 +165,7 @@ describe("bash command runner", () => {
         idempotencyKey: "idempotency-1",
         runtime: automationRuntime,
         pi: null,
+        execution: createTestExecution(event),
       }),
     });
 
@@ -184,6 +196,7 @@ describe("bash command runner", () => {
         idempotencyKey: "idem-dev",
         runtime: automationRuntime,
         pi: null,
+        execution: createTestExecution(event),
       }),
     });
 
@@ -216,6 +229,7 @@ describe("bash command runner", () => {
         idempotencyKey: "idem-cleanup",
         runtime: automationRuntime,
         pi: null,
+        execution: createTestExecution(event),
       }),
     });
 
@@ -421,6 +435,7 @@ describe("bash command runner", () => {
         idempotencyKey: "idem-edev",
         runtime: automationRuntime,
         pi: null,
+        execution: createTestExecution(event),
       }),
     });
 

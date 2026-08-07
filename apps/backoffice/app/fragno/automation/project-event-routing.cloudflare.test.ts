@@ -18,8 +18,8 @@ import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal"
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
+import { createAutomationRuntimeExecution } from "./authority";
 import type { AutomationEvent } from "./contracts";
-import { createAutomationRuntimeExecution } from "./engine/runtime-execution";
 import { createAutomationsRouteCaller } from "./route-callers";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -82,6 +82,7 @@ describe("project automation event routing", () => {
         priority: 15,
         action: {
           kind: "start_workflow",
+          authority: { kind: "organization-automation" },
           remoteWorkflowName: "project-files-configure",
           workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
           instanceIdTemplate: "project-files-configure-${event.id}",
@@ -121,6 +122,7 @@ describe("project automation event routing", () => {
             priority: 50,
             action: {
               kind: "start_workflow",
+              authority: { kind: "organization-automation" },
               remoteWorkflowName: "project-store",
               workflowScriptPath: "/workspace/automations/project-store.workflow.js",
               instanceIdTemplate: "project-store-${event.id}",
@@ -151,7 +153,13 @@ describe("project automation event routing", () => {
         authorityResolver: unavailableBackofficeAuthorityResolver,
         kernelObserver: noopBackofficeKernelObserver,
       }),
-      execution: createAutomationRuntimeExecution(event),
+      execution: createAutomationRuntimeExecution({
+        event,
+        authority: {
+          mode: { kind: "organization-automation" },
+          automationId: "automation-route:project-event",
+        },
+      }),
       parentEvent: event,
     });
 
@@ -309,7 +317,13 @@ describe("project automation event routing", () => {
         authorityResolver: unavailableBackofficeAuthorityResolver,
         kernelObserver: noopBackofficeKernelObserver,
       }),
-      execution: createAutomationRuntimeExecution(event),
+      execution: createAutomationRuntimeExecution({
+        event,
+        authority: {
+          mode: { kind: "organization-automation" },
+          automationId: "automation-route:project-event",
+        },
+      }),
       parentEvent: event,
     });
 

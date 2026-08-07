@@ -102,6 +102,19 @@ const UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE =
   UPDATED_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_ARTIFACT_FILE_KEY];
 const TELEGRAM_TEST_COMMAND_INSTALL_WORKFLOW_SOURCE =
   INSTALLER_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_INSTALL_WORKFLOW_PATH];
+const UNAUTHORIZED_MARKETPLACE_INSTALL_WORKFLOW_SOURCE = `defineWorkflow(
+  { name: "unauthorized-marketplace-install" },
+  async (_event, step) => {
+    await step.do("attempt unauthorized store mutation", async () => {
+      await store.set({
+        key: "marketplace/unauthorized",
+        value: "should-not-be-written",
+        category: ["test", "marketplace"],
+      });
+    });
+  },
+);
+`;
 
 type MarketplaceWorkflowListEntry = { id: string };
 type MarketplaceWorkflowHistoryStep = {
@@ -111,6 +124,18 @@ type MarketplaceWorkflowHistoryStep = {
 };
 
 const withUpdatedStaticMarketplaceEntry = async (run: () => Promise<void>) => await run();
+
+const withMarketplaceInstallerSource = async (source: string, run: () => Promise<void>) => {
+  const files = INSTALLER_STATIC_MARKETPLACE_VERSION.files as Record<string, string>;
+  const originalSource = files[MARKETPLACE_INSTALL_WORKFLOW_PATH];
+  files[MARKETPLACE_INSTALL_WORKFLOW_PATH] = source;
+
+  try {
+    await run();
+  } finally {
+    files[MARKETPLACE_INSTALL_WORKFLOW_PATH] = originalSource;
+  }
+};
 
 const withTwoFileMarketplaceVersions = async (run: () => Promise<void>) => {
   const baseFiles = BASE_STATIC_MARKETPLACE_VERSION.files as Record<string, string>;
@@ -589,6 +614,81 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     );
   });
 
+  test("denies installer operations outside the untrusted codemode permission ceiling", async () => {
+    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      targetScope: { kind: "org", orgId: "org-1" },
+      listingId: MARKETPLACE_LISTING_ID,
+      version: "1.2.1",
+    });
+
+    await withMarketplaceInstallerSource(
+      UNAUTHORIZED_MARKETPLACE_INSTALL_WORKFLOW_SOURCE,
+      async () => {
+        await runBackofficeScenario(
+          defineBackofficeScenario({
+            name: "deny unauthorized Marketplace installer operation",
+            setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+            steps: ({ then, runner }) => [
+              then.assert("publish the Marketplace artifact", async (ctx) => {
+                await ctx.runtime.objects.automations
+                  .forOrg("org-1")
+                  .requestStaticMarketplacePublications();
+              }),
+              runner.drain(),
+              then.assert("request Marketplace ingestion", async (ctx) => {
+                await ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion(
+                  {
+                    listingId: MARKETPLACE_LISTING_ID,
+                    targetScope: { kind: "org", orgId: "org-1" },
+                  },
+                  {
+                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                    propagationContext: null,
+                  },
+                );
+              }),
+              runner.drain(),
+              then.workflow.instance({
+                workflowName: UNTRUSTED_CODEMODE_WORKFLOW,
+                instanceId: `${workflowInstanceId}:installation`,
+                status: "errored",
+              }),
+              then.workflow.instance({
+                workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+                instanceId: workflowInstanceId,
+                status: "errored",
+              }),
+              then.assert(
+                "the installer failed at the delegated capability boundary",
+                async (ctx) => {
+                  const workflows = createWorkflowsRouteCaller({
+                    object: ctx.runtime.objects.automations.forOrg("org-1"),
+                    context: {
+                      execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                      propagationContext: null,
+                    },
+                  });
+                  const response = await workflows("GET", "/:workflowName/instances/:instanceId", {
+                    pathParams: {
+                      workflowName: UNTRUSTED_CODEMODE_WORKFLOW,
+                      instanceId: `${workflowInstanceId}:installation`,
+                    },
+                  });
+                  assert(response.type === "json");
+                  expect(response.data.details.error?.message).toContain(
+                    "delegated actor does not have the required capability grant",
+                  );
+                },
+              ),
+              then.store.missing({ orgId: "org-1", key: "marketplace/unauthorized" }),
+            ],
+            options: { allowErroredWorkflows: true },
+          }),
+        );
+      },
+    );
+  });
+
   test("reconciles a Marketplace-owned route while preserving its operational state", async () => {
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
       targetScope: { kind: "org", orgId: "org-1" },
@@ -643,6 +743,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 },
                 action: {
                   kind: "start_workflow",
+                  authority: { kind: "organization-automation" },
                   remoteWorkflowName: "telegram-test-command",
                   workflowScriptPath: "/workspace/automations/wrong.workflow.js",
                   instanceIdTemplate: "wrong-${event.id}",
@@ -679,6 +780,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "complete",
+            actors: installerExecution.actors,
           }),
           then.assert("ingestion and installation preserve requester actors", async (ctx) => {
             const workflows = createWorkflowsRouteCaller({
@@ -797,6 +899,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               },
               action: {
                 kind: "start_workflow",
+                authority: { kind: "organization-automation" },
                 remoteWorkflowName: "telegram-test-command",
                 workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
                 instanceIdTemplate: "telegram-test-${event.id}",
@@ -816,7 +919,14 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                     id: `automation:${workflowInstanceId}:installation`,
                     role: "principal",
                   },
-                  delegation: [],
+                  delegation: [
+                    {
+                      scope: "internal",
+                      type: "capability",
+                      id: UNTRUSTED_CODEMODE_WORKFLOW,
+                      role: "delegate",
+                    },
+                  ],
                 },
                 managedBy: {
                   kind: "marketplace",
@@ -871,6 +981,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             },
             action: {
               kind: "start_workflow",
+              authority: { kind: "organization-automation" },
               remoteWorkflowName: "telegram-test-command",
               workflowScriptPath: "/workspace/automations/legacy-test.workflow.js",
               instanceIdTemplate: "legacy-${event.id}",
@@ -957,6 +1068,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             },
             action: {
               kind: "start_workflow",
+              authority: { kind: "organization-automation" },
               remoteWorkflowName: "unrelated-workflow",
               workflowScriptPath: "/workspace/automations/unrelated.workflow.js",
               instanceIdTemplate: "unrelated-${event.id}",

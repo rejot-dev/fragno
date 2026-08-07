@@ -155,6 +155,7 @@ describe("automation routes /routes", () => {
         priority: 1000,
         action: {
           kind: "start_workflow",
+          authority: { kind: "organization-automation" },
           remoteWorkflowName: "telegram-hello",
           workflowScriptPath: "/workspace/automations/telegram-hello.workflow.js",
           instanceIdTemplate: "telegram-hello-${event}",
@@ -237,6 +238,7 @@ describe("automation routes /routes", () => {
         },
         action: {
           kind: "start_workflow",
+          authority: { kind: "organization-automation" },
           remoteWorkflowName: "caller-attribution",
           workflowScriptPath: "/workspace/automations/caller-attribution.workflow.js",
           instanceIdTemplate: "caller-attribution-${event.id}",
@@ -275,6 +277,7 @@ describe("automation routes /routes", () => {
         },
         action: {
           kind: "start_workflow",
+          authority: { kind: "organization-automation" },
           remoteWorkflowName: "trusted-attribution",
           workflowScriptPath: "/workspace/automations/trusted-attribution.workflow.js",
           instanceIdTemplate: "trusted-attribution-${event.id}",
@@ -537,6 +540,7 @@ describe("automation routes /routes", () => {
         priority: 50,
         action: {
           kind: "start_workflow",
+          authority: { kind: "organization-automation" },
           remoteWorkflowName: "custom-start",
           workflowScriptPath: "/workspace/automations/custom-start.workflow.js",
           instanceIdTemplate: "custom-start-${event.id}",

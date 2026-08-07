@@ -8,6 +8,7 @@ import {
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import type { UploadObject } from "@/backoffice-runtime/object-registry";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import {
@@ -730,6 +731,10 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
                   scriptPath: MARKETPLACE_INSTALL_WORKFLOW_PATH,
                   automationEvent: installationEvent,
                   workflowEventPayload: installationInput,
+                  permissions: [
+                    BACKOFFICE_PERMISSION.router.modify,
+                    BACKOFFICE_PERMISSION.router.read,
+                  ],
                   metadata: input.metadata,
                 },
                 {

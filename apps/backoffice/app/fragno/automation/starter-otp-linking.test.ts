@@ -2,7 +2,9 @@ import { describe, test, vi } from "vitest";
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 
+import { createAutomationRuntimeExecution } from "./authority";
 import type { AutomationEvent } from "./contracts";
+import { createAutomationCodemodeWorkflowParams } from "./engine/workflow-start";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -99,14 +101,25 @@ const identityClaimCompletedEvent = ({
   };
 };
 
-const telegramLinkingWorkflowParams = (input: { instanceId: string; event: AutomationEvent }) => ({
-  automationEvent: input.event,
-  workflowInstanceId: input.instanceId,
-  script: {
-    kind: "file" as const,
-    path: "/workspace/automations/telegram-user-linking.workflow.js",
-  },
-});
+const telegramLinkingExecution = (event: AutomationEvent) =>
+  createAutomationRuntimeExecution({
+    event,
+    authority: {
+      mode: { kind: "organization-automation" },
+      automationId: "automation-route:telegram-user-linking",
+    },
+  });
+
+const telegramLinkingWorkflowParams = (input: { instanceId: string; event: AutomationEvent }) =>
+  createAutomationCodemodeWorkflowParams({
+    event: input.event,
+    authority: {
+      mode: { kind: "organization-automation" },
+      automationId: "automation-route:telegram-user-linking",
+    },
+    instanceId: input.instanceId,
+    workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
+  });
 
 describe("starter OTP linking automation in memory", () => {
   test("routes Telegram /start through OTP confirmation and links the Telegram chat", async () => {
@@ -306,6 +319,9 @@ describe("starter OTP linking automation in memory", () => {
             orgId: "org-1",
             remoteWorkflowName: "telegram-user-linking",
             instanceId: "telegram-link-already-linked",
+            execution: telegramLinkingExecution(
+              telegramMessageEvent({ id: "telegram:message:already-linked", text: "/start" }),
+            ),
             params: telegramLinkingWorkflowParams({
               instanceId: "telegram-link-already-linked",
               event: telegramMessageEvent({
@@ -402,6 +418,9 @@ describe("starter OTP linking automation in memory", () => {
             orgId: "org-1",
             remoteWorkflowName: "telegram-user-linking",
             instanceId: "telegram-link-non-start",
+            execution: telegramLinkingExecution(
+              telegramMessageEvent({ id: "telegram:message:non-start", text: "hello" }),
+            ),
             params: telegramLinkingWorkflowParams({
               instanceId: "telegram-link-non-start",
               event: telegramMessageEvent({
@@ -448,6 +467,9 @@ describe("starter OTP linking automation in memory", () => {
             orgId: "org-1",
             remoteWorkflowName: "telegram-user-linking",
             instanceId: "telegram-link-claim-mismatch",
+            execution: telegramLinkingExecution(
+              telegramMessageEvent({ id: "telegram:message:claim-mismatch", text: "/start" }),
+            ),
             params: telegramLinkingWorkflowParams({
               instanceId: "telegram-link-claim-mismatch",
               event: telegramMessageEvent({
@@ -521,6 +543,9 @@ describe("starter OTP linking automation in memory", () => {
             orgId: "org-1",
             remoteWorkflowName: "telegram-user-linking",
             instanceId: "telegram-link-timeout",
+            execution: telegramLinkingExecution(
+              telegramMessageEvent({ id: "telegram:message:claim-timeout", text: "/start" }),
+            ),
             params: telegramLinkingWorkflowParams({
               instanceId: "telegram-link-timeout",
               event: telegramMessageEvent({

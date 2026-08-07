@@ -13,10 +13,10 @@ import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-run
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
+import { createAutomationRuntimeExecution } from "@/fragno/automation/authority";
 import { loadAutomationCatalog } from "@/fragno/automation/catalog";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 import { PI_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/pi-codemode-workflow";
-import { createAutomationRuntimeExecution } from "@/fragno/automation/engine/runtime-execution";
 import { UNTRUSTED_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/untrusted-codemode-workflow";
 import { AUTOMATION_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
 import {
@@ -151,23 +151,29 @@ describe("Automations fetchWithContext authorization", () => {
     try {
       const scope = { kind: "user" as const, userId: "user-1" };
       const execution = createAutomationRuntimeExecution({
-        id: "event-1",
-        scope,
-        source: "backoffice",
-        eventType: "user.action",
-        occurredAt: "2026-07-28T00:00:00.000Z",
-        payload: {},
-        actors: {
-          initiator: {
-            scope: "internal",
-            type: "user",
-            id: scope.userId,
-            role: "initiator",
-          },
-          principal: null,
-          delegation: [],
+        authority: {
+          mode: { kind: "organization-automation" },
+          automationId: "automation-route:user-action",
         },
-        subject: { userId: scope.userId },
+        event: {
+          id: "event-1",
+          scope,
+          source: "backoffice",
+          eventType: "user.action",
+          occurredAt: "2026-07-28T00:00:00.000Z",
+          payload: {},
+          actors: {
+            initiator: {
+              scope: "internal",
+              type: "user",
+              id: scope.userId,
+              role: "initiator",
+            },
+            principal: null,
+            delegation: [],
+          },
+          subject: { userId: scope.userId },
+        },
       });
       const automations = runtime.objects.automations.forUser({
         userId: scope.userId,

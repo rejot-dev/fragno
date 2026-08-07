@@ -29,6 +29,8 @@ const automationRuntimePermissions = [
   BACKOFFICE_PERMISSION.telegram.send,
   BACKOFFICE_PERMISSION.upload.modify,
   BACKOFFICE_PERMISSION.upload.read,
+  BACKOFFICE_PERMISSION.workflow.modify,
+  BACKOFFICE_PERMISSION.workflow.read,
 ];
 
 const automationAuthoringPermissions = [

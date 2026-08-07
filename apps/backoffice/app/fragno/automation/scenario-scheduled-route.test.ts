@@ -60,6 +60,7 @@ describe("scheduled automation route scenario", () => {
   },
   action: {
     kind: "start_workflow",
+    authority: { kind: "organization-automation" },
     remoteWorkflowName: "scheduled-digest",
     workflowScriptPath: "/workspace/automations/scheduled-digest.workflow.js",
     instanceIdTemplate: "scheduled-\${event.payload.id}",
@@ -77,6 +78,21 @@ describe("scheduled automation route scenario", () => {
             remoteWorkflowName: "scheduled-digest",
             instanceId: "scheduled-daily-digest",
             status: "complete",
+            actors: {
+              initiator: {
+                scope: "internal",
+                type: "schedule",
+                id: "daily-digest",
+                role: "initiator",
+              },
+              principal: {
+                scope: "internal",
+                type: "automation",
+                id: "automation-route:daily-digest",
+                role: "principal",
+              },
+              delegation: [],
+            },
             output: { routeId: "daily-digest", routeName: "Daily digest" },
           }),
           then.router.route({

@@ -1,4 +1,5 @@
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import {
   BackofficeForbiddenError,
   BackofficeKernel,
@@ -27,7 +28,6 @@ import {
 import type {} from "../../runtime-tools/families/otp";
 import { type OtpRuntime } from "../../runtime-tools/families/otp-runtime";
 import type { AutomationEvent } from "../contracts";
-import { createAutomationRuntimeExecution } from "./runtime-execution";
 
 export type AutomationPiBashContext = {
   runtime: PiRuntime;
@@ -58,9 +58,11 @@ export type AutomationRuntimeHostContext = Omit<
 export const createAutomationRuntime = ({
   runtime,
   event,
+  execution,
 }: {
   runtime?: BackofficeRuntimeServices;
   event: AutomationEvent;
+  execution?: BackofficeExecutionContext;
 }): AutomationRuntime => {
   const requireRouteBackend = (toolName: string) => {
     if (!runtime) {
@@ -70,8 +72,10 @@ export const createAutomationRuntime = ({
   };
 
   if (runtime) {
+    if (!execution) {
+      throw new Error("Configured automation runtimes require trusted execution.");
+    }
     const kernel = new BackofficeKernel(runtime);
-    const execution = createAutomationRuntimeExecution(event);
     const routeBacked = createRouteBackedRuntimeContext({
       runtime,
       kernel,
@@ -113,6 +117,7 @@ export const createAutomationRuntimeHostContext = ({
   runtimeServices,
   kernel,
   pi,
+  execution,
 }: {
   event: AutomationEvent;
   binding: AutomationTriggerBinding;
@@ -121,8 +126,8 @@ export const createAutomationRuntimeHostContext = ({
   runtimeServices?: BackofficeRuntimeServices;
   kernel?: BackofficeKernel;
   pi: AutomationPiBashContext | null;
+  execution: BackofficeExecutionContext;
 }): AutomationRuntimeHostContext => {
-  const execution = createAutomationRuntimeExecution(event);
   const backofficeKernel =
     kernel ??
     new BackofficeKernel(

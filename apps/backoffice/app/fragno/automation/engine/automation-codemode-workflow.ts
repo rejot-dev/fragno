@@ -10,15 +10,16 @@ import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { FileSystemError } from "@/files/fs-errors";
 import { MasterFileSystem } from "@/files/master-file-system";
+import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
+import { createAutomationExecutionFromActors } from "../authority";
 import { AUTOMATION_WORKSPACE_ROOT, type AutomationFileSystemConfig } from "../catalog";
 import { resolveAutomationFileSystem } from "../catalog";
 import type { AutomationEvent } from "../contracts";
 import { type AutomationPiBashContext, type AutomationRuntimeHostContext } from "./runtime";
-import { createAutomationRuntimeExecution } from "./runtime-execution";
 import {
   AUTOMATION_CODEMODE_WORKFLOW,
   type AutomationCodemodeWorkflowParams,
@@ -37,12 +38,13 @@ type AutomationWorkflowContextParams = Pick<
   "automationEvent" | "workflowInstanceId" | "binding" | "idempotencyKey"
 > & {
   workflowScriptPath: string;
+  metadata?: AutomationCodemodeWorkflowParams["metadata"];
 };
 
 const createWorkflowAutomationContext = async ({
   runtime,
   params,
-  execution = createAutomationRuntimeExecution(params.automationEvent),
+  execution,
   createPiAutomationContext,
 }: {
   runtime: BackofficeRuntimeServices;
@@ -53,16 +55,22 @@ const createWorkflowAutomationContext = async ({
     idempotencyKey: string;
   }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
 }): Promise<AutomationRuntimeHostContext> => {
+  const resolvedExecution =
+    execution ??
+    createAutomationExecutionFromActors({
+      scope: params.automationEvent.scope,
+      actors: params.metadata?.[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
+    });
   const kernel = new BackofficeKernel(runtime);
   const pi = await createPiAutomationContext?.({
     event: params.automationEvent,
     idempotencyKey: params.idempotencyKey ?? params.workflowInstanceId,
   });
-  const emittedEventActors = createAutomationRuntimeExecution(params.automationEvent).actors;
+  const emittedEventActors = resolvedExecution.actors;
   const runtimeContext = createRouteBackedRuntimeContext({
     runtime,
     kernel,
-    execution,
+    execution: resolvedExecution,
     emittedEventActors,
     ...(pi ? { pi } : {}),
   });
@@ -70,7 +78,7 @@ const createWorkflowAutomationContext = async ({
     objects: runtime.objects,
     parentEvent: params.automationEvent,
     kernel,
-    execution,
+    execution: resolvedExecution,
     emittedEventActors,
   });
   const automationRuntime = {
@@ -136,6 +144,7 @@ export const executeAutomationWorkflowSource = async ({
   remote,
   config,
   execution,
+  metadata,
   masterFs,
 }: {
   script: string;
@@ -152,6 +161,7 @@ export const executeAutomationWorkflowSource = async ({
     }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
   };
   execution?: BackofficeExecutionContext;
+  metadata?: AutomationCodemodeWorkflowParams["metadata"];
   masterFs?: MasterFileSystem;
 }): Promise<unknown> => {
   if (!config.env?.LOADER) {
@@ -179,6 +189,7 @@ export const executeAutomationWorkflowSource = async ({
         workflowScriptPath,
         workflowInstanceId: workflowEvent.instanceId,
         idempotencyKey: workflowEvent.instanceId,
+        metadata,
       },
       execution,
       createPiAutomationContext: config.createPiAutomationContext,
@@ -263,6 +274,7 @@ export const defineAutomationCodemodeWorkflow = (
       },
       remote,
       config,
+      metadata: params.metadata,
       masterFs: resolvedFs,
     });
   });

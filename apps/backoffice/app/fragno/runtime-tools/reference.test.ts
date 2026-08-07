@@ -1105,6 +1105,11 @@ describe("runtime tool reference generation", () => {
       };
       type AutomationStartWorkflowAction = {
         kind: "start_workflow";
+        authority: {
+            kind: "delegated-user";
+          } | {
+            kind: "organization-automation";
+          };
         remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
@@ -1164,6 +1169,11 @@ describe("runtime tool reference generation", () => {
       type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
+        authority: {
+            kind: "delegated-user";
+          } | {
+            kind: "organization-automation";
+          };
         remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
@@ -3326,6 +3336,11 @@ describe("runtime tool reference generation", () => {
       };
       type AutomationStartWorkflowAction = {
         kind: "start_workflow";
+        authority: {
+            kind: "delegated-user";
+          } | {
+            kind: "organization-automation";
+          };
         remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
@@ -3385,6 +3400,11 @@ describe("runtime tool reference generation", () => {
       type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
+        authority: {
+            kind: "delegated-user";
+          } | {
+            kind: "organization-automation";
+          };
         remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
@@ -3674,6 +3694,11 @@ describe("runtime tool reference generation", () => {
       };
       type AutomationStartWorkflowAction = {
         kind: "start_workflow";
+        authority: {
+            kind: "delegated-user";
+          } | {
+            kind: "organization-automation";
+          };
         remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
@@ -3733,6 +3758,11 @@ describe("runtime tool reference generation", () => {
       type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
+        authority: {
+            kind: "delegated-user";
+          } | {
+            kind: "organization-automation";
+          };
         remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
@@ -3813,8 +3843,8 @@ describe("runtime tool reference generation", () => {
       types,
     }).toMatchInlineSnapshot(`
       {
-        "createInputIndex": 8396,
-        "listOutputIndex": 8265,
+        "createInputIndex": 8598,
+        "listOutputIndex": 8467,
         "matcherIndex": 5046,
         "types": "// ── Backoffice domain tool providers ───────────────────────────────────
 
@@ -4023,6 +4053,11 @@ describe("runtime tool reference generation", () => {
       };
       type AutomationStartWorkflowAction = {
         kind: "start_workflow";
+        authority: {
+            kind: "delegated-user";
+          } | {
+            kind: "organization-automation";
+          };
         remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
@@ -4082,6 +4117,11 @@ describe("runtime tool reference generation", () => {
       type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
+        authority: {
+            kind: "delegated-user";
+          } | {
+            kind: "organization-automation";
+          };
         remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
@@ -4155,7 +4195,7 @@ describe("runtime tool reference generation", () => {
         /** Project contexts are reserved until the project model exists. */
         project(projectId: string): BackofficeCodemodeScopedProviders;
       };",
-        "updateInputIndex": 8697,
+        "updateInputIndex": 8899,
       }
     `);
   });
@@ -4374,6 +4414,11 @@ describe("runtime tool reference generation", () => {
       };
       type AutomationStartWorkflowAction = {
         kind: "start_workflow";
+        authority: {
+            kind: "delegated-user";
+          } | {
+            kind: "organization-automation";
+          };
         remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
@@ -4433,6 +4478,11 @@ describe("runtime tool reference generation", () => {
       type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
+        authority: {
+            kind: "delegated-user";
+          } | {
+            kind: "organization-automation";
+          };
         remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;

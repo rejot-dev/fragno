@@ -1,7 +1,12 @@
 import { describe, expect, test } from "vitest";
 
+import {
+  appendAutomationDelegate,
+  AutomationAuthorityModeError,
+  automationRouteAuthority,
+  createAutomationRuntimeExecution,
+} from "../authority";
 import type { AutomationEvent } from "../contracts";
-import { createAutomationRuntimeExecution } from "./runtime-execution";
 
 const event = {
   id: "event-1",
@@ -24,16 +29,26 @@ const event = {
   },
 } as const satisfies AutomationEvent;
 
+const organizationAuthority = automationRouteAuthority({
+  routeId: "telegram-message",
+  mode: { kind: "organization-automation" },
+});
+
+const delegatedUserAuthority = automationRouteAuthority({
+  routeId: "telegram-message",
+  mode: { kind: "delegated-user" },
+});
+
 describe("createAutomationRuntimeExecution", () => {
-  test("uses the automation runtime as principal without replacing the external initiator", () => {
-    expect(createAutomationRuntimeExecution(event)).toEqual({
+  test("uses a stable route automation principal without replacing the initiator", () => {
+    expect(createAutomationRuntimeExecution({ event, authority: organizationAuthority })).toEqual({
       scope: event.scope,
       actors: {
         initiator: event.actors.initiator,
         principal: {
           scope: "internal",
           type: "automation",
-          id: "automation:event-1",
+          id: "automation-route:telegram-message",
           role: "principal",
         },
         delegation: [],
@@ -41,40 +56,17 @@ describe("createAutomationRuntimeExecution", () => {
     });
   });
 
-  test("keeps a system initiator principal-free and authorizes the runtime as a delegate", () => {
-    const systemEvent = {
-      ...event,
-      scope: { kind: "system" as const },
-      actors: {
-        initiator: {
-          scope: "internal" as const,
-          type: "system",
-          id: "backoffice",
-          role: "initiator" as const,
-        },
-        principal: null,
-        delegation: [],
-      },
-    };
-
-    expect(createAutomationRuntimeExecution(systemEvent)).toEqual({
-      scope: systemEvent.scope,
-      actors: {
-        initiator: systemEvent.actors.initiator,
-        principal: null,
-        delegation: [
-          {
-            scope: "internal",
-            type: "automation",
-            id: "automation:event-1",
-            role: "delegate",
-          },
-        ],
-      },
+  test("uses the same organization automation principal for different events", () => {
+    const first = createAutomationRuntimeExecution({ event, authority: organizationAuthority });
+    const second = createAutomationRuntimeExecution({
+      event: { ...event, id: "event-2" },
+      authority: organizationAuthority,
     });
+
+    expect(second.actors.principal).toEqual(first.actors.principal);
   });
 
-  test("adds the automation runtime as a delegate when the event has a principal", () => {
+  test("preserves a delegated user principal and appends the route automation", () => {
     const principal = {
       scope: "internal",
       type: "user",
@@ -84,8 +76,8 @@ describe("createAutomationRuntimeExecution", () => {
 
     expect(
       createAutomationRuntimeExecution({
-        ...event,
-        actors: { ...event.actors, principal },
+        event: { ...event, actors: { ...event.actors, principal } },
+        authority: delegatedUserAuthority,
       }).actors,
     ).toEqual({
       initiator: event.actors.initiator,
@@ -94,32 +86,97 @@ describe("createAutomationRuntimeExecution", () => {
         {
           scope: "internal",
           type: "automation",
-          id: "automation:event-1",
+          id: "automation-route:telegram-message",
           role: "delegate",
         },
       ],
     });
   });
 
-  test("does not duplicate an automation identity already in the delegation", () => {
-    const principal = {
-      scope: "internal",
-      type: "user",
-      id: "user-1",
-      role: "principal",
-    } as const;
-    const delegate = {
+  test("does not duplicate a route automation already in the delegation", () => {
+    const routeDelegate = {
       scope: "internal",
       type: "automation",
-      id: "automation:event-1",
+      id: "automation-route:telegram-message",
       role: "delegate",
     } as const;
+    const execution = createAutomationRuntimeExecution({
+      event: {
+        ...event,
+        actors: {
+          ...event.actors,
+          principal: {
+            scope: "internal",
+            type: "user",
+            id: "user-1",
+            role: "principal",
+          },
+          delegation: [routeDelegate],
+        },
+      },
+      authority: delegatedUserAuthority,
+    });
+
+    expect(execution.actors.delegation).toEqual([routeDelegate]);
+  });
+
+  test("rejects delegated-user mode without a principal", () => {
+    expect(() =>
+      createAutomationRuntimeExecution({ event, authority: delegatedUserAuthority }),
+    ).toThrow(
+      expect.objectContaining<Partial<AutomationAuthorityModeError>>({
+        reason: "delegated-user-principal-required",
+      }),
+    );
+  });
+
+  test("appends a trusted delegate without replacing existing authority", () => {
+    const execution = createAutomationRuntimeExecution({ event, authority: organizationAuthority });
 
     expect(
+      appendAutomationDelegate({
+        execution,
+        delegate: {
+          scope: "internal",
+          type: "capability",
+          id: "untrusted-codemode-script",
+          role: "delegate",
+        },
+      }).actors,
+    ).toEqual({
+      ...execution.actors,
+      delegation: [
+        {
+          scope: "internal",
+          type: "capability",
+          id: "untrusted-codemode-script",
+          role: "delegate",
+        },
+      ],
+    });
+  });
+
+  test("rejects delegated-user mode with a non-user principal", () => {
+    expect(() =>
       createAutomationRuntimeExecution({
-        ...event,
-        actors: { ...event.actors, principal, delegation: [delegate] },
-      }).actors.delegation,
-    ).toEqual([delegate]);
+        event: {
+          ...event,
+          actors: {
+            ...event.actors,
+            principal: {
+              scope: "internal",
+              type: "service",
+              id: "service-1",
+              role: "principal",
+            },
+          },
+        },
+        authority: delegatedUserAuthority,
+      }),
+    ).toThrow(
+      expect.objectContaining<Partial<AutomationAuthorityModeError>>({
+        reason: "delegated-user-principal-invalid",
+      }),
+    );
   });
 });

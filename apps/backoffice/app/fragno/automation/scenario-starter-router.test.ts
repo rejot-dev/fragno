@@ -61,6 +61,7 @@ const telegramTestCommandRoute = {
   priority: 110,
   action: {
     kind: "start_workflow" as const,
+    authority: { kind: "organization-automation" as const },
     remoteWorkflowName: "telegram-test-command",
     workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
     instanceIdTemplate: "telegram-test-${event.id}",
@@ -575,6 +576,7 @@ describe("starter automation router scenarios", () => {
             priority: 50,
             action: {
               kind: "start_workflow",
+              authority: { kind: "organization-automation" },
               remoteWorkflowName: "custom-alpha",
               workflowScriptPath: "/workspace/automations/custom-alpha.workflow.js",
               instanceIdTemplate: "custom-alpha-${event.id}",
@@ -626,6 +628,21 @@ describe("starter automation router scenarios", () => {
             remoteWorkflowName: "custom-alpha",
             instanceId: "custom-alpha-alpha-1",
             status: "complete",
+            actors: {
+              initiator: {
+                scope: "internal",
+                type: "system",
+                id: "scenario",
+                role: "initiator",
+              },
+              principal: {
+                scope: "internal",
+                type: "automation",
+                id: "automation-route:custom-alpha",
+                role: "principal",
+              },
+              delegation: [],
+            },
             output: { eventId: "alpha-1", kind: "alpha" },
           }),
           then.workflow.missing({
@@ -685,6 +702,7 @@ describe("starter automation router scenarios", () => {
             priority: 50,
             action: {
               kind: "start_workflow",
+              authority: { kind: "organization-automation" },
               remoteWorkflowName: "missing-workflow-file",
               workflowScriptPath: "/workspace/automations/missing-workflow-file.workflow.js",
               instanceIdTemplate: "missing-workflow-file-${event.id}",

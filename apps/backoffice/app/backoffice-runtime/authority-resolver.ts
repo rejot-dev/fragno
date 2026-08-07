@@ -1,7 +1,7 @@
 import type { Role, UserAuthorityFacts } from "@fragno-dev/auth";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import type { AutomationActors } from "@/fragno/automation/actors";
+import { automationEntityRefsEqual, type AutomationActors } from "@/fragno/automation/actors";
 
 import {
   getBackofficeAuthorityRoleGrants,
@@ -43,6 +43,28 @@ export type BackofficeAuthorityResolver = {
 };
 
 /** The production identity lookup used when execution has no verified access-token authority. */
+/**
+ * Overrides one trusted delegate's grants for a specific runtime boundary.
+ *
+ * The grants remain runtime configuration: they are neither accepted from workflow input nor
+ * persisted in actor provenance.
+ */
+export const withBackofficeActorCapabilityGrants = ({
+  resolver,
+  actor,
+  grants,
+}: {
+  resolver: BackofficeAuthorityResolver;
+  actor: AutomationActors["delegation"][number];
+  grants: readonly BackofficePermissionRequirement[];
+}): BackofficeAuthorityResolver => ({
+  resolvePrincipalPermissions: async (input) => await resolver.resolvePrincipalPermissions(input),
+  resolveActorCapabilityGrants: async (input) =>
+    automationEntityRefsEqual(input.actor, actor)
+      ? grants
+      : await resolver.resolveActorCapabilityGrants(input),
+});
+
 export type BackofficeIdentityDirectory = {
   getUserAuthorityFacts(input: {
     userId: string;

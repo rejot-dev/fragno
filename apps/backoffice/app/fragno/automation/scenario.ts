@@ -8,6 +8,7 @@ import {
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
   type BackofficeContextScope,
+  type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import type { InMemoryObjectFactoryOverrides } from "@/backoffice-runtime/in-memory-object-factory";
 import {
@@ -74,6 +75,8 @@ import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { listHookScopes } from "../backoffice-capabilities/backoffice-capabilities";
 import {
   AUTOMATION_SYSTEM_INITIATOR,
+  BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY,
+  automationActorsSchema,
   type AutomationActors,
   type AutomationExternalEntityRef,
 } from "./actors";
@@ -571,6 +574,7 @@ type WorkflowInstanceInput = {
   waitingFor?: string;
   params?: unknown;
   output?: unknown;
+  actors?: DeepPartial<AutomationActors>;
 };
 
 type WorkflowStepsInput = {
@@ -599,6 +603,7 @@ type WorkflowCreateInstanceInput<TVars extends ScenarioVars = ScenarioVars> = {
   remoteWorkflowName?: string;
   instanceId: string;
   params: ScenarioValue<TVars, Record<string, unknown>>;
+  execution?: ScenarioValue<TVars, BackofficeExecutionContext>;
   label?: string;
 };
 
@@ -1503,7 +1508,11 @@ const getStore = (ctx: BackofficeScenarioContext, orgId: string) => {
 
 const SYSTEM_WORKFLOW_TARGET_ID = "__system__";
 
-const getWorkflow = (ctx: BackofficeScenarioContext, orgId: string) => {
+const getWorkflow = (
+  ctx: BackofficeScenarioContext,
+  orgId: string,
+  execution?: BackofficeExecutionContext,
+) => {
   const scope =
     orgId === SYSTEM_WORKFLOW_TARGET_ID
       ? ({ kind: "system" } as const)
@@ -1513,7 +1522,7 @@ const getWorkflow = (ctx: BackofficeScenarioContext, orgId: string) => {
       scope.kind === "system"
         ? ctx.runtime.objects.automations.singleton()
         : ctx.runtime.objects.automations.forOrg(scope.orgId),
-    execution: createBackofficeSystemExecution(scope),
+    execution: execution ?? createBackofficeSystemExecution(scope),
   });
 };
 
@@ -2698,7 +2707,10 @@ const buildStepBuilders = <
             `create workflow ${input.remoteWorkflowName ?? input.workflowName ?? input.instanceId}`,
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
-            await getWorkflow(ctx, input.orgId).createInstance({
+            const execution = input.execution
+              ? await resolveScenarioValue(ctx as BackofficeScenarioContext<TVars>, input.execution)
+              : undefined;
+            await getWorkflow(ctx, input.orgId, execution).createInstance({
               workflowName: input.workflowName ?? "automation-codemode-script",
               remoteWorkflowName: input.remoteWorkflowName,
               instanceId: input.instanceId,
@@ -3362,6 +3374,16 @@ const buildStepBuilders = <
 
             if (typeof input.output !== "undefined") {
               assertPartialMatch(match.instance.details.output, input.output, "workflow.output");
+            }
+
+            if (input.actors) {
+              const params = match.instance.meta.params as
+                | { metadata?: Record<string, unknown> }
+                | undefined;
+              const actors = automationActorsSchema.parse(
+                params?.metadata?.[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
+              );
+              assertPartialMatch(actors, input.actors, "workflow.actors");
             }
           },
         ),
