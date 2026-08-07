@@ -21,6 +21,10 @@ import {
 } from "@fragno-dev/workflow-visualizer";
 
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import {
+  createAutomationRuntimeExecution,
+  type AutomationRuntimeAuthority,
+} from "@/fragno/automation/authority";
 import type { AutomationEvent, AutomationEventPayload } from "@/fragno/automation/contracts";
 import {
   AUTOMATION_CODEMODE_WORKFLOW,
@@ -323,8 +327,17 @@ export async function runWorkflow({
     actors: execution.actors,
     subject: { orgId },
   };
+  const authority = {
+    mode: { kind: "delegated-user" },
+    automationId: `manual-workflow:${workflowName}`,
+  } satisfies AutomationRuntimeAuthority;
+  const workflowExecution = createAutomationRuntimeExecution({
+    event: automationEvent,
+    authority,
+  });
   const workflowInput = createAutomationCodemodeWorkflowInstanceInput({
     event: automationEvent,
+    authority,
     workflowScriptPath: view.source.absolutePath,
     instanceId,
     remoteWorkflowName: AUTOMATION_CODEMODE_WORKFLOW,
@@ -333,7 +346,7 @@ export async function runWorkflow({
   try {
     const runtime = createRouteBackedAutomationWorkflowRuntime({
       object: getAutomationsDurableObject(context, orgId),
-      execution,
+      execution: workflowExecution,
     });
     const created = await runtime.createInstance(workflowInput);
     return {

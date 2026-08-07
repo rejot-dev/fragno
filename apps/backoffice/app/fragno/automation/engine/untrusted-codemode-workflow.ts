@@ -1,10 +1,18 @@
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 import { z } from "zod";
 
+import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/authority-resolver";
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import type { UploadObject } from "@/backoffice-runtime/object-registry";
+import {
+  isBackofficePermissionRequirement,
+  type BackofficePermissionRequirement,
+} from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { backofficeWorkflowActorMetadataSchema } from "@/fragno/automation/actors";
+import {
+  backofficeWorkflowActorMetadataSchema,
+  type AutomationActors,
+} from "@/fragno/automation/actors";
 import type { AutomationFileSystemConfig } from "@/fragno/automation/catalog";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 import { automationEventSchema } from "@/fragno/automation/events";
@@ -15,11 +23,18 @@ import {
 } from "@/fragno/upload";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
 
+import { appendAutomationDelegate, createAutomationExecutionFromActors } from "../authority";
 import { executeAutomationWorkflowSource } from "./automation-codemode-workflow";
 import type { AutomationPiBashContext } from "./runtime";
-import { createAutomationRuntimeExecution } from "./runtime-execution";
 
 export const UNTRUSTED_CODEMODE_WORKFLOW = "untrusted-codemode-script";
+
+const UNTRUSTED_CODEMODE_WORKFLOW_DELEGATE = {
+  scope: "internal",
+  type: "capability",
+  id: UNTRUSTED_CODEMODE_WORKFLOW,
+  role: "delegate",
+} as const satisfies AutomationActors["delegation"][number];
 
 const uploadObjectReferenceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("scope"), scope: backofficeContextScopeSchema }),
@@ -32,11 +47,20 @@ const uploadWorkflowSourceSchema = z.object({
   key: z.string().trim().min(1),
 });
 
+const backofficePermissionRequirementSchema = z
+  .strictObject({
+    namespace: z.string().trim().min(1),
+    permission: z.string().trim().min(1),
+  })
+  .refine(isBackofficePermissionRequirement, "Unknown Backoffice permission.")
+  .transform((permission): BackofficePermissionRequirement => permission);
+
 const untrustedCodemodeWorkflowParamsSchema = z.object({
   source: uploadWorkflowSourceSchema,
   scriptPath: z.string().trim().min(1),
   automationEvent: automationEventSchema,
   workflowEventPayload: z.record(z.string(), z.unknown()),
+  permissions: z.array(backofficePermissionRequirementSchema),
   metadata: backofficeWorkflowActorMetadataSchema,
 });
 
@@ -83,6 +107,21 @@ export const defineUntrustedCodemodeWorkflow = (
       throw new Error("Untrusted codemode workflows require Backoffice runtime services.");
     }
     const script = await loadUploadWorkflowSource(config.runtime, params.source);
+    const execution = appendAutomationDelegate({
+      execution: createAutomationExecutionFromActors({
+        scope: params.automationEvent.scope,
+        actors: params.automationEvent.actors,
+      }),
+      delegate: UNTRUSTED_CODEMODE_WORKFLOW_DELEGATE,
+    });
+    const runtime: BackofficeRuntimeServices = {
+      ...config.runtime,
+      authorityResolver: withBackofficeActorCapabilityGrants({
+        resolver: config.runtime.authorityResolver,
+        actor: UNTRUSTED_CODEMODE_WORKFLOW_DELEGATE,
+        grants: params.permissions,
+      }),
+    };
 
     return await executeAutomationWorkflowSource({
       script,
@@ -94,7 +133,8 @@ export const defineUntrustedCodemodeWorkflow = (
         payload: params.workflowEventPayload,
       },
       remote,
-      config,
-      execution: createAutomationRuntimeExecution(params.automationEvent),
+      config: { ...config, runtime },
+      metadata: params.metadata,
+      execution,
     });
   });

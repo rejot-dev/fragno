@@ -99,6 +99,7 @@ forwards the event.
        },
        action: {
          kind: "start_workflow",
+         authority: { kind: "organization-automation" },
          remoteWorkflowName: "daily-digest",
          workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
          instanceIdTemplate: "daily-digest-${event.id}",
@@ -122,6 +123,7 @@ forwards the event.
        priority: 1000,
        action: {
          kind: "start_workflow",
+         authority: { kind: "organization-automation" },
          remoteWorkflowName: "telegram-hello",
          workflowScriptPath: "/workspace/automations/telegram-hello.workflow.js",
          instanceIdTemplate: "telegram-hello-${event}",

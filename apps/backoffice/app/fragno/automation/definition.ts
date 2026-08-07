@@ -10,6 +10,7 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
 
 import { automationActorsSchema } from "./actors";
+import { automationRouteAuthority } from "./authority";
 import { createAutomationStoreServices } from "./bindings-storage-runtime";
 import type { AutomationFileSystemConfig } from "./catalog";
 import {
@@ -165,6 +166,7 @@ const handleStartWorkflowRouteAction = async ({
   );
   const workflowInput = createAutomationCodemodeWorkflowInstanceInput({
     event,
+    authority: automationRouteAuthority({ routeId: route.id, mode: action.authority }),
     workflowScriptPath: action.workflowScriptPath,
     instanceId,
     remoteWorkflowName: action.remoteWorkflowName,

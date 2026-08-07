@@ -231,7 +231,7 @@ const routerCreateTool = defineBackofficeRuntimeTool({
           },
         ],
         examples: [
-          'router.create --json \'{"id":"telegram-hello","name":"Telegram hello","trigger":{"kind":"event","source":"telegram","eventType":"message.received"},"action":{"kind":"start_workflow","remoteWorkflowName":"telegram-hello","workflowScriptPath":"/workspace/automations/telegram-hello.workflow.js","instanceIdTemplate":"telegram-hello-${event}"}}\' --format json',
+          'router.create --json \'{"id":"telegram-hello","name":"Telegram hello","trigger":{"kind":"event","source":"telegram","eventType":"message.received"},"action":{"kind":"start_workflow","authority":{"kind":"organization-automation"},"remoteWorkflowName":"telegram-hello","workflowScriptPath":"/workspace/automations/telegram-hello.workflow.js","instanceIdTemplate":"telegram-hello-${event}"}}\' --format json',
         ],
       },
       parse: parseJsonPayload() as (args: string[]) => AutomationRouteCreateInput,

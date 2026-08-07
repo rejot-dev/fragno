@@ -114,9 +114,15 @@ const automationRouteScopeTemplateSchema: z.ZodType<AutomationRouteScopeTemplate
   ])
   .meta({ id: "AutomationRouteScopeTemplate" });
 
+const automationAuthorityModeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("delegated-user") }),
+  z.strictObject({ kind: z.literal("organization-automation") }),
+]);
+
 const automationStartWorkflowActionSchema = z
   .object({
     kind: z.literal("start_workflow"),
+    authority: automationAuthorityModeSchema,
     remoteWorkflowName: z.string().trim().min(1).optional(),
     workflowScriptPath: z.string().trim().min(1),
     instanceIdTemplate: z.string().trim().min(1),

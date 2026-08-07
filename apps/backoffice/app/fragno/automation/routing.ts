@@ -1,4 +1,5 @@
 import type { AutomationActor, AutomationActorRole } from "./actors";
+import type { AutomationAuthorityMode } from "./authority";
 import type { AutomationEvent } from "./contracts";
 import type { AutomationScheduleCadence } from "./route-triggers";
 
@@ -46,6 +47,7 @@ type AutomationRouteScope =
 
 export type AutomationStartWorkflowAction = {
   kind: "start_workflow";
+  authority: AutomationAuthorityMode;
   remoteWorkflowName?: string;
   workflowScriptPath: string;
   instanceIdTemplate: string;

@@ -16,6 +16,7 @@ const startWorkflowAction = ({
   instanceIdTemplate: string;
 }): AutomationStartWorkflowAction => ({
   kind: "start_workflow",
+  authority: { kind: "organization-automation" },
   remoteWorkflowName,
   workflowScriptPath,
   instanceIdTemplate,

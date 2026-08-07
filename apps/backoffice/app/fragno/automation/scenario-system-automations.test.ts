@@ -350,6 +350,21 @@ describe("system automation scenarios", () => {
           then.workflow.instance({
             remoteWorkflowName: "workspace-file-initialization",
             status: "complete",
+            actors: {
+              initiator: {
+                scope: "internal",
+                type: "user",
+                id: "user-1",
+                role: "initiator",
+              },
+              principal: {
+                scope: "internal",
+                type: "automation",
+                id: "automation-route:system-workspace-file-initialization",
+                role: "principal",
+              },
+              delegation: [],
+            },
             output: {
               configured: true,
               id: "upload",
@@ -392,6 +407,7 @@ describe("system automation scenarios", () => {
                 },
                 action: {
                   kind: "start_workflow",
+                  authority: { kind: "organization-automation" },
                   remoteWorkflowName: "project-files-configure",
                   workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
                 },

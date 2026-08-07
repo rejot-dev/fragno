@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "composite": true,
+    "noEmit": true,
+    "noResolve": true,
+    "skipLibCheck": true,
+    "strict": true
+  },
+  "include": ["marketplace/**/.marketplace/**/*.js", "static/codemode/**/*.d.ts"]
+}

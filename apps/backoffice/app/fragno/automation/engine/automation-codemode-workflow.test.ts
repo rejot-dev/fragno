@@ -22,6 +22,10 @@ describe("automation codemode workflow", () => {
     };
     const input = createAutomationCodemodeWorkflowInstanceInput({
       event,
+      authority: {
+        mode: { kind: "organization-automation" },
+        automationId: "automation-route:demo",
+      },
       workflowScriptPath: "/workspace/automations/demo.workflow.js",
       instanceId: event.id,
       remoteWorkflowName: "demo",
@@ -35,5 +39,15 @@ describe("automation codemode workflow", () => {
     });
     expect(input.params.automationEvent.payload).toEqual({ value: 42 });
     expect(input.params.idempotencyKey).toBe(input.instanceId);
+    expect(input.params.metadata.__backofficeActors).toEqual({
+      initiator: event.actors.initiator,
+      principal: {
+        scope: "internal",
+        type: "automation",
+        id: "automation-route:demo",
+        role: "principal",
+      },
+      delegation: [],
+    });
   });
 });

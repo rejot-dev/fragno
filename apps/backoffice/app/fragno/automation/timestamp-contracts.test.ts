@@ -78,6 +78,7 @@ describe("automation public timestamp contracts", () => {
       },
       action: {
         kind: "start_workflow",
+        authority: { kind: "organization-automation" },
         workflowScriptPath: "/workspace/example.workflow.js",
         instanceIdTemplate: "example-${event.id}",
       },

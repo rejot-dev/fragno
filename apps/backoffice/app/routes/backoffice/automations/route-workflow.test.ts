@@ -53,6 +53,7 @@ describe("automation route workflow presentation", () => {
   test("start routes only match runs created from the same workflow script", () => {
     const route = routeWithAction({
       kind: "start_workflow",
+      authority: { kind: "organization-automation" },
       workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
       instanceIdTemplate: "telegram/link/${event.id}",
     });

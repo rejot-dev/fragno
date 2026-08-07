@@ -2,8 +2,8 @@ import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/act
 
 import type { AutomationTriggerBinding } from "../../runtime-tools/automation-types";
 import type { BackofficeWorkflowActorMetadata } from "../actors";
+import { createAutomationRuntimeExecution, type AutomationRuntimeAuthority } from "../authority";
 import type { AutomationEvent } from "../contracts";
-import { createAutomationRuntimeExecution } from "./runtime-execution";
 
 export const AUTOMATION_CODEMODE_WORKFLOW = "automation-codemode-script";
 
@@ -18,14 +18,16 @@ export type AutomationCodemodeWorkflowParams = {
 
 export const createAutomationCodemodeWorkflowParams = ({
   event,
+  authority,
   workflowScriptPath,
   instanceId,
 }: {
   event: AutomationEvent;
+  authority: AutomationRuntimeAuthority;
   workflowScriptPath: string;
   instanceId: string;
 }): AutomationCodemodeWorkflowParams => {
-  const execution = createAutomationRuntimeExecution(event);
+  const execution = createAutomationRuntimeExecution({ event, authority });
   return {
     automationEvent: event,
     script: { kind: "file", path: workflowScriptPath },
@@ -39,11 +41,13 @@ export const createAutomationCodemodeWorkflowParams = ({
 
 export const createAutomationCodemodeWorkflowInstanceInput = ({
   event,
+  authority,
   workflowScriptPath,
   instanceId,
   remoteWorkflowName,
 }: {
   event: AutomationEvent;
+  authority: AutomationRuntimeAuthority;
   workflowScriptPath: string;
   instanceId: string;
   remoteWorkflowName?: string;
@@ -51,5 +55,10 @@ export const createAutomationCodemodeWorkflowInstanceInput = ({
   workflowName: AUTOMATION_CODEMODE_WORKFLOW,
   remoteWorkflowName,
   instanceId,
-  params: createAutomationCodemodeWorkflowParams({ event, workflowScriptPath, instanceId }),
+  params: createAutomationCodemodeWorkflowParams({
+    event,
+    authority,
+    workflowScriptPath,
+    instanceId,
+  }),
 });

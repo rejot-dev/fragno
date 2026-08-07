@@ -8,6 +8,7 @@ describe("automation routing schemas", () => {
   test("start_workflow actions discard caller-supplied workflow hosts", () => {
     const action = automationRouteActionSchema.parse({
       kind: "start_workflow",
+      authority: { kind: "organization-automation" },
       workflowName: "wrong-workflow-host",
       remoteWorkflowName: "daily-digest",
       workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
@@ -16,11 +17,23 @@ describe("automation routing schemas", () => {
 
     expect(action).toEqual({
       kind: "start_workflow",
+      authority: { kind: "organization-automation" },
       remoteWorkflowName: "daily-digest",
       workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
       instanceIdTemplate: "daily-digest-${event.id}",
     });
     expect(action).not.toHaveProperty("workflowName");
+  });
+
+  test("requires an explicit authority mode for workflow-start routes", () => {
+    expect(() =>
+      automationRouteActionSchema.parse({
+        kind: "start_workflow",
+        remoteWorkflowName: "telegram-hello",
+        workflowScriptPath: "/workspace/automations/telegram-hello.workflow.js",
+        instanceIdTemplate: "telegram-hello-${event.id}",
+      }),
+    ).toThrow();
   });
 
   test("renders start_workflow action inputs without a configurable workflow host", () => {
@@ -34,6 +47,11 @@ describe("automation routing schemas", () => {
       [
         "type AutomationStartWorkflowActionInput = {",
         '  kind: "start_workflow";',
+        "  authority: {",
+        '      kind: "delegated-user";',
+        "    } | {",
+        '      kind: "organization-automation";',
+        "    };",
         "  remoteWorkflowName?: string;",
         "  workflowScriptPath: string;",
         "  instanceIdTemplate: string;",
@@ -62,6 +80,7 @@ describe("automation routing schemas", () => {
         },
         action: {
           kind: "start_workflow",
+          authority: { kind: "organization-automation" },
           workflowScriptPath: "/workspace/automations/telegram.workflow.js",
           instanceIdTemplate: "telegram-${event.id}",
         },
@@ -95,6 +114,7 @@ describe("automation routing schemas", () => {
         },
         action: {
           kind: "start_workflow",
+          authority: { kind: "organization-automation" },
           workflowScriptPath: "/workspace/automations/telegram.workflow.js",
           instanceIdTemplate: "telegram-${event.id}",
         },
@@ -113,6 +133,7 @@ describe("automation routing schemas", () => {
         },
         action: {
           kind: "start_workflow",
+          authority: { kind: "organization-automation" },
           workflowScriptPath: "/workspace/automations/telegram.workflow.js",
           instanceIdTemplate: "telegram-${event.id}",
         },
@@ -131,6 +152,7 @@ describe("automation routing schemas", () => {
         },
         action: {
           kind: "start_workflow",
+          authority: { kind: "organization-automation" },
           workflowScriptPath: "/workspace/automations/telegram.workflow.js",
           instanceIdTemplate: "telegram-${event.id}",
         },
@@ -155,6 +177,7 @@ describe("automation routing schemas", () => {
         },
         action: {
           kind: "start_workflow",
+          authority: { kind: "organization-automation" },
           workflowScriptPath: "/workspace/automations/telegram.workflow.js",
           instanceIdTemplate: "telegram-${event.id}",
         },
