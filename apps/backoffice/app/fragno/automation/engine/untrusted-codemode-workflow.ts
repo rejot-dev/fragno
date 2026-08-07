@@ -64,7 +64,8 @@ const loadUploadWorkflowSource = async (
     );
   }
 
-  return await response.text();
+  const text = await response.text();
+  return text;
 };
 
 export const defineUntrustedCodemodeWorkflow = (
