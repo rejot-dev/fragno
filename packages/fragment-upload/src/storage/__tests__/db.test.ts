@@ -228,8 +228,9 @@ describe("database storage adapter", () => {
     const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
         provider: storage.name,
-        glob: "/workspace/**/*.ts",
+        candidateKeys: searchResponse.data.candidates.map((candidate) => candidate.key),
         query: "createWorkflow",
+        maxBytes: 1024 * 1024,
         options: {
           caseSensitive: false,
           contextBefore: 1,
@@ -242,6 +243,7 @@ describe("database storage adapter", () => {
     assert(hydrateResponse.type === "json");
     expect(hydrateResponse.data).toMatchInlineSnapshot(`
       {
+        "consumedCandidates": 1,
         "matches": [
           {
             "column": 14,
@@ -271,6 +273,7 @@ describe("database storage adapter", () => {
           },
         ],
         "scannedFiles": 1,
+        "skippedCandidates": [],
       }
     `);
   });
@@ -478,15 +481,16 @@ describe("database storage adapter", () => {
     const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
         provider: storage.name,
-        glob: "workspace/**/*.ts",
+        candidateKeys: searchResponse.data.candidates.map((candidate) => candidate.key),
         query: "createWorkflow",
-        maxCandidateFiles: 2,
+        maxBytes: 1024 * 1024,
       },
     });
 
     assert(hydrateResponse.type === "json");
     expect(hydrateResponse.data).toMatchInlineSnapshot(`
       {
+        "consumedCandidates": 2,
         "matches": [
           {
             "column": 14,
@@ -510,22 +514,23 @@ describe("database storage adapter", () => {
           },
         ],
         "scannedFiles": 2,
+        "skippedCandidates": [],
       }
     `);
 
     const nextHydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
         provider: storage.name,
-        glob: "workspace/**/*.ts",
+        candidateKeys: nextSearchResponse.data.candidates.map((candidate) => candidate.key),
         query: "createWorkflow",
-        maxCandidateFiles: 2,
-        cursor,
+        maxBytes: 1024 * 1024,
       },
     });
 
     assert(nextHydrateResponse.type === "json");
     expect(nextHydrateResponse.data).toMatchInlineSnapshot(`
       {
+        "consumedCandidates": 1,
         "matches": [
           {
             "column": 14,
@@ -539,8 +544,102 @@ describe("database storage adapter", () => {
           },
         ],
         "scannedFiles": 1,
+        "skippedCandidates": [],
       }
     `);
+  });
+
+  it("hydrates only explicit candidates within the byte budget", async () => {
+    const { fragment } = build.fragments.upload;
+    const files = [
+      {
+        key: "workspace/src/a.ts",
+        content: "export const createWorkflow = 'a';\n",
+      },
+      {
+        key: "workspace/src/b.ts",
+        content: "export const createWorkflow = 'b';\n",
+      },
+      {
+        key: "workspace/src/c.ts",
+        content: "export const createWorkflow = 'c';\n",
+      },
+    ];
+
+    for (const file of files) {
+      const form = new FormData();
+      form.set("provider", storage.name);
+      form.set("fileKey", file.key);
+      form.set(
+        "file",
+        new File([file.content], file.key.split("/").at(-1)!, {
+          type: "application/typescript",
+        }),
+      );
+      const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
+      assert(uploadResponse.type === "json");
+    }
+
+    await drainDurableHooks(fragment);
+
+    const firstPage = await fragment.callRoute("POST", "/files/search/hydrate", {
+      body: {
+        provider: storage.name,
+        candidateKeys: [files[0]!.key, files[2]!.key],
+        query: "createWorkflow",
+        maxBytes: Buffer.byteLength(files[0]!.content),
+      },
+    });
+
+    assert(firstPage.type === "json");
+    expect(firstPage.data.matches.map((match) => match.path)).toEqual([files[0]!.key]);
+    expect(firstPage.data).toMatchObject({
+      scannedFiles: 1,
+      consumedCandidates: 1,
+      skippedCandidates: [],
+    });
+
+    const remainingPage = await fragment.callRoute("POST", "/files/search/hydrate", {
+      body: {
+        provider: storage.name,
+        candidateKeys: [files[2]!.key],
+        query: "createWorkflow",
+        maxBytes: Buffer.byteLength(files[2]!.content),
+      },
+    });
+
+    assert(remainingPage.type === "json");
+    expect(remainingPage.data.matches.map((match) => match.path)).toEqual([files[2]!.key]);
+  });
+
+  it("skips a candidate larger than the complete byte budget", async () => {
+    const { fragment } = build.fragments.upload;
+    const fileKey = "workspace/src/large.ts";
+    const content = "export const createWorkflow = 'larger than the budget';\n";
+    const form = new FormData();
+    form.set("provider", storage.name);
+    form.set("fileKey", fileKey);
+    form.set("file", new File([content], "large.ts", { type: "application/typescript" }));
+    const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
+    assert(uploadResponse.type === "json");
+    await drainDurableHooks(fragment);
+
+    const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
+      body: {
+        provider: storage.name,
+        candidateKeys: [fileKey],
+        query: "createWorkflow",
+        maxBytes: Buffer.byteLength(content) - 1,
+      },
+    });
+
+    assert(hydrateResponse.type === "json");
+    expect(hydrateResponse.data).toEqual({
+      matches: [],
+      scannedFiles: 0,
+      consumedCandidates: 1,
+      skippedCandidates: [{ key: fileKey, reason: "too_large" }],
+    });
   });
 
   it("replaces stale text index terms when a file is re-uploaded", async () => {
@@ -560,13 +659,15 @@ describe("database storage adapter", () => {
     const before = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
         provider: storage.name,
-        glob: "workspace/**/*.ts",
+        candidateKeys: ["workspace/src/stale.ts"],
         query: "createWorkflow",
+        maxBytes: 1024 * 1024,
       },
     });
     assert(before.type === "json");
     expect(before.data).toMatchInlineSnapshot(`
       {
+        "consumedCandidates": 1,
         "matches": [
           {
             "column": 14,
@@ -580,6 +681,7 @@ describe("database storage adapter", () => {
           },
         ],
         "scannedFiles": 1,
+        "skippedCandidates": [],
       }
     `);
 
@@ -589,15 +691,18 @@ describe("database storage adapter", () => {
     const after = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
         provider: storage.name,
-        glob: "workspace/**/*.ts",
+        candidateKeys: ["workspace/src/stale.ts"],
         query: "createWorkflow",
+        maxBytes: 1024 * 1024,
       },
     });
     assert(after.type === "json");
     expect(after.data).toMatchInlineSnapshot(`
       {
+        "consumedCandidates": 1,
         "matches": [],
-        "scannedFiles": 0,
+        "scannedFiles": 1,
+        "skippedCandidates": [],
       }
     `);
   });
@@ -622,13 +727,19 @@ describe("database storage adapter", () => {
     const searchResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
         provider: storage.name,
-        glob: "workspace/**/*.ts",
+        candidateKeys: ["workspace/src/replaced.ts"],
         query: "createWorkflow",
+        maxBytes: 1024 * 1024,
       },
     });
 
     assert(searchResponse.type === "json");
-    expect(searchResponse.data).toEqual({ matches: [], scannedFiles: 0 });
+    expect(searchResponse.data).toEqual({
+      matches: [],
+      scannedFiles: 0,
+      consumedCandidates: 1,
+      skippedCandidates: [{ key: "workspace/src/replaced.ts", reason: "not_found" }],
+    });
   });
 
   it("clears the text index idempotently when a file is deleted", async () => {
@@ -668,13 +779,19 @@ describe("database storage adapter", () => {
     const searchResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
         provider: storage.name,
-        glob: "workspace/**/*.ts",
+        candidateKeys: ["workspace/src/deleted.ts"],
         query: "createWorkflow",
+        maxBytes: 1024 * 1024,
       },
     });
 
     assert(searchResponse.type === "json");
-    expect(searchResponse.data).toEqual({ matches: [], scannedFiles: 0 });
+    expect(searchResponse.data).toEqual({
+      matches: [],
+      scannedFiles: 0,
+      consumedCandidates: 1,
+      skippedCandidates: [{ key: "workspace/src/deleted.ts", reason: "not_found" }],
+    });
 
     await fragment.inContext(async function () {
       await this.handlerTx()
@@ -694,13 +811,19 @@ describe("database storage adapter", () => {
     const repeatedSearchResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
         provider: storage.name,
-        glob: "workspace/**/*.ts",
+        candidateKeys: ["workspace/src/deleted.ts"],
         query: "createWorkflow",
+        maxBytes: 1024 * 1024,
       },
     });
 
     assert(repeatedSearchResponse.type === "json");
-    expect(repeatedSearchResponse.data).toEqual({ matches: [], scannedFiles: 0 });
+    expect(repeatedSearchResponse.data).toEqual({
+      matches: [],
+      scannedFiles: 0,
+      consumedCandidates: 1,
+      skippedCandidates: [{ key: "workspace/src/deleted.ts", reason: "not_found" }],
+    });
   });
 
   it("removes database bytes when the file deletion hook runs", async () => {

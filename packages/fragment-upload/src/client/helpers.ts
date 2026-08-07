@@ -35,11 +35,21 @@ export type DownloadFileOptions = {
   method: DownloadMethod;
 };
 
-export type SearchFilesOptions = StateSearchOptions & {
+export type SearchFileCandidatesOptions = {
   provider: string;
   maxCandidateFiles?: number;
   cursor?: string;
 };
+
+export type HydrateSearchMatchesOptions = StateSearchOptions & {
+  provider: string;
+  maxBytes: number;
+};
+
+export type SearchFilesOptions = StateSearchOptions &
+  SearchFileCandidatesOptions & {
+    maxBytes: number;
+  };
 
 export type SearchFileCandidate = {
   key: string;
@@ -58,6 +68,11 @@ export type SearchFileCandidatesResult = {
 export type HydrateSearchMatchesResult = {
   matches: StateTextMatch[];
   scannedFiles: number;
+  consumedCandidates: number;
+  skippedCandidates: Array<{
+    key: string;
+    reason: "not_found" | "too_large";
+  }>;
 };
 
 export type SearchFilesResult = SearchFileCandidatesResult & HydrateSearchMatchesResult;
@@ -98,12 +113,12 @@ export type UploadHelpers = {
   searchFileCandidates: (
     glob: string,
     query: string,
-    options: SearchFilesOptions,
+    options: SearchFileCandidatesOptions,
   ) => Promise<SearchFileCandidatesResult>;
   hydrateSearchMatches: (
-    glob: string,
+    candidateKeys: readonly string[],
     query: string,
-    options: SearchFilesOptions,
+    options: HydrateSearchMatchesOptions,
   ) => Promise<HydrateSearchMatchesResult>;
   searchFiles: (
     glob: string,
@@ -633,59 +648,90 @@ export const createUploadHelpers = (input: {
     return { upload, ...completion };
   };
 
-  const buildSearchPayload = (glob: string, query: string, options: SearchFilesOptions) => {
-    if (!hasText(glob)) {
-      throw new Error("Glob is required");
-    }
-
-    if (!hasText(query)) {
-      throw new Error("Search query is required");
-    }
-
-    if (!options || !hasText(options.provider)) {
-      throw new Error("Search provider is required");
-    }
-
-    const { provider, maxCandidateFiles, cursor, ...searchOptions } = options;
-    return {
-      provider,
-      glob,
-      query,
-      maxCandidateFiles,
-      cursor,
-      options: searchOptions,
-    };
-  };
-
   const searchFileCandidates: UploadHelpers["searchFileCandidates"] = async (
     glob,
     query,
     options,
   ) => {
+    if (!hasText(glob)) {
+      throw new Error("Glob is required");
+    }
+    if (!hasText(query)) {
+      throw new Error("Search query is required");
+    }
+    if (!options || !hasText(options.provider)) {
+      throw new Error("Search provider is required");
+    }
+
     return await fetchJson<SearchFileCandidatesResult>("/files/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildSearchPayload(glob, query, options)),
+      body: JSON.stringify({
+        provider: options.provider,
+        glob,
+        query,
+        maxCandidateFiles: options.maxCandidateFiles,
+        cursor: options.cursor,
+      }),
     });
   };
 
   const hydrateSearchMatches: UploadHelpers["hydrateSearchMatches"] = async (
-    glob,
+    candidateKeys,
     query,
     options,
   ) => {
+    if (candidateKeys.length === 0) {
+      throw new Error("At least one search candidate is required");
+    }
+    if (!hasText(query)) {
+      throw new Error("Search query is required");
+    }
+    if (!options || !hasText(options.provider)) {
+      throw new Error("Search provider is required");
+    }
+    if (!Number.isFinite(options.maxBytes) || options.maxBytes <= 0) {
+      throw new Error("Search byte budget must be a positive number");
+    }
+
+    const { provider, maxBytes, ...searchOptions } = options;
     return await fetchJson<HydrateSearchMatchesResult>("/files/search/hydrate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildSearchPayload(glob, query, options)),
+      body: JSON.stringify({
+        provider,
+        candidateKeys,
+        query,
+        options: searchOptions,
+        maxBytes,
+      }),
     });
   };
 
   const searchFiles: UploadHelpers["searchFiles"] = async (glob, query, options) => {
-    const [candidates, hydrated] = await Promise.all([
-      searchFileCandidates(glob, query, options),
-      hydrateSearchMatches(glob, query, options),
-    ]);
+    const { provider, maxCandidateFiles, cursor, maxBytes, ...searchOptions } = options;
+    const candidates = await searchFileCandidates(glob, query, {
+      provider,
+      maxCandidateFiles,
+      cursor,
+    });
+    const hydrated =
+      candidates.candidates.length === 0
+        ? {
+            matches: [],
+            scannedFiles: 0,
+            consumedCandidates: 0,
+            skippedCandidates: [],
+          }
+        : await hydrateSearchMatches(
+            candidates.candidates.map((candidate) => candidate.key),
+            query,
+            {
+              provider,
+              maxBytes,
+              ...searchOptions,
+            },
+          );
 
     return {
       ...candidates,

@@ -113,7 +113,15 @@ const searchFileCandidateSchema = z.object({
   count: z.number(),
 });
 
-const hydrateSearchMatchesSchema = searchFilesSchema;
+const MAX_SEARCH_HYDRATION_BYTES = 30 * 1024 * 1024;
+
+const hydrateSearchMatchesSchema = z.object({
+  provider: providerNamespaceSchema,
+  candidateKeys: z.array(z.string().min(1)).min(1).max(500),
+  query: z.string().min(1).max(512),
+  options: stateSearchOptionsSchema.optional(),
+  maxBytes: z.number().int().positive().max(MAX_SEARCH_HYDRATION_BYTES),
+});
 
 const stateTextMatchSchema = z.object({
   path: z.string(),
@@ -715,8 +723,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         },
       }),
 
-      // Hydration is also read-only, but POST keeps the API compatible with richer
-      // payloads such as explicit candidate pages.
+      // Hydration is read-only, but explicit candidate pages and search options belong in a body.
       defineRoute({
         method: "POST",
         path: "/files/search/hydrate",
@@ -724,6 +731,13 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         outputSchema: z.object({
           matches: z.array(stateTextMatchSchema),
           scannedFiles: z.number(),
+          consumedCandidates: z.number(),
+          skippedCandidates: z.array(
+            z.object({
+              key: z.string(),
+              reason: z.enum(["not_found", "too_large"]),
+            }),
+          ),
         }),
         errorCodes,
         handler: async function ({ input }, { json, error }) {
@@ -756,55 +770,49 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             );
           }
 
-          const searchTerms = extractTextIndexTerms(payload.query, resolvedConfig.textIndex);
-          const searchTerm = searchTerms[0];
-          if (!searchTerm) {
-            return handleServiceError(
-              new UploadServiceError(
-                "TEXT_SEARCH_INVALID_QUERY",
-                "The text search query is invalid.",
-              ),
-              error,
-            );
-          }
-
-          const globPrefix = getStaticGlobPrefix(payload.glob);
-          const globPattern = globToRegExp(payload.glob);
-          const maxCandidateFiles = payload.maxCandidateFiles ?? 200;
-
-          const [candidatePage] = await this.handlerTx()
+          const [documents] = await this.handlerTx()
             .retrieve(({ forSchema }) =>
-              forSchema(uploadSchema).findWithCursor("file_text_term", (b) => {
-                const query = b
-                  .whereIndex("idx_file_text_term_provider_term_key", (eb) =>
-                    eb.and(
-                      eb("provider", "=", payload.provider),
-                      eb("term", "=", searchTerm),
-                      eb("key", "starts with", globPrefix),
-                    ),
-                  )
-                  .orderByIndex("idx_file_text_term_provider_term_key", "asc")
-                  .pageSize(maxCandidateFiles)
-                  .joinOne("document", "file_text_document", (document) =>
-                    document.onIndex("primary", (eb) => eb("id", "=", eb.parent("documentId"))),
-                  );
-
-                return payload.cursor ? query.after(payload.cursor) : query;
-              }),
+              forSchema(uploadSchema).find("file_text_document", (b) =>
+                b.whereIndex("idx_file_text_document_provider_key", (eb) =>
+                  eb.and(
+                    eb("provider", "=", payload.provider),
+                    eb("key", "in", payload.candidateKeys),
+                  ),
+                ),
+              ),
             )
             .execute();
 
+          const documentsByKey = new Map(documents.map((document) => [document.key, document]));
           const matches = [];
+          const skippedCandidates: Array<{
+            key: string;
+            reason: "not_found" | "too_large";
+          }> = [];
+          const maxBytes = BigInt(payload.maxBytes);
           let scannedFiles = 0;
+          let scannedBytes = 0n;
+          let consumedCandidates = 0;
 
-          for (const candidate of candidatePage.items) {
+          for (const candidateKey of payload.candidateKeys) {
             if (matches.length >= maxMatches) {
               break;
             }
 
-            const document = candidate.document;
-            if (!document || !globPattern.test(document.key)) {
+            const document = documentsByKey.get(candidateKey);
+            if (!document) {
+              skippedCandidates.push({ key: candidateKey, reason: "not_found" });
+              consumedCandidates += 1;
               continue;
+            }
+
+            if (document.byteLength > maxBytes) {
+              skippedCandidates.push({ key: candidateKey, reason: "too_large" });
+              consumedCandidates += 1;
+              continue;
+            }
+            if (scannedBytes + document.byteLength > maxBytes) {
+              break;
             }
 
             const response = await resolvedConfig.storage.getDownloadStream({
@@ -818,6 +826,8 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             }
 
             scannedFiles += 1;
+            scannedBytes += document.byteLength;
+            consumedCandidates += 1;
             const text = await response.text();
             matches.push(
               ...searchTextContent(document.key, text, payload.query, {
@@ -827,7 +837,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             );
           }
 
-          return json({ matches, scannedFiles });
+          return json({ matches, scannedFiles, consumedCandidates, skippedCandidates });
         },
       }),
 

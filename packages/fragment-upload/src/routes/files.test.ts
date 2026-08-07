@@ -1080,6 +1080,20 @@ describe("upload file routes", async () => {
     assert(response.error.code === "INVALID_REQUEST");
   });
 
+  it("POST /files/search/hydrate rejects hydration budgets above 30 MiB", async () => {
+    const response = await fragment.callRoute("POST", "/files/search/hydrate", {
+      body: {
+        provider,
+        candidateKeys: ["workspace/file.txt"],
+        query: "workflow",
+        maxBytes: 30 * 1024 * 1024 + 1,
+      },
+    });
+
+    assert(response.type === "error");
+    assert(response.status === 400);
+  });
+
   it("GET /files supports delimiter directory listings", async () => {
     const createForm = (name: string, keyParts: (string | number)[]) => {
       const form = new FormData();
