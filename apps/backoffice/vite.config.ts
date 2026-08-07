@@ -47,6 +47,7 @@ export default defineConfig(({ mode }) => {
         }
       : undefined,
     server: {
+      hmr: false,
       allowedHosts: ["local-wilco.recivo.email"],
       // Tunnel/proxy layers were caching /@fs workspace modules and preserving stale
       // Vite dep hashes across restarts, which can split React between old/new chunks.
