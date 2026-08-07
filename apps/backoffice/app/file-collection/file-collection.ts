@@ -37,8 +37,26 @@ export interface FileContent {
   sizeBytes: number | null;
 }
 
+export type FileSearchOptions = {
+  caseSensitive?: boolean;
+  wholeWord?: boolean;
+  contextBefore?: number;
+  contextAfter?: number;
+  maxMatches?: number;
+};
+
+export type FileSearchMatch = {
+  path: string;
+  line: number;
+  column: number;
+  text: string;
+  contextBefore: readonly string[];
+  contextAfter: readonly string[];
+};
+
 export interface FileTreeReader {
   getTree(): Promise<FileTree>;
+  search(query: string, options?: FileSearchOptions): Promise<readonly FileSearchMatch[]>;
 }
 
 export interface FileContentReader {

@@ -1,5 +1,7 @@
+import { searchTextContent, shouldIndexContentType } from "@fragno-dev/upload/text-index";
+
 import { createFileTree } from "./create-file-tree";
-import type { FileCollection, FileTreeEntry } from "./file-collection";
+import type { FileCollection, FileSearchMatch, FileTreeEntry } from "./file-collection";
 
 /**
  * Creates a collection whose tree and contents are both held in memory.
@@ -75,6 +77,29 @@ export function createStaticFileCollection(
         contentType: file.contentType,
         sizeBytes: file.sizeBytes,
       };
+    },
+    async search(query, options = {}) {
+      const maxMatches = options.maxMatches ?? 50;
+      const matches: FileSearchMatch[] = [];
+
+      for (const [path, file] of contents) {
+        if (matches.length >= maxMatches || !shouldIndexContentType(file.contentType)) {
+          continue;
+        }
+
+        const text =
+          typeof file.content === "string"
+            ? file.content
+            : new TextDecoder("utf-8", { fatal: false }).decode(file.content);
+        matches.push(
+          ...searchTextContent(path, text, query, {
+            ...options,
+            maxMatches: maxMatches - matches.length,
+          }),
+        );
+      }
+
+      return matches;
     },
   };
 }

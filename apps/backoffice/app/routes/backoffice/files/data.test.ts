@@ -88,6 +88,28 @@ describe("files explorer route data", () => {
     assert(result.loadError === null);
   });
 
+  test("searches every mounted collection and returns absolute result paths", async () => {
+    const result = await loadFilesExplorerData({
+      request: new Request("https://backoffice.test/files/acme-org?q=guidance"),
+      context: mockContext,
+      scope: { kind: "org", orgId: "acme-org" },
+    });
+
+    assert(result.searchQuery === "guidance");
+    expect(result.searchGroups).toContainEqual({
+      rootPath: "/static",
+      rootTitle: "Static",
+      matches: [
+        expect.objectContaining({
+          path: "/static/SYSTEM.md",
+          line: 1,
+          column: 8,
+          text: "guidance",
+        }),
+      ],
+    });
+  });
+
   test("uses project-scoped Upload data and synchronization", async () => {
     const scope = { kind: "project" as const, orgId: "acme-org", projectId: "project-1" };
     const result = await loadFilesExplorerData({

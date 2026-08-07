@@ -95,6 +95,10 @@ function createPublishedMarketplaceArtifactCollection(input: {
     async getFile(path) {
       return isPublishedArtifactPath(input.manifest, path) ? uploadCollection.getFile(path) : null;
     },
+    async search(query, options) {
+      const matches = await uploadCollection.search(query, options);
+      return matches.filter((match) => isPublishedArtifactPath(input.manifest, match.path));
+    },
   };
 }
 

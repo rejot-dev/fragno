@@ -4,7 +4,7 @@ import { afterEach, assert, describe, test } from "vitest";
 
 import { useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MemoryRouter } from "react-router";
+import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
@@ -39,7 +39,6 @@ describe("FilesExplorerView", () => {
           selectedPath={filePath}
           selectedContent={{ path: filePath, text: "# Published artifact" }}
           loadError={null}
-          treeLabel="Published versions"
           treeAriaLabel="Marketplace artifact files"
           rootSelection="detail"
           detailHeadingLevel={4}
@@ -234,10 +233,10 @@ describe("FilesExplorerView", () => {
 
     fireEvent.click(toggle);
     assert.equal(toggle.getAttribute("aria-expanded"), "false");
-    assert(tree.className.includes("hidden lg:block"));
+    assert(tree.className.includes("hidden md:flex"));
 
     fireEvent.click(screen.getByRole("button", { name: "Show file tree" }));
-    assert(!tree.className.includes("hidden lg:block"));
+    assert(!tree.className.includes("hidden md:flex"));
   });
 
   test("starts folders collapsed and expands them when their row is selected", () => {
@@ -293,6 +292,127 @@ describe("FilesExplorerView", () => {
     fireEvent.click(screen.getByRole("link", { name: "archive" }));
 
     screen.getByRole("heading", { name: "archive" });
+  });
+
+  test("filters the tree by file and folder name while preserving ancestors", () => {
+    render(
+      <MemoryRouter>
+        <FilesExplorerView
+          sources={[
+            {
+              ...source,
+              tree: createFileTree([
+                {
+                  kind: "file",
+                  path: "1.0.0/README.md",
+                  sizeBytes: 20,
+                  contentType: "text/markdown",
+                  updatedAt: null,
+                  metadata: null,
+                },
+                {
+                  kind: "file",
+                  path: "1.0.0/LICENSE.txt",
+                  sizeBytes: 12,
+                  contentType: "text/plain",
+                  updatedAt: null,
+                  metadata: null,
+                },
+              ]),
+            },
+          ]}
+          selectedPath={filePath}
+          loadError={null}
+          buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Filter file or folder names" }), {
+      target: { value: "license" },
+    });
+
+    screen.getByText("1 matching name");
+    screen.getByRole("link", { name: "LICENSE.txt" });
+    assert(screen.queryByRole("link", { name: "README.md" }) === null);
+    screen.getByRole("link", { name: "1.0.0" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear file name filter" }));
+    screen.getByRole("link", { name: "README.md" });
+    screen.getByRole("link", { name: "LICENSE.txt" });
+  });
+
+  test("hides content search when the explorer does not provide it", () => {
+    render(
+      <MemoryRouter>
+        <FilesExplorerView
+          sources={[source]}
+          selectedPath={filePath}
+          loadError={null}
+          buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
+        />
+      </MemoryRouter>,
+    );
+
+    assert(screen.queryByRole("searchbox", { name: "Search file contents" }) === null);
+  });
+
+  test("renders content search results instead of the selected file", () => {
+    const router = createMemoryRouter(
+      [
+        {
+          path: "*",
+          element: (
+            <FilesExplorerView
+              sources={[source]}
+              selectedPath={filePath}
+              loadError={null}
+              contentSearch={{
+                query: "published",
+                groups: [
+                  {
+                    rootPath: "/artifact",
+                    rootTitle: "Published versions",
+                    matches: [
+                      {
+                        path: filePath,
+                        line: 1,
+                        column: 3,
+                        text: "Published",
+                        contextBefore: [],
+                        contextAfter: ["Install this version"],
+                      },
+                      {
+                        path: filePath,
+                        line: 4,
+                        column: 2,
+                        text: "published",
+                        contextBefore: ["Already"],
+                        contextAfter: [],
+                      },
+                    ],
+                  },
+                ],
+              }}
+              buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
+            />
+          ),
+        },
+      ],
+      { initialEntries: ["/files?q=published"] },
+    );
+    render(<RouterProvider router={router} />);
+
+    screen.getByRole("searchbox", { name: "Search file contents" });
+    screen.getByRole("navigation", { name: "File search results" });
+    screen.getByText("1:3");
+    screen.getByText("4:2");
+    assert.equal(
+      screen.getAllByRole("link").filter((link) => link.textContent?.includes(filePath)).length,
+      1,
+    );
+    screen.getByRole("navigation", { name: "Files explorer" });
+    assert(screen.queryByRole("heading", { name: "README.md" }) === null);
   });
 
   test("renders downloads only when the caller supplies a download route", () => {

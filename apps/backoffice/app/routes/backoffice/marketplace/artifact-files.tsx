@@ -181,7 +181,6 @@ function MarketplaceArtifactExplorer({
             ? `Artifact path '${explicitRequestedPath}' could not be found.`
             : null
         }
-        treeLabel={`Package · v${data.selectedVersion}`}
         treeAriaLabel="Marketplace artifact files"
         rootIcon={PackageOpen}
         rootSelection="detail"
