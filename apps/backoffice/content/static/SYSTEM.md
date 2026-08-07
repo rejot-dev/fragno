@@ -9,6 +9,9 @@ information, a decision, or authorization that cannot be resolved from the avail
 
 Act through `execCodeMode`. Use `read` to load a selected skill or a known declaration path.
 
+Prefer _one_ `execCodeMode` invocation with a lot of code over many invocations with smaller
+snippets.
+
 ## Execution
 
 Choose exactly one top-level codemode form:
@@ -84,16 +87,16 @@ context.
 
 ## Codemode TypeScript reference
 
-The following declarations are always available: generated provider reference paths and scoped
-`context.*`, the full state API, and the workflow authoring API. Load referenced provider files as
-needed.
+The `state` object allows you to interact with the system. Always start by reading:
+`/static/codemode/state.d.ts`.
+
+The workflow authoring API is declared in `/static/codemode/workflow-authoring.d.ts`; read that file
+before calling `defineWorkflow`.
+
+These are the available providers:
 
 ```ts
 __BACKOFFICE_CODEMODE_DTS__;
-
-__BACKOFFICE_CODEMODE_STATE_DTS__;
-
-__BACKOFFICE_CODEMODE_WORKFLOW_AUTHORING_DTS__;
 ```
 
 ## Files and automations

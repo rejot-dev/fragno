@@ -25,8 +25,6 @@ const CODEMODE_SOURCE_TYPES_DIR_PATH = `${CODEMODE_TYPES_DIR_PATH}/sources`;
 export const renderCodemodeSystemPrompt = async ({ fileSystem }: { fileSystem: IFileSystem }) =>
   renderStaticGuidance({
     codemodeDts: await fileSystem.readFile(CODEMODE_SYSTEM_DTS_PATH),
-    stateDts: await fileSystem.readFile(CODEMODE_STATE_DTS_PATH),
-    workflowAuthoringDts: await fileSystem.readFile(CODEMODE_WORKFLOW_AUTHORING_DTS_PATH),
   });
 
 const VALID_DECLARE_CONST_NAME = /^[A-Za-z_$][\w$]*$/u;
@@ -71,7 +69,10 @@ const renderCodemodeSystemTypes = ({
   scopedContext: string;
 }) =>
   codemodeSystemTypesTemplate
-    .replace("/* __BACKOFFICE_CODEMODE_REFERENCES__ */", references)
+    .replace(
+      "declare const __BACKOFFICE_CODEMODE_TEMPLATE__: unique symbol;\n\n/* __BACKOFFICE_CODEMODE_REFERENCES__ */",
+      references,
+    )
     .replace("/* __BACKOFFICE_CODEMODE_SCOPED_CONTEXT__ */", scopedContext)
     .trimEnd();
 
