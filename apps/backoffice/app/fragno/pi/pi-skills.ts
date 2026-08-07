@@ -1,40 +1,8 @@
 import type { PiSkillDefinition, PiSkillRegistry } from "@fragno-dev/pi-harness/skills";
-import { parse } from "yaml";
 
 import type { MasterFileSystem } from "@/files";
 import { FileSystemError } from "@/files/fs-errors";
-
-type Result<TValue, TError extends Error> =
-  | { ok: true; value: TValue }
-  | { ok: false; error: TError };
-
-const toError = (error: unknown): Error => {
-  if (error instanceof Error) {
-    return error;
-  }
-  return new Error(String(error));
-};
-
-// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Frontmatter is parsed at a trusted file boundary and projected to the caller's schema type.
-function parseFrontmatter<T extends Record<string, unknown>>(
-  content: string,
-): Result<{ frontmatter: T; body: string }, Error> {
-  try {
-    const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-    if (!normalized.startsWith("---")) {
-      return { ok: true, value: { frontmatter: {} as T, body: normalized } };
-    }
-    const endIndex = normalized.indexOf("\n---", 3);
-    if (endIndex === -1) {
-      return { ok: true, value: { frontmatter: {} as T, body: normalized } };
-    }
-    const yamlString = normalized.slice(4, endIndex);
-    const body = normalized.slice(endIndex + 4).trim();
-    return { ok: true, value: { frontmatter: (parse(yamlString) ?? {}) as T, body } };
-  } catch (error) {
-    return { ok: false, error: toError(error) };
-  }
-}
+import { parseFrontmatter } from "@/lib/frontmatter";
 
 type SkillFrontmatter = { name: string; description: string } & Record<string, unknown>;
 

@@ -24,6 +24,27 @@ describe("files content rendering", () => {
     assert(markup.includes("<h1"));
   });
 
+  test("renders Markdown frontmatter above the document body", () => {
+    const preview: FilesContentPreview = {
+      title: "SKILL.md",
+      contentType: "text/markdown",
+      metadata: null,
+      textContent: "---\nname: explorer\ndescription: Browse files\n---\n\n# Instructions",
+    };
+
+    const renderer = resolveFilesContentRenderer(preview);
+    assert(renderer);
+    const preambleMarkup = renderToStaticMarkup(renderer.renderBefore?.(preview));
+    const bodyMarkup = renderToStaticMarkup(renderer.render(preview));
+
+    assert(preambleMarkup.includes("Frontmatter"));
+    assert(preambleMarkup.includes("<dt"));
+    assert(preambleMarkup.includes(">name</dt>"));
+    assert(preambleMarkup.includes(">explorer</dd>"));
+    assert(bodyMarkup.includes("Instructions"));
+    assert(!bodyMarkup.includes("name: explorer"));
+  });
+
   test("ignores media type parameters when selecting a renderer", () => {
     const preview: FilesContentPreview = {
       title: "README.md",
