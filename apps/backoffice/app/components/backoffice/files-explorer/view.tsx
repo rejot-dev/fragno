@@ -486,6 +486,7 @@ function ExplorerNodeDetailPanel({
     textContent: detail.textContent,
   };
   const contentRenderer = resolveFilesContentRenderer(contentPreview);
+  const contentPreamble = contentRenderer?.renderBefore?.(contentPreview) ?? null;
   const downloadHref =
     detail.node.kind === "file" ? (buildDownloadHref?.(detail.node.path) ?? null) : null;
   const Heading = getHeadingComponent(headingLevel);
@@ -557,6 +558,8 @@ function ExplorerNodeDetailPanel({
           </details>
         </div>
       </div>
+
+      {contentPreamble ? <div className="mt-2 shrink-0">{contentPreamble}</div> : null}
 
       {contentRenderer ? (
         <div className="mt-2 flex min-h-0 flex-1 flex-col bg-[var(--bo-panel-2)] p-3 shadow-[inset_0_0_0_1px_var(--bo-border)] md:p-4">
