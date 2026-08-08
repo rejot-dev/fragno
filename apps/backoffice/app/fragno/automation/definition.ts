@@ -4,7 +4,10 @@ import { defineFragment } from "@fragno-dev/core";
 import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type {
+  BackofficeContextScope,
+  BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
@@ -74,6 +77,7 @@ export interface AutomationFragmentConfig extends AutomationFileSystemConfig {
   sandboxProviders?: Record<string, SandboxRuntimeProvider>;
   createPiAutomationContext?: (input: {
     event: AutomationEvent;
+    execution: BackofficeExecutionContext;
     idempotencyKey: string;
   }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
 }

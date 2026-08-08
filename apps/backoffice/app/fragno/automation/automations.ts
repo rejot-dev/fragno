@@ -18,7 +18,10 @@ import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { createAutomationFragment, type AutomationFragmentConfig } from "@/fragno/automation";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { defineAutomationCodemodeWorkflow } from "@/fragno/automation/engine/automation-codemode-workflow";
-import { definePiCodemodeWorkflow } from "@/fragno/automation/engine/pi-codemode-workflow";
+import {
+  definePiCodemodeWorkflow,
+  PI_CODEMODE_WORKFLOW,
+} from "@/fragno/automation/engine/pi-codemode-workflow";
 import { defineUntrustedCodemodeWorkflow } from "@/fragno/automation/engine/untrusted-codemode-workflow";
 import { AUTOMATION_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
 import {
@@ -68,6 +71,40 @@ const jsonResponse = (payload: unknown, status = 200) =>
     headers: { "content-type": "application/json" },
   });
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+/** Derives security-sensitive workflow context from the trusted route execution. */
+const withTrustedWorkflowContext = ({
+  workflowName,
+  params,
+  execution,
+}: {
+  workflowName: string;
+  params: Record<string, unknown>;
+  execution: BackofficeExecutionContext;
+}): Record<string, unknown> => {
+  const automationEvent = isRecord(params.automationEvent) ? params.automationEvent : null;
+  const metadata = isRecord(params.metadata) ? params.metadata : {};
+
+  return {
+    ...params,
+    ...(workflowName === AUTOMATION_CODEMODE_WORKFLOW && automationEvent
+      ? {
+          automationEvent: {
+            ...automationEvent,
+            scope: execution.scope,
+            actors: execution.actors,
+          },
+        }
+      : {}),
+    metadata: {
+      ...metadata,
+      [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: execution.actors,
+    },
+  };
+};
+
 export const createAutomationsRuntime = (
   runtime: BackofficeFragmentRuntimeOptions,
   config: Pick<
@@ -115,20 +152,14 @@ export const createAutomationsRuntime = (
       workflows: {
         AUTOMATION_CODEMODE_SCRIPT: defineAutomationCodemodeWorkflow({
           ...config,
-          createPiAutomationContext: ({ event }) => ({
-            runtime: createHostedPiRuntime({
-              scope: event.scope,
-              actors: event.actors,
-            }),
+          createPiAutomationContext: ({ execution }) => ({
+            runtime: createHostedPiRuntime(execution),
           }),
         }),
         UNTRUSTED_CODEMODE_SCRIPT: defineUntrustedCodemodeWorkflow({
           ...config,
-          createPiAutomationContext: ({ event }) => ({
-            runtime: createHostedPiRuntime({
-              scope: event.scope,
-              actors: event.actors,
-            }),
+          createPiAutomationContext: ({ execution }) => ({
+            runtime: createHostedPiRuntime(execution),
           }),
         }),
         PI_CODEMODE_SCRIPT: definePiCodemodeWorkflow(config),
@@ -216,7 +247,11 @@ export const createAutomationsRuntime = (
         requestContext.actors.initiator.scope === "internal" &&
         requestContext.actors.initiator.type === "system" &&
         requestContext.actors.principal === null;
-      if (workflowName === AUTOMATION_CODEMODE_WORKFLOW || isTrustedSystemExecution) {
+      if (
+        workflowName === AUTOMATION_CODEMODE_WORKFLOW ||
+        workflowName === PI_CODEMODE_WORKFLOW ||
+        isTrustedSystemExecution
+      ) {
         return undefined;
       }
 
@@ -269,10 +304,7 @@ export const createAutomationsRuntime = (
           return authorization;
         }
         const values = await input.valid();
-        const params =
-          values.params && typeof values.params === "object" && !Array.isArray(values.params)
-            ? values.params
-            : {};
+        const params = isRecord(values.params) ? values.params : {};
         if (Object.hasOwn(params, WORKFLOW_COMPLETION_PARAM)) {
           return error(
             {
@@ -284,18 +316,11 @@ export const createAutomationsRuntime = (
         }
         requestState.setBody({
           ...values,
-          params: {
-            ...params,
-            metadata: {
-              ...("metadata" in params &&
-              params.metadata &&
-              typeof params.metadata === "object" &&
-              !Array.isArray(params.metadata)
-                ? params.metadata
-                : {}),
-              [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: requestContext.actors,
-            },
-          },
+          params: withTrustedWorkflowContext({
+            workflowName: pathParams.workflowName,
+            params,
+            execution: requestContext,
+          }),
         });
         return undefined;
       },
@@ -341,25 +366,11 @@ export const createAutomationsRuntime = (
           ...values,
           instances: values.instances.map((instance) => ({
             ...instance,
-            params: {
-              ...(instance.params &&
-              typeof instance.params === "object" &&
-              !Array.isArray(instance.params)
-                ? instance.params
-                : {}),
-              metadata: {
-                ...(instance.params &&
-                typeof instance.params === "object" &&
-                !Array.isArray(instance.params) &&
-                "metadata" in instance.params &&
-                instance.params.metadata &&
-                typeof instance.params.metadata === "object" &&
-                !Array.isArray(instance.params.metadata)
-                  ? instance.params.metadata
-                  : {}),
-                [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: requestContext.actors,
-              },
-            },
+            params: withTrustedWorkflowContext({
+              workflowName: pathParams.workflowName,
+              params: isRecord(instance.params) ? instance.params : {},
+              execution: requestContext,
+            }),
           })),
         });
         return undefined;
@@ -427,11 +438,8 @@ export const createAutomationsRuntime = (
     {
       env: config.env,
       runtime: config.runtime,
-      createPiAutomationContext: async ({ event }) => ({
-        runtime: createHostedPiRuntime({
-          scope: event.scope,
-          actors: event.actors,
-        }),
+      createPiAutomationContext: async ({ execution }) => ({
+        runtime: createHostedPiRuntime(execution),
       }),
       automationFileSystem: config.automationFileSystem,
       getAutomationFileSystem: config.getAutomationFileSystem,

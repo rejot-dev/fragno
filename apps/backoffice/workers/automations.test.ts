@@ -588,7 +588,7 @@ describe("Automations fetchWithContext authorization", () => {
     }
   });
 
-  test("rejects public single and batch creation of Pi codemode workflows", async () => {
+  test("allows workflow-authorized single and batch creation of Pi codemode workflows", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
       authorityResolver: {
         async resolvePrincipalPermissions() {
@@ -618,23 +618,22 @@ describe("Automations fetchWithContext authorization", () => {
       await expect(
         call("POST", "/:workflowName/instances", {
           pathParams: { workflowName: PI_CODEMODE_WORKFLOW },
-          body: { id: "forged-pi-codemode", params },
+          body: {
+            id: "pi-codemode-single",
+            remoteWorkflowName: "pi-user-workflow",
+            params,
+          },
         }),
-      ).resolves.toMatchObject({
-        type: "error",
-        status: 404,
-        error: { code: "WORKFLOW_NOT_FOUND" },
-      });
+      ).resolves.toMatchObject({ type: "json" });
       await expect(
         call("POST", "/:workflowName/instances/batch", {
           pathParams: { workflowName: PI_CODEMODE_WORKFLOW },
-          body: { instances: [{ id: "forged-pi-codemode", params }] },
+          body: {
+            remoteWorkflowName: "pi-user-workflow",
+            instances: [{ id: "pi-codemode-batch", params }],
+          },
         }),
-      ).resolves.toMatchObject({
-        type: "error",
-        status: 404,
-        error: { code: "WORKFLOW_NOT_FOUND" },
-      });
+      ).resolves.toMatchObject({ type: "json" });
     } finally {
       await runtime.cleanup();
     }

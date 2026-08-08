@@ -2,6 +2,7 @@ import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 import { z } from "zod";
 
 import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/authority-resolver";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import type { UploadObject } from "@/backoffice-runtime/object-registry";
 import {
@@ -98,6 +99,7 @@ export const defineUntrustedCodemodeWorkflow = (
     runtime?: BackofficeRuntimeServices;
     createPiAutomationContext?: (input: {
       event: AutomationEvent;
+      execution: BackofficeExecutionContext;
       idempotencyKey: string;
     }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
   },

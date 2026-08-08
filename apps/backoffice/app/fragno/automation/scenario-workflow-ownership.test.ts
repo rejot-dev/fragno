@@ -99,6 +99,61 @@ const loadWorkflowActors = async ({
 };
 
 describe("scenario workflow ownership", () => {
+  test("derives caller-created automation event scope and actors from trusted execution", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "trusted automation workflow event context",
+        setup: ({ given }) => [
+          given.auth.user({ id: "owner", role: "admin" }),
+          given.auth.user({ id: "attacker", role: "admin" }),
+          given.auth.organization({
+            id: "org-1",
+            ownerUserId: "owner",
+            ownerRoles: ["owner"],
+          }),
+        ],
+        steps: ({ then }) => [
+          then.assert("caller-authored event context is replaced", async (ctx) => {
+            const scope = { kind: "org" as const, orgId: "org-1" };
+            const ownerExecution = createBackofficeUserExecution({ scope, userId: "owner" });
+            const forgedActors = createBackofficeUserExecution({
+              scope: { kind: "org", orgId: "org-2" },
+              userId: "attacker",
+            }).actors;
+            const object = ctx.runtime.objects.automations.forOrg("org-1");
+            const created = await object.fetchWithContext(
+              workflowRequest({
+                orgId: "org-2",
+                instanceId: "forged-event-context",
+                actors: forgedActors,
+              }),
+              { execution: ownerExecution, propagationContext: null },
+            );
+            assert(created.status === 200);
+
+            const response = await object.fetchWithContext(
+              new Request(
+                `https://workflows.test/api/workflows/${AUTOMATION_CODEMODE_WORKFLOW}/instances/forged-event-context`,
+              ),
+              { execution: ownerExecution, propagationContext: null },
+            );
+            assert(response.status === 200);
+            const instance = (await response.json()) as {
+              meta: {
+                params: {
+                  automationEvent: { scope: unknown; actors: unknown };
+                };
+              };
+            };
+
+            expect(instance.meta.params.automationEvent.scope).toEqual(scope);
+            expect(instance.meta.params.automationEvent.actors).toEqual(ownerExecution.actors);
+          }),
+        ],
+      }),
+    );
+  });
+
   test("persists trusted workflow actors for single and batch creation", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
