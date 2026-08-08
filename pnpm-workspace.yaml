@@ -14,7 +14,7 @@ catalog:
   typescript: npm:@typescript/typescript6@^6.0.2
   typescript-7: npm:typescript@^7.0.2
   vite: ^8.0.0
-  vitest: ^4.1.4
+  vitest: ^4.1.10
 
 overrides:
   esbuild@<=0.24.2: ">=0.25.0"

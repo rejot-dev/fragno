@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/workflow-visualizer",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Static interpreter that derives a realtime graph of the Fragno automation pipeline (events -> router -> scripts -> workflows -> steps) from source code, as a JSON snapshot plus a patch stream for live visualization.",
   "homepage": "https://fragno.dev",
   "license": "MIT",
