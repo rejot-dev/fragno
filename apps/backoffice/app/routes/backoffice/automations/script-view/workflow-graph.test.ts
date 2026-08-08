@@ -125,6 +125,89 @@ describe("ScriptWorkflowGraph generated UI presentation", () => {
     expect(markup).not.toContain("Final return");
   });
 
+  test("renders try and catch as distinct error-boundary paths", () => {
+    const tryCatchVisualization = visualizeWorkflowSource(
+      "automations/upload.workflow.js",
+      `defineWorkflow({ name: "upload" }, async (_event, step) => {
+        try {
+          await step.do("commit upload", async () => upload.commit());
+          return { saved: true };
+        } catch (error) {
+          await step.do("discard upload", async () => upload.discard());
+          throw error;
+        }
+      });`,
+    );
+    const markup = renderToStaticMarkup(
+      createElement(ScriptWorkflowGraph, {
+        visualization: tryCatchVisualization,
+        detailMode: "simple",
+        runtimeToolCallsByStepId: new Map(),
+        selectedRun: null,
+      }),
+    );
+
+    expect(markup).toContain("Error boundary");
+    expect(markup).toContain("The catch path runs only when the try path fails.");
+    expect(markup).toContain("Try path");
+    expect(markup).toContain("Catch error");
+    expect(markup).toContain("commit upload");
+    expect(markup).toContain("discard upload");
+    expect(markup).toContain("rethrow error");
+  });
+
+  test("describes a partial try node before its handler is parsed", () => {
+    const partialTryVisualization = visualizeWorkflowSource(
+      "automations/partial-try.workflow.js",
+      `defineWorkflow({ name: "partial-try" }, async (_event, step) => {
+        try {
+          await step.do("perform work", async () => true);
+        }`,
+    );
+    const markup = renderToStaticMarkup(
+      createElement(ScriptWorkflowGraph, {
+        visualization: partialTryVisualization,
+        detailMode: "simple",
+        runtimeToolCallsByStepId: new Map(),
+        selectedRun: null,
+      }),
+    );
+
+    expect(markup).toContain("The handler path is not parsed yet.");
+    expect(markup).not.toContain("The finally path always runs after the try path.");
+  });
+
+  test("renders caught throws and finally paths without terminal-error styling", () => {
+    const tryFinallyVisualization = visualizeWorkflowSource(
+      "automations/recovery.workflow.js",
+      `defineWorkflow({ name: "recovery" }, async (_event, step) => {
+        try {
+          throw new Error("recoverable");
+        } catch (error) {
+          await step.do("recover", async () => error.message);
+        } finally {
+          await step.do("release resources", async () => undefined);
+        }
+      });`,
+    );
+    const markup = renderToStaticMarkup(
+      createElement(ScriptWorkflowGraph, {
+        visualization: tryFinallyVisualization,
+        detailMode: "simple",
+        runtimeToolCallsByStepId: new Map(),
+        selectedRun: null,
+      }),
+    );
+
+    expect(markup).toContain("Error boundary");
+    expect(markup).toContain("Throw to catch");
+    expect(markup).toContain("recoverable");
+    expect(markup).toContain("Catch error");
+    expect(markup).toContain("Finally · always runs");
+    expect(markup).toContain("release resources");
+    expect(markup).not.toContain(">Error</div>");
+  });
+
   test("merges a generated input step with its matching adjacent event waiter", () => {
     const inputVisualization = visualizeWorkflowSource(
       "automations/question.workflow.js",

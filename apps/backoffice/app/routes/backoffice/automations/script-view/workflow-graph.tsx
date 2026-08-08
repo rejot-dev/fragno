@@ -13,6 +13,7 @@ import {
 
 import type {
   BranchNode,
+  CaughtThrowNode,
   ConditionNode,
   LoopNode,
   ParallelNode,
@@ -20,6 +21,7 @@ import type {
   SpecificEventGuardAnnotation,
   StepNode,
   TerminalNode,
+  TryNode,
   WorkflowChildNode,
   WorkflowVisualizationSnapshot,
 } from "@fragno-dev/workflow-visualizer-tokens";
@@ -432,6 +434,8 @@ function WorkflowChildCard({
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   switch (child.kind) {
+    case "caught-throw":
+      return <CaughtThrowCard caughtThrow={child} onSourceSelect={onSourceSelect} />;
     case "step":
       return (
         <WorkflowStepCard
@@ -457,6 +461,8 @@ function WorkflowChildCard({
       return <LoopCard loop={child} onSourceSelect={onSourceSelect} />;
     case "parallel":
       return <ParallelCard parallel={child} onSourceSelect={onSourceSelect} />;
+    case "try":
+      return <TryCatchCard tryNode={child} onSourceSelect={onSourceSelect} />;
     case "branch":
       return <BranchCard branch={child} onSourceSelect={onSourceSelect} />;
     case "terminal":
@@ -600,6 +606,74 @@ function ParallelCard({
   );
 }
 
+function CaughtThrowCard({
+  caughtThrow,
+  onSourceSelect,
+}: {
+  caughtThrow: CaughtThrowNode;
+  onSourceSelect?: (source: SourceRange) => void;
+}) {
+  return (
+    <div className="border border-amber-500/35 bg-amber-500/8 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[9px] font-semibold tracking-[0.2em] text-amber-800 uppercase dark:text-amber-200">
+            <LogOut className="h-3.5 w-3.5" />
+            Throw to catch
+          </div>
+          {caughtThrow.value ? (
+            <code className="mt-1.5 block font-mono text-[11px] text-[var(--bo-muted)]">
+              {caughtThrow.value}
+            </code>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2">
+          <SourceLocationButton source={caughtThrow.source} onSelect={onSourceSelect} />
+          {caughtThrow.construction.status === "partial" ? (
+            <GraphBadge label={caughtThrow.construction.phase} tone="warning" />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TryCatchCard({
+  tryNode,
+  onSourceSelect,
+}: {
+  tryNode: TryNode;
+  onSourceSelect?: (source: SourceRange) => void;
+}) {
+  return (
+    <div className="border border-orange-500/35 bg-orange-500/8 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[9px] font-semibold tracking-[0.2em] text-orange-800 uppercase dark:text-orange-200">
+            <GitBranch className="h-3.5 w-3.5" />
+            Error boundary
+          </div>
+          <p className="mt-1.5 text-xs text-[var(--bo-muted)]">
+            {tryNode.hasCatch && tryNode.hasFinally
+              ? "The catch path handles failures, then the finally path always runs."
+              : tryNode.hasCatch
+                ? "The catch path runs only when the try path fails."
+                : tryNode.hasFinally
+                  ? "The finally path always runs after the try path."
+                  : "The handler path is not parsed yet."}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <SourceLocationButton source={tryNode.source} onSelect={onSourceSelect} />
+          {tryNode.construction.status === "partial" ? (
+            <GraphBadge label={tryNode.construction.phase} tone="warning" />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TerminalCard({
   terminal,
   detailMode,
@@ -696,11 +770,29 @@ function BranchCard({
   return (
     <div className="flex items-center justify-between gap-3 border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 py-2">
       <p className="text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-        {branch.branchType === "parallel" ? `Parallel branch ${branch.index + 1}` : branch.label}
+        {branchLabel(branch)}
       </p>
       <SourceLocationButton source={branch.source} onSelect={onSourceSelect} />
     </div>
   );
+}
+
+function branchLabel(branch: BranchNode): string {
+  switch (branch.branchType) {
+    case "parallel":
+      return `Parallel branch ${branch.index + 1}`;
+    case "try":
+      return "Try path";
+    case "catch":
+      return "Catch error";
+    case "finally":
+      return "Finally · always runs";
+    case "then":
+    case "else":
+      return branch.label;
+  }
+
+  throw new Error("Unsupported workflow branch type.");
 }
 
 function NonWorkflowMessage() {
