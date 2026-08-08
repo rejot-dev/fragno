@@ -5,7 +5,7 @@ import { createInteractiveChatWorkflow } from "@fragno-dev/pi-harness/workflows/
 import type { WorkflowRegistryEntry, WorkflowsRegistry } from "@fragno-dev/workflows/workflow";
 import { Type, type TSchema } from "typebox";
 
-import { buildCodemodeWorkflowGraph } from "@fragno-dev/workflow-visualizer";
+import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import {
@@ -247,15 +247,15 @@ const createExecCodeModeTool = (
         toolContext: context,
       });
 
-      // When the code defines a workflow, derive its graph here (server-side,
-      // where the visualizer's parser is available) — *before* scheduling, since a
-      // static parse must survive even when the durable run can't be created. A
-      // plain script run carries no `workflowDefinition`; the client flags it and
-      // shows the code + output instead of the graph (see `codemodeEntryFromResult`).
-      const workflowGraph = buildCodemodeWorkflowGraph(code, {
-        name: result.workflowDefinition?.name,
+      // Parse before scheduling so workflow-shaped code remains a successful tool
+      // result even when the durable run cannot be created. The client builds its
+      // own graph projection directly from the submitted source.
+      const workflowVisualization = visualizeWorkflowSource("codemode", code, {
+        fallbackName: result.workflowDefinition?.name,
       });
-      const parsedWorkflow = workflowGraph.nodes.some((node) => node.kind === "workflow");
+      const parsedWorkflow = workflowVisualization.graph.nodes.some(
+        (node) => node.kind === "workflow",
+      );
 
       // Try to schedule the durable run, but treat a scheduling/validation failure
       // as non-fatal: the viewer should still show the workflow the agent wrote.
@@ -308,7 +308,6 @@ const createExecCodeModeTool = (
         details: {
           ...result,
           code,
-          workflowGraph,
           outputText: text,
           // The live run handle (workflow name + instance id) so the client can
           // subscribe to realtime progress. Absent when scheduling failed.

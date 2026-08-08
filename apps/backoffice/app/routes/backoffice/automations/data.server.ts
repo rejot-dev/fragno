@@ -13,7 +13,6 @@ import {
   readAutomationWorkspaceScript,
   type AutomationWorkspaceScriptEntry,
 } from "@/fragno/automation";
-import { writeAutomationScript } from "@/fragno/automation/authoring";
 import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -153,39 +152,6 @@ export async function loadAutomationWorkspaceData({
     scripts,
     scriptsError: workspaceScriptsError,
   };
-}
-
-/**
- * Persist an edited automation script body back to its file, validating it first.
- * System-layer scripts are read-only and rejected by `writeAutomationScript`.
- */
-export async function writeAutomationScriptSource({
-  request,
-  context,
-  scope,
-  orgId,
-  absolutePath,
-  body,
-}: {
-  request: Request;
-  context: Readonly<RouterContextProvider>;
-  scope?: BackofficeContextScope;
-  orgId?: string;
-  absolutePath: string;
-  body: string;
-}): Promise<{ ok: boolean; error: string | null }> {
-  const resolvedScope = scope ?? (orgId ? { kind: "org" as const, orgId } : null);
-  if (!resolvedScope) {
-    throw new Error("Automation scope is required.");
-  }
-  const fileSystem = await createBackofficeAutomationFileSystem({
-    request,
-    context,
-    scope: resolvedScope,
-  });
-
-  const result = await writeAutomationScript(fileSystem, { path: absolutePath, body });
-  return { ok: result.ok, error: result.ok ? null : (result.error ?? null) };
 }
 
 export async function loadAutomationScriptSource({

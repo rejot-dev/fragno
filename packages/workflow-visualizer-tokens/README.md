@@ -2,10 +2,9 @@
 
 Incremental workflow visualization for incomplete automation source.
 
-Unlike the Babel-based `@fragno-dev/workflow-visualizer`, this package does not require a valid AST.
-It uses [`js-tokens`](https://github.com/lydell/js-tokens) and composable workflow-specific
-submachines. Every consumed token produces a usable graph snapshot, construction state, and graph
-patches.
+Unlike the previous Babel-based implementation, this package does not require a valid AST. It uses
+[`js-tokens`](https://github.com/lydell/js-tokens) and composable workflow-specific submachines.
+Every consumed token produces a usable graph snapshot, construction state, and graph patches.
 
 ## What it recognizes
 
