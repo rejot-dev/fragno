@@ -144,7 +144,11 @@ const componentFixtures = [
   },
   {
     component: "WorkflowEventButton",
-    validProps: { label: "Submit", eventType: "approval", payload: { approved: true } },
+    validProps: {
+      label: "Submit",
+      eventType: "reson8.setup.submitted",
+      payload: { approved: true },
+    },
     invalidProps: { label: "Submit", eventType: "invalid event", payload: null },
   },
 ] as const;

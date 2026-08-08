@@ -27,7 +27,7 @@ describe("sendBackofficeWorkflowEvent", () => {
           workflowName: "reson8-setup",
           instanceId: "instance-1",
         },
-        eventType: "reson8-setup-submitted",
+        eventType: "reson8.setup.submitted",
         payload: { apiKey: "secret" },
       }),
     ).resolves.toEqual({ accepted: true });
@@ -40,7 +40,7 @@ describe("sendBackofficeWorkflowEvent", () => {
     );
     expect(await request.json()).toEqual({
       id: "event-1",
-      type: "reson8-setup-submitted",
+      type: "reson8.setup.submitted",
       payload: { apiKey: "secret" },
     });
   });

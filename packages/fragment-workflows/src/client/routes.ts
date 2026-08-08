@@ -8,6 +8,12 @@ const identifierSchema = z
   .max(128)
   .regex(/^[a-zA-Z0-9_][a-zA-Z0-9-_:]*$/);
 
+const eventTypeSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-zA-Z0-9_][a-zA-Z0-9-_.:]*$/);
+
 const instanceStatusSchema = z.enum([
   "active",
   "paused",
@@ -37,7 +43,7 @@ const createBatchSchema = z.object({
 
 const sendEventSchema = z.object({
   id: identifierSchema.optional(),
-  type: identifierSchema,
+  type: eventTypeSchema,
   payload: z.unknown().optional(),
 });
 

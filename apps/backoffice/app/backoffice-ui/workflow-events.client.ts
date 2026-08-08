@@ -7,7 +7,7 @@ import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/sc
 import type { WorkflowRunReference } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
 const MAX_WORKFLOW_EVENT_PAYLOAD_BYTES = 64 * 1024;
-const workflowEventTypePattern = /^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/;
+const workflowEventTypePattern = /^[a-zA-Z0-9_][a-zA-Z0-9-_.:]*$/;
 
 export type ScopedWorkflowRunReference = WorkflowRunReference & {
   scope: BackofficeContextScope;
