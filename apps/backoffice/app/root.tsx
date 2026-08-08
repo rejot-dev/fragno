@@ -28,9 +28,7 @@ export const links: Route.LinksFunction = () => [
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const baseUrl =
-    import.meta.env.MODE === "development" ? "http://localhost:3000" : "https://fragno.dev";
-  const description = "Fragno backoffice administration app";
+  const description = "A programmable workspace for operations, automation, and files.";
 
   return (
     <html lang="en" className="antialiased" suppressHydrationWarning>
@@ -38,9 +36,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="description" content={description} />
-        <meta property="og:title" content="Fragno Backoffice" />
+        <meta property="og:title" content="Backoffice" />
         <meta property="og:description" content={description} />
-        <meta property="og:url" content={baseUrl} />
         <meta property="og:type" content="website" />
         <Meta />
         <Links />
