@@ -20,6 +20,12 @@ const identifierSchema = z
   .max(128)
   .regex(/^[a-zA-Z0-9_][a-zA-Z0-9-_:]*$/);
 
+const eventTypeSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-zA-Z0-9_][a-zA-Z0-9-_.:]*$/);
+
 const instanceStatusSchema = z.enum([
   "active",
   "paused",
@@ -56,7 +62,7 @@ const createBatchSchema = z.object({
 
 const sendEventSchema = z.object({
   id: identifierSchema.optional(),
-  type: identifierSchema,
+  type: eventTypeSchema,
   payload: z.unknown().optional(),
 });
 
@@ -236,6 +242,17 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
     ) => {
       if (!identifierSchema.safeParse(value).success) {
         return error({ message: "Invalid identifier", code }, 400);
+      }
+      return undefined;
+    };
+
+    const assertEventType = <Code extends string>(
+      value: string,
+      code: Code,
+      error: ErrorResponder<Code>,
+    ) => {
+      if (!eventTypeSchema.safeParse(value).success) {
+        return error({ message: "Invalid event type", code }, 400);
       }
       return undefined;
     };
@@ -918,7 +935,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
             return idError;
           }
 
-          const typeError = assertIdentifier(payload.type, "INVALID_EVENT_TYPE", errorResponder);
+          const typeError = assertEventType(payload.type, "INVALID_EVENT_TYPE", errorResponder);
           if (typeError) {
             return typeError;
           }

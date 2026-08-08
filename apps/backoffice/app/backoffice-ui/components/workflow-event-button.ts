@@ -7,7 +7,7 @@ export const workflowEventButtonDefinition = {
       .string()
       .min(1)
       .max(128)
-      .regex(/^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/),
+      .regex(/^[a-zA-Z0-9_][a-zA-Z0-9-_.:]*$/),
     payload: z.unknown(),
     variant: z.enum(["primary", "danger"]).optional(),
     confirmation: z.string().min(1).max(500).optional(),
