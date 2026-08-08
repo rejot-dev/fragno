@@ -1,5 +1,6 @@
 import { type ActivatedFunctionScope, WorkflowFunctionScopeTracker } from "./function-scope.ts";
 import type {
+  CaughtThrowNode,
   ConditionAnalysis,
   ConditionNode,
   DelimiterDepth,
@@ -20,6 +21,7 @@ import type {
   StepType,
   TerminalNode,
   TerminalType,
+  TryNode,
   WorkflowGraph,
   WorkflowMachineState,
   WorkflowMachineUpdate,
@@ -49,6 +51,7 @@ import {
   StepImplicitReturnMachine,
   StepReturnStatementMachine,
   ThrowStatementMachine,
+  TryStatementMachine,
   type WorkflowBuilder,
   WorkflowDefinitionMachine,
   isConditionalExpressionMachine,
@@ -58,6 +61,7 @@ import {
   isReturnStatementMachine,
   isStepCallMachine,
   isThrowStatementMachine,
+  isTryStatementMachine,
   isWorkflowDefinitionMachine,
 } from "./submachines.ts";
 import type { WorkflowToken } from "./tokenizer.ts";
@@ -76,6 +80,12 @@ interface PendingReturnStatement {
   positioned: PositionedWorkflowToken;
   context: TokenMachineContext;
   target: PendingReturnTarget;
+}
+
+interface PendingTryStatement {
+  tryToken: PositionedWorkflowToken;
+  workflowMachine: WorkflowDefinitionMachine;
+  runtimeParentId?: string;
 }
 
 interface PendingConditionalExpression {
@@ -126,6 +136,7 @@ export function createWorkflowTokenMachine({
   const activeStepInvocations: ActiveStepInvocation[] = [];
   const runtime = new TokenSubmachineRuntime();
   let pendingReturnStatement: PendingReturnStatement | undefined;
+  let pendingTryStatement: PendingTryStatement | undefined;
   let pendingConditionalExpression: PendingConditionalExpression | undefined;
   const listeners = new Set<(patch: GraphPatch) => void>();
 
@@ -168,6 +179,7 @@ export function createWorkflowTokenMachine({
   function finish(): WorkflowMachineUpdate {
     finished = true;
     pendingConditionalExpression = undefined;
+    pendingTryStatement = undefined;
     resolvePendingReturnStatement();
     runtime.finish(machineContext());
     return commit();
@@ -199,6 +211,7 @@ export function createWorkflowTokenMachine({
     const context = machineContext();
     resolvePendingConditionalExpression(positioned);
     resolvePendingReturnStatement(positioned);
+    resolvePendingTryStatement(positioned);
     consumeActiveStepInvocations(positioned, context);
     runtime.consume(positioned, context);
 
@@ -215,6 +228,18 @@ export function createWorkflowTokenMachine({
       rememberPendingReturnStatement(positioned, context, workflowMachine, functionScopes);
     } else if (positioned.token.value === "throw" && !functionScopes?.isNestedFunction()) {
       discoverThrow(positioned, context);
+    } else if (
+      positioned.token.value === "try" &&
+      workflowMachine &&
+      !functionScopes?.isNestedFunction() &&
+      tokenCanStartTryStatement(significantTokens.at(-1)?.token)
+    ) {
+      const enclosingCondition = activeConditionMachines(workflowMachine.workflow).at(-1);
+      pendingTryStatement = {
+        tryToken: positioned,
+        workflowMachine,
+        runtimeParentId: enclosingCondition?.id,
+      };
     }
     if (
       positioned.token.value === "?" &&
@@ -248,6 +273,15 @@ export function createWorkflowTokenMachine({
       activeStepCallId: runtime.findLast(isStepCallMachine)?.id,
     });
     updateDelimiterDepth(positioned.token.value);
+  }
+
+  function resolvePendingTryStatement(nextToken: PositionedWorkflowToken): void {
+    const pending = pendingTryStatement;
+    pendingTryStatement = undefined;
+    if (!pending || nextToken.token.value !== "{") {
+      return;
+    }
+    discoverTry(pending.tryToken, pending.workflowMachine, pending.runtimeParentId);
   }
 
   function resolvePendingConditionalExpression(nextToken: PositionedWorkflowToken): void {
@@ -483,7 +517,7 @@ export function createWorkflowTokenMachine({
     runtime.add(
       new ReturnStatementMachine({
         id: `${terminal.id}/return`,
-        parentId: condition?.id ?? parentId,
+        parentId: activeRuntimeContainerId(workflowMachine.workflow) ?? parentId,
         terminal,
         statement: positioned,
         baseDepth: context.depth,
@@ -502,6 +536,7 @@ export function createWorkflowTokenMachine({
 
     const conditions = activeConditionMachines(workflowMachine.workflow);
     const condition = conditions.at(-1);
+    const activeTry = activeTryMachines(workflowMachine.workflow).at(-1);
     const parentId =
       condition?.activeContainerId() ??
       activeContainerId(workflowMachine.workflow) ??
@@ -524,10 +559,12 @@ export function createWorkflowTokenMachine({
     runtime.add(
       new ThrowStatementMachine({
         id: `${terminal.id}/throw`,
-        parentId: condition?.id ?? parentId,
+        parentId: activeRuntimeContainerId(workflowMachine.workflow) ?? parentId,
         terminal,
         expressionStart: positioned.end,
         baseDepth: context.depth,
+        rethrowIdentifier:
+          activeTry?.activeBranchType() === "catch" ? activeTry.catchBinding() : undefined,
       }),
     );
   }
@@ -615,6 +652,39 @@ export function createWorkflowTokenMachine({
     );
   }
 
+  function discoverTry(
+    tryToken: PositionedWorkflowToken,
+    workflowMachine: WorkflowDefinitionMachine,
+    runtimeParentId?: string,
+  ): void {
+    const parentId = activeContainerId(workflowMachine.workflow) ?? workflowMachine.id;
+    const ordinal = nextNodeOrdinal(workflowMachine.workflow);
+    const tryNode: TryNode = {
+      id: `${workflowMachine.id}/try#${ordinal}`,
+      kind: "try",
+      label: "try",
+      workflowName: workflowMachine.workflow.node.name,
+      order: nextChildOrder(workflowMachine.workflow, parentId),
+      sourceOrder: ordinal,
+      parentId,
+      source: sourceRangeFromToken(path, tryToken),
+      hasCatch: false,
+      hasFinally: false,
+      construction: { status: "partial", phase: "body" },
+    };
+    workflowMachine.workflow.children.push(tryNode);
+    for (const condition of activeConditionMachines(workflowMachine.workflow)) {
+      condition.markContainsStep();
+    }
+    runtime.add(
+      new TryStatementMachine({
+        workflow: workflowMachine.workflow,
+        tryNode,
+        parentId: runtimeParentId ?? parentId,
+      }),
+    );
+  }
+
   function discoverLoop(
     openingParenthesis: PositionedWorkflowToken,
     loopType: LoopType,
@@ -649,7 +719,7 @@ export function createWorkflowTokenMachine({
       new LoopStatementMachine({
         workflow: workflowMachine.workflow,
         loop,
-        parentId: conditions.at(-1)?.id ?? parentId,
+        parentId: activeRuntimeContainerId(workflowMachine.workflow) ?? parentId,
         openParentheses: context.depth.parentheses + 1,
         headerStart: openingParenthesis.end,
       }),
@@ -687,7 +757,7 @@ export function createWorkflowTokenMachine({
       new ParallelCallMachine({
         workflow: workflowMachine.workflow,
         parallel,
-        parentId: conditions.at(-1)?.id ?? parentId,
+        parentId: activeRuntimeContainerId(workflowMachine.workflow) ?? parentId,
         openParentheses: context.depth.parentheses + 1,
       }),
     );
@@ -715,7 +785,6 @@ export function createWorkflowTokenMachine({
       return;
     }
 
-    const enclosingCondition = activeConditionMachines(workflowMachine.workflow).at(-1);
     const parentId = activeContainerId(workflowMachine.workflow) ?? workflowMachine.id;
     const ordinal = nextNodeOrdinal(workflowMachine.workflow);
     const condition: ConditionNode = {
@@ -740,7 +809,7 @@ export function createWorkflowTokenMachine({
     runtime.add(
       new ConditionalExpressionMachine({
         condition,
-        parentId: enclosingCondition?.id ?? parentId,
+        parentId: activeRuntimeContainerId(workflowMachine.workflow) ?? parentId,
         workflow: workflowMachine.workflow,
         baseDepth: context.depth,
         onPublish: () => {
@@ -755,7 +824,6 @@ export function createWorkflowTokenMachine({
     workflowMachine: WorkflowDefinitionMachine,
     context: TokenMachineContext,
   ): void {
-    const enclosingCondition = activeConditionMachines(workflowMachine.workflow).at(-1);
     const parentId = activeContainerId(workflowMachine.workflow) ?? workflowMachine.id;
     const ordinal = nextNodeOrdinal(workflowMachine.workflow);
     const condition: ConditionNode = {
@@ -775,7 +843,7 @@ export function createWorkflowTokenMachine({
     runtime.add(
       new IfStatementMachine({
         condition,
-        parentId: enclosingCondition?.id ?? parentId,
+        parentId: activeRuntimeContainerId(workflowMachine.workflow) ?? parentId,
         workflow: workflowMachine.workflow,
         openParentheses: context.depth.parentheses + 1,
         conditionStart: openingParenthesis.end,
@@ -810,7 +878,7 @@ export function createWorkflowTokenMachine({
     runtime.add(
       new StepCallMachine({
         step,
-        parentId: conditions.at(-1)?.id ?? parentId,
+        parentId: activeRuntimeContainerId(workflowMachine.workflow) ?? parentId,
         openParentheses: context.depth.parentheses + 1,
         baseBraces: context.depth.braces,
         baseBrackets: context.depth.brackets,
@@ -933,6 +1001,12 @@ export function createWorkflowTokenMachine({
     return runtime.all(isLoopStatementMachine).filter((loop) => loop.workflow === workflow);
   }
 
+  function activeTryMachines(workflow: WorkflowBuilder): TryStatementMachine[] {
+    return runtime
+      .all(isTryStatementMachine)
+      .filter((tryMachine) => tryMachine.workflow === workflow);
+  }
+
   function activeConditionMachines(
     workflow: WorkflowBuilder,
   ): Array<IfStatementMachine | ConditionalExpressionMachine> {
@@ -947,6 +1021,17 @@ export function createWorkflowTokenMachine({
       );
   }
 
+  function activeRuntimeContainerId(workflow: WorkflowBuilder): string | undefined {
+    return runtime.findLast(
+      (
+        machine,
+      ): machine is IfStatementMachine | ConditionalExpressionMachine | TryStatementMachine =>
+        ((isIfStatementMachine(machine) || isConditionalExpressionMachine(machine)) &&
+          machine.workflow === workflow) ||
+        (isTryStatementMachine(machine) && machine.workflow === workflow),
+    )?.id;
+  }
+
   function activeContainerId(workflow: WorkflowBuilder): string | undefined {
     const container = runtime.findLast(
       (
@@ -956,12 +1041,14 @@ export function createWorkflowTokenMachine({
         | ParallelCallMachine
         | IfStatementMachine
         | ConditionalExpressionMachine
-        | LoopStatementMachine =>
+        | LoopStatementMachine
+        | TryStatementMachine =>
         (isStepCallMachine(machine) && workflow.children.includes(machine.step)) ||
         (isParallelCallMachine(machine) && workflow.children.includes(machine.parallel)) ||
         (isIfStatementMachine(machine) && machine.workflow === workflow) ||
         (isConditionalExpressionMachine(machine) && machine.workflow === workflow) ||
-        (isLoopStatementMachine(machine) && machine.workflow === workflow),
+        (isLoopStatementMachine(machine) && machine.workflow === workflow) ||
+        (isTryStatementMachine(machine) && machine.workflow === workflow),
     );
     if (container && isStepCallMachine(container)) {
       return container.step.id;
@@ -975,7 +1062,10 @@ export function createWorkflowTokenMachine({
     ) {
       return container.activeContainerId();
     }
-    return container && isLoopStatementMachine(container)
+    if (container && isLoopStatementMachine(container)) {
+      return container.activeContainerId();
+    }
+    return container && isTryStatementMachine(container)
       ? container.activeContainerId()
       : undefined;
   }
@@ -1040,6 +1130,7 @@ export function createWorkflowTokenMachine({
           .filter(
             (node) =>
               node.kind === "parallel" ||
+              node.kind === "try" ||
               (node.kind === "condition" &&
                 children.some((child) => child.kind === "branch" && child.parentId === node.id)),
           )
@@ -1076,7 +1167,7 @@ export function createWorkflowTokenMachine({
     }
 
     return {
-      version: 4,
+      version: 6,
       nodes,
       edges,
       diagnostics: materializeDiagnostics(),
@@ -1085,6 +1176,17 @@ export function createWorkflowTokenMachine({
 
   function projectWorkflowChildren(children: WorkflowChildNode[]): WorkflowChildNode[] {
     const sortedChildren = children.toSorted((left, right) => left.sourceOrder - right.sourceOrder);
+    const childrenById = new Map(sortedChildren.map((node) => [node.id, node]));
+    const caughtThrowIds = new Set(
+      sortedChildren
+        .filter(
+          (node): node is TerminalNode =>
+            node.kind === "terminal" &&
+            node.terminalType === "error" &&
+            hasCatchingTryAncestor(node, childrenById),
+        )
+        .map((node) => node.id),
+    );
     const omittedBranches = new Map<string, string>();
     for (const branch of sortedChildren) {
       if (branch.kind !== "branch" || branch.branchType !== "then") {
@@ -1105,7 +1207,9 @@ export function createWorkflowTokenMachine({
       if (omittedBranches.has(node.id)) {
         return [];
       }
-      const projected = cloneNode(node);
+      const projected = caughtThrowIds.has(node.id)
+        ? caughtThrowNode(node as TerminalNode)
+        : cloneNode(node);
       const flattenedParentId = omittedBranches.get(projected.parentId);
       if (flattenedParentId) {
         projected.parentId = flattenedParentId;
@@ -1160,6 +1264,14 @@ export function createWorkflowTokenMachine({
         code: "incomplete-parallel",
         message: `${machine.parallel.label} is still being constructed.`,
         source: cloneSourceRange(machine.parallel.source),
+      });
+    }
+    for (const machine of runtime.all(isTryStatementMachine)) {
+      diagnostics.push({
+        severity: "info",
+        code: "incomplete-try",
+        message: "Try/catch is still being constructed.",
+        source: cloneSourceRange(machine.source),
       });
     }
     for (const machine of runtime.all(isStepCallMachine)) {
@@ -1219,6 +1331,12 @@ export function createWorkflowTokenMachine({
       };
     },
   };
+}
+
+const INVALID_TRY_STATEMENT_PREDECESSORS = new Set([".", "?.", "#"]);
+
+function tokenCanStartTryStatement(previous: WorkflowToken | undefined): boolean {
+  return !previous || !INVALID_TRY_STATEMENT_PREDECESSORS.has(previous.value);
 }
 
 const INVALID_CONDITIONAL_CONSEQUENT_STARTS = new Set([":", ",", ";", ")", "]", "}", "=", "=>"]);
@@ -1593,8 +1711,40 @@ function positionAfterText(
     : { line: startLine + segments.length - 1, column: segments.at(-1)?.length ?? 0 };
 }
 
+function hasCatchingTryAncestor(
+  node: WorkflowChildNode,
+  childrenById: ReadonlyMap<string, WorkflowChildNode>,
+): boolean {
+  let parent = childrenById.get(node.parentId);
+  while (parent) {
+    if (parent.kind === "branch" && parent.branchType === "try") {
+      const tryNode = childrenById.get(parent.parentId);
+      if (tryNode?.kind === "try" && tryNode.hasCatch) {
+        return true;
+      }
+    }
+    parent = childrenById.get(parent.parentId);
+  }
+  return false;
+}
+
+function caughtThrowNode(terminal: TerminalNode): CaughtThrowNode {
+  return {
+    id: terminal.id,
+    kind: "caught-throw",
+    label: "throw to catch",
+    value: terminal.value,
+    workflowName: terminal.workflowName,
+    order: terminal.order,
+    sourceOrder: terminal.sourceOrder,
+    parentId: terminal.parentId,
+    source: cloneSourceRange(terminal.source),
+    construction: { ...terminal.construction },
+  };
+}
+
 function emptyGraph(): WorkflowGraph {
-  return { version: 4, nodes: [], edges: [], diagnostics: [] };
+  return { version: 6, nodes: [], edges: [], diagnostics: [] };
 }
 
 function cloneNode<T extends WorkflowNode | WorkflowChildNode>(node: T): T {
@@ -1680,7 +1830,7 @@ function cloneDiagnostic(diagnostic: Diagnostic): Diagnostic {
 
 function cloneGraph(graph: WorkflowGraph): WorkflowGraph {
   return {
-    version: 4,
+    version: 6,
     nodes: graph.nodes.map(cloneNode),
     edges: graph.edges.map((edge) => ({ ...edge })),
     diagnostics: graph.diagnostics.map(cloneDiagnostic),

@@ -81,6 +81,14 @@ function appendChildren(
       case "branch":
         lines.push(`${prefix}${connector} ${child.label}${constructionSuffix(child.construction)}`);
         break;
+      case "caught-throw":
+        lines.push(
+          `${prefix}${connector} ${child.order}. throw to catch${constructionSuffix(child.construction)}`,
+        );
+        if (child.value) {
+          lines.push(`${childPrefix}value: ${singleLine(child.value)}`);
+        }
+        break;
       case "condition":
         lines.push(
           `${prefix}${connector} ${child.order}. ${child.label}${constructionSuffix(child.construction)}`,
@@ -94,6 +102,11 @@ function appendChildren(
       case "parallel":
         lines.push(
           `${prefix}${connector} ${child.order}. parallel ${child.label}${constructionSuffix(child.construction)}`,
+        );
+        break;
+      case "try":
+        lines.push(
+          `${prefix}${connector} ${child.order}. ${child.label}${constructionSuffix(child.construction)}`,
         );
         break;
       case "terminal": {

@@ -8,6 +8,7 @@ import type {
   StepNode,
   StepReturn,
   TerminalNode,
+  TryNode,
   WorkflowChildNode,
   WorkflowNode,
 } from "./model.ts";
@@ -1154,6 +1155,11 @@ export class IfStatementMachine implements TokenSubmachine {
         return "active";
 
       case "consequent-statement":
+        if (this.#consequent.firstStatementToken === "try") {
+          this.extendBranchSource(this.#consequent, positioned);
+          this.#consequent.lastToken = positioned;
+          return "active";
+        }
         if (statementEndsBefore(positioned, this.#consequent, context)) {
           this.completeBranch(this.#consequent);
           if (value === "else") {
@@ -1193,6 +1199,11 @@ export class IfStatementMachine implements TokenSubmachine {
         return "active";
 
       case "alternate-statement":
+        if (this.#alternate.firstStatementToken === "try") {
+          this.extendBranchSource(this.#alternate, positioned);
+          this.#alternate.lastToken = positioned;
+          return "active";
+        }
         if (statementEndsBefore(positioned, this.#alternate, context)) {
           this.completeBranch(this.#alternate);
           return this.completeCondition();
@@ -1317,6 +1328,241 @@ export class IfStatementMachine implements TokenSubmachine {
   }
 }
 
+export class TryStatementMachine implements TokenSubmachine {
+  readonly kind = "try" as const;
+  readonly parentId: string;
+  readonly workflow: WorkflowBuilder;
+  readonly #tryNode: TryNode;
+  #phase:
+    | "body-pending"
+    | "body"
+    | "handler-pending"
+    | "catch-parameters"
+    | "catch-body-pending"
+    | "catch-body"
+    | "after-catch"
+    | "finally-body-pending"
+    | "finally-body"
+    | "complete-pending" = "body-pending";
+  #activeBranch: BranchNode | undefined;
+  #bodyBraces: number | undefined;
+  #catchParentheses: number | undefined;
+  #catchBindingStart: number | undefined;
+  #catchBinding: string | undefined;
+
+  constructor({
+    workflow,
+    tryNode,
+    parentId,
+  }: {
+    workflow: WorkflowBuilder;
+    tryNode: TryNode;
+    parentId: string;
+  }) {
+    this.workflow = workflow;
+    this.#tryNode = tryNode;
+    this.parentId = parentId;
+  }
+
+  get id(): string {
+    return this.#tryNode.id;
+  }
+
+  get phase(): string {
+    return this.#tryNode.construction.phase;
+  }
+
+  get source() {
+    return this.#tryNode.source;
+  }
+
+  activeContainerId(): string {
+    return this.#activeBranch?.id ?? this.#tryNode.id;
+  }
+
+  activeBranchType(): "try" | "catch" | "finally" | undefined {
+    const branchType = this.#activeBranch?.branchType;
+    return branchType === "try" || branchType === "catch" || branchType === "finally"
+      ? branchType
+      : undefined;
+  }
+
+  catchBinding(): string | undefined {
+    return this.#catchBinding;
+  }
+
+  consume(
+    positioned: PositionedWorkflowToken,
+    context: TokenMachineContext,
+  ): TokenSubmachineStatus {
+    const value = positioned.token.value;
+    extendSourceRangeToToken(this.#tryNode.source, positioned);
+
+    switch (this.#phase) {
+      case "body-pending":
+        if (value === "{") {
+          this.startBranch("try", positioned, context);
+          this.#tryNode.construction = { status: "partial", phase: "body" };
+          this.#phase = "body";
+        }
+        return "active";
+
+      case "body":
+        this.extendActiveBranch(positioned);
+        if (value === "}" && this.#bodyBraces === context.depth.braces) {
+          this.completeActiveBranch();
+          this.#phase = "handler-pending";
+          this.#tryNode.construction = { status: "partial", phase: "handler" };
+        }
+        return "active";
+
+      case "handler-pending":
+        if (value === "catch") {
+          this.#tryNode.hasCatch = true;
+          this.updateLabel();
+          this.#phase = "catch-body-pending";
+          return "active";
+        }
+        if (value === "finally") {
+          this.#tryNode.hasFinally = true;
+          this.#tryNode.construction = { status: "partial", phase: "finally" };
+          this.updateLabel();
+          this.#phase = "finally-body-pending";
+          return "active";
+        }
+        this.#tryNode.construction = { status: "complete", phase: "complete" };
+        return "complete";
+
+      case "catch-parameters":
+        if (value === ")" && context.depth.parentheses === this.#catchParentheses) {
+          this.#catchBinding = context.source
+            .slice(this.#catchBindingStart, positioned.start)
+            .trim();
+          this.#phase = "catch-body-pending";
+        }
+        return "active";
+
+      case "catch-body-pending":
+        if (value === "(") {
+          this.#catchParentheses = context.depth.parentheses + 1;
+          this.#catchBindingStart = positioned.end;
+          this.#phase = "catch-parameters";
+          return "active";
+        }
+        if (value === "{") {
+          this.startBranch("catch", positioned, context);
+          this.#phase = "catch-body";
+        }
+        return "active";
+
+      case "catch-body":
+        this.extendActiveBranch(positioned);
+        if (value === "}" && this.#bodyBraces === context.depth.braces) {
+          this.completeActiveBranch();
+          this.#phase = "after-catch";
+        }
+        return "active";
+
+      case "after-catch":
+        if (value !== "finally") {
+          this.#tryNode.construction = { status: "complete", phase: "complete" };
+          return "complete";
+        }
+        this.#tryNode.hasFinally = true;
+        this.#tryNode.construction = { status: "partial", phase: "finally" };
+        this.updateLabel();
+        this.#phase = "finally-body-pending";
+        return "active";
+
+      case "finally-body-pending":
+        if (value === "{") {
+          this.startBranch("finally", positioned, context);
+          this.#phase = "finally-body";
+        }
+        return "active";
+
+      case "finally-body":
+        this.extendActiveBranch(positioned);
+        if (value === "}" && this.#bodyBraces === context.depth.braces) {
+          this.completeActiveBranch();
+          this.#tryNode.construction = { status: "complete", phase: "complete" };
+          this.#phase = "complete-pending";
+        }
+        return "active";
+
+      case "complete-pending":
+        return "complete";
+    }
+
+    throw new Error("Unsupported try-statement phase.");
+  }
+
+  finish(_context: TokenMachineContext): TokenSubmachineStatus {
+    if (this.#phase === "complete-pending" || this.#phase === "after-catch") {
+      this.#tryNode.construction = { status: "complete", phase: "complete" };
+      return "complete";
+    }
+    return "active";
+  }
+
+  childCompleted(child: TokenSubmachine, _context: TokenMachineContext): TokenSubmachineStatus {
+    extendSourceRangeToRange(this.#tryNode.source, child.source);
+    if (this.#activeBranch) {
+      extendSourceRangeToRange(this.#activeBranch.source, child.source);
+    }
+    return "active";
+  }
+
+  private startBranch(
+    branchType: "try" | "catch" | "finally",
+    positioned: PositionedWorkflowToken,
+    context: TokenMachineContext,
+  ): void {
+    const sourceOrder = this.workflow.nextNodeOrdinal;
+    this.workflow.nextNodeOrdinal += 1;
+    const branch: BranchNode = {
+      id: `${this.#tryNode.id}/${branchType}`,
+      kind: "branch",
+      label: branchType,
+      branchType,
+      index: branchType === "try" ? 0 : branchType === "catch" ? 1 : 2,
+      workflowName: this.workflow.node.name,
+      order: branchType === "try" ? 0 : branchType === "catch" ? 1 : 2,
+      sourceOrder,
+      parentId: this.#tryNode.id,
+      source: sourceRangeFromToken(this.#tryNode.source.path, positioned),
+      construction: { status: "partial", phase: "body" },
+    };
+    this.workflow.children.push(branch);
+    this.#activeBranch = branch;
+    this.#bodyBraces = context.depth.braces + 1;
+  }
+
+  private updateLabel(): void {
+    this.#tryNode.label = this.#tryNode.hasCatch
+      ? this.#tryNode.hasFinally
+        ? "try/catch/finally"
+        : "try/catch"
+      : this.#tryNode.hasFinally
+        ? "try/finally"
+        : "try";
+  }
+
+  private extendActiveBranch(positioned: PositionedWorkflowToken): void {
+    if (this.#activeBranch) {
+      extendSourceRangeToToken(this.#activeBranch.source, positioned);
+    }
+  }
+
+  private completeActiveBranch(): void {
+    if (this.#activeBranch) {
+      this.#activeBranch.construction = { status: "complete", phase: "complete" };
+    }
+    this.#activeBranch = undefined;
+    this.#bodyBraces = undefined;
+  }
+}
+
 export class ReturnStatementMachine implements TokenSubmachine {
   readonly kind = "return" as const;
   readonly id: string;
@@ -1417,6 +1663,7 @@ export class ThrowStatementMachine implements TokenSubmachine {
   readonly #terminal: TerminalNode;
   readonly #expressionStart: number;
   readonly #baseDepth: TokenMachineContext["depth"];
+  readonly #rethrowIdentifier: string | undefined;
 
   constructor({
     id,
@@ -1424,18 +1671,21 @@ export class ThrowStatementMachine implements TokenSubmachine {
     terminal,
     expressionStart,
     baseDepth,
+    rethrowIdentifier,
   }: {
     id: string;
     parentId: string;
     terminal: TerminalNode;
     expressionStart: number;
     baseDepth: TokenMachineContext["depth"];
+    rethrowIdentifier?: string;
   }) {
     this.id = id;
     this.parentId = parentId;
     this.#terminal = terminal;
     this.#expressionStart = expressionStart;
     this.#baseDepth = { ...baseDepth };
+    this.#rethrowIdentifier = rethrowIdentifier;
   }
 
   get phase(): string {
@@ -1476,12 +1726,20 @@ export class ThrowStatementMachine implements TokenSubmachine {
 
   finish(context: TokenMachineContext): TokenSubmachineStatus {
     this.#terminal.value = context.source.slice(this.#expressionStart).trim();
+    this.labelRethrow();
     return "active";
   }
 
   private complete(source: string, expressionEnd: number): void {
     this.#terminal.value = source.slice(this.#expressionStart, expressionEnd).trim();
+    this.labelRethrow();
     this.#terminal.construction = { status: "complete", phase: "complete" };
+  }
+
+  private labelRethrow(): void {
+    if (this.#rethrowIdentifier && this.#terminal.value === this.#rethrowIdentifier) {
+      this.#terminal.label = `rethrow ${this.#rethrowIdentifier}`;
+    }
   }
 }
 
@@ -1511,6 +1769,10 @@ export function isConditionalExpressionMachine(
 
 export function isIfStatementMachine(machine: TokenSubmachine): machine is IfStatementMachine {
   return machine instanceof IfStatementMachine;
+}
+
+export function isTryStatementMachine(machine: TokenSubmachine): machine is TryStatementMachine {
+  return machine instanceof TryStatementMachine;
 }
 
 export function isReturnStatementMachine(

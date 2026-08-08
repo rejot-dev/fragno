@@ -374,6 +374,40 @@ export const WORKFLOW_VISUALIZER_FIXTURES: ReadonlyArray<readonly [path: string,
 `,
     ],
     [
+      "automations/reson8-transcribe-oga-upload-v2.workflow.js",
+      `defineWorkflow({ name: "reson8-transcribe-oga-upload-v2" }, async (_event, step) => {
+  await step.do("request OGA upload", async () => ({
+    $ui: {
+      version: 1,
+      state: { response: { audio: null } },
+      spec: {
+        root: "form",
+        elements: {
+          form: { type: "Stack", props: { gap: "md" }, children: ["heading", "description", "audio", "submit"] },
+          heading: { type: "Heading", props: { text: "Transcribe an OGA file", level: 2 }, children: [] },
+          description: { type: "Text", props: { text: "The previous upload exceeded a runtime limit. Please upload the OGA file again (maximum 50 MB).", tone: "muted" }, children: [] },
+          audio: { type: "FileUpload", props: { label: "OGA audio file", scope: { kind: "current" }, value: { $bindState: "/response/audio" }, accept: [".oga", "audio/ogg"], maxSizeBytes: 52428800, required: true }, children: [] },
+          submit: { type: "WorkflowEventButton", props: { label: "Transcribe", eventType: "oga-transcribe-submit-v2", payload: { $state: "/response" }, variant: "primary" }, children: [] }
+        }
+      }
+    }
+  }));
+  const submitted = await step.waitForEvent("receive OGA upload", { type: "oga-transcribe-submit-v2" });
+  const file = submitted.payload?.audio;
+  if (!file || file.kind !== "prepared-upload") throw new Error("Please upload an OGA file.");
+  try {
+    const audio = await step.do("read uploaded audio", async () => context.current.upload.readPrepared({ file, encoding: "bytes", maxBytes: 52428800 }));
+    const transcription = await step.do("transcribe with Reson8", async () => context.current.reson8.transcribePrerecorded({ audio: { kind: "bytes", bytes: Array.from(audio.bytes) }, includeTimestamps: true, includeWords: true, includeConfidence: true }));
+    const saved = await step.do("commit uploaded audio", async () => context.current.upload.commitPrepared({ file }));
+    return { filename: file.filename, transcription, saved, $ui: { version: 1, state: { filename: file.filename, text: transcription.text }, spec: { root: "result", elements: { result: { type: "Stack", props: { gap: "md" }, children: ["heading", "file", "text"] }, heading: { type: "Heading", props: { text: "Transcription", level: 2 }, children: [] }, file: { type: "Text", props: { text: { $state: "/filename" }, tone: "muted" }, children: [] }, text: { type: "Section", props: { label: "Transcript", variant: "live" }, children: ["transcriptText"] }, transcriptText: { type: "Text", props: { text: { $state: "/text" } }, children: [] } } } } };
+  } catch (error) {
+    await step.do("discard failed upload", async () => context.current.upload.discardPrepared({ file }));
+    throw error;
+  }
+});
+`,
+    ],
+    [
       "automations/workspace-file-initialization.workflow.js",
       `defineWorkflow(
   { name: "workspace-file-initialization" },

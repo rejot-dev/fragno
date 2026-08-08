@@ -192,7 +192,23 @@ export interface ParallelNode {
   construction: ConstructionState<ParallelConstructionPhase>;
 }
 
-export type BranchType = "then" | "else" | "parallel";
+export type TryConstructionPhase = "body" | "handler" | "finally" | "complete";
+
+export interface TryNode {
+  id: string;
+  kind: "try";
+  label: string;
+  workflowName: string;
+  order: number;
+  sourceOrder: number;
+  parentId: string;
+  source: SourceRange;
+  hasCatch: boolean;
+  hasFinally: boolean;
+  construction: ConstructionState<TryConstructionPhase>;
+}
+
+export type BranchType = "then" | "else" | "parallel" | "try" | "catch" | "finally";
 export type BranchConstructionPhase = "body" | "complete";
 
 export interface BranchNode {
@@ -212,6 +228,19 @@ export interface BranchNode {
 export type TerminalType = "early-return" | "final-return" | "error";
 export type TerminalConstructionPhase = "returning" | "throwing" | "complete";
 
+export interface CaughtThrowNode {
+  id: string;
+  kind: "caught-throw";
+  label: string;
+  value: string;
+  workflowName: string;
+  order: number;
+  sourceOrder: number;
+  parentId: string;
+  source: SourceRange;
+  construction: ConstructionState<TerminalConstructionPhase>;
+}
+
 export interface TerminalNode {
   id: string;
   kind: "terminal";
@@ -228,11 +257,13 @@ export interface TerminalNode {
 
 export type WorkflowChildNode =
   | BranchNode
+  | CaughtThrowNode
   | ConditionNode
   | LoopNode
   | ParallelNode
   | StepNode
-  | TerminalNode;
+  | TerminalNode
+  | TryNode;
 export type GraphNode = WorkflowNode | WorkflowChildNode;
 
 export interface GraphEdge {
@@ -252,7 +283,7 @@ export interface Diagnostic {
 }
 
 export interface WorkflowGraph {
-  version: 4;
+  version: 6;
   nodes: GraphNode[];
   edges: GraphEdge[];
   diagnostics: Diagnostic[];
@@ -273,7 +304,7 @@ export interface DelimiterDepth {
 }
 
 export interface ActiveConstruct {
-  kind: "workflow" | "parallel" | "step" | "condition" | "loop" | "return" | "throw";
+  kind: "workflow" | "parallel" | "step" | "condition" | "loop" | "try" | "return" | "throw";
   id: string;
   parentId?: string;
   phase: string;
