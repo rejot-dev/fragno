@@ -15,6 +15,8 @@ describe("Backoffice static file collection", () => {
         "SYSTEM.md",
         "codemode",
         "codemode/system.d.ts",
+        "docs/README.md",
+        "docs/automations/scripts.md",
         "skills/generating-backoffice-uis/SKILL.md",
       ]),
     );
