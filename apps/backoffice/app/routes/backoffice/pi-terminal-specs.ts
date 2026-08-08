@@ -1,8 +1,8 @@
 /*
  * Pi terminal command specs — the catalogue of bash commands the terminal knows
  * about, used for autocomplete, argument hints, and the command reference. Pure
- * data, client-safe: this is imported by both the backoffice dashboard and the
- * Cadence dev console, so it must not pull in any server-only modules.
+ * data, client-safe: the backoffice dashboard imports it, so it must not pull in
+ * any server-only modules.
  */
 
 import type { AutomationCommandOptionSpec } from "@/fragno/runtime-tools/automation-types";

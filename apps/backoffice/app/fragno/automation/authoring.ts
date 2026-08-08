@@ -1,13 +1,12 @@
 /*
  * Authoring helpers for automation scripts, operating directly on an
  * `IFileSystem` (no route request needed) so the Pi agent can author, validate,
- * and run automations the same way the cadence workbench does.
+ * and run automations through the same validation used by the backoffice.
  *
  * Scripts live under `/workspace/automations/*` on the same Backoffice
  * filesystem the Pi session already mounts. Validation reuses the
  * `@fragno-dev/workflow-visualizer` interpreter: it parses the catalog with the
- * script under authoring overridden in place, and returns the same diagnostics
- * the workbench surfaces.
+ * script under authoring overridden in place, and returns its diagnostics.
  */
 
 import {

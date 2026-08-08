@@ -171,4 +171,3 @@ display-relative path.
 - `apps/backoffice/app/fragno/automation/engine/execution-file-system.ts` — `/context` and `/dev`
   mounts.
 - `apps/backoffice/app/fragno/codemode/workflow-execute.ts` — remote workflow sandbox.
-- `apps/backoffice/app/routes/cadence/workflow-graph.server.ts` — graph preview and manual runs.

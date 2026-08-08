@@ -4,9 +4,9 @@
  * spins up the org filesystem + interactive bash host, runs the command (or
  * lists path completions), and returns a `DashboardTerminalActionResult`.
  *
- * Server-only: it imports the bash host and filesystem. It is called exclusively
- * from route `action` exports (backoffice dashboard + Cadence exec), so the
- * React Router Vite plugin strips it from the client bundle.
+ * Server-only: it imports the bash host and filesystem. It is called from the
+ * backoffice dashboard route action, so the React Router Vite plugin strips it
+ * from the client bundle.
  */
 
 import type { RouterContextProvider } from "react-router";
@@ -404,8 +404,8 @@ export type HandlePiTerminalActionArgs = {
 };
 
 /**
- * Route the posted form to the right handler. Both the dashboard and Cadence
- * route actions call this after authenticating and resolving the active org.
+ * Route the posted form to the right handler after the dashboard action has
+ * authenticated the request and resolved the active organization.
  */
 export async function handlePiTerminalAction({
   formData,
