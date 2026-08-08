@@ -9,6 +9,7 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { automationActorsSchema } from "@/fragno/automation/actors";
+import { PI_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/pi-codemode-workflow";
 import { createPiToolFactory, type PiSessionFileSystemContext } from "@/fragno/pi/pi";
 import { createPiCodemodeRuntime } from "@/fragno/pi/pi-codemode";
 import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
@@ -300,6 +301,69 @@ describe("scenario Pi boundary", () => {
               assert(response.status === 404);
             },
           ),
+        ],
+      }),
+    );
+  });
+
+  test("schedules and executes a durable codemode workflow submitted by a Pi session", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario<PiAuthorityScenarioVars>({
+        name: "Pi session schedules and executes durable codemode",
+        vars: () => ({}),
+        setup: ({ given }) => [
+          given.auth.user({ id: "user-1", role: "admin" }),
+          given.auth.organization({
+            id: "org-1",
+            name: "Pi Durable Codemode Org",
+            ownerUserId: "user-1",
+            ownerRoles: ["owner"],
+          }),
+          given.pi.configured({ orgId: "org-1" }),
+        ],
+        steps: ({ when, then, runner }) => [
+          when.pi.createSession({
+            orgId: "org-1",
+            captureSessionIdAs: "sessionId",
+          }),
+          then.assert("the Pi codemode tool schedules the durable workflow", async (ctx) => {
+            const sessionId = ctx.vars.sessionId;
+            if (!sessionId) {
+              throw new Error("Pi session id was not captured.");
+            }
+
+            const execution = await loadPiSessionExecution(ctx, "org-1", sessionId);
+            const tool = await createScenarioPiExecCodeMode(ctx, "org-1", sessionId, execution);
+            const result = await tool.execute("durable-codemode", {
+              code: `defineWorkflow(
+  { name: "pi-created-durable-workflow" },
+  async (_event, step) => {
+    await step.do("write durable result", async () => {
+      await store.set({
+        key: "pi/durable-codemode",
+        value: "executed",
+        category: ["test", "pi"],
+      });
+    });
+    return { executed: true };
+  },
+);`,
+            } as never);
+            const details = result.details as {
+              run?: { workflowName: string; instanceId: string };
+              scheduleError?: string;
+            };
+
+            expect(details.scheduleError).toBeUndefined();
+            expect(details.run).toMatchObject({ workflowName: PI_CODEMODE_WORKFLOW });
+          }),
+          runner.drain(),
+          then.store.entry({
+            orgId: "org-1",
+            key: "pi/durable-codemode",
+            value: "executed",
+          }),
+          then.workflow.noErrored({ orgId: "org-1" }),
         ],
       }),
     );

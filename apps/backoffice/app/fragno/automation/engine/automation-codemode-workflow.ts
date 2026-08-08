@@ -52,6 +52,7 @@ const createWorkflowAutomationContext = async ({
   execution?: BackofficeExecutionContext;
   createPiAutomationContext?: (input: {
     event: AutomationEvent;
+    execution: BackofficeExecutionContext;
     idempotencyKey: string;
   }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
 }): Promise<AutomationRuntimeHostContext> => {
@@ -64,6 +65,7 @@ const createWorkflowAutomationContext = async ({
   const kernel = new BackofficeKernel(runtime);
   const pi = await createPiAutomationContext?.({
     event: params.automationEvent,
+    execution: resolvedExecution,
     idempotencyKey: params.idempotencyKey ?? params.workflowInstanceId,
   });
   const emittedEventActors = resolvedExecution.actors;
@@ -157,6 +159,7 @@ export const executeAutomationWorkflowSource = async ({
     runtime?: BackofficeRuntimeServices;
     createPiAutomationContext?: (input: {
       event: AutomationEvent;
+      execution: BackofficeExecutionContext;
       idempotencyKey: string;
     }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
   };
@@ -226,6 +229,7 @@ export const defineAutomationCodemodeWorkflow = (
     runtime?: BackofficeRuntimeServices;
     createPiAutomationContext?: (input: {
       event: AutomationEvent;
+      execution: BackofficeExecutionContext;
       idempotencyKey: string;
     }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
   },
