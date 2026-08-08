@@ -125,6 +125,31 @@ test("renders the stable workflow fixture corpus for quick inspection", () => {
     │  returns: await internal.projectFilesConfigure({ projectId })
     └─ 3. terminal final return
 
+    --- automations/reson8-transcribe-oga-upload-v2.workflow.js ---
+    workflow reson8-transcribe-oga-upload-v2
+    ├─ 0. do request OGA upload
+    │  returns: ({ $ui: …})
+    ├─ 1. waitForEvent receive OGA upload
+    │  event: oga-transcribe-submit-v2
+    ├─ 2. if !file || file.kind !== "prepared-upload"
+    │  └─ 0. terminal error Please upload an OGA file.
+    │     value: new Error("Please upload an OGA file.")
+    └─ 3. try/catch
+       ├─ try
+       │  ├─ 0. do read uploaded audio
+       │  │  returns: context.current.upload.readPrepared({ file, encoding: "bytes", maxBytes: 52428800 })
+       │  ├─ 1. do transcribe with Reson8
+       │  │  returns: context.current.reson8.transcribePrerecorded({ audio: { kind: "bytes", bytes: Array.from(audio.bytes) }, includeTimestamps: true, includeWords: true, includeConfidence: true })
+       │  ├─ 2. do commit uploaded audio
+       │  │  returns: context.current.upload.commitPrepared({ file })
+       │  └─ 3. terminal final return
+       │     value: { filename: file.filename, transcription, saved, $ui: …}
+       └─ catch
+          ├─ 0. do discard failed upload
+          │  returns: context.current.upload.discardPrepared({ file })
+          └─ 1. terminal error rethrow error
+             value: error
+
     --- automations/workspace-file-initialization.workflow.js ---
     workflow workspace-file-initialization
     ├─ 0. if automationEvent.source !== "auth" || automationEvent.eventType !== "organization.created"

@@ -6,6 +6,8 @@ import {
   visualizeWorkflowSource,
 } from "./index.ts";
 import type {
+  BranchNode,
+  CaughtThrowNode,
   GraphNode,
   GraphPatch,
   StepNode,
@@ -43,6 +45,14 @@ const EXPECTED_DURABLE_STEPS: Record<string, string[]> = {
   "automations/pi-default-agent-configure.workflow.js": ["store default pi agent"],
   "automations/telegram-test-command.workflow.js": ["wait 3 seconds", "send delayed test reply"],
   "automations/project-files-configure.workflow.js": ["configure project database filesystem"],
+  "automations/reson8-transcribe-oga-upload-v2.workflow.js": [
+    "request OGA upload",
+    "receive OGA upload",
+    "read uploaded audio",
+    "transcribe with Reson8",
+    "commit uploaded audio",
+    "discard failed upload",
+  ],
   "automations/workspace-file-initialization.workflow.js": [
     "configure upload database connection",
     "seed workspace starter files",
@@ -56,7 +66,7 @@ describe("workflow token state machine", () => {
 
     for (const token of tokenizeWorkflowSource(source)) {
       const update = machine.push(token);
-      assert(update.graph.version === 4);
+      assert(update.graph.version === 6);
       assert(update.state.sourceLength === machine.source().length);
       assertUsableGraph(update.graph.nodes, update.graph.edges);
     }
@@ -72,6 +82,326 @@ describe("workflow token state machine", () => {
     expect(steps.map((step) => step.label)).toEqual(EXPECTED_DURABLE_STEPS[path]);
     assert(steps.every((step) => step.construction.status === "complete"));
     expect(finished.graph.diagnostics).toEqual([]);
+  });
+
+  it("models try and catch as alternative paths with a labeled rethrow", () => {
+    const snapshot = visualizeFixture("automations/reson8-transcribe-oga-upload-v2.workflow.js");
+    const tryNode = snapshot.graph.nodes.find((node) => node.kind === "try");
+    assert(tryNode?.kind === "try");
+
+    const branches = snapshot.graph.nodes
+      .filter((node): node is BranchNode => node.kind === "branch" && node.parentId === tryNode.id)
+      .sort((left, right) => left.order - right.order);
+    expect(branches.map((branch) => branch.branchType)).toEqual(["try", "catch"]);
+
+    const tryBranch = branches[0];
+    const catchBranch = branches[1];
+    assert(tryBranch?.branchType === "try");
+    assert(catchBranch?.branchType === "catch");
+    expect(stepByLabel(snapshot.graph, "read uploaded audio").parentId).toBe(tryBranch.id);
+    expect(stepByLabel(snapshot.graph, "discard failed upload").parentId).toBe(catchBranch.id);
+
+    const rethrow = snapshot.graph.nodes.find(
+      (node): node is TerminalNode => node.kind === "terminal" && node.parentId === catchBranch.id,
+    );
+    expect(rethrow).toMatchObject({
+      terminalType: "error",
+      label: "rethrow error",
+      value: "error",
+    });
+    assert(
+      !snapshot.graph.edges.some(
+        (edge) =>
+          edge.type === "sequence" &&
+          edge.from === stepByLabel(snapshot.graph, "commit uploaded audio").id &&
+          edge.to === stepByLabel(snapshot.graph, "discard failed upload").id,
+      ),
+    );
+  });
+
+  it.each([
+    ["optional member call", "await service?.try();"],
+    ["ordinary member call", "await service.try();"],
+    ["object property", "const options = { try: true };"],
+    ["nested object property", "const options = { try: { enabled: true } };"],
+    ["object method", "const options = { try() { return true; } };"],
+    ["member reference", "const method = service.try;"],
+  ])("does not create a try statement for a %s", (_name, expression) => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/not-a-try-statement.workflow.js",
+      `defineWorkflow({ name: "not-a-try-statement" }, async (_event, step) => {
+        ${expression}
+        await step.do("after expression", async () => undefined);
+      });`,
+    );
+
+    expect(snapshot.graph.nodes.filter((node) => node.kind === "try")).toEqual([]);
+    expect(stepByLabel(snapshot.graph, "after expression").parentId).toBe(
+      snapshot.graph.nodes.find((node) => node.kind === "workflow")?.id,
+    );
+    expect(snapshot.graph.diagnostics).toEqual([]);
+  });
+
+  it("keeps an else branch after an unbraced try/catch consequent", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/unbraced-try-condition.workflow.js",
+      `defineWorkflow({ name: "unbraced-try-condition" }, async (event, step) => {
+        if (event.payload.accepted)
+          try {
+            await step.do("accepted", async () => true);
+          } catch (error) {
+            await step.do("recover", async () => error);
+          }
+        else
+          await step.do("rejected", async () => false);
+      });`,
+    );
+    const condition = snapshot.graph.nodes.find((node) => node.kind === "condition");
+    assert(condition?.kind === "condition");
+    const branches = snapshot.graph.nodes.filter(
+      (node): node is BranchNode => node.kind === "branch" && node.parentId === condition.id,
+    );
+    const thenBranch = branches.find((branch) => branch.branchType === "then");
+    const elseBranch = branches.find((branch) => branch.branchType === "else");
+    assert(thenBranch);
+    assert(elseBranch);
+    const tryNode = snapshot.graph.nodes.find(
+      (node) => node.kind === "try" && node.parentId === thenBranch.id,
+    );
+    assert(tryNode?.kind === "try");
+    expect(stepByLabel(snapshot.graph, "rejected").parentId).toBe(elseBranch.id);
+    expect(snapshot.graph.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    [
+      "finally",
+      `try {
+        await step.do("accepted", async () => true);
+      } finally {
+        await step.do("cleanup", async () => undefined);
+      }`,
+    ],
+    [
+      "catch and finally",
+      `try {
+        await step.do("accepted", async () => true);
+      } catch (error) {
+        await step.do("recover", async () => error);
+      } finally {
+        await step.do("cleanup", async () => undefined);
+      }`,
+    ],
+  ])("keeps an else branch after an unbraced try/%s consequent", (_name, tryStatement) => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/unbraced-finally-condition.workflow.js",
+      `defineWorkflow({ name: "unbraced-finally-condition" }, async (event, step) => {
+        if (event.payload.accepted)
+          ${tryStatement}
+        else
+          await step.do("rejected", async () => false);
+      });`,
+    );
+    const condition = snapshot.graph.nodes.find((node) => node.kind === "condition");
+    assert(condition?.kind === "condition");
+    const elseBranch = snapshot.graph.nodes.find(
+      (node): node is BranchNode =>
+        node.kind === "branch" && node.parentId === condition.id && node.branchType === "else",
+    );
+    assert(elseBranch);
+    expect(stepByLabel(snapshot.graph, "rejected").parentId).toBe(elseBranch.id);
+    expect(snapshot.graph.diagnostics).toEqual([]);
+  });
+
+  it("models finally-only workflows as an always-running path", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/try-finally.workflow.js",
+      `defineWorkflow({ name: "try-finally" }, async (_event, step) => {
+        try {
+          await step.do("perform work", async () => true);
+        } finally {
+          await step.do("always clean up", async () => undefined);
+        }
+      });`,
+    );
+    const tryNode = snapshot.graph.nodes.find((node) => node.kind === "try");
+    assert(tryNode?.kind === "try");
+    expect(tryNode).toMatchObject({
+      label: "try/finally",
+      hasCatch: false,
+      hasFinally: true,
+      construction: { status: "complete", phase: "complete" },
+    });
+    const branches = snapshot.graph.nodes.filter(
+      (node): node is BranchNode => node.kind === "branch" && node.parentId === tryNode.id,
+    );
+    expect(branches.map((branch) => branch.branchType)).toEqual(["try", "finally"]);
+    const finallyBranch = branches.find((branch) => branch.branchType === "finally");
+    assert(finallyBranch);
+    expect(stepByLabel(snapshot.graph, "always clean up").parentId).toBe(finallyBranch.id);
+    expect(snapshot.graph.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    [
+      "catch",
+      `defineWorkflow({ name: "try-catch" }, async (_event, step) => {
+        try {
+          await step.do("perform work", async () => true);
+        } catch (error) {
+          await step.do("recover", async () => error);
+        }`,
+    ],
+    [
+      "finally",
+      `defineWorkflow({ name: "try-finally" }, async (_event, step) => {
+        try {
+          await step.do("perform work", async () => true);
+        } finally {
+          await step.do("always clean up", async () => undefined);
+        }`,
+    ],
+  ])("completes a try/%s node when the source ends at the handler brace", (_name, source) => {
+    const snapshot = visualizeWorkflowSource("automations/partial-try.workflow.js", source);
+
+    expect(snapshot.graph.diagnostics).not.toContainEqual(
+      expect.objectContaining({ code: "incomplete-try" }),
+    );
+  });
+
+  it("keeps a try node incomplete when no handler has been parsed", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/incomplete-try.workflow.js",
+      `defineWorkflow({ name: "incomplete-try" }, async (_event, step) => {
+        try {
+          await step.do("perform work", async () => true);
+        }`,
+    );
+
+    expect(snapshot.graph.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "incomplete-try" }),
+    );
+  });
+
+  it("models catch and finally as distinct paths", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/try-catch-finally.workflow.js",
+      `defineWorkflow({ name: "try-catch-finally" }, async (_event, step) => {
+        try {
+          await step.do("perform work", async () => true);
+        } catch (error) {
+          await step.do("recover", async () => error);
+        } finally {
+          await step.do("always clean up", async () => undefined);
+        }
+      });`,
+    );
+    const tryNode = snapshot.graph.nodes.find((node) => node.kind === "try");
+    assert(tryNode?.kind === "try");
+    expect(tryNode).toMatchObject({
+      label: "try/catch/finally",
+      hasCatch: true,
+      hasFinally: true,
+    });
+    expect(
+      snapshot.graph.nodes
+        .filter(
+          (node): node is BranchNode => node.kind === "branch" && node.parentId === tryNode.id,
+        )
+        .map((branch) => branch.branchType),
+    ).toEqual(["try", "catch", "finally"]);
+  });
+
+  it("renders a throw caught by the matching catch as control transfer", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/caught-throw.workflow.js",
+      `defineWorkflow({ name: "caught-throw" }, async (_event, step) => {
+        try {
+          throw new Error("use fallback");
+        } catch (error) {
+          await step.do("fallback", async () => error.message);
+        }
+      });`,
+    );
+    const caughtThrow = snapshot.graph.nodes.find(
+      (node): node is CaughtThrowNode => node.kind === "caught-throw",
+    );
+    expect(caughtThrow).toMatchObject({
+      label: "throw to catch",
+      value: 'new Error("use fallback")',
+      construction: { status: "complete", phase: "complete" },
+    });
+    expect(
+      snapshot.graph.nodes.filter(
+        (node) => node.kind === "terminal" && node.value === 'new Error("use fallback")',
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not classify a condition's caught throw as terminal", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/conditional-caught-throw.workflow.js",
+      `defineWorkflow({ name: "conditional-caught-throw" }, async (event, step) => {
+        try {
+          if (event.payload.invalid === true) throw new Error("invalid");
+          await step.do("continue try", async () => true);
+        } catch (error) {
+          await step.do("recover", async () => error.message);
+        }
+      });`,
+    );
+    const condition = snapshot.graph.nodes.find((node) => node.kind === "condition");
+    assert(condition?.kind === "condition");
+    expect(condition.analysis).toMatchObject({
+      status: "complete",
+      outcomes: [
+        { path: "then", completion: { kind: "continues" } },
+        { path: "fallthrough", completion: { kind: "continues" } },
+      ],
+    });
+    expect(snapshot.graph.nodes.filter((node) => node.kind === "caught-throw")).toHaveLength(1);
+  });
+
+  it("keeps a rethrow from catch as a workflow-terminal error", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/rethrow.workflow.js",
+      `defineWorkflow({ name: "rethrow" }, async (_event) => {
+        try {
+          throw new Error("first");
+        } catch (error) {
+          throw error;
+        }
+      });`,
+    );
+    expect(snapshot.graph.nodes.filter((node) => node.kind === "caught-throw")).toHaveLength(1);
+    expect(
+      snapshot.graph.nodes.find(
+        (node): node is TerminalNode => node.kind === "terminal" && node.label === "rethrow error",
+      ),
+    ).toMatchObject({ terminalType: "error", value: "error" });
+  });
+
+  it("routes a throw through an inner finally to an outer catch", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/nested-finally-catch.workflow.js",
+      `defineWorkflow({ name: "nested-finally-catch" }, async (_event, step) => {
+        try {
+          try {
+            throw new Error("outer handles this");
+          } finally {
+            await step.do("inner cleanup", async () => undefined);
+          }
+        } catch (error) {
+          await step.do("outer recovery", async () => error.message);
+        }
+      });`,
+    );
+    expect(snapshot.graph.nodes.filter((node) => node.kind === "caught-throw")).toHaveLength(1);
+    expect(
+      snapshot.graph.nodes.filter(
+        (node) => node.kind === "terminal" && node.value.includes("outer handles this"),
+      ),
+    ).toEqual([]);
   });
 
   it("extracts fixture metadata and branch state without an AST", () => {
@@ -1427,7 +1757,7 @@ describe("workflow token state machine", () => {
     }
 
     const snapshot = machine.finish();
-    expect(snapshot.graph).toEqual({ version: 4, nodes: [], edges: [], diagnostics: [] });
+    expect(snapshot.graph).toEqual({ version: 6, nodes: [], edges: [], diagnostics: [] });
     expect(snapshot.state).toMatchObject({ status: "finished", activeConstructs: [] });
     assert(renderWorkflowVisualizationText(snapshot) === "(no workflows)");
   });

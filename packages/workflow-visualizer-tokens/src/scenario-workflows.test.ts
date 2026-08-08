@@ -1462,16 +1462,19 @@ describe("scenario-runner workflow corpus", () => {
     );
     expect(renderWorkflowGraphText(graph)).toMatchInlineSnapshot(`
       "workflow graceful-timeout-workflow
-      ├─ 0. waitForEvent ready
-      │  event: ready
-      │  timeout: 5 minutes
-      ├─ 1. terminal final return
-      │  value: { ok: true, timedOut: false }
-      ├─ 2. if err instanceof WaitForEventTimeoutError
-      │  └─ 0. terminal early return
-      │     value: { ok: true, timedOut: true }
-      └─ 3. terminal error
-         value: err"
+      └─ 0. try/catch
+         ├─ try
+         │  ├─ 0. waitForEvent ready
+         │  │  event: ready
+         │  │  timeout: 5 minutes
+         │  └─ 1. terminal final return
+         │     value: { ok: true, timedOut: false }
+         └─ catch
+            ├─ 0. if err instanceof WaitForEventTimeoutError
+            │  └─ 0. terminal early return
+            │     value: { ok: true, timedOut: true }
+            └─ 1. terminal error rethrow err
+               value: err"
     `);
   });
 
@@ -1484,20 +1487,23 @@ describe("scenario-runner workflow corpus", () => {
       "workflow timeout-mutation-workflow
       ├─ 0. do init
       │  returns: "initialized"
-      ├─ 1. waitForEvent approval
-      │  event: approval
-      │  timeout: 5 minutes
-      ├─ 2. do mark-approved
-      │  returns: "approved"
-      ├─ 3. terminal final return
-      │  value: { finalStatus: "approved" }
-      ├─ 4. if err instanceof WaitForEventTimeoutError
-      │  ├─ 0. do mark-timed-out
-      │  │  returns: "timed-out"
-      │  └─ 1. terminal early return
-      │     value: { finalStatus: "timed-out" }
-      └─ 5. terminal error
-         value: err"
+      └─ 1. try/catch
+         ├─ try
+         │  ├─ 0. waitForEvent approval
+         │  │  event: approval
+         │  │  timeout: 5 minutes
+         │  ├─ 1. do mark-approved
+         │  │  returns: "approved"
+         │  └─ 2. terminal final return
+         │     value: { finalStatus: "approved" }
+         └─ catch
+            ├─ 0. if err instanceof WaitForEventTimeoutError
+            │  ├─ 0. do mark-timed-out
+            │  │  returns: "timed-out"
+            │  └─ 1. terminal early return
+            │     value: { finalStatus: "timed-out" }
+            └─ 1. terminal error rethrow err
+               value: err"
     `);
   });
 
