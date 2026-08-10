@@ -2,9 +2,12 @@ import { Component, type ReactNode } from "react";
 
 import { JSONUIProvider, Renderer } from "@json-render/react";
 
-import { BackofficeUiInteractionProvider, type BackofficeUiInteractionHost } from "./interaction";
 import { backofficeUiRegistry } from "./registry";
 import type { BackofficeUiResultV1 } from "./result";
+import {
+  WorkflowUiInteractionProvider,
+  type WorkflowUiInteractionHost,
+} from "./workflow-interaction";
 
 type BackofficeUiErrorBoundaryProps = {
   children?: ReactNode;
@@ -36,23 +39,23 @@ export class BackofficeUiErrorBoundary extends Component<
 }
 
 export function BackofficeUiRenderer({
-  interactionHost,
+  workflowInteractionHost,
   onStateChange,
   ui,
 }: {
-  interactionHost?: BackofficeUiInteractionHost;
+  workflowInteractionHost?: WorkflowUiInteractionHost;
   onStateChange?: (changes: BackofficeUiStateChange[]) => void;
   ui: BackofficeUiResultV1["$ui"];
 }) {
   return (
     <div className="w-full max-w-3xl min-w-0">
-      <BackofficeUiInteractionProvider host={interactionHost}>
+      <WorkflowUiInteractionProvider host={workflowInteractionHost}>
         <JSONUIProvider
           registry={backofficeUiRegistry}
           initialState={ui.state}
           onStateChange={onStateChange}
         >
-          {interactionHost ? (
+          {workflowInteractionHost ? (
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -64,7 +67,7 @@ export function BackofficeUiRenderer({
             <Renderer spec={ui.spec} registry={backofficeUiRegistry} />
           )}
         </JSONUIProvider>
-      </BackofficeUiInteractionProvider>
+      </WorkflowUiInteractionProvider>
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { useBoundProp, type ComponentFn } from "@json-render/react";
 import type { PreparedUploadedFileReference } from "@/fragno/prepared-upload";
 
 import type { backofficeUiCatalog } from "../catalog";
-import { useBackofficeUiInteractionHost } from "../interaction";
+import { useWorkflowUiInteractionHost } from "../workflow-interaction";
 
 type UploadState = "idle" | "uploading" | "failed" | "complete";
 
@@ -37,7 +37,7 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
   props,
   bindings,
 }) => {
-  const host = useBackofficeUiInteractionHost();
+  const host = useWorkflowUiInteractionHost();
   const inputId = useId();
   const descriptionId = useId();
   const statusId = useId();
@@ -50,8 +50,7 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
   const [uploadState, setUploadState] = useState<UploadState>(value ? "complete" : "idle");
   const [progress, setProgress] = useState<UploadProgress>();
   const [error, setError] = useState<string>();
-  const editable = host?.canEditWorkflowInput?.() !== false;
-  const disabled = props.disabled || !editable || !host?.uploadPreparedFile;
+  const disabled = props.disabled || !host || !host.canEditInput();
 
   useEffect(() => {
     const input = inputRef.current;
@@ -70,7 +69,7 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
   }, [props.required, uploadState, value]);
 
   const upload = async (file: File) => {
-    if (!host?.uploadPreparedFile || disabled) {
+    if (!host || disabled) {
       return;
     }
     if (props.maxSizeBytes && file.size > props.maxSizeBytes) {
@@ -91,7 +90,7 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
     setProgress(undefined);
     setError(undefined);
     try {
-      const reference = await host.uploadPreparedFile({
+      const reference = await host.uploadFile({
         scope: props.scope,
         file,
         bindingPath: bindings?.value,
@@ -213,7 +212,7 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
               ? error
               : "No file selected."}
       </p>
-      {!host?.uploadPreparedFile ? (
+      {!host ? (
         <p className="mt-1.5 text-[10px] leading-4 text-[var(--bo-muted-2)]">
           File uploads are unavailable in this generated interface.
         </p>

@@ -2,48 +2,37 @@ import { useEffect, useState } from "react";
 
 import type { SourceRange, StepNode } from "@fragno-dev/workflow-visualizer-tokens";
 
-import { setByPath } from "@json-render/core";
-
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
-import { resolveGeneratedUiUploadScope } from "@/backoffice-ui/generated-ui-upload-scope";
-import { uploadPreparedGeneratedUiFile } from "@/backoffice-ui/prepared-upload.client";
-import { parseBackofficeUiResult, type BackofficeUiResultV1 } from "@/backoffice-ui/result";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 
 import { GraphBadge } from "./graph-badge";
 import type { WorkflowGraphDetailMode } from "./script-view-mode";
 import { SourceLocationButton } from "./source-location-button";
-import { WorkflowGeneratedUi, type WorkflowEventSender } from "./workflow-generated-ui";
+import type { WorkflowEventSender } from "./workflow-generated-ui";
 import { hasVisibleWorkflowOutput } from "./workflow-output";
 import { WorkflowOutputDisclosure } from "./workflow-output-data";
 import type { WorkflowRunEvent, WorkflowStepRunState } from "./workflow-run-presentation";
-import {
-  deleteWorkflowUiDraft,
-  getOrCreateWorkflowUiDraftEventId,
-  markWorkflowUiDraftSubmitted,
-  saveWorkflowUiDraft,
-  workflowUiDraftId,
-  workflowUiDrafts,
-  type WorkflowUiDraft,
-} from "./workflow-ui-drafts.client";
-import { activeWorkflowUiEventTypes, submittedWorkflowUiEvent } from "./workflow-ui-event-state";
+import { WorkflowStepGeneratedUi } from "./workflow-step-generated-ui";
 
 const COMPLETION_HIGHLIGHT_DURATION_MS = 2_000;
+const EMPTY_RUNTIME_TOOL_CALLS: readonly ResolvedWorkflowRuntimeToolCall[] = [];
+const EMPTY_WORKFLOW_EVENTS: readonly WorkflowRunEvent[] = [];
+const EMPTY_WAITING_EVENT_TYPES: readonly string[] = [];
 
 export function WorkflowStepCard({
   step,
-  runtimeToolCalls = [],
+  runtimeToolCalls = EMPTY_RUNTIME_TOOL_CALLS,
   continuationStep,
   detailMode = "simple",
   generatedUiState,
   runState,
-  workflowEvents = [],
+  workflowEvents = EMPTY_WORKFLOW_EVENTS,
   workflowRunRecordId,
   currentScope,
   workflowEventSender,
   workflowEventWorkflowName,
   workflowInstanceId,
-  waitingEventTypes = [],
+  waitingEventTypes = EMPTY_WAITING_EVENT_TYPES,
   onSourceSelect,
 }: {
   step: StepNode;
@@ -124,210 +113,6 @@ export function WorkflowStepCard({
 
       {hasCollapsibleOutput ? <WorkflowOutputDisclosure value={runState.result} /> : null}
     </div>
-  );
-}
-
-function WorkflowStepGeneratedUi({
-  state,
-  workflowEvents,
-  workflowRunRecordId,
-  currentScope,
-  workflowEventSender,
-  workflowInstanceId,
-  workflowName,
-  waitingEventTypes,
-}: {
-  state?: WorkflowStepRunState;
-  workflowEvents: readonly WorkflowRunEvent[];
-  workflowRunRecordId?: string;
-  currentScope?: BackofficeRoutableScope;
-  workflowEventSender?: WorkflowEventSender;
-  workflowInstanceId?: string;
-  workflowName?: string;
-  waitingEventTypes: readonly string[];
-}) {
-  if (state?.status !== "completed") {
-    return null;
-  }
-  const parsedResult = parseBackofficeUiResult(state.result);
-  if (parsedResult.kind === "ordinary") {
-    return null;
-  }
-
-  return (
-    <div
-      data-workflow-step-generated-ui
-      className="mt-3 border-t border-[color:var(--bo-border)] pt-3"
-    >
-      {parsedResult.kind === "valid" ? (
-        <WorkflowStepInteractiveGeneratedUi
-          result={parsedResult.value}
-          state={state}
-          workflowEvents={workflowEvents}
-          workflowRunRecordId={workflowRunRecordId}
-          currentScope={currentScope}
-          workflowEventSender={workflowEventSender}
-          workflowInstanceId={workflowInstanceId}
-          workflowName={workflowName}
-          waitingEventTypes={waitingEventTypes}
-        />
-      ) : (
-        <WorkflowGeneratedUi value={state.result} />
-      )}
-    </div>
-  );
-}
-
-function WorkflowStepInteractiveGeneratedUi({
-  result,
-  state,
-  workflowEvents,
-  workflowRunRecordId,
-  currentScope,
-  workflowEventSender,
-  workflowInstanceId,
-  workflowName,
-  waitingEventTypes,
-}: {
-  result: BackofficeUiResultV1;
-  state: WorkflowStepRunState;
-  workflowEvents: readonly WorkflowRunEvent[];
-  workflowRunRecordId?: string;
-  currentScope?: BackofficeRoutableScope;
-  workflowEventSender?: WorkflowEventSender;
-  workflowInstanceId?: string;
-  workflowName?: string;
-  waitingEventTypes: readonly string[];
-}) {
-  const submitted = submittedWorkflowUiEvent({
-    ui: result.$ui,
-    events: workflowEvents,
-    completedAt: state.completedAt,
-  });
-  const draftId =
-    workflowRunRecordId && state.stepRecordId
-      ? workflowUiDraftId({ runRecordId: workflowRunRecordId, stepRecordId: state.stepRecordId })
-      : undefined;
-  const activeEventTypes = activeWorkflowUiEventTypes(result.$ui, waitingEventTypes);
-  const stepRecordId = state.stepRecordId;
-  const usesBrowserDraft = Boolean(draftId && !submitted && activeEventTypes.size > 0);
-  const [draft, setDraft] = useState<WorkflowUiDraft | null>();
-
-  useEffect(() => {
-    if (!usesBrowserDraft || !draftId) {
-      setDraft(undefined);
-      return undefined;
-    }
-    let active = true;
-    void workflowUiDrafts.preload().then(() => {
-      if (active) {
-        setDraft(workflowUiDrafts.get(draftId) ?? null);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, [draftId, usesBrowserDraft]);
-
-  const submittedEventId = submitted?.event.id;
-  useEffect(() => {
-    if (submittedEventId && draftId) {
-      deleteWorkflowUiDraft(draftId);
-    }
-  }, [draftId, submittedEventId]);
-
-  if (usesBrowserDraft && draft === undefined) {
-    return (
-      <p aria-live="polite" className="text-xs text-[var(--bo-muted-2)]">
-        Restoring saved input…
-      </p>
-    );
-  }
-
-  const ui = {
-    ...result.$ui,
-    state: submitted?.state ?? draft?.state ?? result.$ui.state,
-  };
-  return (
-    <WorkflowGeneratedUi
-      value={{ ...result, $ui: ui }}
-      onStateChange={
-        usesBrowserDraft && draftId
-          ? (changes) => {
-              const nextState = structuredClone(draft?.state ?? ui.state);
-              for (const change of changes) {
-                setByPath(nextState, change.path, change.value);
-              }
-              setDraft({
-                id: draftId,
-                state: nextState,
-                eventIds: draft?.eventIds,
-                submittedEventType: draft?.submittedEventType ?? null,
-                updatedAt: Date.now(),
-              });
-              saveWorkflowUiDraft({ id: draftId, initialState: ui.state, changes });
-            }
-          : undefined
-      }
-      interactionHost={
-        workflowEventSender && workflowName && workflowInstanceId && stepRecordId
-          ? {
-              canEditWorkflowInput: () => activeEventTypes.size > 0 && !draft?.submittedEventType,
-              canSendWorkflowEvent: (eventType) =>
-                activeEventTypes.has(eventType) && draft?.submittedEventType !== eventType,
-              uploadPreparedFile: ({ scope, file, onProgress }) =>
-                uploadPreparedGeneratedUiFile({
-                  scope: resolveGeneratedUiUploadScope(scope, currentScope),
-                  file,
-                  workflowName,
-                  instanceId: workflowInstanceId,
-                  stepRecordId,
-                  onProgress,
-                }),
-              sendWorkflowEvent: async ({ eventId: fallbackEventId, eventType, payload }) => {
-                const eventId = draftId
-                  ? await getOrCreateWorkflowUiDraftEventId({
-                      id: draftId,
-                      eventType,
-                      initialState: ui.state,
-                      fallbackEventId,
-                    })
-                  : fallbackEventId;
-                if (draftId) {
-                  setDraft({
-                    id: draftId,
-                    state: draft?.state ?? ui.state,
-                    eventIds: { ...draft?.eventIds, [eventType]: eventId },
-                    submittedEventType: draft?.submittedEventType ?? null,
-                    updatedAt: Date.now(),
-                  });
-                }
-                await workflowEventSender({
-                  eventId,
-                  workflowName,
-                  instanceId: workflowInstanceId,
-                  eventType,
-                  payload,
-                });
-                if (draftId) {
-                  setDraft({
-                    id: draftId,
-                    state: draft?.state ?? ui.state,
-                    eventIds: { ...draft?.eventIds, [eventType]: eventId },
-                    submittedEventType: eventType,
-                    updatedAt: Date.now(),
-                  });
-                  markWorkflowUiDraftSubmitted({
-                    id: draftId,
-                    eventType,
-                    initialState: ui.state,
-                  });
-                }
-              },
-            }
-          : undefined
-      }
-    />
   );
 }
 

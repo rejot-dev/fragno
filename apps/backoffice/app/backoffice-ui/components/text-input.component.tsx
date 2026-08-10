@@ -3,14 +3,14 @@ import { useId } from "react";
 import { useBoundProp, type ComponentFn } from "@json-render/react";
 
 import type { backofficeUiCatalog } from "../catalog";
-import { useBackofficeUiInteractionHost } from "../interaction";
+import { useWorkflowUiInteractionHost } from "../workflow-interaction";
 
 export const TextInput: ComponentFn<typeof backofficeUiCatalog, "TextInput"> = ({
   props,
   bindings,
 }) => {
   const id = useId();
-  const host = useBackofficeUiInteractionHost();
+  const host = useWorkflowUiInteractionHost();
   const [value, setValue] = useBoundProp(props.value, bindings?.value);
 
   return (
@@ -31,7 +31,7 @@ export const TextInput: ComponentFn<typeof backofficeUiCatalog, "TextInput"> = (
         placeholder={props.placeholder}
         autoComplete={props.secret ? "off" : undefined}
         required={props.required}
-        disabled={props.disabled || host?.canEditWorkflowInput?.() === false}
+        disabled={props.disabled || !host || !host.canEditInput()}
         onChange={(event) => {
           setValue(event.target.value);
         }}

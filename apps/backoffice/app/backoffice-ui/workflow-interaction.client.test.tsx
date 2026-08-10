@@ -4,9 +4,9 @@ import { afterEach, describe, expect, test, vi, assert } from "vitest";
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import type { BackofficeUiWorkflowEventInput } from "./interaction";
 import { BackofficeUiRenderer } from "./renderer";
 import { parseBackofficeUiResult } from "./result";
+import type { WorkflowUiEventInput, WorkflowUiInteractionHost } from "./workflow-interaction";
 
 const interactiveResult = parseBackofficeUiResult({
   $ui: {
@@ -57,16 +57,22 @@ if (interactiveResult.kind !== "valid") {
 
 afterEach(() => cleanup());
 
+const unexpectedUpload: WorkflowUiInteractionHost["uploadFile"] = async () => {
+  throw new Error("This test does not render a file upload.");
+};
+
 describe("Backoffice generated UI workflow input", () => {
   test("binds form state and sends the resolved payload", async () => {
-    const sendWorkflowEvent = vi.fn(async () => undefined);
+    const sendEvent = vi.fn(async () => undefined);
 
     render(
       <BackofficeUiRenderer
         ui={interactiveResult.value.$ui}
-        interactionHost={{
-          canSendWorkflowEvent: (eventType) => eventType === "approval",
-          sendWorkflowEvent,
+        workflowInteractionHost={{
+          canEditInput: () => true,
+          canSendEvent: (eventType) => eventType === "approval",
+          sendEvent,
+          uploadFile: unexpectedUpload,
         }}
       />,
     );
@@ -78,7 +84,7 @@ describe("Backoffice generated UI workflow input", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit decision" }));
 
     await waitFor(() => {
-      expect(sendWorkflowEvent).toHaveBeenCalledWith(
+      expect(sendEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           eventId: expect.any(String),
           eventType: "approval",
@@ -134,32 +140,34 @@ describe("Backoffice generated UI workflow input", () => {
       },
     });
     assert(requiredInputResult.kind === "valid");
-    const sendWorkflowEvent = vi.fn(async () => undefined);
+    const sendEvent = vi.fn(async () => undefined);
 
     render(
       <BackofficeUiRenderer
         ui={requiredInputResult.value.$ui}
-        interactionHost={{
-          canSendWorkflowEvent: () => true,
-          sendWorkflowEvent,
+        workflowInteractionHost={{
+          canEditInput: () => true,
+          canSendEvent: () => true,
+          sendEvent,
+          uploadFile: unexpectedUpload,
         }}
       />,
     );
 
     const submit = screen.getByRole("button", { name: "Continue" });
     fireEvent.click(submit);
-    expect(sendWorkflowEvent).not.toHaveBeenCalled();
+    expect(sendEvent).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByRole("textbox", { name: /Name/ }), {
       target: { value: "Ada" },
     });
     fireEvent.click(submit);
-    expect(sendWorkflowEvent).not.toHaveBeenCalled();
+    expect(sendEvent).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("checkbox", { name: /I confirm/ }));
     fireEvent.click(submit);
     await waitFor(() => {
-      expect(sendWorkflowEvent).toHaveBeenCalledWith(
+      expect(sendEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           eventType: "confirmed",
           payload: { name: "Ada", confirmed: true },
@@ -169,17 +177,19 @@ describe("Backoffice generated UI workflow input", () => {
   });
 
   test("reuses the event id when a failed submission is retried", async () => {
-    const sendWorkflowEvent = vi
-      .fn<(input: BackofficeUiWorkflowEventInput) => Promise<void>>()
+    const sendEvent = vi
+      .fn<(input: WorkflowUiEventInput) => Promise<void>>()
       .mockRejectedValueOnce(new Error("Connection lost"))
       .mockResolvedValue(undefined);
 
     render(
       <BackofficeUiRenderer
         ui={interactiveResult.value.$ui}
-        interactionHost={{
-          canSendWorkflowEvent: (eventType) => eventType === "approval",
-          sendWorkflowEvent,
+        workflowInteractionHost={{
+          canEditInput: () => true,
+          canSendEvent: (eventType) => eventType === "approval",
+          sendEvent,
+          uploadFile: unexpectedUpload,
         }}
       />,
     );
@@ -189,9 +199,9 @@ describe("Backoffice generated UI workflow input", () => {
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await screen.findByRole("button", { name: "Sent" });
 
-    const firstEventId = sendWorkflowEvent.mock.calls[0]?.[0].eventId;
+    const firstEventId = sendEvent.mock.calls[0]?.[0].eventId;
     expect(firstEventId).toEqual(expect.any(String));
-    expect(sendWorkflowEvent.mock.calls[1]?.[0].eventId).toBe(firstEventId);
+    expect(sendEvent.mock.calls[1]?.[0].eventId).toBe(firstEventId);
   });
 
   test("renders secret text input values as passwords", () => {
@@ -225,10 +235,11 @@ describe("Backoffice generated UI workflow input", () => {
     assert.equal(input.value, "sk-secret");
   });
 
-  test("does not describe hostless workflow input as stale", () => {
+  test("renders hostless workflow input as read-only without describing it as stale", () => {
     render(<BackofficeUiRenderer ui={interactiveResult.value.$ui} />);
 
     assert((screen.getByRole("button", { name: "Submit decision" }) as HTMLButtonElement).disabled);
+    assert((screen.getByLabelText("Reason") as HTMLTextAreaElement).disabled);
     expect(screen.queryByText("This workflow is no longer waiting for approval.")).toBeNull();
   });
 
@@ -236,10 +247,11 @@ describe("Backoffice generated UI workflow input", () => {
     render(
       <BackofficeUiRenderer
         ui={interactiveResult.value.$ui}
-        interactionHost={{
-          canEditWorkflowInput: () => false,
-          canSendWorkflowEvent: () => false,
-          sendWorkflowEvent: async () => undefined,
+        workflowInteractionHost={{
+          canEditInput: () => false,
+          canSendEvent: () => false,
+          sendEvent: async () => undefined,
+          uploadFile: unexpectedUpload,
         }}
       />,
     );
