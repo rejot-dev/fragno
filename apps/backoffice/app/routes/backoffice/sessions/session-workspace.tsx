@@ -6,6 +6,7 @@ import {
   backofficeContextScopeSinglePathSegment,
 } from "@/backoffice-runtime/scope-codec";
 import { BackofficeSystemState } from "@/components/backoffice";
+import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { ClientOnly } from "@/components/client-only";
 import { getAutomationBrowserDatabase } from "@/fragno/automation/tanstack/browser-database";
 import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
@@ -84,9 +85,13 @@ function SynchronizedPiSessionsWorkspace({
     workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
   });
   const automationDatabase = use(getAutomationBrowserDatabase());
-  const workflowCollections = layoutContext.automationPersistenceSource
-    ? automationDatabase.collectionsFor(layoutContext.automationPersistenceSource)
-    : undefined;
+  const { automationCollectionSource } = useCurrentBackofficeContext();
+  const workflowCollections =
+    automationCollectionSource.status === "ready"
+      ? automationDatabase.collectionsFor(automationCollectionSource.source)
+      : undefined;
+  const workflowCollectionsError =
+    automationCollectionSource.status === "unavailable" ? automationCollectionSource.message : null;
 
   if (listingState.status === "synchronizing" && listingState.snapshot.sessions.length === 0) {
     return <PiSessionsLoading />;
@@ -98,6 +103,7 @@ function SynchronizedPiSessionsWorkspace({
       source={source}
       listingState={listingState}
       workflowCollections={workflowCollections}
+      workflowCollectionsError={workflowCollectionsError}
     />
   );
 }
@@ -107,11 +113,13 @@ function PiSessionsWorkspaceView({
   source,
   listingState,
   workflowCollections,
+  workflowCollectionsError,
 }: {
   layoutContext: PiLayoutContext;
   source: NonNullable<PiLayoutContext["persistenceSource"]>;
   listingState: PiSessionListingState;
   workflowCollections: PiSessionsOutletContext["workflowCollections"];
+  workflowCollectionsError: string | null;
 }) {
   const actionData = useActionData() as PiCreateSessionActionData | undefined;
   const navigation = useNavigation();
@@ -197,7 +205,7 @@ function PiSessionsWorkspaceView({
           workspaceStates,
           updateWorkspaceState,
           workflowCollections,
-          workflowCollectionsError: layoutContext.automationPersistenceError,
+          workflowCollectionsError,
         }}
       />
     </SessionListSplit>

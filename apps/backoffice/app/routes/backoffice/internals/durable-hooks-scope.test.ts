@@ -1,9 +1,10 @@
 import { assert, describe, expect, it, vi } from "vitest";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+
 import {
   createDurableHooksObjectOptions,
   createDurableHooksScopeOptions,
-  durableHooksContextScopeFromRouteId,
   getDurableHooksLoaderErrorMessage,
   resolveDurableHooksScopeSelection,
 } from "./durable-hooks-scope";
@@ -30,9 +31,15 @@ const user = {
   email: "operator@example.com",
 };
 
-const resolveSelection = ({ scopeId, objectId }: { scopeId: string; objectId: string }) => {
+const resolveSelection = ({
+  scope,
+  objectId,
+}: {
+  scope: BackofficeContextScope;
+  objectId: string;
+}) => {
   const selection = resolveDurableHooksScopeSelection({
-    scopeId,
+    scope,
     objectId,
     organisations,
     projects,
@@ -42,26 +49,20 @@ const resolveSelection = ({ scopeId, objectId }: { scopeId: string; objectId: st
   return selection;
 };
 
-describe("durableHooksContextScopeFromRouteId", () => {
-  it.each([
-    ["org_123", { kind: "org", orgId: "org_123" }],
-    ["user:user_1", { kind: "user", userId: "user_1" }],
-    ["project:org_123:project_1", { kind: "project", orgId: "org_123", projectId: "project_1" }],
-    ["singletons", { kind: "system" }],
-  ])("parses %s", (scopeId, expected) => {
-    expect(durableHooksContextScopeFromRouteId(scopeId)).toEqual(expected);
-  });
-});
-
 describe("resolveDurableHooksScopeSelection", () => {
   it("resolves organisation, project, user, and singleton scopes", () => {
-    expect(resolveSelection({ scopeId: "org_123", objectId: "api" })).toMatchObject({
+    expect(
+      resolveSelection({ scope: { kind: "org", orgId: "org_123" }, objectId: "api" }),
+    ).toMatchObject({
       kind: "org",
       orgId: "org_123",
       objectId: "api",
     });
     expect(
-      resolveSelection({ scopeId: "project:org_123:project_1", objectId: "upload" }),
+      resolveSelection({
+        scope: { kind: "project", orgId: "org_123", projectId: "project_1" },
+        objectId: "upload",
+      }),
     ).toMatchObject({
       kind: "project",
       orgId: "org_123",
@@ -69,13 +70,15 @@ describe("resolveDurableHooksScopeSelection", () => {
       label: "Launch Plan",
       objectId: "upload",
     });
-    expect(resolveSelection({ scopeId: "user:user_1", objectId: "mcp" })).toMatchObject({
+    expect(
+      resolveSelection({ scope: { kind: "user", userId: "user_1" }, objectId: "mcp" }),
+    ).toMatchObject({
       kind: "user",
       userId: "user_1",
       label: "operator@example.com",
       objectId: "mcp",
     });
-    expect(resolveSelection({ scopeId: "singletons", objectId: "auth" })).toMatchObject({
+    expect(resolveSelection({ scope: { kind: "system" }, objectId: "auth" })).toMatchObject({
       kind: "singleton",
       objectId: "auth",
     });
@@ -84,7 +87,7 @@ describe("resolveDurableHooksScopeSelection", () => {
   it("rejects objects that the registry policy does not allow for the selected scope", () => {
     expect(
       resolveDurableHooksScopeSelection({
-        scopeId: "user:user_1",
+        scope: { kind: "user", userId: "user_1" },
         objectId: "auth",
         organisations,
         projects,
@@ -93,7 +96,7 @@ describe("resolveDurableHooksScopeSelection", () => {
     ).toBeNull();
     expect(
       resolveDurableHooksScopeSelection({
-        scopeId: "singletons",
+        scope: { kind: "system" },
         objectId: "api",
         organisations,
         projects,
@@ -107,13 +110,13 @@ describe("durable hook selectors", () => {
   it("derives each scope's object options from the object registry policy", () => {
     expect(
       createDurableHooksObjectOptions(
-        resolveSelection({ scopeId: "singletons", objectId: "auth" }),
+        resolveSelection({ scope: { kind: "system" }, objectId: "auth" }),
       ).map((option) => option.id),
     ).toEqual(["auth", "automations", "telegram", "otp", "resend", "pi", "workflows"]);
 
     expect(
       createDurableHooksObjectOptions(
-        resolveSelection({ scopeId: "org_123", objectId: "api" }),
+        resolveSelection({ scope: { kind: "org", orgId: "org_123" }, objectId: "api" }),
       ).map((option) => option.id),
     ).toEqual([
       "api",
@@ -129,10 +132,13 @@ describe("durable hook selectors", () => {
     ]);
 
     const userObjects = createDurableHooksObjectOptions(
-      resolveSelection({ scopeId: "user:user_1", objectId: "api" }),
+      resolveSelection({ scope: { kind: "user", userId: "user_1" }, objectId: "api" }),
     ).map((option) => option.id);
     const projectObjects = createDurableHooksObjectOptions(
-      resolveSelection({ scopeId: "project:org_123:project_1", objectId: "api" }),
+      resolveSelection({
+        scope: { kind: "project", orgId: "org_123", projectId: "project_1" },
+        objectId: "api",
+      }),
     ).map((option) => option.id);
     expect(userObjects).toEqual([
       "api",
@@ -147,51 +153,57 @@ describe("durable hook selectors", () => {
   });
 
   it("includes project and user scopes while preserving a compatible object", () => {
-    const selection = resolveSelection({ scopeId: "org_123", objectId: "telegram" });
+    const selection = resolveSelection({
+      scope: { kind: "org", orgId: "org_123" },
+      objectId: "telegram",
+    });
 
     expect(createDurableHooksScopeOptions({ organisations, projects, user, selection })).toEqual([
       {
-        id: "singleton:singletons",
+        id: "system/system",
         kind: "singleton",
         label: "Singleton",
         description: "Global durable object scope",
-        to: "/backoffice/internals/durable-hooks/singletons/telegram",
+        to: "/backoffice/internals/durable-hooks/system/system/telegram",
       },
       {
-        id: "org:org_123",
+        id: "org/org_123",
         kind: "org",
         label: "Acme",
         description: "Organisation · acme",
-        to: "/backoffice/internals/durable-hooks/org_123/telegram",
+        to: "/backoffice/internals/durable-hooks/org/org_123/telegram",
       },
       {
-        id: "project:org_123:project_1",
+        id: "project/org_123%3Aproject_1",
         kind: "project",
         label: "Launch Plan",
         description: "Project · launch-plan",
-        to: "/backoffice/internals/durable-hooks/project:org_123:project_1/telegram",
+        to: "/backoffice/internals/durable-hooks/project/org_123%3Aproject_1/telegram",
       },
       {
-        id: "user:user_1",
+        id: "user/user_1",
         kind: "user",
         label: "operator@example.com",
         description: "Personal user scope",
-        to: "/backoffice/internals/durable-hooks/user:user_1/telegram",
+        to: "/backoffice/internals/durable-hooks/user/user_1/telegram",
       },
     ]);
   });
 
   it("falls back to the first object allowed by the destination scope", () => {
-    const selection = resolveSelection({ scopeId: "org_123", objectId: "github" });
+    const selection = resolveSelection({
+      scope: { kind: "org", orgId: "org_123" },
+      objectId: "github",
+    });
     const options = createDurableHooksScopeOptions({ organisations, projects, user, selection });
 
     assert.equal(
       options.find((option) => option.kind === "user")?.to,
-      "/backoffice/internals/durable-hooks/user:user_1/api",
+      "/backoffice/internals/durable-hooks/user/user_1/api",
     );
     assert.equal(
       options.find((option) => option.kind === "singleton")?.to,
-      "/backoffice/internals/durable-hooks/singletons/auth",
+      "/backoffice/internals/durable-hooks/system/system/auth",
     );
   });
 });
@@ -200,13 +212,16 @@ describe("getDurableHooksLoaderErrorMessage", () => {
   it("returns a fixed upload error while logging the scoped object failure", () => {
     const logError = vi.fn();
     const error = new Error("Missing storage credentials");
-    const selection = resolveSelection({ scopeId: "user:user_1", objectId: "upload" });
+    const selection = resolveSelection({
+      scope: { kind: "user", userId: "user_1" },
+      objectId: "upload",
+    });
 
     const message = getDurableHooksLoaderErrorMessage({ selection, error, logError });
 
     expect(message).toBe("Upload service unavailable");
     expect(logError).toHaveBeenCalledWith("Failed to load Upload durable hooks", {
-      scopeId: "user:user_1",
+      scope: { kind: "user", userId: "user_1" },
       objectId: "upload",
       error,
     });

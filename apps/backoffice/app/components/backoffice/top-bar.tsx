@@ -1,3 +1,4 @@
+import { Activity } from "lucide-react";
 import { Link, NavLink, useLocation } from "react-router";
 
 import type { AuthMeData } from "@/fragno/auth/auth-client";
@@ -11,6 +12,8 @@ import { BackofficeThemeMenu } from "./theme-menu";
 type BackofficeTopBarProps = {
   me: AuthMeData | null;
   isLoading?: boolean;
+  workflowDrawerOpen?: boolean;
+  onWorkflowDrawerToggle?: () => void;
 };
 
 type PrimaryNavigationItem = {
@@ -69,7 +72,7 @@ function PrimaryNavigation({ mobile = false }: { mobile?: boolean }) {
             );
           }}
         >
-          <span className="hidden font-mono text-[8px] tracking-normal text-[var(--bo-muted-2)] lg:mr-2 lg:inline">
+          <span className="bo-top-bar-nav-index hidden font-mono text-[8px] tracking-normal text-[var(--bo-muted-2)]">
             {item.index}
           </span>
           {item.label}
@@ -79,13 +82,18 @@ function PrimaryNavigation({ mobile = false }: { mobile?: boolean }) {
   );
 }
 
-export function BackofficeTopBar({ me, isLoading }: BackofficeTopBarProps) {
+export function BackofficeTopBar({
+  me,
+  isLoading,
+  workflowDrawerOpen = false,
+  onWorkflowDrawerToggle,
+}: BackofficeTopBarProps) {
   const { data: meData, loading: meLoading } = authClient.useMe();
   const effectiveMe = meData === undefined ? me : meData;
   const sessionLoading = isLoading || (!effectiveMe && meLoading);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-panel)]/95 shadow-[0_1px_3px_rgba(15,23,42,0.06)] backdrop-blur-md dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
+    <header className="bo-top-bar sticky top-0 z-30 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-panel)]/95 shadow-[0_1px_3px_rgba(15,23,42,0.06)] backdrop-blur-md dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
       <div className="flex min-h-14 items-center gap-2 px-2 sm:gap-3 sm:px-3 lg:px-4">
         <Link
           to="/backoffice"
@@ -95,17 +103,29 @@ export function BackofficeTopBar({ me, isLoading }: BackofficeTopBarProps) {
           Backoffice
         </Link>
 
-        <div className="hidden min-w-0 flex-1 self-stretch sm:block">
+        <div className="bo-top-bar-desktop-nav min-w-0 flex-1 self-stretch">
           <PrimaryNavigation />
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          {onWorkflowDrawerToggle ? (
+            <button
+              type="button"
+              aria-label={workflowDrawerOpen ? "Close recent workflows" : "Open recent workflows"}
+              aria-expanded={workflowDrawerOpen}
+              title={`${workflowDrawerOpen ? "Close" : "Open"} recent workflows (⌘I)`}
+              onClick={onWorkflowDrawerToggle}
+              className={`bo-control-surface inline-flex size-10 items-center justify-center transition-[background-color,color,scale,box-shadow] duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] ${workflowDrawerOpen ? "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]" : "bg-[var(--bo-panel)] text-[var(--bo-muted)] hover:text-[var(--bo-fg)]"}`}
+            >
+              <Activity className="size-4" aria-hidden="true" />
+            </button>
+          ) : null}
           <BackofficeThemeMenu />
           <BackofficeAccountMenu me={effectiveMe} isLoading={sessionLoading} />
         </div>
       </div>
 
-      <div className="border-t border-[color:var(--bo-border)] sm:hidden">
+      <div className="bo-top-bar-mobile-nav border-t border-[color:var(--bo-border)]">
         <PrimaryNavigation mobile />
       </div>
     </header>

@@ -4,10 +4,7 @@ import type {
   BackofficeObjectScopeKind,
 } from "@/backoffice-runtime/object-registry";
 import { isBackofficeObjectScopeAllowed } from "@/backoffice-runtime/object-registry";
-import {
-  backofficeContextScopeFromSinglePathSegment,
-  backofficeContextScopeRoutePath,
-} from "@/backoffice-runtime/scope-codec";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 
 export const DURABLE_HOOK_OBJECT_DEFINITIONS = [
@@ -34,14 +31,12 @@ export type DurableHooksObjectDefinition = (typeof DURABLE_HOOK_OBJECT_DEFINITIO
 export type DurableHooksScopeSelection =
   | {
       kind: "singleton";
-      scopeId: "singletons";
       label: "Singleton";
       scope: { kind: "system" };
       objectId: DurableHooksObjectId;
     }
   | {
       kind: "org";
-      scopeId: string;
       orgId: string;
       label: string;
       scope: { kind: "org"; orgId: string };
@@ -49,7 +44,6 @@ export type DurableHooksScopeSelection =
     }
   | {
       kind: "user";
-      scopeId: string;
       userId: string;
       label: string;
       scope: { kind: "user"; userId: string };
@@ -57,7 +51,6 @@ export type DurableHooksScopeSelection =
     }
   | {
       kind: "project";
-      scopeId: string;
       orgId: string;
       projectId: string;
       label: string;
@@ -136,21 +129,6 @@ const compatibleObjectForScope = (
     ? preferredObjectId
     : defaultDurableHooksObjectForScope(scope);
 
-const durableHooksScopePathSegment = (scope: BackofficeContextScope) => {
-  switch (scope.kind) {
-    case "system":
-      return "singletons";
-    case "org":
-      return encodeURIComponent(scope.orgId);
-    case "user":
-      return `user:${encodeURIComponent(scope.userId)}`;
-    case "project":
-      return `project:${encodeURIComponent(scope.orgId)}:${encodeURIComponent(scope.projectId)}`;
-  }
-
-  throw new Error("Unsupported durable hooks scope kind.");
-};
-
 export const durableHooksScopePath = (
   scope: BackofficeContextScope,
   objectId: DurableHooksObjectId,
@@ -158,58 +136,33 @@ export const durableHooksScopePath = (
   if (!isDurableHooksObjectAllowedForScope(objectId, scope)) {
     throw new Error(`Durable hook object ${objectId} does not support ${scope.kind} scope.`);
   }
-  return `/backoffice/internals/durable-hooks/${durableHooksScopePathSegment(scope)}/${objectId}`;
+  return `/backoffice/internals/durable-hooks/${backofficeContextScopeRoutePath(scope)}/${objectId}`;
 };
 
 export const durableHooksSelectionPath = (selection: DurableHooksScopeSelection) =>
   durableHooksScopePath(selection.scope, selection.objectId);
 
-export const durableHooksContextScopeFromRouteId = (
-  scopeId: string | undefined,
-): BackofficeContextScope | null => {
-  if (!scopeId) {
-    return null;
-  }
-  if (scopeId === "singletons") {
-    return SINGLETON_SCOPE;
-  }
-  if (scopeId.startsWith("user:") || scopeId.startsWith("project:")) {
-    try {
-      return backofficeContextScopeFromSinglePathSegment(scopeId);
-    } catch {
-      return null;
-    }
-  }
-  return { kind: "org", orgId: scopeId };
-};
-
 export const resolveDurableHooksScopeSelection = ({
-  scopeId,
+  scope,
   objectId,
   organisations,
   projects,
   user,
 }: {
-  scopeId: string | undefined;
+  scope: BackofficeContextScope;
   objectId: string | undefined;
   organisations: Organisation[];
   projects: DurableHooksProject[];
   user: User;
 }): DurableHooksScopeSelection | null => {
-  const scope = durableHooksContextScopeFromRouteId(scopeId);
   const objectDefinition = getDurableHooksObjectDefinition(objectId);
-  if (
-    !scope ||
-    !objectDefinition ||
-    !isDurableHooksObjectAllowedForScope(objectDefinition.id, scope)
-  ) {
+  if (!objectDefinition || !isDurableHooksObjectAllowedForScope(objectDefinition.id, scope)) {
     return null;
   }
 
   if (scope.kind === "system") {
     return {
       kind: "singleton",
-      scopeId: "singletons",
       label: "Singleton",
       scope,
       objectId: objectDefinition.id,
@@ -222,7 +175,6 @@ export const resolveDurableHooksScopeSelection = ({
     }
     return {
       kind: "user",
-      scopeId: `user:${scope.userId}`,
       userId: scope.userId,
       label: user.email ?? user.id,
       scope,
@@ -238,7 +190,6 @@ export const resolveDurableHooksScopeSelection = ({
   if (scope.kind === "org") {
     return {
       kind: "org",
-      scopeId: organisation.id,
       orgId: organisation.id,
       label: organisation.name ?? organisation.id,
       scope,
@@ -255,7 +206,6 @@ export const resolveDurableHooksScopeSelection = ({
 
   return {
     kind: "project",
-    scopeId: `project:${scope.orgId}:${scope.projectId}`,
     orgId: scope.orgId,
     projectId: scope.projectId,
     label: project.label,
@@ -276,13 +226,12 @@ export const createDurableHooksScopeOptions = ({
   selection: DurableHooksScopeSelection;
 }): DurableHooksScopeOption[] => {
   const optionForScope = ({
-    id,
     kind,
     label,
     description,
     scope,
-  }: Omit<DurableHooksScopeOption, "to"> & { scope: BackofficeContextScope }) => ({
-    id,
+  }: Omit<DurableHooksScopeOption, "id" | "to"> & { scope: BackofficeContextScope }) => ({
+    id: backofficeContextScopeRoutePath(scope),
     kind,
     label,
     description,
@@ -291,7 +240,6 @@ export const createDurableHooksScopeOptions = ({
 
   return [
     optionForScope({
-      id: "singleton:singletons",
       kind: "singleton",
       label: "Singleton",
       description: "Global durable object scope",
@@ -299,7 +247,6 @@ export const createDurableHooksScopeOptions = ({
     }),
     ...organisations.map((organisation) =>
       optionForScope({
-        id: `org:${organisation.id}`,
         kind: "org",
         label: organisation.name ?? organisation.id,
         description: organisation.slug
@@ -310,7 +257,6 @@ export const createDurableHooksScopeOptions = ({
     ),
     ...projects.map((project) =>
       optionForScope({
-        id: `project:${project.orgId}:${project.id}`,
         kind: "project",
         label: project.label,
         description: project.slug ? `Project · ${project.slug}` : "Project scope",
@@ -318,7 +264,6 @@ export const createDurableHooksScopeOptions = ({
       }),
     ),
     optionForScope({
-      id: `user:${user.id}`,
       kind: "user",
       label: user.email ?? user.id,
       description: "Personal user scope",
@@ -414,7 +359,7 @@ export const getDurableHooksLoaderErrorMessage = ({
     getDurableHooksObjectDefinition(selection.objectId)?.label ?? selection.objectId;
 
   logError(`Failed to load ${objectLabel} durable hooks`, {
-    scopeId: selection.scopeId,
+    scope: selection.scope,
     objectId: selection.objectId,
     error,
   });

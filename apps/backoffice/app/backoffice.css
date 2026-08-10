@@ -67,6 +67,35 @@
   --bo-popover-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 20px 44px -12px rgba(0, 0, 0, 0.7);
 }
 
+.bo-top-bar {
+  container-type: inline-size;
+}
+
+.bo-top-bar-desktop-nav {
+  display: none;
+}
+
+.bo-top-bar-mobile-nav {
+  display: block;
+}
+
+@container (min-width: 960px) {
+  .bo-top-bar-desktop-nav {
+    display: block;
+  }
+
+  .bo-top-bar-mobile-nav {
+    display: none;
+  }
+}
+
+@container (min-width: 1200px) {
+  .bo-top-bar-nav-index {
+    display: inline;
+    margin-right: 0.5rem;
+  }
+}
+
 .bo-control-surface {
   box-shadow: var(--bo-control-shadow);
 }

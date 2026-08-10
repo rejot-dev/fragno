@@ -49,6 +49,11 @@ export default {
         files: ["app/fragno/automation/scenario-pi-boundary.test.ts"],
         rules: ["react-doctor/no-json-parse-stringify-clone"],
       },
+      {
+        // React Router route modules must export loaders alongside their rendered route components.
+        files: ["app/layouts/backoffice-layout.tsx"],
+        rules: ["react-doctor/only-export-components"],
+      },
     ],
   },
 };

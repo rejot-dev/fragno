@@ -2,6 +2,12 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useEffect } from "react";
 import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import {
+  backofficeContextScopeFromRouteParams,
+  backofficeContextScopeRoutePath,
+  BackofficeScopeCodecError,
+} from "@/backoffice-runtime/scope-codec";
 import { BackofficePageHeader } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
@@ -13,7 +19,6 @@ import type { Route } from "./+types/durable-hooks-scope-layout";
 import {
   createDurableHooksObjectOptions,
   createDurableHooksScopeOptions,
-  durableHooksContextScopeFromRouteId,
   durableHooksSelectionPath,
   DURABLE_HOOKS_OBJECT_CONFIGURE_META,
   getDurableHooksLoaderErrorMessage,
@@ -153,7 +158,15 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   }
 
   const organisations = me.organizations.map((entry) => entry.organization);
-  const routeScope = durableHooksContextScopeFromRouteId(params.scopeId);
+  let routeScope: BackofficeContextScope | null;
+  try {
+    routeScope = backofficeContextScopeFromRouteParams(params);
+  } catch (error) {
+    if (error instanceof BackofficeScopeCodecError) {
+      throw new Response("Not Found", { status: 404 });
+    }
+    throw error;
+  }
   if (!routeScope) {
     throw new Response("Not Found", { status: 404 });
   }
@@ -187,7 +200,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   const projects = projectOrgId ? normalizeProjects(projectOrgId, projectsResult.projects) : [];
 
   const selection = resolveDurableHooksScopeSelection({
-    scopeId: params.scopeId,
+    scope: routeScope,
     objectId: params.objectId,
     organisations,
     projects,
@@ -249,20 +262,7 @@ function DurableHooksScopePicker({
   options: DurableHooksScopeOption[];
   projectsError: string | null;
 }) {
-  const selectedId = (() => {
-    switch (selection.kind) {
-      case "singleton":
-        return "singleton:singletons";
-      case "org":
-        return `org:${selection.orgId}`;
-      case "user":
-        return `user:${selection.userId}`;
-      case "project":
-        return `project:${selection.orgId}:${selection.projectId}`;
-    }
-
-    throw new Error("Unsupported durable hooks scope.");
-  })();
+  const selectedId = backofficeContextScopeRoutePath(selection.scope);
 
   return (
     <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
