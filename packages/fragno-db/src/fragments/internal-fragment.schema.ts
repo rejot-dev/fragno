@@ -100,5 +100,6 @@ export const internalSchema = schema("fragno_internal", (s) => {
           "entryVersionstamp",
           "mutationVersionstamp",
         ]),
-    );
+    )
+    .alterTable("fragno_db_outbox_mutations", (t) => t.alterColumn("externalId").nullable());
 });

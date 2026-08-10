@@ -12,7 +12,7 @@ import type {
   DbNow,
   HandlerTxBuilder,
 } from "@fragno-dev/db";
-import type { OutboxEntry } from "@fragno-dev/db";
+import type { OutboxEntry, OutboxTruncateNotification } from "@fragno-dev/db";
 
 import type { InMemoryLofiStore } from "./adapters/in-memory/store";
 import type { AsyncQueryFindFamily } from "./query-types";
@@ -53,6 +53,8 @@ export type LofiEphemeralTable = {
    */
   stream?: LofiEphemeralStreamPolicy;
 };
+
+export type LofiTruncateNotification = OutboxTruncateNotification;
 
 export type LofiEphemeralMutationBatch = {
   sourceKey: string;

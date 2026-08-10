@@ -8,7 +8,7 @@ import {
 } from "../../fragments/internal-fragment";
 import type { NamingResolver } from "../../naming/sql-naming";
 import {
-  type OutboxMutation,
+  type OutboxOperation,
   type OutboxPayload,
   type OutboxRefLookup,
   type OutboxRefMap,
@@ -50,7 +50,7 @@ import { SQLocalDriverConfig } from "../generic-sql/driver-config";
 import { snapshotInMemoryColumnValue } from "./column-value";
 import { evaluateCondition } from "./condition-evaluator";
 import type { ResolvedInMemoryAdapterOptions } from "./options";
-import { buildQueryTreeRowRaw } from "./query-tree";
+import { buildQueryTreeRowRaw, type ResolveQueryTreeChildStore } from "./query-tree";
 import { resolveReferenceSubqueries } from "./reference-resolution";
 import type {
   InMemoryIndexStore,
@@ -660,6 +660,7 @@ const findRows = (
   tableStore: InMemoryTableStore,
   resolver?: NamingResolver,
   now: () => Date = () => new Date(),
+  resolveChildStore?: ResolveQueryTreeChildStore,
 ): InMemoryRow[] => {
   const table = op.table;
   const orderByIndex = op.options.orderByIndex;
@@ -750,6 +751,7 @@ const findRows = (
           resolver,
           now,
           op.readTracking,
+          resolveChildStore,
         ),
       );
       if (limit !== undefined && results.length >= limit) {
@@ -1338,10 +1340,10 @@ const insertOutboxMutationRows = (
   payload: {
     entryVersionstamp: string;
     uowId: string;
-    mutations: OutboxMutation[];
+    operations: OutboxOperation[];
   },
 ): Array<() => void> => {
-  if (payload.mutations.length === 0) {
+  if (payload.operations.length === 0) {
     return [];
   }
 
@@ -1355,7 +1357,7 @@ const insertOutboxMutationRows = (
   const rollbackActions: Array<() => void> = [];
 
   try {
-    for (const mutation of payload.mutations) {
+    for (const operation of payload.operations) {
       const createOp: Extract<MutationOperation<AnySchema>, { type: "create" }> = {
         type: "create",
         schema: internalSchema,
@@ -1363,13 +1365,13 @@ const insertOutboxMutationRows = (
         table: mutationsTable.name,
         values: {
           entryVersionstamp: payload.entryVersionstamp,
-          mutationVersionstamp: mutation.versionstamp,
+          mutationVersionstamp: operation.versionstamp,
           uowId: payload.uowId,
-          schema: mutation.schema,
-          table: mutation.table,
-          externalId: mutation.externalId,
-          op: mutation.op,
-          payload: superjson.serialize(mutation),
+          schema: operation.schema,
+          table: operation.table,
+          externalId: operation.op === "truncate" ? null : operation.externalId,
+          op: operation.op,
+          payload: superjson.serialize(operation),
         },
         generatedExternalId: options.idGenerator(),
       };
@@ -1468,7 +1470,23 @@ export const createInMemoryUowExecutor = (
         const tableStore = getTableStore(namespaceStore, compiled.table, resolver);
 
         if (compiled.type === "find") {
-          results.push(findRows(compiled, namespaceStore, tableStore, resolver, options.clock.now));
+          results.push(
+            findRows(compiled, namespaceStore, tableStore, resolver, options.clock.now, (child) => {
+              if (!child.schema) {
+                return { namespaceStore, resolver };
+              }
+              const childResolver = getResolver(child.schema, child.namespace, resolverFactory);
+              return {
+                namespaceStore: getNamespaceStore(
+                  store,
+                  child.schema,
+                  child.namespace,
+                  childResolver,
+                ),
+                resolver: childResolver,
+              };
+            }),
+          );
         } else {
           results.push([
             { count: countRows(compiled, namespaceStore, tableStore, resolver, options.clock.now) },
@@ -1502,7 +1520,13 @@ export const createInMemoryUowExecutor = (
           return [mutation.materializedOperation ?? operation];
         })
       : [];
-    const outboxPlan = outboxOperations.length > 0 ? buildOutboxPlan(outboxOperations) : null;
+    const outboxNotifications = mutationBatch.flatMap(
+      (mutation) => mutation.outboxNotifications ?? [],
+    );
+    const outboxPlan =
+      outboxOperations.length > 0 || outboxNotifications.length > 0
+        ? buildOutboxPlan(outboxOperations, outboxNotifications)
+        : null;
     const shouldWriteOutbox = outboxEnabled && outboxPlan !== null && outboxPlan.drafts.length > 0;
     let outboxReservation: ReturnType<typeof reserveOutboxVersion> | null = null;
 
@@ -1673,14 +1697,14 @@ export const createInMemoryUowExecutor = (
         });
         const entryPayloadSerialized = superjson.serialize({
           version: payload.version,
-          mutations: [],
+          operations: [],
         } satisfies OutboxPayload);
         const versionstamp = versionstampToHex(encodeVersionstamp(outboxReservation.version, 0));
         rollbackActions.push(
           ...insertOutboxMutationRows(store, options, resolverFactory, {
             entryVersionstamp: versionstamp,
             uowId,
-            mutations: payload.mutations,
+            operations: payload.operations,
           }),
         );
         const rollback = insertOutboxRow(store, options, resolverFactory, {

@@ -87,7 +87,7 @@ describe("generateSchemaArtifacts - sql", () => {
 
     expect(results).toHaveLength(2); // Settings + test-db
     expect(results[0].namespace).toBeNull();
-    expect(results[0].path).toMatch(/^20251024_001_f000_t00\d_fragno_db_settings.sql$/);
+    expect(results[0].path).toMatch(/^20251024_001_f000_t\d{3}_fragno_db_settings.sql$/);
     expect(results[0].schema).toContain("create table");
     expect(results[0].schema).toContain("fragno_db_settings");
 
@@ -138,7 +138,7 @@ describe("generateSchemaArtifacts - sql", () => {
 
     expect(results).toHaveLength(4); // Settings + 3 databases
     expect(results[0].namespace).toBeNull();
-    expect(results[0].path).toMatch(/^20251024_001_f000_t00\d_fragno_db_settings.sql$/);
+    expect(results[0].path).toMatch(/^20251024_001_f000_t\d{3}_fragno_db_settings.sql$/);
 
     assert(results[1].namespace === "apple-db");
     assert(results[1].path === "20251024_002_f000_t001_apple-db.sql");

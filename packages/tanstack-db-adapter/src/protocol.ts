@@ -3,7 +3,13 @@ import type { TableToColumnValues } from "@fragno-dev/db/query";
 import type { AnySchema, AnyTable, FragnoId, FragnoReference } from "@fragno-dev/db/schema";
 import superjson, { type SuperJSONResult } from "superjson";
 
-import type { OutboxEntry, OutboxMutation, OutboxPayload } from "@fragno-dev/db";
+import type {
+  OutboxEntry,
+  OutboxMatchScalar,
+  OutboxMutation,
+  OutboxPayload,
+  OutboxTruncateNotification,
+} from "@fragno-dev/db";
 
 import type { ChangeMessageOrDeleteKeyMessage } from "@tanstack/db";
 
@@ -61,17 +67,43 @@ export function decodeFragnoOutboxPayload(payload: unknown): OutboxPayload {
   if (!isRecord(decoded)) {
     throw new Error("Invalid Fragno outbox payload.");
   }
-  if (decoded["version"] !== 1) {
+  if (decoded["version"] !== 2) {
     throw new Error(`Unsupported Fragno outbox payload version: ${String(decoded["version"])}.`);
   }
-  if (!Array.isArray(decoded["mutations"])) {
-    throw new Error("Invalid Fragno outbox mutations.");
+  if (!Array.isArray(decoded["operations"])) {
+    throw new Error("Invalid Fragno outbox operations.");
   }
 
-  for (const mutation of decoded["mutations"]) {
-    const operation = isRecord(mutation) ? mutation["op"] : undefined;
-    if (operation !== "create" && operation !== "update" && operation !== "delete") {
+  for (const mutation of decoded["operations"]) {
+    if (!isRecord(mutation)) {
+      throw new Error("Invalid Fragno outbox mutation.");
+    }
+
+    const operation = mutation["op"];
+    if (
+      operation !== "create" &&
+      operation !== "update" &&
+      operation !== "delete" &&
+      operation !== "truncate"
+    ) {
       throw new Error(`Unsupported Fragno outbox mutation operation: ${String(operation)}.`);
+    }
+    if (operation === "truncate") {
+      const match = mutation["match"];
+      if (!isRecord(match)) {
+        throw new Error("Fragno outbox truncate match must be an object.");
+      }
+      if (!Object.values(match).every(isOutboxMatchScalar)) {
+        throw new Error("Fragno outbox truncate match values must be scalars.");
+      }
+      const externalIds = mutation["externalIds"];
+      if (
+        !Array.isArray(externalIds) ||
+        externalIds.length === 0 ||
+        !externalIds.every((externalId) => typeof externalId === "string" && externalId.length > 0)
+      ) {
+        throw new Error("Fragno outbox truncate external IDs must be non-empty strings.");
+      }
     }
   }
 
@@ -85,6 +117,8 @@ export function projectFragnoOutboxEntry<
   entry: FragnoOutboxEntry,
   target: FragnoCollectionTarget<TSchema, TTableName>,
 ): FragnoCollectionChange<FragnoCollectionRow<TSchema["tables"][TTableName]>>[] {
+  type Row = FragnoCollectionRow<TSchema["tables"][TTableName]>;
+
   const payload = decodeFragnoOutboxPayload(entry.payload);
   const targetNamespace = resolveDatabaseNamespace(target.schema.name, target.namespace) ?? "";
   const table = target.schema.tables[target.table];
@@ -94,10 +128,21 @@ export function projectFragnoOutboxEntry<
     uowId: entry.uowId,
   } satisfies FragnoRowSyncMetadata;
 
-  const changes: FragnoCollectionChange<FragnoCollectionRow<TSchema["tables"][TTableName]>>[] = [];
+  const changes: FragnoCollectionChange<Row>[] = [];
 
-  for (const mutation of payload.mutations) {
+  for (const mutation of payload.operations) {
     if (resolveMutationNamespace(mutation) !== targetNamespace || mutation.table !== target.table) {
+      continue;
+    }
+
+    if (mutation.op === "truncate") {
+      for (const externalId of mutation.externalIds) {
+        changes.push({
+          type: "delete",
+          key: externalId,
+          metadata,
+        });
+      }
       continue;
     }
 
@@ -109,7 +154,7 @@ export function projectFragnoOutboxEntry<
         value: {
           ...resolvedMutation.values,
           [externalIdColumnName]: resolvedMutation.externalId,
-        } as FragnoCollectionRow<TSchema["tables"][TTableName]>,
+        } as Row,
         metadata,
       });
       continue;
@@ -122,7 +167,7 @@ export function projectFragnoOutboxEntry<
         value: {
           ...resolvedMutation.set,
           [externalIdColumnName]: resolvedMutation.externalId,
-        } as Partial<FragnoCollectionRow<TSchema["tables"][TTableName]>>,
+        } as Partial<Row>,
         metadata,
       });
       continue;
@@ -157,8 +202,18 @@ export function toTanStackChangeMessage<TRow extends object>(
   };
 }
 
-function resolveMutationNamespace(mutation: OutboxMutation): string {
+function resolveMutationNamespace(mutation: OutboxMutation | OutboxTruncateNotification): string {
   return mutation.namespace ?? mutation.schema;
+}
+
+function isOutboxMatchScalar(value: unknown): value is OutboxMatchScalar {
+  return (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "bigint" ||
+    typeof value === "boolean"
+  );
 }
 
 function resolveMutationRefs(

@@ -146,7 +146,7 @@ describe("generatePrismaSchema", () => {
         uowId String
         schema String
         table String
-        externalId String
+        externalId String?
         op String
         createdAt DateTime @default(now())
         _internalId Int @id @default(autoincrement())
@@ -298,7 +298,7 @@ describe("generatePrismaSchema", () => {
         uowId String
         schema String
         table String
-        externalId String
+        externalId String?
         op String
         createdAt Int @default(dbgenerated("CURRENT_TIMESTAMP"))
         _internalId Int @id @default(autoincrement())
@@ -455,7 +455,7 @@ describe("generatePrismaSchema", () => {
         uowId String @db.VarChar(191)
         schema String @db.VarChar(191)
         table String @db.VarChar(191)
-        externalId String @db.VarChar(191)
+        externalId String? @db.VarChar(191)
         op String @db.VarChar(191)
         createdAt DateTime @default(now())
         _internalId BigInt @id @default(autoincrement())

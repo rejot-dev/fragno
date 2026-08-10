@@ -1,5 +1,5 @@
 import type { MutationOperation } from "../query/unit-of-work/mutation-recorder";
-import type { AnySchema, AnyTable, FragnoId } from "../schema/create";
+import type { AnyColumn, AnySchema, AnyTable, FragnoId, FragnoReference } from "../schema/create";
 
 export type OutboxConfig = {
   enabled: boolean;
@@ -12,9 +12,44 @@ export type OutboxVersionstampStrategy =
   | "insert-on-duplicate-last-insert-id";
 
 export type OutboxPayload = {
-  version: 1;
-  mutations: OutboxMutation[];
+  version: 2;
+  operations: OutboxOperation[];
 };
+
+export type OutboxOperation = OutboxMutation | OutboxTruncateNotification;
+
+export type OutboxMatchScalar = string | number | bigint | boolean | null;
+
+export type OutboxTruncateMatch = Partial<Record<string, OutboxMatchScalar>>;
+
+export type OutboxTruncateNotification = {
+  op: "truncate";
+  schema: string;
+  namespace?: string;
+  table: string;
+  match: OutboxTruncateMatch;
+  externalIds: string[];
+  versionstamp: string;
+};
+
+type MaterializedOutboxMatchValue<TValue> = TValue extends FragnoId | FragnoReference
+  ? string
+  : TValue;
+
+type OutboxColumnMatchValue<TColumn extends AnyColumn> = Extract<
+  MaterializedOutboxMatchValue<TColumn["$out"]>,
+  OutboxMatchScalar
+>;
+
+export type OutboxMatch<TTable extends AnyTable> = Partial<{
+  [K in keyof TTable["columns"] as string extends K
+    ? never
+    : OutboxColumnMatchValue<TTable["columns"][K]> extends never
+      ? never
+      : K]: OutboxColumnMatchValue<TTable["columns"][K]>;
+}>;
+
+export type OutboxTruncateNotificationDraft = Omit<OutboxTruncateNotification, "versionstamp">;
 
 export type OutboxMutation =
   | {

@@ -8,8 +8,8 @@ import { buildOutboxInsertDiagnostics } from "./outbox-insert-diagnostics";
 describe("buildOutboxInsertDiagnostics", () => {
   it("identifies the largest mutations and fields without logging their contents", () => {
     const payload = {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "workflows",
@@ -44,9 +44,9 @@ describe("buildOutboxInsertDiagnostics", () => {
       payloadSerialized,
     });
 
-    assert.equal(diagnostics.mutationCount, 2);
+    assert.equal(diagnostics.operationCount, 2);
     assert(diagnostics.payloadSerializedBytes > 10_000);
-    expect(diagnostics.mutationGroups).toEqual([
+    expect(diagnostics.operationGroups).toEqual([
       expect.objectContaining({
         schema: "workflows",
         table: "workflow_step_emission",
@@ -60,7 +60,7 @@ describe("buildOutboxInsertDiagnostics", () => {
         count: 1,
       }),
     ]);
-    expect(diagnostics.largestMutations[0]).toEqual(
+    expect(diagnostics.largestOperations[0]).toEqual(
       expect.objectContaining({
         table: "workflow_step_emission",
         externalId: "emission-large",

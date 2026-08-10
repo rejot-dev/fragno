@@ -10,7 +10,7 @@ import {
 const entry: FragnoOutboxEntry = {
   versionstamp: "000000000000000000000001",
   uowId: "uow-1",
-  payload: { json: { version: 1, mutations: [] } },
+  payload: { json: { version: 2, operations: [] } },
 };
 
 describe("Fragno fetch outbox transport", () => {

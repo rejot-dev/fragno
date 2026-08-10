@@ -20,8 +20,8 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 1_000): Promise<voi
 };
 
 const makePayload = (externalId: string): OutboxPayload => ({
-  version: 1,
-  mutations: [
+  version: 2,
+  operations: [
     {
       op: "create",
       schema: "app",
@@ -54,8 +54,8 @@ const makeEphemeralStreamEntry = (
   boundary: "start" | "item" | "end",
 ): OutboxEntry =>
   makeEntryFromPayload(versionstamp, `${streamId}-${boundary}`, {
-    version: 1,
-    mutations: [
+    version: 2,
+    operations: [
       {
         op: "create",
         schema: "app",
@@ -79,8 +79,8 @@ const ephemeralStreamTable = {
 describe("LofiClient", () => {
   it("delivers ephemeral table mutations without storing them", async () => {
     const entry = makeEntryFromPayload("vs-1", "mixed", {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",
@@ -254,8 +254,8 @@ describe("LofiClient", () => {
 
   it("delivers replayed ephemeral mutations when durable mutations were already applied", async () => {
     const entry = makeEntryFromPayload("vs-2", "mixed-replay", {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",
@@ -302,8 +302,8 @@ describe("LofiClient", () => {
 
   it("retries ephemeral delivery without checkpointing or reapplying durable mutations", async () => {
     const entry = makeEntryFromPayload("vs-1", "mixed-retry", {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",
@@ -371,8 +371,8 @@ describe("LofiClient", () => {
   // inbox-deduplicated, but must still report the earlier durable write so reactive stores refresh.
   it("reports durable mutations after an ephemeral delivery retry", async () => {
     const entry = makeEntryFromPayload("vs-1", "mixed-retry-refresh", {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",
@@ -471,6 +471,64 @@ describe("LofiClient", () => {
     expect(replayed).toEqual(["start", "item"]);
   });
 
+  it("processes ephemeral mutations and truncations in protocol order", async () => {
+    const entry = makeEntryFromPayload("vs-1", "ordered", {
+      version: 2,
+      operations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "events",
+          externalId: "operation-a-start",
+          versionstamp: "mutation-start",
+          values: { streamId: "operation-a", boundary: "start" },
+        },
+        {
+          op: "truncate",
+          schema: "app",
+          table: "events",
+          match: { streamId: "operation-a" },
+          externalIds: ["operation-a-start"],
+          versionstamp: "mutation-truncate",
+        },
+        {
+          op: "create",
+          schema: "app",
+          table: "events",
+          externalId: "operation-a-item",
+          versionstamp: "mutation-item",
+          values: { streamId: "operation-a", boundary: "item" },
+        },
+      ],
+    });
+    const events: string[] = [];
+    const client = new LofiClient({
+      outboxUrl: baseOutboxUrl,
+      endpointName: "app-outbox",
+      adapter: {
+        applyOutboxEntry: async () => ({ applied: true }),
+        getMeta: async () => undefined,
+        setMeta: async () => undefined,
+      },
+      ephemeralTables: [ephemeralStreamTable],
+      fetch: (async () => new Response(JSON.stringify([entry]))) as typeof fetch,
+    });
+    client.subscribeEphemeral(({ mutations }) => {
+      for (const mutation of mutations) {
+        if (mutation.op === "create") {
+          events.push(String(mutation.values["boundary"]));
+        }
+      }
+    });
+    client.subscribeTruncate(() => {
+      events.push("truncate");
+    });
+
+    await client.syncOnce();
+
+    expect(events).toEqual(["start", "truncate", "item"]);
+  });
+
   // Stream bookkeeping currently happens before the replay checkpoint is persisted. If that I/O
   // fails, retrying the same entry must not append the buffered mutation a second time.
   it("does not duplicate active stream buffers after checkpoint persistence fails", async () => {
@@ -518,8 +576,8 @@ describe("LofiClient", () => {
 
   it("rejects outbox mutations containing unresolved DbNow values", async () => {
     const entry = makeEntryFromPayload("vs-1", "event-1", {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",
@@ -553,8 +611,8 @@ describe("LofiClient", () => {
 
   it("does not open an adapter mutation transaction for ephemeral-only entries", async () => {
     const entry = makeEntryFromPayload("vs-1", "event-1", {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",

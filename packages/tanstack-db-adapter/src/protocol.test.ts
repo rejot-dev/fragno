@@ -16,7 +16,12 @@ const appSchema = schema("app", (s) =>
         .addColumn("authorId", referenceColumn({ table: "users" }))
         .addColumn("title", column("string")),
     )
-    .addTable("records", (t) => t.addColumn("id", idColumn()).addColumn("payload", column("json"))),
+    .addTable("records", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("payload", column("json"))
+        .addColumn("occurredAt", column("timestamp")),
+    ),
 );
 
 const dashedSchema = schema("pi-harness", (s) =>
@@ -39,10 +44,53 @@ const createEntry = (payload: OutboxPayload, refMap?: Record<string, string>): F
   createSerializedEntry(payload, refMap);
 
 describe("Fragno outbox protocol", () => {
+  it("rejects truncate notifications without external IDs", () => {
+    for (const externalIds of [undefined, null, [], [""], ["user-1", 2]] as const) {
+      const entry = createSerializedEntry({
+        version: 2,
+        operations: [
+          {
+            op: "truncate",
+            schema: "app",
+            table: "users",
+            match: { name: "Ada" },
+            externalIds,
+            versionstamp: "000000000000000000000001",
+          },
+        ],
+      });
+
+      expect(() => projectFragnoOutboxEntry(entry, { schema: appSchema, table: "users" })).toThrow(
+        "Fragno outbox truncate external IDs must be non-empty strings.",
+      );
+    }
+  });
+
+  it("projects truncate IDs as ordinary deletes", () => {
+    const entry = createSerializedEntry({
+      version: 2,
+      operations: [
+        {
+          op: "truncate",
+          schema: "app",
+          table: "users",
+          match: { name: "Ada" },
+          externalIds: ["user-1", "user-2"],
+          versionstamp: "000000000000000000000001",
+        },
+      ],
+    });
+
+    expect(projectFragnoOutboxEntry(entry, { schema: appSchema, table: "users" })).toEqual([
+      expect.objectContaining({ type: "delete", key: "user-1" }),
+      expect.objectContaining({ type: "delete", key: "user-2" }),
+    ]);
+  });
+
   it("projects creates into complete rows with the external id", () => {
     const entry = createEntry({
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",
@@ -70,8 +118,8 @@ describe("Fragno outbox protocol", () => {
   it("resolves references and filters unrelated tables", () => {
     const entry = createEntry(
       {
-        version: 1,
-        mutations: [
+        version: 2,
+        operations: [
           {
             op: "create",
             schema: "app",
@@ -100,8 +148,8 @@ describe("Fragno outbox protocol", () => {
   it("preserves reference-shaped values in non-reference columns", () => {
     const payload = { __fragno_ref: "user-authored-json" };
     const entry = createEntry({
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",
@@ -120,8 +168,8 @@ describe("Fragno outbox protocol", () => {
 
   it("keeps updates partial and deletes key-only", () => {
     const entry = createEntry({
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "update",
           schema: "app",
@@ -150,17 +198,17 @@ describe("Fragno outbox protocol", () => {
   });
 
   it("rejects unsupported payload versions", () => {
-    const entry = createSerializedEntry({ version: 2, mutations: [] });
+    const entry = createSerializedEntry({ version: 1, operations: [] });
 
     expect(() => projectFragnoOutboxEntry(entry, { schema: appSchema, table: "users" })).toThrow(
-      "Unsupported Fragno outbox payload version: 2.",
+      "Unsupported Fragno outbox payload version: 1.",
     );
   });
 
   it("rejects unknown mutation operations instead of deleting the row", () => {
     const entry = createSerializedEntry({
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "upsert",
           schema: "app",
@@ -178,8 +226,8 @@ describe("Fragno outbox protocol", () => {
 
   it("matches the sanitized default physical namespace", () => {
     const entry = createEntry({
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "pi-harness",
@@ -199,8 +247,8 @@ describe("Fragno outbox protocol", () => {
 
   it("uses explicit physical namespaces", () => {
     const entry = createEntry({
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "tenant-a",

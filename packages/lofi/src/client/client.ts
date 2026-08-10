@@ -1,4 +1,4 @@
-import type { OutboxEntry, OutboxPayload } from "@fragno-dev/db";
+import type { OutboxEntry, OutboxMutation, OutboxTruncateNotification } from "@fragno-dev/db";
 
 import { decodeOutboxPayload, resolveOutboxRefs } from "../outbox";
 import { assertNoUnresolvedDbNowMutations } from "../query/mutation-values";
@@ -60,6 +60,9 @@ export class LofiClient {
   private readonly ephemeralTableKeys: ReadonlySet<string>;
   private readonly ephemeralStreamPolicies: ReadonlyMap<string, LofiEphemeralStreamPolicy>;
   private readonly ephemeralListeners = new Set<(batch: LofiEphemeralMutationBatch) => void>();
+  private readonly truncateListeners = new Set<
+    (notification: OutboxTruncateNotification) => void | Promise<void>
+  >();
   private readonly activeEphemeralStreams = new Map<string, ActiveEphemeralStream>();
   private readonly onSyncApplied?: (result: LofiSyncResult) => void | Promise<void>;
   private readonly onSyncComplete?: (result: LofiSyncResult) => void | Promise<void>;
@@ -109,6 +112,15 @@ export class LofiClient {
     this.ephemeralListeners.add(listener);
     return () => {
       this.ephemeralListeners.delete(listener);
+    };
+  }
+
+  subscribeTruncate(
+    listener: (notification: OutboxTruncateNotification) => void | Promise<void>,
+  ): () => void {
+    this.truncateListeners.add(listener);
+    return () => {
+      this.truncateListeners.delete(listener);
     };
   }
 
@@ -420,19 +432,39 @@ export class LofiClient {
     appliedDurableMutations: number;
     lastVersionstamp: string;
   }> {
-    const mutations = decodeOutboxEntry(entry);
-    const refResolvedMutations = entry.refMap
-      ? mutations.map((mutation) => resolveOutboxRefs(mutation, entry.refMap ?? {}))
-      : mutations;
-    assertNoUnresolvedDbNowMutations(refResolvedMutations);
-    const resolvedMutations = refResolvedMutations;
+    const operations = decodeOutboxEntry(entry);
+    const resolvedOperations = operations.map((operation) =>
+      operation.op === "truncate" || !entry.refMap
+        ? operation
+        : resolveOutboxRefs(operation, entry.refMap),
+    );
+    assertNoUnresolvedDbNowMutations(
+      resolvedOperations.filter(
+        (operation): operation is LofiMutation => operation.op !== "truncate",
+      ),
+    );
+
     const durableMutations: LofiMutation[] = [];
-    const ephemeralMutations: LofiMutation[] = [];
-    for (const mutation of resolvedMutations) {
-      const target = this.ephemeralTableKeys.has(ephemeralTableKey(mutation.schema, mutation.table))
-        ? ephemeralMutations
-        : durableMutations;
-      target.push(mutation);
+    for (const operation of resolvedOperations) {
+      const tableKey = ephemeralTableKey(operation.schema, operation.table);
+      if (this.ephemeralTableKeys.has(tableKey)) {
+        continue;
+      }
+      if (operation.op === "truncate") {
+        durableMutations.push(
+          ...operation.externalIds.map(
+            (externalId): LofiMutation => ({
+              op: "delete",
+              schema: operation.schema,
+              table: operation.table,
+              externalId,
+              versionstamp: operation.versionstamp,
+            }),
+          ),
+        );
+      } else {
+        durableMutations.push(operation);
+      }
     }
 
     const durableResult =
@@ -451,28 +483,19 @@ export class LofiClient {
       );
     }
 
-    if (ephemeralMutations.length > 0) {
+    let appliedEphemeralOperation = false;
+    const applyEphemeralBatch = (mutations: LofiMutation[]): void => {
+      if (mutations.length === 0) {
+        return;
+      }
+
+      appliedEphemeralOperation = true;
       const batch = {
         sourceKey,
         uowId: entry.uowId,
         versionstamp: entry.versionstamp,
-        mutations: ephemeralMutations,
+        mutations,
       } satisfies LofiEphemeralMutationBatch;
-
-      const streamActions = ephemeralMutations.flatMap((mutation) => {
-        const tableKey = ephemeralTableKey(mutation.schema, mutation.table);
-        const policy = this.ephemeralStreamPolicies.get(tableKey);
-        if (!policy || mutation.op !== "create") {
-          return [];
-        }
-        return [
-          {
-            mutation,
-            streamKey: `${tableKey}:${policy.key(mutation.values)}`,
-            boundary: policy.boundary(mutation.values),
-          },
-        ];
-      });
 
       if (deliverEphemeral) {
         for (const listener of this.ephemeralListeners) {
@@ -480,35 +503,88 @@ export class LofiClient {
         }
       }
 
-      for (const action of streamActions) {
-        if (action.boundary === "start") {
+      for (const mutation of mutations) {
+        if (mutation.op !== "create") {
+          continue;
+        }
+        const tableKey = ephemeralTableKey(mutation.schema, mutation.table);
+        const policy = this.ephemeralStreamPolicies.get(tableKey);
+        if (!policy) {
+          continue;
+        }
+
+        const streamKey = `${tableKey}:${policy.key(mutation.values)}`;
+        const boundary = policy.boundary(mutation.values);
+        if (boundary === "start") {
           const order = this.nextEphemeralMutationOrder++;
-          this.activeEphemeralStreams.set(action.streamKey, {
-            key: action.streamKey,
+          this.activeEphemeralStreams.set(streamKey, {
+            key: streamKey,
             startedAfterVersionstamp: previousReadCursor,
             startOrder: order,
             mutations: [
               {
                 order,
-                batch: { ...batch, mutations: [action.mutation] },
+                batch: { ...batch, mutations: [mutation] },
               },
             ],
-            mutationVersionstamps: new Set([action.mutation.versionstamp]),
+            mutationVersionstamps: new Set([mutation.versionstamp]),
           });
-        } else if (action.boundary === "item") {
-          const stream = this.activeEphemeralStreams.get(action.streamKey);
-          if (stream && !stream.mutationVersionstamps.has(action.mutation.versionstamp)) {
-            stream.mutationVersionstamps.add(action.mutation.versionstamp);
+        } else if (boundary === "item") {
+          const stream = this.activeEphemeralStreams.get(streamKey);
+          if (stream && !stream.mutationVersionstamps.has(mutation.versionstamp)) {
+            stream.mutationVersionstamps.add(mutation.versionstamp);
             stream.mutations.push({
               order: this.nextEphemeralMutationOrder++,
-              batch: { ...batch, mutations: [action.mutation] },
+              batch: { ...batch, mutations: [mutation] },
             });
           }
         } else {
-          this.activeEphemeralStreams.delete(action.streamKey);
+          this.activeEphemeralStreams.delete(streamKey);
+        }
+      }
+    };
+
+    let pendingEphemeralMutations: LofiMutation[] = [];
+    for (const operation of resolvedOperations) {
+      if (operation.op !== "truncate") {
+        if (this.ephemeralTableKeys.has(ephemeralTableKey(operation.schema, operation.table))) {
+          pendingEphemeralMutations.push(operation);
+        }
+        continue;
+      }
+
+      applyEphemeralBatch(pendingEphemeralMutations);
+      pendingEphemeralMutations = [];
+
+      appliedEphemeralOperation = true;
+      const tableKey = ephemeralTableKey(operation.schema, operation.table);
+      const policy = this.ephemeralStreamPolicies.get(tableKey);
+      if (policy) {
+        const truncatedExternalIds = new Set(operation.externalIds);
+        for (const [streamKey, stream] of this.activeEphemeralStreams) {
+          const containsTruncatedMutation = stream.mutations.some(({ batch }) =>
+            batch.mutations.some(
+              (mutation) =>
+                mutation.schema === operation.schema &&
+                mutation.table === operation.table &&
+                truncatedExternalIds.has(mutation.externalId),
+            ),
+          );
+          if (containsTruncatedMutation) {
+            this.activeEphemeralStreams.delete(streamKey);
+          }
+        }
+      }
+      for (const listener of this.truncateListeners) {
+        await listener(operation);
+      }
+      if (policy) {
+        for (const listener of this.ephemeralListeners) {
+          this.replayEphemeral(listener);
         }
       }
     }
+    applyEphemeralBatch(pendingEphemeralMutations);
 
     const safeCheckpoint = this.getSafeCheckpoint(entry.versionstamp);
     if (safeCheckpoint !== undefined) {
@@ -522,7 +598,7 @@ export class LofiClient {
     this.pendingDurableMutationCountsByVersionstamp.delete(entry.versionstamp);
 
     return {
-      applied: durableResult.applied || ephemeralMutations.length > 0,
+      applied: durableResult.applied || appliedEphemeralOperation,
       appliedDurableMutations,
       lastVersionstamp: entry.versionstamp,
     };
@@ -586,12 +662,14 @@ export class LofiClient {
   }
 }
 
-function decodeOutboxEntry(entry: OutboxEntry): LofiMutation[] {
+function decodeOutboxEntry(entry: OutboxEntry): Array<LofiMutation | OutboxTruncateNotification> {
   const payload = decodeOutboxPayload(entry.payload);
-  return payload.mutations.map((mutation) => toLofiMutation(mutation));
+  return payload.operations.map((operation) =>
+    operation.op === "truncate" ? operation : toLofiMutation(operation),
+  );
 }
 
-function toLofiMutation(mutation: OutboxPayload["mutations"][number]): LofiMutation {
+function toLofiMutation(mutation: OutboxMutation): LofiMutation {
   if (mutation.op === "create") {
     return {
       op: "create",

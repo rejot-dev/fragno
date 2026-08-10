@@ -50,24 +50,26 @@ function createInsertEntry(options: {
   table: "users" | "archivedUsers";
   id: string;
   name: string;
+  versionstamp?: string;
 }): FragnoOutboxEntry {
+  const versionstamp = options.versionstamp ?? "000000000000000000000001";
   const payload = {
-    version: 1,
-    mutations: [
+    version: 2,
+    operations: [
       {
         op: "create",
         schema: appSchema.name,
         ...(options.namespace === undefined ? {} : { namespace: options.namespace }),
         table: options.table,
         externalId: options.id,
-        versionstamp: "000000000000000000000001",
+        versionstamp,
         values: { name: options.name },
       },
     ],
   } satisfies OutboxPayload;
 
   return {
-    versionstamp: "000000000000000000000001",
+    versionstamp,
     uowId: `uow-${options.id}`,
     payload: superjson.serialize(payload),
   };

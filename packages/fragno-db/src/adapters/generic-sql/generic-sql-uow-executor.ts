@@ -10,7 +10,7 @@ import { createId } from "../../id";
 import { type SqlNamingStrategy } from "../../naming/sql-naming";
 import {
   type OutboxConfig,
-  type OutboxMutation,
+  type OutboxOperation,
   type OutboxPayload,
   type OutboxRefLookup,
   type OutboxRefMap,
@@ -99,7 +99,13 @@ export async function executeMutation(
       })
     : [];
 
-  const outboxPlan = outboxOperations.length > 0 ? buildOutboxPlan(outboxOperations) : null;
+  const outboxNotifications = mutationBatch.flatMap(
+    (mutation) => mutation.outboxNotifications ?? [],
+  );
+  const outboxPlan =
+    outboxOperations.length > 0 || outboxNotifications.length > 0
+      ? buildOutboxPlan(outboxOperations, outboxNotifications)
+      : null;
   const shouldWriteOutbox = outboxEnabled && outboxPlan !== null && outboxPlan.drafts.length > 0;
   let failedOutboxInsert: OutboxInsertDiagnosticContext | undefined;
 
@@ -197,14 +203,14 @@ export async function executeMutation(
         });
         const entryPayloadSerialized = superjson.serialize({
           version: payload.version,
-          mutations: [],
+          operations: [],
         } satisfies OutboxPayload);
         const versionstamp = versionstampToHex(encodeVersionstamp(outboxReservation.version, 0));
 
         await insertOutboxMutationRows(tx, driverConfig, {
           entryVersionstamp: versionstamp,
           uowId,
-          mutations: payload.mutations,
+          operations: payload.operations,
         });
         const outboxRowId = createId();
         failedOutboxInsert = {
@@ -212,7 +218,7 @@ export async function executeMutation(
           versionstamp,
           uowId,
           payload,
-          payloadSerialized,
+          payloadSerialized: entryPayloadSerialized,
           refMap,
         };
         await insertOutboxRow(tx, driverConfig, {
@@ -490,10 +496,10 @@ async function insertOutboxMutationRows(
   options: {
     entryVersionstamp: string;
     uowId: string;
-    mutations: OutboxMutation[];
+    operations: OutboxOperation[];
   },
 ): Promise<void> {
-  if (options.mutations.length === 0) {
+  if (options.operations.length === 0) {
     return;
   }
 
@@ -501,17 +507,17 @@ async function insertOutboxMutationRows(
   const mutationsTable = internalSchema.tables.fragno_db_outbox_mutations;
   const db = createColdKysely(driverConfig.databaseType);
 
-  for (const mutation of options.mutations) {
+  for (const operation of options.operations) {
     const values = {
       id: createId(),
       entryVersionstamp: options.entryVersionstamp,
-      mutationVersionstamp: mutation.versionstamp,
+      mutationVersionstamp: operation.versionstamp,
       uowId: options.uowId,
-      schema: mutation.schema,
-      table: mutation.table,
-      externalId: mutation.externalId,
-      op: mutation.op,
-      payload: superjson.serialize(mutation),
+      schema: operation.schema,
+      table: operation.table,
+      externalId: operation.op === "truncate" ? null : operation.externalId,
+      op: operation.op,
+      payload: superjson.serialize(operation),
     };
     const serializedValues: Record<string, unknown> = {};
 

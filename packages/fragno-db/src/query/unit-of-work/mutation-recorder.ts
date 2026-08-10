@@ -59,6 +59,7 @@ export type MutationOperation<
       table: TTable["name"];
       id: FragnoId | string;
       checkVersion: boolean;
+      omitOutbox?: boolean;
     }
   | {
       type: "check";
@@ -203,7 +204,7 @@ export class SchemaMutationRecorder<TSchema extends AnySchema> {
   ): void {
     const builder = new DeleteBuilder(tableName, id);
     buildDelete?.(builder);
-    const { id: operationId, checkVersion } = builder.build();
+    const { id: operationId, checkVersion, omitOutbox } = builder.build();
 
     this.#record({
       type: "delete",
@@ -212,6 +213,7 @@ export class SchemaMutationRecorder<TSchema extends AnySchema> {
       table: tableName,
       id: operationId,
       checkVersion,
+      omitOutbox,
     });
   }
 
@@ -322,6 +324,7 @@ export class DeleteBuilder {
   readonly #id: FragnoId | string;
 
   #checkVersion = false;
+  #omitOutbox = false;
 
   constructor(tableName: string, id: FragnoId | string) {
     this.#tableName = tableName;
@@ -339,11 +342,22 @@ export class DeleteBuilder {
     return this;
   }
 
+  /** Prevent this source deletion from producing an ordinary outbox delete operation. */
+  omitOutbox(): this {
+    this.#omitOutbox = true;
+    return this;
+  }
+
   /** @internal */
-  build(): { id: FragnoId | string; checkVersion: boolean } {
+  build(): {
+    id: FragnoId | string;
+    checkVersion: boolean;
+    omitOutbox: boolean;
+  } {
     return {
       id: this.#id,
       checkVersion: this.#checkVersion,
+      omitOutbox: this.#omitOutbox,
     };
   }
 }

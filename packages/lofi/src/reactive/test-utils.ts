@@ -23,8 +23,8 @@ export const createOutboxEntry = (options: {
     versionstamp: options.versionstamp,
     uowId: options.uowId ?? `uow-${options.versionstamp}`,
     payload: superjson.serialize({
-      version: 1,
-      mutations: options.mutations,
+      version: 2,
+      operations: options.mutations,
     }),
   }) as OutboxEntry;
 

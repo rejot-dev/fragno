@@ -1,150 +1,297 @@
-# Outbox indexed-range truncation plan
+# Outbox truncation through retrieved mutation rows
 
 ## Goal
 
-Allow a fragment to compact historical outbox mutations for an existing indexed source range,
-without changing the fragment schema or passing a list of row IDs. Emit an ordered control item so
-partially caught-up clients can discard incomplete state safely.
+Allow workflow emission cleanup to remove both source rows and their normalized historical outbox
+payloads while keeping partially synchronized clients consistent.
 
-Initial use case: `onWorkflowStepEmissionsCleanup` truncates `workflow_step_emission` rows selected
-by `(instanceRef, stepKey, epoch)`.
+Initial use case: `onWorkflowStepEmissionsCleanup` removes `workflow_step_emission` rows selected by
+the existing `(instanceRef, stepKey, epoch, createdAt, sequence, id)` index.
 
-## Constraints
+## Decisions
 
-- Outbox support remains additive; source schemas require no outbox-specific columns or metadata.
-- Selection must reuse an existing index and be limited to an equality prefix for predictable cost.
-- The call site is constant-sized. Physical reclamation remains proportional to the removed data but
-  runs as indexed database work rather than an application-built target list.
-- Source deletion, historical outbox compaction, and the control item commit atomically.
-- Mixed outbox entries retain unrelated mutations.
+- Preserve the traditional Fragno `retrieve -> mutate` flow.
+- Add no new UOW retrieval or mutation operation types.
+- Add no hand-written or outbox-specific SQL.
+- Keep source schemas unchanged.
+- Keep `fragno_db_outbox` parent rows unchanged.
+- Keep separate outbox-item and source-row identities:
+  - `fragno_db_outbox_mutations.id` identifies one normalized outbox item.
+  - `fragno_db_outbox_mutations.externalId` identifies the affected source row.
+- Retrieve normalized outbox mutation IDs through a fixed, system-owned cross-schema join.
+- Delete source rows and retrieved normalized mutation rows using the existing UOW `delete()`
+  operation.
+- Emit one ordered truncate notification after cleanup. The notification does not perform physical
+  deletion.
 
-## Protocol
+## Existing normalized storage
 
-Add an ordered outbox control alongside mutations:
+Commit `e4bc6b4939f00ea6047a59e5494c6197f11e92f3` made `fragno_db_outbox_mutations.payload`
+authoritative. `fragno_db_outbox` stores the UOW header, cursor, and ref map with an empty mutation
+payload. Public outbox entries are reconstructed from normalized rows ordered by
+`(entryVersionstamp, mutationVersionstamp)`.
+
+Deleting a normalized mutation row therefore removes its payload from future outbox responses
+without rewriting or deleting its parent entry. Mixed UOW entries retain unrelated normalized rows.
+A parent with no remaining rows reconstructs as an empty batch and still advances the consumer
+cursor.
+
+## Fragment API
+
+### Retrieval
+
+Add a fixed helper to `QueryTreeFindBuilder`:
 
 ```ts
-type OutboxTruncateControl = {
-  type: "truncate";
-  target: {
-    schema: string;
-    table: string;
-    match: Record<string, unknown>;
-  };
-  throughVersionstamp: string;
-};
+withOutboxMutations(): QueryTreeFindBuilder<
+  TSchema,
+  TTable,
+  TSelect,
+  TJoinOut & {
+    $outboxMutations: Array<{
+      id: FragnoId;
+    }>;
+  }
+>;
 ```
 
-The executor materializes `throughVersionstamp`. Its meaning is: discard matching outbox-derived
-state at or before this versionstamp; later matching mutations remain valid.
+It returns only the identity needed to delete each normalized mutation row. It does not expose the
+payload or other internal columns.
 
-## Server flow
+`$outboxMutations` is reserved system output so it cannot be confused with a source column or a
+fragment-defined relation.
 
-1. Define an indexed range using the existing
-   `idx_workflow_step_emission_instance_step_epoch_createdAt_sequence_id` index and its first three
-   columns.
-2. Resolve matching historical outbox mutations using the source range plus the existing
-   `(schema, table, externalId, entryVersionstamp)` outbox mutation index.
-3. Remove those mutations from outbox storage, rewriting mixed entries or deleting empty entries.
-4. Suppress ordinary outbox delete mutations covered by the truncation.
-5. Append the truncate control after the removed history and delete the source rows in the same
-   transaction.
+### Source deletion
 
-Internal outbox storage may be normalized further to make range compaction cheaper, but this must
-not affect fragment schemas or the public selection API.
-
-## API shape options
-
-### Option A: explicit indexed range
+Extend the existing `DeleteBuilder` with metadata methods; these do not introduce a new
+`MutationOperation` type:
 
 ```ts
-outbox.truncateByIndex({
-  schema: workflowsSchema,
-  table: "workflow_step_emission",
-  index: "idx_workflow_step_emission_instance_step_epoch_createdAt_sequence_id",
-  prefix: {
+class DeleteBuilder {
+  check(): this;
+  omitOutbox(): this;
+}
+```
+
+- `check()` performs the existing source-version OCC check.
+- `omitOutbox()` prevents the source deletion from producing an ordinary public outbox delete.
+
+### Truncate notification
+
+Keep internal storage private by exposing the existing internal `delete()` operation through a typed
+outbox helper:
+
+```ts
+workflows.outbox.deleteMutation(mutation.id);
+```
+
+This helper only schedules an ordinary `delete()` against the normalized internal row.
+
+Add outbox-plan metadata on the typed UOW:
+
+```ts
+workflows.outbox.notifyTruncate("workflow_step_emission", {
+  match: {
     instanceRef: payload.instanceRef,
     stepKey: payload.stepKey,
     epoch: payload.epoch,
   },
+  externalIds: rows.map((row) => row.id.externalId),
 });
 ```
 
-Most explicit and easiest to validate independently.
+`notifyTruncate()` does not delete source or outbox rows. It records one ordered control for the
+outbox planner. It is not a UOW mutation operation and does not compile into its own SQL statement.
 
-### Option B: reusable range handle — preferred
-
-```ts
-const emissions = workflows.indexRange(
-  "workflow_step_emission",
-  "idx_workflow_step_emission_instance_step_epoch_createdAt_sequence_id",
-  {
-    instanceRef: payload.instanceRef,
-    stepKey: payload.stepKey,
-    epoch: payload.epoch,
-  },
-);
-
-workflows.deleteRange(emissions);
-outbox.truncate(emissions);
-```
-
-Source deletion and outbox truncation cannot accidentally use different predicates.
-
-### Option C: restricted query builder
-
-```ts
-outbox.truncate(
-  workflows.find("workflow_step_emission", (builder) =>
-    builder.whereIndex(
-      "idx_workflow_step_emission_instance_step_epoch_createdAt_sequence_id",
-      (eb) =>
-        eb.and(
-          eb("instanceRef", "=", payload.instanceRef),
-          eb("stepKey", "=", payload.stepKey),
-          eb("epoch", "=", payload.epoch),
-        ),
-    ),
-  ),
-);
-```
-
-Familiar API, but must reject pagination, ordering, joins, and non-prefix/non-equality conditions.
+`match` remains the public client-side predicate. `externalIds` contains the exact source rows
+selected and deleted by the server, allowing row-oriented clients to apply the notification without
+performing their own predicate lookup.
 
 ## Workflow integration
 
-Update `onWorkflowStepEmissionsCleanup` in `packages/fragment-workflows/src/definition.ts` to delete
-and truncate the same indexed range. The hook payload already contains every required prefix value.
+```ts
+onWorkflowStepEmissionsCleanup: defineHook(async function (payload) {
+  await this.handlerTx()
+    .retrieve(({ forSchema }) =>
+      forSchema(workflowsSchema).find("workflow_step_emission", (b) =>
+        b
+          .whereIndex(
+            "idx_workflow_step_emission_instance_step_epoch_createdAt_sequence_id",
+            (eb) =>
+              eb.and(
+                eb("instanceRef", "=", payload.instanceRef),
+                eb("stepKey", "=", payload.stepKey),
+                eb("epoch", "=", payload.epoch),
+              ),
+          )
+          .withOutboxMutations(),
+      ),
+    )
+    .mutate(({ forSchema, retrieveResult: [rows] }) => {
+      const workflows = forSchema(workflowsSchema);
+      for (const row of rows) {
+        workflows.delete("workflow_step_emission", row.id, (b) => b.check().omitOutbox());
+
+        for (const mutation of row.$outboxMutations) {
+          workflows.outbox.deleteMutation(mutation.id);
+        }
+      }
+
+      if (rows.length > 0) {
+        workflows.outbox.notifyTruncate("workflow_step_emission", {
+          match: {
+            instanceRef: payload.instanceRef,
+            stepKey: payload.stepKey,
+            epoch: payload.epoch,
+          },
+          externalIds: rows.map((row) => row.id.externalId),
+        });
+      }
+    })
+    .execute();
+});
+```
+
+All physical writes occur in the normal mutation transaction:
+
+- checked source-row deletes;
+- deletes of retrieved `fragno_db_outbox_mutations` rows;
+- insertion of the normalized truncate control and its parent entry.
+
+## `withOutboxMutations()` implementation
+
+`withOutboxMutations()` remains part of the existing `find` retrieval operation. It adds a special
+query-tree child equivalent to:
+
+```sql
+LEFT JOIN fragno_db_outbox_mutations AS outbox_mutation
+  ON outbox_mutation.schema = :effectiveSourceNamespace
+ AND outbox_mutation.table = :sourceTable
+ AND outbox_mutation.externalId = source.:externalIdColumn
+```
+
+The join uses the existing `idx_outbox_mutations_key(schema, table, externalId, entryVersionstamp)`
+index. The source external ID column is resolved through `table.getIdColumn()` rather than assumed
+to be named `id`.
+
+This must not expose general cross-schema joins. Only `withOutboxMutations()` can create this child,
+and its schema, table, predicate, index, alias, and selected columns are fixed by Fragno.
+
+The compiled query-tree child carries its own schema and namespace so the generic SQL and in-memory
+query engines can resolve `internalSchema` independently from the root source schema. The existing
+query compilers generate the join; no adapter contains hand-written truncation SQL.
+
+## Outbox protocol
+
+Use one ordered public operation stream:
+
+```ts
+type OutboxOperation = OutboxMutation | OutboxTruncateNotification;
+
+type OutboxTruncateNotification = {
+  op: "truncate";
+  schema: string;
+  table: string;
+  match: OutboxTruncateMatch;
+  externalIds: string[];
+  versionstamp: string;
+};
+
+type OutboxPayload = {
+  version: 2;
+  operations: OutboxOperation[];
+};
+```
+
+The notification's own `versionstamp` is the barrier: clients discard matching outbox-derived state
+at or before that versionstamp. Later matching mutations remain valid.
+
+`notifyTruncate()` appends the notification after ordinary operations in the same UOW. Duplicate
+notifications remain ordered operations.
+
+The normalized internal table continues to store the ordered operation payload. For non-row
+controls, `externalId` becomes nullable and is stored as `null`; ordinary row mutations continue
+storing their source external ID. The existing lookup index remains usable for row mutations.
+
+## Outbox planning and execution
+
+1. Build normal outbox mutations from UOW mutation operations.
+2. Skip operations marked `omitOutbox()` and all mutations against `internalSchema`.
+3. Append registered truncate notifications to the outbox plan.
+4. Reserve the outbox entry version before executing the mutation batch.
+5. Execute all ordinary source and internal `delete()` operations.
+6. Materialize operation versionstamps and insert normalized outbox operation rows.
+7. Insert the unchanged `fragno_db_outbox` parent header.
+8. Commit everything atomically.
+
+The cleanup never deletes or rewrites a `fragno_db_outbox` parent row.
+
+## Concurrency
+
+Each source deletion uses `check()`. If another transaction mutates a source row and creates a new
+outbox mutation after retrieval, the source version changes and the cleanup mutation conflicts. The
+handler transaction retries, reruns the source query and `withOutboxMutations()` join, and retrieves
+the new normalized mutation row before deleting.
+
+Internal outbox-row deletes do not require version checking. They are implementation data selected
+for physical removal; a missing row can be treated as already removed.
+
+A concurrent outbox reader observes either the historical mutation rows or their removal plus the
+ordered truncate notification, because deletion and notification insertion share one mutation
+transaction.
+
+## Cost model
+
+The retrieval is one indexed source query with an indexed system join.
+
+The mutation phase uses existing ID-based UOW deletes, so physical execution scales with the number
+of source rows plus the number of historical normalized mutation rows. This deliberately gives up
+the earlier constant-number-of-database-operations goal in exchange for using only existing UOW
+operations and generated adapter queries.
 
 ## Lofi support
 
-- Decode truncate controls in outbox order.
-- Remove matching mutations through the barrier from active ephemeral replay buffers.
-- Close matching active streams and recalculate the safe persisted checkpoint.
-- Reset ephemeral accumulators and rebuild them from the remaining replay buffers; reducers are not
-  assumed to be reversible.
-- Refresh durable queries so persisted workflow steps replace discarded transient state.
-- Advance the cursor through the control atomically with its client-side handling.
+When Lofi receives a truncate notification in outbox order, it must:
+
+- find matching active ephemeral streams using the existing stream key derived from `match`;
+- remove matching buffered operations at or before the notification versionstamp;
+- close matching active streams;
+- reset ephemeral accumulators and replay remaining active buffers, since reducers are not assumed
+  to be reversible;
+- refresh durable queries so persisted workflow state replaces discarded transient state;
+- advance the safe persisted cursor atomically with notification handling.
 
 ## TanStack DB adapter support
 
-- Decode controls separately from row mutations.
-- For a collection targeting the control's schema/table, remove currently materialized rows whose
-  values match the control predicate.
-- Apply matching deletes and update the Fragno checkpoint in one `begin`/`commit` transaction.
-- Use `controls.truncate()` only when the control covers the entire collection; partial indexed
-  ranges must not clear unrelated active streams.
-- If direct collection iteration is insufficient, maintain adapter-owned row metadata/indexing for
-  the fields used by received truncate controls. This remains client-adapter state, not source
-  schema metadata.
+When a collection targets the notification's schema and table, the adapter must:
+
+- project every `externalIds` entry into an ordinary key-based local delete;
+- update the Fragno checkpoint to the notification versionstamp;
+- perform every delete and the checkpoint update in one `begin`/`commit` transaction.
+
+The adapter does not evaluate `match`, inspect collection rows, or create predicate indexes.
+Collection-wide `controls.truncate()` remains reserved for resetting the entire local replica when
+its source identity changes.
 
 ## Verification
 
-- Efficient indexed truncation with zero, one, and many matching emissions.
-- Mixed outbox entries preserve unrelated mutations and references.
-- A client consuming 20 of 100 emissions receives the barrier, clears partial state, and advances.
-- A fresh client after cleanup receives no removed payloads and safely processes the barrier.
-- Mutations after `throughVersionstamp` are retained.
-- Concurrent outbox reads observe either pre-truncation history or post-truncation history plus the
-  barrier.
-- Equivalent behavior for SQL and in-memory database adapters, Lofi polling/streaming, and the
-  TanStack DB adapter.
+- `withOutboxMutations()` returns zero, one, and multiple mutation IDs per source row.
+- The join uses the effective namespace, logical table name, source external-ID column, and existing
+  outbox key index.
+- Only IDs are returned; normalized payloads are not loaded into the hook.
+- Source rows and every returned normalized mutation row are deleted through ordinary UOW `delete()`
+  operations.
+- Source deletes are version-checked and omitted from ordinary outbox mutation generation.
+- Exactly one truncate notification containing every deleted source external ID is emitted for the
+  cleanup scope.
+- `fragno_db_outbox` parent rows are never deleted or rewritten.
+- Mixed parent entries retain unrelated normalized operations and references.
+- Empty parent entries reconstruct as empty operation batches and still advance cursors.
+- A client that consumed 20 of 100 emissions receives the notification, clears partial state, and
+  advances.
+- A fresh client receives none of the removed payloads and safely processes the notification.
+- Mutations after the notification versionstamp remain valid.
+- A concurrent source mutation forces a retry and is included in the retried join.
+- SQL and in-memory adapters behave equivalently.
+- Lofi polling/streaming and the TanStack DB adapter apply deletion and checkpoint changes
+  atomically.

@@ -98,7 +98,13 @@ export type LofiRuntime = {
   bootstrap: (sourceId?: string) => Promise<LofiRuntimeSyncResult>;
   whenBootstrapped: () => Promise<void>;
   syncOnce: (sourceId?: string) => Promise<LofiRuntimeSyncResult>;
-  refresh: () => void;
+  refresh: () => Promise<void>;
+  /** @internal Registers a mounted query store for coordinated durable refreshes. */
+  subscribeRefresh: (
+    listener: (options: { resetEphemeral: boolean }) => Promise<void>,
+  ) => () => void;
+  /** @internal Reports whether every configured source completed bootstrap. */
+  isBootstrapped: () => boolean;
   tx: LofiRuntimeTxFactory;
   store: LofiRuntimeStoreFactory;
   addSource: (source: LofiRuntimeSource) => void;
@@ -135,12 +141,14 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
   );
   const $revision = atom(0);
   const sourceRuntimes = new Map<string, SourceRuntime>();
+  const bootstrappedSourceIds = new Set<string>();
   const ephemeralTableKeys = new Set(
     options.ephemeralTables?.map(({ schema, table }) => `${schema}.${table}`) ?? [],
   );
   const hasRecoverableEphemeralStreams =
     options.ephemeralTables?.some(({ stream }) => stream !== undefined) ?? false;
   const ephemeralListeners = new Map<string, Set<(mutation: LofiMutation) => void>>();
+  const refreshListeners = new Set<(options: { resetEphemeral: boolean }) => Promise<void>>();
   let retainCount = 0;
   let bootstrapPromise: Promise<LofiRuntimeSyncResult> | undefined;
 
@@ -184,7 +192,8 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
   };
 
   const isBootstrapped = (): boolean =>
-    !bootstrapEnabled || isLofiRuntimeBootstrapped($status.get());
+    !bootstrapEnabled ||
+    [...sourceRuntimes.keys()].every((sourceId) => bootstrappedSourceIds.has(sourceId));
 
   const markSourceSyncing = (sourceId: string, syncing: boolean): void => {
     updateStatus((current) => {
@@ -214,6 +223,9 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
   const markSourceResult = (sourceId: string, result: LofiSyncResult): void => {
     const now = Date.now();
     updateStatus((current) => {
+      if (current.sources[sourceId]?.status !== "bootstrapping") {
+        bootstrappedSourceIds.add(sourceId);
+      }
       const sources: LofiRuntimeStatus["sources"] = {
         ...current.sources,
         [sourceId]: {
@@ -285,6 +297,7 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
   };
 
   const markSourceBootstrapped = (sourceId: string): void => {
+    bootstrappedSourceIds.add(sourceId);
     updateStatus((status) => {
       const sources: LofiRuntimeStatus["sources"] = {
         ...status.sources,
@@ -324,8 +337,22 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     });
   };
 
-  const refresh = (): void => {
+  const markRevision = (): void => {
     $revision.set($revision.get() + 1);
+  };
+
+  const refreshStores = async (resetEphemeral: boolean): Promise<void> => {
+    markRevision();
+    await Promise.all([...refreshListeners].map((listener) => listener({ resetEphemeral })));
+  };
+
+  const refresh = (): Promise<void> => refreshStores(false);
+
+  const subscribeRefresh: LofiRuntime["subscribeRefresh"] = (listener) => {
+    refreshListeners.add(listener);
+    return () => {
+      refreshListeners.delete(listener);
+    };
   };
 
   const isEphemeralTable = (schema: string, table: string): boolean =>
@@ -392,10 +419,15 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
       ephemeralTables: options.ephemeralTables,
       fetch: options.fetch,
       signal: options.signal,
-      onSyncComplete: (result: LofiSyncResult) => {
+      onSyncComplete: async (result: LofiSyncResult) => {
         markSourceResult(source.id, result);
-        if ((result.appliedDurableMutations ?? result.appliedEntries) > 0) {
-          refresh();
+        if ((result.appliedDurableMutations ?? result.appliedEntries) <= 0) {
+          return;
+        }
+        if (isBootstrapped()) {
+          await refresh();
+        } else {
+          markRevision();
         }
       },
       onError: (error: unknown) => {
@@ -421,6 +453,11 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     const client = new LofiClient(clientOptions);
     client.subscribeEphemeral(({ mutations }) => {
       emitEphemeralMutations(mutations);
+    });
+    client.subscribeTruncate(async () => {
+      if (isBootstrapped()) {
+        await refreshStores(true);
+      }
     });
     return { source, cursorKey, client };
   };
@@ -469,6 +506,7 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
 
     source.client.stop();
     sourceRuntimes.delete(sourceId);
+    bootstrappedSourceIds.delete(sourceId);
     updateStatus((status) => {
       const nextSources = { ...status.sources };
       delete nextSources[sourceId];
@@ -599,7 +637,11 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     const targetSourceIds = sourceId ? [sourceId] : [...sourceRuntimes.keys()];
 
     for (const targetSourceId of targetSourceIds) {
-      sourceResults[targetSourceId] = await syncSourceOnce(targetSourceId);
+      const result = await syncSourceOnce(targetSourceId);
+      sourceResults[targetSourceId] = result;
+      if (!result.aborted) {
+        markSourceBootstrapped(targetSourceId);
+      }
     }
 
     return summarizeSyncResults(sourceResults);
@@ -723,6 +765,8 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     whenBootstrapped,
     syncOnce,
     refresh,
+    subscribeRefresh,
+    isBootstrapped,
     tx,
     store,
     addSource,

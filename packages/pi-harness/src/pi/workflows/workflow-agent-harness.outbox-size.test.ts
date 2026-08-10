@@ -191,8 +191,8 @@ const outboxEntriesFromMutations = (mutations: readonly LofiMutation[]): OutboxE
       uowId: `uow-${index}`,
       payload: {
         json: {
-          version: 1,
-          mutations: [mutation],
+          version: 2,
+          operations: [mutation],
         } satisfies OutboxPayload,
       },
       createdAt: new Date(index),
@@ -266,7 +266,7 @@ describe("workflow AgentHarness outbox stream size", () => {
 
         const projectionUpdate = nextSettledProjectionUpdate(store, previousUpdatedAt);
         const refreshStart = performance.now();
-        runtime.refresh();
+        await runtime.refresh();
         const state = await projectionUpdate;
         const refreshToProjectionMs = performance.now() - refreshStart;
 
@@ -335,7 +335,7 @@ describe("workflow AgentHarness outbox stream size", () => {
           await adapter.applyMutations(chunk);
           applyMs += performance.now() - applyStartedAt;
           const projectionUpdate = nextSettledProjectionUpdate(store, store.get().updatedAt);
-          runtime.refresh();
+          await runtime.refresh();
           await projectionUpdate;
         }
         const finalState = store.get();

@@ -64,6 +64,49 @@ describe("buildOutboxPlan", () => {
     expect(plan).toEqual({ drafts: [], lookups: [] });
   });
 
+  it("omits source deletes and preserves duplicate truncate notifications", () => {
+    const notification = {
+      op: "truncate" as const,
+      schema: defaultsSchema.name,
+      namespace: defaultsSchema.name,
+      table: "records",
+      match: { label: "Temporary" },
+      externalIds: ["record-1"],
+    };
+    const plan = buildOutboxPlan(
+      [
+        {
+          type: "delete",
+          schema: defaultsSchema,
+          namespace: defaultsSchema.name,
+          table: "records",
+          id: "record-1",
+          checkVersion: false,
+          omitOutbox: true,
+        },
+      ],
+      [notification, notification],
+    );
+
+    const payload = finalizeOutboxPayload(plan, 1n, {
+      now: new Date("2026-07-21T12:00:00.000Z"),
+    });
+    expect(payload.operations).toEqual([
+      expect.objectContaining({
+        op: "truncate",
+        table: "records",
+        match: { label: "Temporary" },
+        externalIds: ["record-1"],
+      }),
+      expect.objectContaining({
+        op: "truncate",
+        table: "records",
+        match: { label: "Temporary" },
+        externalIds: ["record-1"],
+      }),
+    ]);
+  });
+
   it("materializes omitted visible database defaults", () => {
     const now = new Date("2026-07-21T12:00:00.000Z");
     const plan = buildOutboxPlan([
@@ -75,7 +118,7 @@ describe("buildOutboxPlan", () => {
     ]);
 
     const payload = finalizeOutboxPayload(plan, 1n, { now });
-    const mutation = payload.mutations[0];
+    const mutation = payload.operations[0];
     assert(mutation.op === "create");
     expect(mutation.values).toEqual({
       id: "record-1",
@@ -109,7 +152,7 @@ describe("buildOutboxPlan", () => {
     const payload = finalizeOutboxPayload(plan, 2n, {
       now: new Date("2026-07-21T12:00:00.000Z"),
     });
-    const mutation = payload.mutations[0];
+    const mutation = payload.operations[0];
     assert(mutation.op === "create");
     expect(mutation.values).toMatchObject({
       runtimeLabel: "runtime-generated",
@@ -137,7 +180,7 @@ describe("buildOutboxPlan", () => {
     const payload = finalizeOutboxPayload(plan, 3n, {
       now: new Date("2026-07-21T12:00:00.000Z"),
     });
-    const mutation = payload.mutations[0];
+    const mutation = payload.operations[0];
     assert(mutation.op === "create");
     expect(mutation.values).toMatchObject({
       status: "",

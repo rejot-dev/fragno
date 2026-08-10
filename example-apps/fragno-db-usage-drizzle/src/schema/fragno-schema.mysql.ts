@@ -60,15 +60,17 @@ export const fragno_db_outbox_mutations = mysqlTable("fragno_db_outbox_mutations
   uowId: varchar("uowId", { length: 191 }).notNull(),
   schema: varchar("schema", { length: 191 }).notNull(),
   table: varchar("table", { length: 191 }).notNull(),
-  externalId: varchar("externalId", { length: 191 }).notNull(),
+  externalId: varchar("externalId", { length: 191 }),
   op: varchar("op", { length: 191 }).notNull(),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  payload: json("payload").notNull()
 }, (table) => [
   index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_entf896150d").on(table.entryVersionstamp),
   index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_key16922fb2").on(table.schema, table.table, table.externalId, table.entryVersionstamp),
-  index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_uowa7a0749c").on(table.uowId)
+  index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_uowa7a0749c").on(table.uowId),
+  index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_entea64c823").on(table.entryVersionstamp, table.mutationVersionstamp)
 ])
 
 export const fragno_db_sync_requests = mysqlTable("fragno_db_sync_requests", {

@@ -3,24 +3,32 @@ import { dbNow, getDbNowOffsetMs, isDbNow } from "../query/db-now";
 import type { MutationOperation } from "../query/unit-of-work/mutation-recorder";
 import type { AnySchema, AnyTable } from "../schema/create";
 import { FragnoId, FragnoReference, getTableForeignKey } from "../schema/create";
-import type { OutboxRefLookup, OutboxPayload, OutboxMutation } from "./outbox";
+import type {
+  OutboxOperation,
+  OutboxPayload,
+  OutboxRefLookup,
+  OutboxTruncateNotificationDraft,
+} from "./outbox";
 import { encodeVersionstamp, versionstampToHex } from "./outbox";
 
 const INTERNAL_TABLE_NAMES = new Set(Object.keys(internalSchema.tables));
 
-type OutboxMutationDraft = OutboxMutation extends infer T
-  ? T extends OutboxMutation
+type OutboxOperationDraft = OutboxOperation extends infer T
+  ? T extends OutboxOperation
     ? Omit<T, "versionstamp"> & { versionstamp?: string }
     : never
   : never;
 
 export type OutboxPlan = {
-  drafts: OutboxMutationDraft[];
+  drafts: OutboxOperationDraft[];
   lookups: OutboxRefLookup[];
 };
 
-export function buildOutboxPlan(operations: MutationOperation<AnySchema>[]): OutboxPlan {
-  const drafts: OutboxMutationDraft[] = [];
+export function buildOutboxPlan(
+  operations: MutationOperation<AnySchema>[],
+  notifications: readonly OutboxTruncateNotificationDraft[] = [],
+): OutboxPlan {
+  const drafts: OutboxOperationDraft[] = [];
   const lookups: OutboxRefLookup[] = [];
 
   for (const op of operations) {
@@ -77,6 +85,10 @@ export function buildOutboxPlan(operations: MutationOperation<AnySchema>[]): Out
     }
 
     if (op.type === "delete") {
+      if (op.omitOutbox) {
+        continue;
+      }
+
       const checkVersion = op.checkVersion && op.id instanceof FragnoId ? op.id.version : undefined;
 
       drafts.push({
@@ -90,6 +102,8 @@ export function buildOutboxPlan(operations: MutationOperation<AnySchema>[]): Out
     }
   }
 
+  drafts.push(...notifications);
+
   return { drafts, lookups };
 }
 
@@ -98,22 +112,22 @@ export function finalizeOutboxPayload(
   transactionVersion: bigint,
   options: { now: Date },
 ): OutboxPayload {
-  const mutations: OutboxMutation[] = plan.drafts.map((draft, index) => {
+  const operations: OutboxOperation[] = plan.drafts.map((draft, index) => {
     const versionstamp = versionstampToHex(encodeVersionstamp(transactionVersion, index));
-    const materialized = materializeOutboxMutationDbNow(draft, options.now);
-    return { ...materialized, versionstamp };
+    const materialized = materializeOutboxOperationDbNow(draft, options.now);
+    return { ...materialized, versionstamp } as OutboxOperation;
   });
 
   return {
-    version: 1,
-    mutations,
+    version: 2,
+    operations,
   };
 }
 
-function materializeOutboxMutationDbNow(
-  mutation: OutboxMutationDraft,
+function materializeOutboxOperationDbNow(
+  mutation: OutboxOperationDraft,
   now: Date,
-): OutboxMutationDraft {
+): OutboxOperationDraft {
   if (mutation.op === "create") {
     return { ...mutation, values: materializeOutboxDbNowValues(mutation.values, now) };
   }

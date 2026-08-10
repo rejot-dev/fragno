@@ -1,4 +1,12 @@
-import type { AnyColumn, AnySchema, AnyTable, IdColumn, Index } from "../../schema/create";
+import { internalSchema } from "../../fragments/internal-fragment.schema";
+import type {
+  AnyColumn,
+  AnySchema,
+  AnyTable,
+  FragnoId,
+  IdColumn,
+  Index,
+} from "../../schema/create";
 import { createIndexedBuilder, type Condition, type ConditionBuilder } from "../condition-builder";
 import { getCursorMetadata, type Cursor } from "../cursor";
 import type { DbInterval, DbIntervalInput, DbNow } from "../db-now";
@@ -155,6 +163,8 @@ export interface CompiledQueryTreeChildNode<TTable extends AnyTable = AnyTable> 
   kind: "child";
   alias: string;
   table: TTable;
+  schema?: AnySchema;
+  namespace?: string | null;
   cardinality: QueryTreeCardinality;
   onIndexName: string;
   onIndex?: Condition;
@@ -504,6 +514,7 @@ export class QueryTreeFindBuilder<
   readonly #schema: TSchema;
   readonly #table: TTable;
   readonly #tableName: string;
+  readonly #namespace?: string | null;
 
   #indexName?: string;
   #whereClause?: Condition;
@@ -516,10 +527,11 @@ export class QueryTreeFindBuilder<
   readonly #children: CompiledQueryTreeChildNode[] = [];
   #countMode = false;
 
-  constructor(schema: TSchema, tableName: string, table: TTable) {
+  constructor(schema: TSchema, tableName: string, table: TTable, namespace?: string | null) {
     this.#schema = schema;
     this.#tableName = tableName;
     this.#table = table;
+    this.#namespace = namespace;
   }
 
   whereIndex<TIndexName extends QueryTreeValidIndexName<TTable>>(
@@ -610,6 +622,53 @@ export class QueryTreeFindBuilder<
     }
     this.#pageSizeValue = size;
     return this;
+  }
+
+  withOutboxMutations(): QueryTreeFindBuilder<
+    TSchema,
+    TTable,
+    TSelect,
+    TJoinOut & { $outboxMutations: Array<{ id: FragnoId }> }
+  > {
+    if (this.#countMode) {
+      throw new Error(
+        `Cannot call withOutboxMutations() after selectCount() on table "${this.#tableName}".`,
+      );
+    }
+
+    const mutationsTable = internalSchema.tables.fragno_db_outbox_mutations;
+    const outboxIndexName = "idx_outbox_mutations_key";
+    const onIndex = buildCorrelatedCondition(mutationsTable, this.#table, outboxIndexName, (eb) =>
+      eb.and(
+        eb("schema", "=", this.#namespace ?? ""),
+        eb("table", "=", this.#tableName),
+        eb("externalId", "=", eb.parent(this.#table.getIdColumn().name)),
+      ),
+    );
+
+    if (onIndex === false) {
+      throw new Error("Outbox mutation correlation cannot compile to false.");
+    }
+
+    this.#children.push({
+      kind: "child",
+      alias: "$outboxMutations",
+      schema: internalSchema,
+      namespace: null,
+      table: mutationsTable,
+      cardinality: "many",
+      onIndexName: outboxIndexName,
+      onIndex: onIndex === true ? undefined : onIndex,
+      select: ["id"],
+      children: [],
+    });
+
+    return this as unknown as QueryTreeFindBuilder<
+      TSchema,
+      TTable,
+      TSelect,
+      TJoinOut & { $outboxMutations: Array<{ id: FragnoId }> }
+    >;
   }
 
   joinOne<
