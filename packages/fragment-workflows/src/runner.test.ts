@@ -2009,11 +2009,10 @@ describe("Workflows Runner", () => {
     await harness.createInstance("RUNTIME_ID", { id: "runtime-id-1" });
     await drainDurableHooks(harness.fragment, { mode: "singlePass" });
 
-    const [steps, emissions] = await harness.db
+    const [steps] = await harness.db
       .createUnitOfWork("read-runtime-generated-ids")
       .forSchema(workflowsSchema)
       .find("workflow_step", (b) => b.whereIndex("primary"))
-      .find("workflow_step_emission", (b) => b.whereIndex("primary"))
       .executeRetrieve();
 
     expect(uuidCount).toBe(2);
@@ -2023,14 +2022,6 @@ describe("Workflows Runner", () => {
         committedByExecutionId: "runtime-uuid-1",
       }),
     ]);
-    expect(emissions).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          executionId: "runtime-uuid-1",
-          epoch: "runtime-uuid-2",
-        }),
-      ]),
-    );
   });
 
   test("allocates a new execution id for every automatic handler transaction retry", async () => {

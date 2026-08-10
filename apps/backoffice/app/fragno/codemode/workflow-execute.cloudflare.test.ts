@@ -36,6 +36,58 @@ const createSystemWorkflowOptions = () => ({
 });
 
 describe("codemode workflow execution", () => {
+  test("checkpoints remote workflow progress between sequential top-level steps", async () => {
+    const Workflow = defineRemoteWorkflow(
+      { name: "codemode-checkpointed", checkpoint: "step" },
+      defineCodemodeWorkflowRun<undefined, number>(
+        `async (_event, step) => {
+          const first = await step.do("first", async () => 1);
+          const second = await step.do("second", async () => first + 1);
+          return await step.do("third", async () => second + 1);
+        }`,
+        env,
+        createSystemWorkflowOptions(),
+      ),
+    );
+    const harness = await createHarness({ WORKFLOW: Workflow });
+
+    const instanceId = await harness.createInstance("WORKFLOW", {
+      id: "codemode-checkpointed-1",
+      remoteWorkflowName: "codemode-checkpointed-body",
+    });
+
+    await harness.tick({
+      workflowName: "codemode-checkpointed",
+      instanceId,
+      reason: "create",
+    });
+    expect((await harness.getHistory("WORKFLOW", instanceId)).steps).toMatchObject([
+      { stepKey: "do:first", status: "completed", result: 1 },
+    ]);
+
+    await harness.restart();
+    await harness.tick({
+      workflowName: "codemode-checkpointed",
+      instanceId,
+      reason: "wake",
+    });
+    expect((await harness.getHistory("WORKFLOW", instanceId)).steps).toMatchObject([
+      { stepKey: "do:first", status: "completed", result: 1 },
+      { stepKey: "do:second", status: "completed", result: 2 },
+    ]);
+
+    await harness.restart();
+    await harness.tick({
+      workflowName: "codemode-checkpointed",
+      instanceId,
+      reason: "wake",
+    });
+    await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+      status: "complete",
+      output: 3,
+    });
+  });
+
   test("runs a workflow end-to-end in a dynamic worker with real runner steps", async () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-complete" },

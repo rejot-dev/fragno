@@ -74,6 +74,7 @@ type RunnerStepOptions = {
   createEpoch: () => string;
   stepEmissions?: WorkflowStepLivePumpRegistry;
   workflowsByName: Map<string, WorkflowRegistryEntry>;
+  checkpoint?: "step";
 };
 
 type StepTxQueue = {
@@ -148,6 +149,13 @@ export function isRunnerStepSuspended(error: unknown): error is RunnerStepSuspen
 }
 
 function buildErrorFromSnapshot(snapshot: WorkflowStepSnapshot): Error {
+  if (
+    snapshot.errorName === "WaitForEventTimeoutError" &&
+    snapshot.errorMessage === "WAIT_FOR_EVENT_TIMEOUT"
+  ) {
+    return new WaitForEventTimeoutError();
+  }
+
   const error = new Error(snapshot.errorMessage ?? "STEP_FAILED");
   error.name = snapshot.errorName ?? "Error";
   return error;
@@ -165,6 +173,8 @@ export class RunnerStep implements WorkflowStep {
   readonly #createEpoch: () => string;
   readonly #stepEmissions: WorkflowStepLivePumpRegistry;
   readonly #workflowsByName: Map<string, WorkflowRegistryEntry>;
+  readonly #checkpoint: "step" | undefined;
+  #completedTopLevelSteps = 0;
 
   constructor(options: RunnerStepOptions) {
     this.#state = options.state;
@@ -176,6 +186,7 @@ export class RunnerStep implements WorkflowStep {
     this.#createEpoch = options.createEpoch;
     this.#stepEmissions = options.stepEmissions ?? new BufferedPumpRegistry<WorkflowStepLivePump>();
     this.#workflowsByName = options.workflowsByName;
+    this.#checkpoint = options.checkpoint;
   }
 
   #runInStepContext<T>(identity: WorkflowStepIdentity, execute: () => Promise<T> | T): Promise<T> {
@@ -308,11 +319,15 @@ export class RunnerStep implements WorkflowStep {
       };
     }
 
-    return {
-      ...draft,
-      waitEventType: reason.eventType,
-      ...(reason.runAt ? { wakeAt: reason.runAt } : { wakeDelayMs: reason.delayMs }),
-    };
+    if (reason.type === "waitForEvent") {
+      return {
+        ...draft,
+        waitEventType: reason.eventType,
+        ...(reason.runAt ? { wakeAt: reason.runAt } : { wakeDelayMs: reason.delayMs }),
+      };
+    }
+
+    return draft;
   }
 
   #runInRemoteParentScope<T>(
@@ -414,6 +429,14 @@ export class RunnerStep implements WorkflowStep {
 
     if (snapshot?.status === "waiting" && snapshot.nextRetryAt && this.#taskKind !== "retry") {
       throw new RunnerStepSuspended({ type: "retry", stepKey, delayMs: null });
+    }
+
+    if (
+      this.#checkpoint === "step" &&
+      identity.parentStepKey === null &&
+      this.#completedTopLevelSteps > 0
+    ) {
+      throw new RunnerStepSuspended({ type: "checkpoint", stepKey, delayMs: 0 });
     }
 
     const configuredMaxAttempts = config?.retries ? config.retries.limit + 1 : 1;
@@ -562,6 +585,8 @@ export class RunnerStep implements WorkflowStep {
         waitEventType: null,
       });
 
+      this.#markTopLevelStepCompleted(identity);
+
       return callbackResult as T;
     }
 
@@ -673,6 +698,7 @@ export class RunnerStep implements WorkflowStep {
         waitEventType: null,
         nextRetryAt: null,
       });
+      this.#markTopLevelStepCompleted(identity);
       return;
     }
 
@@ -724,6 +750,7 @@ export class RunnerStep implements WorkflowStep {
         waitEventType: null,
         nextRetryAt: null,
       });
+      this.#markTopLevelStepCompleted(identity);
       return;
     }
 
@@ -771,6 +798,10 @@ export class RunnerStep implements WorkflowStep {
         payload: Readonly<T>;
         timestamp: Date;
       };
+    }
+
+    if (snapshot?.status === "errored") {
+      throw buildErrorFromSnapshot(snapshot);
     }
 
     const event = this.#findPendingEvent(options.type, snapshot?.wakeAt ?? null);
@@ -868,6 +899,7 @@ export class RunnerStep implements WorkflowStep {
         nextRetryAt: null,
         wakeAt: null,
       });
+      this.#markTopLevelStepCompleted(identity);
 
       return result;
     }
@@ -935,6 +967,12 @@ export class RunnerStep implements WorkflowStep {
       eventType: options.type,
       delayMs: timeoutMs ?? null,
     });
+  }
+
+  #markTopLevelStepCompleted(identity: WorkflowStepIdentity): void {
+    if (identity.parentStepKey === null) {
+      this.#completedTopLevelSteps += 1;
+    }
   }
 
   #queueStepEmissionCleanup(request: WorkflowStepEmissionsCleanupHookPayload) {

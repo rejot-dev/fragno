@@ -253,6 +253,8 @@ export interface WorkflowDefinition<
   name: TName;
   schema?: TInputSchema;
   outputSchema?: TOutputSchema;
+  /** Commit each completed sequential top-level `step.do` before starting the next one. */
+  checkpoint?: "step";
   remote?: boolean;
   remoteWorkflowName?: string;
   run: WorkflowRunFn<TParams, TOutput, THooks>;
@@ -269,7 +271,12 @@ export function defineWorkflow<
   TOutput = unknown,
   THooks extends HooksMap = HooksMap,
 >(
-  options: { name: TName; schema?: undefined; outputSchema?: undefined },
+  options: {
+    name: TName;
+    schema?: undefined;
+    outputSchema?: undefined;
+    checkpoint?: "step";
+  },
   run: WorkflowRunFn<TParams, TOutput, THooks>,
 ): WorkflowDefinition<TParams, TOutput, undefined, undefined, TName, THooks>;
 export function defineWorkflow<
@@ -278,7 +285,12 @@ export function defineWorkflow<
   TOutput = unknown,
   THooks extends HooksMap = HooksMap,
 >(
-  options: { name: TName; schema: TSchema; outputSchema?: undefined },
+  options: {
+    name: TName;
+    schema: TSchema;
+    outputSchema?: undefined;
+    checkpoint?: "step";
+  },
   run: WorkflowRunFn<StandardSchemaV1.InferOutput<TSchema>, TOutput, THooks>,
 ): WorkflowDefinition<
   StandardSchemaV1.InferOutput<TSchema>,
@@ -298,6 +310,7 @@ export function defineWorkflow<
     name: TName;
     schema?: undefined;
     outputSchema: TOutputSchema;
+    checkpoint?: "step";
   },
   run: WorkflowRunFn<TParams, StandardSchemaV1.InferOutput<TOutputSchema>, THooks>,
 ): WorkflowDefinition<
@@ -318,6 +331,7 @@ export function defineWorkflow<
     name: TName;
     schema: TInputSchema;
     outputSchema: TOutputSchema;
+    checkpoint?: "step";
   },
   run: WorkflowRunFn<
     StandardSchemaV1.InferOutput<TInputSchema>,
@@ -337,6 +351,7 @@ export function defineWorkflow<TName extends string, THooks extends HooksMap = H
     name: TName;
     schema?: StandardSchemaV1;
     outputSchema?: StandardSchemaV1;
+    checkpoint?: "step";
   },
   run: WorkflowRunFn<unknown, unknown, THooks>,
 ): WorkflowDefinition<
@@ -351,7 +366,12 @@ export function defineWorkflow<TName extends string, THooks extends HooksMap = H
 }
 
 export function defineRemoteWorkflow<TName extends string, TParams = unknown, TOutput = unknown>(
-  options: { name: TName; schema?: undefined; outputSchema?: undefined },
+  options: {
+    name: TName;
+    schema?: undefined;
+    outputSchema?: undefined;
+    checkpoint?: "step";
+  },
   run: RemoteWorkflowRunFn<TParams, TOutput>,
 ): WorkflowDefinition<TParams, TOutput, undefined, undefined, TName> & { remote: true };
 export function defineRemoteWorkflow<TName extends string>(
@@ -359,6 +379,7 @@ export function defineRemoteWorkflow<TName extends string>(
     name: TName;
     schema?: StandardSchemaV1;
     outputSchema?: StandardSchemaV1;
+    checkpoint?: "step";
   },
   run: RemoteWorkflowRunFn,
 ): WorkflowDefinition<

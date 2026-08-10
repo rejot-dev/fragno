@@ -104,40 +104,43 @@ export const defineUntrustedCodemodeWorkflow = (
     }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
   },
 ) =>
-  defineRemoteWorkflow({ name: UNTRUSTED_CODEMODE_WORKFLOW }, async (event, remote) => {
-    const params = untrustedCodemodeWorkflowParamsSchema.parse(event.payload);
-    if (!config.runtime) {
-      throw new Error("Untrusted codemode workflows require Backoffice runtime services.");
-    }
-    const script = await loadUploadWorkflowSource(config.runtime, params.source);
-    const execution = appendAutomationDelegate({
-      execution: createAutomationExecutionFromActors({
-        scope: params.automationEvent.scope,
-        actors: params.automationEvent.actors,
-      }),
-      delegate: UNTRUSTED_CODEMODE_WORKFLOW_DELEGATE,
-    });
-    const runtime: BackofficeRuntimeServices = {
-      ...config.runtime,
-      authorityResolver: withBackofficeActorCapabilityGrants({
-        resolver: config.runtime.authorityResolver,
-        actor: UNTRUSTED_CODEMODE_WORKFLOW_DELEGATE,
-        grants: params.permissions,
-      }),
-    };
+  defineRemoteWorkflow(
+    { name: UNTRUSTED_CODEMODE_WORKFLOW, checkpoint: "step" },
+    async (event, remote) => {
+      const params = untrustedCodemodeWorkflowParamsSchema.parse(event.payload);
+      if (!config.runtime) {
+        throw new Error("Untrusted codemode workflows require Backoffice runtime services.");
+      }
+      const script = await loadUploadWorkflowSource(config.runtime, params.source);
+      const execution = appendAutomationDelegate({
+        execution: createAutomationExecutionFromActors({
+          scope: params.automationEvent.scope,
+          actors: params.automationEvent.actors,
+        }),
+        delegate: UNTRUSTED_CODEMODE_WORKFLOW_DELEGATE,
+      });
+      const runtime: BackofficeRuntimeServices = {
+        ...config.runtime,
+        authorityResolver: withBackofficeActorCapabilityGrants({
+          resolver: config.runtime.authorityResolver,
+          actor: UNTRUSTED_CODEMODE_WORKFLOW_DELEGATE,
+          grants: params.permissions,
+        }),
+      };
 
-    return await executeAutomationWorkflowSource({
-      script,
-      automationEvent: params.automationEvent,
-      workflowScriptPath: params.scriptPath,
-      workflowEvent: {
-        instanceId: event.instanceId,
-        timestamp: event.timestamp,
-        payload: params.workflowEventPayload,
-      },
-      remote,
-      config: { ...config, runtime },
-      metadata: params.metadata,
-      execution,
-    });
-  });
+      return await executeAutomationWorkflowSource({
+        script,
+        automationEvent: params.automationEvent,
+        workflowScriptPath: params.scriptPath,
+        workflowEvent: {
+          instanceId: event.instanceId,
+          timestamp: event.timestamp,
+          payload: params.workflowEventPayload,
+        },
+        remote,
+        config: { ...config, runtime },
+        metadata: params.metadata,
+        execution,
+      });
+    },
+  );

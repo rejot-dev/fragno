@@ -20,27 +20,30 @@ export const definePiCodemodeWorkflow = (config: {
   runtime?: BackofficeRuntimeServices;
   ownerScope: BackofficeContextScope;
 }) =>
-  defineRemoteWorkflow({ name: PI_CODEMODE_WORKFLOW }, async (event, remote) => {
-    if (!config.env?.LOADER) {
-      throw new Error("Pi codemode workflow requires the Cloudflare Worker Loader.");
-    }
+  defineRemoteWorkflow(
+    { name: PI_CODEMODE_WORKFLOW, checkpoint: "step" },
+    async (event, remote) => {
+      if (!config.env?.LOADER) {
+        throw new Error("Pi codemode workflow requires the Cloudflare Worker Loader.");
+      }
 
-    const params = event.payload as PiCodemodeWorkflowParams;
-    const { executePiCodemodeWorkflow } = await import("./codemode");
-    const execution: BackofficeExecutionContext = {
-      scope: config.ownerScope,
-      actors: automationActorsSchema.parse(
-        params.metadata?.[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
-      ),
-    };
+      const params = event.payload as PiCodemodeWorkflowParams;
+      const { executePiCodemodeWorkflow } = await import("./codemode");
+      const execution: BackofficeExecutionContext = {
+        scope: config.ownerScope,
+        actors: automationActorsSchema.parse(
+          params.metadata?.[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
+        ),
+      };
 
-    return await executePiCodemodeWorkflow({
-      params,
-      execution,
-      masterFs: new MasterFileSystem({ mounts: [] }),
-      env: config.env,
-      runtime: config.runtime,
-      workflowEvent: event,
-      remote,
-    });
-  });
+      return await executePiCodemodeWorkflow({
+        params,
+        execution,
+        masterFs: new MasterFileSystem({ mounts: [] }),
+        env: config.env,
+        runtime: config.runtime,
+        workflowEvent: event,
+        remote,
+      });
+    },
+  );

@@ -3184,17 +3184,20 @@ describe("Workflows Runner (Scenario DSL)", () => {
 
   test("waitForEvent timeout can be caught to complete the workflow gracefully", async () => {
     const GracefulTimeoutWorkflow = defineWorkflow(
-      { name: "graceful-timeout-workflow" },
+      { name: "graceful-timeout-workflow", checkpoint: "step" },
       async (_event, step) => {
+        let timedOut = false;
         try {
           await step.waitForEvent("ready", { type: "ready", timeout: "5 minutes" });
-          return { ok: true, timedOut: false };
         } catch (err) {
-          if (err instanceof WaitForEventTimeoutError) {
-            return { ok: true, timedOut: true };
+          if (!(err instanceof WaitForEventTimeoutError)) {
+            throw err;
           }
-          throw err;
+          timedOut = true;
         }
+
+        await step.do("record timeout outcome", async () => {});
+        return await step.do("complete after timeout", async () => ({ ok: true, timedOut }));
       },
     );
 

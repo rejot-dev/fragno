@@ -530,8 +530,8 @@ const createBackofficeInteractiveChatWorkflow = ({
   createTools: BackofficePiToolFactory;
   skills: BackofficePiSkillResolver;
   resolveSystemPrompt: BackofficeSystemPromptResolver;
-}): WorkflowRegistryEntry =>
-  createInteractiveChatWorkflow({
+}): WorkflowRegistryEntry => ({
+  ...createInteractiveChatWorkflow({
     name: BACKOFFICE_PI_WORKFLOW_NAME,
     commandTimeout: "1 hour",
     options: async (event) => {
@@ -581,7 +581,9 @@ const createBackofficeInteractiveChatWorkflow = ({
         tools: activeTools,
       };
     },
-  });
+  }),
+  checkpoint: "step",
+});
 
 const buildPiRuntime = (
   config: { scope: BackofficeContextScope },
