@@ -1,6 +1,6 @@
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { SQLocalDriverConfig } from "@fragno-dev/db/drivers";
-import { Kysely } from "kysely";
+import { Kysely, sql } from "kysely";
 import { SQLocalKysely } from "sqlocal/kysely";
 
 import { internalFragmentDef } from "@fragno-dev/db";
@@ -81,12 +81,24 @@ export async function createKyselySqliteAdapter(
   const resetDatabase = async () => {
     const schemasToTruncate = internalSchemaConfig ? [internalSchemaConfig, ...schemas] : schemas;
 
-    for (const { schema, namespace } of schemasToTruncate) {
-      for (const tableName of Object.keys(schema.tables)) {
-        const physicalTableName = adapter.namingStrategy.tableName(tableName, namespace);
-        await kysely.deleteFrom(physicalTableName).execute();
+    await kysely.connection().execute(async (connection) => {
+      await sql`PRAGMA foreign_keys = OFF`.execute(connection);
+      try {
+        for (const { schema, namespace } of schemasToTruncate) {
+          for (const tableName of Object.keys(schema.tables)) {
+            const physicalTableName = adapter.namingStrategy.tableName(tableName, namespace);
+            await connection.deleteFrom(physicalTableName).execute();
+          }
+        }
+      } finally {
+        await sql`PRAGMA foreign_keys = ON`.execute(connection);
       }
-    }
+
+      const foreignKeyViolations = await sql`PRAGMA foreign_key_check`.execute(connection);
+      if (foreignKeyViolations.rows.length > 0) {
+        throw new Error("Database reset left foreign key violations");
+      }
+    });
   };
 
   const cleanup = async () => {
