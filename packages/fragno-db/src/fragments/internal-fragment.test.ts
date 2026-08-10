@@ -583,9 +583,9 @@ describe("Hook Service", () => {
     const claimed = await fragment.inContext(async function () {
       return await this.handlerTx()
         .withServiceCalls(
-          () => [fragment.services.hookService.claimPendingHookEvents(namespace)] as const,
+          () => [fragment.services.hookService.claimDueHookEvents(namespace, null, 100)] as const,
         )
-        .transform(({ serviceResult: [result] }) => result)
+        .transform(({ serviceResult: [result] }) => result.events)
         .execute();
     });
 
@@ -654,9 +654,9 @@ describe("Hook Service", () => {
     const claimed = await fragment.inContext(async function () {
       return await this.handlerTx()
         .withServiceCalls(
-          () => [fragment.services.hookService.claimPendingHookEvents(namespace)] as const,
+          () => [fragment.services.hookService.claimDueHookEvents(namespace, null, 100)] as const,
         )
-        .transform(({ serviceResult: [result] }) => result)
+        .transform(({ serviceResult: [result] }) => result.events)
         .execute();
     });
 
@@ -712,7 +712,7 @@ describe("Hook Service", () => {
         .withServiceCalls(
           () =>
             [
-              fragment.services.hookService.claimStuckProcessingHookEvents(namespace, staleBefore),
+              fragment.services.hookService.claimDueHookEvents(namespace, staleBefore, 100),
             ] as const,
         )
         .transform(({ serviceResult: [result] }) => result)
@@ -751,6 +751,76 @@ describe("Hook Service", () => {
     expect(
       Math.abs((freshEvent?.lastAttemptAt?.getTime() ?? 0) - freshLastAttemptAt.getTime()),
     ).toBeLessThan(2000);
+  });
+
+  it("should apply one claim limit across pending and stuck hooks", async () => {
+    const namespace = "claim-due-limit";
+    const staleBefore = dbNow().plus({ minutes: -1 });
+    const staleLastAttemptAt = new Date(Date.now() - 5 * 60_000);
+    const pendingIds: FragnoId[] = [];
+
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          for (let sequence = 1; sequence <= 2; sequence += 1) {
+            uow.create("fragno_hooks", {
+              namespace,
+              hookName: "onStuck",
+              payload: { sequence },
+              status: "processing",
+              attempts: 1,
+              maxAttempts: 5,
+              lastAttemptAt: staleLastAttemptAt,
+              nextRetryAt: null,
+              error: null,
+              nonce: `claim-due-limit-stuck-${sequence}`,
+            });
+            pendingIds.push(
+              uow.create("fragno_hooks", {
+                namespace,
+                hookName: "onPending",
+                payload: { sequence },
+                status: "pending",
+                attempts: 0,
+                maxAttempts: 5,
+                lastAttemptAt: null,
+                nextRetryAt: null,
+                error: null,
+                nonce: `claim-due-limit-pending-${sequence}`,
+              }),
+            );
+          }
+        })
+        .execute();
+    });
+
+    const claimResult = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [fragment.services.hookService.claimDueHookEvents(namespace, staleBefore, 3)] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    expect(claimResult.events).toHaveLength(3);
+    expect(claimResult.stuckEvents).toHaveLength(2);
+    assert(claimResult.pendingCount === 1);
+
+    const events = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [fragment.services.hookService.getHooksByNamespace(namespace)] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+    const pendingExternalIds = new Set(pendingIds.map((id) => id.externalId));
+    const pendingEvents = events.filter((event) => pendingExternalIds.has(event.id.externalId));
+    expect(pendingEvents.filter((event) => event.status === "processing")).toHaveLength(1);
+    expect(pendingEvents.filter((event) => event.status === "pending")).toHaveLength(1);
   });
 
   it("should return now when pending hooks have no nextRetryAt", async () => {

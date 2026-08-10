@@ -1571,7 +1571,9 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
         const runnerA = runtimeA.config.runner ?? hooks.createDurableHooksRunner(runtimeA.config);
         runtimeA.config.runner = runnerA;
-        await runnerA.processDue();
+        await (
+          await runnerA.processDue()
+        ).completion;
 
         expect(notifySpy).toHaveBeenCalled();
 
@@ -1711,7 +1713,9 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
         const runnerA = runtimeA.config.runner ?? hooks.createDurableHooksRunner(runtimeA.config);
         runtimeA.config.runner = runnerA;
-        await runnerA.processDue();
+        await (
+          await runnerA.processDue()
+        ).completion;
 
         expect(notifySpy).not.toHaveBeenCalled();
 
@@ -1880,7 +1884,9 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
         const runnerA = runtimeA.config.runner ?? hooks.createDurableHooksRunner(runtimeA.config);
         runtimeA.config.runner = runnerA;
-        await runnerA.processDue();
+        await (
+          await runnerA.processDue()
+        ).completion;
 
         expect(notifySpyForAdapterA).toHaveBeenCalled();
         expect(notifySpyForAdapterB).not.toHaveBeenCalled();

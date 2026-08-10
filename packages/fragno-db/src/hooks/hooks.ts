@@ -200,8 +200,13 @@ export type HookNotifier = {
   notify: (context: HookNotifyContext) => void | Promise<void>;
 };
 
+export type DurableHooksRun = {
+  claimedCount: number;
+  completion: Promise<number>;
+};
+
 export type DurableHooksRunner = {
-  processDue: () => Promise<number>;
+  processDue: () => Promise<DurableHooksRun>;
   drain: () => Promise<void>;
 };
 
@@ -300,6 +305,7 @@ export type HookHandlerTx = (
 ) => HandlerTxBuilder<readonly [], [], [], unknown, unknown, false, false, false, false, HooksMap>;
 
 const DEFAULT_STUCK_PROCESSING_TIMEOUT_MINUTES = 10;
+const MAX_ACTIVE_DURABLE_HOOKS = 16;
 
 function resolveStuckProcessingTimeoutMinutes(
   value: StuckHookProcessingTimeoutMinutes | undefined,
@@ -507,12 +513,12 @@ export function prepareHookMutations(
 }
 
 /**
- * Process pending hook events after the transaction has committed.
- * This should be called in the onSuccess callback after executeMutations().
+ * Claim due hook events and start their attempts.
  */
 export async function processHooks<THooks extends HooksMap>(
   config: HookProcessorConfig<THooks>,
-): Promise<number> {
+  { claimLimit = MAX_ACTIVE_DURABLE_HOOKS }: { claimLimit?: number } = {},
+): Promise<DurableHooksRun> {
   const { hooks, namespace, internalFragment, defaultRetryPolicy } = config;
   if (!hooks) {
     throw new Error("Hook processor hooks not initialized.");
@@ -545,26 +551,23 @@ export async function processHooks<THooks extends HooksMap>(
       name: `internal.hooks.${namespace}.claimDue`,
       transactionInstrumentation: config.transactionInstrumentation,
     })
-      .withServiceCalls(() => {
-        const pending = internalFragment.services.hookService.claimPendingHookEvents(namespace);
-        const stuck = includeStuckProcessing
-          ? internalFragment.services.hookService.claimStuckProcessingHookEvents(
+      .withServiceCalls(
+        () =>
+          [
+            internalFragment.services.hookService.claimDueHookEvents(
               namespace,
-              staleBefore!,
-            )
-          : undefined;
-        return [pending, stuck] as const;
-      })
-      .transform(({ serviceResult: [pendingEvents, stuckResult] }) => ({
-        pendingEvents,
-        stuckResult,
-      }))
+              staleBefore,
+              claimLimit,
+            ),
+          ] as const,
+      )
+      .transform(({ serviceResult: [claimResult] }) => claimResult)
       .execute();
   });
 
-  const pendingCount = result.pendingEvents.length;
-  const stuckClaimedCount = result.stuckResult?.events.length ?? 0;
-  const stuckRequeuedCount = result.stuckResult?.stuckEvents.length ?? 0;
+  const pendingCount = result.pendingCount;
+  const stuckClaimedCount = result.stuckEvents.length;
+  const stuckRequeuedCount = result.stuckEvents.length;
   const staleBeforeApprox = includeStuckProcessing
     ? new Date(Date.now() - stuckProcessingTimeoutMinutes * 60_000).toISOString()
     : null;
@@ -579,11 +582,11 @@ export async function processHooks<THooks extends HooksMap>(
     },
   });
 
-  claimedEvents = [...result.pendingEvents, ...(result.stuckResult?.events ?? [])].map((event) => ({
+  claimedEvents = result.events.map((event) => ({
     ...event,
     status: assertHookStatus(event.status),
   }));
-  stuckEvents = result.stuckResult?.stuckEvents ?? [];
+  stuckEvents = result.stuckEvents;
 
   if (includeStuckProcessing && stuckEvents.length > 0) {
     try {
@@ -606,255 +609,283 @@ export async function processHooks<THooks extends HooksMap>(
     DurableHooksLogger.debug("Durable hooks idle", {
       namespace,
     });
-    return 0;
+    return {
+      claimedCount: 0,
+      completion: Promise.resolve(0),
+    };
   }
 
-  // Process events (async work outside transaction)
-  const processedEvents = await Promise.allSettled(
-    claimedEvents.map(async (event) => {
-      const hookFn = hooks[event.hookName];
-      const missingHookError = `Hook '${event.hookName}' not found in hooks map`;
+  const completion = (async () => {
+    // Process events (async work outside transaction)
+    const processedEvents = await Promise.allSettled(
+      claimedEvents.map(async (event) => {
+        const hookFn = hooks[event.hookName];
+        const missingHookError = `Hook '${event.hookName}' not found in hooks map`;
 
-      try {
-        const attempt: DurableHookAttempt = {
-          namespace,
-          hookId: event.id,
-          hookName: event.hookName,
-          idempotencyKey: event.idempotencyKey,
-          attempt: event.attempts + 1,
-          maxAttempts: event.maxAttempts,
-          createdAt: event.createdAt,
-          propagationContext: event.propagationContext,
-        };
-        const executeHook = async () => {
-          if (!hookFn) {
-            throw new Error(missingHookError);
-          }
-
-          const startedAt = Date.now();
-          DurableHooksLogger.debug("Hook start", {
+        try {
+          const attempt: DurableHookAttempt = {
             namespace,
-            fields: {
-              eventId: event.id,
+            hookId: event.id,
+            hookName: event.hookName,
+            idempotencyKey: event.idempotencyKey,
+            attempt: event.attempts + 1,
+            maxAttempts: event.maxAttempts,
+            createdAt: event.createdAt,
+            propagationContext: event.propagationContext,
+          };
+          const executeHook = async () => {
+            if (!hookFn) {
+              throw new Error(missingHookError);
+            }
+
+            const startedAt = Date.now();
+            DurableHooksLogger.debug("Hook start", {
+              namespace,
+              fields: {
+                eventId: event.id,
+                hookName: event.hookName,
+                status: event.status,
+                attempts: event.attempts,
+                maxAttempts: event.maxAttempts,
+                createdAt: event.createdAt.toISOString(),
+                nextRetryAt: event.nextRetryAt ? event.nextRetryAt.toISOString() : null,
+                lastAttemptAt: event.lastAttemptAt ? event.lastAttemptAt.toISOString() : null,
+              },
+            });
+            const hookContext: HookContext = {
+              idempotencyKey: event.idempotencyKey,
+              hookId: event.id,
               hookName: event.hookName,
               status: event.status,
               attempts: event.attempts,
               maxAttempts: event.maxAttempts,
-              createdAt: event.createdAt.toISOString(),
-              nextRetryAt: event.nextRetryAt ? event.nextRetryAt.toISOString() : null,
-              lastAttemptAt: event.lastAttemptAt ? event.lastAttemptAt.toISOString() : null,
-            },
-          });
-          const hookContext: HookContext = {
-            idempotencyKey: event.idempotencyKey,
-            hookId: event.id,
-            hookName: event.hookName,
-            status: event.status,
-            attempts: event.attempts,
-            maxAttempts: event.maxAttempts,
-            propagationContext: event.propagationContext,
-            capturePropagationContext: () =>
-              captureInstrumentedPropagationContext(
-                {
-                  namespace,
-                  hookName: event.hookName,
-                  idempotencyKey: event.idempotencyKey,
-                },
-                config.instrumentation,
-                event.propagationContext,
-              ),
-            lastAttemptAt: event.lastAttemptAt,
-            nextRetryAt: event.nextRetryAt,
-            createdAt: event.createdAt,
-            handlerTx: config.handlerTx,
-          };
-          await hookFn.call(hookContext, event.payload);
-          DurableHooksLogger.debug("Hook completed", {
-            namespace,
-            fields: {
-              eventId: event.id,
-              hookName: event.hookName,
-              ms: Date.now() - startedAt,
-            },
-          });
-        };
-
-        if (config.instrumentation) {
-          await runInstrumentedHookAttempt(config.instrumentation, attempt, executeHook);
-        } else {
-          await executeHook();
-        }
-
-        return {
-          eventId: event.id,
-          status: "completed" as const,
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        if (!hookFn) {
-          DurableHooksLogger.error("Hook missing", {
-            namespace,
-            fields: {
-              eventId: event.id,
-              hookName: event.hookName,
-              attempts: event.attempts,
-              maxAttempts: event.maxAttempts,
-              createdAt: event.createdAt.toISOString(),
-            },
-          });
-        } else {
-          DurableHooksLogger.error("Hook failed", {
-            namespace,
-            fields: {
-              eventId: event.id.toJSON(),
-              hookName: event.hookName,
-              error: errorMessage,
-              idempotencyKey: event.idempotencyKey,
-            },
-          });
-        }
-        return {
-          eventId: event.id,
-          status: "failed" as const,
-          error: errorMessage,
-          attempts: event.attempts,
-          maxAttempts: event.maxAttempts,
-        };
-      }
-    }),
-  );
-
-  // Mark events as completed/failed
-  await internalFragment.inContext(async function () {
-    await this.handlerTx({
-      name: `internal.hooks.${namespace}.finalizeAttempts`,
-      transactionInstrumentation: config.transactionInstrumentation,
-    })
-      .mutate(({ forSchema }) => {
-        const uow = forSchema(internalSchema);
-        const now = dbNow();
-
-        for (const processedEvent of processedEvents) {
-          if (processedEvent.status === "rejected") {
-            DurableHooksLogger.error("Hook processing promise rejected", {
+              propagationContext: event.propagationContext,
+              capturePropagationContext: () =>
+                captureInstrumentedPropagationContext(
+                  {
+                    namespace,
+                    hookName: event.hookName,
+                    idempotencyKey: event.idempotencyKey,
+                  },
+                  config.instrumentation,
+                  event.propagationContext,
+                ),
+              lastAttemptAt: event.lastAttemptAt,
+              nextRetryAt: event.nextRetryAt,
+              createdAt: event.createdAt,
+              handlerTx: config.handlerTx,
+            };
+            await hookFn.call(hookContext, event.payload);
+            DurableHooksLogger.debug("Hook completed", {
               namespace,
               fields: {
-                error: DurableHooksLogger.toErrorMessage(processedEvent.reason),
+                eventId: event.id,
+                hookName: event.hookName,
+                ms: Date.now() - startedAt,
               },
             });
-            continue;
-          }
+          };
 
-          const { eventId, status } = processedEvent.value;
-
-          if (status === "completed") {
-            uow.update("fragno_hooks", eventId, (b) =>
-              b.set({ status: "completed", lastAttemptAt: now }).check(),
-            );
-            continue;
-          }
-
-          const { error, attempts } = processedEvent.value;
-          const newAttempts = attempts + 1;
-          const shouldRetry = retryPolicy.shouldRetry(newAttempts - 1);
-
-          if (shouldRetry) {
-            const delayMs = retryPolicy.getDelayMs(newAttempts - 1);
-            const nextRetryAt = now.plus({ ms: delayMs });
-            uow.update("fragno_hooks", eventId, (b) =>
-              b
-                .set({
-                  status: "pending",
-                  attempts: newAttempts,
-                  lastAttemptAt: now,
-                  nextRetryAt,
-                  error,
-                })
-                .check(),
-            );
+          if (config.instrumentation) {
+            await runInstrumentedHookAttempt(config.instrumentation, attempt, executeHook);
           } else {
-            uow.update("fragno_hooks", eventId, (b) =>
-              b
-                .set({
-                  status: "failed",
-                  attempts: newAttempts,
-                  lastAttemptAt: now,
-                  error,
-                })
-                .check(),
-            );
+            await executeHook();
           }
+
+          return {
+            eventId: event.id,
+            status: "completed" as const,
+          };
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          if (!hookFn) {
+            DurableHooksLogger.error("Hook missing", {
+              namespace,
+              fields: {
+                eventId: event.id,
+                hookName: event.hookName,
+                attempts: event.attempts,
+                maxAttempts: event.maxAttempts,
+                createdAt: event.createdAt.toISOString(),
+              },
+            });
+          } else {
+            DurableHooksLogger.error("Hook failed", {
+              namespace,
+              fields: {
+                eventId: event.id.toJSON(),
+                hookName: event.hookName,
+                error: errorMessage,
+                idempotencyKey: event.idempotencyKey,
+              },
+            });
+          }
+          return {
+            eventId: event.id,
+            status: "failed" as const,
+            error: errorMessage,
+            attempts: event.attempts,
+            maxAttempts: event.maxAttempts,
+          };
         }
+      }),
+    );
+
+    // Mark events as completed/failed
+    await internalFragment.inContext(async function () {
+      await this.handlerTx({
+        name: `internal.hooks.${namespace}.finalizeAttempts`,
+        transactionInstrumentation: config.transactionInstrumentation,
       })
-      .execute();
-  });
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(internalSchema);
+          const now = dbNow();
 
-  const processedCount = processedEvents.reduce(
-    (count, result) => count + (result.status === "fulfilled" ? 1 : 0),
-    0,
-  );
+          for (const processedEvent of processedEvents) {
+            if (processedEvent.status === "rejected") {
+              DurableHooksLogger.error("Hook processing promise rejected", {
+                namespace,
+                fields: {
+                  error: DurableHooksLogger.toErrorMessage(processedEvent.reason),
+                },
+              });
+              continue;
+            }
 
-  const failed = processedEvents
-    .filter((result) => result.status === "fulfilled" && result.value.status === "failed")
-    .map((result) => {
-      if (result.status !== "fulfilled") {
-        return null;
-      }
-      return {
-        eventId: result.value.eventId,
-        error: result.value.error ?? null,
-      };
-    })
-    .filter(Boolean);
+            const { eventId, status } = processedEvent.value;
 
-  DurableHooksLogger.debug("Durable hooks processed", {
-    namespace,
-    fields: {
-      processed: processedCount,
-      failed: failed.length,
-      failures: failed.length > 0 ? failed : null,
-    },
-  });
+            if (status === "completed") {
+              uow.update("fragno_hooks", eventId, (b) =>
+                b.set({ status: "completed", lastAttemptAt: now }).check(),
+              );
+              continue;
+            }
 
-  return processedCount;
+            const { error, attempts } = processedEvent.value;
+            const newAttempts = attempts + 1;
+            const shouldRetry = retryPolicy.shouldRetry(newAttempts - 1);
+
+            if (shouldRetry) {
+              const delayMs = retryPolicy.getDelayMs(newAttempts - 1);
+              const nextRetryAt = now.plus({ ms: delayMs });
+              uow.update("fragno_hooks", eventId, (b) =>
+                b
+                  .set({
+                    status: "pending",
+                    attempts: newAttempts,
+                    lastAttemptAt: now,
+                    nextRetryAt,
+                    error,
+                  })
+                  .check(),
+              );
+            } else {
+              uow.update("fragno_hooks", eventId, (b) =>
+                b
+                  .set({
+                    status: "failed",
+                    attempts: newAttempts,
+                    lastAttemptAt: now,
+                    error,
+                  })
+                  .check(),
+              );
+            }
+          }
+        })
+        .execute();
+    });
+
+    const processedCount = processedEvents.reduce(
+      (count, result) => count + (result.status === "fulfilled" ? 1 : 0),
+      0,
+    );
+
+    const failed = processedEvents
+      .filter((result) => result.status === "fulfilled" && result.value.status === "failed")
+      .map((result) => {
+        if (result.status !== "fulfilled") {
+          return null;
+        }
+        return {
+          eventId: result.value.eventId,
+          error: result.value.error ?? null,
+        };
+      })
+      .filter(Boolean);
+
+    DurableHooksLogger.debug("Durable hooks processed", {
+      namespace,
+      fields: {
+        processed: processedCount,
+        failed: failed.length,
+        failures: failed.length > 0 ? failed : null,
+      },
+    });
+
+    return processedCount;
+  })();
+
+  return {
+    claimedCount: claimedEvents.length,
+    completion,
+  };
 }
 
 export function createDurableHooksRunner(config: HookProcessorConfig): DurableHooksRunner {
-  let processing = false;
-  let queued = false;
-  let currentPromise: Promise<number> | null = null;
+  const activeCompletions = new Set<Promise<number>>();
+  let activeHookCount = 0;
+  let claimQueue = Promise.resolve();
 
-  const processDue = async () => {
-    if (processing) {
-      queued = true;
-      return currentPromise ?? Promise.resolve(0);
+  const waitForHookCapacity = async () => {
+    while (activeHookCount >= MAX_ACTIVE_DURABLE_HOOKS) {
+      await Promise.race(activeCompletions).catch(() => undefined);
     }
+  };
 
-    processing = true;
-    currentPromise = (async () => {
-      let totalProcessed = 0;
-      try {
-        do {
-          queued = false;
-          totalProcessed += await processHooks(config);
-        } while (queued);
-        return totalProcessed;
-      } finally {
-        processing = false;
-        queued = false;
-        currentPromise = null;
+  const processDue = (): Promise<DurableHooksRun> => {
+    const runPromise = claimQueue.then(async () => {
+      await waitForHookCapacity();
+
+      const availableCapacity = MAX_ACTIVE_DURABLE_HOOKS - activeHookCount;
+      const run = await processHooks(config, { claimLimit: availableCapacity });
+      if (run.claimedCount === 0) {
+        return run;
       }
-    })();
 
-    return currentPromise;
+      activeHookCount += run.claimedCount;
+      const completion = run.completion.finally(() => {
+        activeHookCount -= run.claimedCount;
+        activeCompletions.delete(completion);
+      });
+      activeCompletions.add(completion);
+
+      return {
+        claimedCount: run.claimedCount,
+        completion,
+      };
+    });
+    claimQueue = runPromise.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    return runPromise;
   };
 
   const drain = async () => {
     while (true) {
-      const processed = await processDue();
-      if (processed === 0) {
+      const run = await processDue();
+      if (run.claimedCount > 0) {
+        await run.completion;
+        continue;
+      }
+
+      if (activeCompletions.size === 0) {
         return;
       }
+
+      await Promise.all(activeCompletions);
     }
   };
 

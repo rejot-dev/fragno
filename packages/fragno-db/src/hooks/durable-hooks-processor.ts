@@ -1,10 +1,14 @@
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../mod";
 import { getDurableHooksToken, hasDurableHooksConfigured } from "./durable-hooks-fragment";
 import { getDurableHooksRuntimeByToken } from "./durable-hooks-runtime";
-import { createDurableHooksRunner, type DurableHooksInstrumentation } from "./hooks";
+import {
+  createDurableHooksRunner,
+  type DurableHooksInstrumentation,
+  type DurableHooksRun,
+} from "./hooks";
 
 export type DurableHooksProcessor = {
-  processDue: () => Promise<number>;
+  processDue: () => Promise<DurableHooksRun>;
   getNextWakeAt: () => Promise<Date | null>;
   drain: () => Promise<void>;
   namespace: string;
@@ -115,19 +119,35 @@ export function createDurableHooksProcessorGroupFromProcessors(
   const onError = options.onError ?? (() => {});
   const namespace = processors.map((processor) => processor.namespace).join(",");
 
-  const processDue = async () => {
+  const processDue = async (): Promise<DurableHooksRun> => {
     const results = await Promise.allSettled(
       processors.map(async (processor) => await processor.processDue()),
     );
-    let processed = 0;
+    const runs: DurableHooksRun[] = [];
     for (const result of results) {
       if (result.status === "fulfilled") {
-        processed += result.value;
+        runs.push(result.value);
       } else {
         onError(result.reason);
       }
     }
-    return processed;
+
+    return {
+      claimedCount: runs.reduce((count, run) => count + run.claimedCount, 0),
+      completion: Promise.allSettled(runs.map((run) => run.completion)).then(
+        (completionResults) => {
+          let processed = 0;
+          for (const result of completionResults) {
+            if (result.status === "fulfilled") {
+              processed += result.value;
+            } else {
+              onError(result.reason);
+            }
+          }
+          return processed;
+        },
+      ),
+    };
   };
 
   return {

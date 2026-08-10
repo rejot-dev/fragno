@@ -104,6 +104,7 @@ export const createInMemoryBackofficeRuntime = async (
 
       await objectFactory.drainWaitUntil();
       await objectFactory.drainAlarms();
+      await objectFactory.drainBackground();
       await objectFactory.drainWaitUntil();
 
       const hasPendingAfter = objectFactory.instances().some(({ state }) => state.hasPendingWork);

@@ -1,5 +1,7 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
+
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
@@ -55,7 +57,7 @@ async function createNoneWebhookEndpoint(
 
 describe("webhook receiving", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    onWebhookReceived.mockReset();
   });
 
   test("receives webhooks through a durable hook using a header delivery ID", async () => {
@@ -374,5 +376,62 @@ describe("webhook receiving", () => {
     ).toEqual(["evt_1", "evt_2"]);
 
     await setup.test.cleanup();
+  });
+
+  test("allows a later webhook callback to finish while an earlier callback is active", async () => {
+    const setup = await buildApiTest();
+    const fragment = setup.fragments.api.fragment;
+    const dispatcher = createDurableHooksProcessor([fragment]);
+    const firstStarted = Promise.withResolvers<void>();
+    const releaseFirst = Promise.withResolvers<void>();
+    const secondFinished = Promise.withResolvers<void>();
+    const completionOrder: string[] = [];
+
+    onWebhookReceived.mockImplementation(async (payload: WebhookReceivedPayload) => {
+      if (payload.deliveryId === "evt_1") {
+        firstStarted.resolve();
+        await releaseFirst.promise;
+      }
+      completionOrder.push(payload.deliveryId);
+      if (payload.deliveryId === "evt_2") {
+        secondFinished.resolve();
+      }
+    });
+
+    await createNoneWebhookEndpoint(setup, "overlapping-deliveries");
+    const firstResponse = await fragment.handler(
+      webhookRequest("overlapping-deliveries", {
+        method: "POST",
+        headers: { "x-event-id": "evt_1" },
+        body: "{}",
+      }),
+    );
+    assert(firstResponse.status === 202);
+
+    const firstRun = dispatcher.wake();
+    let secondRun: Promise<void> | undefined;
+    try {
+      await firstStarted.promise;
+
+      const secondResponse = await fragment.handler(
+        webhookRequest("overlapping-deliveries", {
+          method: "POST",
+          headers: { "x-event-id": "evt_2" },
+          body: "{}",
+        }),
+      );
+      assert(secondResponse.status === 202);
+
+      secondRun = dispatcher.wake();
+      await secondFinished.promise;
+      expect(completionOrder).toEqual(["evt_2"]);
+    } finally {
+      releaseFirst.resolve();
+      await Promise.all([firstRun, secondRun]);
+      await dispatcher.drain();
+      await setup.test.cleanup();
+    }
+
+    expect(completionOrder).toEqual(["evt_2", "evt_1"]);
   });
 });

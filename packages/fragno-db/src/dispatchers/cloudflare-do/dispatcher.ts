@@ -5,16 +5,20 @@ import type { HookNotifyContext, HookNotifySource } from "../../hooks/hooks";
 type AlarmStorage = {
   getAlarm?: () => Promise<number | null>;
   setAlarm?: (timestamp: number | Date) => Promise<void>;
+  deleteAlarm?: () => Promise<void>;
 };
 
 export type DurableHooksDispatcherDurableObjectState = {
   readonly storage: AlarmStorage;
+  /** Allows in-memory runtimes to drain hook work that intentionally outlives an alarm. */
+  setBackgroundDrain?: (drain: (() => Promise<void>) | null) => void;
 };
 
 export type DurableHooksDispatcherDurableObjectHandler = {
   fetch?: (request: Request) => Promise<Response>;
   notify?: (context: HookNotifyContext) => void | Promise<void>;
   alarm?: () => Promise<void>;
+  drain?: () => Promise<void>;
 };
 
 export type DurableHooksDispatcherDurableObjectFactory<TEnv = unknown> = (
@@ -43,6 +47,10 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
           fields: { error: DurableHooksLogger.toErrorMessage(error) },
         });
       });
+    state.setBackgroundDrain?.(async () => {
+      await processor.drain();
+    });
+
     const safeOnProcessError = (error: unknown) => {
       void Promise.resolve()
         .then(() => {
@@ -57,6 +65,7 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
     };
     const rawGetAlarm = state.storage.getAlarm;
     const rawSetAlarm = state.storage.setAlarm;
+    const rawDeleteAlarm = state.storage.deleteAlarm;
 
     if (!rawSetAlarm) {
       throw new Error(
@@ -65,6 +74,7 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
     }
     const getAlarm = rawGetAlarm?.bind(state.storage);
     const setAlarm = rawSetAlarm.bind(state.storage);
+    const deleteAlarm = rawDeleteAlarm?.bind(state.storage);
 
     let processing = false;
     let queued = false;
@@ -72,6 +82,7 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
     let alarmRefreshQueued = false;
     let alarmRefreshPromise: Promise<void> | undefined;
     let latestAlarmRefreshSource: HookNotifySource = "request";
+    let scheduledHookAlarm: number | null = null;
 
     const runProcess = () => {
       if (processing) {
@@ -89,11 +100,28 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
               DurableHooksLogger.debug("Durable hooks alarm start", {
                 namespace: processor.namespace,
               });
-              const processed = await processor.processDue();
+              const run = await processor.processDue();
+              void run.completion
+                .catch((error: unknown) => {
+                  DurableHooksLogger.error("Durable hooks run failed", {
+                    namespace: processor.namespace,
+                    fields: { error: DurableHooksLogger.toErrorMessage(error) },
+                  });
+                  safeOnProcessError(error);
+                })
+                .finally(() => {
+                  void refreshAlarm("hook").catch((error: unknown) => {
+                    DurableHooksLogger.error("Durable hooks alarm schedule failed", {
+                      namespace: processor.namespace,
+                      fields: { error: DurableHooksLogger.toErrorMessage(error) },
+                    });
+                    safeOnProcessError(error);
+                  });
+                });
               DurableHooksLogger.debug("Durable hooks alarm processed", {
                 namespace: processor.namespace,
                 fields: {
-                  processed,
+                  claimed: run.claimedCount,
                   ms: Date.now() - startedAt,
                 },
               });
@@ -123,6 +151,11 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
       });
       const nextWakeAt = await processor.getNextWakeAt();
       if (!nextWakeAt) {
+        const existingAlarm = await getAlarm?.();
+        if (existingAlarm !== null && existingAlarm === scheduledHookAlarm) {
+          await deleteAlarm?.();
+          scheduledHookAlarm = null;
+        }
         DurableHooksLogger.debug("Durable hooks alarm idle", {
           namespace: processor.namespace,
           fields: {
@@ -141,6 +174,7 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
         existingAlarm > scheduledAt.getTime()
       ) {
         await setAlarm(scheduledAt);
+        scheduledHookAlarm = scheduledAt.getTime();
       }
       DurableHooksLogger.debug("Durable hooks alarm scheduled", {
         namespace: processor.namespace,
@@ -206,6 +240,9 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
         } catch (error) {
           safeOnProcessError(error);
         }
+      },
+      drain: async () => {
+        await processor.drain();
       },
     };
   };

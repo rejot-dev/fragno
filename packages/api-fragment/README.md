@@ -154,8 +154,14 @@ responses are returned as text. Binary responses are out of scope for the MVP.
 - `onConnectionDeleted` receives `{ connectionId, previous }`.
 - `onConnectionAvailable` receives `{ connectionId, connection, authMode }` when usable auth is
   present after bearer setup, OAuth callback, or client-credentials token acquisition.
+- `onWebhookReceived` receives the authenticated webhook payload and its derived delivery ID.
 
-Hook callbacks receive a context object as their second argument: `{ idempotencyKey, hookId }`.
+Durable hook callbacks, including `onWebhookReceived`, may execute concurrently and may complete out
+of delivery order. Use the delivery ID for idempotency and use an upstream sequence or version when
+the provider's event order affects state.
+
+Hook callbacks receive the durable hook context as their second argument, including
+`idempotencyKey`, `hookId`, retry metadata, and transaction access.
 
 ## Security notes
 

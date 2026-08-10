@@ -13,6 +13,7 @@ class InMemoryDurableObjectState {
   #alarm: number | null = null;
   readonly #pendingWaitUntil = new Set<Promise<unknown>>();
   readonly #pendingBlockConcurrency = new Set<Promise<unknown>>();
+  #backgroundDrain: (() => Promise<void>) | null = null;
 
   constructor(id: DurableObjectId) {
     this.id = id;
@@ -61,6 +62,14 @@ class InMemoryDurableObjectState {
       () => this.#pendingWaitUntil.delete(tracked),
       () => this.#pendingWaitUntil.delete(tracked),
     );
+  }
+
+  setBackgroundDrain(drain: (() => Promise<void>) | null): void {
+    this.#backgroundDrain = drain;
+  }
+
+  async drainBackground(): Promise<void> {
+    await this.#backgroundDrain?.();
   }
 
   async drainBlocking(): Promise<boolean> {
@@ -249,6 +258,14 @@ export class InMemoryDurableObjectNamespace<TObject> {
       this.instances().map(async ({ state }) => await state.drainWaitUntil()),
     );
     return results.some(Boolean);
+  }
+
+  async drainBackground(): Promise<void> {
+    await Promise.all(
+      this.instances().map(async ({ state }) => {
+        await state.drainBackground();
+      }),
+    );
   }
 
   dueAlarmInstances(now = Date.now()): InMemoryDurableObjectInstance<TObject>[] {

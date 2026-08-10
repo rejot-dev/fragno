@@ -122,8 +122,9 @@ describe("createDurableHooksProcessor", () => {
     const wakeAt = await processor.getNextWakeAt();
     expect(wakeAt).toBeInstanceOf(Date);
 
-    const processed = await processor.processDue();
-    expect(processed).toBe(1);
+    const run = await processor.processDue();
+    assert(run.claimedCount === 1);
+    await expect(run.completion).resolves.toBe(1);
   });
 
   it("names internal durable-hook processor transactions", async () => {
@@ -160,7 +161,8 @@ describe("createDurableHooksProcessor", () => {
         })
         .execute();
     });
-    await processor.processDue();
+    const run = await processor.processDue();
+    await run.completion;
 
     expect(
       contexts
@@ -184,13 +186,7 @@ describe("createDurableHooksProcessor", () => {
         expect.objectContaining({
           fragmentName: "$fragno-internal-fragment",
           transactionKind: "service",
-          transactionName: "internal.hooks.claimPending",
-          callback: "retrieve",
-        }),
-        expect.objectContaining({
-          fragmentName: "$fragno-internal-fragment",
-          transactionKind: "service",
-          transactionName: "internal.hooks.claimStuck",
+          transactionName: "internal.hooks.claimDue",
           callback: "retrieve",
         }),
       ]),
@@ -315,7 +311,10 @@ describe("createDurableHooksProcessorGroupFromProcessors", () => {
   });
 
   function createProcessorStub() {
-    const processDue = vi.fn().mockResolvedValue(0);
+    const processDue = vi.fn().mockResolvedValue({
+      claimedCount: 0,
+      completion: Promise.resolve(0),
+    });
     return {
       namespace: "test",
       processDue,
@@ -341,7 +340,10 @@ describe("createDurableHooksProcessorGroupFromProcessors", () => {
     const onError = vi.fn();
     const processorA = makeProcessor({
       namespace: "a",
-      processDue: vi.fn().mockResolvedValue(2),
+      processDue: vi.fn().mockResolvedValue({
+        claimedCount: 2,
+        completion: Promise.resolve(2),
+      }),
       drain: vi.fn().mockResolvedValue(undefined),
     });
     const processorB = makeProcessor({
@@ -355,8 +357,9 @@ describe("createDurableHooksProcessorGroupFromProcessors", () => {
     });
     expect(group).not.toBeNull();
 
-    const processed = await group.processDue();
-    expect(processed).toBe(2);
+    const run = await group.processDue();
+    assert(run.claimedCount === 2);
+    await expect(run.completion).resolves.toBe(2);
     expect(onError).toHaveBeenCalledWith(error);
 
     await group.drain();

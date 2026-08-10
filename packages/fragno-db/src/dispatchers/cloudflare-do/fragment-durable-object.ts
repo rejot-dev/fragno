@@ -281,26 +281,30 @@ export function createFragmentDurableObjectHost<TEnv, TSource, TRuntime>(
 
   const createDispatcher = (hookFragments: readonly AnyFragnoInstantiatedDatabaseFragment[]) => {
     if (hookFragments.length === 0) {
+      options.state.setBackgroundDrain?.(null);
       return null;
     }
 
     try {
-      if (options.operations?.createDispatcher) {
-        return options.operations.createDispatcher({
-          hookFragments,
-          state: options.state,
-          env: options.env,
-          instrumentation: options.durableHooksInstrumentation,
-          onProcessError: options.onProcessError,
-        });
-      }
+      const nextDispatcher = options.operations?.createDispatcher
+        ? options.operations.createDispatcher({
+            hookFragments,
+            state: options.state,
+            env: options.env,
+            instrumentation: options.durableHooksInstrumentation,
+            onProcessError: options.onProcessError,
+          })
+        : createDurableHooksProcessor<TEnv>(hookFragments, {
+            instrumentation: options.durableHooksInstrumentation,
+            onProcessError: options.onProcessError,
+          })(options.state, options.env);
 
-      const createProcessor = createDurableHooksProcessor<TEnv>(hookFragments, {
-        instrumentation: options.durableHooksInstrumentation,
-        onProcessError: options.onProcessError,
-      });
-      return createProcessor(options.state, options.env);
+      options.state.setBackgroundDrain?.(
+        nextDispatcher?.drain ? async () => await nextDispatcher.drain?.() : null,
+      );
+      return nextDispatcher;
     } catch (error) {
+      options.state.setBackgroundDrain?.(null);
       options.onDispatcherError?.(error);
       return null;
     }
