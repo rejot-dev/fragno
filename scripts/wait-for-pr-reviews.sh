@@ -35,6 +35,8 @@ fi
 pr_number="$(jq -r '.number' <<<"$pr_json")"
 pr_url="$(jq -r '.url' <<<"$pr_json")"
 repository="$(gh repo view --json nameWithOwner --jq '.nameWithOwner')"
+repository_owner="${repository%%/*}"
+repository_name="${repository#*/}"
 
 check_state() {
   jq -r --arg check_name "$1" '
@@ -55,12 +57,41 @@ check_state() {
 }
 
 copilot_review_is_requested() {
+  local review_requests_json
+
+  if ! review_requests_json="$(
+    gh api graphql \
+      -f query='query($owner: String!, $name: String!, $number: Int!) {
+        repository(owner: $owner, name: $name) {
+          pullRequest(number: $number) {
+            reviewRequests(first: 100) {
+              nodes {
+                requestedReviewer {
+                  ... on Bot { login }
+                  ... on User { login }
+                  ... on Team { name slug }
+                }
+              }
+            }
+          }
+        }
+      }' \
+      -F owner="$repository_owner" \
+      -F name="$repository_name" \
+      -F number="$pr_number"
+  )"; then
+    echo "error: failed to load pull request review requests" >&2
+    return 1
+  fi
+
   jq -e '
     any(
-      .reviewRequests[]?;
-      ((.login // .name // "") | ascii_downcase | contains("copilot"))
+      .data.repository.pullRequest.reviewRequests.nodes[]?;
+      ((.requestedReviewer.login // .requestedReviewer.name // .requestedReviewer.slug // "")
+        | ascii_downcase
+        | contains("copilot"))
     )
-  ' <<<"$pr_json" >/dev/null
+  ' <<<"$review_requests_json" >/dev/null
 }
 
 copilot_review_state() {
