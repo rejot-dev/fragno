@@ -252,11 +252,11 @@ export default [
         route("durable-hooks", "routes/backoffice/internals/durable-hooks.tsx"),
         route("workflows", "routes/backoffice/internals/workflows.tsx"),
         route(
-          "durable-hooks/:scopeId",
+          "durable-hooks/:scopeKind/:scopeId",
           "routes/backoffice/internals/durable-hooks-scope-redirect.tsx",
         ),
         route(
-          "durable-hooks/:scopeId/:objectId",
+          "durable-hooks/:scopeKind/:scopeId/:objectId",
           "routes/backoffice/internals/durable-hooks-scope-layout.tsx",
           [
             index("routes/backoffice/internals/durable-hooks-scope-index.tsx"),

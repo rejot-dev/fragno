@@ -1,16 +1,22 @@
 import "../backoffice.css";
 
-import type { ReactNode } from "react";
-import { Link, Outlet, isRouteErrorResponse, redirect, useRouteError } from "react-router";
+import { redirect } from "react-router";
 
-import { BackofficePageHeader, BackofficeShell } from "@/components/backoffice";
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import { BackofficeScopeCodecError } from "@/backoffice-runtime/scope-codec";
+import type { CurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { getAuthMe } from "@/fragno/auth/auth-server";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
 import { buildBackofficeLoginPath } from "@/routes/backoffice/auth-navigation";
-import { getRouteErrorDebugDetails } from "@/routes/backoffice/route-errors";
 
 import type { Route } from "./+types/backoffice-layout";
+import { resolveCurrentBackofficeScope } from "./backoffice-layout-scope";
 
-export async function loader({ request, context, url }: Route.LoaderArgs) {
+export { default, ErrorBoundary } from "./backoffice-layout-ui";
+
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   if (import.meta.env.MODE !== "development") {
     throw new Response("Not Found", { status: 404 });
   }
@@ -25,75 +31,39 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     throw redirect(buildBackofficeLoginPath(returnTo));
   }
 
-  return { me };
-}
+  const defaultScope = me.activeOrganization?.organization.id
+    ? { kind: "org" as const, orgId: me.activeOrganization.organization.id }
+    : { kind: "user" as const, userId: me.user.id };
+  let currentScope: BackofficeContextScope;
+  try {
+    currentScope = resolveCurrentBackofficeScope({ params, defaultScope });
+  } catch (error) {
+    if (error instanceof BackofficeScopeCodecError) {
+      throw new Response("Not Found", { status: 404 });
+    }
+    throw error;
+  }
+  try {
+    await requireBackofficeContext(request, context, currentScope);
+  } catch (error) {
+    if (error instanceof BackofficeForbiddenError) {
+      throw new Response(error.message, { status: 403 });
+    }
+    throw error;
+  }
 
-export default function BackofficeLayout({
-  children,
-  loaderData,
-}: {
-  children?: ReactNode;
-  loaderData: Route.ComponentProps["loaderData"];
-}) {
-  const { me } = loaderData;
-  return (
-    <BackofficeShell me={me} isLoading={false}>
-      {children ?? <Outlet context={{ me }} />}
-    </BackofficeShell>
-  );
+  const automationCollectionSource: CurrentBackofficeContext["automationCollectionSource"] =
+    await fetchAutomationCollectionSource(request, context, currentScope).then(
+      (source) => ({ status: "ready", source }),
+      (error: unknown) => ({
+        status: "unavailable",
+        message:
+          error instanceof Error ? error.message : "Workflow synchronization is unavailable.",
+      }),
+    );
+  return { me, currentScope, automationCollectionSource };
 }
 
 export type BackofficeLayoutContext = {
   me: NonNullable<Route.ComponentProps["loaderData"]["me"]>;
 };
-
-export function ErrorBoundary() {
-  const error = useRouteError();
-  const isResponse = isRouteErrorResponse(error);
-  const status = isResponse ? error.status : null;
-  const title =
-    status === 404 ? "Page not found" : status ? "Request failed" : "Something went wrong";
-  const description = isResponse
-    ? typeof error.data === "string"
-      ? error.data
-      : "The requested backoffice page could not be loaded."
-    : error instanceof Error
-      ? error.message
-      : "An unexpected error occurred while loading the backoffice.";
-  const debugDetails =
-    import.meta.env.MODE === "development" ? getRouteErrorDebugDetails(error) : null;
-
-  return (
-    <BackofficeShell me={null} isLoading={false}>
-      <div className="space-y-4">
-        <BackofficePageHeader
-          breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Error" }]}
-          eyebrow="Backoffice"
-          title={title}
-          description={description}
-          actions={
-            <Link
-              to="/backoffice"
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-            >
-              Back to terminal
-            </Link>
-          }
-        />
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          {status ? <p>Error code: {status}</p> : null}
-          {debugDetails ? (
-            <details className="mt-3" open>
-              <summary className="cursor-pointer text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                Error details
-              </summary>
-              <pre className="mt-3 max-h-[60vh] overflow-auto border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs whitespace-pre-wrap text-[var(--bo-fg)]">
-                {debugDetails}
-              </pre>
-            </details>
-          ) : null}
-        </div>
-      </div>
-    </BackofficeShell>
-  );
-}

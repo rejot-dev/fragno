@@ -1,4 +1,3 @@
-import { createFetchFragnoOutboxTransport } from "@fragno-dev/tanstack-db-adapter/transport";
 import type { RouterContextProvider } from "react-router";
 
 import { extractW3CRequestPropagationContext } from "@fragno-dev/core";
@@ -49,24 +48,6 @@ const getScopedAutomationsObject = (
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
   return kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
 };
-
-export async function fetchAutomationAdapterIdentity(
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
-): Promise<string> {
-  const automationsDo = getScopedAutomationsObject(context, scope);
-  const url = new URL(request.url);
-  url.pathname = "/api/automations/_internal";
-  url.search = "";
-
-  const transport = createFetchFragnoOutboxTransport({
-    internalUrl: url,
-    fetch: (input, init) => automationsDo.fetch(new Request(input, init)),
-  });
-
-  return transport.getAdapterIdentity({ signal: request.signal });
-}
 
 const toRecordArray = <T extends Record<string, unknown>>(value: unknown): T[] => {
   if (!Array.isArray(value)) {

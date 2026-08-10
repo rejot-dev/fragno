@@ -2,9 +2,7 @@ import { Outlet } from "react-router";
 
 import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
 
-import { fetchAutomationAdapterIdentity } from "../automations/data.server";
 import { automationScopeFromRouteParams } from "../automations/scope";
 import type { Route } from "./+types/organisation-layout";
 import { fetchPiAdapterIdentity, fetchPiRuntimeState } from "./data";
@@ -18,28 +16,13 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const { runtimeState, runtimeError } = await fetchPiRuntimeState(context, scope);
   let persistenceSource: PiLayoutContext["persistenceSource"] = null;
   let persistenceError: string | null = null;
-  let automationPersistenceSource: AutomationCollectionSource | null = null;
-  let automationPersistenceError: string | null = null;
   if (runtimeState?.configured) {
-    const [piAdapterIdentity, automationAdapterIdentity] = await Promise.allSettled([
-      fetchPiAdapterIdentity(request, context, scope),
-      fetchAutomationAdapterIdentity(request, context, scope),
-    ]);
-    if (piAdapterIdentity.status === "fulfilled") {
-      persistenceSource = { scope, adapterIdentity: piAdapterIdentity.value };
-    } else {
+    try {
+      const adapterIdentity = await fetchPiAdapterIdentity(request, context, scope);
+      persistenceSource = { scope, adapterIdentity };
+    } catch (error) {
       persistenceError =
-        piAdapterIdentity.reason instanceof Error
-          ? piAdapterIdentity.reason.message
-          : "Failed to load Pi session persistence.";
-    }
-    if (automationAdapterIdentity.status === "fulfilled") {
-      automationPersistenceSource = { scope, adapterIdentity: automationAdapterIdentity.value };
-    } else {
-      automationPersistenceError =
-        automationAdapterIdentity.reason instanceof Error
-          ? automationAdapterIdentity.reason.message
-          : "Failed to load workflow synchronization.";
+        error instanceof Error ? error.message : "Failed to load Pi session persistence.";
     }
   }
 
@@ -48,8 +31,6 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     scopeLabel: backofficeContextScopeLabel(execution.scope),
     persistenceSource,
     persistenceError,
-    automationPersistenceSource,
-    automationPersistenceError,
     runtimeState,
     runtimeError,
   };
@@ -64,16 +45,8 @@ export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
 }
 
 export default function BackofficeScopedPiLayout({ loaderData, matches }: Route.ComponentProps) {
-  const {
-    scope,
-    scopeLabel,
-    persistenceSource,
-    persistenceError,
-    automationPersistenceSource,
-    automationPersistenceError,
-    runtimeState,
-    runtimeError,
-  } = loaderData;
+  const { scope, scopeLabel, persistenceSource, persistenceError, runtimeState, runtimeError } =
+    loaderData;
 
   const currentPath = matches[matches.length - 1]?.pathname ?? "";
   const isSessions = isPiSessionsPath(scope, currentPath);
@@ -93,8 +66,6 @@ export default function BackofficeScopedPiLayout({ loaderData, matches }: Route.
             scope,
             persistenceSource,
             persistenceError,
-            automationPersistenceSource,
-            automationPersistenceError,
             runtimeState,
             runtimeError,
           }}

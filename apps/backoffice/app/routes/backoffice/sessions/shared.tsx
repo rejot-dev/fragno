@@ -3,7 +3,6 @@ import { isRouteErrorResponse } from "react-router";
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficePageHeader } from "@/components/backoffice";
 import { BackofficeBreadcrumbs } from "@/components/backoffice/breadcrumbs";
-import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
 import type { PiRuntimeState } from "@/fragno/pi/pi-shared";
 import type { PiCollectionSource } from "@/fragno/pi/tanstack/browser-database";
 
@@ -13,8 +12,6 @@ export type PiLayoutContext = {
   scope: BackofficeContextScope;
   persistenceSource: PiCollectionSource | null;
   persistenceError: string | null;
-  automationPersistenceSource: AutomationCollectionSource | null;
-  automationPersistenceError: string | null;
   runtimeState: PiRuntimeState | null;
   runtimeError: string | null;
 };

@@ -1,6 +1,7 @@
 import { describe, expect, test, assert } from "vitest";
 
 import {
+  backofficeContextScopeFromRouteParams,
   backofficeContextScopeFromSinglePathSegment,
   backofficeContextScopeRouteId,
   backofficeContextScopeRoutePath,
@@ -48,6 +49,24 @@ describe("backoffice scope codec", () => {
   ])("builds route identifiers and paths for %#", (scope, expectedId, expectedPath) => {
     expect(backofficeContextScopeRouteId(scope)).toBe(expectedId);
     expect(backofficeContextScopeRoutePath(scope)).toBe(expectedPath);
+  });
+
+  test("round-trips system route scopes through the context codec", () => {
+    expect(
+      backofficeContextScopeFromRouteParams({ scopeKind: "system", scopeId: "system" }),
+    ).toEqual({ kind: "system" });
+    expect(() =>
+      backofficeScopeFromRouteParams({ scopeKind: "system", scopeId: "system" }),
+    ).toThrow("System scope is not routable here.");
+  });
+
+  test("rejects incomplete and malformed route scopes at acquisition", () => {
+    expect(() => backofficeContextScopeFromRouteParams({ scopeKind: "org" })).toThrow(
+      "Route scope requires both kind and id components.",
+    );
+    expect(() =>
+      backofficeContextScopeFromRouteParams({ scopeKind: "system", scopeId: "other" }),
+    ).toThrow("System scope requires the system id.");
   });
 
   test("supports system scopes for object-address metadata and public callbacks", () => {

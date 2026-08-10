@@ -10,6 +10,7 @@ import {
 } from "react-router";
 
 import { BackofficeSystemState } from "@/components/backoffice";
+import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { ClientOnly } from "@/components/client-only";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import {
@@ -23,7 +24,6 @@ import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/scope-layout";
 import {
   createAutomationProject,
-  fetchAutomationAdapterIdentity,
   fetchAutomationProjects,
   loadAutomationWorkspaceData,
   toExternalId,
@@ -172,20 +172,18 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
                 : "Local workspace script metadata is unavailable.",
           }))
       : Promise.resolve({ source: null, error: null });
-  const [workspaceResult, adapterIdentity, uploadCollectionState] = await Promise.all([
+  const [workspaceResult, uploadCollectionState] = await Promise.all([
     loadAutomationWorkspaceData({
       request,
       context,
       scope: backofficeScope,
       layers: serverScriptLayers,
     }),
-    fetchAutomationAdapterIdentity(request, context, backofficeScope),
     uploadCollectionStatePromise,
   ]);
 
   return {
     selectedScope,
-    adapterIdentity,
     scopeOptions: createAutomationScopeOptions({
       organisations,
       projects: projectsResult.projects,
@@ -367,10 +365,18 @@ function AutomationClientOutlet({
   loaderData: Route.ComponentProps["loaderData"];
 }) {
   const database = use(getAutomationBrowserDatabase());
-  const collectionSource = {
-    scope: toBackofficeScope(loaderData.selectedScope),
-    adapterIdentity: loaderData.adapterIdentity,
-  };
+  const { automationCollectionSource } = useCurrentBackofficeContext();
+  if (automationCollectionSource.status === "unavailable") {
+    return (
+      <BackofficeSystemState
+        tone="error"
+        label="Unavailable"
+        title="Automation synchronization failed."
+        description={automationCollectionSource.message}
+      />
+    );
+  }
+  const collectionSource = automationCollectionSource.source;
   const collections = database.collectionsFor(collectionSource);
   const outletKey = describeAutomationCollectionSource(collectionSource).resourceKey;
   const outletContext = {

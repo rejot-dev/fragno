@@ -1,7 +1,7 @@
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
+  backofficeContextScopeFromRouteParams,
   backofficeContextScopeRoutePath,
-  backofficeScopeFromRouteParams,
 } from "@/backoffice-runtime/scope-codec";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 
@@ -176,26 +176,12 @@ export const createAutomationScopeOptions = ({
   ];
 };
 
-const automationRouteScopeFromParams = (params: {
-  scopeKind?: string;
-  scopeId?: string;
-}): BackofficeContextScope | null => {
-  if (params.scopeKind === "system") {
-    if (params.scopeId === SYSTEM_AUTOMATION_SCOPE_ID) {
-      return { kind: "system" };
-    }
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  return backofficeScopeFromRouteParams(params);
-};
-
 export const automationScopeFromRouteParams = (params: {
   scopeKind?: string;
   scopeId?: string;
 }): BackofficeContextScope => {
   try {
-    const scope = automationRouteScopeFromParams(params);
+    const scope = backofficeContextScopeFromRouteParams(params);
     if (!scope) {
       throw new Response("Not Found", { status: 404 });
     }
@@ -221,7 +207,7 @@ export const resolveAutomationUiScope = ({
 }): AutomationUiScope => {
   let parsed;
   try {
-    parsed = automationRouteScopeFromParams(params);
+    parsed = backofficeContextScopeFromRouteParams(params);
   } catch {
     throw new Response("Not Found", { status: 404 });
   }

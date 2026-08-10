@@ -60,15 +60,25 @@ export const backofficeContextScopeRouteId = (scope: BackofficeContextScope) => 
 export const backofficeContextScopeRoutePath = (scope: BackofficeContextScope) =>
   `${scope.kind}/${encodeURIComponent(backofficeContextScopeRouteId(scope))}`;
 
-export const backofficeScopeFromRouteParams = ({
+export const backofficeContextScopeFromRouteParams = ({
   scopeKind,
   scopeId,
 }: {
   scopeKind?: string;
   scopeId?: string;
-}): BackofficeRoutableScope | null => {
-  if (!scopeKind || !scopeId) {
+}): BackofficeContextScope | null => {
+  if (!scopeKind && !scopeId) {
     return null;
+  }
+  if (!scopeKind || !scopeId) {
+    return invalidScope("Route scope requires both kind and id components.");
+  }
+
+  if (scopeKind === "system") {
+    if (scopeId !== "system") {
+      return invalidScope("System scope requires the system id.");
+    }
+    return { kind: "system" };
   }
 
   if (scopeKind === "org") {
@@ -93,6 +103,17 @@ export const backofficeScopeFromRouteParams = ({
   }
 
   return invalidScope(`Unknown scope kind '${scopeKind}'.`);
+};
+
+export const backofficeScopeFromRouteParams = (params: {
+  scopeKind?: string;
+  scopeId?: string;
+}): BackofficeRoutableScope | null => {
+  const scope = backofficeContextScopeFromRouteParams(params);
+  if (scope?.kind === "system") {
+    return invalidScope("System scope is not routable here.");
+  }
+  return scope;
 };
 
 export const backofficeContextScopeSinglePathSegment = (scope: BackofficeSinglePathScope) => {
