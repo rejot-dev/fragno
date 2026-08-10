@@ -439,6 +439,7 @@ async function runTask(
     createEpoch: ctx.createEpoch,
     stepEmissions: ctx.stepEmissions,
     workflowsByName: ctx.workflowsByName,
+    checkpoint: workflow.checkpoint,
   });
   const initialEvent = buildWorkflowEvent(instance);
 

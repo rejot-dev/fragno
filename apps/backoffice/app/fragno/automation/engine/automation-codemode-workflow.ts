@@ -234,51 +234,56 @@ export const defineAutomationCodemodeWorkflow = (
     }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
   },
 ) =>
-  defineRemoteWorkflow({ name: AUTOMATION_CODEMODE_WORKFLOW }, async (event, remote) => {
-    if (!config.env?.LOADER) {
-      throw new Error("Workflow-backed codemode automation requires the Cloudflare Worker Loader.");
-    }
-
-    const params = event.payload as AutomationCodemodeWorkflowParams;
-    if (params.script.kind !== "file") {
-      throw new Error("Automation codemode workflows require a file-backed script.");
-    }
-
-    const resolvedFs = await resolveAutomationFileSystem(config, {
-      execution: createAutomationFileSystemExecution(params.automationEvent),
-      purpose: "runtime",
-    });
-    if (!(resolvedFs instanceof MasterFileSystem)) {
-      throw new Error("Automation filesystem must be a MasterFileSystem.");
-    }
-
-    let script: string;
-    try {
-      script = await resolvedFs.readFile(params.script.path, "utf-8");
-    } catch (error) {
-      if (!isMissingWorkflowScriptError(error)) {
-        throw error;
+  defineRemoteWorkflow(
+    { name: AUTOMATION_CODEMODE_WORKFLOW, checkpoint: "step" },
+    async (event, remote) => {
+      if (!config.env?.LOADER) {
+        throw new Error(
+          "Workflow-backed codemode automation requires the Cloudflare Worker Loader.",
+        );
       }
 
-      return {
-        skipped: true,
-        reason: "workflow-script-not-found",
-        workflowScriptPath: params.script.path,
-      };
-    }
+      const params = event.payload as AutomationCodemodeWorkflowParams;
+      if (params.script.kind !== "file") {
+        throw new Error("Automation codemode workflows require a file-backed script.");
+      }
 
-    return await executeAutomationWorkflowSource({
-      script,
-      automationEvent: params.automationEvent,
-      workflowScriptPath: params.script.path,
-      workflowEvent: {
-        instanceId: event.instanceId,
-        timestamp: event.timestamp,
-        payload: event.payload,
-      },
-      remote,
-      config,
-      metadata: params.metadata,
-      masterFs: resolvedFs,
-    });
-  });
+      const resolvedFs = await resolveAutomationFileSystem(config, {
+        execution: createAutomationFileSystemExecution(params.automationEvent),
+        purpose: "runtime",
+      });
+      if (!(resolvedFs instanceof MasterFileSystem)) {
+        throw new Error("Automation filesystem must be a MasterFileSystem.");
+      }
+
+      let script: string;
+      try {
+        script = await resolvedFs.readFile(params.script.path, "utf-8");
+      } catch (error) {
+        if (!isMissingWorkflowScriptError(error)) {
+          throw error;
+        }
+
+        return {
+          skipped: true,
+          reason: "workflow-script-not-found",
+          workflowScriptPath: params.script.path,
+        };
+      }
+
+      return await executeAutomationWorkflowSource({
+        script,
+        automationEvent: params.automationEvent,
+        workflowScriptPath: params.script.path,
+        workflowEvent: {
+          instanceId: event.instanceId,
+          timestamp: event.timestamp,
+          payload: event.payload,
+        },
+        remote,
+        config,
+        metadata: params.metadata,
+        masterFs: resolvedFs,
+      });
+    },
+  );

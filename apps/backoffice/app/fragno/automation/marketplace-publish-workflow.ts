@@ -118,6 +118,7 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
       name: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
       schema: marketplacePublishWorkflowParamsSchema,
       outputSchema: marketplacePublishWorkflowOutputSchema,
+      checkpoint: "step",
     },
     async (event, step) => {
       if (config.ownerScope.kind !== "org") {

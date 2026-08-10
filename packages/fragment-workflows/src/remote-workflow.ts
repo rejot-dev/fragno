@@ -21,7 +21,8 @@ export type RemoteWorkflowStepSuspendReason =
       delayMs?: number | null;
       runAt?: Date;
     }
-  | { type: "retry"; stepKey: string; delayMs?: number | null };
+  | { type: "retry"; stepKey: string; delayMs?: number | null }
+  | { type: "checkpoint"; stepKey: string; delayMs: 0 };
 
 export type RemoteWorkflowSuspension = {
   __fragnoRemoteWorkflowSuspended: true;

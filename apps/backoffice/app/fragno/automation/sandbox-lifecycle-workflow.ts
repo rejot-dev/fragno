@@ -64,7 +64,7 @@ const buildSandboxFailedEvent = ({
 
 export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowConfig) =>
   defineWorkflow(
-    { name: "sandbox-lifecycle" },
+    { name: "sandbox-lifecycle", checkpoint: "step" },
     async (event: { payload: SandboxLifecycleWorkflowParams; instanceId: string }, step) => {
       const params = event.payload;
       const sandboxId = params.id;

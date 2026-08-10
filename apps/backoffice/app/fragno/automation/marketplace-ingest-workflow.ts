@@ -225,6 +225,7 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
       name: MARKETPLACE_INGEST_WORKFLOW_NAME,
       schema: marketplaceIngestionWorkflowInputSchema,
       outputSchema: marketplaceIngestWorkflowOutputSchema,
+      checkpoint: "step",
     },
     async (event, step) => {
       const input = event.payload;
