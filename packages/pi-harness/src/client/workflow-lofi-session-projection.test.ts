@@ -111,11 +111,11 @@ const workflowEmissionMutation = (
   },
 });
 
-const outboxEntry = (mutations: OutboxPayload["mutations"]): OutboxEntry => ({
+const outboxEntry = (mutations: OutboxPayload["operations"]): OutboxEntry => ({
   id: FragnoId.fromExternal("projection-outbox-entry", 0),
   versionstamp: "outbox-001",
   uowId: "projection-uow",
-  payload: { json: { version: 1, mutations } satisfies OutboxPayload },
+  payload: { json: { version: 2, operations: mutations } satisfies OutboxPayload },
   createdAt: new Date(),
 });
 

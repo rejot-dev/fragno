@@ -2,6 +2,9 @@ import { describe, expect, expectTypeOf, it, assert } from "vitest";
 
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import { cleanStores } from "nanostores";
+import superjson from "superjson";
+
+import type { OutboxEntry } from "@fragno-dev/db";
 
 import { InMemoryLofiAdapter } from "../adapters/in-memory/adapter";
 import type { LofiMutation } from "../types";
@@ -207,7 +210,7 @@ describe("createLofiQueryStore", () => {
     const unlisten = $users.subscribe(() => undefined);
 
     await waitFor(() => $users.get().loading);
-    runtime.refresh();
+    void runtime.refresh();
     expect($users.get()).toMatchObject({
       data: ["SSR Alice"],
       loading: true,
@@ -317,7 +320,7 @@ describe("createLofiQueryStore", () => {
     expect($users.get().data).toEqual([]);
 
     await adapter.applyMutations([createUserMutation("user-b", "Bob")]);
-    runtime.refresh();
+    void runtime.refresh();
 
     await waitFor(() => $users.get().data.includes("Bob"));
     const names: string[] = $users.get().data;
@@ -421,6 +424,78 @@ describe("runtime.store().withEphemeral", () => {
 
     expect(reducedValues).toEqual(["start", "delta"]);
     expect(state.data.values).toEqual(["start", "delta"]);
+    unsubscribe();
+    cleanStores(store);
+  });
+
+  it("resets ephemeral reducer state before replaying after truncation", async () => {
+    const { runtime, enqueue } = await createEphemeralStoreRuntime({
+      durableMutations: [snapshotCreate()],
+      initialEntries: [
+        createOutboxEntry({
+          versionstamp: "001",
+          mutations: [ephemeralCreate("events", "event-start", "start", "001")],
+        }),
+        createOutboxEntry({
+          versionstamp: "002",
+          mutations: [ephemeralCreate("events", "event-item", "delta", "002")],
+        }),
+      ],
+    });
+    let initialStateCalls = 0;
+    const reducedValues: string[] = [];
+    const store = runtime
+      .store()
+      .retrieve(retrieveSnapshot)
+      .transformRetrieve(({ snapshot }) => ({
+        committedCount: snapshot?.committedCount ?? 0,
+        values: [] as string[],
+      }))
+      .withEphemeral(ephemeralStoreSchema, "events", {
+        initialState: () => {
+          initialStateCalls += 1;
+          return [] as string[];
+        },
+        reduce: (values, item) => {
+          reducedValues.push(item.value);
+          return [...values, item.value];
+        },
+        overlay: (data, values) => ({ ...data, values }),
+      })
+      .withInitialData({ committedCount: 0, values: [] as string[] });
+    const unsubscribe = store.subscribe(() => undefined);
+
+    await storeStateMatching(store, ({ data }) => data.values.includes("delta"));
+
+    enqueue([
+      {
+        versionstamp: "003",
+        uowId: "uow-003",
+        payload: superjson.serialize({
+          version: 2,
+          operations: [
+            {
+              op: "truncate",
+              schema: ephemeralStoreSchema.name,
+              table: "events",
+              match: { stream: "events" },
+              externalIds: ["event-start", "event-item"],
+              versionstamp: "003-truncate",
+            },
+          ],
+        }),
+      } as OutboxEntry,
+    ]);
+
+    const result = await runtime.syncOnce();
+
+    assert(result.appliedEntries === 1);
+    assert(runtime.$revision.get() === 1);
+    expect({ initialStateCalls, reducedValues, values: store.get().data.values }).toEqual({
+      initialStateCalls: 2,
+      reducedValues: ["start", "delta"],
+      values: [],
+    });
     unsubscribe();
     cleanStores(store);
   });
@@ -880,7 +955,7 @@ describe("runtime.store().withEphemeral", () => {
     runtime.stop();
 
     await adapter.applyMutations([snapshotUpdate(1, "direct-update")]);
-    runtime.refresh();
+    void runtime.refresh();
     await secondTransformStarted;
 
     enqueue([

@@ -1,4 +1,6 @@
+import { internalSchema } from "../../fragments/internal-fragment.schema";
 import type { TriggeredHook, TriggerHookOptions, HooksMap, HookPayload } from "../../hooks/hooks";
+import type { OutboxMatch, OutboxTruncateNotificationDraft } from "../../outbox/outbox";
 import type { AnySchema, AnyTable, Index, IdColumn, AnyColumn } from "../../schema/create";
 import { FragnoId, getTableRelations } from "../../schema/create";
 import type { Prettify } from "../../util/types";
@@ -204,6 +206,8 @@ export interface CompiledMutation<TOutput> {
    * Idempotency key for the Unit of Work that produced this mutation.
    */
   uowId?: string;
+  /** Ordered outbox controls registered by this unit of work. */
+  outboxNotifications?: readonly OutboxTruncateNotificationDraft[];
   /**
    * The type of mutation operation.
    */
@@ -797,6 +801,9 @@ export interface IUnitOfWork {
   ): void;
 
   getTriggeredHooks(): readonly TriggeredHook[];
+
+  /** @internal Register an ordered outbox notification without adding a database operation. */
+  notifyOutboxTruncate(notification: OutboxTruncateNotificationDraft): void;
 }
 
 /**
@@ -1112,6 +1119,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   // Operations can come from any schema
   #retrievalOps: RetrievalOperation<AnySchema>[] = [];
   #mutationOps: MutationOperation<AnySchema>[] = [];
+  #outboxNotifications: OutboxTruncateNotificationDraft[] = [];
 
   readonly #compiler: UOWCompiler<unknown>;
   readonly #executor: UOWExecutor<unknown, TRawInput>;
@@ -1262,6 +1270,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
 
     child.#retrievalOps = this.#retrievalOps;
     child.#mutationOps = this.#mutationOps;
+    child.#outboxNotifications = this.#outboxNotifications;
     child.#retrievalResults = this.#retrievalResults;
     child.#createdInternalIds = this.#createdInternalIds;
     child.#readTrackingEnabled = this.#readTrackingEnabled;
@@ -1316,6 +1325,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     // Clear operations
     this.#retrievalOps = [];
     this.#mutationOps = [];
+    this.#outboxNotifications = [];
     this.#retrievalResults = undefined;
     this.#createdInternalIds = [];
     this.#readTrackingEnabled = false;
@@ -1529,6 +1539,14 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
         }
       }
 
+      if (this.#outboxNotifications.length > 0) {
+        const firstMutation = mutationBatch[0];
+        if (!firstMutation) {
+          throw new Error("Outbox notifications require at least one mutation operation.");
+        }
+        firstMutation.outboxNotifications = [...this.#outboxNotifications];
+      }
+
       if (this.#config?.dryRun) {
         this.#state = "executed";
         afterRan = true;
@@ -1624,6 +1642,13 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     this.#mutationOps.push(op);
   }
 
+  notifyOutboxTruncate(notification: OutboxTruncateNotificationDraft): void {
+    if (this.state === "executed") {
+      throw new Error(`Cannot register an outbox notification in executed state.`);
+    }
+    this.#outboxNotifications.push(notification);
+  }
+
   /**
    * Get the IDs of created entities after executeMutations() has been called.
    * Returns FragnoId objects with external IDs (always available) and internal IDs
@@ -1685,11 +1710,73 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       }
     }
 
+    if (this.#outboxNotifications.length > 0) {
+      const firstMutation = mutationBatch[0];
+      if (!firstMutation) {
+        throw new Error("Outbox notifications require at least one mutation operation.");
+      }
+      firstMutation.outboxNotifications = [...this.#outboxNotifications];
+    }
+
     return {
       name: this.#name,
       retrievalBatch,
       mutationBatch,
     };
+  }
+}
+
+export class TypedOutboxNotifier<const TSchema extends AnySchema> {
+  readonly #namespace?: string | null;
+  readonly #uow: UnitOfWork;
+
+  constructor(namespace: string | null | undefined, uow: UnitOfWork) {
+    this.#namespace = namespace;
+    this.#uow = uow;
+  }
+
+  deleteMutation(id: FragnoId | string): void {
+    this.#uow.addMutationOperation({
+      type: "delete",
+      schema: internalSchema,
+      namespace: null,
+      table: "fragno_db_outbox_mutations",
+      id,
+      checkVersion: false,
+      omitOutbox: true,
+    });
+  }
+
+  notifyTruncate<TTableName extends keyof TSchema["tables"] & string>(
+    table: TTableName,
+    options: {
+      match: OutboxMatch<TSchema["tables"][TTableName]>;
+      externalIds: string[];
+    },
+  ): void {
+    if (Object.keys(options.match).length === 0) {
+      throw new Error("Outbox truncate match must contain at least one field.");
+    }
+    if (options.externalIds.length === 0) {
+      throw new Error("Outbox truncate external IDs must contain at least one ID.");
+    }
+    if (
+      options.externalIds.some(
+        (externalId) => typeof externalId !== "string" || externalId.length === 0,
+      )
+    ) {
+      throw new Error("Outbox truncate external IDs must be non-empty strings.");
+    }
+
+    const schema = this.#namespace ?? "";
+    this.#uow.notifyOutboxTruncate({
+      op: "truncate",
+      schema,
+      ...(this.#namespace ? { namespace: this.#namespace } : {}),
+      table,
+      match: options.match,
+      externalIds: options.externalIds,
+    });
   }
 }
 
@@ -1729,6 +1816,14 @@ export class TypedUnitOfWork<
 
   get schema(): TSchema {
     return this.#schema;
+  }
+
+  get outbox(): TypedOutboxNotifier<TSchema> {
+    return new TypedOutboxNotifier(this.#namespace, this.#uow);
+  }
+
+  notifyOutboxTruncate(notification: OutboxTruncateNotificationDraft): void {
+    this.#uow.notifyOutboxTruncate(notification);
   }
 
   get name(): string | undefined {
@@ -1871,6 +1966,7 @@ export class TypedUnitOfWork<
       this.#schema,
       tableName,
       table as TSchema["tables"][TTableName],
+      this.#namespace,
     );
     builderFn(builder);
     const queryTree = builder.build();
@@ -1932,6 +2028,7 @@ export class TypedUnitOfWork<
       this.#schema,
       tableName,
       table as TSchema["tables"][TTableName],
+      this.#namespace,
     );
     builderFn(builder);
     builder.pageSize(1);
@@ -2007,6 +2104,7 @@ export class TypedUnitOfWork<
       this.#schema,
       tableName,
       table as TSchema["tables"][TTableName],
+      this.#namespace,
     );
     builderFn(builder);
     const queryTree = builder.build();

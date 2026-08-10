@@ -115,6 +115,10 @@ export class NamingResolver {
     return this.#strategy;
   }
 
+  forSchema(schema: AnySchema, namespace: string | null): NamingResolver {
+    return new NamingResolver(schema, namespace, this.#strategy);
+  }
+
   getSchemaName(): string | null {
     if (this.#strategy.namespaceScope !== "schema") {
       return null;

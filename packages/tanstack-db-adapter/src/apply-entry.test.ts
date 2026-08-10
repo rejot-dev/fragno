@@ -60,8 +60,8 @@ describe("applyFragnoOutboxEntry", () => {
 
     applyFragnoOutboxEntry(
       createEntry({
-        version: 1,
-        mutations: [
+        version: 2,
+        operations: [
           {
             op: "create",
             schema: "app",
@@ -106,8 +106,8 @@ describe("applyFragnoOutboxEntry", () => {
 
     applyFragnoOutboxEntry(
       createEntry({
-        version: 1,
-        mutations: [
+        version: 2,
+        operations: [
           {
             op: "create",
             schema: "app",
@@ -124,6 +124,63 @@ describe("applyFragnoOutboxEntry", () => {
 
     expect(events).toEqual([
       "begin",
+      {
+        type: "metadata",
+        key: FRAGNO_OUTBOX_CHECKPOINT_METADATA_KEY,
+        value: {
+          versionstamp: "000000000000000000000001",
+          uowId: "uow-1",
+        },
+      },
+      "commit",
+    ]);
+  });
+
+  it("writes all truncate deletes and the checkpoint in one transaction", () => {
+    const events: AppliedEvent[] = [];
+
+    applyFragnoOutboxEntry(
+      createEntry({
+        version: 2,
+        operations: [
+          {
+            op: "truncate",
+            schema: "app",
+            table: "users",
+            match: { name: "Ada" },
+            externalIds: ["user-1", "user-2"],
+            versionstamp: "000000000000000000000001",
+          },
+        ],
+      }),
+      { schema: appSchema, table: "users" },
+      createRecordingControls(events),
+    );
+
+    expect(events).toEqual([
+      "begin",
+      {
+        type: "write",
+        message: {
+          type: "delete",
+          key: "user-1",
+          metadata: {
+            versionstamp: "000000000000000000000001",
+            uowId: "uow-1",
+          },
+        },
+      },
+      {
+        type: "write",
+        message: {
+          type: "delete",
+          key: "user-2",
+          metadata: {
+            versionstamp: "000000000000000000000001",
+            uowId: "uow-1",
+          },
+        },
+      },
       {
         type: "metadata",
         key: FRAGNO_OUTBOX_CHECKPOINT_METADATA_KEY,

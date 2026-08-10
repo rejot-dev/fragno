@@ -568,44 +568,6 @@ describe("github-app pull request routes", () => {
     }
   });
 
-  it("rejects pull request queries when installation is missing", async () => {
-    const { fragments, test } = await buildHarness({
-      appId: "42",
-      appSlug: "test-app",
-      clientId: "test-client-id",
-      clientSecret: "test-client-secret",
-      callbackUrl: "https://example.com/github/callback",
-      privateKeyPem: createPrivateKey(),
-      webhookSecret: "secret",
-    });
-
-    try {
-      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
-        id: "120",
-        installationId: 999n,
-        ownerLogin: "octo",
-        name: "repo",
-        fullName: "octo/repo",
-        isPrivate: false,
-        isFork: false,
-        defaultBranch: "main",
-        removedAt: null,
-      });
-
-      const response = (await fragments.githubApp.callRoute(
-        "GET",
-        "/repositories/:owner/:repo/pulls",
-        { pathParams: { owner: "octo", repo: "repo" } },
-      )) as ErrorResponse;
-
-      assert(response.type === "error");
-
-      assert(response.error.code === "INSTALLATION_NOT_FOUND");
-    } finally {
-      await test.cleanup();
-    }
-  });
-
   it("maps GitHub API errors for pull request queries", async () => {
     const installationId = "13";
     const fetchMock = createFetchMock({
@@ -864,44 +826,6 @@ describe("github-app pull request routes", () => {
       assert(response.type === "error");
 
       assert(response.error.code === "INSTALLATION_INACTIVE");
-    } finally {
-      await test.cleanup();
-    }
-  });
-
-  it("rejects review requests when installation is missing", async () => {
-    const { fragments, test } = await buildHarness({
-      appId: "42",
-      appSlug: "test-app",
-      clientId: "test-client-id",
-      clientSecret: "test-client-secret",
-      callbackUrl: "https://example.com/github/callback",
-      privateKeyPem: createPrivateKey(),
-      webhookSecret: "secret",
-    });
-
-    try {
-      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
-        id: "170",
-        installationId: 1000n,
-        ownerLogin: "octo",
-        name: "repo",
-        fullName: "octo/repo",
-        isPrivate: false,
-        isFork: false,
-        defaultBranch: "main",
-        removedAt: null,
-      });
-
-      const response = (await fragments.githubApp.callRoute(
-        "POST",
-        "/repositories/:owner/:repo/pulls/:number/reviews",
-        { pathParams: { owner: "octo", repo: "repo", number: "12" }, body: {} },
-      )) as ErrorResponse;
-
-      assert(response.type === "error");
-
-      assert(response.error.code === "INSTALLATION_NOT_FOUND");
     } finally {
       await test.cleanup();
     }

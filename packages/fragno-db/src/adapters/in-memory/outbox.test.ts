@@ -93,7 +93,7 @@ async function listOutboxMutations(internalFragment: InternalFragmentInstance): 
     uowId: string;
     schema: string;
     table: string;
-    externalId: string;
+    externalId: string | null;
     op: string;
     payload: unknown;
   }>
@@ -178,7 +178,7 @@ describe("in-memory outbox", () => {
     const entries = await listOutbox(internalFragment);
     expect(entries).toHaveLength(1);
     const payload = superjson.deserialize(entries[0].payload as SuperJSONResult) as OutboxPayload;
-    expect(payload.mutations).toEqual([
+    expect(payload.operations).toEqual([
       expect.objectContaining({
         op: "create",
         table: "posts",
@@ -186,8 +186,59 @@ describe("in-memory outbox", () => {
       }),
     ]);
     expect(entries[0].refMap).toEqual({ "0.authorId": userId.externalId });
+    const operation = payload.operations[0];
+    assert(operation.op === "create");
     expect(await listOutboxMutations(internalFragment)).toEqual([
-      expect.objectContaining({ table: "posts", externalId: payload.mutations[0].externalId }),
+      expect.objectContaining({ table: "posts", externalId: operation.externalId }),
+    ]);
+
+    await cleanup();
+  });
+
+  it("retrieves and truncates normalized mutations through the query tree", async () => {
+    const { fragment, internalFragment, cleanup } = await buildOutboxTest({ outboxEnabled: true });
+    await createUser(fragment, "truncate@example.com");
+
+    await fragment.inContext(async function (this: DatabaseRequestContext) {
+      await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(outboxSchema).find("users", (b) =>
+            b
+              .whereIndex("idx_users_email", (eb) => eb("email", "=", "truncate@example.com"))
+              .withOutboxMutations(),
+          ),
+        )
+        .mutate(({ forSchema, retrieveResult: [users] }) => {
+          const outbox = forSchema(outboxSchema);
+          for (const user of users) {
+            outbox.delete("users", user.id, (b) => b.check().omitOutbox());
+            for (const mutation of user.$outboxMutations) {
+              outbox.outbox.deleteMutation(mutation.id);
+            }
+          }
+          outbox.outbox.notifyTruncate("users", {
+            match: { email: "truncate@example.com" },
+            externalIds: users.map((user) => user.id.externalId),
+          });
+        })
+        .execute();
+    });
+
+    expect(await listOutboxMutations(internalFragment)).toEqual([
+      expect.objectContaining({ externalId: null, op: "truncate", table: "users" }),
+    ]);
+    const entries = await listOutbox(internalFragment);
+    expect(
+      superjson.deserialize<OutboxPayload>(entries[0].payload as SuperJSONResult).operations,
+    ).toEqual([]);
+    expect(
+      superjson.deserialize<OutboxPayload>(entries[1].payload as SuperJSONResult).operations,
+    ).toEqual([
+      expect.objectContaining({
+        op: "truncate",
+        match: { email: "truncate@example.com" },
+        externalIds: expect.any(Array),
+      }),
     ]);
 
     await cleanup();
@@ -206,9 +257,9 @@ describe("in-memory outbox", () => {
     assert(entries[0].versionstamp < entries[1].versionstamp);
 
     const payload = superjson.deserialize(entries[1].payload as SuperJSONResult) as OutboxPayload;
-    assert(payload.version === 1);
-    expect(payload.mutations).toHaveLength(1);
-    const [mutation] = payload.mutations;
+    assert(payload.version === 2);
+    expect(payload.operations).toHaveLength(1);
+    const [mutation] = payload.operations;
     if (mutation.op !== "create") {
       throw new Error("Expected create mutation in outbox payload.");
     }
@@ -242,19 +293,19 @@ describe("in-memory outbox", () => {
 
     for (const entry of entries) {
       const payload = superjson.deserialize(entry.payload as SuperJSONResult) as OutboxPayload;
-      expect(payload.mutations).toHaveLength(1);
+      expect(payload.operations).toHaveLength(1);
     }
 
     for (const mutationRow of mutations) {
       const entry = entryByVersion.get(mutationRow.entryVersionstamp);
       expect(entry).toBeDefined();
       const payload = superjson.deserialize(entry!.payload as SuperJSONResult) as OutboxPayload;
-      const mutation = payload.mutations[0];
+      const mutation = payload.operations[0];
       expect(mutationRow.mutationVersionstamp).toBe(mutation.versionstamp);
       expect(mutationRow.uowId).toBe(entry!.uowId);
       expect(mutationRow.schema).toBe(mutation.schema);
       expect(mutationRow.table).toBe(mutation.table);
-      expect(mutationRow.externalId).toBe(mutation.externalId);
+      expect(mutationRow.externalId).toBe(mutation.op === "truncate" ? null : mutation.externalId);
       expect(mutationRow.op).toBe(mutation.op);
       expect(superjson.deserialize(mutationRow.payload as SuperJSONResult)).toEqual(mutation);
     }
@@ -365,7 +416,7 @@ describe("in-memory outbox", () => {
       for (const entry of entries) {
         const payload = superjson.deserialize(entry.payload as SuperJSONResult) as OutboxPayload;
         if (
-          payload.mutations.some(
+          payload.operations.some(
             (mutation) =>
               mutation.op === "create" &&
               mutation.table === "posts" &&

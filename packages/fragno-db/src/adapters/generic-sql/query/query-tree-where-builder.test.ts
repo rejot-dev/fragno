@@ -20,11 +20,15 @@ describe("query-tree-where-builder", () => {
           .addColumn("id", idColumn())
           .addColumn("title", column("string"))
           .addColumn("userId", referenceColumn({ table: "users" }));
+      })
+      .addTable("mutationRecords", (t) => {
+        return t.addColumn("id", idColumn()).addColumn("externalId", column("string"));
       });
   });
 
   const usersTable = testSchema.tables.users;
   const postsTable = testSchema.tables.posts;
+  const mutationRecordsTable = testSchema.tables.mutationRecords;
 
   const createMockEB = () => {
     const mockEB = ((col: string, op: string, val: unknown) => {
@@ -97,6 +101,34 @@ describe("query-tree-where-builder", () => {
       col: "post_alias.userId",
       op: "=",
       val: { type: "ref", name: "user_alias._internalId" },
+    });
+  });
+
+  it("compares plain child strings to parent external IDs without internal-ID coercion", () => {
+    const condition: Condition = {
+      type: "compare",
+      a: mutationRecordsTable.columns.externalId,
+      operator: "=",
+      b: new ParentColumnRef(usersTable.columns.id),
+    };
+
+    const result = buildQueryTreeWhere(
+      condition,
+      createMockEB(),
+      new NodePostgresDriverConfig(),
+      undefined,
+      undefined,
+      mutationRecordsTable,
+      "mutation_alias",
+      usersTable,
+      "user_alias",
+    );
+
+    expect(result).toEqual({
+      type: "compare",
+      col: "mutation_alias.externalId",
+      op: "=",
+      val: { type: "ref", name: "user_alias.id" },
     });
   });
 

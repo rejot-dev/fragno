@@ -16,8 +16,8 @@ import {
 describe("outbox utilities", () => {
   it("decodes payloads and enforces schema presence", () => {
     const payload: OutboxPayload = {
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "app",
@@ -33,8 +33,8 @@ describe("outbox utilities", () => {
     expect(decoded).toEqual(payload);
 
     const missingSchemaPayload = superjson.serialize({
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           table: "users",
@@ -46,12 +46,12 @@ describe("outbox utilities", () => {
     });
 
     expect(() => decodeOutboxPayload(missingSchemaPayload)).toThrow(
-      "Outbox mutation schema is required",
+      "Outbox operation schema is required",
     );
 
     const emptySchemaPayload = superjson.serialize({
-      version: 1,
-      mutations: [
+      version: 2,
+      operations: [
         {
           op: "create",
           schema: "",
@@ -64,7 +64,69 @@ describe("outbox utilities", () => {
     });
 
     expect(() => decodeOutboxPayload(emptySchemaPayload)).toThrow(
-      "Outbox mutation schema is required",
+      "Outbox operation schema is required",
+    );
+  });
+
+  it("rejects truncate notifications without an object match", () => {
+    for (const match of [null, [], "all"] as const) {
+      const payload = superjson.serialize({
+        version: 2,
+        operations: [
+          {
+            op: "truncate",
+            schema: "app",
+            table: "users",
+            match,
+            externalIds: ["user-1"],
+            versionstamp: "vs",
+          },
+        ],
+      });
+
+      expect(() => decodeOutboxPayload(payload)).toThrow("Outbox truncate match must be an object");
+    }
+  });
+
+  it("rejects truncate notifications without external IDs", () => {
+    for (const externalIds of [undefined, null, [], [""], ["user-1", 2]] as const) {
+      const payload = superjson.serialize({
+        version: 2,
+        operations: [
+          {
+            op: "truncate",
+            schema: "app",
+            table: "users",
+            match: { name: "Ada" },
+            externalIds,
+            versionstamp: "vs",
+          },
+        ],
+      });
+
+      expect(() => decodeOutboxPayload(payload)).toThrow(
+        "Outbox truncate external IDs must be non-empty strings",
+      );
+    }
+  });
+
+  it("rejects non-scalar truncate match values", () => {
+    const payload = superjson.serialize({
+      version: 2,
+      operations: [
+        {
+          op: "truncate",
+          schema: "app",
+          table: "users",
+          match: { profile: { name: "Ada" } },
+          externalIds: ["user-1"],
+          versionstamp: "vs",
+        },
+      ],
+    });
+
+    expect(() => decodeOutboxPayload(payload)).toThrow(
+      "Outbox truncate match values must be scalars",
     );
   });
 

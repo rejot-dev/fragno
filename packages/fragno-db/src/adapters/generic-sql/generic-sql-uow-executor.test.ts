@@ -37,6 +37,27 @@ const createAdapterReturningRows = (rows: Record<string, unknown>[]) =>
       }),
   }) as unknown as SqlDriverAdapter;
 
+const createRecordingOutboxAdapter = (queries: CompiledQuery[]) => {
+  let queryCount = 0;
+  return {
+    transaction: async (
+      callback: (trx: {
+        executeQuery: (query: CompiledQuery) => Promise<unknown>;
+      }) => Promise<unknown>,
+    ) =>
+      await callback({
+        executeQuery: async (query) => {
+          queries.push(query);
+          queryCount += 1;
+          if (queryCount === 1) {
+            return { rows: [{ value: "7", nowMs: 1_786_339_200_000 }] };
+          }
+          return { rows: [] };
+        },
+      }),
+  } as unknown as SqlDriverAdapter;
+};
+
 const outboxExecutorSchema = schema("outbox_executor", (s) =>
   s.addTable("records", (t) => t.addColumn("id", idColumn()).addColumn("label", column("string"))),
 );
@@ -176,6 +197,81 @@ describe("executeMutation", () => {
     );
 
     assert(!result.success);
+  });
+
+  it("writes row mutations and truncate notifications as ordered normalized operations", async () => {
+    const queries: CompiledQuery[] = [];
+    const batch = outboxMutationBatch(compiledQuery);
+    batch[0]!.outboxNotifications = [
+      {
+        op: "truncate",
+        schema: "outbox_executor",
+        table: "records",
+        match: { group: "completed" },
+        externalIds: ["record-1"],
+      },
+    ];
+
+    const result = await executeMutation(
+      createRecordingOutboxAdapter(queries),
+      new NodePostgresDriverConfig(),
+      batch,
+      { dialect: outboxDialect, outbox: { enabled: true } },
+    );
+
+    assert(result.success);
+    const normalizedOperationInserts = queries.filter((query) =>
+      query.sql.includes('insert into "fragno_db_outbox_mutations"'),
+    );
+    expect(normalizedOperationInserts).toHaveLength(2);
+
+    const mutationInsert = normalizedOperationInserts[0]!;
+    expect(mutationInsert.parameters).toContain("update");
+    expect(mutationInsert.parameters).toContain("record-1");
+
+    const truncateInsert = normalizedOperationInserts[1]!;
+    expect(truncateInsert.parameters).toContain("truncate");
+    expect(truncateInsert.parameters).toContain(null);
+    expect(truncateInsert.parameters).toContainEqual(
+      expect.objectContaining({
+        json: expect.objectContaining({
+          op: "truncate",
+          match: { group: "completed" },
+          externalIds: ["record-1"],
+        }),
+      }),
+    );
+  });
+
+  it("writes truncate notifications even when the source mutation is excluded from the outbox", async () => {
+    const queries: CompiledQuery[] = [];
+    const batch = outboxMutationBatch(compiledQuery);
+    batch[0]!.outboxNotifications = [
+      {
+        op: "truncate",
+        schema: "outbox_executor",
+        table: "records",
+        match: { group: "completed" },
+        externalIds: ["record-1"],
+      },
+    ];
+
+    const result = await executeMutation(
+      createRecordingOutboxAdapter(queries),
+      new NodePostgresDriverConfig(),
+      batch,
+      {
+        dialect: outboxDialect,
+        outbox: { enabled: true, shouldInclude: () => false },
+      },
+    );
+
+    assert(result.success);
+    const normalizedOperationInserts = queries.filter((query) =>
+      query.sql.includes('insert into "fragno_db_outbox_mutations"'),
+    );
+    expect(normalizedOperationInserts).toHaveLength(1);
+    expect(normalizedOperationInserts[0]?.parameters).toContain("truncate");
   });
 
   it("does not log retryable outbox insert failures", async () => {

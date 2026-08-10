@@ -63,15 +63,17 @@ export const fragno_db_outbox_mutations = sqliteTable("fragno_db_outbox_mutation
   uowId: text("uowId").notNull(),
   schema: text("schema").notNull(),
   table: text("table").notNull(),
-  externalId: text("externalId").notNull(),
+  externalId: text("externalId"),
   op: text("op").notNull(),
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-  _version: integer("_version").notNull().default(0)
+  _version: integer("_version").notNull().default(0),
+  payload: text("payload", { mode: "json" }).notNull()
 }, (table) => [
   index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_entf896150d").on(table.entryVersionstamp),
   index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_key16922fb2").on(table.schema, table.table, table.externalId, table.entryVersionstamp),
   index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_uowa7a0749c").on(table.uowId),
+  index("idx_fragno_db_outbox_mutations_idx_outbox_mutations_entea64c823").on(table.entryVersionstamp, table.mutationVersionstamp),
   uniqueIndex("uidx_fragno_db_outbox_mutations_idx_fragno_db_outbox_mu54df4b80").on(table.id)
 ])
 

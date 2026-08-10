@@ -2,13 +2,13 @@ import superjson from "superjson";
 
 import { describeDiagnosticValue, truncateDiagnosticString } from "../../diagnostics/value-shape";
 import type {
-  OutboxMutation,
+  OutboxOperation,
   OutboxPayload,
   OutboxPayloadSerialized,
   OutboxRefMap,
 } from "../../outbox/outbox";
 
-const OUTBOX_DIAGNOSTIC_MUTATION_LIMIT = 8;
+const OUTBOX_DIAGNOSTIC_OPERATION_LIMIT = 8;
 const OUTBOX_DIAGNOSTIC_FIELD_LIMIT = 8;
 const OUTBOX_DIAGNOSTIC_STRING_LIMIT = 160;
 const OUTBOX_DIAGNOSTIC_VALUE_SHAPE_OPTIONS = {
@@ -36,24 +36,24 @@ export type OutboxInsertDiagnostics = {
   id: string;
   versionstamp: string;
   uowId: string;
-  mutationCount: number;
+  operationCount: number;
   payloadSerializedBytes: number;
   refMapSerializedBytes: number;
   estimatedRowValueBytes: number;
-  mutationGroups: {
+  operationGroups: {
     schema: string;
     table: string;
-    op: OutboxMutation["op"];
+    op: OutboxOperation["op"];
     count: number;
     estimatedSerializedBytes: number;
-    largestMutationEstimatedBytes: number;
+    largestOperationEstimatedBytes: number;
   }[];
-  largestMutations: {
+  largestOperations: {
     index: number;
     schema: string;
     table: string;
-    op: OutboxMutation["op"];
-    externalId: string;
+    op: OutboxOperation["op"];
+    externalId?: string;
     estimatedSerializedBytes: number;
     largestFields: {
       name: string;
@@ -66,10 +66,16 @@ export type OutboxInsertDiagnostics = {
 export function buildOutboxInsertDiagnostics(
   options: OutboxInsertDiagnosticContext,
 ): OutboxInsertDiagnostics {
-  const mutationDiagnostics = options.payload.mutations.map((mutation, index) => {
-    const mutationValues =
-      mutation.op === "create" ? mutation.values : mutation.op === "update" ? mutation.set : {};
-    const largestFields = Object.entries(mutationValues)
+  const operationDiagnostics = options.payload.operations.map((operation, index) => {
+    const operationValues =
+      operation.op === "create"
+        ? operation.values
+        : operation.op === "update"
+          ? operation.set
+          : operation.op === "truncate"
+            ? operation.match
+            : {};
+    const largestFields = Object.entries(operationValues)
       .map(([name, value]) => ({
         name,
         estimatedSerializedBytes: superjsonByteSize(value),
@@ -80,36 +86,43 @@ export function buildOutboxInsertDiagnostics(
 
     return {
       index,
-      schema: mutation.schema,
-      table: mutation.table,
-      op: mutation.op,
-      externalId: truncateDiagnosticString(mutation.externalId, OUTBOX_DIAGNOSTIC_STRING_LIMIT),
-      estimatedSerializedBytes: superjsonByteSize(mutation),
+      schema: operation.schema,
+      table: operation.table,
+      op: operation.op,
+      ...(operation.op !== "truncate"
+        ? {
+            externalId: truncateDiagnosticString(
+              operation.externalId,
+              OUTBOX_DIAGNOSTIC_STRING_LIMIT,
+            ),
+          }
+        : {}),
+      estimatedSerializedBytes: superjsonByteSize(operation),
       largestFields,
     };
   });
-  const mutationGroups = new Map<string, OutboxInsertDiagnostics["mutationGroups"][number]>();
+  const operationGroups = new Map<string, OutboxInsertDiagnostics["operationGroups"][number]>();
 
-  for (const mutation of mutationDiagnostics) {
-    const key = `${mutation.schema}\u0000${mutation.table}\u0000${mutation.op}`;
-    const existing = mutationGroups.get(key);
+  for (const operation of operationDiagnostics) {
+    const key = `${operation.schema}\u0000${operation.table}\u0000${operation.op}`;
+    const existing = operationGroups.get(key);
     if (existing) {
       existing.count += 1;
-      existing.estimatedSerializedBytes += mutation.estimatedSerializedBytes;
-      existing.largestMutationEstimatedBytes = Math.max(
-        existing.largestMutationEstimatedBytes,
-        mutation.estimatedSerializedBytes,
+      existing.estimatedSerializedBytes += operation.estimatedSerializedBytes;
+      existing.largestOperationEstimatedBytes = Math.max(
+        existing.largestOperationEstimatedBytes,
+        operation.estimatedSerializedBytes,
       );
       continue;
     }
 
-    mutationGroups.set(key, {
-      schema: mutation.schema,
-      table: mutation.table,
-      op: mutation.op,
+    operationGroups.set(key, {
+      schema: operation.schema,
+      table: operation.table,
+      op: operation.op,
       count: 1,
-      estimatedSerializedBytes: mutation.estimatedSerializedBytes,
-      largestMutationEstimatedBytes: mutation.estimatedSerializedBytes,
+      estimatedSerializedBytes: operation.estimatedSerializedBytes,
+      largestOperationEstimatedBytes: operation.estimatedSerializedBytes,
     });
   }
 
@@ -126,16 +139,16 @@ export function buildOutboxInsertDiagnostics(
     id: truncateDiagnosticString(options.id, OUTBOX_DIAGNOSTIC_STRING_LIMIT),
     versionstamp: truncateDiagnosticString(options.versionstamp, OUTBOX_DIAGNOSTIC_STRING_LIMIT),
     uowId: truncateDiagnosticString(options.uowId, OUTBOX_DIAGNOSTIC_STRING_LIMIT),
-    mutationCount: options.payload.mutations.length,
+    operationCount: options.payload.operations.length,
     payloadSerializedBytes,
     refMapSerializedBytes,
     estimatedRowValueBytes,
-    mutationGroups: [...mutationGroups.values()].sort(
+    operationGroups: [...operationGroups.values()].sort(
       (left, right) => right.estimatedSerializedBytes - left.estimatedSerializedBytes,
     ),
-    largestMutations: mutationDiagnostics
+    largestOperations: operationDiagnostics
       .sort((left, right) => right.estimatedSerializedBytes - left.estimatedSerializedBytes)
-      .slice(0, OUTBOX_DIAGNOSTIC_MUTATION_LIMIT),
+      .slice(0, OUTBOX_DIAGNOSTIC_OPERATION_LIMIT),
   };
 }
 

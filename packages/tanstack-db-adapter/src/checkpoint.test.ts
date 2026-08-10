@@ -7,7 +7,7 @@ function entry(versionstamp: string, uowId: string): FragnoOutboxEntry {
   return {
     versionstamp,
     uowId,
-    payload: { json: { version: 1, mutations: [] } },
+    payload: { json: { version: 2, operations: [] } },
   };
 }
 

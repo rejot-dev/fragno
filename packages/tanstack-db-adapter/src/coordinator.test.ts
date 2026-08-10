@@ -14,7 +14,7 @@ function entry(index: number): FragnoOutboxEntry {
   return {
     versionstamp: String(index).padStart(24, "0"),
     uowId: `uow-${index}`,
-    payload: { json: { version: 1, mutations: [] } },
+    payload: { json: { version: 2, operations: [] } },
   };
 }
 

@@ -8,7 +8,7 @@ import type {
 } from "../query-types";
 import type { LofiFindBuilder } from "../query/read-plan";
 import type { LofiMutation, LofiQueryEngineOptions, LofiResolvedTypedMutation } from "../types";
-import type { LofiRuntime, LofiRuntimeStatus } from "./runtime";
+import type { LofiRuntime } from "./runtime";
 import {
   isLofiRuntimeTxBuilder,
   type LofiRuntimeTxBuilder,
@@ -31,9 +31,6 @@ const normalizeLofiQueryError = (error: unknown): Error =>
 export type LofiQueryStore<TData> = ReadableAtom<LofiQueryState<TData>> & {
   refresh: () => Promise<void>;
 };
-
-const isLofiRuntimeBootstrappedStatus = (status: LofiRuntimeStatus): boolean =>
-  Object.values(status.sources).every((source) => source.status === "bootstrapped");
 
 type LofiNoInfer<T> = [T][T extends T ? 0 : never];
 
@@ -501,10 +498,15 @@ const createManagedLofiQueryStore = <TRetrieveResult, TData>({
       }),
     );
     const releaseRuntime = runtime.retain();
-    const unsubscribeRevision = runtime.$revision.listen(() => {
-      if (isLofiRuntimeBootstrappedStatus(runtime.$status.get())) {
-        void runQuery();
+    const unsubscribeRefresh = runtime.subscribeRefresh(async ({ resetEphemeral }) => {
+      if (!mounted || !runtime.isBootstrapped()) {
+        return;
       }
+      if (resetEphemeral) {
+        ephemeralStates = ephemeralBindings.map((binding) => binding.initialState());
+        pendingEphemeralItems.length = 0;
+      }
+      await runQuery();
     });
 
     $store.set({ ...$store.get(), loading: true, error: null });
@@ -532,7 +534,7 @@ const createManagedLofiQueryStore = <TRetrieveResult, TData>({
       hasRetrieved = false;
       pendingEphemeralItems.length = 0;
       resetEphemeralStateOnMount = true;
-      unsubscribeRevision();
+      unsubscribeRefresh();
       for (const unsubscribe of unsubscribeEphemeral) {
         unsubscribe();
       }

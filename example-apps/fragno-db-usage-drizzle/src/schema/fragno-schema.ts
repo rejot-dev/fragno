@@ -60,15 +60,17 @@ export const fragno_db_outbox_mutations = pgTable("fragno_db_outbox_mutations", 
   uowId: varchar("uowId", { length: 191 }).notNull(),
   schema: varchar("schema", { length: 191 }).notNull(),
   table: varchar("table", { length: 191 }).notNull(),
-  externalId: varchar("externalId", { length: 191 }).notNull(),
+  externalId: varchar("externalId", { length: 191 }),
   op: varchar("op", { length: 191 }).notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0)
+  _version: integer("_version").notNull().default(0),
+  payload: json("payload").notNull()
 }, (table) => [
   index("idx_outbox_mutations_entry").on(table.entryVersionstamp),
   index("idx_outbox_mutations_key").on(table.schema, table.table, table.externalId, table.entryVersionstamp),
-  index("idx_outbox_mutations_uow").on(table.uowId)
+  index("idx_outbox_mutations_uow").on(table.uowId),
+  index("idx_outbox_mutations_entry_order").on(table.entryVersionstamp, table.mutationVersionstamp)
 ])
 
 export const fragno_db_sync_requests = pgTable("fragno_db_sync_requests", {

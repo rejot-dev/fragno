@@ -169,7 +169,7 @@ describe("generateSchema and migrate", () => {
       	"uowId" varchar(191) NOT NULL,
       	"schema" varchar(191) NOT NULL,
       	"table" varchar(191) NOT NULL,
-      	"externalId" varchar(191) NOT NULL,
+      \t"externalId" varchar(191),
       	"op" varchar(191) NOT NULL,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,

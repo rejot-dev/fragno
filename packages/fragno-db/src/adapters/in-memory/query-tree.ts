@@ -14,6 +14,11 @@ import type { AnyColumn, AnyTable } from "../../schema/create";
 import { Column, FragnoId, FragnoReference } from "../../schema/create";
 import { snapshotInMemoryColumnValue } from "./column-value";
 import type { InMemoryNamespaceStore, InMemoryRow, InMemoryTableStore } from "./store";
+
+export type ResolveQueryTreeChildStore = (child: CompiledQueryTreeChildNode) => {
+  namespaceStore: InMemoryNamespaceStore;
+  resolver?: NamingResolver;
+};
 import { normalizeIndexValue } from "./store";
 import { compareNormalizedValues } from "./value-comparison";
 
@@ -71,6 +76,7 @@ const resolveComparisonValue = (
   parentRow: InMemoryRow | undefined,
   now: () => Date,
   resolver?: NamingResolver,
+  parentResolver?: NamingResolver,
 ): { value: unknown; column: AnyColumn } => {
   if (isParentColumnRef(value)) {
     if (!parentTable || !parentRow) {
@@ -83,11 +89,14 @@ const resolveComparisonValue = (
     if (leftColumn.role === "external-id" && parentColumn.role !== "external-id") {
       leftColumn = resolveComparableColumn(leftColumn, currentTable);
     }
-    if (parentColumn.role === "external-id" && leftColumn.role !== "external-id") {
+    if (
+      parentColumn.role === "external-id" &&
+      (leftColumn.role === "reference" || leftColumn.role === "internal-id")
+    ) {
       parentColumn = resolveComparableColumn(parentColumn, parentTable);
     }
 
-    const parentColumnName = getPhysicalColumnName(parentTable, parentColumn.name, resolver);
+    const parentColumnName = getPhysicalColumnName(parentTable, parentColumn.name, parentResolver);
     return {
       value: parentRow[parentColumnName],
       column: parentColumn,
@@ -130,6 +139,7 @@ export const evaluateQueryTreeCondition = (
   parentRow: InMemoryRow | undefined,
   resolver?: NamingResolver,
   now: () => Date = () => new Date(),
+  parentResolver?: NamingResolver,
 ): boolean => {
   if (!condition) {
     return true;
@@ -146,6 +156,7 @@ export const evaluateQueryTreeCondition = (
           parentRow,
           resolver,
           now,
+          parentResolver,
         ),
       );
     case "or":
@@ -158,6 +169,7 @@ export const evaluateQueryTreeCondition = (
           parentRow,
           resolver,
           now,
+          parentResolver,
         ),
       );
     case "not":
@@ -169,6 +181,7 @@ export const evaluateQueryTreeCondition = (
         parentRow,
         resolver,
         now,
+        parentResolver,
       );
     case "compare":
       break;
@@ -189,13 +202,18 @@ export const evaluateQueryTreeCondition = (
     parentRow,
     now,
     resolver,
+    parentResolver,
   );
 
   if (isParentColumnRef(condition.b)) {
     if (leftColumn.role === "external-id" && right.column.role !== "external-id") {
       leftColumn = resolveComparableColumn(leftColumn, currentTable);
     }
-    if (right.column.role === "external-id" && leftColumn.role !== "external-id" && parentTable) {
+    if (
+      right.column.role === "external-id" &&
+      (leftColumn.role === "reference" || leftColumn.role === "internal-id") &&
+      parentTable
+    ) {
       rightColumn = resolveComparableColumn(right.column, parentTable);
     } else {
       rightColumn = right.column;
@@ -334,8 +352,13 @@ const buildChildRawValue = (
   resolver?: NamingResolver,
   now: () => Date = () => new Date(),
   readTracking = false,
+  resolveChildStore?: ResolveQueryTreeChildStore,
 ): unknown => {
-  const childStore = getTableStore(namespaceStore, child.table, resolver);
+  const childContext =
+    child.schema && resolveChildStore ? resolveChildStore(child) : { namespaceStore, resolver };
+  const childNamespaceStore = childContext.namespaceStore;
+  const childResolver = childContext.resolver;
+  const childStore = getTableStore(childNamespaceStore, child.table, childResolver);
   const matchingRows: InMemoryRow[] = [];
 
   for (const row of childStore.rows.values()) {
@@ -346,8 +369,9 @@ const buildChildRawValue = (
         row,
         parentTable,
         parentRow,
-        resolver,
+        childResolver,
         now,
+        resolver,
       )
     ) {
       continue;
@@ -360,7 +384,7 @@ const buildChildRawValue = (
         row,
         undefined,
         undefined,
-        resolver,
+        childResolver,
         now,
       )
     ) {
@@ -370,10 +394,18 @@ const buildChildRawValue = (
     matchingRows.push(row);
   }
 
-  const ordered = orderRows(matchingRows, child.table, child.orderByIndex, resolver);
+  const ordered = orderRows(matchingRows, child.table, child.orderByIndex, childResolver);
   const limited = child.pageSize !== undefined ? ordered.slice(0, child.pageSize) : ordered;
   const items = limited.map((row) =>
-    buildQueryTreeRowRaw(child, row, namespaceStore, resolver, now, readTracking),
+    buildQueryTreeRowRaw(
+      child,
+      row,
+      childNamespaceStore,
+      childResolver,
+      now,
+      readTracking,
+      resolveChildStore,
+    ),
   );
 
   if (child.cardinality === "one") {
@@ -390,6 +422,7 @@ export const buildQueryTreeRowRaw = (
   resolver?: NamingResolver,
   now: () => Date = () => new Date(),
   readTracking = false,
+  resolveChildStore?: ResolveQueryTreeChildStore,
 ): InMemoryRow => {
   const output = selectNodeRow(
     row,
@@ -408,6 +441,7 @@ export const buildQueryTreeRowRaw = (
       resolver,
       now,
       readTracking,
+      resolveChildStore,
     );
   }
 
@@ -421,6 +455,7 @@ export const executeQueryTreeRoot = (
   resolver?: NamingResolver,
   now: () => Date = () => new Date(),
   readTracking = false,
+  resolveChildStore?: ResolveQueryTreeChildStore,
 ): InMemoryRow[] => {
   const matches: InMemoryRow[] = [];
 
@@ -437,6 +472,6 @@ export const executeQueryTreeRoot = (
   const limited = root.pageSize !== undefined ? ordered.slice(0, root.pageSize) : ordered;
 
   return limited.map((row) =>
-    buildQueryTreeRowRaw(root, row, namespaceStore, resolver, now, readTracking),
+    buildQueryTreeRowRaw(root, row, namespaceStore, resolver, now, readTracking, resolveChildStore),
   );
 };
