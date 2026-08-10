@@ -86,6 +86,15 @@ export type WorkflowRunReference = {
   instanceId: string;
 };
 
+export type UnmappedWorkflowRuntimeStep = {
+  stepKey: string;
+  stepRecordId?: string;
+  name?: string;
+  type?: string;
+  status: WorkflowStepRunStatus;
+  current: boolean;
+};
+
 export type ScriptWorkflowRun = {
   id: string;
   instanceId: string;
@@ -98,6 +107,8 @@ export type ScriptWorkflowRun = {
   waitingEventTypes: readonly string[];
   workflowEvents: readonly WorkflowRunEvent[];
   stepStatesByNodeId: Map<string, WorkflowStepRunState>;
+  unmappedRuntimeSteps: readonly UnmappedWorkflowRuntimeStep[];
+  hasUnmappedCurrentStep: boolean;
 };
 
 export function projectScriptWorkflowRuns({
@@ -150,7 +161,7 @@ export function projectWorkflowRun({
     return null;
   }
 
-  const stepStatesByNodeId = projectWorkflowStepStates({
+  const stepProjection = projectWorkflowStepStates({
     visualization,
     workflowName,
     steps: instance.workflowSteps,
@@ -167,16 +178,10 @@ export function projectWorkflowRun({
     createdAt: instance.createdAt,
     updatedAt: instance.updatedAt,
     workflowEvents: instance.workflowEvents,
-    waitingEventTypes: [
-      ...new Set(
-        [...stepStatesByNodeId.values()].flatMap((state) =>
-          state.current && state.status === "waiting" && state.waitEventType
-            ? [state.waitEventType]
-            : [],
-        ),
-      ),
-    ],
-    stepStatesByNodeId,
+    waitingEventTypes: currentWorkflowWaitingEventTypes(instance.workflowSteps),
+    stepStatesByNodeId: stepProjection.stepStatesByNodeId,
+    unmappedRuntimeSteps: stepProjection.unmappedRuntimeSteps,
+    hasUnmappedCurrentStep: stepProjection.unmappedRuntimeSteps.some((step) => step.current),
   };
 }
 
@@ -185,6 +190,27 @@ export function selectScriptWorkflowRun(
   selectedInstanceId: string | null | undefined,
 ): ScriptWorkflowRun | null {
   return runs.find((run) => run.instanceId === selectedInstanceId) ?? runs.at(0) ?? null;
+}
+
+export function currentWorkflowWaitingEventTypes(
+  steps: readonly Pick<
+    WorkflowRunStep,
+    "parentStepKey" | "status" | "stepKey" | "type" | "waitEventType"
+  >[],
+): string[] {
+  const stepsByKey = new Map(steps.map((step) => [step.stepKey, step]));
+  return [
+    ...new Set(
+      steps.flatMap((step) =>
+        step.status === "waiting" &&
+        step.type === "waitForEvent" &&
+        step.waitEventType &&
+        !hasTerminalWorkflowStepAncestor(step.stepKey, stepsByKey)
+          ? [step.waitEventType]
+          : [],
+      ),
+    ),
+  ];
 }
 
 function projectWorkflowStepStates({
@@ -197,16 +223,31 @@ function projectWorkflowStepStates({
   workflowName: string;
   steps: readonly WorkflowRunStep[];
   emissions: readonly WorkflowRunEmission[];
-}): Map<string, WorkflowStepRunState> {
-  const stepNodeIndex = indexWorkflowStepNodes(visualization, workflowName);
+}): {
+  stepStatesByNodeId: Map<string, WorkflowStepRunState>;
+  unmappedRuntimeSteps: UnmappedWorkflowRuntimeStep[];
+} {
+  const resolveStepNodeId = createWorkflowStepNodeResolver(
+    indexWorkflowStepNodes(visualization, workflowName),
+  );
   const nodeIdByStepKey = new Map<string, string>();
   const stepStatesByNodeId = new Map<string, WorkflowStepRunState>();
+  const unmappedRuntimeStepsByKey = new Map<string, UnmappedWorkflowRuntimeStep>();
 
   const orderedSteps = [...steps].sort(compareWorkflowEvents);
   const stepsByKey = new Map(orderedSteps.map((step) => [step.stepKey, step]));
   for (const step of orderedSteps) {
-    const nodeId = workflowStepNodeIdFromKey(step.stepKey, stepNodeIndex);
+    const nodeId = resolveStepNodeId(step.stepKey);
     if (!nodeId) {
+      unmappedRuntimeStepsByKey.set(step.stepKey, {
+        stepKey: step.stepKey,
+        stepRecordId: step.id,
+        name: step.name,
+        type: step.type,
+        status: step.status,
+        current:
+          step.status === "waiting" && !hasTerminalWorkflowStepAncestor(step.stepKey, stepsByKey),
+      });
       continue;
     }
 
@@ -231,10 +272,19 @@ function projectWorkflowStepStates({
   const canonicalEmissions = selectCanonicalWorkflowStepEmissions({ steps, emissions });
   const activityByNodeId = new Map<string, { active: boolean; userEmissionCount: number }>();
   for (const activity of projectWorkflowStepExecutionActivity(canonicalEmissions)) {
-    const nodeId =
-      nodeIdByStepKey.get(activity.stepKey) ??
-      workflowStepNodeIdFromKey(activity.stepKey, stepNodeIndex);
+    const nodeId = nodeIdByStepKey.get(activity.stepKey) ?? resolveStepNodeId(activity.stepKey);
     if (!nodeId) {
+      if (activity.active && !hasTerminalWorkflowStepAncestor(activity.stepKey, stepsByKey)) {
+        const existing = unmappedRuntimeStepsByKey.get(activity.stepKey);
+        unmappedRuntimeStepsByKey.set(activity.stepKey, {
+          stepKey: activity.stepKey,
+          ...(existing?.stepRecordId ? { stepRecordId: existing.stepRecordId } : {}),
+          ...(existing?.name ? { name: existing.name } : {}),
+          ...(existing?.type ? { type: existing.type } : {}),
+          status: "active",
+          current: true,
+        });
+      }
       continue;
     }
 
@@ -270,7 +320,10 @@ function projectWorkflowStepStates({
     });
   }
 
-  return stepStatesByNodeId;
+  return {
+    stepStatesByNodeId,
+    unmappedRuntimeSteps: [...unmappedRuntimeStepsByKey.values()],
+  };
 }
 
 const TERMINAL_WORKFLOW_STEP_STATUSES = new Set<PersistedWorkflowStepStatus>([
@@ -278,8 +331,23 @@ const TERMINAL_WORKFLOW_STEP_STATUSES = new Set<PersistedWorkflowStepStatus>([
   "errored",
 ]);
 
+type DynamicWorkflowStepNode = {
+  nodeId: string;
+  parentId: string;
+  repeating: boolean;
+  templateKey: string;
+  staticNameParts: readonly string[];
+};
+
+type DynamicWorkflowStepFamilyMatch = {
+  key: string;
+  nodeIds: string[];
+};
+
 type WorkflowStepNodeIndex = {
   nodeIdsByScopeAndIdentity: Map<string, string[]>;
+  dynamicNodesByScopeAndType: Map<string, DynamicWorkflowStepNode[]>;
+  sourceOrderByNodeId: Map<string, number>;
 };
 
 function indexWorkflowStepNodes(
@@ -291,18 +359,35 @@ function indexWorkflowStepNodes(
     .filter((node): node is StepNode => node.kind === "step" && node.workflowName === workflowName)
     .sort((left, right) => left.sourceOrder - right.sourceOrder);
   const nodeIdsByScopeAndIdentity = new Map<string, string[]>();
+  const dynamicNodesByScopeAndType = new Map<string, DynamicWorkflowStepNode[]>();
+  const sourceOrderByNodeId = new Map(stepNodes.map((step) => [step.id, step.sourceOrder]));
 
   for (const step of stepNodes) {
     const parentStepNodeId = nearestAncestorStepNodeId(step.parentId, nodesById);
     const scope = parentStepNodeId ?? ROOT_STEP_SCOPE;
-    const identity = workflowStepIdentity(runtimeStepType(step), step.label);
+    const type = runtimeStepType(step);
+    if (step.nameTemplate) {
+      const scopedType = workflowStepScopedType(scope, type);
+      const dynamicNodes = dynamicNodesByScopeAndType.get(scopedType) ?? [];
+      dynamicNodes.push({
+        nodeId: step.id,
+        parentId: step.parentId,
+        repeating: hasLoopAncestor(step.parentId, nodesById),
+        templateKey: workflowStepNameTemplateKey(step.nameTemplate.staticParts),
+        staticNameParts: step.nameTemplate.staticParts,
+      });
+      dynamicNodesByScopeAndType.set(scopedType, dynamicNodes);
+      continue;
+    }
+
+    const identity = workflowStepIdentity(type, step.label);
     const scopedIdentity = workflowStepScopedIdentity(scope, identity);
     const nodeIds = nodeIdsByScopeAndIdentity.get(scopedIdentity) ?? [];
     nodeIds.push(step.id);
     nodeIdsByScopeAndIdentity.set(scopedIdentity, nodeIds);
   }
 
-  return { nodeIdsByScopeAndIdentity };
+  return { nodeIdsByScopeAndIdentity, dynamicNodesByScopeAndType, sourceOrderByNodeId };
 }
 
 function nearestAncestorStepNodeId(
@@ -319,6 +404,20 @@ function nearestAncestorStepNodeId(
   return undefined;
 }
 
+function hasLoopAncestor(
+  parentId: string,
+  nodesById: ReadonlyMap<string, WorkflowVisualizationSnapshot["graph"]["nodes"][number]>,
+): boolean {
+  let ancestor = nodesById.get(parentId);
+  while (ancestor && ancestor.kind !== "workflow") {
+    if (ancestor.kind === "loop") {
+      return true;
+    }
+    ancestor = nodesById.get(ancestor.parentId);
+  }
+  return false;
+}
+
 function runtimeStepType(step: StepNode): string {
   return step.stepType === "sleepUntil" ? "sleep" : step.stepType;
 }
@@ -331,38 +430,168 @@ function workflowStepScopedIdentity(scope: string, identity: string): string {
   return `${scope}\u0000${identity}`;
 }
 
-function workflowStepNodeIdFromKey(
-  stepKey: string,
+function workflowStepScopedType(scope: string, type: string): string {
+  return `${scope}\u0000${type}`;
+}
+
+function createWorkflowStepNodeResolver(
   index: WorkflowStepNodeIndex,
-): string | undefined {
-  let parsedStepKey: ReturnType<typeof parseStepKey>;
-  try {
-    parsedStepKey = parseStepKey(stepKey);
-  } catch {
-    return undefined;
-  }
+): (stepKey: string) => string | undefined {
+  const nodeIdByRuntimePath = new Map<string, string>();
+  const nextOrdinalByDynamicFamily = new Map<string, number>();
 
-  let scope = ROOT_STEP_SCOPE;
-  let nodeId: string | undefined;
-
-  for (const identity of parsedStepKey.segments) {
-    const candidates = index.nodeIdsByScopeAndIdentity.get(
-      workflowStepScopedIdentity(scope, workflowStepIdentity(identity.type, identity.name)),
-    );
-    if (!candidates?.length) {
+  return function resolveWorkflowStepNodeId(stepKey: string): string | undefined {
+    let parsedStepKey: ReturnType<typeof parseStepKey>;
+    try {
+      parsedStepKey = parseStepKey(stepKey);
+    } catch {
       return undefined;
     }
 
-    nodeId = candidates[Math.min(identity.occurrence, candidates.length - 1)];
-    scope = nodeId;
+    let scope = ROOT_STEP_SCOPE;
+    let runtimePath = ROOT_STEP_SCOPE;
+    let nodeId: string | undefined;
+
+    for (const identity of parsedStepKey.segments) {
+      runtimePath = workflowStepRuntimePath(runtimePath, identity);
+      const previouslyResolvedNodeId = nodeIdByRuntimePath.get(runtimePath);
+      if (previouslyResolvedNodeId) {
+        nodeId = previouslyResolvedNodeId;
+        scope = nodeId;
+        continue;
+      }
+
+      const exactCandidates = index.nodeIdsByScopeAndIdentity.get(
+        workflowStepScopedIdentity(scope, workflowStepIdentity(identity.type, identity.name)),
+      );
+      const dynamicFamily = matchingDynamicWorkflowStepFamily({
+        nodes: index.dynamicNodesByScopeAndType.get(workflowStepScopedType(scope, identity.type)),
+        runtimeName: identity.name,
+      });
+
+      if (exactCandidates?.length) {
+        const dynamicCandidateNodeIds = dynamicFamily ? new Set(dynamicFamily.nodeIds) : undefined;
+        const candidates = dynamicFamily
+          ? [...exactCandidates, ...dynamicFamily.nodeIds].sort(
+              (left, right) =>
+                (index.sourceOrderByNodeId.get(left) ?? 0) -
+                (index.sourceOrderByNodeId.get(right) ?? 0),
+            )
+          : exactCandidates;
+        nodeId = candidates[identity.occurrence];
+
+        if (nodeId && dynamicFamily && dynamicCandidateNodeIds?.has(nodeId)) {
+          const family = workflowStepDynamicFamily(scope, identity.type, dynamicFamily.key);
+          const ordinal = nextOrdinalByDynamicFamily.get(family) ?? 0;
+          nextOrdinalByDynamicFamily.set(family, ordinal + 1);
+        }
+      } else {
+        if (!dynamicFamily) {
+          return undefined;
+        }
+
+        const family = workflowStepDynamicFamily(scope, identity.type, dynamicFamily.key);
+        const ordinal = nextOrdinalByDynamicFamily.get(family) ?? 0;
+        nodeId = dynamicFamily.nodeIds[ordinal % dynamicFamily.nodeIds.length];
+        nextOrdinalByDynamicFamily.set(family, ordinal + 1);
+      }
+
+      if (!nodeId) {
+        return undefined;
+      }
+      nodeIdByRuntimePath.set(runtimePath, nodeId);
+      scope = nodeId;
+    }
+
+    return nodeId;
+  };
+}
+
+function workflowStepRuntimePath(
+  parentPath: string,
+  identity: ReturnType<typeof parseStepKey>["segments"][number],
+): string {
+  return `${parentPath}\u0000${identity.type}\u0000${identity.name}\u0000${identity.occurrence}`;
+}
+
+function workflowStepDynamicFamily(scope: string, type: string, templateFamily: string): string {
+  return `${scope}\u0000${type}\u0000${templateFamily}`;
+}
+
+function workflowStepNameTemplateKey(staticParts: readonly string[]): string {
+  return JSON.stringify(staticParts);
+}
+
+function matchingDynamicWorkflowStepFamily({
+  nodes,
+  runtimeName,
+}: {
+  nodes: readonly DynamicWorkflowStepNode[] | undefined;
+  runtimeName: string;
+}): DynamicWorkflowStepFamilyMatch | undefined {
+  const matchingNodes = nodes?.filter((node) =>
+    workflowStepNameMatchesTemplate(runtimeName, node.staticNameParts),
+  );
+  if (!matchingNodes?.length) {
+    return undefined;
   }
 
-  return nodeId;
+  const greatestStaticLength = Math.max(
+    ...matchingNodes.map((node) =>
+      node.staticNameParts.reduce((length, part) => length + part.length, 0),
+    ),
+  );
+  const mostSpecificNodes = matchingNodes.filter(
+    (node) =>
+      node.staticNameParts.reduce((length, part) => length + part.length, 0) ===
+      greatestStaticLength,
+  );
+  const templateKeys = new Set(mostSpecificNodes.map((node) => node.templateKey));
+  const parentIds = new Set(mostSpecificNodes.map((node) => node.parentId));
+  if (
+    templateKeys.size !== 1 ||
+    parentIds.size !== 1 ||
+    (mostSpecificNodes.length > 1 && mostSpecificNodes.some((node) => node.repeating))
+  ) {
+    return undefined;
+  }
+
+  const templateKey = mostSpecificNodes[0]?.templateKey;
+  const parentId = mostSpecificNodes[0]?.parentId;
+  if (!templateKey || !parentId) {
+    return undefined;
+  }
+  return {
+    key: `${parentId}\u0000${templateKey}`,
+    nodeIds: mostSpecificNodes.map((node) => node.nodeId),
+  };
+}
+
+function workflowStepNameMatchesTemplate(
+  runtimeName: string,
+  staticParts: readonly string[],
+): boolean {
+  const firstPart = staticParts[0];
+  const lastPart = staticParts.at(-1);
+  if (firstPart === undefined || lastPart === undefined || !runtimeName.startsWith(firstPart)) {
+    return false;
+  }
+
+  let searchStart = firstPart.length;
+  for (const part of staticParts.slice(1, -1)) {
+    const partIndex = runtimeName.indexOf(part, searchStart);
+    if (partIndex < 0) {
+      return false;
+    }
+    searchStart = partIndex + part.length;
+  }
+
+  return runtimeName.slice(searchStart).endsWith(lastPart);
 }
 
 function hasTerminalWorkflowStepAncestor(
   stepKey: string,
-  stepsByKey: ReadonlyMap<string, WorkflowRunStep>,
+  stepsByKey: ReadonlyMap<string, Pick<WorkflowRunStep, "parentStepKey" | "status" | "stepKey">>,
 ): boolean {
   let parentStepKey =
     stepsByKey.get(stepKey)?.parentStepKey ?? workflowStepParentKeyFromIdentity(stepKey);

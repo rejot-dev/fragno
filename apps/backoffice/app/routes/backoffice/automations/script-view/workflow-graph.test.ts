@@ -37,6 +37,8 @@ const run: ScriptWorkflowRun = {
   updatedAt: "2026-07-31T10:00:03.000Z",
   waitingEventTypes: [],
   workflowEvents: [],
+  unmappedRuntimeSteps: [],
+  hasUnmappedCurrentStep: false,
   stepStatesByNodeId: new Map([
     [
       ordinaryStep.id,
@@ -206,6 +208,39 @@ describe("ScriptWorkflowGraph generated UI presentation", () => {
     expect(markup).toContain("Finally · always runs");
     expect(markup).toContain("release resources");
     expect(markup).not.toContain(">Error</div>");
+  });
+
+  test("shows unresolved runtime steps without reporting an active run between checkpoints", () => {
+    const unresolvedRun: ScriptWorkflowRun = {
+      ...run,
+      status: "active",
+      unmappedRuntimeSteps: [
+        {
+          stepKey: "do:task-one",
+          stepRecordId: "runtime-step-one",
+          name: "task-one",
+          type: "do",
+          status: "active",
+          current: true,
+        },
+      ],
+      hasUnmappedCurrentStep: true,
+      stepStatesByNodeId: new Map(),
+    };
+    const markup = renderToStaticMarkup(
+      createElement(ScriptWorkflowGraph, {
+        visualization,
+        detailMode: "simple",
+        runtimeToolCallsByStepId: new Map(),
+        selectedRun: unresolvedRun,
+      }),
+    );
+
+    expect(markup).toContain("1 unmapped runtime step");
+    expect(markup).toContain("Runtime steps could not be matched to source");
+    expect(markup).toContain("task-one");
+    expect(markup).toContain("current");
+    expect(markup).not.toContain("Between checkpoints");
   });
 
   test("merges a generated input step with its matching adjacent event waiter", () => {

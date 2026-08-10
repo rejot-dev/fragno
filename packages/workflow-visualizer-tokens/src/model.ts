@@ -70,10 +70,15 @@ export interface StepMeta {
   timeout?: string;
 }
 
+export interface StepNameTemplate {
+  staticParts: string[];
+}
+
 export interface StepNode {
   id: string;
   kind: "step";
   label: string;
+  nameTemplate?: StepNameTemplate;
   stepType: StepType;
   workflowName: string;
   order: number;

@@ -1127,6 +1127,42 @@ describe("workflow token state machine", () => {
     });
   });
 
+  it("preserves template step names for display and runtime matching", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/template-label.workflow.js",
+      [
+        'defineWorkflow({ name: "template-label" }, async (_event, step) => {',
+        "  await step.do(`request-${kind}-${count}-done`, async () => {});",
+        "});",
+      ].join("\n"),
+    );
+    const step = snapshot.graph.nodes.find((node): node is StepNode => node.kind === "step");
+
+    expect(step).toMatchObject({
+      label: "request-${kind}-${count}-done",
+      nameTemplate: { staticParts: ["request-", "-", "-done"] },
+      construction: { status: "complete", phase: "complete" },
+    });
+  });
+
+  it("cooks escaped static template text for runtime matching", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/escaped-template-label.workflow.js",
+      [
+        'defineWorkflow({ name: "escaped-template-label" }, async (_event, step) => {',
+        "  await step.do(`prefix-\\${literal}-${kind}-line\\",
+        "continued-\\q`, async () => {});",
+        "});",
+      ].join("\n"),
+    );
+    const step = snapshot.graph.nodes.find((node): node is StepNode => node.kind === "step");
+
+    expect(step).toMatchObject({
+      nameTemplate: { staticParts: ["prefix-${literal}-", "-linecontinued-q"] },
+      construction: { status: "complete", phase: "complete" },
+    });
+  });
+
   it("surfaces stable partial workflow and step nodes from unfinished source", () => {
     const source = `defineWorkflow({ name: "draft" }, async (event, step) => {
       await step.do("send reply`;

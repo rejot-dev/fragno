@@ -66,6 +66,7 @@ export type {
   StepInvocation,
   StepInvocationConstructionPhase,
   StepMeta,
+  StepNameTemplate,
   StepReturn,
   StepReturnConstructionPhase,
   StepReturnSyntax,

@@ -27,6 +27,7 @@ import type {
 import {
   isTriviaToken,
   staticStringValue,
+  templateStringParts,
   tokenizeWorkflowSource,
   tokenIsOpen,
   type WorkflowToken,
@@ -535,14 +536,24 @@ export class StepCallMachine implements TokenSubmachine {
 
   private updateStepLabel(): void {
     const label = staticArgumentValue(this.#argumentTokens);
-    if (label === undefined) {
-      this.#step.label = `${this.#step.stepType} step`;
-      this.#step.construction = { status: "partial", phase: "discovered" };
+    if (label !== undefined) {
+      this.#step.label = label || `${this.#step.stepType} step`;
+      delete this.#step.nameTemplate;
+      this.#step.construction = { status: "partial", phase: "labeled" };
       return;
     }
 
-    this.#step.label = label || `${this.#step.stepType} step`;
-    this.#step.construction = { status: "partial", phase: "labeled" };
+    const template = templateArgumentValue(this.#argumentTokens);
+    if (template) {
+      this.#step.label = template.label;
+      this.#step.nameTemplate = { staticParts: template.staticParts };
+      this.#step.construction = { status: "partial", phase: "labeled" };
+      return;
+    }
+
+    this.#step.label = `${this.#step.stepType} step`;
+    delete this.#step.nameTemplate;
+    this.#step.construction = { status: "partial", phase: "discovered" };
   }
 
   private updateRawArgument(source: string, end: number): void {
@@ -1789,6 +1800,21 @@ export function isThrowStatementMachine(
 
 function staticArgumentValue(tokens: PositionedWorkflowToken[]): string | undefined {
   return tokens.length === 1 ? staticStringValue(tokens[0].token) : undefined;
+}
+
+function templateArgumentValue(
+  tokens: PositionedWorkflowToken[],
+): { label: string; staticParts: string[] } | undefined {
+  const staticParts = templateStringParts(tokens.map(({ token }) => token));
+  if (!staticParts) {
+    return undefined;
+  }
+
+  const source = tokens.map(({ token }) => token.value).join("");
+  return {
+    label: source.slice(1, -1),
+    staticParts,
+  };
 }
 
 function secondArrowParameter(prefix: string): string | undefined {

@@ -5,13 +5,20 @@ import {
   createWorkflowStepStartedControlPayload,
 } from "@fragno-dev/workflows/step-emission-control";
 
-import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
+import {
+  renderWorkflowVisualizationText,
+  visualizeWorkflowSource,
+  type StepNode,
+  type WorkflowVisualizationSnapshot,
+} from "@fragno-dev/workflow-visualizer-tokens";
 
 import {
+  currentWorkflowWaitingEventTypes,
   projectScriptWorkflowRuns,
   projectWorkflowRun,
   selectScriptWorkflowRun,
   type AutomationWorkflowRun,
+  type ScriptWorkflowRun,
   type WorkflowRunEmission,
 } from "./workflow-run-presentation";
 
@@ -49,6 +56,109 @@ const raceVisualization = visualizeWorkflowSource(
     ]));
     await step.waitForEvent("after race", { type: "continue" });
   });`,
+);
+const dynamicLoopVisualization = visualizeWorkflowSource(
+  absolutePath,
+  [
+    'defineWorkflow({ name: "demo" }, async (_event, step) => {',
+    "  let count = 0;",
+    "  while (true) {",
+    "    await step.do(`request-oga-upload-${count}`, async () => ({ count }));",
+    "    await step.waitForEvent(`wait-for-oga-upload-${count}`, {",
+    '      type: "inline-oga-upload-submitted",',
+    "    });",
+    "    await step.do(`transcribe-oga-${count}`, async () => ({}));",
+    "    await step.do(`show-transcription-${count}`, async () => ({}));",
+    "    count += 1;",
+    "  }",
+    "});",
+  ].join("\n"),
+);
+const ambiguousTemplateVisualization = visualizeWorkflowSource(
+  absolutePath,
+  [
+    'defineWorkflow({ name: "demo" }, async (_event, step) => {',
+    "  await step.do(`task-${first}`, async () => ({}));",
+    "  await step.do(`task-${second}`, async () => ({}));",
+    "});",
+  ].join("\n"),
+);
+const exactAndTemplateVisualization = visualizeWorkflowSource(
+  absolutePath,
+  [
+    'defineWorkflow({ name: "demo" }, async (_event, step) => {',
+    '  await step.do("task-one", async () => ({}));',
+    "  await step.do(`task-${value}`, async () => ({}));",
+    "});",
+  ].join("\n"),
+);
+const repeatedTemplateVisualization = visualizeWorkflowSource(
+  absolutePath,
+  [
+    'defineWorkflow({ name: "demo" }, async (_event, step) => {',
+    "  while (true) {",
+    "    await step.do(`task-${first}`, async () => ({}));",
+    "    await step.do(`task-${second}`, async () => ({}));",
+    "  }",
+    "});",
+  ].join("\n"),
+);
+const skippedLoopTemplateVisualization = visualizeWorkflowSource(
+  absolutePath,
+  [
+    'defineWorkflow({ name: "demo" }, async (_event, step) => {',
+    "  while (true) {",
+    "    await step.do(`task-${first}`, async () => ({}));",
+    "    if (skipSecond) continue;",
+    "    await step.do(`task-${second}`, async () => ({}));",
+    "  }",
+    "});",
+  ].join("\n"),
+);
+const ambiguousLoopWaitVisualization = visualizeWorkflowSource(
+  absolutePath,
+  [
+    'defineWorkflow({ name: "demo" }, async (_event, step) => {',
+    "  while (true) {",
+    '    await step.waitForEvent(`wait-${first}`, { type: "approved" });',
+    '    await step.waitForEvent(`wait-${second}`, { type: "approved" });',
+    "  }",
+    "});",
+  ].join("\n"),
+);
+const distinctParallelTemplateVisualization = visualizeWorkflowSource(
+  absolutePath,
+  [
+    'defineWorkflow({ name: "demo" }, async (_event, step) => {',
+    '  await step.do("parallel", async () => Promise.all([',
+    "    step.do(`left-${value}`, async () => ({})),",
+    "    step.do(`right-${value}`, async () => ({})),",
+    "  ]));",
+    "});",
+  ].join("\n"),
+);
+const ambiguousParallelTemplateVisualization = visualizeWorkflowSource(
+  absolutePath,
+  [
+    'defineWorkflow({ name: "demo" }, async (_event, step) => {',
+    '  await step.do("parallel", async () => Promise.all([',
+    "    step.do(`task-${first}`, async () => ({})),",
+    "    step.do(`task-${second}`, async () => ({})),",
+    "  ]));",
+    "});",
+  ].join("\n"),
+);
+const ambiguousConditionalTemplateVisualization = visualizeWorkflowSource(
+  absolutePath,
+  [
+    'defineWorkflow({ name: "demo" }, async (event, step) => {',
+    "  if (event.payload.first) {",
+    "    await step.do(`task-${first}`, async () => ({}));",
+    "  } else {",
+    "    await step.do(`task-${second}`, async () => ({}));",
+    "  }",
+    "});",
+  ].join("\n"),
 );
 
 describe("automation script workflow run presentation", () => {
@@ -411,34 +521,36 @@ describe("automation script workflow run presentation", () => {
   });
 
   it("does not mark abandoned waiting descendants of a completed race as current", () => {
+    const workflowSteps = [
+      workflowStep({
+        id: "race",
+        stepKey: "do:race",
+        name: "race",
+        status: "completed",
+      }),
+      workflowStep({
+        id: "slow",
+        stepKey: "do:race>do:slow",
+        parentStepKey: "do:race",
+        name: "slow",
+        status: "waiting",
+      }),
+      workflowStep({
+        id: "after-race",
+        stepKey: "waitForEvent:after race",
+        name: "after race",
+        type: "waitForEvent",
+        status: "waiting",
+        waitEventType: "approved",
+      }),
+    ];
     const runs = projectScriptWorkflowRuns({
       absolutePath,
       visualization: raceVisualization,
       instances: [
         workflowRun({
           status: "waiting",
-          workflowSteps: [
-            workflowStep({
-              id: "race",
-              stepKey: "do:race",
-              name: "race",
-              status: "completed",
-            }),
-            workflowStep({
-              id: "slow",
-              stepKey: "do:race>do:slow",
-              parentStepKey: "do:race",
-              name: "slow",
-              status: "waiting",
-            }),
-            workflowStep({
-              id: "after-race",
-              stepKey: "waitForEvent:after race",
-              name: "after race",
-              type: "waitForEvent",
-              status: "waiting",
-            }),
-          ],
+          workflowSteps,
           workflowStepEmissions: [
             workflowEmission({
               id: "slow-started",
@@ -465,6 +577,502 @@ describe("automation script workflow run presentation", () => {
       run.stepStatesByNodeId.get(stepNodeIn(raceVisualization, "after race").id)?.current,
       true,
     );
+    expect(
+      currentWorkflowWaitingEventTypes([
+        workflowSteps[0]!,
+        workflowStep({
+          id: "abandoned-wait",
+          stepKey: "do:race>waitForEvent:abandoned",
+          parentStepKey: "do:race",
+          name: "abandoned",
+          type: "waitForEvent",
+          status: "waiting",
+          waitEventType: "abandoned",
+        }),
+        workflowSteps[2]!,
+      ]),
+    ).toEqual(["approved"]);
+  });
+
+  it("maps runtime steps back to template-named loop steps", () => {
+    const requestResult = { count: 0 };
+    const run = projectWorkflowRun({
+      visualization: dynamicLoopVisualization,
+      instance: workflowRun({
+        status: "waiting",
+        workflowSteps: [
+          workflowStep({
+            id: "request-upload",
+            stepKey: "do:request-oga-upload-0",
+            name: "request-oga-upload-0",
+            result: requestResult,
+          }),
+          workflowStep({
+            id: "wait-upload",
+            stepKey: "waitForEvent:wait-for-oga-upload-0",
+            name: "wait-for-oga-upload-0",
+            type: "waitForEvent",
+            status: "waiting",
+            waitEventType: "inline-oga-upload-submitted",
+          }),
+        ],
+      }),
+    });
+
+    assert(run);
+    expect(
+      run.stepStatesByNodeId.get(
+        stepNodeIn(dynamicLoopVisualization, "request-oga-upload-${count}").id,
+      ),
+    ).toMatchObject({ status: "completed", result: requestResult });
+    expect(
+      run.stepStatesByNodeId.get(
+        stepNodeIn(dynamicLoopVisualization, "wait-for-oga-upload-${count}").id,
+      ),
+    ).toMatchObject({
+      status: "waiting",
+      waitEventType: "inline-oga-upload-submitted",
+      current: true,
+    });
+    expect(run.waitingEventTypes).toEqual(["inline-oga-upload-submitted"]);
+  });
+
+  it("maps equally specific template-named steps in runtime order", () => {
+    const firstResult = { source: "first" };
+    const secondResult = { source: "second" };
+    const runtimeSteps = [
+      workflowStep({
+        id: "second-task",
+        stepKey: "do:task-two",
+        name: "task-two",
+        result: secondResult,
+        createdAt: "2026-07-24T10:00:02.000Z",
+      }),
+      workflowStep({
+        id: "first-task",
+        stepKey: "do:task-one",
+        name: "task-one",
+        result: firstResult,
+        createdAt: "2026-07-24T10:00:01.000Z",
+      }),
+    ];
+    const run = projectWorkflowRun({
+      visualization: ambiguousTemplateVisualization,
+      instance: workflowRun({ workflowSteps: runtimeSteps }),
+    });
+
+    assert(run);
+    expect(renderWorkflowRunPresentationText(ambiguousTemplateVisualization, run, runtimeSteps))
+      .toMatchInlineSnapshot(`
+        "workflow demo
+        ├─ 0. do task-\${first}
+        │  returns: ({})
+        └─ 1. do task-\${second}
+           returns: ({})
+
+        run run-1
+        ├─ do task-\${first} => runtime task-one · record first-task · completed · result {"source":"first"}
+        └─ do task-\${second} => runtime task-two · record second-task · completed · result {"source":"second"}"
+      `);
+  });
+
+  it("resolves exact and template names together before applying the occurrence", () => {
+    const staticResult = { source: "static" };
+    const templateResult = { source: "template" };
+    const runtimeSteps = [
+      workflowStep({
+        id: "static-task",
+        stepKey: "do:task-one",
+        name: "task-one",
+        result: staticResult,
+        createdAt: "2026-07-24T10:00:01.000Z",
+      }),
+      workflowStep({
+        id: "template-task",
+        stepKey: "do:task-one#1",
+        name: "task-one",
+        result: templateResult,
+        createdAt: "2026-07-24T10:00:02.000Z",
+      }),
+    ];
+    const run = projectWorkflowRun({
+      visualization: exactAndTemplateVisualization,
+      instance: workflowRun({ workflowSteps: runtimeSteps }),
+    });
+
+    assert(run);
+    expect(
+      run.stepStatesByNodeId.get(stepNodeIn(exactAndTemplateVisualization, "task-one").id),
+    ).toMatchObject({ result: staticResult });
+    expect(
+      run.stepStatesByNodeId.get(stepNodeIn(exactAndTemplateVisualization, "task-${value}").id),
+    ).toMatchObject({ result: templateResult });
+    expect(run.unmappedRuntimeSteps).toEqual([]);
+  });
+
+  it("fails closed for repeated template families across loop iterations", () => {
+    const firstIterationSteps = [
+      workflowStep({
+        id: "first-iteration-first-task",
+        stepKey: "do:task-one",
+        name: "task-one",
+        result: { iteration: 1, source: "first" },
+        createdAt: "2026-07-24T10:00:01.000Z",
+      }),
+      workflowStep({
+        id: "first-iteration-second-task",
+        stepKey: "do:task-two",
+        name: "task-two",
+        result: { iteration: 1, source: "second" },
+        createdAt: "2026-07-24T10:00:02.000Z",
+      }),
+    ];
+    const secondIterationSteps = [
+      workflowStep({
+        id: "second-iteration-first-task",
+        stepKey: "do:task-three",
+        name: "task-three",
+        result: { iteration: 2, source: "first" },
+        createdAt: "2026-07-24T10:00:03.000Z",
+      }),
+      workflowStep({
+        id: "second-iteration-second-task",
+        stepKey: "do:task-four",
+        name: "task-four",
+        result: { iteration: 2, source: "second" },
+        createdAt: "2026-07-24T10:00:04.000Z",
+      }),
+    ];
+    const afterFirstIteration = projectWorkflowRun({
+      visualization: repeatedTemplateVisualization,
+      instance: workflowRun({ workflowSteps: firstIterationSteps }),
+    });
+    const partialSecondIterationSteps = [...firstIterationSteps, secondIterationSteps[0]!];
+    const duringSecondIteration = projectWorkflowRun({
+      visualization: repeatedTemplateVisualization,
+      instance: workflowRun({ workflowSteps: partialSecondIterationSteps }),
+    });
+    const allIterationSteps = [...firstIterationSteps, ...secondIterationSteps];
+    const afterSecondIteration = projectWorkflowRun({
+      visualization: repeatedTemplateVisualization,
+      instance: workflowRun({ workflowSteps: allIterationSteps }),
+    });
+
+    assert(afterFirstIteration);
+    assert(duringSecondIteration);
+    assert(afterSecondIteration);
+    expect(
+      [
+        "after first iteration",
+        renderWorkflowRunPresentationText(
+          repeatedTemplateVisualization,
+          afterFirstIteration,
+          firstIterationSteps,
+        ),
+        "",
+        "during second iteration",
+        renderWorkflowRunPresentationText(
+          repeatedTemplateVisualization,
+          duringSecondIteration,
+          partialSecondIterationSteps,
+        ),
+        "",
+        "after second iteration",
+        renderWorkflowRunPresentationText(
+          repeatedTemplateVisualization,
+          afterSecondIteration,
+          allIterationSteps,
+        ),
+      ].join("\n"),
+    ).toMatchInlineSnapshot(`
+      "after first iteration
+      workflow demo
+      └─ 0. while true
+         ├─ 0. do task-\${first}
+         │  returns: ({})
+         └─ 1. do task-\${second}
+            returns: ({})
+
+      run run-1
+      ├─ do task-\${first} => (unmapped)
+      └─ do task-\${second} => (unmapped)
+
+      unmapped runtime
+      ├─ runtime task-one · key do:task-one · completed
+      └─ runtime task-two · key do:task-two · completed
+
+      during second iteration
+      workflow demo
+      └─ 0. while true
+         ├─ 0. do task-\${first}
+         │  returns: ({})
+         └─ 1. do task-\${second}
+            returns: ({})
+
+      run run-1
+      ├─ do task-\${first} => (unmapped)
+      └─ do task-\${second} => (unmapped)
+
+      unmapped runtime
+      ├─ runtime task-one · key do:task-one · completed
+      ├─ runtime task-two · key do:task-two · completed
+      └─ runtime task-three · key do:task-three · completed
+
+      after second iteration
+      workflow demo
+      └─ 0. while true
+         ├─ 0. do task-\${first}
+         │  returns: ({})
+         └─ 1. do task-\${second}
+            returns: ({})
+
+      run run-1
+      ├─ do task-\${first} => (unmapped)
+      └─ do task-\${second} => (unmapped)
+
+      unmapped runtime
+      ├─ runtime task-one · key do:task-one · completed
+      ├─ runtime task-two · key do:task-two · completed
+      ├─ runtime task-three · key do:task-three · completed
+      └─ runtime task-four · key do:task-four · completed"
+    `);
+  });
+
+  it("fails closed when a loop iteration skips a template-family step", () => {
+    const runtimeSteps = [
+      workflowStep({
+        id: "first-iteration-first-task",
+        stepKey: "do:task-one",
+        name: "task-one",
+        result: { iteration: 1, source: "first" },
+        createdAt: "2026-07-24T10:00:01.000Z",
+      }),
+      workflowStep({
+        id: "second-iteration-first-task",
+        stepKey: "do:task-two",
+        name: "task-two",
+        result: { iteration: 2, source: "first" },
+        createdAt: "2026-07-24T10:00:02.000Z",
+      }),
+      workflowStep({
+        id: "second-iteration-second-task",
+        stepKey: "do:task-three",
+        name: "task-three",
+        result: { iteration: 2, source: "second" },
+        createdAt: "2026-07-24T10:00:03.000Z",
+      }),
+    ];
+    const run = projectWorkflowRun({
+      visualization: skippedLoopTemplateVisualization,
+      instance: workflowRun({ workflowSteps: runtimeSteps }),
+    });
+
+    assert(run);
+    expect(renderWorkflowRunPresentationText(skippedLoopTemplateVisualization, run, runtimeSteps))
+      .toMatchInlineSnapshot(`
+        "workflow demo
+        └─ 0. while true
+           ├─ 0. do task-\${first}
+           │  returns: ({})
+           └─ 1. do task-\${second}
+              returns: ({})
+
+        run run-1
+        ├─ do task-\${first} => (unmapped)
+        └─ do task-\${second} => (unmapped)
+
+        unmapped runtime
+        ├─ runtime task-one · key do:task-one · completed
+        ├─ runtime task-two · key do:task-two · completed
+        └─ runtime task-three · key do:task-three · completed"
+      `);
+  });
+
+  it("keeps an ambiguous loop wait visible at the run level", () => {
+    const runtimeSteps = [
+      workflowStep({
+        id: "waiting-step",
+        stepKey: "waitForEvent:wait-one",
+        name: "wait-one",
+        type: "waitForEvent",
+        status: "waiting",
+        waitEventType: "approved",
+        createdAt: "2026-07-24T10:00:01.000Z",
+      }),
+    ];
+    const run = projectWorkflowRun({
+      visualization: ambiguousLoopWaitVisualization,
+      instance: workflowRun({ status: "waiting", workflowSteps: runtimeSteps }),
+    });
+
+    assert(run);
+    expect(run.waitingEventTypes).toEqual(["approved"]);
+    assert(run.hasUnmappedCurrentStep);
+    expect(renderWorkflowRunPresentationText(ambiguousLoopWaitVisualization, run, runtimeSteps))
+      .toMatchInlineSnapshot(`
+      "workflow demo
+      └─ 0. while true
+         ├─ 0. waitForEvent wait-\${first}
+         │  event: approved
+         └─ 1. waitForEvent wait-\${second}
+            event: approved
+
+      run run-1
+      ├─ waitForEvent wait-\${first} => (unmapped)
+      └─ waitForEvent wait-\${second} => (unmapped)
+
+      unmapped runtime
+      └─ runtime wait-one · key waitForEvent:wait-one · current"
+    `);
+  });
+
+  it("maps distinct template names across parallel branches", () => {
+    const runtimeSteps = [
+      workflowStep({
+        id: "left-task",
+        stepKey: "do:parallel>do:left-one",
+        parentStepKey: "do:parallel",
+        name: "left-one",
+        result: { branch: "left" },
+        createdAt: "2026-07-24T10:00:01.000Z",
+      }),
+      workflowStep({
+        id: "right-task",
+        stepKey: "do:parallel>do:right-one",
+        parentStepKey: "do:parallel",
+        name: "right-one",
+        result: { branch: "right" },
+        createdAt: "2026-07-24T10:00:02.000Z",
+      }),
+      workflowStep({
+        id: "parallel-task",
+        stepKey: "do:parallel",
+        name: "parallel",
+        createdAt: "2026-07-24T10:00:03.000Z",
+      }),
+    ];
+    const run = projectWorkflowRun({
+      visualization: distinctParallelTemplateVisualization,
+      instance: workflowRun({ workflowSteps: runtimeSteps }),
+    });
+
+    assert(run);
+    expect(
+      renderWorkflowRunPresentationText(distinctParallelTemplateVisualization, run, runtimeSteps),
+    ).toMatchInlineSnapshot(`
+      "workflow demo
+      └─ 0. do parallel
+         returns: Promise.all([ step.do(\`left-\${value}\`, async () => ({})), step.do(\`right-\${value}\`, async () => ({})), ])
+         └─ 0. parallel Promise.all
+            ├─ branch 1
+            │  └─ 0. do left-\${value}
+            │     returns: ({})
+            └─ branch 2
+               └─ 0. do right-\${value}
+                  returns: ({})
+
+      run run-1
+      ├─ do parallel => runtime parallel · record parallel-task · completed
+      ├─ do left-\${value} => runtime left-one · record left-task · completed · result {"branch":"left"}
+      └─ do right-\${value} => runtime right-one · record right-task · completed · result {"branch":"right"}"
+    `);
+  });
+
+  it("does not use runtime order to guess across parallel branches", () => {
+    const runtimeSteps = [
+      workflowStep({
+        id: "first-parallel-task",
+        stepKey: "do:parallel>do:task-one",
+        parentStepKey: "do:parallel",
+        name: "task-one",
+        result: { branch: "first" },
+        createdAt: "2026-07-24T10:00:01.000Z",
+      }),
+      workflowStep({
+        id: "second-parallel-task",
+        stepKey: "do:parallel>do:task-two",
+        parentStepKey: "do:parallel",
+        name: "task-two",
+        result: { branch: "second" },
+        createdAt: "2026-07-24T10:00:02.000Z",
+      }),
+      workflowStep({
+        id: "parallel-task",
+        stepKey: "do:parallel",
+        name: "parallel",
+        createdAt: "2026-07-24T10:00:03.000Z",
+      }),
+    ];
+    const run = projectWorkflowRun({
+      visualization: ambiguousParallelTemplateVisualization,
+      instance: workflowRun({ workflowSteps: runtimeSteps }),
+    });
+
+    assert(run);
+    expect(
+      renderWorkflowRunPresentationText(ambiguousParallelTemplateVisualization, run, runtimeSteps),
+    ).toMatchInlineSnapshot(`
+      "workflow demo
+      └─ 0. do parallel
+         returns: Promise.all([ step.do(\`task-\${first}\`, async () => ({})), step.do(\`task-\${second}\`, async () => ({})), ])
+         └─ 0. parallel Promise.all
+            ├─ branch 1
+            │  └─ 0. do task-\${first}
+            │     returns: ({})
+            └─ branch 2
+               └─ 0. do task-\${second}
+                  returns: ({})
+
+      run run-1
+      ├─ do parallel => runtime parallel · record parallel-task · completed
+      ├─ do task-\${first} => (unmapped)
+      └─ do task-\${second} => (unmapped)
+
+      unmapped runtime
+      ├─ runtime task-one · key do:parallel>do:task-one · completed
+      └─ runtime task-two · key do:parallel>do:task-two · completed"
+    `);
+  });
+
+  it("does not use runtime order to guess across conditional branches", () => {
+    const runtimeSteps = [
+      workflowStep({
+        id: "selected-branch-task",
+        stepKey: "do:task-two",
+        name: "task-two",
+        result: { branch: "second" },
+        createdAt: "2026-07-24T10:00:01.000Z",
+      }),
+    ];
+    const run = projectWorkflowRun({
+      visualization: ambiguousConditionalTemplateVisualization,
+      instance: workflowRun({ workflowSteps: runtimeSteps }),
+    });
+
+    assert(run);
+    expect(
+      renderWorkflowRunPresentationText(
+        ambiguousConditionalTemplateVisualization,
+        run,
+        runtimeSteps,
+      ),
+    ).toMatchInlineSnapshot(`
+      "workflow demo
+      └─ 0. if event.payload.first
+         ├─ then
+         │  └─ 0. do task-\${first}
+         │     returns: ({})
+         └─ else
+            └─ 0. do task-\${second}
+               returns: ({})
+
+      run run-1
+      ├─ do task-\${first} => (unmapped)
+      └─ do task-\${second} => (unmapped)
+
+      unmapped runtime
+      └─ runtime task-two · key do:task-two · completed"
+    `);
   });
 
   it("uses the full nested step key to map duplicate live step names", () => {
@@ -575,6 +1183,57 @@ describe("automation script workflow run presentation", () => {
     assert.equal(selectScriptWorkflowRun(runs, "missing")?.instanceId, "newer");
   });
 });
+
+function renderWorkflowRunPresentationText(
+  visualization: WorkflowVisualizationSnapshot,
+  run: ScriptWorkflowRun,
+  runtimeSteps: readonly AutomationWorkflowRun["workflowSteps"][number][],
+): string {
+  const runtimeStepByRecordId = new Map(runtimeSteps.map((step) => [step.id, step]));
+  const stepNodes = visualization.graph.nodes
+    .filter(
+      (node): node is StepNode => node.kind === "step" && node.workflowName === run.workflowName,
+    )
+    .sort((left, right) => left.sourceOrder - right.sourceOrder);
+  const projectionLines = stepNodes.map((step, index) => {
+    const connector = index === stepNodes.length - 1 ? "└─" : "├─";
+    const state = run.stepStatesByNodeId.get(step.id);
+    if (!state) {
+      return `${connector} ${step.stepType} ${step.label} => (unmapped)`;
+    }
+
+    const runtimeStep = state.stepRecordId
+      ? runtimeStepByRecordId.get(state.stepRecordId)
+      : undefined;
+    const details = [
+      runtimeStep ? `runtime ${runtimeStep.name}` : undefined,
+      state.stepRecordId ? `record ${state.stepRecordId}` : undefined,
+      state.status,
+      state.current ? "current" : undefined,
+      state.result !== undefined ? `result ${renderWorkflowRunValue(state.result)}` : undefined,
+      state.error ? `error ${JSON.stringify(state.error)}` : undefined,
+      state.waitEventType ? `waiting for ${state.waitEventType}` : undefined,
+    ].filter((detail): detail is string => detail !== undefined);
+    return `${connector} ${step.stepType} ${step.label} => ${details.join(" · ")}`;
+  });
+
+  const unmappedLines = run.unmappedRuntimeSteps.map((step, index) => {
+    const connector = index === run.unmappedRuntimeSteps.length - 1 ? "└─" : "├─";
+    return `${connector} runtime ${step.name ?? step.stepKey} · key ${step.stepKey} · ${step.current ? "current" : step.status}`;
+  });
+
+  return [
+    renderWorkflowVisualizationText(visualization),
+    "",
+    `run ${run.instanceId}`,
+    ...projectionLines,
+    ...(unmappedLines.length ? ["", "unmapped runtime", ...unmappedLines] : []),
+  ].join("\n");
+}
+
+function renderWorkflowRunValue(value: unknown): string {
+  return JSON.stringify(value) ?? String(value);
+}
 
 function stepNode(label: string) {
   return stepNodeIn(visualization, label);
