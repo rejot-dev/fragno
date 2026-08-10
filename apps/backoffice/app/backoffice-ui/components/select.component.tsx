@@ -3,11 +3,11 @@ import { useId } from "react";
 import { useBoundProp, type ComponentFn } from "@json-render/react";
 
 import type { backofficeUiCatalog } from "../catalog";
-import { useBackofficeUiInteractionHost } from "../interaction";
+import { useWorkflowUiInteractionHost } from "../workflow-interaction";
 
 export const Select: ComponentFn<typeof backofficeUiCatalog, "Select"> = ({ props, bindings }) => {
   const id = useId();
-  const host = useBackofficeUiInteractionHost();
+  const host = useWorkflowUiInteractionHost();
   const [value, setValue] = useBoundProp(props.value, bindings?.value);
 
   return (
@@ -25,7 +25,7 @@ export const Select: ComponentFn<typeof backofficeUiCatalog, "Select"> = ({ prop
         id={id}
         value={value ?? ""}
         required={props.required}
-        disabled={props.disabled || host?.canEditWorkflowInput?.() === false}
+        disabled={props.disabled || !host || !host.canEditInput()}
         onChange={(event) => {
           setValue(event.target.value);
         }}

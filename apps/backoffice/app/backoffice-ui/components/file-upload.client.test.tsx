@@ -68,23 +68,23 @@ describe("FileUpload", () => {
       contentType: "application/pdf",
       expiresAt: "2027-01-01T00:00:00.000Z",
     };
-    const uploadPreparedFile = vi.fn(async () => reference);
-    const sendWorkflowEvent = vi.fn(async () => undefined);
+    const uploadFile = vi.fn(async () => reference);
+    const sendEvent = vi.fn(async () => undefined);
 
     render(
       <BackofficeUiRenderer
         ui={uploadUi.value.$ui}
-        interactionHost={{
-          canEditWorkflowInput: () => true,
-          canSendWorkflowEvent: () => true,
-          sendWorkflowEvent,
-          uploadPreparedFile,
+        workflowInteractionHost={{
+          canEditInput: () => true,
+          canSendEvent: () => true,
+          sendEvent,
+          uploadFile,
         }}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Submit document" }));
-    expect(sendWorkflowEvent).not.toHaveBeenCalled();
+    expect(sendEvent).not.toHaveBeenCalled();
 
     const file = new File(["evidence"], "evidence.pdf", { type: "application/pdf" });
     fireEvent.change(screen.getByLabelText(/Supporting document/), {
@@ -92,13 +92,13 @@ describe("FileUpload", () => {
     });
 
     await screen.findByText("8 B · Prepared");
-    expect(uploadPreparedFile).toHaveBeenCalledWith(
+    expect(uploadFile).toHaveBeenCalledWith(
       expect.objectContaining({ scope, file, bindingPath: "/response/attachment" }),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Submit document" }));
     await waitFor(() => {
-      expect(sendWorkflowEvent).toHaveBeenCalledWith(
+      expect(sendEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           eventType: "document-submitted",
           payload: { attachment: reference },
@@ -108,16 +108,16 @@ describe("FileUpload", () => {
   });
 
   test("rejects disallowed files before invoking the upload host", async () => {
-    const uploadPreparedFile = vi.fn();
+    const uploadFile = vi.fn();
 
     render(
       <BackofficeUiRenderer
         ui={uploadUi.value.$ui}
-        interactionHost={{
-          canEditWorkflowInput: () => true,
-          canSendWorkflowEvent: () => true,
-          sendWorkflowEvent: async () => undefined,
-          uploadPreparedFile,
+        workflowInteractionHost={{
+          canEditInput: () => true,
+          canSendEvent: () => true,
+          sendEvent: async () => undefined,
+          uploadFile,
         }}
       />,
     );
@@ -129,6 +129,6 @@ describe("FileUpload", () => {
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Choose one of these file types",
     );
-    expect(uploadPreparedFile).not.toHaveBeenCalled();
+    expect(uploadFile).not.toHaveBeenCalled();
   });
 });

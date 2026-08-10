@@ -3,14 +3,14 @@ import { useId } from "react";
 import { useBoundProp, type ComponentFn } from "@json-render/react";
 
 import type { backofficeUiCatalog } from "../catalog";
-import { useBackofficeUiInteractionHost } from "../interaction";
+import { useWorkflowUiInteractionHost } from "../workflow-interaction";
 
 export const Checkbox: ComponentFn<typeof backofficeUiCatalog, "Checkbox"> = ({
   props,
   bindings,
 }) => {
   const id = useId();
-  const host = useBackofficeUiInteractionHost();
+  const host = useWorkflowUiInteractionHost();
   const [checked, setChecked] = useBoundProp(props.checked, bindings?.checked);
 
   return (
@@ -23,7 +23,7 @@ export const Checkbox: ComponentFn<typeof backofficeUiCatalog, "Checkbox"> = ({
         type="checkbox"
         checked={checked ?? false}
         required={props.required}
-        disabled={props.disabled || host?.canEditWorkflowInput?.() === false}
+        disabled={props.disabled || !host || !host.canEditInput()}
         onChange={(event) => {
           setChecked(event.target.checked);
         }}

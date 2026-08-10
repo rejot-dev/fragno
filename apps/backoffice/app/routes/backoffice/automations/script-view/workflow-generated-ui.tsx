@@ -1,10 +1,10 @@
-import type { BackofficeUiInteractionHost } from "@/backoffice-ui/interaction";
 import {
   BackofficeUiErrorBoundary,
   BackofficeUiRenderer,
   type BackofficeUiStateChange,
 } from "@/backoffice-ui/renderer";
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
+import type { WorkflowUiInteractionHost } from "@/backoffice-ui/workflow-interaction";
 
 export type WorkflowEventSender = (input: {
   eventId: string;
@@ -15,11 +15,11 @@ export type WorkflowEventSender = (input: {
 }) => Promise<void>;
 
 export function WorkflowGeneratedUi({
-  interactionHost,
+  workflowInteractionHost,
   onStateChange,
   value,
 }: {
-  interactionHost?: BackofficeUiInteractionHost;
+  workflowInteractionHost?: WorkflowUiInteractionHost;
   onStateChange?: (changes: BackofficeUiStateChange[]) => void;
   value: unknown;
 }) {
@@ -35,7 +35,7 @@ export function WorkflowGeneratedUi({
   return (
     <BackofficeUiErrorBoundary fallback={<WorkflowGeneratedUiUnavailable />}>
       <BackofficeUiRenderer
-        interactionHost={interactionHost}
+        workflowInteractionHost={workflowInteractionHost}
         onStateChange={onStateChange}
         ui={parsedResult.value.$ui}
       />

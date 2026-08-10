@@ -3,7 +3,7 @@ import { useId, useState } from "react";
 import type { ComponentFn } from "@json-render/react";
 
 import type { backofficeUiCatalog } from "../catalog";
-import { useBackofficeUiInteractionHost } from "../interaction";
+import { useWorkflowUiInteractionHost } from "../workflow-interaction";
 
 type SubmissionState = "idle" | "sending" | "sent" | "failed";
 
@@ -11,12 +11,12 @@ export const WorkflowEventButton: ComponentFn<
   typeof backofficeUiCatalog,
   "WorkflowEventButton"
 > = ({ props }) => {
-  const host = useBackofficeUiInteractionHost();
+  const host = useWorkflowUiInteractionHost();
   const errorId = useId();
   const [eventId] = useState(() => crypto.randomUUID());
   const [submissionState, setSubmissionState] = useState<SubmissionState>("idle");
   const [error, setError] = useState<string>();
-  const available = host?.canSendWorkflowEvent(props.eventType) === true;
+  const available = host?.canSendEvent(props.eventType) === true;
   const disabled = !available || submissionState === "sending" || submissionState === "sent";
   const danger = props.variant === "danger";
 
@@ -31,7 +31,7 @@ export const WorkflowEventButton: ComponentFn<
     setSubmissionState("sending");
     setError(undefined);
     try {
-      await host.sendWorkflowEvent({
+      await host.sendEvent({
         eventId,
         eventType: props.eventType,
         payload: props.payload,
