@@ -13,8 +13,13 @@ import { buildBackofficeLoginPath } from "@/routes/backoffice/auth-navigation";
 
 import type { Route } from "./+types/backoffice-layout";
 import { resolveCurrentBackofficeScope } from "./backoffice-layout-scope";
+import BackofficeLayout, { ErrorBoundary } from "./backoffice-layout-ui";
 
-export { default, ErrorBoundary } from "./backoffice-layout-ui";
+export { ErrorBoundary };
+
+export default function BackofficeLayoutRoute(props: Route.ComponentProps) {
+  return <BackofficeLayout {...props} />;
+}
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   if (import.meta.env.MODE !== "development") {
