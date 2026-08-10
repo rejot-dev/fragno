@@ -327,6 +327,14 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
     }
   }
 
+  async drainBackground(): Promise<void> {
+    await Promise.all(
+      Object.values(this.#namespaces).map(async (namespace) => {
+        await namespace.drainBackground();
+      }),
+    );
+  }
+
   now(): number {
     return Date.now() + this.#timeOffsetMs;
   }

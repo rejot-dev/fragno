@@ -24,6 +24,7 @@ import {
   type DurableHookPropagationContext,
   type DurableHookAttempt,
   type DurableHooksInstrumentation,
+  type HookProcessorConfig,
 } from "./hooks";
 
 const TEST_NS = "test";
@@ -39,6 +40,11 @@ describe("Hook System", () => {
   let sqliteDatabase: SQLite.Database;
   let adapter: SqlAdapter;
   let internalFragment: ReturnType<typeof instantiateFragment>;
+
+  async function processHooksToCompletion(config: HookProcessorConfig) {
+    const run = await processHooks(config);
+    return await run.completion;
+  }
 
   function instantiateFragment(options: OptionsWithAdapter) {
     return instantiate(internalFragmentDef)
@@ -619,7 +625,7 @@ describe("Hook System", () => {
       });
 
       // Process hooks
-      await processHooks({
+      await processHooksToCompletion({
         hooks,
         namespace,
         internalFragment,
@@ -684,7 +690,7 @@ describe("Hook System", () => {
           },
         };
 
-        await processHooks({
+        await processHooksToCompletion({
           hooks: { onSkipped: hookFn },
           namespace,
           internalFragment,
@@ -720,7 +726,7 @@ describe("Hook System", () => {
         },
       };
 
-      await processHooks({
+      await processHooksToCompletion({
         hooks: { onRepeated: hookFn },
         namespace,
         internalFragment,
@@ -756,7 +762,7 @@ describe("Hook System", () => {
         },
       };
 
-      await processHooks({
+      await processHooksToCompletion({
         hooks: { onFailure: hookFn },
         namespace,
         internalFragment,
@@ -792,7 +798,7 @@ describe("Hook System", () => {
       };
 
       let processingSettled = false;
-      const processing = processHooks({
+      const processing = processHooksToCompletion({
         hooks: { onDeferred: hookFn },
         namespace,
         internalFragment,
@@ -859,7 +865,7 @@ describe("Hook System", () => {
       });
 
       await expect(
-        processHooks({
+        processHooksToCompletion({
           hooks,
           namespace,
           internalFragment,
@@ -916,7 +922,7 @@ describe("Hook System", () => {
         eventId = createdId;
       });
 
-      await processHooks({
+      await processHooksToCompletion({
         hooks,
         namespace,
         internalFragment,
@@ -971,7 +977,7 @@ describe("Hook System", () => {
         eventId = createdId;
       });
 
-      await processHooks({
+      await processHooksToCompletion({
         hooks,
         namespace,
         internalFragment,
@@ -1022,7 +1028,7 @@ describe("Hook System", () => {
         eventId = createdId;
       });
 
-      await processHooks({
+      await processHooksToCompletion({
         hooks,
         namespace,
         internalFragment,
@@ -1074,7 +1080,7 @@ describe("Hook System", () => {
         eventId = createdId;
       });
 
-      await processHooks({
+      await processHooksToCompletion({
         hooks,
         namespace,
         internalFragment,
@@ -1160,7 +1166,7 @@ describe("Hook System", () => {
           .execute();
       });
 
-      await processHooks({
+      await processHooksToCompletion({
         hooks,
         namespace,
         internalFragment,
@@ -1241,7 +1247,7 @@ describe("Hook System", () => {
           .execute();
       });
 
-      await processHooks({
+      await processHooksToCompletion({
         hooks,
         namespace,
         internalFragment,
@@ -1278,7 +1284,7 @@ describe("Hook System", () => {
         onTest: hookFn,
       };
 
-      await processHooks({
+      await processHooksToCompletion({
         hooks,
         namespace,
         internalFragment,
@@ -1291,35 +1297,39 @@ describe("Hook System", () => {
   });
 
   describe("createDurableHooksRunner", () => {
-    it("should return the total processed count across queued reruns", async () => {
-      const namespace = "test-runner-queued";
-      let resolveHook!: () => void;
-      const hookDone = new Promise<void>((resolve) => {
-        resolveHook = resolve;
+    it("starts hooks that arrive while another run is active", async () => {
+      const namespace = "test-runner-overlap";
+      const firstHookStarted = Promise.withResolvers<void>();
+      const releaseFirstHook = Promise.withResolvers<void>();
+      const secondHookStarted = Promise.withResolvers<void>();
+      const hookFn = vi.fn(async (payload: { sequence: number }) => {
+        if (payload.sequence === 1) {
+          firstHookStarted.resolve();
+          await releaseFirstHook.promise;
+          return;
+        }
+        secondHookStarted.resolve();
       });
-      const hookFn = vi.fn(async () => {
-        await hookDone;
-      });
-
-      await internalFragment.inContext(async function () {
-        await this.handlerTx()
-          .mutate(({ forSchema }) => {
-            const uow = forSchema(internalSchema);
-            uow.create("fragno_hooks", {
-              namespace,
-              hookName: "onQueued",
-              payload: { ok: true },
-              status: "pending",
-              attempts: 0,
-              maxAttempts: 1,
-              lastAttemptAt: null,
-              nextRetryAt: null,
-              error: null,
-              nonce: "runner-queued-nonce",
-            });
-          })
-          .execute();
-      });
+      const enqueueHook = async (sequence: number) => {
+        await internalFragment.inContext(async function () {
+          await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              forSchema(internalSchema).create("fragno_hooks", {
+                namespace,
+                hookName: "onQueued",
+                payload: { sequence },
+                status: "pending",
+                attempts: 0,
+                maxAttempts: 1,
+                lastAttemptAt: null,
+                nextRetryAt: null,
+                error: null,
+                nonce: `runner-overlap-${sequence}`,
+              });
+            })
+            .execute();
+        });
+      };
 
       const runner = createDurableHooksRunner({
         hooks: { onQueued: hookFn },
@@ -1329,13 +1339,102 @@ describe("Hook System", () => {
         defaultRetryPolicy: new NoRetryPolicy(),
       });
 
-      const firstRun = runner.processDue();
-      const queuedRun = runner.processDue();
-      resolveHook();
+      await enqueueHook(1);
+      const firstRun = await runner.processDue();
+      assert(firstRun.claimedCount === 1);
+      await firstHookStarted.promise;
 
-      await expect(firstRun).resolves.toBe(1);
-      await expect(queuedRun).resolves.toBe(1);
-      expect(hookFn).toHaveBeenCalledTimes(1);
+      await enqueueHook(2);
+      const secondRun = await runner.processDue();
+      assert(secondRun.claimedCount === 1);
+      await secondHookStarted.promise;
+      await expect(secondRun.completion).resolves.toBe(1);
+
+      releaseFirstHook.resolve();
+      await expect(firstRun.completion).resolves.toBe(1);
+      expect(hookFn).toHaveBeenCalledTimes(2);
+    });
+
+    it("leaves excess hooks pending until an active run completes", async () => {
+      const namespace = "test-runner-backpressure";
+      const activeHooksStarted = Promise.withResolvers<void>();
+      const releaseActiveHooks = Promise.withResolvers<void>();
+      let startedCount = 0;
+      const hookFn = vi.fn(async () => {
+        startedCount += 1;
+        if (startedCount === 16) {
+          activeHooksStarted.resolve();
+        }
+        await releaseActiveHooks.promise;
+      });
+
+      const enqueueHooks = async (fromSequence: number, toSequence: number) => {
+        await internalFragment.inContext(async function () {
+          await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              const uow = forSchema(internalSchema);
+              for (let sequence = fromSequence; sequence <= toSequence; sequence += 1) {
+                uow.create("fragno_hooks", {
+                  namespace,
+                  hookName: "onQueued",
+                  payload: { sequence },
+                  status: "pending",
+                  attempts: 0,
+                  maxAttempts: 1,
+                  lastAttemptAt: null,
+                  nextRetryAt: null,
+                  error: null,
+                  nonce: `runner-backpressure-${sequence}`,
+                });
+              }
+            })
+            .execute();
+        });
+      };
+
+      const runner = createDurableHooksRunner({
+        hooks: { onQueued: hookFn },
+        namespace,
+        internalFragment,
+        handlerTx,
+        defaultRetryPolicy: new NoRetryPolicy(),
+      });
+
+      await enqueueHooks(1, 1);
+      const firstRun = await runner.processDue();
+      assert(firstRun.claimedCount === 1);
+
+      await enqueueHooks(2, 17);
+      const secondRun = await runner.processDue();
+      assert(secondRun.claimedCount === 15);
+
+      let thirdRunStarted = false;
+      const thirdRunPromise = runner.processDue().then((run) => {
+        thirdRunStarted = true;
+        return run;
+      });
+      await activeHooksStarted.promise;
+      await Promise.resolve();
+
+      assert(!thirdRunStarted);
+      const eventsWhileSaturated = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+          )
+          .transform(({ serviceResult: [events] }) => events)
+          .execute();
+      });
+      expect(eventsWhileSaturated.filter((event) => event.status === "processing")).toHaveLength(
+        16,
+      );
+      expect(eventsWhileSaturated.filter((event) => event.status === "pending")).toHaveLength(1);
+
+      releaseActiveHooks.resolve();
+      const thirdRun = await thirdRunPromise;
+      assert(thirdRun.claimedCount === 1);
+      await Promise.all([firstRun.completion, secondRun.completion, thirdRun.completion]);
+      expect(hookFn).toHaveBeenCalledTimes(17);
     });
   });
 });

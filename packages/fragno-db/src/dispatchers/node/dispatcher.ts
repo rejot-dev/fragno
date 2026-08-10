@@ -31,10 +31,26 @@ export function createDurableHooksDispatcher(
   let timer: ReturnType<typeof setInterval> | undefined;
   let processing = false;
   let queued = false;
+  let continueAfterCompletionQueued = false;
   let notifyQueued = false;
   let currentPromise: Promise<void> | undefined;
+  const activeCompletions = new Set<Promise<number>>();
 
-  const runProcess = () => {
+  function observeCompletion(completion: Promise<number>, continueAfterCompletion: boolean): void {
+    const trackedCompletion = completion.finally(() => {
+      activeCompletions.delete(trackedCompletion);
+      if (continueAfterCompletion) {
+        void runProcess(true);
+      }
+    });
+    activeCompletions.add(trackedCompletion);
+    void trackedCompletion.catch(onError);
+  }
+
+  function runProcess(continueAfterCompletion = false): Promise<void> {
+    if (continueAfterCompletion) {
+      continueAfterCompletionQueued = true;
+    }
     if (processing) {
       queued = true;
       return currentPromise ?? Promise.resolve();
@@ -44,8 +60,11 @@ export function createDurableHooksDispatcher(
     currentPromise = (async () => {
       do {
         queued = false;
+        const shouldContinueAfterCompletion = continueAfterCompletionQueued;
+        continueAfterCompletionQueued = false;
         try {
-          await options.processor.processDue();
+          const run = await options.processor.processDue();
+          observeCompletion(run.completion, shouldContinueAfterCompletion && run.claimedCount > 0);
         } catch (error) {
           onError(error);
         }
@@ -54,7 +73,7 @@ export function createDurableHooksDispatcher(
     })();
 
     return currentPromise;
-  };
+  }
 
   const poll = async () => {
     try {
@@ -63,7 +82,7 @@ export function createDurableHooksDispatcher(
         return;
       }
       if (Date.now() >= nextWakeAt.getTime()) {
-        await runProcess();
+        await runProcess(true);
       }
     } catch (error) {
       onError(error);
@@ -78,11 +97,17 @@ export function createDurableHooksDispatcher(
       notifyQueued = true;
       setTimeout(() => {
         notifyQueued = false;
-        void runProcess();
+        void runProcess(true);
       }, 0);
     },
     wake: async () => {
-      await runProcess();
+      while (true) {
+        await runProcess();
+        if (activeCompletions.size === 0) {
+          return;
+        }
+        await Promise.all(activeCompletions);
+      }
     },
     drain: async () => {
       try {

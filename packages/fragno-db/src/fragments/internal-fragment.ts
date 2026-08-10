@@ -260,83 +260,43 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
       },
 
       /**
-       * Claim pending hook events for processing.
-       * Returns ready events and marks them as processing in the same transaction.
+       * Claim at most `limit` due hook events and mark them as processing atomically.
+       * Stuck attempts are recovered before newly pending events consume the remaining capacity.
        */
-      claimPendingHookEvents(namespace: string) {
+      claimDueHookEvents(namespace: string, staleBefore: DbNow | null, limit: number) {
         const now = dbNow();
-        return this.serviceTx(internalSchema, { name: "internal.hooks.claimPending" })
-          .retrieve((uow) =>
-            uow.find("fragno_hooks", (b) =>
-              b.whereIndex("idx_namespace_status_retry", (eb) =>
-                eb.and(
-                  eb("namespace", "=", namespace),
-                  eb("status", "=", "pending"),
-                  eb.or(eb.isNull("nextRetryAt"), eb("nextRetryAt", "<=", now)),
-                ),
-              ),
-            ),
-          )
-          .transformRetrieve(([events]) => {
-            return events.map((event) => ({
-              id: event.id,
-              hookName: event.hookName,
-              payload: event.payload,
-              status: coerceHookStatus(event.status, describeHookStatusSource(event)),
-              attempts: event.attempts,
-              maxAttempts: event.maxAttempts,
-              lastAttemptAt: event.lastAttemptAt,
-              nextRetryAt: event.nextRetryAt,
-              createdAt: event.createdAt,
-              idempotencyKey: event.nonce,
-              propagationContext: event.propagationContext as DurableHookPropagationContext | null,
-            }));
-          })
-          .mutate(({ uow, retrieveResult }) => {
-            if (retrieveResult.length === 0) {
-              return;
-            }
-            for (const event of retrieveResult) {
-              uow.update("fragno_hooks", event.id, (b) =>
-                b.set({ status: "processing", lastAttemptAt: now }).check(),
-              );
-            }
-          })
-          .transform(({ retrieveResult }) =>
-            retrieveResult.map((event) => ({
-              ...event,
-              status: "processing" as const,
-              id: new FragnoId({
-                externalId: event.id.externalId,
-                internalId: event.id.internalId,
-                version: event.id.version + 1,
-              }),
-            })),
-          )
-          .build();
-      },
+        const stuckStatus = staleBefore ? "processing" : "__disabled__";
+        const stuckBefore = staleBefore ?? now;
 
-      /**
-       * Claim stale processing hook events for processing.
-       * Returns ready events and marks them as processing in the same transaction.
-       */
-      claimStuckProcessingHookEvents(namespace: string, staleBefore: DbNow) {
-        const now = dbNow();
-
-        return this.serviceTx(internalSchema, { name: "internal.hooks.claimStuck" })
+        return this.serviceTx(internalSchema, { name: "internal.hooks.claimDue" })
           .retrieve((uow) =>
-            uow.find("fragno_hooks", (b) =>
-              b.whereIndex("idx_namespace_status_last_attempt", (eb) =>
-                eb.and(
-                  eb("namespace", "=", namespace),
-                  eb("status", "=", "processing"),
-                  eb.or(eb.isNull("lastAttemptAt"), eb("lastAttemptAt", "<=", staleBefore)),
-                ),
+            uow
+              .forSchema(internalSchema)
+              .find("fragno_hooks", (b) =>
+                b
+                  .whereIndex("idx_namespace_status_retry", (eb) =>
+                    eb.and(
+                      eb("namespace", "=", namespace),
+                      eb("status", "=", "pending"),
+                      eb.or(eb.isNull("nextRetryAt"), eb("nextRetryAt", "<=", now)),
+                    ),
+                  )
+                  .pageSize(limit),
+              )
+              .find("fragno_hooks", (b) =>
+                b
+                  .whereIndex("idx_namespace_status_last_attempt", (eb) =>
+                    eb.and(
+                      eb("namespace", "=", namespace),
+                      eb("status", "=", stuckStatus),
+                      eb.or(eb.isNull("lastAttemptAt"), eb("lastAttemptAt", "<=", stuckBefore)),
+                    ),
+                  )
+                  .pageSize(limit),
               ),
-            ),
           )
-          .transformRetrieve(([events]) => {
-            return events.map((event) => ({
+          .transformRetrieve(([pendingEvents, stuckEvents]) => {
+            const toHookEvent = (event: (typeof pendingEvents)[number]) => ({
               id: event.id,
               hookName: event.hookName,
               payload: event.payload,
@@ -348,30 +308,19 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               lastAttemptAt: event.lastAttemptAt,
               nextRetryAt: event.nextRetryAt,
               createdAt: event.createdAt,
-            }));
-          })
-          .mutate(({ uow, retrieveResult }) => {
-            if (retrieveResult.length === 0) {
-              return;
-            }
+            });
+            const selectedStuckEvents = stuckEvents.slice(0, limit).map(toHookEvent);
+            const selectedPendingEvents = pendingEvents
+              .slice(0, Math.max(0, limit - selectedStuckEvents.length))
+              .map(toHookEvent);
 
-            for (const event of retrieveResult) {
-              uow.update("fragno_hooks", event.id, (b) =>
-                b.set({ status: "processing", lastAttemptAt: now, nextRetryAt: null }).check(),
-              );
-            }
-          })
-          .transform(({ retrieveResult }) => {
             return {
-              events: retrieveResult.map((event) => ({
-                ...event,
-                id: new FragnoId({
-                  externalId: event.id.externalId,
-                  internalId: event.id.internalId,
-                  version: event.id.version + 1,
-                }),
-              })),
-              stuckEvents: retrieveResult.map((event) => ({
+              claimedEvents: [
+                ...selectedStuckEvents.map((event) => ({ kind: "stuck" as const, event })),
+                ...selectedPendingEvents.map((event) => ({ kind: "pending" as const, event })),
+              ],
+              pendingCount: selectedPendingEvents.length,
+              stuckEvents: selectedStuckEvents.map((event) => ({
                 id: event.id,
                 hookName: event.hookName,
                 attempts: event.attempts,
@@ -381,6 +330,33 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               })),
             };
           })
+          .mutate(({ uow, retrieveResult }) => {
+            for (const claimedEvent of retrieveResult.claimedEvents) {
+              uow.update("fragno_hooks", claimedEvent.event.id, (b) =>
+                b
+                  .set({
+                    status: "processing",
+                    lastAttemptAt: now,
+                    nextRetryAt:
+                      claimedEvent.kind === "stuck" ? null : claimedEvent.event.nextRetryAt,
+                  })
+                  .check(),
+              );
+            }
+          })
+          .transform(({ retrieveResult }) => ({
+            events: retrieveResult.claimedEvents.map(({ event }) => ({
+              ...event,
+              status: "processing" as const,
+              id: new FragnoId({
+                externalId: event.id.externalId,
+                internalId: event.id.internalId,
+                version: event.id.version + 1,
+              }),
+            })),
+            pendingCount: retrieveResult.pendingCount,
+            stuckEvents: retrieveResult.stuckEvents,
+          }))
           .build();
       },
 
