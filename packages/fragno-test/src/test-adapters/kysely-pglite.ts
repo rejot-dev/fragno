@@ -3,7 +3,7 @@ import { rm } from "node:fs/promises";
 
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { PGLiteDriverConfig } from "@fragno-dev/db/drivers";
-import { Kysely } from "kysely";
+import { Kysely, sql } from "kysely";
 import { KyselyPGlite } from "kysely-pglite";
 
 import { internalFragmentDef } from "@fragno-dev/db";
@@ -101,14 +101,16 @@ export async function createKyselyPgliteAdapter(
     }
 
     const schemasToTruncate = internalSchemaConfig ? [internalSchemaConfig, ...schemas] : schemas;
-
-    for (const { schema, namespace } of schemasToTruncate) {
-      for (const tableName of Object.keys(schema.tables)) {
+    const tables = schemasToTruncate.flatMap(({ schema, namespace }) => {
+      const schemaName = resolveSchemaName(adapter, namespace);
+      return Object.keys(schema.tables).map((tableName) => {
         const physicalTableName = adapter.namingStrategy.tableName(tableName, namespace);
-        const schemaName = resolveSchemaName(adapter, namespace);
-        const scopedKysely = schemaName ? kysely.withSchema(schemaName) : kysely;
-        await scopedKysely.deleteFrom(physicalTableName).execute();
-      }
+        return schemaName ? sql.id(schemaName, physicalTableName) : sql.id(physicalTableName);
+      });
+    });
+
+    if (tables.length > 0) {
+      await sql`TRUNCATE ${sql.join(tables)} CASCADE`.execute(kysely);
     }
   };
 
