@@ -104,7 +104,8 @@ export function ScriptWorkflowGraph({
             });
             const stepCount = rawStepCount - uiWaitPairings.byUiStepId.size;
             const hasCurrentStep = workflowRun
-              ? [...workflowRun.stepStatesByNodeId.values()].some((state) => state.current)
+              ? workflowRun.hasUnmappedCurrentStep ||
+                [...workflowRun.stepStatesByNodeId.values()].some((state) => state.current)
               : false;
 
             return (
@@ -128,6 +129,12 @@ export function ScriptWorkflowGraph({
                       {workflowRun?.status === "active" && !hasCurrentStep ? (
                         <GraphBadge label="Between checkpoints" />
                       ) : null}
+                      {workflowRun?.unmappedRuntimeSteps.length ? (
+                        <GraphBadge
+                          label={`${workflowRun.unmappedRuntimeSteps.length} unmapped runtime ${workflowRun.unmappedRuntimeSteps.length === 1 ? "step" : "steps"}`}
+                          tone="warning"
+                        />
+                      ) : null}
                       <SourceLocationButton source={workflow.source} onSelect={onSourceSelect} />
                       {workflow.construction.status === "partial" ? (
                         <GraphBadge label={workflow.construction.phase} tone="warning" />
@@ -141,6 +148,8 @@ export function ScriptWorkflowGraph({
                     ) : null}
                   </div>
                 </div>
+
+                <UnmappedRuntimeSteps run={workflowRun} />
 
                 {detailMode === "ui" ? (
                   <WorkflowUiResults
@@ -793,6 +802,45 @@ function branchLabel(branch: BranchNode): string {
   }
 
   throw new Error("Unsupported workflow branch type.");
+}
+
+function UnmappedRuntimeSteps({ run }: { run?: ScriptWorkflowRun }) {
+  if (!run?.unmappedRuntimeSteps.length) {
+    return null;
+  }
+
+  const visibleSteps = run.unmappedRuntimeSteps.slice(-5);
+  const hiddenStepCount = run.unmappedRuntimeSteps.length - visibleSteps.length;
+  return (
+    <div className="border-x border-b border-amber-500/35 bg-amber-500/8 px-3 py-2 text-amber-950 dark:text-amber-100">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold">Runtime steps could not be matched to source</p>
+          <p className="mt-0.5 text-[10px] text-amber-900/75 dark:text-amber-100/70">
+            Results and controls are withheld to avoid attaching them to the wrong step.
+          </p>
+          <ul className="mt-2 space-y-1 font-mono text-[10px]">
+            {visibleSteps.map((step) => (
+              <li key={step.stepKey} className="flex min-w-0 items-center gap-2">
+                <span className="truncate" title={step.stepKey}>
+                  {step.name ?? step.stepKey}
+                </span>
+                <span className="shrink-0 text-amber-900/65 dark:text-amber-100/60">
+                  {step.current ? "current" : step.status}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {hiddenStepCount > 0 ? (
+            <p className="mt-1 text-[10px] text-amber-900/65 tabular-nums dark:text-amber-100/60">
+              +{hiddenStepCount} earlier {hiddenStepCount === 1 ? "step" : "steps"}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function NonWorkflowMessage() {
