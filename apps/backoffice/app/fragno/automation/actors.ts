@@ -76,13 +76,16 @@ export const automationEntityRefsEqual = (left: AutomationEntityRef, right: Auto
   left.id === right.id &&
   (left.scope === "internal" || (right.scope === "external" && left.source === right.source));
 
+export const automationDelegatedActorSchema = z.discriminatedUnion("role", [
+  automationDelegateActorSchema,
+  automationAssistantActorSchema,
+]);
+
 export const automationActorsSchema: z.ZodType<AutomationActors> = z
   .strictObject({
     initiator: automationInitiatorActorSchema,
     principal: automationPrincipalActorSchema.nullable(),
-    delegation: z.array(
-      z.discriminatedUnion("role", [automationDelegateActorSchema, automationAssistantActorSchema]),
-    ),
+    delegation: z.array(automationDelegatedActorSchema),
   })
   .superRefine((actors, context) => {
     const actorSequence = [

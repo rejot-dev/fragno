@@ -23,7 +23,6 @@ defineWorkflow(
         action: {
           kind: "start_workflow",
           authority: { kind: "organization-automation" },
-          remoteWorkflowName: "telegram-test-command",
           workflowScriptPath,
           instanceIdTemplate: "telegram-test-${event.id}",
         },

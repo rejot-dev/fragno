@@ -154,16 +154,19 @@ describe("system automation scenarios", () => {
         object: runtime.objects.automations.singleton(),
         execution: createBackofficeSystemExecution({ kind: "system" }),
       });
-      const listInstances = workflow.listInstances;
+      const listInstances = workflow.listInternalInstances;
       if (!listInstances) {
         throw new Error("Workflow listInstances runtime helper is unavailable.");
       }
       const instances = await listInstances({
-        workflowName: "automation-codemode-script",
+        workflowName: "codemode-script",
         remoteWorkflowName: "workspace-file-initialization",
       });
       expect(instances.instances).toHaveLength(1);
-      assert(instances.instances[0]!.details.status === "complete");
+      assert(
+        instances.instances[0]!.details.status === "complete",
+        JSON.stringify(instances.instances[0]),
+      );
 
       const systemExecution = {
         actors: BACKOFFICE_SYSTEM_ACTORS,
@@ -350,21 +353,7 @@ describe("system automation scenarios", () => {
           then.workflow.instance({
             remoteWorkflowName: "workspace-file-initialization",
             status: "complete",
-            actors: {
-              initiator: {
-                scope: "internal",
-                type: "user",
-                id: "user-1",
-                role: "initiator",
-              },
-              principal: {
-                scope: "internal",
-                type: "automation",
-                id: "automation-route:system-workspace-file-initialization",
-                role: "principal",
-              },
-              delegation: [],
-            },
+            actors: BACKOFFICE_SYSTEM_ACTORS,
             output: {
               configured: true,
               id: "upload",
@@ -386,8 +375,8 @@ describe("system automation scenarios", () => {
               object: ctx.runtime.objects.automations.singleton(),
               execution: createBackofficeSystemExecution({ kind: "system" }),
             });
-            const systemInstances = await systemWorkflow.listInstances?.({
-              workflowName: "automation-codemode-script",
+            const systemInstances = await systemWorkflow.listInternalInstances({
+              workflowName: "codemode-script",
               remoteWorkflowName: "workspace-file-initialization",
             });
 
@@ -408,7 +397,6 @@ describe("system automation scenarios", () => {
                 action: {
                   kind: "start_workflow",
                   authority: { kind: "organization-automation" },
-                  remoteWorkflowName: "project-files-configure",
                   workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
                 },
               },
@@ -646,13 +634,8 @@ describe("system automation scenarios", () => {
             orgId: "org-1",
             remoteWorkflowName: "workspace-file-initialization",
             instanceId: "workspace-file-initialization-skip",
-            params: {
-              automationEvent: systemUnrelatedEvent,
-              script: {
-                kind: "file",
-                path: "/system/automations/workspace-file-initialization.workflow.js",
-              },
-            },
+            path: "/system/automations/workspace-file-initialization.workflow.js",
+            event: systemUnrelatedEvent,
           }),
 
           then.workflow.instance({

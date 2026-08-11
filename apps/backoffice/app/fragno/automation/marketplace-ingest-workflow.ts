@@ -34,9 +34,13 @@ import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import type { UploadFragment } from "@/fragno/upload-server";
 import { sha256Hex } from "@/lib/crypto";
 
+import { appendAutomationDelegate } from "./authority";
 import type { AutomationFileSystemConfig } from "./catalog";
-import type { AutomationEvent } from "./contracts";
-import { UNTRUSTED_CODEMODE_WORKFLOW } from "./engine/untrusted-codemode-workflow";
+import {
+  CODEMODE_CAPABILITY_ACTOR,
+  createCodemodeWorkflowInstanceInput,
+  prepareCodemodeWorkflowInstance,
+} from "./engine/codemode-invocation";
 import type { createAutomationFragment } from "./index";
 import {
   marketplaceFileContentsMatch,
@@ -67,10 +71,10 @@ import {
 } from "./workflow-completion";
 
 export const MARKETPLACE_INGEST_WORKFLOW_NAME = "marketplace-ingest";
-const MARKETPLACE_INSTALL_REMOTE_WORKFLOW_NAME = "marketplace-install";
 const MARKETPLACE_ARTIFACT_LIST_PAGE_SIZE = 500;
 const MARKETPLACE_ARTIFACT_MAX_LIST_PAGES = 5;
 const TEXT_ENCODER = new TextEncoder();
+const TEXT_DECODER = new TextDecoder();
 const MARKETPLACE_EXTERNAL_STEP_RETRIES = {
   retries: { limit: 3, delay: "1 s", backoff: "exponential" },
 } as const;
@@ -215,9 +219,6 @@ type MarketplaceInstallationWorkflowInput = {
 
 const marketplaceInstalledFiles = (files: MarketplaceIngestionSourceFile[]) =>
   Object.fromEntries(files.map((file) => [file.relativePath, `/workspace/${file.relativePath}`]));
-
-const marketplaceInstallationSubject = (scope: BackofficeRoutableScope) =>
-  scope.kind === "user" ? { userId: scope.userId } : { orgId: scope.orgId };
 
 export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflowConfig) =>
   defineWorkflow(
@@ -697,62 +698,78 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
           previousInstalledFiles: marketplaceInstalledFiles(previousSourceFiles),
         };
         const installationWorkflowInstanceId = `${event.instanceId}:installation`;
-        const installationActors = createBackofficeServiceExecution({
+        const installationBaseExecution = createBackofficeServiceExecution({
           scope: input.targetScope,
           service: {
             type: "automation",
             id: `automation:${installationWorkflowInstanceId}`,
           },
-        }).actors;
-        const installationEvent: AutomationEvent = {
-          id: installationWorkflowInstanceId,
-          scope: input.targetScope,
-          source: "marketplace",
-          eventType: "installation.requested",
-          occurredAt: event.timestamp.toISOString(),
-          payload: installationInput,
-          actors: installationActors,
-          subject: marketplaceInstallationSubject(input.targetScope),
-        };
-
-        await step.do("start marketplace installation workflow", (tx) => {
-          tx.workflowServiceCalls(() => [
-            {
-              type: "createInstance",
-              workflowName: UNTRUSTED_CODEMODE_WORKFLOW,
-              remoteWorkflowName: MARKETPLACE_INSTALL_REMOTE_WORKFLOW_NAME,
-              instanceId: installationWorkflowInstanceId,
-              params: withWorkflowCompletionTarget(
+        });
+        const installationWorkflowInput = await step.do(
+          "start marketplace installation workflow",
+          MARKETPLACE_EXTERNAL_STEP_RETRIES,
+          async (tx) => {
+            const code = TEXT_DECODER.decode(
+              await requestMarketplaceArtifactBytes(sourceObject, installationWorkflowFile.fileKey),
+            );
+            const execution = appendAutomationDelegate({
+              execution: installationBaseExecution,
+              delegate: CODEMODE_CAPABILITY_ACTOR,
+            });
+            let prepared;
+            try {
+              prepared = prepareCodemodeWorkflowInstance({
+                code,
+                filename: MARKETPLACE_INSTALL_WORKFLOW_PATH,
+                instanceId: installationWorkflowInstanceId,
+              });
+            } catch (error) {
+              throw new NonRetryableError(
+                error instanceof Error
+                  ? error.message
+                  : "Marketplace installation workflow source is invalid.",
+              );
+            }
+            const workflowInput = createCodemodeWorkflowInstanceInput({
+              prepared,
+              trigger: { type: "manual", payload: installationInput },
+              execution,
+              capabilityGrants: [
                 {
-                  source: {
-                    object: { kind: "name", name: artifact.uploadName },
-                    provider: UPLOAD_PROVIDER_DATABASE,
-                    key: installationWorkflowFile.fileKey,
-                  },
-                  scriptPath: MARKETPLACE_INSTALL_WORKFLOW_PATH,
-                  automationEvent: installationEvent,
-                  workflowEventPayload: installationInput,
+                  actor: CODEMODE_CAPABILITY_ACTOR,
                   permissions: [
                     BACKOFFICE_PERMISSION.router.modify,
                     BACKOFFICE_PERMISSION.router.read,
                   ],
-                  metadata: input.metadata,
                 },
-                {
+              ],
+            });
+
+            tx.workflowServiceCalls(() => [
+              {
+                type: "createInstance",
+                workflowName: workflowInput.workflowName,
+                remoteWorkflowName: workflowInput.remoteWorkflowName,
+                instanceId: workflowInput.instanceId,
+                params: withWorkflowCompletionTarget(workflowInput.params, {
                   workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
                   instanceId: event.instanceId,
-                },
-              ),
-            },
-          ]);
-        });
+                }),
+              },
+            ]);
+            return {
+              workflowName: workflowInput.workflowName,
+              instanceId: workflowInput.instanceId,
+            };
+          },
+        );
 
         const completion = await step.waitForEvent<WorkflowCompletedEventPayload>(
           "wait for marketplace installation workflow",
           { type: WORKFLOW_COMPLETED_EVENT_TYPE },
         );
         if (
-          completion.payload.workflowName !== UNTRUSTED_CODEMODE_WORKFLOW ||
+          completion.payload.workflowName !== installationWorkflowInput.workflowName ||
           completion.payload.instanceId !== installationWorkflowInstanceId
         ) {
           throw new NonRetryableError("Received an unexpected workflow completion event.");

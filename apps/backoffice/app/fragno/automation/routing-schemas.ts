@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import { automationActorsSchema } from "./actors";
-import { AUTOMATION_CODEMODE_WORKFLOW } from "./engine/workflow-start";
 import { automationScheduleCadenceSchema } from "./route-triggers";
 import { isAutomationActorProvenancePath } from "./routing";
 import type {
@@ -120,10 +119,9 @@ const automationAuthorityModeSchema = z.discriminatedUnion("kind", [
 ]);
 
 const automationStartWorkflowActionSchema = z
-  .object({
+  .strictObject({
     kind: z.literal("start_workflow"),
     authority: automationAuthorityModeSchema,
-    remoteWorkflowName: z.string().trim().min(1).optional(),
     workflowScriptPath: z.string().trim().min(1),
     instanceIdTemplate: z.string().trim().min(1),
   })
@@ -146,10 +144,8 @@ const automationWorkflowEventTargetSchema: z.ZodType<AutomationWorkflowEventTarg
   .meta({ id: "AutomationWorkflowEventTarget" });
 
 const automationSendWorkflowEventActionSchema = z
-  .object({
+  .strictObject({
     kind: z.literal("send_workflow_event"),
-    workflowName: z.string().trim().min(1).default(AUTOMATION_CODEMODE_WORKFLOW),
-    remoteWorkflowName: z.string().trim().min(1),
     target: automationWorkflowEventTargetSchema,
     eventType: z.string().trim().min(1),
     payload: z.unknown().optional(),

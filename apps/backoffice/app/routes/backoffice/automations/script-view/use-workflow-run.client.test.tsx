@@ -27,7 +27,7 @@ const collections = {} as never;
 function WorkflowRunHarness() {
   const run = useWorkflowRun({
     collections,
-    reference: { workflowName: "pi-codemode-script", instanceId: "run-1" },
+    reference: { workflowName: "codemode-script", instanceId: "run-1" },
     visualization,
   });
   const sleepNode = visualization.graph.nodes.find(
@@ -94,7 +94,7 @@ describe("useWorkflowRun", () => {
       collections,
       selector: {
         type: "instance",
-        workflowName: "pi-codemode-script",
+        workflowName: "codemode-script",
         instanceId: "run-1",
       },
     });

@@ -62,9 +62,7 @@ describe("project automation event routing", () => {
   test("forwards org events into active project automation routes", async () => {
     const orgId = "org-1";
 
-    runtime = await createInMemoryBackofficeRuntime({
-      env: { LOADER: env.LOADER },
-    });
+    runtime = await createInMemoryBackofficeRuntime({});
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
     const orgRoutes = createAutomationsRouteCaller({ object: orgAutomations });
@@ -83,7 +81,6 @@ describe("project automation event routing", () => {
         action: {
           kind: "start_workflow",
           authority: { kind: "organization-automation" },
-          remoteWorkflowName: "project-files-configure",
           workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
           instanceIdTemplate: "project-files-configure-${event.id}",
         },
@@ -102,6 +99,22 @@ describe("project automation event routing", () => {
     }
 
     const projectId = idValue(createProjectResponse.data.id);
+    const projectFileSystem = await createMasterFileSystem(
+      createSystemFilesContext({
+        objects: runtime.objects,
+        execution: createBackofficeUserExecution({
+          scope: { kind: "project", orgId, projectId },
+          userId: "user-1",
+        }),
+        staticFileArtifacts: () => ({}),
+      }),
+    );
+    await projectFileSystem.mkdir("/workspace/automations", { recursive: true });
+    await projectFileSystem.writeFile(
+      "/workspace/automations/project-store.workflow.js",
+      `defineWorkflow({ name: "project-store" }, async (event) => event.payload);`,
+    );
+
     const projectAutomations = runtime.objects.automations.forProject({ orgId, projectId });
     const createRouteResponse = await projectAutomations.fetch(
       new Request(
@@ -123,7 +136,6 @@ describe("project automation event routing", () => {
             action: {
               kind: "start_workflow",
               authority: { kind: "organization-automation" },
-              remoteWorkflowName: "project-store",
               workflowScriptPath: "/workspace/automations/project-store.workflow.js",
               instanceIdTemplate: "project-store-${event.id}",
             },
@@ -176,7 +188,7 @@ describe("project automation event routing", () => {
     await runtime.drain();
 
     const workflowsResponse = await projectAutomations.fetchWithContext(
-      new Request("https://automations.do/api/workflows/automation-codemode-script/instances"),
+      new Request("https://automations.do/api/workflows/codemode-script/instances"),
       {
         execution: createBackofficeSystemExecution({ kind: "project", orgId, projectId }),
         propagationContext: null,

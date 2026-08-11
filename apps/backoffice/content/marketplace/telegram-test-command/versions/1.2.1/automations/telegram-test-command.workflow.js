@@ -1,5 +1,5 @@
 defineWorkflow({ name: "telegram-test-command" }, async (event, step) => {
-  const automationEvent = event.payload.automationEvent;
+  const automationEvent = event;
   const text = automationEvent.payload.text;
   const chatId = automationEvent.payload.chatId;
 

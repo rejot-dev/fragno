@@ -71,7 +71,7 @@ const piCreatingWorkflowSource = `defineWorkflow(
 const workflowSource = `defineWorkflow(
   { name: "authority-mode" },
   async (event, step) => {
-    const eventId = event.payload.automationEvent.id;
+    const eventId = event.id;
     await step.do("write protected store entry", async () => {
       await store.set({
         key: "authority/" + eventId,
@@ -136,7 +136,6 @@ describe("automation route authority modes", () => {
                 action: {
                   kind: "start_workflow",
                   authority: { kind: "organization-automation" },
-                  remoteWorkflowName: "authority-mode",
                   workflowScriptPath: "/workspace/automations/authority-mode.workflow.js",
                   instanceIdTemplate: "organization-${event.id}",
                 },
@@ -245,7 +244,6 @@ describe("automation route authority modes", () => {
             action: {
               kind: "start_workflow",
               authority: { kind: "organization-automation" },
-              remoteWorkflowName: "authority-mode-pi-session",
               workflowScriptPath: "/workspace/automations/authority-mode-pi-session.workflow.js",
               instanceIdTemplate: "organization-pi-${event.id}",
             },
@@ -358,7 +356,6 @@ describe("automation route authority modes", () => {
             action: {
               kind: "start_workflow",
               authority: { kind: "delegated-user" },
-              remoteWorkflowName: "authority-mode",
               workflowScriptPath: "/workspace/automations/authority-mode.workflow.js",
               instanceIdTemplate: "delegated-${event.id}",
             },
@@ -473,7 +470,6 @@ describe("automation route authority modes", () => {
             action: {
               kind: "start_workflow",
               authority: { kind: "delegated-user" },
-              remoteWorkflowName: "authority-mode",
               workflowScriptPath: "/workspace/automations/authority-mode.workflow.js",
               instanceIdTemplate: "intersection-${event.id}",
             },
@@ -509,7 +505,7 @@ describe("automation route authority modes", () => {
               });
               const response = await workflows("GET", "/:workflowName/instances/:instanceId", {
                 pathParams: {
-                  workflowName: "automation-codemode-script",
+                  workflowName: "codemode-script",
                   instanceId: "intersection-event-1",
                 },
               });
@@ -518,10 +514,8 @@ describe("automation route authority modes", () => {
                 throw new Error("Delegated workflow instance was not available.");
               }
 
-              const params = response.data.meta.params as { metadata?: Record<string, unknown> };
-              const actors = automationActorsSchema.parse(
-                params.metadata?.[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
-              );
+              const params = response.data.meta.params as { execution?: { actors?: unknown } };
+              const actors = automationActorsSchema.parse(params.execution?.actors);
               const kernel = new BackofficeKernel(ctx.runtime.services);
 
               await expect(

@@ -26,26 +26,20 @@ const routeWithAction = (
 });
 
 describe("automation route workflow presentation", () => {
-  test("send-event routes identify the saved workflow separately from its host", () => {
+  test("send-event routes do not claim ownership of a saved workflow", () => {
     const route = routeWithAction({
       kind: "send_workflow_event",
-      workflowName: "automation-codemode-script",
-      remoteWorkflowName: "telegram-user-linking",
       target: { kind: "stored_instance_id", keyTemplate: "telegram/claim/${event.id}" },
       eventType: "identity-claim-completed",
     });
 
-    assert(automationRouteWorkflowName(route) === "telegram-user-linking");
-    expect(automationRouteWorkflowIdentity(route)).toEqual({
-      workflowName: "automation-codemode-script",
-      remoteWorkflowName: "telegram-user-linking",
-      workflowScriptPath: null,
-    });
+    assert(automationRouteWorkflowName(route) === null);
+    expect(automationRouteWorkflowIdentity(route)).toBeNull();
     assert(
-      automationRouteMatchesWorkflowInstance(route, {
-        workflowName: "automation-codemode-script",
+      !automationRouteMatchesWorkflowInstance(route, {
+        workflowName: "codemode-script",
         remoteWorkflowName: "telegram-user-linking",
-        workflowScriptPath: "/workspace/automations/unrelated.workflow.js",
+        workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
       }),
     );
   });
@@ -58,7 +52,7 @@ describe("automation route workflow presentation", () => {
       instanceIdTemplate: "telegram/link/${event.id}",
     });
     const instance = {
-      workflowName: "automation-codemode-script",
+      workflowName: "codemode-script",
       remoteWorkflowName: null,
       workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
     };

@@ -17,13 +17,8 @@ import {
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { createAutomationFragment, type AutomationFragmentConfig } from "@/fragno/automation";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
-import { defineAutomationCodemodeWorkflow } from "@/fragno/automation/engine/automation-codemode-workflow";
-import {
-  definePiCodemodeWorkflow,
-  PI_CODEMODE_WORKFLOW,
-} from "@/fragno/automation/engine/pi-codemode-workflow";
-import { defineUntrustedCodemodeWorkflow } from "@/fragno/automation/engine/untrusted-codemode-workflow";
-import { AUTOMATION_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
+import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
+import { defineCodemodeWorkflow } from "@/fragno/automation/engine/codemode-workflow";
 import {
   createPiRuntimeDefinition,
   type CreatePiRuntimeDefinitionOptions,
@@ -65,16 +60,7 @@ export type AutomationsRuntime = {
   dispatcher: DurableHooksDispatcherDurableObjectHandler | null;
 };
 
-const jsonResponse = (payload: unknown, status = 200) =>
-  new Response(JSON.stringify(payload), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === "object" && !Array.isArray(value);
-
-/** Derives security-sensitive workflow context from the trusted route execution. */
+/** Replaces caller-provided security context with the trusted route execution context. */
 const withTrustedWorkflowContext = ({
   workflowName,
   params,
@@ -84,20 +70,44 @@ const withTrustedWorkflowContext = ({
   params: Record<string, unknown>;
   execution: BackofficeExecutionContext;
 }): Record<string, unknown> => {
-  const automationEvent = isRecord(params.automationEvent) ? params.automationEvent : null;
-  const metadata = isRecord(params.metadata) ? params.metadata : {};
+  if (workflowName === CODEMODE_WORKFLOW) {
+    const trigger =
+      params.trigger && typeof params.trigger === "object" && !Array.isArray(params.trigger)
+        ? (params.trigger as Record<string, unknown>)
+        : {};
+    const event =
+      trigger.event && typeof trigger.event === "object" && !Array.isArray(trigger.event)
+        ? (trigger.event as Record<string, unknown>)
+        : {};
+
+    return {
+      ...params,
+      trigger:
+        trigger.type === "event"
+          ? {
+              ...trigger,
+              event: {
+                ...event,
+                scope: execution.scope,
+                actors: execution.actors,
+              },
+            }
+          : trigger,
+      execution: {
+        scope: execution.scope,
+        actors: execution.actors,
+        capabilityGrants: [],
+      },
+    };
+  }
+
+  const metadata =
+    params.metadata && typeof params.metadata === "object" && !Array.isArray(params.metadata)
+      ? (params.metadata as Record<string, unknown>)
+      : {};
 
   return {
     ...params,
-    ...(workflowName === AUTOMATION_CODEMODE_WORKFLOW && automationEvent
-      ? {
-          automationEvent: {
-            ...automationEvent,
-            scope: execution.scope,
-            actors: execution.actors,
-          },
-        }
-      : {}),
     metadata: {
       ...metadata,
       [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: execution.actors,
@@ -150,19 +160,12 @@ export const createAutomationsRuntime = (
   const workflowsFragment = createWorkflowsFragment<BackofficeExecutionContext>(
     {
       workflows: {
-        AUTOMATION_CODEMODE_SCRIPT: defineAutomationCodemodeWorkflow({
+        CODEMODE_SCRIPT: defineCodemodeWorkflow({
           ...config,
           createPiAutomationContext: ({ execution }) => ({
             runtime: createHostedPiRuntime(execution),
           }),
         }),
-        UNTRUSTED_CODEMODE_SCRIPT: defineUntrustedCodemodeWorkflow({
-          ...config,
-          createPiAutomationContext: ({ execution }) => ({
-            runtime: createHostedPiRuntime(execution),
-          }),
-        }),
-        PI_CODEMODE_SCRIPT: definePiCodemodeWorkflow(config),
         MARKETPLACE_PUBLISH: defineMarketplacePublishWorkflow({
           ownerScope: config.ownerScope,
           runtime: config.runtime,
@@ -183,7 +186,7 @@ export const createAutomationsRuntime = (
         ...pi.workflows,
       },
       runtime: config.runtime?.fragnoRuntime ?? defaultFragnoRuntime,
-      onWorkflowTerminal: async (payload) => {
+      onWorkflowTerminal: async function notifyWorkflowOwnerOfTerminalInstance(payload) {
         if (payload.workflowName === SANDBOX_LIFECYCLE_WORKFLOW_NAME) {
           if (!automationFragment) {
             throw new Error("Sandbox lifecycle terminal hook requires the automations fragment.");
@@ -242,16 +245,13 @@ export const createAutomationsRuntime = (
       );
     }
 
-    const rejectNonPublicWorkflowMutation = (workflowName: string) => {
-      const isTrustedSystemExecution =
-        requestContext.actors.initiator.scope === "internal" &&
-        requestContext.actors.initiator.type === "system" &&
-        requestContext.actors.principal === null;
-      if (
-        workflowName === AUTOMATION_CODEMODE_WORKFLOW ||
-        workflowName === PI_CODEMODE_WORKFLOW ||
-        isTrustedSystemExecution
-      ) {
+    const isTrustedSystemExecution =
+      requestContext.actors.initiator.scope === "internal" &&
+      requestContext.actors.initiator.type === "system" &&
+      requestContext.actors.principal === null;
+
+    const rejectInternalWorkflowMutation = (workflowName: string) => {
+      if (workflowName === CODEMODE_WORKFLOW || isTrustedSystemExecution) {
         return undefined;
       }
 
@@ -264,8 +264,48 @@ export const createAutomationsRuntime = (
       );
     };
 
-    const authorize = async (
+    const rejectDisallowedWorkflowParams = (
+      workflowName: string,
+      params: Record<string, unknown>,
+    ) => {
+      if (!isTrustedSystemExecution && workflowName === CODEMODE_WORKFLOW) {
+        const execution =
+          params.execution &&
+          typeof params.execution === "object" &&
+          !Array.isArray(params.execution)
+            ? (params.execution as Record<string, unknown>)
+            : null;
+        if (
+          execution &&
+          Array.isArray(execution.capabilityGrants) &&
+          execution.capabilityGrants.length > 0
+        ) {
+          return error(
+            {
+              message: "Codemode capability grants can only be set by internal services.",
+              code: "CODEMODE_CAPABILITY_GRANTS_NOT_ALLOWED",
+            },
+            400,
+          );
+        }
+      }
+
+      if (Object.hasOwn(params, WORKFLOW_COMPLETION_PARAM)) {
+        return error(
+          {
+            message: "Workflow completion targets cannot be set through this route.",
+            code: "WORKFLOW_COMPLETION_TARGET_NOT_ALLOWED",
+          },
+          400,
+        );
+      }
+
+      return undefined;
+    };
+
+    const authorizeWorkflowOperation = async (
       operation:
+        | typeof BACKOFFICE_PERMISSION.workflow.executeCode
         | typeof BACKOFFICE_PERMISSION.workflow.read
         | typeof BACKOFFICE_PERMISSION.workflow.modify,
       resource: Record<string, unknown>,
@@ -288,32 +328,45 @@ export const createAutomationsRuntime = (
       }
     };
 
+    const authorizeWorkflowCreation = async (workflowName: string) => {
+      const resource = { kind: "workflow", workflowName };
+      const workflowAuthorization = await authorizeWorkflowOperation(
+        BACKOFFICE_PERMISSION.workflow.modify,
+        resource,
+      );
+      if (workflowAuthorization || workflowName !== CODEMODE_WORKFLOW) {
+        return workflowAuthorization;
+      }
+      return await authorizeWorkflowOperation(BACKOFFICE_PERMISSION.workflow.executeCode, resource);
+    };
+
     const createResponse = await ifMatchesRoute(
       "POST",
       "/:workflowName/instances",
       async ({ input, pathParams }) => {
-        const internalWorkflowResponse = rejectNonPublicWorkflowMutation(pathParams.workflowName);
+        const internalWorkflowResponse = rejectInternalWorkflowMutation(pathParams.workflowName);
         if (internalWorkflowResponse) {
           return internalWorkflowResponse;
         }
-        const authorization = await authorize(BACKOFFICE_PERMISSION.workflow.modify, {
-          kind: "workflow",
-          workflowName: pathParams.workflowName,
-        });
+
+        const authorization = await authorizeWorkflowCreation(pathParams.workflowName);
         if (authorization) {
           return authorization;
         }
+
         const values = await input.valid();
-        const params = isRecord(values.params) ? values.params : {};
-        if (Object.hasOwn(params, WORKFLOW_COMPLETION_PARAM)) {
-          return error(
-            {
-              message: "Workflow completion targets can only be set by internal services.",
-              code: "WORKFLOW_COMPLETION_TARGET_NOT_ALLOWED",
-            },
-            400,
-          );
+        const params =
+          values.params && typeof values.params === "object" && !Array.isArray(values.params)
+            ? (values.params as Record<string, unknown>)
+            : {};
+        const invalidParamsResponse = rejectDisallowedWorkflowParams(
+          pathParams.workflowName,
+          params,
+        );
+        if (invalidParamsResponse) {
+          return invalidParamsResponse;
         }
+
         requestState.setBody({
           ...values,
           params: withTrustedWorkflowContext({
@@ -333,42 +386,43 @@ export const createAutomationsRuntime = (
       "POST",
       "/:workflowName/instances/batch",
       async ({ input, pathParams }) => {
-        const internalWorkflowResponse = rejectNonPublicWorkflowMutation(pathParams.workflowName);
+        const internalWorkflowResponse = rejectInternalWorkflowMutation(pathParams.workflowName);
         if (internalWorkflowResponse) {
           return internalWorkflowResponse;
         }
-        const authorization = await authorize(BACKOFFICE_PERMISSION.workflow.modify, {
-          kind: "workflow",
-          workflowName: pathParams.workflowName,
-        });
+
+        const authorization = await authorizeWorkflowCreation(pathParams.workflowName);
         if (authorization) {
           return authorization;
         }
+
         const values = await input.valid();
-        if (
-          values.instances.some(
-            ({ params }) =>
-              params &&
-              typeof params === "object" &&
-              !Array.isArray(params) &&
-              Object.hasOwn(params, WORKFLOW_COMPLETION_PARAM),
-          )
-        ) {
-          return error(
-            {
-              message: "Workflow completion targets can only be set by internal services.",
-              code: "WORKFLOW_COMPLETION_TARGET_NOT_ALLOWED",
-            },
-            400,
+        const instances = values.instances.map((instance) => ({
+          instance,
+          params:
+            instance.params &&
+            typeof instance.params === "object" &&
+            !Array.isArray(instance.params)
+              ? (instance.params as Record<string, unknown>)
+              : {},
+        }));
+        for (const { params } of instances) {
+          const invalidParamsResponse = rejectDisallowedWorkflowParams(
+            pathParams.workflowName,
+            params,
           );
+          if (invalidParamsResponse) {
+            return invalidParamsResponse;
+          }
         }
+
         requestState.setBody({
           ...values,
-          instances: values.instances.map((instance) => ({
+          instances: instances.map(({ instance, params }) => ({
             ...instance,
             params: withTrustedWorkflowContext({
               workflowName: pathParams.workflowName,
-              params: isRecord(instance.params) ? instance.params : {},
+              params,
               execution: requestContext,
             }),
           })),
@@ -392,7 +446,7 @@ export const createAutomationsRuntime = (
         method,
         route,
         async ({ pathParams }, _output) =>
-          await authorize(BACKOFFICE_PERMISSION.workflow.read, {
+          await authorizeWorkflowOperation(BACKOFFICE_PERMISSION.workflow.read, {
             kind: "workflow",
             workflowName: pathParams.workflowName,
           }),
@@ -411,11 +465,12 @@ export const createAutomationsRuntime = (
     ] as const;
     for (const route of mutationRoutes) {
       const response = await ifMatchesRoute("POST", route, async ({ pathParams }, _output) => {
-        const internalWorkflowResponse = rejectNonPublicWorkflowMutation(pathParams.workflowName);
+        const internalWorkflowResponse = rejectInternalWorkflowMutation(pathParams.workflowName);
         if (internalWorkflowResponse) {
           return internalWorkflowResponse;
         }
-        return await authorize(BACKOFFICE_PERMISSION.workflow.modify, {
+
+        return await authorizeWorkflowOperation(BACKOFFICE_PERMISSION.workflow.modify, {
           kind: "workflow",
           workflowName: pathParams.workflowName,
           instanceId: pathParams.instanceId,
@@ -537,12 +592,3 @@ export const createAutomationsDispatcher = (
 
   return dispatcherFactory(state, env);
 };
-
-export const buildNotConfiguredResponse = () =>
-  jsonResponse(
-    {
-      message: "Automations runtime is not ready.",
-      code: "NOT_CONFIGURED",
-    },
-    400,
-  );

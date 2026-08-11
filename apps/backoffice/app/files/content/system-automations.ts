@@ -8,7 +8,7 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileContent> = {
   "automations/workspace-file-initialization.workflow.js": `defineWorkflow(
   { name: "workspace-file-initialization" },
   async (event, step) => {
-    const automationEvent = event.payload.automationEvent;
+    const automationEvent = event;
 
     if (
       automationEvent.source !== "auth" ||

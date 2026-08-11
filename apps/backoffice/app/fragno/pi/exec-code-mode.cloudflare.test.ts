@@ -14,17 +14,20 @@ import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-regis
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
+import { codemodeWorkflowParamsSchema } from "@/fragno/automation/engine/codemode-invocation";
 
 import { runBackofficeCodemodeWorkflow } from "../codemode/workflow-execute";
 import type { RegisteredAutomationsRuntime } from "../runtime-tools/bash-host";
 import { EMPTY_BASH_HOST_CONTEXT } from "../runtime-tools/bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "../runtime-tools/families/automations-routing";
-import type { AutomationWorkflowRuntime } from "../runtime-tools/families/automations-workflow";
+import type {
+  AutomationWorkflowRuntime,
+  InternalAutomationWorkflowRuntime,
+} from "../runtime-tools/families/automations-workflow";
 import { createTrustedSystemBackofficeToolContext } from "../runtime-tools/runtime-tools";
 import { runtimeToolFamilies } from "../runtime-tools/tool-families";
 import { createPiToolRegistry } from "./pi";
 import { createPiCodemodeRuntime } from "./pi-codemode";
-import type { PiCodemodeWorkflowParams } from "./pi-codemode-workflow";
 
 const unusedObjects = {} as BackofficeObjectRegistry;
 const testRuntimeConfig: BackofficeRuntimeConfig = {
@@ -60,6 +63,45 @@ const createPiSessionFileSystemContext = () => ({
     scope: { kind: "org", orgId: "org-1" },
     userId: "test-user",
   }),
+});
+
+type PiWorkflowRuntime = AutomationWorkflowRuntime &
+  Pick<InternalAutomationWorkflowRuntime, "createInternalInstance">;
+
+const createPiWorkflowRuntime = (
+  overrides: Partial<PiWorkflowRuntime> = {},
+): PiWorkflowRuntime => ({
+  createInternalInstance: async ({ workflowName, instanceId }) => ({
+    workflowName,
+    instanceId: instanceId ?? "generated-instance-id",
+  }),
+  createInstance: async ({ instanceId }) => ({ instanceId }),
+  listInstances: async () => ({ instances: [], hasNextPage: false }),
+  getInstance: async ({ instanceId }) => ({
+    id: instanceId,
+    details: { status: "waiting" },
+    meta: {
+      name: "demo",
+      path: "/workspace/automations/demo.workflow.js",
+      createdAt: "2026-08-11T00:00:00.000Z",
+      updatedAt: "2026-08-11T00:00:00.000Z",
+      startedAt: null,
+      completedAt: null,
+    },
+  }),
+  retryInstance: async ({ instanceId, stepKey }) => ({
+    accepted: true,
+    instance: { id: instanceId, details: { status: "waiting" } },
+    retry: {
+      stepKey: stepKey ?? "do:latest",
+      attempts: 1,
+      maxAttempts: 2,
+      scheduledAt: "2026-08-11T00:00:00.000Z",
+    },
+  }),
+  sendEvent: async () => null,
+  getHistory: async () => ({ steps: [], events: [], emissions: [] }),
+  ...overrides,
 });
 
 describe("Pi execCodeMode tool", () => {
@@ -168,18 +210,7 @@ describe("Pi execCodeMode tool", () => {
 
   test("surfaces workflow definitions from execCodeMode", async () => {
     const tool = await createExecCodeModeTool({
-      workflowRuntime: {
-        createInstance: async ({ workflowName, instanceId }) => ({
-          workflowName,
-          instanceId: instanceId ?? "generated-instance-id",
-        }),
-        getStatus: async () => {
-          throw new Error("unused");
-        },
-        sendEvent: async () => {
-          throw new Error("unused");
-        },
-      },
+      workflowRuntime: createPiWorkflowRuntime(),
     });
 
     const result = await tool.execute("tool-call-1", {
@@ -193,7 +224,7 @@ describe("Pi execCodeMode tool", () => {
 
     expect(result.details).toMatchObject({
       workflowDefinition: { name: "pi-session-workflow", options: { name: "pi-session-workflow" } },
-      result: { workflowName: "pi-codemode-script", instanceId: "18tfv3i1e4o7fe" },
+      result: { instanceId: "18tfv3i1e4o7fe" },
     });
     const content = result.content[0];
     assert(content?.type === "text");
@@ -208,17 +239,19 @@ describe("Pi execCodeMode tool", () => {
     const sessionFileSystems = new Map<string, Promise<MasterFileSystem>>([
       ["session-1", Promise.resolve(fs)],
     ]);
-    const workflow = defineRemoteWorkflow({ name: "pi-codemode-script" }, async (event, remote) => {
-      const params = event.payload as { code: string; sessionId: string };
-      const sessionFs = await sessionFileSystems.get(params.sessionId);
-      if (!sessionFs) {
-        throw new Error("Missing session filesystem");
-      }
+    const workflow = defineRemoteWorkflow({ name: "codemode-script" }, async (event, remote) => {
+      const params = codemodeWorkflowParamsSchema.parse(event.payload);
       const result = await runBackofficeCodemodeWorkflow({
-        code: params.code,
-        event,
+        code: params.program.code,
+        dependencies: params.program.dependencies,
+        event: {
+          id: event.instanceId,
+          payload: params.trigger.type === "manual" ? params.trigger.payload : {},
+          instanceId: event.instanceId,
+          timestamp: event.timestamp,
+        },
         remote,
-        fs: sessionFs,
+        fs,
         env,
         families: runtimeToolFamilies,
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
@@ -240,8 +273,13 @@ describe("Pi execCodeMode tool", () => {
       sessionFileSystemContext: createPiSessionFileSystemContext(),
       codemode: {
         ...createPiCodemodeRuntime(env),
-        workflow: {
-          createInstance: async ({ workflowName, remoteWorkflowName, instanceId, params }) => {
+        workflow: createPiWorkflowRuntime({
+          createInternalInstance: async ({
+            workflowName,
+            remoteWorkflowName,
+            instanceId,
+            params,
+          }) => {
             const resolvedInstanceId = instanceId ?? "generated-instance-id";
             await harness.createInstance(workflowName, {
               id: resolvedInstanceId,
@@ -250,11 +288,7 @@ describe("Pi execCodeMode tool", () => {
             });
             return { workflowName, instanceId: resolvedInstanceId };
           },
-          getStatus: async ({ instanceId }) =>
-            await harness.getStatus("PI_CODEMODE_SCRIPT", instanceId),
-          sendEvent: async ({ workflowName, instanceId, type, payload }) =>
-            await harness.sendEvent(workflowName, instanceId, { type, payload }),
-        },
+        }),
       },
       runtimeToolContext: EMPTY_BASH_HOST_CONTEXT as never,
     });
@@ -280,10 +314,10 @@ describe("Pi execCodeMode tool", () => {
 
     expect(result.details).toMatchObject({
       workflowDefinition: { name: "pi-session-workflow", options: { name: "pi-session-workflow" } },
-      result: { workflowName: "pi-codemode-script", instanceId: "18tfv3i1e4o7fe" },
+      result: { instanceId: "18tfv3i1e4o7fe" },
     });
     await harness.runUntilIdle({
-      workflowName: "pi-codemode-script",
+      workflowName: "codemode-script",
       instanceId: "18tfv3i1e4o7fe",
       reason: "create",
     });
@@ -301,18 +335,19 @@ describe("Pi execCodeMode tool", () => {
     const sessionFileSystems = new Map<string, Promise<MasterFileSystem>>([
       ["session-1", Promise.resolve(fs)],
     ]);
-    const workflow = defineRemoteWorkflow({ name: "pi-codemode-script" }, async (event, remote) => {
-      const params = event.payload as PiCodemodeWorkflowParams;
-      const sessionFs = await sessionFileSystems.get(params.sessionId);
-      if (!sessionFs) {
-        throw new Error("Missing session filesystem");
-      }
+    const workflow = defineRemoteWorkflow({ name: "codemode-script" }, async (event, remote) => {
+      const params = codemodeWorkflowParamsSchema.parse(event.payload);
       const result = await runBackofficeCodemodeWorkflow({
-        code: params.code,
-        dependencies: params.dependencies,
-        event,
+        code: params.program.code,
+        dependencies: params.program.dependencies,
+        event: {
+          id: event.instanceId,
+          payload: params.trigger.type === "manual" ? params.trigger.payload : {},
+          instanceId: event.instanceId,
+          timestamp: event.timestamp,
+        },
         remote,
-        fs: sessionFs,
+        fs,
         env,
         families: runtimeToolFamilies,
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
@@ -334,8 +369,13 @@ describe("Pi execCodeMode tool", () => {
       sessionFileSystemContext: createPiSessionFileSystemContext(),
       codemode: {
         ...createPiCodemodeRuntime(env),
-        workflow: {
-          createInstance: async ({ workflowName, remoteWorkflowName, instanceId, params }) => {
+        workflow: createPiWorkflowRuntime({
+          createInternalInstance: async ({
+            workflowName,
+            remoteWorkflowName,
+            instanceId,
+            params,
+          }) => {
             const resolvedInstanceId = instanceId ?? "generated-instance-id";
             await harness.createInstance(workflowName, {
               id: resolvedInstanceId,
@@ -344,11 +384,7 @@ describe("Pi execCodeMode tool", () => {
             });
             return { workflowName, instanceId: resolvedInstanceId };
           },
-          getStatus: async ({ instanceId }) =>
-            await harness.getStatus("PI_CODEMODE_SCRIPT", instanceId),
-          sendEvent: async ({ workflowName, instanceId, type, payload }) =>
-            await harness.sendEvent(workflowName, instanceId, { type, payload }),
-        },
+        }),
       },
       runtimeToolContext: EMPTY_BASH_HOST_CONTEXT as never,
     });
@@ -376,7 +412,7 @@ describe("Pi execCodeMode tool", () => {
     const details = result.details as { result?: { instanceId?: string } };
     assert(details.result?.instanceId === "18tfv3i1e4o7fe");
     await harness.runUntilIdle({
-      workflowName: "pi-codemode-script",
+      workflowName: "codemode-script",
       instanceId: "18tfv3i1e4o7fe",
       reason: "create",
     });
@@ -409,26 +445,26 @@ describe("Pi execCodeMode tool", () => {
 
   test("calls workflow domain tools through codemode when configured", async () => {
     const tool = await createExecCodeModeTool({
-      workflowRuntime: {
-        createInstance: async () => {
-          throw new Error("unused");
-        },
-        getStatus: async () => ({ status: "complete" }),
+      workflowRuntime: createPiWorkflowRuntime({
         getInstance: async (input) => ({
           id: input.instanceId,
           details: { status: "complete", output: input },
-          meta: {},
+          meta: {
+            name: "demo",
+            path: "/workspace/automations/demo.workflow.js",
+            createdAt: "2026-08-10T00:00:00.000Z",
+            updatedAt: "2026-08-10T00:00:00.000Z",
+            startedAt: null,
+            completedAt: null,
+          },
         }),
         sendEvent: async (input) => input,
-      },
+      }),
     });
 
     const result = await tool.execute("tool-call-1", {
       code: `async () => {
-        return await workflow.getInstance({
-          workflowName: "pi-codemode-script",
-          instanceId: "instance-1",
-        });
+        return await workflow.getInstance({ instanceId: "instance-1" });
       }`,
     });
 
@@ -438,7 +474,6 @@ describe("Pi execCodeMode tool", () => {
         details: {
           status: "complete",
           output: {
-            workflowName: "pi-codemode-script",
             instanceId: "instance-1",
           },
         },
@@ -572,7 +607,7 @@ const createExecCodeModeTool = async ({
   workflowRuntime,
 }: {
   automationsRuntime?: RegisteredAutomationsRuntime;
-  workflowRuntime?: AutomationWorkflowRuntime;
+  workflowRuntime?: PiWorkflowRuntime;
 }) => {
   const fs = createTestMasterFileSystem({});
   const sessionFileSystems = new Map<string, Promise<MasterFileSystem>>([

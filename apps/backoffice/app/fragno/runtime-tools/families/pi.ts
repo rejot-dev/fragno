@@ -53,7 +53,6 @@ const sessionBaseOutputSchema = z.object({
   name: z.string().nullable(),
   status: z.enum(PI_SESSION_STATUSES).optional(),
   metadata: z.record(z.string(), z.unknown()).nullable(),
-  workflowName: z.string(),
   createdAt: isoDateTimeOutputSchema,
   updatedAt: isoDateTimeOutputSchema,
 });

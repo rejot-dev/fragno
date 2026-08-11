@@ -139,7 +139,7 @@ describe("createAutomationRuntimeExecution", () => {
         delegate: {
           scope: "internal",
           type: "capability",
-          id: "untrusted-codemode-script",
+          id: "codemode-script",
           role: "delegate",
         },
       }).actors,
@@ -149,7 +149,7 @@ describe("createAutomationRuntimeExecution", () => {
         {
           scope: "internal",
           type: "capability",
-          id: "untrusted-codemode-script",
+          id: "codemode-script",
           role: "delegate",
         },
       ],

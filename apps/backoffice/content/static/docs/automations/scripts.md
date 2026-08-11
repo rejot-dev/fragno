@@ -61,11 +61,11 @@ routes decide which durable automation actions respond to events and schedules.
 
 ## Workflow files define durable behavior
 
-A workflow file evaluates to a function or a `defineWorkflow` definition. The usual form is:
+A workflow file must contain exactly one static `defineWorkflow({ name })` declaration:
 
 ```js
 defineWorkflow({ name: "project-files-configure" }, async (event, step) => {
-  const automationEvent = event.payload.automationEvent;
+  const automationEvent = event;
 
   return await step.do("configure project files", async () => {
     return await internal.projectFilesConfigure({
@@ -76,7 +76,7 @@ defineWorkflow({ name: "project-files-configure" }, async (event, step) => {
 ```
 
 The outer workflow event belongs to the shared Backoffice workflow host. The original automation
-event is available as `event.payload.automationEvent` and at `/context/event.json`.
+event is available directly as `event` and at `/context/event.json`.
 
 Durable operations belong inside workflow steps:
 
@@ -89,28 +89,24 @@ instances exist.
 
 ## One shared host runs all saved workflows
 
-Routes do not register each file as a separate local workflow. Every `start_workflow` action creates
-an instance of the fixed local workflow named `automation-codemode-script`.
+Routes do not register each file as a separate local workflow. Every saved workflow runs through one
+shared codemode host.
 
-The route supplies two values that identify the saved behavior:
+Before creating an instance, the trusted launcher:
 
-- `workflowScriptPath` points to the source file.
-- `remoteWorkflowName` identifies the `defineWorkflow` definition inside that file.
+1. Reads `workflowScriptPath` from the scoped automation file system.
+2. Requires exactly one static `defineWorkflow({ name })` declaration.
+3. Validates the declared name against the route when the route specifies one.
+4. Snapshots the source, filename, and resolved dependencies.
+5. Resolves the event actors and execution grants.
 
-The shared host reads the file from the automation file system, creates the scoped Backoffice tool
-context, and executes the selected remote workflow definition. If the file no longer exists, the
-host completes with a skipped result rather than attempting unrelated work:
+Missing files and invalid definitions fail during this preparation. They do not create workflow
+instances. After creation, retries and replay use the source snapshot, so editing or deleting the
+original file does not change an existing run. Durable workflow sandboxes cannot use bare outbound
+`fetch()`; external access must go through an authorized runtime capability.
 
-```json
-{
-  "skipped": true,
-  "reason": "workflow-script-not-found",
-  "workflowScriptPath": "/workspace/automations/example.workflow.js"
-}
-```
-
-This indirection lets the workflow service persist instances under one stable host while the UI and
-router continue to identify the authored workflow by file path and definition name.
+The UI and router identify authored behavior by the saved path and declared definition name. The
+shared host name is an internal implementation detail.
 
 ## Manual runs and routed runs use different authority
 
@@ -118,8 +114,8 @@ The automation UI can start a workflow manually. It creates a synthetic automati
 delegated-user authority, so the current user remains the principal.
 
 A routed run uses the authority mode stored in the route action. It also derives its instance ID
-from the route template. Both paths ultimately create an `automation-codemode-script` instance with
-the source path and original automation event in its parameters.
+from the route template. Both paths snapshot the source and deliver the original automation event
+directly to the authored workflow.
 
 ## Catalog and authoring validation
 
@@ -136,7 +132,9 @@ validation reports the file's engine, role, read-only state, workflow names, ste
 labels.
 
 Validation describes the source graph; it does not create a route. A workflow file remains dormant
-until a route, manual run, or workflow API call starts it.
+until a route, manual run, or `workflow.createInstance({ path, instanceId, payload })` call starts
+it. Inline top-level `defineWorkflow(...)` declarations are different: code mode schedules them
+automatically after evaluation.
 
 ## Source visibility
 
@@ -162,8 +160,8 @@ display-relative path.
 - `apps/backoffice/app/fragno/automation/catalog.ts` — roots, discovery, classification, and catalog
   identities.
 - `apps/backoffice/app/fragno/automation/authoring.ts` — validation and writes.
-- `apps/backoffice/app/fragno/automation/engine/automation-codemode-workflow.ts` — shared
-  file-backed workflow host.
+- `apps/backoffice/app/fragno/automation/engine/codemode-workflow.ts` — shared file-backed workflow
+  host.
 - `apps/backoffice/app/fragno/automation/engine/codemode.ts` — immediate and workflow codemode
   execution.
 - `apps/backoffice/app/fragno/runtime-tools/automation-host.ts` — immediate Bash and codemode

@@ -1,10 +1,19 @@
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import {
+  backofficeContextScopesEqual,
+  type BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import { BackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
+import { createBackofficeFileSystem, type IFileSystem } from "@/files";
 import type { AutomationActors } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
+import { readAutomationWorkspaceScript } from "@/fragno/automation/catalog";
 import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
+import {
+  createCodemodeWorkflowInstanceInput,
+  prepareCodemodeWorkflowInstance,
+} from "@/fragno/automation/engine/codemode-invocation";
 import { createRouteBackedAutomationIdentityRuntime } from "@/fragno/automation/external-identities-route-runtime";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
@@ -44,6 +53,7 @@ export type RouteBackedRuntimeContextOptions = {
   execution: BackofficeExecutionContext;
   emittedEventActors?: AutomationActors;
   pi?: { runtime: PiRuntime } | null;
+  workflowSourceFileSystem?: IFileSystem;
 };
 
 const unavailableMessage = (family: string, execution: BackofficeExecutionContext) =>
@@ -85,6 +95,7 @@ export const createRouteBackedRuntimeContext = ({
   execution,
   emittedEventActors,
   pi,
+  workflowSourceFileSystem,
 }: RouteBackedRuntimeContextOptions): InteractiveRuntimeToolContext => {
   const org = ownerOrgScope(execution);
   const selectedOrg = selectedOrgScope(execution);
@@ -109,6 +120,9 @@ export const createRouteBackedRuntimeContext = ({
         },
         emittedEventActors,
         pi,
+        workflowSourceFileSystem: backofficeContextScopesEqual(execution.scope, scope)
+          ? workflowSourceFileSystem
+          : undefined,
       });
     },
     backoffice: isBackofficeRoutableScope(execution.scope)
@@ -155,6 +169,32 @@ export const createRouteBackedRuntimeContext = ({
       runtime: createRouteBackedAutomationWorkflowRuntime({
         object: automationsObject,
         execution,
+        prepareSavedWorkflowInstance: async ({ path, instanceId, payload }) => {
+          const fileSystem =
+            workflowSourceFileSystem ??
+            (await createBackofficeFileSystem({
+              objects: runtime.objects,
+              config: runtime.config,
+              execution,
+              kernel,
+            }));
+          const script = await readAutomationWorkspaceScript(fileSystem, path);
+          if (!script.absolutePath.endsWith(".workflow.js")) {
+            throw new Error(
+              `Saved workflow path '${script.absolutePath}' must end with '.workflow.js'.`,
+            );
+          }
+          const prepared = prepareCodemodeWorkflowInstance({
+            code: script.body,
+            filename: script.absolutePath,
+            instanceId,
+          });
+          return createCodemodeWorkflowInstanceInput({
+            prepared,
+            trigger: { type: "manual", payload: payload ?? {} },
+            execution,
+          });
+        },
       }),
     },
     durableHooks: org

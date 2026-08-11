@@ -92,7 +92,7 @@ describe("SessionWorkspacePanel", () => {
           view: {
             type: "workflow-graph",
             projection,
-            run: { workflowName: "pi-codemode-script", instanceId: "workflow-instance" },
+            run: { workflowName: "codemode-script", instanceId: "workflow-instance" },
           },
         }}
       />,
@@ -156,7 +156,7 @@ describe("SessionWorkspacePanel", () => {
           view: {
             type: "workflow-graph",
             projection,
-            run: { workflowName: "pi-codemode-script", instanceId: "workflow-instance" },
+            run: { workflowName: "codemode-script", instanceId: "workflow-instance" },
           },
         }}
         workflowCollectionsError="Failed to load workflow synchronization."

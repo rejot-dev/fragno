@@ -44,6 +44,18 @@ describe("Backoffice static file collection", () => {
     );
   });
 
+  test("documents the single static workflow declaration contract", async () => {
+    const collection = createBackofficeStaticFileCollection(() => ({}));
+    const file = await collection.getFile("docs/automations/scripts.md");
+
+    expect(file).not.toBeNull();
+    const scripts = await new Response(file!.body).text();
+    expect(scripts).toContain(
+      "must contain exactly one static `defineWorkflow({ name })` declaration",
+    );
+    expect(scripts).not.toContain("evaluates to a function or a `defineWorkflow` definition");
+  });
+
   test("streams built-in static content", async () => {
     const collection = createBackofficeStaticFileCollection(() => ({}));
     const file = await collection.getFile("SYSTEM.md");

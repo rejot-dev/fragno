@@ -1,4 +1,4 @@
-import { AUTOMATION_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
+import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 
 export type AutomationRouteWorkflowIdentity = {
@@ -14,16 +14,12 @@ export const automationRouteWorkflowIdentity = (
   switch (action.kind) {
     case "start_workflow":
       return {
-        workflowName: AUTOMATION_CODEMODE_WORKFLOW,
-        remoteWorkflowName: action.remoteWorkflowName ?? null,
+        workflowName: CODEMODE_WORKFLOW,
+        remoteWorkflowName: null,
         workflowScriptPath: action.workflowScriptPath,
       };
     case "send_workflow_event":
-      return {
-        workflowName: action.workflowName,
-        remoteWorkflowName: action.remoteWorkflowName,
-        workflowScriptPath: null,
-      };
+      return null;
     case "forward_event":
       return null;
   }
@@ -46,7 +42,8 @@ export const automationRouteMatchesWorkflowInstance = (
 
   return (
     instance.workflowName === identity.workflowName &&
-    instance.remoteWorkflowName === identity.remoteWorkflowName &&
+    (identity.remoteWorkflowName === null ||
+      instance.remoteWorkflowName === identity.remoteWorkflowName) &&
     (identity.workflowScriptPath === null ||
       instance.workflowScriptPath === identity.workflowScriptPath)
   );
@@ -58,10 +55,7 @@ export const automationRouteWorkflowName = (route: AutomationRouteDefinition) =>
     return null;
   }
   if (action.kind === "send_workflow_event") {
-    return action.remoteWorkflowName;
-  }
-  if (action.remoteWorkflowName) {
-    return action.remoteWorkflowName;
+    return null;
   }
 
   const scriptName = action.workflowScriptPath.split("/").pop();

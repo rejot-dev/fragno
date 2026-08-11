@@ -33,7 +33,7 @@ describe("scheduled automation route scenario", () => {
             content: `defineWorkflow(
   { name: "scheduled-digest" },
   async (event, step) => {
-    const route = event.payload.automationEvent.payload;
+    const route = event.payload;
     return await step.do("record scheduled route", async () => ({
       routeId: route.id,
       routeName: route.name,
@@ -61,7 +61,6 @@ describe("scheduled automation route scenario", () => {
   action: {
     kind: "start_workflow",
     authority: { kind: "organization-automation" },
-    remoteWorkflowName: "scheduled-digest",
     workflowScriptPath: "/workspace/automations/scheduled-digest.workflow.js",
     instanceIdTemplate: "scheduled-\${event.payload.id}",
   },

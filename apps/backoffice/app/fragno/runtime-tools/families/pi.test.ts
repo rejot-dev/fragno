@@ -116,7 +116,6 @@ describe("pi runtime tools", () => {
       name: "Support",
       status: "waiting",
       metadata: { model: { provider: "openai", name: "gpt-5.6-luna" } },
-      workflowName: "interactive-chat-workflow",
       createdAt: "2026-06-03T00:00:00.000Z",
       updatedAt: "2026-06-03T00:01:00.000Z",
     });

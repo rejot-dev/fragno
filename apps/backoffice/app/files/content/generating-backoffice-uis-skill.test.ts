@@ -251,7 +251,8 @@ describe("generating Backoffice UIs skill", () => {
     expect(systemGuidance).not.toContain('state.find("/events"');
     expect(systemGuidance).toMatch(/Define a durable workflow\s+directly at the top level/u);
     expect(systemGuidance).toContain("Do not wrap `defineWorkflow` inside an async function");
-    expect(systemGuidance).toContain("the returned handle alone is not completion");
+    expect(systemGuidance).toContain("workflow.getInstance({ instanceId })");
+    expect(systemGuidance).toMatch(/the returned handle alone is not\s+completion/u);
     expect(systemGuidance).toContain(
       "Declarations tell you what can be called; runtime checks tell you what is currently usable",
     );

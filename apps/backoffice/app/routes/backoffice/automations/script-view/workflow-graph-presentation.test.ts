@@ -13,7 +13,7 @@ describe("workflow graph presentation", () => {
     const visualization = visualizeWorkflowSource(
       "automations/pi-configure.workflow.js",
       `defineWorkflow({ name: "pi-configure" }, async (event, step) => {
-        const automationEvent = event.payload.automationEvent;
+        const automationEvent = event;
         if (
           automationEvent.source !== "pi" ||
           automationEvent.eventType !== "capability.configured"
@@ -42,7 +42,7 @@ describe("workflow graph presentation", () => {
     const visualization = visualizeWorkflowSource(
       "automations/positive-event.workflow.js",
       `defineWorkflow({ name: "positive-event" }, async (event, step) => {
-        const automationEvent = event.payload.automationEvent;
+        const automationEvent = event;
         if (
           automationEvent.source === "pi" &&
           automationEvent.eventType === "capability.configured"
@@ -120,7 +120,7 @@ describe("workflow graph presentation", () => {
     const visualization = visualizeWorkflowSource(
       "automations/conditional-event.workflow.js",
       `defineWorkflow({ name: "conditional-event" }, async (event, step) => {
-        const automationEvent = event.payload.automationEvent;
+        const automationEvent = event;
         if (
           automationEvent.source !== "pi" ||
           automationEvent.eventType !== "capability.configured" ||
@@ -147,7 +147,7 @@ describe("workflow graph presentation", () => {
     const visualization = visualizeWorkflowSource(
       "automations/late-event-check.workflow.js",
       `defineWorkflow({ name: "late-event-check" }, async (event, step) => {
-        const automationEvent = event.payload.automationEvent;
+        const automationEvent = event;
         await step.do("before guard", async () => {});
         if (
           automationEvent.source !== "pi" ||

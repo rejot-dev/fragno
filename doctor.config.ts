@@ -5,6 +5,8 @@ export default {
       // These helpers intentionally model unsafe or effect-driven behavior in tests.
       "src/testing/streamable-http-mcp-server.ts",
       "src/util/test-utils.tsx",
+      // The scenario harness favors deterministic orchestration and exhaustive diagnostics.
+      "app/fragno/automation/scenario.ts",
     ],
     overrides: [
       {

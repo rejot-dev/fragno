@@ -91,7 +91,7 @@ describe("WorkflowStepCard generated UI state", () => {
         step={step}
         runState={literalPayloadState}
         workflowEventSender={workflowEventSender}
-        workflowEventWorkflowName="automation-codemode-script"
+        workflowEventWorkflowName="codemode-script"
         workflowInstanceId="instance-1"
         waitingEventTypes={["approval"]}
       />,
@@ -106,7 +106,7 @@ describe("WorkflowStepCard generated UI state", () => {
       expect(workflowEventSender).toHaveBeenCalledWith(
         expect.objectContaining({
           eventId: expect.any(String),
-          workflowName: "automation-codemode-script",
+          workflowName: "codemode-script",
           instanceId: "instance-1",
           eventType: "approval",
           payload: { approved: true },
@@ -133,7 +133,7 @@ describe("WorkflowStepCard generated UI state", () => {
           workflowEvents={[]}
           workflowRunRecordId={runRecordId}
           workflowEventSender={workflowEventSender}
-          workflowEventWorkflowName="automation-codemode-script"
+          workflowEventWorkflowName="codemode-script"
           workflowInstanceId="instance-1"
           waitingEventTypes={["approval"]}
         />,
@@ -169,7 +169,7 @@ describe("WorkflowStepCard generated UI state", () => {
           workflowEvents={workflowEvents}
           workflowRunRecordId={runRecordId}
           workflowEventSender={workflowEventSender}
-          workflowEventWorkflowName="automation-codemode-script"
+          workflowEventWorkflowName="codemode-script"
           workflowInstanceId="instance-1"
           waitingEventTypes={waitingEventTypes}
         />,

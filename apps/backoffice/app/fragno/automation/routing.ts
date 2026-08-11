@@ -48,7 +48,6 @@ type AutomationRouteScope =
 export type AutomationStartWorkflowAction = {
   kind: "start_workflow";
   authority: AutomationAuthorityMode;
-  remoteWorkflowName?: string;
   workflowScriptPath: string;
   instanceIdTemplate: string;
 };
@@ -59,8 +58,6 @@ export type AutomationWorkflowEventTarget =
 
 export type AutomationSendWorkflowEventAction = {
   kind: "send_workflow_event";
-  workflowName: string;
-  remoteWorkflowName: string;
   target: AutomationWorkflowEventTarget;
   eventType: string;
   payload?: unknown;

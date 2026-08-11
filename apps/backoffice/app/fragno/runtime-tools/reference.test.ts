@@ -1110,14 +1110,11 @@ describe("runtime tool reference generation", () => {
           } | {
             kind: "organization-automation";
           };
-        remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
       type AutomationSendWorkflowEventAction = {
         kind: "send_workflow_event";
-        workflowName: string;
-        remoteWorkflowName: string;
         target: AutomationWorkflowEventTarget;
         eventType: string;
         payload?: unknown;
@@ -1174,14 +1171,11 @@ describe("runtime tool reference generation", () => {
           } | {
             kind: "organization-automation";
           };
-        remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
       type AutomationSendWorkflowEventActionInput = {
         kind: "send_workflow_event";
-        workflowName?: string;
-        remoteWorkflowName: string;
         target: AutomationWorkflowEventTarget;
         eventType: string;
         payload?: unknown;
@@ -1235,11 +1229,9 @@ describe("runtime tool reference generation", () => {
 
       // workflow tools
       type WorkflowCodemodeProvider = {
-        /** List registered durable workflows. */
-        listWorkflows(input: WorkflowListWorkflowsInput): Promise<WorkflowListWorkflowsOutput>;
-        /** Create a durable workflow instance. */
+        /** Start a saved .workflow.js file by path. Inline defineWorkflow declarations start automatically. */
         createInstance(input: WorkflowCreateInstanceInput): Promise<WorkflowCreateInstanceOutput>;
-        /** List durable workflow instances. */
+        /** List durable saved-workflow instances. */
         listInstances(input: WorkflowListInstancesInput): Promise<WorkflowListInstancesOutput>;
         /** Get durable workflow instance details. */
         getInstance(input: WorkflowGetInstanceInput): Promise<WorkflowGetInstanceOutput>;
@@ -1252,26 +1244,18 @@ describe("runtime tool reference generation", () => {
       };
       declare const workflow: WorkflowCodemodeProvider;
 
-      type WorkflowListWorkflowsInput = Record<string, unknown>;
-      type WorkflowListWorkflowsOutput = {
-        workflows: {
-            name: string;
-          }[];
-      };
       type WorkflowCreateInstanceInput = {
-        workflowName: string;
-        remoteWorkflowName?: string;
-        instanceId?: string;
-        params?: unknown;
+        path: string;
+        instanceId: string;
+        payload?: {
+            [key: string]: unknown;
+          };
       };
       type WorkflowCreateInstanceOutput = {
-        workflowName: string;
         instanceId: string;
       };
       type WorkflowListInstancesInput = {
-        workflowName: string;
         status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-        remoteWorkflowName?: string;
         pageSize?: number;
         cursor?: string;
       };
@@ -1292,7 +1276,6 @@ describe("runtime tool reference generation", () => {
         hasNextPage: boolean;
       };
       type WorkflowGetInstanceInput = {
-        workflowName: string;
         instanceId: string;
       };
       type WorkflowGetInstanceOutput = {
@@ -1306,11 +1289,15 @@ describe("runtime tool reference generation", () => {
             output?: unknown;
           };
         meta: {
-            [key: string]: unknown;
+            name: string;
+            path: string;
+            createdAt: string;
+            updatedAt: string;
+            startedAt: string | null;
+            completedAt: string | null;
           };
       };
       type WorkflowGetHistoryInput = {
-        workflowName: string;
         instanceId: string;
       };
       type WorkflowGetHistoryOutput = {
@@ -1319,14 +1306,12 @@ describe("runtime tool reference generation", () => {
         emissions: unknown[];
       };
       type WorkflowSendEventInput = {
-        workflowName: string;
         instanceId: string;
         type: string;
         payload?: unknown;
       };
       type WorkflowSendEventOutput = unknown;
       type WorkflowRetryInstanceInput = {
-        workflowName: string;
         instanceId: string;
         stepKey?: string;
         delayMs?: number;
@@ -2266,7 +2251,6 @@ describe("runtime tool reference generation", () => {
         metadata: {
             [key: string]: unknown;
           } | null;
-        workflowName: string;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -2287,7 +2271,6 @@ describe("runtime tool reference generation", () => {
         metadata: {
             [key: string]: unknown;
           } | null;
-        workflowName: string;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -2319,7 +2302,6 @@ describe("runtime tool reference generation", () => {
         metadata: {
             [key: string]: unknown;
           } | null;
-        workflowName: string;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -2338,7 +2320,6 @@ describe("runtime tool reference generation", () => {
         metadata: {
             [key: string]: unknown;
           } | null;
-        workflowName: string;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -3341,14 +3322,11 @@ describe("runtime tool reference generation", () => {
           } | {
             kind: "organization-automation";
           };
-        remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
       type AutomationSendWorkflowEventAction = {
         kind: "send_workflow_event";
-        workflowName: string;
-        remoteWorkflowName: string;
         target: AutomationWorkflowEventTarget;
         eventType: string;
         payload?: unknown;
@@ -3405,14 +3383,11 @@ describe("runtime tool reference generation", () => {
           } | {
             kind: "organization-automation";
           };
-        remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
       type AutomationSendWorkflowEventActionInput = {
         kind: "send_workflow_event";
-        workflowName?: string;
-        remoteWorkflowName: string;
         target: AutomationWorkflowEventTarget;
         eventType: string;
         payload?: unknown;
@@ -3699,14 +3674,11 @@ describe("runtime tool reference generation", () => {
           } | {
             kind: "organization-automation";
           };
-        remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
       type AutomationSendWorkflowEventAction = {
         kind: "send_workflow_event";
-        workflowName: string;
-        remoteWorkflowName: string;
         target: AutomationWorkflowEventTarget;
         eventType: string;
         payload?: unknown;
@@ -3763,14 +3735,11 @@ describe("runtime tool reference generation", () => {
           } | {
             kind: "organization-automation";
           };
-        remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
       type AutomationSendWorkflowEventActionInput = {
         kind: "send_workflow_event";
-        workflowName?: string;
-        remoteWorkflowName: string;
         target: AutomationWorkflowEventTarget;
         eventType: string;
         payload?: unknown;
@@ -3843,8 +3812,8 @@ describe("runtime tool reference generation", () => {
       types,
     }).toMatchInlineSnapshot(`
       {
-        "createInputIndex": 8598,
-        "listOutputIndex": 8467,
+        "createInputIndex": 8427,
+        "listOutputIndex": 8296,
         "matcherIndex": 5046,
         "types": "// ── Backoffice domain tool providers ───────────────────────────────────
 
@@ -4058,14 +4027,11 @@ describe("runtime tool reference generation", () => {
           } | {
             kind: "organization-automation";
           };
-        remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
       type AutomationSendWorkflowEventAction = {
         kind: "send_workflow_event";
-        workflowName: string;
-        remoteWorkflowName: string;
         target: AutomationWorkflowEventTarget;
         eventType: string;
         payload?: unknown;
@@ -4122,14 +4088,11 @@ describe("runtime tool reference generation", () => {
           } | {
             kind: "organization-automation";
           };
-        remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
       type AutomationSendWorkflowEventActionInput = {
         kind: "send_workflow_event";
-        workflowName?: string;
-        remoteWorkflowName: string;
         target: AutomationWorkflowEventTarget;
         eventType: string;
         payload?: unknown;
@@ -4195,7 +4158,7 @@ describe("runtime tool reference generation", () => {
         /** Project contexts are reserved until the project model exists. */
         project(projectId: string): BackofficeCodemodeScopedProviders;
       };",
-        "updateInputIndex": 8899,
+        "updateInputIndex": 8728,
       }
     `);
   });
@@ -4419,14 +4382,11 @@ describe("runtime tool reference generation", () => {
           } | {
             kind: "organization-automation";
           };
-        remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
       type AutomationSendWorkflowEventAction = {
         kind: "send_workflow_event";
-        workflowName: string;
-        remoteWorkflowName: string;
         target: AutomationWorkflowEventTarget;
         eventType: string;
         payload?: unknown;
@@ -4483,14 +4443,11 @@ describe("runtime tool reference generation", () => {
           } | {
             kind: "organization-automation";
           };
-        remoteWorkflowName?: string;
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
       type AutomationSendWorkflowEventActionInput = {
         kind: "send_workflow_event";
-        workflowName?: string;
-        remoteWorkflowName: string;
         target: AutomationWorkflowEventTarget;
         eventType: string;
         payload?: unknown;
@@ -4933,7 +4890,6 @@ describe("runtime tool reference generation", () => {
         metadata: {
             [key: string]: unknown;
           } | null;
-        workflowName: string;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -4954,7 +4910,6 @@ describe("runtime tool reference generation", () => {
         metadata: {
             [key: string]: unknown;
           } | null;
-        workflowName: string;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -4986,7 +4941,6 @@ describe("runtime tool reference generation", () => {
         metadata: {
             [key: string]: unknown;
           } | null;
-        workflowName: string;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -5005,7 +4959,6 @@ describe("runtime tool reference generation", () => {
         metadata: {
             [key: string]: unknown;
           } | null;
-        workflowName: string;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -5195,11 +5148,9 @@ describe("runtime tool reference generation", () => {
       ",
         "workflowTypes": "// workflow tools
       type WorkflowCodemodeProvider = {
-        /** List registered durable workflows. */
-        listWorkflows(input: WorkflowListWorkflowsInput): Promise<WorkflowListWorkflowsOutput>;
-        /** Create a durable workflow instance. */
+        /** Start a saved .workflow.js file by path. Inline defineWorkflow declarations start automatically. */
         createInstance(input: WorkflowCreateInstanceInput): Promise<WorkflowCreateInstanceOutput>;
-        /** List durable workflow instances. */
+        /** List durable saved-workflow instances. */
         listInstances(input: WorkflowListInstancesInput): Promise<WorkflowListInstancesOutput>;
         /** Get durable workflow instance details. */
         getInstance(input: WorkflowGetInstanceInput): Promise<WorkflowGetInstanceOutput>;
@@ -5212,26 +5163,18 @@ describe("runtime tool reference generation", () => {
       };
       declare const workflow: WorkflowCodemodeProvider;
 
-      type WorkflowListWorkflowsInput = Record<string, unknown>;
-      type WorkflowListWorkflowsOutput = {
-        workflows: {
-            name: string;
-          }[];
-      };
       type WorkflowCreateInstanceInput = {
-        workflowName: string;
-        remoteWorkflowName?: string;
-        instanceId?: string;
-        params?: unknown;
+        path: string;
+        instanceId: string;
+        payload?: {
+            [key: string]: unknown;
+          };
       };
       type WorkflowCreateInstanceOutput = {
-        workflowName: string;
         instanceId: string;
       };
       type WorkflowListInstancesInput = {
-        workflowName: string;
         status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-        remoteWorkflowName?: string;
         pageSize?: number;
         cursor?: string;
       };
@@ -5252,7 +5195,6 @@ describe("runtime tool reference generation", () => {
         hasNextPage: boolean;
       };
       type WorkflowGetInstanceInput = {
-        workflowName: string;
         instanceId: string;
       };
       type WorkflowGetInstanceOutput = {
@@ -5266,11 +5208,15 @@ describe("runtime tool reference generation", () => {
             output?: unknown;
           };
         meta: {
-            [key: string]: unknown;
+            name: string;
+            path: string;
+            createdAt: string;
+            updatedAt: string;
+            startedAt: string | null;
+            completedAt: string | null;
           };
       };
       type WorkflowGetHistoryInput = {
-        workflowName: string;
         instanceId: string;
       };
       type WorkflowGetHistoryOutput = {
@@ -5279,14 +5225,12 @@ describe("runtime tool reference generation", () => {
         emissions: unknown[];
       };
       type WorkflowSendEventInput = {
-        workflowName: string;
         instanceId: string;
         type: string;
         payload?: unknown;
       };
       type WorkflowSendEventOutput = unknown;
       type WorkflowRetryInstanceInput = {
-        workflowName: string;
         instanceId: string;
         stepKey?: string;
         delayMs?: number;
@@ -5426,7 +5370,6 @@ describe("runtime tool reference generation", () => {
         metadata: {
             [key: string]: unknown;
           } | null;
-        workflowName: string;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -5447,7 +5390,6 @@ describe("runtime tool reference generation", () => {
         metadata: {
             [key: string]: unknown;
           } | null;
-        workflowName: string;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -5479,7 +5421,6 @@ describe("runtime tool reference generation", () => {
         metadata: {
             [key: string]: unknown;
           } | null;
-        workflowName: string;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -5498,7 +5439,6 @@ describe("runtime tool reference generation", () => {
         metadata: {
             [key: string]: unknown;
           } | null;
-        workflowName: string;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
