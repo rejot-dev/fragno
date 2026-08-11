@@ -98,7 +98,7 @@ const initializeScheduledRoute = async ({
         );
     })
     .mutate(({ forSchema, retrieveResult: [route, state] }) => {
-      if (!route || !route.enabled || route.trigger.kind !== "schedule") {
+      if (!route?.enabled || route.trigger.kind !== "schedule") {
         return;
       }
       if (!state) {
@@ -174,7 +174,7 @@ const dispatchScheduledRouteOccurrence = async ({
         );
     })
     .mutate(({ forSchema, retrieveResult: [row, state] }) => {
-      if (!row || !row.enabled || row.trigger.kind !== "schedule") {
+      if (!row?.enabled || row.trigger.kind !== "schedule") {
         return;
       }
       if (!state) {
