@@ -32,7 +32,7 @@ describe("Backoffice static file collection", () => {
       "codemode/system.d.ts": "declare const configured: true;",
     }));
 
-    const matches = await collection.search("configured");
+    const { matches } = await collection.searchFiles("**", "configured");
 
     expect(matches).toContainEqual(
       expect.objectContaining({

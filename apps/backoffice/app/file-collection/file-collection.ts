@@ -45,18 +45,44 @@ export type FileSearchOptions = {
   maxMatches?: number;
 };
 
+export const createFileSearchFingerprint = (
+  pattern: string,
+  query: string,
+  options: FileSearchOptions,
+): string =>
+  JSON.stringify({
+    pattern,
+    query,
+    caseSensitive: options.caseSensitive ?? false,
+    wholeWord: options.wholeWord ?? false,
+    contextBefore: options.contextBefore ?? 0,
+    contextAfter: options.contextAfter ?? 0,
+  });
+
 export type FileSearchMatch = {
   path: string;
   line: number;
   column: number;
   text: string;
+  lineText: string;
   contextBefore: readonly string[];
   contextAfter: readonly string[];
 };
 
+export type FileSearchPage = {
+  matches: readonly FileSearchMatch[];
+  cursor?: string;
+  hasMore: boolean;
+};
+
 export interface FileTreeReader {
   getTree(): Promise<FileTree>;
-  search(query: string, options?: FileSearchOptions): Promise<readonly FileSearchMatch[]>;
+  searchFiles(
+    pattern: string,
+    query: string,
+    options?: FileSearchOptions,
+    cursor?: string,
+  ): Promise<FileSearchPage>;
 }
 
 export interface FileContentReader {

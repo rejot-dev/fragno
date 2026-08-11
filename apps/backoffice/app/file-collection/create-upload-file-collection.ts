@@ -4,13 +4,63 @@ import { assertValidFileCollectionPath, createFileTree } from "./create-file-tre
 import {
   createUploadFileTreeEntries,
   normalizeFileCollectionPrefix,
+  type UploadFileTreeRecord,
 } from "./create-upload-file-tree";
-import type {
-  FileCollection,
-  FileContent,
-  FileSearchMatch,
-  FileTreeEntry,
-} from "./file-collection";
+import type { FileCollection, FileContent, FileTreeEntry } from "./file-collection";
+import { searchUploadFiles } from "./search-upload-files";
+
+export async function listUploadFiles(input: {
+  routes: UploadRouteCaller;
+  provider: string;
+  prefix?: string;
+  glob?: string;
+  maxPages?: number;
+}): Promise<UploadFileTreeRecord[]> {
+  const maxPages = input.maxPages ?? 1;
+  if (!Number.isInteger(maxPages) || maxPages < 1) {
+    throw new RangeError("Upload file listing maxPages must be a positive integer.");
+  }
+
+  const files: UploadFileTreeRecord[] = [];
+  let cursor: string | undefined;
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    const response = await input.routes("GET", "/files", {
+      query: {
+        provider: input.provider,
+        ...(input.prefix ? { prefix: input.prefix } : {}),
+        ...(input.glob ? { glob: input.glob } : {}),
+        ...(cursor ? { cursor } : {}),
+        pageSize: "500",
+        status: "ready",
+      },
+    });
+
+    if (response.type === "error") {
+      throw new UploadFileListingError(response.error.message, {
+        code: response.error.code,
+        status: response.status,
+      });
+    }
+    if (response.type !== "json") {
+      throw new Error(
+        `Upload file listing route returned an unexpected ${response.type} response.`,
+      );
+    }
+
+    files.push(...response.data.files);
+
+    if (!response.data.hasNextPage || !response.data.cursor) {
+      return files;
+    }
+    if (page === maxPages) {
+      throw new Error(`Upload file listing exceeded its ${maxPages}-page retrieval limit.`);
+    }
+    cursor = response.data.cursor;
+  }
+
+  return files;
+}
 
 /**
  * Creates a collection backed by the Upload fragment.
@@ -38,48 +88,16 @@ export function createUploadFileCollection(input: {
 
   return {
     async getTree() {
-      const entries: FileTreeEntry[] = [];
-      let cursor: string | undefined;
-
-      for (let page = 1; page <= maxPages; page += 1) {
-        const response = await input.routes("GET", "/files", {
-          query: {
-            provider: input.provider,
-            ...(prefix ? { prefix } : {}),
-            ...(cursor ? { cursor } : {}),
-            pageSize: "500",
-            status: "ready",
-          },
-        });
-
-        if (response.type === "error") {
-          throw new UploadFileCollectionError(response.error.message, {
-            code: response.error.code,
-            status: response.status,
-          });
-        }
-        if (response.type !== "json") {
-          throw new Error(
-            `Upload file tree route returned an unexpected ${response.type} response.`,
-          );
-        }
-
-        entries.push(
-          ...createUploadFileTreeEntries(response.data.files, {
-            provider: input.provider,
-            prefix,
-          }),
-        );
-
-        if (!response.data.hasNextPage || !response.data.cursor) {
-          break;
-        }
-        if (page === maxPages) {
-          throw new Error(`Upload file tree exceeded its ${maxPages}-page retrieval limit.`);
-        }
-        cursor = response.data.cursor;
-      }
-
+      const files = await listUploadFiles({
+        routes: input.routes,
+        provider: input.provider,
+        ...(prefix ? { prefix } : {}),
+        maxPages,
+      });
+      const entries: FileTreeEntry[] = createUploadFileTreeEntries(files, {
+        provider: input.provider,
+        prefix,
+      });
       return createFileTree(entries);
     },
     async getFile(path) {
@@ -91,59 +109,26 @@ export function createUploadFileCollection(input: {
         }),
       );
     },
-    async search(query, options = {}) {
-      const candidateResponse = await input.routes("POST", "/files/search", {
-        body: {
-          provider: input.provider,
-          glob: `${prefix}**`,
-          query,
-          maxCandidateFiles: 20,
-        },
+    async searchFiles(pattern, query, options = {}, cursor) {
+      const result = await searchUploadFiles({
+        routes: input.routes,
+        provider: input.provider,
+        glob: `${prefix}${pattern.replace(/^\/+/, "")}`,
+        query,
+        options,
+        cursor,
       });
 
-      if (candidateResponse.type === "error") {
-        throw new UploadFileCollectionError(candidateResponse.error.message, {
-          code: candidateResponse.error.code,
-          status: candidateResponse.status,
-        });
-      }
-      if (candidateResponse.type !== "json") {
-        throw new Error(
-          `Upload file search route returned an unexpected ${candidateResponse.type} response.`,
-        );
-      }
-      if (candidateResponse.data.candidates.length === 0) {
-        return [];
-      }
-
-      const hydrateResponse = await input.routes("POST", "/files/search/hydrate", {
-        body: {
-          provider: input.provider,
-          candidateKeys: candidateResponse.data.candidates.map((candidate) => candidate.key),
-          query,
-          options,
-          maxBytes: 30 * 1024 * 1024,
-        },
-      });
-
-      if (hydrateResponse.type === "error") {
-        throw new UploadFileCollectionError(hydrateResponse.error.message, {
-          code: hydrateResponse.error.code,
-          status: hydrateResponse.status,
-        });
-      }
-      if (hydrateResponse.type !== "json") {
-        throw new Error(
-          `Upload file search hydration route returned an unexpected ${hydrateResponse.type} response.`,
-        );
-      }
-
-      return hydrateResponse.data.matches.flatMap<FileSearchMatch>((match) => {
-        if (!match.path.startsWith(prefix)) {
-          return [];
-        }
-        return [{ ...match, path: match.path.slice(prefix.length) }];
-      });
+      return {
+        matches: result.matches.flatMap((match) => {
+          if (!match.path.startsWith(prefix)) {
+            return [];
+          }
+          return [{ ...match, path: match.path.slice(prefix.length) }];
+        }),
+        ...(result.cursor ? { cursor: result.cursor } : {}),
+        hasMore: result.hasMoreCandidates,
+      };
     },
   };
 }
@@ -202,6 +187,18 @@ async function toFileContent(response: Response | null): Promise<FileContent | n
     contentType: response.headers.get("content-type"),
     sizeBytes: sizeBytes !== null && Number.isFinite(sizeBytes) ? sizeBytes : null,
   };
+}
+
+class UploadFileListingError extends Error {
+  readonly code: string;
+  readonly status: number;
+
+  constructor(message: string, options: { code: string; status: number }) {
+    super(message);
+    this.name = "UploadFileListingError";
+    this.code = options.code;
+    this.status = options.status;
+  }
 }
 
 class UploadFileCollectionError extends Error {

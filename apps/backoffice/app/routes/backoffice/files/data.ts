@@ -157,12 +157,12 @@ async function searchCollectionSources(
         rootPath: source.rootPath,
         rootTitle: source.rootTitle,
         matches: (
-          await registration.collection.search(query, {
+          await registration.collection.searchFiles("**", query, {
             contextBefore: 1,
             contextAfter: 1,
             maxMatches: 50,
           })
-        ).map((match) => ({
+        ).matches.map((match) => ({
           ...match,
           path: `${source.rootPath}/${match.path}`,
         })),

@@ -101,8 +101,6 @@ export function handleUploadServiceError<Code extends string>(
       return error({ message: "Text index is disabled", code }, 400);
     case "TEXT_SEARCH_REGEX_UNSUPPORTED":
       return error({ message: "Regex search is not supported by the text index", code }, 400);
-    case "TEXT_SEARCH_INVALID_QUERY":
-      return error({ message: "Invalid text search query", code }, 400);
   }
 
   throw cause;

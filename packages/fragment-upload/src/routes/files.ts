@@ -32,15 +32,20 @@ import { mapStorageOperationError } from "./uploads-storage";
 
 const legacyFileKeyPartsSchema = z.array(z.union([z.string(), z.number().int()]));
 
-const listQuerySchema = z.object({
-  provider: providerNamespaceSchema.optional(),
-  prefix: z.string().optional(),
-  cursor: z.string().optional(),
-  pageSize: z.coerce.number().min(1).max(500).optional().default(25),
-  status: z.enum(["ready", "deleted"]).optional(),
-  uploaderId: z.string().optional(),
-  delimiter: z.literal("/").optional(),
-});
+const listQuerySchema = z
+  .object({
+    provider: providerNamespaceSchema.optional(),
+    prefix: z.string().optional(),
+    glob: z.string().min(1).max(512).optional(),
+    cursor: z.string().optional(),
+    pageSize: z.coerce.number().min(1).max(500).optional().default(25),
+    status: z.enum(["ready", "deleted"]).optional(),
+    uploaderId: z.string().optional(),
+    delimiter: z.literal("/").optional(),
+  })
+  .refine((value) => !(value.prefix && value.glob), {
+    message: "prefix and glob cannot be combined",
+  });
 
 const directoryMetadataSchema = z.object({
   name: z.string(),
@@ -120,6 +125,7 @@ const hydrateSearchMatchesSchema = z.object({
   candidateKeys: z.array(z.string().min(1)).min(1).max(500),
   query: z.string().min(1).max(512),
   options: stateSearchOptionsSchema.optional(),
+  searchOffset: z.number().int().nonnegative().max(MAX_SEARCH_HYDRATION_BYTES).optional(),
   maxBytes: z.number().int().positive().max(MAX_SEARCH_HYDRATION_BYTES),
 });
 
@@ -130,6 +136,7 @@ const stateTextMatchSchema = z.object({
   startOffset: z.number(),
   endOffset: z.number(),
   text: z.string(),
+  lineText: z.string(),
   contextBefore: z.array(z.string()),
   contextAfter: z.array(z.string()),
 });
@@ -151,7 +158,6 @@ const errorCodes = [
   "PROVIDER_MISMATCH",
   "TEXT_INDEX_DISABLED",
   "TEXT_SEARCH_REGEX_UNSUPPORTED",
-  "TEXT_SEARCH_INVALID_QUERY",
 ] as const;
 
 // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Callers project parsed form JSON to a boundary type before validating its shape.
@@ -269,6 +275,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
       const result = listQuerySchema.safeParse({
         provider: query.has("provider") ? query.get("provider") : undefined,
         prefix: query.get("prefix") || undefined,
+        glob: query.get("glob") || undefined,
         cursor: query.get("cursor") || undefined,
         pageSize: query.has("pageSize") ? query.get("pageSize") : undefined,
         status: query.get("status") || undefined,
@@ -570,6 +577,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         queryParameters: [
           "provider",
           "prefix",
+          "glob",
           "cursor",
           "pageSize",
           "status",
@@ -591,11 +599,12 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             return handleServiceError(err, error);
           }
 
+          const globPattern = params.glob ? globToRegExp(params.glob) : null;
           const result = await this.handlerTx()
             .withServiceCalls(() => [
               services.listFiles({
                 provider: params.provider,
-                prefix: params.prefix,
+                prefix: params.glob ? getStaticGlobPrefix(params.glob) : params.prefix,
                 pageSize: params.pageSize,
                 cursor: params.cursor,
                 status: params.status,
@@ -605,7 +614,13 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             .transform(({ serviceResult: [files] }) => files)
             .execute();
 
-          const files = result.items.map(toFileMetadata);
+          const files = [];
+          for (const item of result.items) {
+            const file = toFileMetadata(item);
+            if (!globPattern || globPattern.test(file.fileKey)) {
+              files.push(file);
+            }
+          }
           if (params.delimiter) {
             const delimited = buildDelimitedFileList(files, params.prefix ?? "", params.delimiter);
             return json({
@@ -662,63 +677,91 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
 
           const searchTerms = extractTextIndexTerms(payload.query, resolvedConfig.textIndex);
           const searchTerm = searchTerms[0];
-          if (!searchTerm) {
-            return handleServiceError(
-              new UploadServiceError(
-                "TEXT_SEARCH_INVALID_QUERY",
-                "The text search query is invalid.",
-              ),
-              error,
-            );
-          }
-
           const globPrefix = getStaticGlobPrefix(payload.glob);
           const globPattern = globToRegExp(payload.glob);
           const maxCandidateFiles = payload.maxCandidateFiles ?? 200;
 
-          const [candidatePage] = await this.handlerTx()
-            .retrieve(({ forSchema }) =>
-              forSchema(uploadSchema).findWithCursor("file_text_term", (b) => {
-                const query = b
-                  .whereIndex("idx_file_text_term_provider_term_key", (eb) =>
-                    eb.and(
-                      eb("provider", "=", payload.provider),
-                      eb("term", "=", searchTerm),
-                      eb("key", "starts with", globPrefix),
-                    ),
+          const candidatePage = searchTerm
+            ? await (async () => {
+                const [page] = await this.handlerTx()
+                  .retrieve(({ forSchema }) =>
+                    forSchema(uploadSchema).findWithCursor("file_text_term", (b) => {
+                      const query = b
+                        .whereIndex("idx_file_text_term_provider_term_key", (eb) =>
+                          eb.and(
+                            eb("provider", "=", payload.provider),
+                            eb("term", "=", searchTerm),
+                            eb("key", "starts with", globPrefix),
+                          ),
+                        )
+                        .orderByIndex("idx_file_text_term_provider_term_key", "asc")
+                        .pageSize(maxCandidateFiles)
+                        .joinOne("document", "file_text_document", (document) =>
+                          document.onIndex("primary", (eb) =>
+                            eb("id", "=", eb.parent("documentId")),
+                          ),
+                        );
+
+                      return payload.cursor ? query.after(payload.cursor) : query;
+                    }),
                   )
-                  .orderByIndex("idx_file_text_term_provider_term_key", "asc")
-                  .pageSize(maxCandidateFiles)
-                  .joinOne("document", "file_text_document", (document) =>
-                    document.onIndex("primary", (eb) => eb("id", "=", eb.parent("documentId"))),
-                  );
+                  .execute();
 
-                return payload.cursor ? query.after(payload.cursor) : query;
-              }),
-            )
-            .execute();
+                return {
+                  candidates: page.items.flatMap((candidate) => {
+                    const document = candidate.document;
+                    if (!document || !globPattern.test(document.key)) {
+                      return [];
+                    }
+                    return [
+                      {
+                        key: document.key,
+                        positions: toSearchPositions(candidate.positions),
+                        count: candidate.count,
+                      },
+                    ];
+                  }),
+                  cursor: page.cursor?.encode(),
+                  hasMoreCandidates: page.hasNextPage,
+                };
+              })()
+            : await (async () => {
+                const [page] = await this.handlerTx()
+                  .retrieve(({ forSchema }) =>
+                    forSchema(uploadSchema).findWithCursor("file_text_document", (b) => {
+                      const query = b
+                        .whereIndex("idx_file_text_document_provider_key", (eb) =>
+                          eb.and(
+                            eb("provider", "=", payload.provider),
+                            eb("key", "starts with", globPrefix),
+                          ),
+                        )
+                        .orderByIndex("idx_file_text_document_provider_key", "asc")
+                        .pageSize(maxCandidateFiles);
+                      return payload.cursor ? query.after(payload.cursor) : query;
+                    }),
+                  )
+                  .execute();
 
-          const candidates = candidatePage.items.flatMap((candidate) => {
-            const document = candidate.document;
-            if (!document || !globPattern.test(document.key)) {
-              return [];
-            }
+                return {
+                  candidates: page.items.flatMap((document) =>
+                    globPattern.test(document.key)
+                      ? [{ key: document.key, positions: [], count: 0 }]
+                      : [],
+                  ),
+                  cursor: page.cursor?.encode(),
+                  hasMoreCandidates: page.hasNextPage,
+                };
+              })();
 
-            return [
-              {
-                key: document.key,
-                positions: toSearchPositions(candidate.positions),
-                count: candidate.count,
-              },
-            ];
-          });
+          const candidates = candidatePage.candidates;
 
           return json({
             provider: payload.provider,
             candidates,
             candidateFiles: candidates.length,
-            cursor: candidatePage.cursor?.encode(),
-            hasMoreCandidates: candidatePage.hasNextPage,
+            cursor: candidatePage.cursor,
+            hasMoreCandidates: candidatePage.hasMoreCandidates,
           });
         },
       }),
@@ -731,6 +774,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         outputSchema: z.object({
           matches: z.array(stateTextMatchSchema),
           scannedFiles: z.number(),
+          scannedBytes: z.number(),
           consumedCandidates: z.number(),
           skippedCandidates: z.array(
             z.object({
@@ -738,6 +782,11 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
               reason: z.enum(["not_found", "too_large"]),
             }),
           ),
+          nextSearchOffset: z.number().int().nonnegative().optional(),
+          truncated: z.union([
+            z.literal(false),
+            z.object({ reason: z.enum(["max_matches", "max_bytes"]) }),
+          ]),
         }),
         errorCodes,
         handler: async function ({ input }, { json, error }) {
@@ -793,9 +842,14 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           let scannedFiles = 0;
           let scannedBytes = 0n;
           let consumedCandidates = 0;
+          let currentCandidateSearchOffset = payload.searchOffset ?? 0;
+          let nextSearchOffset: number | undefined;
+          let truncated: false | { reason: "max_matches" | "max_bytes" } = false;
 
           for (const candidateKey of payload.candidateKeys) {
             if (matches.length >= maxMatches) {
+              truncated = { reason: "max_matches" };
+              nextSearchOffset = currentCandidateSearchOffset;
               break;
             }
 
@@ -803,15 +857,19 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             if (!document) {
               skippedCandidates.push({ key: candidateKey, reason: "not_found" });
               consumedCandidates += 1;
+              currentCandidateSearchOffset = 0;
               continue;
             }
 
             if (document.byteLength > maxBytes) {
               skippedCandidates.push({ key: candidateKey, reason: "too_large" });
               consumedCandidates += 1;
+              currentCandidateSearchOffset = 0;
               continue;
             }
             if (scannedBytes + document.byteLength > maxBytes) {
+              truncated = { reason: "max_bytes" };
+              nextSearchOffset = currentCandidateSearchOffset;
               break;
             }
 
@@ -827,17 +885,39 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
 
             scannedFiles += 1;
             scannedBytes += document.byteLength;
-            consumedCandidates += 1;
             const text = await response.text();
-            matches.push(
-              ...searchTextContent(document.key, text, payload.query, {
+            const remainingMatches: number = maxMatches - matches.length;
+            const candidateMatches: ReturnType<typeof searchTextContent> = searchTextContent(
+              document.key,
+              text,
+              payload.query,
+              {
                 ...options,
-                maxMatches: maxMatches - matches.length,
-              }),
+                startOffset: currentCandidateSearchOffset,
+                maxMatches: remainingMatches + 1,
+              },
             );
+
+            matches.push(...candidateMatches.slice(0, remainingMatches));
+            if (candidateMatches.length > remainingMatches) {
+              truncated = { reason: "max_matches" };
+              nextSearchOffset = candidateMatches[remainingMatches]?.startOffset;
+              break;
+            }
+
+            consumedCandidates += 1;
+            currentCandidateSearchOffset = 0;
           }
 
-          return json({ matches, scannedFiles, consumedCandidates, skippedCandidates });
+          return json({
+            matches,
+            scannedFiles,
+            scannedBytes: Number(scannedBytes),
+            consumedCandidates,
+            skippedCandidates,
+            ...(nextSearchOffset === undefined ? {} : { nextSearchOffset }),
+            truncated,
+          });
         },
       }),
 

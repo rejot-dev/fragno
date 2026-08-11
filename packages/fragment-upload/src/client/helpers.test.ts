@@ -559,7 +559,10 @@ describe("upload client helpers", () => {
 
       if (url.endsWith(downloadUrlPath)) {
         return jsonResponse(
-          { message: "Signed URLs are not supported", code: "SIGNED_URL_UNSUPPORTED" },
+          {
+            message: "Signed URLs are not supported",
+            code: "SIGNED_URL_UNSUPPORTED",
+          },
           { status: 400 },
         );
       }
@@ -592,7 +595,10 @@ describe("upload client helpers", () => {
 
       if (url.endsWith(downloadUrlPath)) {
         return jsonResponse(
-          { message: "Signed URLs are not supported", code: "SIGNED_URL_UNSUPPORTED" },
+          {
+            message: "Signed URLs are not supported",
+            code: "SIGNED_URL_UNSUPPORTED",
+          },
           { status: 400 },
         );
       }
@@ -621,7 +627,10 @@ describe("upload client helpers", () => {
 
       if (url.endsWith(contentPath)) {
         return jsonResponse(
-          { message: "Download streaming unsupported", code: "SIGNED_URL_UNSUPPORTED" },
+          {
+            message: "Download streaming unsupported",
+            code: "SIGNED_URL_UNSUPPORTED",
+          },
           { status: 400 },
         );
       }
@@ -661,7 +670,10 @@ describe("upload client helpers", () => {
     });
 
     await expect(
-      helpers.downloadFile(fileKey, { provider: TEST_PROVIDER, method: "content" }),
+      helpers.downloadFile(fileKey, {
+        provider: TEST_PROVIDER,
+        method: "content",
+      }),
     ).rejects.toThrow(/\/files\/by-key\/content/);
   });
 
@@ -692,7 +704,10 @@ describe("upload client helpers", () => {
 
     let thrown: Error | null = null;
     try {
-      await helpers.downloadFile(fileKey, { provider: TEST_PROVIDER, method: "signed-url" });
+      await helpers.downloadFile(fileKey, {
+        provider: TEST_PROVIDER,
+        method: "signed-url",
+      });
     } catch (error) {
       thrown = error as Error;
     }
@@ -730,7 +745,10 @@ describe("upload client helpers", () => {
 
     let thrown: Error | null = null;
     try {
-      await helpers.downloadFile(fileKey, { provider: TEST_PROVIDER, method: "signed-url" });
+      await helpers.downloadFile(fileKey, {
+        provider: TEST_PROVIDER,
+        method: "signed-url",
+      });
     } catch (error) {
       thrown = error as Error;
     }
@@ -750,7 +768,9 @@ describe("upload client helpers", () => {
     });
 
     await expect(
-      helpers.downloadFile("files.sample.download-missing", { provider: TEST_PROVIDER } as never),
+      helpers.downloadFile("files.sample.download-missing", {
+        provider: TEST_PROVIDER,
+      } as never),
     ).rejects.toThrow(/Download method is required/);
   });
 
@@ -765,83 +785,6 @@ describe("upload client helpers", () => {
         method: "content",
       } as never),
     ).rejects.toThrow(/Download provider is required/);
-  });
-
-  it("searchFiles hydrates the candidate page returned by the text index", async () => {
-    const calls: { url: string; body: unknown }[] = [];
-    const helpers = createUploadHelpers({
-      buildUrl: (path) => `https://local${path}`,
-      fetcher: (async (input, init) => {
-        const url = typeof input === "string" ? input : input.toString();
-        calls.push({ url, body: JSON.parse(init?.body as string) });
-
-        if (url.endsWith("/files/search/hydrate")) {
-          return jsonResponse({
-            matches: [
-              {
-                path: "workspace/src/workflows.ts",
-                line: 1,
-                column: 14,
-                startOffset: 13,
-                endOffset: 27,
-                text: "createWorkflow",
-                contextBefore: [],
-                contextAfter: [],
-              },
-            ],
-            scannedFiles: 1,
-            consumedCandidates: 1,
-            skippedCandidates: [],
-          });
-        }
-
-        return jsonResponse({
-          provider: TEST_PROVIDER,
-          candidates: [{ key: "workspace/src/workflows.ts", positions: [13], count: 1 }],
-          candidateFiles: 1,
-          hasMoreCandidates: false,
-        });
-      }) as typeof fetch,
-    });
-
-    const result = await helpers.searchFiles("/workspace/**/*.ts", "createWorkflow", {
-      provider: TEST_PROVIDER,
-      caseSensitive: false,
-      contextBefore: 2,
-      contextAfter: 2,
-      maxMatches: 50,
-      maxCandidateFiles: 100,
-      maxBytes: 4 * 1024 * 1024,
-    });
-
-    expect(calls).toEqual([
-      {
-        url: "https://local/files/search",
-        body: {
-          provider: TEST_PROVIDER,
-          glob: "/workspace/**/*.ts",
-          query: "createWorkflow",
-          maxCandidateFiles: 100,
-        },
-      },
-      {
-        url: "https://local/files/search/hydrate",
-        body: {
-          provider: TEST_PROVIDER,
-          candidateKeys: ["workspace/src/workflows.ts"],
-          query: "createWorkflow",
-          options: {
-            caseSensitive: false,
-            contextBefore: 2,
-            contextAfter: 2,
-            maxMatches: 50,
-          },
-          maxBytes: 4 * 1024 * 1024,
-        },
-      },
-    ]);
-    assert(result.candidates[0]?.key === "workspace/src/workflows.ts");
-    assert(result.matches[0]?.path === "workspace/src/workflows.ts");
   });
 
   it.each([0, -1, Number.NaN])(
