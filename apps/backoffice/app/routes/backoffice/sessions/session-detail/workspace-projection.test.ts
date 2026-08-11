@@ -59,7 +59,7 @@ describe("projectSessionWorkspaceItems", () => {
           });`,
         ),
         toolResult("workflow-call", generatedUiResult, {
-          run: { workflowName: "pi-codemode-script", instanceId: "workflow-instance" },
+          run: { instanceId: "workflow-instance" },
         }),
         assistantToolCall("ui-call", "async () => ({ total: 24 })"),
         toolResult("ui-call", generatedUiResult),
@@ -78,7 +78,7 @@ describe("projectSessionWorkspaceItems", () => {
     ]);
     assert(items[0]?.view.type === "workflow-graph");
     expect(items[0].view.run).toEqual({
-      workflowName: "pi-codemode-script",
+      workflowName: "codemode-script",
       instanceId: "workflow-instance",
     });
     expect(items[0].view.projection.visualization.graph.nodes).toEqual(
@@ -107,7 +107,7 @@ describe("projectSessionWorkspaceItems", () => {
             args: { code: `defineWorkflow({ name: "new-name" }, async () => {});` },
             status: "done",
             resultMessage: toolResult("shared-call", generatedUiResult, {
-              run: { workflowName: "pi-codemode-script", instanceId: "draft-run" },
+              run: { instanceId: "draft-run" },
             }),
           },
         },
@@ -121,7 +121,7 @@ describe("projectSessionWorkspaceItems", () => {
     assert(items[0]?.view.type === "workflow-graph");
     assert(items[0].view.projection.title === "new-name");
     expect(items[0].view.run).toEqual({
-      workflowName: "pi-codemode-script",
+      workflowName: "codemode-script",
       instanceId: "draft-run",
     });
   });

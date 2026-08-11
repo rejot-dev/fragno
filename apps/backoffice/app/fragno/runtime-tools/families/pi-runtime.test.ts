@@ -456,7 +456,6 @@ describe("pi bash command registration", () => {
         id: "session-1",
         name: "support",
         status: "waiting",
-        workflowName: "interactive-chat-workflow",
         steeringMode: "one-at-a-time",
         metadata: { source: "test" },
         tags: ["alpha"],
@@ -466,7 +465,6 @@ describe("pi bash command registration", () => {
     const jsonLine = outputLines[1]?.replace(/^json=/, "");
     expect(JSON.parse(jsonLine ?? "null")).toMatchObject({
       id: "session-1",
-      workflowName: "interactive-chat-workflow",
       name: "support",
       steeringMode: "one-at-a-time",
       metadata: {

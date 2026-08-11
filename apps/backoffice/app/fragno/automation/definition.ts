@@ -4,25 +4,30 @@ import { defineFragment } from "@fragno-dev/core";
 import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
-import type {
-  BackofficeContextScope,
-  BackofficeExecutionContext,
+import {
+  createBackofficeSystemExecution,
+  type BackofficeContextScope,
+  type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
 
 import { automationActorsSchema } from "./actors";
-import { automationRouteAuthority } from "./authority";
+import { automationRouteAuthority, createAutomationRuntimeExecution } from "./authority";
 import { createAutomationStoreServices } from "./bindings-storage-runtime";
-import type { AutomationFileSystemConfig } from "./catalog";
+import { resolveAutomationFileSystem, type AutomationFileSystemConfig } from "./catalog";
 import {
   STARTER_AUTOMATION_ROUTES,
   SYSTEM_STARTER_AUTOMATION_ROUTES,
 } from "./content/starter-routing";
 import type { AutomationEvent } from "./contracts";
+import {
+  CODEMODE_WORKFLOW,
+  createCodemodeWorkflowInstanceInput,
+  prepareCodemodeWorkflowInstance,
+} from "./engine/codemode-invocation";
 import { type AutomationPiBashContext } from "./engine/runtime";
-import { createAutomationCodemodeWorkflowInstanceInput } from "./engine/workflow-start";
 import {
   buildAutomationEventDefinitionId,
   validateAutomationEventPayload,
@@ -161,19 +166,38 @@ const handleStartWorkflowRouteAction = async ({
   routingKey,
   workflows,
   runWorkflowServiceCall,
-}: RouteExecutionContext & { action: AutomationStartWorkflowAction }) => {
+  config,
+}: RouteExecutionContext & {
+  action: AutomationStartWorkflowAction;
+  config: AutomationFileSystemConfig;
+}) => {
   const instanceId = renderAutomationTemplateValue(
     action.instanceIdTemplate,
     event,
     route.id,
     routingKey,
   );
-  const workflowInput = createAutomationCodemodeWorkflowInstanceInput({
-    event,
-    authority: automationRouteAuthority({ routeId: route.id, mode: action.authority }),
-    workflowScriptPath: action.workflowScriptPath,
+  const execution =
+    event.scope.kind === "system"
+      ? createBackofficeSystemExecution(event.scope)
+      : createAutomationRuntimeExecution({
+          event,
+          authority: automationRouteAuthority({ routeId: route.id, mode: action.authority }),
+        });
+  const fileSystem = await resolveAutomationFileSystem(config, {
+    execution,
+    purpose: "runtime",
+  });
+  const code = await fileSystem.readFile(action.workflowScriptPath, "utf-8");
+  const prepared = prepareCodemodeWorkflowInstance({
+    code,
+    filename: action.workflowScriptPath,
     instanceId,
-    remoteWorkflowName: action.remoteWorkflowName,
+  });
+  const workflowInput = createCodemodeWorkflowInstanceInput({
+    prepared,
+    trigger: { type: "event", event },
+    execution,
   });
 
   await runWorkflowServiceCall(
@@ -275,8 +299,7 @@ const handleSendWorkflowEventRouteAction = async ({
   await runWorkflowServiceCall(
     () =>
       [
-        workflows.sendEvent(action.workflowName, instanceId, {
-          expectedRemoteWorkflowName: action.remoteWorkflowName,
+        workflows.sendEvent(CODEMODE_WORKFLOW, instanceId, {
           id: `${route.id}:${event.id}`,
           type: action.eventType,
           payload: buildWorkflowEventPayload({ action, event }),
@@ -325,52 +348,71 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
             store: new Map(storeRows.map((entry) => [entry.key, entry.value])),
           }))
           .execute();
-
+        const event = payload.event;
+        const routesToExecute = payload.route
+          ? [payload.route]
+          : routes.filter(
+              (route) =>
+                route.enabled &&
+                route.trigger.kind === "event" &&
+                (route.trigger.source === event.source || route.trigger.source === "*") &&
+                (route.trigger.eventType === event.eventType || route.trigger.eventType === "*") &&
+                evaluateAutomationEventMatcher(route.trigger.matcher, event),
+            );
         const runWorkflowServiceCall: RunWorkflowServiceCall = async (call) => {
           await this.handlerTx().withServiceCalls(call).execute();
         };
+        const results = await Promise.allSettled(
+          routesToExecute.map(async (route) => {
+            const context = {
+              event,
+              route,
+              routingKey: routeRoutingKey(event, route),
+              workflows: serviceDeps.workflows,
+              runWorkflowServiceCall,
+              store,
+            };
+            const action = route.action;
+            switch (action.kind) {
+              case "start_workflow":
+                await handleStartWorkflowRouteAction({ ...context, action, config });
+                break;
 
-        const event = payload.event;
-        const routesToExecute = payload.route ? [payload.route] : routes;
-        for (const route of routesToExecute) {
-          if (
-            !payload.route &&
-            (!route.enabled ||
-              route.trigger.kind !== "event" ||
-              (route.trigger.source !== event.source && route.trigger.source !== "*") ||
-              (route.trigger.eventType !== event.eventType && route.trigger.eventType !== "*") ||
-              !evaluateAutomationEventMatcher(route.trigger.matcher, event))
-          ) {
-            continue;
-          }
+              case "send_workflow_event":
+                await handleSendWorkflowEventRouteAction({ ...context, action });
+                break;
 
-          const context = {
-            event,
-            route,
-            routingKey: routeRoutingKey(event, route),
-            workflows: serviceDeps.workflows,
-            runWorkflowServiceCall,
-            store,
-          };
-          const action = route.action;
-          switch (action.kind) {
-            case "start_workflow":
-              await handleStartWorkflowRouteAction({ ...context, action });
-              break;
-
-            case "send_workflow_event":
-              await handleSendWorkflowEventRouteAction({ ...context, action });
-              break;
-
-            case "forward_event":
-              await handleForwardEventRouteAction({
-                ...context,
-                action,
-                ownerScope: config.ownerScope,
-                runtime: config.runtime,
-              });
-              break;
-          }
+              case "forward_event":
+                await handleForwardEventRouteAction({
+                  ...context,
+                  action,
+                  ownerScope: config.ownerScope,
+                  runtime: config.runtime,
+                });
+                break;
+            }
+          }),
+        );
+        const failures = results.flatMap((result, index) =>
+          result.status === "rejected"
+            ? [{ route: routesToExecute[index], cause: result.reason }]
+            : [],
+        );
+        if (failures.length === 1) {
+          const cause = failures[0].cause;
+          throw cause instanceof Error ? cause : new Error(String(cause));
+        }
+        if (failures.length > 1) {
+          throw new AggregateError(
+            failures.map(
+              ({ route, cause }) =>
+                new Error(
+                  `Automation route ${route.id} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+                  { cause },
+                ),
+            ),
+            `Automation event ${event.id} failed for routes: ${failures.map(({ route }) => route.id).join(", ")}`,
+          );
         }
       }),
     };
@@ -456,13 +498,20 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ingestEvent: function (event: AutomationEvent) {
         return this.serviceTx(automationFragmentSchema, { name: "automations.ingestEvent" })
           .retrieve((uow) =>
-            uow.findFirst("automation_event_definition", (b) =>
-              b.whereIndex("primary", (eb) =>
-                eb("id", "=", buildAutomationEventDefinitionId(event.source, event.eventType)),
+            uow
+              .findFirst("automation_event_definition", (b) =>
+                b.whereIndex("primary", (eb) =>
+                  eb("id", "=", buildAutomationEventDefinitionId(event.source, event.eventType)),
+                ),
+              )
+              .findFirst("automation_event", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", event.id)),
               ),
-            ),
           )
-          .mutate(({ uow, retrieveResult: [definition] }) => {
+          .mutate(({ uow, retrieveResult: [definition, existingEvent] }) => {
+            if (existingEvent) {
+              return;
+            }
             validateAutomationEventPayload({ event, definition });
             ingestAutomationEvent(uow, event);
           })

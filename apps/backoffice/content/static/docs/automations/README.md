@@ -22,8 +22,8 @@ An automation normally moves through five stages:
 3. The hook loads routes in ascending `priority` and `id` order. It selects enabled event routes
    whose source, event type, and matcher accept the event.
 4. Each selected route performs exactly one action.
-5. A started workflow runs through the shared `automation-codemode-script` workflow host and calls
-   Backoffice tools under the authority recorded by the route.
+5. A started workflow runs through the unified durable code-mode runtime and calls Backoffice tools
+   under the authority recorded by the route.
 
 Scheduled routes enter the same pipeline. The scheduler creates a `scheduler/schedule.triggered`
 event and passes a snapshot of the selected route to event ingestion. The router therefore does not

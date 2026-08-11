@@ -84,6 +84,7 @@ export const BACKOFFICE_PERMISSION = {
     read: { namespace: "upload", permission: "read" },
   },
   workflow: {
+    executeCode: { namespace: "workflow", permission: "executeCode" },
     modify: { namespace: "workflow", permission: "modify" },
     read: { namespace: "workflow", permission: "read" },
   },

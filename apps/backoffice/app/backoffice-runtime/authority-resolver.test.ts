@@ -308,7 +308,7 @@ describe("createBackofficeAuthorityResolver", () => {
     const actor = {
       scope: "internal" as const,
       type: "capability",
-      id: "untrusted-codemode-script",
+      id: "codemode-script",
       role: "delegate" as const,
     };
     const resolver = withBackofficeActorCapabilityGrants({

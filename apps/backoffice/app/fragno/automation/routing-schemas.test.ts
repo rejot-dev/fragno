@@ -5,31 +5,25 @@ import { zodSchemaToTypeScriptRender } from "@/lib/zod/zod-formatter";
 import { automationRouteActionSchema, automationRouteCreateInputSchema } from "./routing-schemas";
 
 describe("automation routing schemas", () => {
-  test("start_workflow actions discard caller-supplied workflow hosts", () => {
-    const action = automationRouteActionSchema.parse({
-      kind: "start_workflow",
-      authority: { kind: "organization-automation" },
-      workflowName: "wrong-workflow-host",
-      remoteWorkflowName: "daily-digest",
-      workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
-      instanceIdTemplate: "daily-digest-${event.id}",
-    });
-
-    expect(action).toEqual({
-      kind: "start_workflow",
-      authority: { kind: "organization-automation" },
-      remoteWorkflowName: "daily-digest",
-      workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
-      instanceIdTemplate: "daily-digest-${event.id}",
-    });
-    expect(action).not.toHaveProperty("workflowName");
-  });
+  test.each(["workflowName", "remoteWorkflowName"])(
+    "start_workflow actions reject caller-supplied %s",
+    (field) => {
+      expect(() =>
+        automationRouteActionSchema.parse({
+          kind: "start_workflow",
+          authority: { kind: "organization-automation" },
+          workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
+          instanceIdTemplate: "daily-digest-${event.id}",
+          [field]: "caller-supplied-name",
+        }),
+      ).toThrow();
+    },
+  );
 
   test("requires an explicit authority mode for workflow-start routes", () => {
     expect(() =>
       automationRouteActionSchema.parse({
         kind: "start_workflow",
-        remoteWorkflowName: "telegram-hello",
         workflowScriptPath: "/workspace/automations/telegram-hello.workflow.js",
         instanceIdTemplate: "telegram-hello-${event.id}",
       }),
@@ -52,7 +46,6 @@ describe("automation routing schemas", () => {
         "    } | {",
         '      kind: "organization-automation";',
         "    };",
-        "  remoteWorkflowName?: string;",
         "  workflowScriptPath: string;",
         "  instanceIdTemplate: string;",
         "};",
@@ -189,14 +182,11 @@ describe("automation routing schemas", () => {
     expect(
       automationRouteActionSchema.parse({
         kind: "send_workflow_event",
-        remoteWorkflowName: "message-handler",
         target: { kind: "instance_id", template: "route/${event.id}" },
         eventType: "message.received",
       }),
-    ).toMatchObject({
+    ).toEqual({
       kind: "send_workflow_event",
-      workflowName: "automation-codemode-script",
-      remoteWorkflowName: "message-handler",
       target: { kind: "instance_id", template: "route/${event.id}" },
       eventType: "message.received",
     });
@@ -204,14 +194,11 @@ describe("automation routing schemas", () => {
     expect(
       automationRouteActionSchema.parse({
         kind: "send_workflow_event",
-        remoteWorkflowName: "reply-handler",
         target: { kind: "stored_instance_id", keyTemplate: "route/${event.payload.threadId}" },
         eventType: "reply.received",
       }),
-    ).toMatchObject({
+    ).toEqual({
       kind: "send_workflow_event",
-      workflowName: "automation-codemode-script",
-      remoteWorkflowName: "reply-handler",
       target: { kind: "stored_instance_id", keyTemplate: "route/${event.payload.threadId}" },
       eventType: "reply.received",
     });
@@ -219,34 +206,31 @@ describe("automation routing schemas", () => {
     expect(() =>
       automationRouteActionSchema.parse({
         kind: "send_workflow_event",
-        remoteWorkflowName: "reply-handler",
         eventType: "reply.received",
       }),
     ).toThrow();
     expect(() =>
       automationRouteActionSchema.parse({
         kind: "send_workflow_event",
-        remoteWorkflowName: "reply-handler",
         target: { kind: "stored_instance_id", keyTemplate: "" },
         eventType: "reply.received",
       }),
     ).toThrow();
-    expect(() =>
-      automationRouteActionSchema.parse({
-        kind: "send_workflow_event",
-        target: { kind: "instance_id", template: "route/${event.id}" },
-        eventType: "reply.received",
-      }),
-    ).toThrow();
-    expect(() =>
-      automationRouteActionSchema.parse({
-        kind: "send_workflow_event",
-        remoteWorkflowName: "   ",
-        target: { kind: "instance_id", template: "route/${event.id}" },
-        eventType: "reply.received",
-      }),
-    ).toThrow();
   });
+
+  test.each(["workflowName", "remoteWorkflowName"])(
+    "send_workflow_event actions reject caller-supplied %s",
+    (field) => {
+      expect(() =>
+        automationRouteActionSchema.parse({
+          kind: "send_workflow_event",
+          target: { kind: "instance_id", template: "route/${event.id}" },
+          eventType: "reply.received",
+          [field]: "caller-supplied-name",
+        }),
+      ).toThrow();
+    },
+  );
 
   test("renders send_workflow_event action inputs with explicit target shapes", () => {
     expect(
@@ -258,8 +242,6 @@ describe("automation routing schemas", () => {
     ).toMatchInlineSnapshot(`
       "type AutomationSendWorkflowEventActionInput = {
         kind: "send_workflow_event";
-        workflowName?: string;
-        remoteWorkflowName: string;
         target: AutomationWorkflowEventTarget;
         eventType: string;
         payload?: unknown;

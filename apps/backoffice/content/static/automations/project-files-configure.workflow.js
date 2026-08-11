@@ -1,5 +1,5 @@
 defineWorkflow({ name: "project-files-configure" }, async (event, step) => {
-  const automationEvent = event.payload.automationEvent;
+  const automationEvent = event;
 
   if (automationEvent.source !== "automations" || automationEvent.eventType !== "project.created") {
     return { skipped: true, reason: "not-project-created" };

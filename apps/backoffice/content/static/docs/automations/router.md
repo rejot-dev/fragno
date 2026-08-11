@@ -80,7 +80,6 @@ A route performs exactly one action.
 `start_workflow` creates an instance of the shared automation workflow host. Its fields are:
 
 - `workflowScriptPath` — absolute path to a saved workflow file;
-- `remoteWorkflowName` — `defineWorkflow` name inside the file;
 - `instanceIdTemplate` — stable instance identity rendered from the event;
 - `authority` — delegated-user or organisation-automation authority.
 
@@ -94,10 +93,8 @@ unrelated run.
 
 `send_workflow_event` delivers a continuation to an existing workflow instance. It identifies:
 
-- the local `workflowName`, which defaults to `automation-codemode-script`;
-- the saved definition's `remoteWorkflowName`;
 - the workflow event `eventType`;
-- a target instance;
+- a target instance ID, directly or through the automation store;
 - an optional payload.
 
 The target can render an instance ID directly:

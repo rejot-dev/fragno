@@ -3,17 +3,14 @@ import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 import { getDurableHooksService, InMemoryAdapter } from "@fragno-dev/db";
 import { drainDurableHooks } from "@fragno-dev/test";
 
-import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
-import { createMasterFileSystem, createSystemFilesContext } from "@/files";
-
 import type { AutomationWorkflowsService } from "./definition";
+import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
 import { createAutomationFragment } from "./index";
 import { automationFragmentSchema } from "./schema";
 
 const scheduledAction = {
   kind: "start_workflow" as const,
   authority: { kind: "organization-automation" as const },
-  remoteWorkflowName: "scheduled-route",
   workflowScriptPath: "/workspace/automations/scheduled-route.workflow.js",
   instanceIdTemplate: "scheduled-${event.id}",
 };
@@ -31,18 +28,14 @@ const createAutomation = async ({
     sendEvent: async () => ({}),
   } as unknown as AutomationWorkflowsService;
 
+  const automationFileSystem = createTestMasterFileSystem({
+    [scheduledAction.workflowScriptPath]: `defineWorkflow({ name: "scheduled-route" }, async (event) => event.payload);`,
+  });
+
   return createAutomationFragment(
     {
       ownerScope: { kind: "org", orgId: "org_123" },
-      automationFileSystem: await createMasterFileSystem(
-        createSystemFilesContext({
-          execution: {
-            actors: BACKOFFICE_SYSTEM_ACTORS,
-            scope: { kind: "org", orgId: "org_123" },
-          },
-          staticFileArtifacts: () => ({}),
-        }),
-      ),
+      automationFileSystem,
     },
     {
       databaseAdapter: new InMemoryAdapter({
@@ -161,8 +154,6 @@ describe("scheduled automation route triggers", () => {
         },
         action: {
           kind: "send_workflow_event",
-          workflowName: "automation-codemode-script",
-          remoteWorkflowName: "scheduled-handler",
           target: { kind: "stored_instance_id", keyTemplate: "missing-instance" },
           eventType: "scheduled",
         },
@@ -292,8 +283,6 @@ describe("scheduled automation route triggers", () => {
         },
         action: {
           kind: "send_workflow_event",
-          workflowName: "automation-codemode-script",
-          remoteWorkflowName: "scheduled-handler",
           target: { kind: "stored_instance_id", keyTemplate: "missing-instance" },
           eventType: "scheduled",
         },

@@ -16,9 +16,12 @@ import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-servi
 import { createAutomationRuntimeExecution } from "@/fragno/automation/authority";
 import { loadAutomationCatalog } from "@/fragno/automation/catalog";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
-import { PI_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/pi-codemode-workflow";
-import { UNTRUSTED_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/untrusted-codemode-workflow";
-import { AUTOMATION_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
+import {
+  CODEMODE_CAPABILITY_ACTOR,
+  CODEMODE_WORKFLOW,
+  createCodemodeWorkflowInstanceInput,
+  prepareCodemodeWorkflowInstance,
+} from "@/fragno/automation/engine/codemode-invocation";
 import {
   buildMarketplaceIngestionWorkflowInstanceId,
   MARKETPLACE_INGEST_WORKFLOW_NAME,
@@ -540,7 +543,10 @@ describe("Automations fetchWithContext authorization", () => {
     const runtime = await createInMemoryBackofficeRuntime({
       authorityResolver: {
         async resolvePrincipalPermissions() {
-          return [BACKOFFICE_PERMISSION.workflow.modify];
+          return [
+            BACKOFFICE_PERMISSION.workflow.executeCode,
+            BACKOFFICE_PERMISSION.workflow.modify,
+          ];
         },
         async resolveActorCapabilityGrants() {
           return [];
@@ -565,17 +571,20 @@ describe("Automations fetchWithContext authorization", () => {
 
       await expect(
         call("POST", "/:workflowName/instances", {
-          pathParams: { workflowName: AUTOMATION_CODEMODE_WORKFLOW },
+          pathParams: { workflowName: CODEMODE_WORKFLOW },
           body: { id: "forged-completion", params },
         }),
       ).resolves.toMatchObject({
         type: "error",
         status: 400,
-        error: { code: "WORKFLOW_COMPLETION_TARGET_NOT_ALLOWED" },
+        error: {
+          code: "WORKFLOW_COMPLETION_TARGET_NOT_ALLOWED",
+          message: "Workflow completion targets cannot be set through this route.",
+        },
       });
       await expect(
         call("POST", "/:workflowName/instances/batch", {
-          pathParams: { workflowName: AUTOMATION_CODEMODE_WORKFLOW },
+          pathParams: { workflowName: CODEMODE_WORKFLOW },
           body: { instances: [{ id: "forged-completion", params }] },
         }),
       ).resolves.toMatchObject({
@@ -588,7 +597,7 @@ describe("Automations fetchWithContext authorization", () => {
     }
   });
 
-  test("allows workflow-authorized single and batch creation of Pi codemode workflows", async () => {
+  test("requires dedicated code execution authority for codemode creation", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
       authorityResolver: {
         async resolvePrincipalPermissions() {
@@ -608,16 +617,68 @@ describe("Automations fetchWithContext authorization", () => {
           execution: createBackofficeUserExecution({ scope, userId: "user-1" }),
         },
       });
-      const params = {
-        code: "async () => undefined",
-        sessionId: "session-1",
-        toolCallId: "tool-call-1",
-        metadata: {},
-      };
 
       await expect(
         call("POST", "/:workflowName/instances", {
-          pathParams: { workflowName: PI_CODEMODE_WORKFLOW },
+          pathParams: { workflowName: CODEMODE_WORKFLOW },
+          body: { id: "unauthorized-code", params: {} },
+        }),
+      ).resolves.toMatchObject({
+        type: "error",
+        status: 403,
+        error: { code: "principal-permission-denied" },
+      });
+      await expect(
+        call("POST", "/:workflowName/instances/batch", {
+          pathParams: { workflowName: CODEMODE_WORKFLOW },
+          body: { instances: [{ id: "unauthorized-code", params: {} }] },
+        }),
+      ).resolves.toMatchObject({
+        type: "error",
+        status: 403,
+        error: { code: "principal-permission-denied" },
+      });
+    } finally {
+      await runtime.cleanup();
+    }
+  });
+
+  test("allows code-authorized single and batch creation of Pi codemode workflows", async () => {
+    const runtime = await createInMemoryBackofficeRuntime({
+      authorityResolver: {
+        async resolvePrincipalPermissions() {
+          return [
+            BACKOFFICE_PERMISSION.workflow.executeCode,
+            BACKOFFICE_PERMISSION.workflow.modify,
+          ];
+        },
+        async resolveActorCapabilityGrants() {
+          return [];
+        },
+      },
+    });
+
+    try {
+      const scope = { kind: "org" as const, orgId: "org-1" };
+      const execution = createBackofficeUserExecution({ scope, userId: "user-1" });
+      const call = createWorkflowsRouteCaller({
+        object: runtime.objects.automations.forOrg(scope.orgId),
+        context: { execution },
+      });
+      const prepared = prepareCodemodeWorkflowInstance({
+        code: `defineWorkflow({ name: "pi-user-workflow" }, async () => undefined);`,
+        filename: "/pi/session-1/tool-call-1.workflow.js",
+        instanceId: "unused",
+      });
+      const params = createCodemodeWorkflowInstanceInput({
+        prepared,
+        trigger: { type: "manual", payload: {} },
+        execution,
+      }).params;
+
+      await expect(
+        call("POST", "/:workflowName/instances", {
+          pathParams: { workflowName: CODEMODE_WORKFLOW },
           body: {
             id: "pi-codemode-single",
             remoteWorkflowName: "pi-user-workflow",
@@ -627,7 +688,7 @@ describe("Automations fetchWithContext authorization", () => {
       ).resolves.toMatchObject({ type: "json" });
       await expect(
         call("POST", "/:workflowName/instances/batch", {
-          pathParams: { workflowName: PI_CODEMODE_WORKFLOW },
+          pathParams: { workflowName: CODEMODE_WORKFLOW },
           body: {
             remoteWorkflowName: "pi-user-workflow",
             instances: [{ id: "pi-codemode-batch", params }],
@@ -639,11 +700,14 @@ describe("Automations fetchWithContext authorization", () => {
     }
   });
 
-  test("rejects public creation of untrusted codemode workflows", async () => {
+  test("rejects public codemode capability grants", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
       authorityResolver: {
         async resolvePrincipalPermissions() {
-          return [BACKOFFICE_PERMISSION.workflow.modify];
+          return [
+            BACKOFFICE_PERMISSION.workflow.executeCode,
+            BACKOFFICE_PERMISSION.workflow.modify,
+          ];
         },
         async resolveActorCapabilityGrants() {
           return [];
@@ -659,42 +723,49 @@ describe("Automations fetchWithContext authorization", () => {
           execution: createBackofficeUserExecution({ scope, userId: "user-1" }),
         },
       });
+      const systemActors = createBackofficeSystemExecution(scope).actors;
       const params = {
-        source: "defineWorkflow({ name: 'forged' }, async () => undefined)",
-        scriptPath: ".marketplace/install.workflow.js",
-        automationEvent: {
-          id: "forged-installation",
-          scope,
-          source: "marketplace",
-          eventType: "installation.requested",
-          occurredAt: "2026-08-06T12:00:00.000Z",
-          payload: {},
-          actors: createBackofficeSystemExecution(scope).actors,
-          subject: { orgId: scope.orgId },
+        program: {
+          code: `defineWorkflow({ name: "forged" }, async () => undefined);`,
+          dependencies: {},
+          workflowName: "forged",
+          filename: "/marketplace/install.workflow.js",
         },
-        workflowEventPayload: {},
-        metadata: {},
+        trigger: { type: "manual", payload: {} },
+        execution: {
+          scope,
+          actors: {
+            ...systemActors,
+            delegation: [CODEMODE_CAPABILITY_ACTOR],
+          },
+          capabilityGrants: [
+            {
+              actor: CODEMODE_CAPABILITY_ACTOR,
+              permissions: [BACKOFFICE_PERMISSION.router.modify],
+            },
+          ],
+        },
       };
 
       await expect(
         call("POST", "/:workflowName/instances", {
-          pathParams: { workflowName: UNTRUSTED_CODEMODE_WORKFLOW },
+          pathParams: { workflowName: CODEMODE_WORKFLOW },
           body: { id: "forged-installation", params },
         }),
       ).resolves.toMatchObject({
         type: "error",
-        status: 404,
-        error: { code: "WORKFLOW_NOT_FOUND" },
+        status: 400,
+        error: { code: "CODEMODE_CAPABILITY_GRANTS_NOT_ALLOWED" },
       });
       await expect(
         call("POST", "/:workflowName/instances/batch", {
-          pathParams: { workflowName: UNTRUSTED_CODEMODE_WORKFLOW },
+          pathParams: { workflowName: CODEMODE_WORKFLOW },
           body: { instances: [{ id: "forged-installation", params }] },
         }),
       ).resolves.toMatchObject({
         type: "error",
-        status: 404,
-        error: { code: "WORKFLOW_NOT_FOUND" },
+        status: 400,
+        error: { code: "CODEMODE_CAPABILITY_GRANTS_NOT_ALLOWED" },
       });
     } finally {
       await runtime.cleanup();

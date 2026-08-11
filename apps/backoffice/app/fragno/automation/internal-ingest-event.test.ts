@@ -58,6 +58,29 @@ const telegramMessageEvent = ({
 };
 
 describe("automation internal ingest scenarios", () => {
+  test("accepts a repeated event id without dispatching duplicate workflow work", async () => {
+    const event = telegramMessageEvent({ id: "duplicate-event-1", text: "/pi" });
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "duplicate automation event ingestion is idempotent",
+        files: backofficeFiles.workspaceStarter(),
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ when, then }) => [
+          when.automation.ingestEvent(event),
+          when.automation.ingestEvent(event),
+          then.workflow.instance({
+            remoteWorkflowName: "telegram-user-pi-linking",
+            instanceId: "telegram-pi-duplicate-event-1",
+            status: "complete",
+            output: { skipped: true, reason: "telegram-chat-not-linked" },
+          }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
   test("does not run the disabled starter Telegram Pi automation script", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({

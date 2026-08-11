@@ -1,4 +1,4 @@
-import { describe, expect, test, assert } from "vitest";
+import { describe, expect, test, assert, vi } from "vitest";
 
 import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
@@ -6,15 +6,20 @@ import { env } from "cloudflare:workers";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { AutomationRuntimeHostContext, AutomationRuntime } from "@/fragno/automation";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
+import { CODEMODE_CAPABILITY_ACTOR } from "@/fragno/automation/engine/codemode-invocation";
 import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 import type { BackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 
 import { executeCodemodeAutomation, executeWorkflowCodemodeAutomation } from "./codemode";
+import { defineCodemodeWorkflow } from "./codemode-workflow";
 import { createTestMasterFileSystem } from "./test-master-file-system.test-utils";
 
 describe("executeCodemodeAutomation", () => {
@@ -254,6 +259,118 @@ describe("executeCodemodeAutomation", () => {
     expect(calls).toEqual([
       ["configureConnection", { id: "upload", payload: { provider: "database" } }],
     ]);
+  });
+
+  test("rejects persisted capability grants outside the execution actor chain", async () => {
+    const execution = createBackofficeSystemExecution({ kind: "org", orgId: "org-1" });
+    const Workflow = defineCodemodeWorkflow({
+      env: env as Parameters<typeof defineCodemodeWorkflow>[0]["env"],
+      runtime: {} as BackofficeRuntimeServices,
+    });
+    const harness = await createWorkflowsTestHarness({
+      workflows: { WORKFLOW: Workflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+    const instanceId = await harness.createInstance("WORKFLOW", {
+      id: "invalid-capability-grant-1",
+      remoteWorkflowName: "invalid-capability-grant",
+      params: {
+        program: {
+          code: `defineWorkflow({ name: "invalid-capability-grant" }, async () => undefined);`,
+          dependencies: {},
+          workflowName: "invalid-capability-grant",
+          filename: "/workspace/automations/invalid-capability-grant.workflow.js",
+        },
+        trigger: { type: "manual", payload: {} },
+        execution: {
+          scope: execution.scope,
+          actors: execution.actors,
+          capabilityGrants: [
+            {
+              actor: CODEMODE_CAPABILITY_ACTOR,
+              permissions: [BACKOFFICE_PERMISSION.router.modify],
+            },
+          ],
+        },
+      },
+    });
+
+    await harness.runUntilIdle({
+      workflowName: "codemode-script",
+      instanceId,
+      reason: "create",
+    });
+
+    await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+      status: "errored",
+      error: {
+        message: expect.stringContaining("is not part of the execution delegation chain"),
+      },
+    });
+  });
+
+  test("seals workflow codemode egress even when the host has an outbound binding", async () => {
+    const outboundFetch = vi.fn(async () => new Response("unexpected outbound response"));
+    const event: AutomationEvent = {
+      id: "event-workflow-egress",
+      scope: { kind: "org", orgId: "org-1" },
+      source: "test",
+      eventType: "workflow.egress",
+      occurredAt: "2026-08-11T00:00:00.000Z",
+      payload: {},
+      actors: {
+        initiator: AUTOMATION_SYSTEM_INITIATOR,
+        principal: null,
+        delegation: [],
+      },
+    };
+    const Workflow = defineRemoteWorkflow(
+      { name: "codemode-workflow-egress-test" },
+      async (workflowEvent, remote) =>
+        await executeWorkflowCodemodeAutomation({
+          env: { ...env, OUTBOUND: { fetch: outboundFetch } as unknown as Fetcher },
+          workflowEvent,
+          remote,
+          masterFs: createTestMasterFileSystem({}),
+          context: createAutomationContext(event),
+          script: `defineWorkflow(
+            { name: "blocked-workflow-egress" },
+            async (_event, step) => {
+              return await step.do("blocked fetch", async () => {
+                const response = await fetch("https://example.com/private");
+                return await response.text();
+              });
+            },
+          );`,
+        }),
+    );
+    const harness = await createWorkflowsTestHarness({
+      workflows: { WORKFLOW: Workflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+    const instanceId = await harness.createInstance("WORKFLOW", {
+      id: "codemode-workflow-egress-test-1",
+      remoteWorkflowName: "blocked-workflow-egress",
+    });
+
+    await harness.runUntilIdle({
+      workflowName: "codemode-workflow-egress-test",
+      instanceId,
+      reason: "create",
+    });
+
+    await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+      status: "complete",
+      output: expect.objectContaining({
+        exitCode: 1,
+        stderr: expect.stringContaining("not permitted to access the internet"),
+      }),
+    });
+    expect(outboundFetch).not.toHaveBeenCalled();
   });
 
   test("exposes event tools to codemode automations", async () => {

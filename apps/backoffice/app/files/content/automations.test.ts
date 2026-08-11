@@ -91,7 +91,6 @@ describe("automation content", () => {
             eventType: "message.received",
           }),
           action: expect.objectContaining({
-            remoteWorkflowName: "telegram-user-linking",
             workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
           }),
         }),
@@ -101,7 +100,6 @@ describe("automation content", () => {
             eventType: "message.received",
           }),
           action: expect.objectContaining({
-            remoteWorkflowName: "telegram-user-pi-linking",
             workflowScriptPath: "/workspace/automations/telegram-user-pi-linking.workflow.js",
           }),
         }),
@@ -112,7 +110,6 @@ describe("automation content", () => {
           }),
           action: expect.objectContaining({
             kind: "send_workflow_event",
-            remoteWorkflowName: "telegram-user-linking",
             target: {
               kind: "stored_instance_id",
               keyTemplate: "telegram/claim-workflow/${event.payload.otpId}",
@@ -143,7 +140,6 @@ describe("automation content", () => {
             eventType: "organization.created",
           }),
           action: expect.objectContaining({
-            remoteWorkflowName: "workspace-file-initialization",
             workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
           }),
         }),
@@ -158,7 +154,6 @@ describe("automation content", () => {
             eventType: "project.created",
           }),
           action: expect.objectContaining({
-            remoteWorkflowName: "project-files-configure",
             workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
           }),
         }),

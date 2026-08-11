@@ -48,11 +48,10 @@ forwards the event.
    - Resume waiting work: `send_workflow_event`.
    - Cross-scope delivery: `forward_event`.
 
-   Use stable, namespaced ids. For `start_workflow`, make `remoteWorkflowName` equal the saved
-   `defineWorkflow` name and make `workflowScriptPath` point to that file. Do not supply
-   `workflowName`; Backoffice always runs saved scripts through its fixed automation workflow host.
-   **Complete when** every trigger, action, saved workflow name, file path, and instance-id template
-   has one unambiguous value.
+   Use stable, namespaced ids. For `start_workflow`, make `workflowScriptPath` point to a saved file
+   containing exactly one statically named `defineWorkflow(...)`. Backoffice validates the authored
+   name from the file and keeps workflow-host routing internal. **Complete when** every trigger,
+   action, file path, and instance-id template has one unambiguous value.
 
 3. Check prerequisites. When an external capability is involved, inspect it with
    `connections.get({ id })`. If configuration is incomplete, use the Configuring Connections skill
@@ -100,7 +99,6 @@ forwards the event.
        action: {
          kind: "start_workflow",
          authority: { kind: "organization-automation" },
-         remoteWorkflowName: "daily-digest",
          workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
          instanceIdTemplate: "daily-digest-${event.id}",
        },
@@ -124,7 +122,6 @@ forwards the event.
        action: {
          kind: "start_workflow",
          authority: { kind: "organization-automation" },
-         remoteWorkflowName: "telegram-hello",
          workflowScriptPath: "/workspace/automations/telegram-hello.workflow.js",
          instanceIdTemplate: "telegram-hello-${event}",
        },
@@ -132,12 +129,11 @@ forwards the event.
    };
    ```
 
-   For `send_workflow_event`, omit `workflowName` because the fixed automation workflow host handles
-   it, and set `remoteWorkflowName` to the saved `defineWorkflow` name that owns the target
-   instance. Use `{ kind: "instance_id", template }` when the event can render the workflow instance
-   id directly. Use `{ kind: "stored_instance_id", keyTemplate }` when a prior run stored the
-   instance id under a rendered store key. **Complete when** every required artifact has been
-   created or updated successfully.
+   For `send_workflow_event`, identify the durable run only by its instance ID. Use
+   `{ kind: "instance_id", template }` when the event can render the workflow instance id directly.
+   Use `{ kind: "stored_instance_id", keyTemplate }` when a prior run stored the instance id under a
+   rendered store key. **Complete when** every required artifact has been created or updated
+   successfully.
 
 5. Use the automation store only for small durable coordination values. Values are strings,
    structured values use `JSON.stringify`, and keys are stable and namespaced. Store inputs contain

@@ -30,7 +30,7 @@ const run: ScriptWorkflowRun = {
   id: "run-row",
   instanceId: "run-1",
   workflowName: "ui-results",
-  instanceWorkflowName: "automation-codemode-script",
+  instanceWorkflowName: "codemode-script",
   status: "complete",
   output: generatedUiResult("Final metric", "48"),
   createdAt: "2026-07-31T10:00:00.000Z",

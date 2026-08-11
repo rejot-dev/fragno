@@ -22,6 +22,7 @@ vi.mock("cloudflare:workers", () => ({
 }));
 
 import {
+  createBackofficeServiceExecution,
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
@@ -29,7 +30,10 @@ import {
   automationActorsSchema,
   BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY,
 } from "@/fragno/automation/actors";
-import { UNTRUSTED_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/untrusted-codemode-workflow";
+import {
+  CODEMODE_CAPABILITY_ACTOR,
+  CODEMODE_WORKFLOW,
+} from "@/fragno/automation/engine/codemode-invocation";
 import {
   MARKETPLACE_INSTALL_WORKFLOW_PATH,
   marketplaceArtifactUploadName,
@@ -649,7 +653,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               }),
               runner.drain(),
               then.workflow.instance({
-                workflowName: UNTRUSTED_CODEMODE_WORKFLOW,
+                workflowName: CODEMODE_WORKFLOW,
                 instanceId: `${workflowInstanceId}:installation`,
                 status: "errored",
               }),
@@ -670,7 +674,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   });
                   const response = await workflows("GET", "/:workflowName/instances/:instanceId", {
                     pathParams: {
-                      workflowName: UNTRUSTED_CODEMODE_WORKFLOW,
+                      workflowName: CODEMODE_WORKFLOW,
                       instanceId: `${workflowInstanceId}:installation`,
                     },
                   });
@@ -744,7 +748,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 action: {
                   kind: "start_workflow",
                   authority: { kind: "organization-automation" },
-                  remoteWorkflowName: "telegram-test-command",
                   workflowScriptPath: "/workspace/automations/wrong.workflow.js",
                   instanceIdTemplate: "wrong-${event.id}",
                 },
@@ -826,54 +829,36 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
             const installation = await workflows("GET", "/:workflowName/instances/:instanceId", {
               pathParams: {
-                workflowName: UNTRUSTED_CODEMODE_WORKFLOW,
+                workflowName: CODEMODE_WORKFLOW,
                 instanceId: `${workflowInstanceId}:installation`,
               },
             });
             assert(installation.type === "json");
             const installationParams = installation.data.meta.params as {
-              automationEvent: { actors: unknown };
-              metadata?: Record<string, unknown>;
+              trigger?: { type?: unknown; payload?: unknown };
+              execution?: { actors?: unknown };
             };
             const installationActors = automationActorsSchema.parse(
-              installationParams.metadata?.[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
+              installationParams.execution?.actors,
             );
-            expect(installationActors).toEqual(requesterActors);
-            expect(installationActors).toMatchInlineSnapshot(`
-              {
-                "delegation": [],
-                "initiator": {
-                  "id": "interactive",
-                  "role": "initiator",
-                  "scope": "internal",
-                  "type": "backoffice",
-                },
-                "principal": {
-                  "id": "marketplace-installer",
-                  "role": "principal",
-                  "scope": "internal",
-                  "type": "user",
-                },
-              }
-            `);
-
-            const installationEventActors = automationActorsSchema.parse(
-              installationParams.automationEvent.actors,
-            );
-            expect(installationEventActors).toEqual({
-              initiator: {
-                scope: "internal",
-                type: "system",
-                id: "backoffice",
-                role: "initiator",
-              },
-              principal: {
-                scope: "internal",
+            const installationBaseActors = createBackofficeServiceExecution({
+              scope: { kind: "org", orgId: "org-1" },
+              service: {
                 type: "automation",
                 id: `automation:${workflowInstanceId}:installation`,
-                role: "principal",
               },
-              delegation: [],
+            }).actors;
+            expect(installationActors).toEqual({
+              ...installationBaseActors,
+              delegation: [...installationBaseActors.delegation, CODEMODE_CAPABILITY_ACTOR],
+            });
+
+            expect(installationParams.trigger).toMatchObject({
+              type: "manual",
+              payload: {
+                listingId: MARKETPLACE_LISTING_ID,
+                targetScope: { kind: "org", orgId: "org-1" },
+              },
             });
           }),
           then.assert("the managed route is reconciled without re-enabling it", async (ctx) => {
@@ -900,7 +885,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               action: {
                 kind: "start_workflow",
                 authority: { kind: "organization-automation" },
-                remoteWorkflowName: "telegram-test-command",
                 workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
                 instanceIdTemplate: "telegram-test-${event.id}",
               },
@@ -923,7 +907,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                     {
                       scope: "internal",
                       type: "capability",
-                      id: UNTRUSTED_CODEMODE_WORKFLOW,
+                      id: CODEMODE_WORKFLOW,
                       role: "delegate",
                     },
                   ],
@@ -982,7 +966,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             action: {
               kind: "start_workflow",
               authority: { kind: "organization-automation" },
-              remoteWorkflowName: "telegram-test-command",
               workflowScriptPath: "/workspace/automations/legacy-test.workflow.js",
               instanceIdTemplate: "legacy-${event.id}",
             },
@@ -1069,7 +1052,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             action: {
               kind: "start_workflow",
               authority: { kind: "organization-automation" },
-              remoteWorkflowName: "unrelated-workflow",
               workflowScriptPath: "/workspace/automations/unrelated.workflow.js",
               instanceIdTemplate: "unrelated-${event.id}",
             },
@@ -1104,7 +1086,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               name: "Unrelated route",
               priority: 1,
               action: {
-                remoteWorkflowName: "unrelated-workflow",
                 workflowScriptPath: "/workspace/automations/unrelated.workflow.js",
               },
               metadata: { managedBy: null },

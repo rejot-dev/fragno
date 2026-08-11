@@ -9,7 +9,7 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { automationActorsSchema } from "@/fragno/automation/actors";
-import { PI_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/pi-codemode-workflow";
+import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { createPiToolFactory, type PiSessionFileSystemContext } from "@/fragno/pi/pi";
 import { createPiCodemodeRuntime } from "@/fragno/pi/pi-codemode";
 import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
@@ -29,6 +29,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { createWorkflowsRouteCaller } from "./route-callers";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -48,6 +49,7 @@ type PiAuthorityScenarioVars = {
   adminTool?: AgentTool;
   memberTool?: AgentTool;
   persistedActors?: unknown;
+  codemodeInstanceId?: string;
 };
 
 const loadPiSessionExecution = async (
@@ -337,7 +339,7 @@ describe("scenario Pi boundary", () => {
             const result = await tool.execute("durable-codemode", {
               code: `defineWorkflow(
   { name: "pi-created-durable-workflow" },
-  async (_event, step) => {
+  async (event, step) => {
     await step.do("write durable result", async () => {
       await store.set({
         key: "pi/durable-codemode",
@@ -345,19 +347,63 @@ describe("scenario Pi boundary", () => {
         category: ["test", "pi"],
       });
     });
-    return { executed: true };
+    return {
+      id: event.id,
+      scope: event.scope,
+      source: event.source,
+      eventType: event.eventType,
+      payload: event.payload,
+      actors: event.actors,
+    };
   },
 );`,
             } as never);
             const details = result.details as {
-              run?: { workflowName: string; instanceId: string };
+              run?: { instanceId: string };
               scheduleError?: string;
             };
 
             expect(details.scheduleError).toBeUndefined();
-            expect(details.run).toMatchObject({ workflowName: PI_CODEMODE_WORKFLOW });
+            expect(details.run).toEqual({ instanceId: expect.any(String) });
+            ctx.vars.codemodeInstanceId = details.run?.instanceId;
           }),
           runner.drain(),
+          then.assert("the manual trigger uses the Pi session execution context", async (ctx) => {
+            const instanceId = ctx.vars.codemodeInstanceId;
+            const sessionId = ctx.vars.sessionId;
+            if (!instanceId || !sessionId) {
+              throw new Error("Pi codemode workflow identifiers were not captured.");
+            }
+
+            const execution = await loadPiSessionExecution(ctx, "org-1", sessionId);
+            const workflows = createWorkflowsRouteCaller({
+              object: ctx.runtime.objects.automations.forOrg("org-1"),
+              context: {
+                execution: createBackofficeSystemExecution(execution.scope),
+                propagationContext: null,
+              },
+            });
+            const response = await workflows("GET", "/:workflowName/instances/:instanceId", {
+              pathParams: { workflowName: CODEMODE_WORKFLOW, instanceId },
+            });
+            assert(response.type === "json");
+
+            expect(response.data.meta.params).toMatchObject({
+              trigger: { type: "manual", payload: {} },
+              execution: {
+                scope: execution.scope,
+                actors: execution.actors,
+              },
+            });
+            expect(response.data.details.output).toEqual({
+              id: instanceId,
+              scope: execution.scope,
+              source: "manual",
+              eventType: "workflow.started",
+              payload: {},
+              actors: execution.actors,
+            });
+          }),
           then.store.entry({
             orgId: "org-1",
             key: "pi/durable-codemode",

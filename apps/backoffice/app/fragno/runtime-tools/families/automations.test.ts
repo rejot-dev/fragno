@@ -8,6 +8,7 @@ import { hooksRuntimeTools } from "./automations-durable-hooks";
 import { automationRouterRuntimeTools } from "./automations-routing";
 import {
   automationWorkflowRuntimeTools,
+  automationWorkflowToolFamily,
   type AutomationWorkflowRuntime,
 } from "./automations-workflow";
 import {
@@ -16,6 +17,38 @@ import {
   automationEventsCatalogListTool,
   type BackofficeCapabilitiesRuntime,
 } from "./backoffice-capabilities";
+
+const createWorkflowRuntime = (
+  overrides: Partial<AutomationWorkflowRuntime> = {},
+): AutomationWorkflowRuntime => ({
+  createInstance: async ({ instanceId }) => ({ instanceId }),
+  listInstances: async () => ({ instances: [], hasNextPage: false }),
+  getInstance: async ({ instanceId }) => ({
+    id: instanceId,
+    details: { status: "waiting" },
+    meta: {
+      name: "demo",
+      path: "/workspace/automations/demo.workflow.js",
+      createdAt: "2026-08-11T00:00:00.000Z",
+      updatedAt: "2026-08-11T00:00:00.000Z",
+      startedAt: null,
+      completedAt: null,
+    },
+  }),
+  retryInstance: async ({ instanceId, stepKey }) => ({
+    accepted: true,
+    instance: { id: instanceId, details: { status: "waiting" } },
+    retry: {
+      stepKey: stepKey ?? "do:latest",
+      attempts: 1,
+      maxAttempts: 2,
+      scheduledAt: "2026-08-11T00:00:00.000Z",
+    },
+  }),
+  sendEvent: async () => null,
+  getHistory: async () => ({ steps: [], events: [], emissions: [] }),
+  ...overrides,
+});
 
 describe("automation runtime tools", () => {
   test("derive automation bash commands from runtime tools", () => {
@@ -34,7 +67,6 @@ describe("automation runtime tools", () => {
       "router.trigger-now",
     ]);
     expect(automationWorkflowRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
-      "workflow.list",
       "workflow.instances.create",
       "workflow.instances.list",
       "workflow.instances.get",
@@ -287,18 +319,65 @@ describe("automation runtime tools", () => {
     ).toEqual({ key: "telegram/chat-123" });
   });
 
+  test("workflow create tool starts a saved path without exposing host names", async () => {
+    const createTool = automationWorkflowRuntimeTools[0];
+    assert(createTool.id === "workflow.instances.create");
+
+    const calls: unknown[] = [];
+    const runtime = createWorkflowRuntime({
+      createInstance: async (input) => {
+        calls.push(input);
+        return { instanceId: input.instanceId };
+      },
+    });
+    const input = createTool.inputSchema.parse(
+      createTool.adapters!.bash!.parse([
+        "--path",
+        "/workspace/automations/demo.workflow.js",
+        "--instance-id",
+        "run-1",
+        "--payload-json",
+        '{"requestId":"request-1"}',
+      ]),
+    );
+
+    await expect(
+      createTool.execute(
+        input,
+        createTrustedSystemBackofficeToolContext({ runtimes: { workflow: runtime } }),
+      ),
+    ).resolves.toEqual({ instanceId: "run-1" });
+    expect(calls).toEqual([
+      {
+        path: "/workspace/automations/demo.workflow.js",
+        instanceId: "run-1",
+        payload: { requestId: "request-1" },
+      },
+    ]);
+    expect(() =>
+      createTool.inputSchema.parse({
+        path: "/workspace/automations/demo.workflow.js",
+        workflowName: "codemode-script",
+        remoteWorkflowName: "demo",
+        instanceId: "run-1",
+      }),
+    ).toThrow();
+  });
+
+  test("workflow tools are unavailable without a workflow runtime", () => {
+    assert.isFalse(
+      automationWorkflowToolFamily.isAvailable?.(
+        createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+      ),
+    );
+  });
+
   test("workflow retry tool parses input and calls the runtime", async () => {
-    const retryTool = automationWorkflowRuntimeTools[6];
+    const retryTool = automationWorkflowRuntimeTools[5];
     assert(retryTool.id === "workflow.instances.retry");
 
     const calls: unknown[] = [];
-    const runtime: AutomationWorkflowRuntime = {
-      createInstance: async ({ workflowName, instanceId }) => ({
-        workflowName,
-        instanceId: instanceId ?? "generated",
-      }),
-      getStatus: async () => ({ status: "waiting" }),
-      sendEvent: async () => null,
+    const runtime = createWorkflowRuntime({
       retryInstance: async (input) => {
         calls.push(input);
         return {
@@ -312,12 +391,10 @@ describe("automation runtime tools", () => {
           },
         };
       },
-    };
+    });
 
     const input = retryTool.inputSchema.parse(
       retryTool.adapters!.bash!.parse([
-        "--workflow-name",
-        "demo-workflow",
         "--instance-id",
         "run-1",
         "--step-key",
@@ -346,7 +423,6 @@ describe("automation runtime tools", () => {
     });
     expect(calls).toEqual([
       {
-        workflowName: "demo-workflow",
         instanceId: "run-1",
         stepKey: "do:flaky",
         delayMs: 250,

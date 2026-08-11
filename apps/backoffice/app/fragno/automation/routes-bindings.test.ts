@@ -7,7 +7,6 @@ import { drainDurableHooks } from "@fragno-dev/test";
 
 import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { createMasterFileSystem, createSystemFilesContext } from "@/files";
 
 import {
   STARTER_AUTOMATION_ROUTES,
@@ -15,6 +14,7 @@ import {
 } from "./content/starter-routing";
 import type { AutomationEvent } from "./contracts";
 import type { AutomationWorkflowsService } from "./definition";
+import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
 import { createAutomationFragment } from "./index";
 import { setAutomationRouteMutationActors } from "./route-routes";
 
@@ -27,6 +27,7 @@ const createAutomation = async (
     workflows?: AutomationWorkflowsService;
     runtime?: BackofficeRuntimeServices;
     now?: () => Date;
+    workflowFiles?: Record<string, string>;
   } = {},
 ) => {
   const services = {
@@ -41,20 +42,12 @@ const createAutomation = async (
       } as unknown as AutomationWorkflowsService),
   };
   const ownerScope = options.ownerScope ?? { kind: "org", orgId: "org_123" };
+  const automationFileSystem = createTestMasterFileSystem(options.workflowFiles ?? {});
 
   return createAutomationFragment(
     {
       ownerScope,
-      automationFileSystem: await createMasterFileSystem(
-        createSystemFilesContext({
-          execution: {
-            actors: BACKOFFICE_SYSTEM_ACTORS,
-            scope: ownerScope,
-          },
-
-          staticFileArtifacts: () => ({}),
-        }),
-      ),
+      automationFileSystem,
       runtime: options.runtime,
     },
     {
@@ -112,7 +105,6 @@ describe("automation routes /routes", () => {
             id: "telegram-identity-claim-completed",
             action: expect.objectContaining({
               kind: "send_workflow_event",
-              remoteWorkflowName: "telegram-user-linking",
             }),
           }),
         ]),
@@ -156,7 +148,6 @@ describe("automation routes /routes", () => {
         action: {
           kind: "start_workflow",
           authority: { kind: "organization-automation" },
-          remoteWorkflowName: "telegram-hello",
           workflowScriptPath: "/workspace/automations/telegram-hello.workflow.js",
           instanceIdTemplate: "telegram-hello-${event}",
         },
@@ -239,7 +230,6 @@ describe("automation routes /routes", () => {
         action: {
           kind: "start_workflow",
           authority: { kind: "organization-automation" },
-          remoteWorkflowName: "caller-attribution",
           workflowScriptPath: "/workspace/automations/caller-attribution.workflow.js",
           instanceIdTemplate: "caller-attribution-${event.id}",
         },
@@ -278,7 +268,6 @@ describe("automation routes /routes", () => {
         action: {
           kind: "start_workflow",
           authority: { kind: "organization-automation" },
-          remoteWorkflowName: "trusted-attribution",
           workflowScriptPath: "/workspace/automations/trusted-attribution.workflow.js",
           instanceIdTemplate: "trusted-attribution-${event.id}",
         },
@@ -513,6 +502,9 @@ describe("automation routes /routes", () => {
       input: { id: string; remoteWorkflowName?: string };
     }> = [];
     fragment = await createAutomation({
+      workflowFiles: {
+        "/workspace/automations/custom-start.workflow.js": `defineWorkflow({ name: "custom-start" }, async (event) => event.payload);`,
+      },
       workflows: {
         createInstance: async (
           workflowName: string,
@@ -541,7 +533,6 @@ describe("automation routes /routes", () => {
         action: {
           kind: "start_workflow",
           authority: { kind: "organization-automation" },
-          remoteWorkflowName: "custom-start",
           workflowScriptPath: "/workspace/automations/custom-start.workflow.js",
           instanceIdTemplate: "custom-start-${event.id}",
         },
@@ -568,7 +559,7 @@ describe("automation routes /routes", () => {
 
     expect(starts).toEqual([
       {
-        workflowName: "automation-codemode-script",
+        workflowName: "codemode-script",
         input: expect.objectContaining({
           id: "custom-start-thing-1",
           remoteWorkflowName: "custom-start",
@@ -577,7 +568,7 @@ describe("automation routes /routes", () => {
     ]);
   });
 
-  test("send workflow event routes validate the configured remote workflow", async () => {
+  test("send workflow event routes target the fixed host by instance id", async () => {
     const sendEvents: Array<{
       workflowName: string;
       instanceId: string;
@@ -618,8 +609,6 @@ describe("automation routes /routes", () => {
         priority: 50,
         action: {
           kind: "send_workflow_event",
-          workflowName: "automation-codemode-script",
-          remoteWorkflowName: "custom-waiter",
           target: { kind: "stored_instance_id", keyTemplate: "waiter/${event.payload.key}" },
           eventType: "custom-signal",
           payload: "$event",
@@ -647,10 +636,9 @@ describe("automation routes /routes", () => {
 
     expect(sendEvents).toEqual([
       {
-        workflowName: "automation-codemode-script",
+        workflowName: "codemode-script",
         instanceId: "waiter-1",
         event: expect.objectContaining({
-          expectedRemoteWorkflowName: "custom-waiter",
           id: "custom-signal-forwarder:signal-1",
         }),
       },

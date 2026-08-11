@@ -9,8 +9,8 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
   "automations/telegram-user-linking.workflow.js": `defineWorkflow(
   { name: "telegram-user-linking" },
   async (event, step) => {
-    const automationEvent = event.payload.automationEvent;
-    const workflowInstanceId = event.payload.workflowInstanceId;
+    const automationEvent = event;
+    const workflowInstanceId = event.instanceId;
     const chatId = automationEvent.payload.chatId;
 
     if (
@@ -114,7 +114,7 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
   "automations/telegram-user-pi-linking.workflow.js": `defineWorkflow(
   { name: "telegram-user-pi-linking" },
   async (event, step) => {
-    const automationEvent = event.payload.automationEvent;
+    const automationEvent = event;
 
     const text = automationEvent.payload.text ?? "";
     const chatId = automationEvent.payload.chatId;

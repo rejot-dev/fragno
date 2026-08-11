@@ -64,7 +64,7 @@ const DASHBOARD_SEARCH_NAVIGATION_OPTIONS = {
 
 const EMPTY_WORKFLOW_SOURCE = { script: null, scriptError: null };
 const codemodeWorkflowScriptReferenceSchema = z.object({
-  script: z.object({ path: z.string() }),
+  program: z.object({ filename: z.string() }),
 });
 
 type DashboardWorkflowInstance = {
@@ -234,7 +234,9 @@ const routeDestinationLabel = (route: DashboardRoute) => {
     return automationRouteWorkflowName(route) ?? "Unknown saved workflow";
   }
   if (route.action.kind === "send_workflow_event") {
-    return route.action.remoteWorkflowName;
+    return route.action.target.kind === "instance_id"
+      ? `Workflow · ${route.action.target.template}`
+      : `Workflow from store · ${route.action.target.keyTemplate}`;
   }
 
   switch (route.action.targetScope.kind) {
@@ -735,7 +737,7 @@ export default function BackofficeAutomationDashboard() {
       const scriptReference = codemodeWorkflowScriptReferenceSchema.safeParse(params);
       return {
         ...instance,
-        workflowScriptPath: scriptReference.success ? scriptReference.data.script.path : null,
+        workflowScriptPath: scriptReference.success ? scriptReference.data.program.filename : null,
       };
     },
   );

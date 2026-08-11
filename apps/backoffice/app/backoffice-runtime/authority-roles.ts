@@ -13,6 +13,7 @@ const USER_AUTHORITY_ROLE_GRANTS = {
   "system-administrator": allBackofficePermissionRequirements,
   "user-owner": [
     BACKOFFICE_PERMISSION.capabilities.read,
+    BACKOFFICE_PERMISSION.workflow.executeCode,
     BACKOFFICE_PERMISSION.events.emit,
     BACKOFFICE_PERMISSION.events.manage,
     BACKOFFICE_PERMISSION.events.read,
@@ -33,6 +34,7 @@ const USER_AUTHORITY_ROLE_GRANTS = {
   ],
   "organization-member": [
     BACKOFFICE_PERMISSION.capabilities.read,
+    BACKOFFICE_PERMISSION.workflow.executeCode,
     BACKOFFICE_PERMISSION.connections.manage,
     BACKOFFICE_PERMISSION.connections.read,
     BACKOFFICE_PERMISSION.events.emit,
@@ -63,6 +65,7 @@ const USER_AUTHORITY_ROLE_GRANTS = {
  */
 const INTERNAL_SERVICE_AUTHORITY_ROLE_GRANTS = {
   automation: [
+    BACKOFFICE_PERMISSION.workflow.executeCode,
     BACKOFFICE_PERMISSION.connections.manage,
     BACKOFFICE_PERMISSION.identity.resolve,
     BACKOFFICE_PERMISSION.internal.manage,

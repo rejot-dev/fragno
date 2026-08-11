@@ -188,12 +188,7 @@ describe("codemode workflow execution", () => {
     );
   });
 
-  test("globalOutbound: null seals the sandbox so step fetch() is rejected", async () => {
-    // The override threads through to the dynamic worker's `globalOutbound`.
-    // `null` keeps the sandbox sealed, so a bare fetch() throws the egress error.
-    // (The default — omitted globalOutbound — instead inherits the host worker's
-    // internet access; that path can't be asserted here because the Workers test
-    // pool host has no outbound network at all.)
+  test("workflow codemode seals outbound fetch by default", async () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-fetch-sealed" },
       defineCodemodeWorkflowRun(
@@ -204,7 +199,7 @@ describe("codemode workflow execution", () => {
           });
         }`,
         env,
-        { ...createSystemWorkflowOptions(), globalOutbound: null },
+        createSystemWorkflowOptions(),
       ),
     );
     const harness = await createHarness({ WORKFLOW: Workflow });

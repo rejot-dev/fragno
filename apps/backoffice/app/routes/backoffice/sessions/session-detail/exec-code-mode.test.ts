@@ -11,26 +11,33 @@ describe("getExecCodeModeResultDetails", () => {
     expect(getExecCodeModeResultDetails(details).run).toBeNull();
   });
 
-  test("parses a present workflow run reference", () => {
+  test("maps the public instance handle to the internal codemode host", () => {
     expect(
       getExecCodeModeResultDetails({
-        run: { workflowName: "pi-codemode-script", instanceId: "workflow-instance" },
+        run: { instanceId: "workflow-instance" },
       }).run,
-    ).toEqual({ workflowName: "pi-codemode-script", instanceId: "workflow-instance" });
+    ).toEqual({ workflowName: "codemode-script", instanceId: "workflow-instance" });
+  });
+
+  test("keeps historical handles compatible without trusting their workflow name", () => {
+    expect(
+      getExecCodeModeResultDetails({
+        run: { workflowName: "legacy-host", instanceId: "workflow-instance" },
+      }).run,
+    ).toEqual({ workflowName: "codemode-script", instanceId: "workflow-instance" });
   });
 
   test.each([
     "workflow-instance",
     [],
     {},
-    { workflowName: "pi-codemode-script" },
-    { instanceId: "workflow-instance" },
-    { workflowName: "", instanceId: "workflow-instance" },
-    { workflowName: "pi-codemode-script", instanceId: " " },
+    { workflowName: "codemode-script" },
+    { instanceId: " " },
+    { workflowName: "codemode-script", instanceId: " " },
   ])("throws when a present workflow run reference is malformed: %j", (run) => {
     expect(() => getExecCodeModeResultDetails({ run })).toThrow(
       new TypeError(
-        "Invalid execCodeMode result details.run: expected non-empty workflowName and instanceId strings",
+        "Invalid execCodeMode result details.run: expected a non-empty instanceId string",
       ),
     );
   });

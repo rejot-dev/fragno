@@ -12,8 +12,7 @@ const actionDetailLabels = (labelSet: AutomationRouteDetailLabelSet) =>
         workflow: "Workflow",
         script: "Script",
         instanceId: "Instance ID",
-        savedWorkflow: "Saved workflow",
-        hostWorkflow: "Host workflow",
+        target: "Target",
         event: "Event",
         eventId: "Event ID",
       }
@@ -21,8 +20,7 @@ const actionDetailLabels = (labelSet: AutomationRouteDetailLabelSet) =>
         workflow: "workflow",
         script: "script",
         instanceId: "instance",
-        savedWorkflow: "saved workflow",
-        hostWorkflow: "host workflow",
+        target: "target",
         event: "event",
         eventId: "event id",
       };
@@ -54,8 +52,13 @@ export const automationRouteActionDetailRows = (
       ];
     case "send_workflow_event":
       return [
-        { label: labels.savedWorkflow, value: action.remoteWorkflowName },
-        { label: labels.hostWorkflow, value: action.workflowName },
+        {
+          label: labels.target,
+          value:
+            action.target.kind === "instance_id"
+              ? action.target.template
+              : `Store · ${action.target.keyTemplate}`,
+        },
         { label: labels.event, value: action.eventType },
       ];
     case "forward_event": {

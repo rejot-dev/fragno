@@ -267,7 +267,7 @@ describe("automation script workflow run presentation", () => {
     const run = projectWorkflowRun({
       visualization,
       instance: workflowRun({
-        workflowName: "automation-codemode-script",
+        workflowName: "codemode-script",
         status: "waiting",
         workflowEvents: [
           {
@@ -294,7 +294,7 @@ describe("automation script workflow run presentation", () => {
 
     assert(run);
     assert(run.workflowName === "demo");
-    assert(run.instanceWorkflowName === "automation-codemode-script");
+    assert(run.instanceWorkflowName === "codemode-script");
     expect(run.waitingEventTypes).toEqual(["approved"]);
     expect(run.workflowEvents).toEqual([
       expect.objectContaining({
@@ -1260,9 +1260,9 @@ function nestedStepNode(snapshot: typeof visualization, parentLabel: string, lab
 function workflowRun(overrides: Partial<AutomationWorkflowRun> = {}): AutomationWorkflowRun {
   const instanceId = overrides.instanceId ?? "run-1";
   return {
-    id: `automation-codemode-script:${instanceId}`,
+    id: `codemode-script:${instanceId}`,
     instanceId,
-    workflowName: "automation-codemode-script",
+    workflowName: "codemode-script",
     remoteWorkflowName: "demo",
     status: "active",
     workflowScriptPath: absolutePath,

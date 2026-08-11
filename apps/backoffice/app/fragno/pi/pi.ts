@@ -26,7 +26,10 @@ import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { createBackofficeFileSystem, type MasterFileSystem } from "@/files";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { automationActorsSchema } from "@/fragno/automation/actors";
-import { PI_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/pi-codemode-workflow";
+import {
+  createCodemodeWorkflowInstanceInput,
+  prepareCodemodeWorkflowInstance,
+} from "@/fragno/automation/engine/codemode-invocation";
 import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-dts";
 
 import type {
@@ -39,6 +42,7 @@ import type {
 } from "../runtime-tools/bash-host";
 import type {
   AutomationWorkflowRuntime,
+  InternalAutomationWorkflowRuntime,
   WorkflowCreateInstanceResult,
 } from "../runtime-tools/families/automations-workflow";
 import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
@@ -51,7 +55,6 @@ import {
   runtimeToolFamilies,
   type CoreBackofficeToolContext,
 } from "../runtime-tools/tool-families";
-import type { PiCodemodeWorkflowParams } from "./pi-codemode-workflow";
 import {
   BACKOFFICE_PI_WORKFLOW_NAME,
   piSessionModel,
@@ -108,7 +111,8 @@ export type PiSessionFileSystemContext = {
 
 export type PiCodemodeRuntime = {
   execute(input: Omit<RunBackofficeCodemodeInput, "env">): Promise<BackofficeCodemodeExecuteResult>;
-  workflow?: AutomationWorkflowRuntime;
+  workflow?: AutomationWorkflowRuntime &
+    Pick<InternalAutomationWorkflowRuntime, "createInternalInstance">;
 };
 
 const readParametersSchema = Type.Object({
@@ -234,6 +238,11 @@ const createExecCodeModeTool = (
       }
 
       const workflowRuntime = runtimeToolContext.workflow?.runtime ?? codemode.workflow;
+      const workflowScheduler =
+        codemode.workflow ??
+        (workflowRuntime && "createInternalInstance" in workflowRuntime
+          ? (workflowRuntime as Pick<InternalAutomationWorkflowRuntime, "createInternalInstance">)
+          : undefined);
       const context: CoreBackofficeToolContext = createBackofficeToolContext({
         ...runtimeToolContext,
         workflow: workflowRuntime ? { runtime: workflowRuntime } : null,
@@ -264,25 +273,29 @@ const createExecCodeModeTool = (
       // can subscribe to its live progress (history/status + step emissions).
       let runHandle: WorkflowCreateInstanceResult | undefined;
       if (result.workflowDefinition) {
-        if (!workflowRuntime) {
+        if (!workflowScheduler) {
           scheduleError = "execCodeMode workflow definition cannot be scheduled in this runtime.";
         } else {
           try {
             const instanceId = hashToolCallId(`${sessionId}--${toolCallId}`);
-            runHandle = await workflowRuntime.createInstance({
-              workflowName: PI_CODEMODE_WORKFLOW,
-              remoteWorkflowName: result.workflowDefinition.name,
+            const prepared = prepareCodemodeWorkflowInstance({
+              code,
+              dependencies,
+              filename: `/pi/${sessionId}/${toolCallId}.workflow.js`,
               instanceId,
-              params: {
-                code,
-                dependencies,
-                sessionId,
-                toolCallId,
-                metadata: {
-                  [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: execution.actors,
-                },
-              } satisfies PiCodemodeWorkflowParams,
             });
+            if (prepared.remoteWorkflowName !== result.workflowDefinition.name) {
+              throw new Error(
+                `Codemode program '${prepared.program.filename}' declares workflow '${prepared.remoteWorkflowName}', expected '${result.workflowDefinition.name}'.`,
+              );
+            }
+            const workflowInput = createCodemodeWorkflowInstanceInput({
+              prepared,
+              trigger: { type: "manual", payload: {} },
+              execution,
+            });
+            const created = await workflowScheduler.createInternalInstance(workflowInput);
+            runHandle = { instanceId: created.instanceId };
             result.result = runHandle;
           } catch (error) {
             scheduleError = error instanceof Error ? error.message : String(error);
@@ -309,7 +322,7 @@ const createExecCodeModeTool = (
           ...result,
           code,
           outputText: text,
-          // The live run handle (workflow name + instance id) so the client can
+          // The live run handle so the client can
           // subscribe to realtime progress. Absent when scheduling failed.
           ...(runHandle ? { run: runHandle } : {}),
           ...(scheduleError ? { scheduleError } : {}),

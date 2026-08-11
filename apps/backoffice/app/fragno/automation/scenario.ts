@@ -83,6 +83,11 @@ import {
 import { createRouteBackedAutomationStoreRuntime } from "./bindings-route-runtime";
 import type { AutomationEvent } from "./contracts";
 import { createRouteBackedDurableHooksRuntime } from "./durable-hooks-route-runtime";
+import {
+  CODEMODE_WORKFLOW,
+  createCodemodeWorkflowInstanceInput,
+  prepareCodemodeWorkflowInstance,
+} from "./engine/codemode-invocation";
 import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
 import { automationEventListResultSchema } from "./events";
 import type { AutomationRouteDefinition } from "./routing";
@@ -602,10 +607,20 @@ type WorkflowCreateInstanceInput<TVars extends ScenarioVars = ScenarioVars> = {
   workflowName?: string;
   remoteWorkflowName?: string;
   instanceId: string;
-  params: ScenarioValue<TVars, Record<string, unknown>>;
   execution?: ScenarioValue<TVars, BackofficeExecutionContext>;
   label?: string;
-};
+} & (
+  | {
+      path: string;
+      event: ScenarioValue<TVars, AutomationEvent>;
+      params?: never;
+    }
+  | {
+      path?: never;
+      event?: never;
+      params: ScenarioValue<TVars, Record<string, unknown>>;
+    }
+);
 
 type WorkflowSendEventInput<TVars extends ScenarioVars = ScenarioVars> = {
   orgId: string;
@@ -2106,14 +2121,14 @@ const findWorkflowInstances = async (
   },
 ): Promise<ScenarioWorkflowInstance[]> => {
   const orgIds = [SYSTEM_WORKFLOW_TARGET_ID, ...ctx.files.listOrgIds()];
-  const workflowName = input.workflowName ?? "automation-codemode-script";
+  const workflowName = input.workflowName ?? "codemode-script";
   const matches: ScenarioWorkflowInstance[] = [];
 
   for (const orgId of orgIds) {
     const workflow = getWorkflow(ctx, orgId);
-    if (input.instanceId && workflow.getInstance) {
+    if (input.instanceId && workflow.getInternalInstance) {
       try {
-        const instance = await workflow.getInstance({
+        const instance = await workflow.getInternalInstance({
           workflowName,
           instanceId: input.instanceId,
         });
@@ -2124,14 +2139,14 @@ const findWorkflowInstances = async (
       continue;
     }
 
-    const response = await workflow.listInstances?.({
+    const response = await workflow.listInternalInstances?.({
       workflowName,
       remoteWorkflowName: input.remoteWorkflowName,
       pageSize: 100,
     });
     for (const summary of response?.instances ?? []) {
-      const instance = workflow.getInstance
-        ? await workflow.getInstance({ workflowName, instanceId: summary.id })
+      const instance = workflow.getInternalInstance
+        ? await workflow.getInternalInstance({ workflowName, instanceId: summary.id })
         : { id: summary.id, details: summary.details, meta: {} };
       matches.push({ orgId, workflowName, instance });
     }
@@ -2707,17 +2722,52 @@ const buildStepBuilders = <
             `create workflow ${input.remoteWorkflowName ?? input.workflowName ?? input.instanceId}`,
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
-            const execution = input.execution
-              ? await resolveScenarioValue(ctx as BackofficeScenarioContext<TVars>, input.execution)
-              : undefined;
-            await getWorkflow(ctx, input.orgId, execution).createInstance({
-              workflowName: input.workflowName ?? "automation-codemode-script",
+            const scenarioContext = ctx as BackofficeScenarioContext<TVars>;
+            const executionPromise = input.execution
+              ? resolveScenarioValue(scenarioContext, input.execution)
+              : Promise.resolve(undefined);
+            const workflowName = input.workflowName ?? CODEMODE_WORKFLOW;
+
+            if ("path" in input && input.path) {
+              if (workflowName !== CODEMODE_WORKFLOW) {
+                throw new Error("Saved workflow paths use the codemode workflow host.");
+              }
+              const [execution, event, code] = await Promise.all([
+                executionPromise,
+                resolveScenarioValue(scenarioContext, input.event),
+                ctx.files.forOrg(input.orgId).readFile(input.path, "utf-8"),
+              ]);
+              const prepared = prepareCodemodeWorkflowInstance({
+                code,
+                filename: input.path,
+                instanceId: input.instanceId,
+              });
+              if (
+                input.remoteWorkflowName &&
+                prepared.remoteWorkflowName !== input.remoteWorkflowName
+              ) {
+                throw new Error(
+                  `Codemode program '${input.path}' declares workflow '${prepared.remoteWorkflowName}', expected '${input.remoteWorkflowName}'.`,
+                );
+              }
+              const workflowInput = createCodemodeWorkflowInstanceInput({
+                prepared,
+                trigger: { type: "event", event },
+                execution: execution ?? { scope: event.scope, actors: event.actors },
+              });
+              await getWorkflow(ctx, input.orgId, execution).createInternalInstance(workflowInput);
+              return;
+            }
+
+            const [execution, params] = await Promise.all([
+              executionPromise,
+              resolveScenarioValue(scenarioContext, input.params),
+            ]);
+            await getWorkflow(ctx, input.orgId, execution).createInternalInstance({
+              workflowName,
               remoteWorkflowName: input.remoteWorkflowName,
               instanceId: input.instanceId,
-              params: await resolveScenarioValue(
-                ctx as BackofficeScenarioContext<TVars>,
-                input.params,
-              ),
+              params,
             });
           },
         ),
@@ -2728,8 +2778,8 @@ const buildStepBuilders = <
           input.label ?? `send workflow event ${input.type} to ${input.instanceId}`,
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
-            await getWorkflow(ctx, input.orgId).sendEvent({
-              workflowName: input.workflowName ?? "automation-codemode-script",
+            await getWorkflow(ctx, input.orgId).sendInternalEvent({
+              workflowName: input.workflowName ?? CODEMODE_WORKFLOW,
               instanceId: input.instanceId,
               type: input.type,
               payload: await resolveScenarioValue(
@@ -3377,11 +3427,13 @@ const buildStepBuilders = <
             }
 
             if (input.actors) {
-              const params = match.instance.meta.params as
-                | { metadata?: Record<string, unknown> }
-                | undefined;
+              const params = isRecord(match.instance.meta.params) ? match.instance.meta.params : {};
+              const execution = isRecord(params.execution) ? params.execution : null;
+              const metadata = isRecord(params.metadata) ? params.metadata : null;
               const actors = automationActorsSchema.parse(
-                params?.metadata?.[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
+                match.workflowName === CODEMODE_WORKFLOW
+                  ? execution?.actors
+                  : metadata?.[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
               );
               assertPartialMatch(actors, input.actors, "workflow.actors");
             }
@@ -3422,7 +3474,7 @@ const buildStepBuilders = <
 
             const missingByInstance = [];
             for (const match of matches) {
-              const history = await getWorkflow(ctx, match.orgId).getHistory?.({
+              const history = await getWorkflow(ctx, match.orgId).getInternalHistory?.({
                 workflowName: match.workflowName,
                 instanceId: match.instance.id,
               });
@@ -3466,7 +3518,7 @@ const buildStepBuilders = <
 
             const missingByInstance = [];
             for (const match of matches) {
-              const history = await getWorkflow(ctx, match.orgId).getHistory?.({
+              const history = await getWorkflow(ctx, match.orgId).getInternalHistory?.({
                 workflowName: match.workflowName,
                 instanceId: match.instance.id,
               });
@@ -3524,11 +3576,9 @@ const buildStepBuilders = <
 
           for (const orgId of orgIds) {
             const workflow = getWorkflow(ctx, orgId);
-            const workflowList = await workflow.listWorkflows?.();
-            for (const entry of workflowList?.workflows ?? [
-              { name: "automation-codemode-script" },
-            ]) {
-              const response = await workflow.listInstances?.({
+            const workflowList = await workflow.listInternalWorkflows?.();
+            for (const entry of workflowList?.workflows ?? [{ name: "codemode-script" }]) {
+              const response = await workflow.listInternalInstances?.({
                 workflowName: entry.name,
                 status: "errored",
                 pageSize: 100,
@@ -3996,13 +4046,13 @@ const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unkno
 
     try {
       const workflow = getWorkflow(ctx, orgId);
-      const workflowList = await workflow.listWorkflows?.();
+      const workflowList = await workflow.listInternalWorkflows?.();
       const workflowNames = workflowList?.workflows.map((entry) => entry.name) ?? [
-        "automation-codemode-script",
+        "codemode-script",
       ];
       const instances = [];
       for (const workflowName of workflowNames) {
-        const response = await workflow.listInstances?.({
+        const response = await workflow.listInternalInstances?.({
           workflowName,
           pageSize: 100,
         });
@@ -4010,7 +4060,7 @@ const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unkno
           instances.push({
             workflowName,
             instance,
-            history: await workflow.getHistory?.({
+            history: await workflow.getInternalHistory?.({
               workflowName,
               instanceId: instance.id,
             }),

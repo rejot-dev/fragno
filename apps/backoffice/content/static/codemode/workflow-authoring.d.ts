@@ -2,10 +2,36 @@
 /** Relative duration. Numbers are milliseconds; strings use duration syntax such as "5 minutes", "30s", or "1 day". */
 type WorkflowDuration = string | number;
 
-type WorkflowEvent<TPayload = unknown> = {
-  /** Runtime event id. Automation workflows receive the triggering automation event id. */
+type WorkflowContextScope =
+  | { kind: "system" }
+  | { kind: "org"; orgId: string }
+  | { kind: "user"; userId: string }
+  | { kind: "project"; orgId: string; projectId: string };
+
+type WorkflowActorEntity =
+  | { scope: "internal"; type: string; id: string }
+  | { scope: "external"; source: string; type: string; id: string };
+
+type WorkflowActor<TRole extends "initiator" | "principal" | "delegate" | "assistant"> =
+  WorkflowActorEntity & { role: TRole };
+
+type WorkflowActors = Readonly<{
+  initiator: WorkflowActor<"initiator">;
+  principal: WorkflowActor<"principal"> | null;
+  delegation: readonly (WorkflowActor<"delegate"> | WorkflowActor<"assistant">)[];
+}>;
+
+type WorkflowEvent<TPayload = Record<string, unknown>> = {
+  /** Domain event id. Automation workflows receive the triggering automation event id. */
   id: string;
+  scope: WorkflowContextScope;
+  source: string;
+  eventType: string;
+  occurredAt: string;
   payload: Readonly<TPayload>;
+  actors: WorkflowActors;
+  subject?: ({ orgId?: string; userId?: string } & Record<string, unknown>) | null;
+  /** Stable workflow instance creation time across retries and restarts. */
   timestamp: Date;
   instanceId: string;
 };
@@ -36,14 +62,6 @@ type WorkflowStepEvent<TPayload = unknown> = {
   consume(): void;
 };
 
-type WorkflowStepWorkflowOperation = {
-  type: "createInstance";
-  workflowName: string;
-  instanceId: string;
-  params: unknown;
-  remoteWorkflowName?: string | null;
-};
-
 type WorkflowStepConsumedEvent<TPayload = unknown> = {
   id: string;
   type: string;
@@ -61,8 +79,6 @@ type WorkflowStepConsumeTx = {
 type WorkflowStepTx = WorkflowStepConsumeTx & {
   /** Events durably acknowledged by this step before the current attempt started. */
   previousConsumedEvents<TPayload = unknown>(): Promise<WorkflowStepConsumedEvent<TPayload>[]>;
-  /** Queue workflow database operations that commit if the enclosing step succeeds. */
-  workflowServiceCalls(factory: () => readonly WorkflowStepWorkflowOperation[]): void;
   /** Observe durable workflow events while this step is active. */
   onEvent<TPayload = unknown>(
     type: string,
@@ -99,14 +115,13 @@ type CodemodeWorkflowDefinitionOptions = {
 };
 
 type CodemodeWorkflowRunHandle = {
-  workflowName: string;
   instanceId: string;
 };
 
 /**
  * Return defineWorkflow(...) from execCodeMode or a codemode automation script to schedule durable
  * workflow execution. The callback runs later with real workflow step controls. Pass the returned
- * handle to workflow.getInstance(...) to observe completion.
+ * instanceId to workflow.getInstance(...) to observe completion across isolated code-mode calls.
  */
 declare function defineWorkflow<TPayload = unknown, TOutput = unknown>(
   options: CodemodeWorkflowDefinitionOptions,

@@ -54,9 +54,9 @@ async () => {
 ```
 
 Inline workflow definitions start automatically. Persist a workflow file only when the user requests
-saved automation behavior. After `defineWorkflow` returns, pass its declared
-`{ workflowName, instanceId }` handle to `workflow.getInstance(handle)` and observe the instance to
-completion; the returned handle alone is not completion.
+saved automation behavior. After `defineWorkflow` returns, pass its declared `instanceId` to
+`workflow.getInstance({ instanceId })` and observe completion; the returned handle alone is not
+completion.
 
 ## Closed-world preflight
 

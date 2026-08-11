@@ -5,7 +5,7 @@ import type { WorkflowVisualizationSnapshot } from "@fragno-dev/workflow-visuali
 
 import { and, eq, or, toArray, useLiveQuery } from "@tanstack/react-db";
 
-import { AUTOMATION_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
+import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 
 import {
@@ -15,7 +15,7 @@ import {
 } from "./workflow-run-presentation";
 
 const codemodeWorkflowScriptReferenceSchema = z.object({
-  script: z.object({ path: z.string() }),
+  program: z.object({ filename: z.string() }),
 });
 
 export type WorkflowRunCollections = Pick<
@@ -44,7 +44,7 @@ export function useWorkflowRunRecords({
       const selectedInstances =
         selector.type === "active-codemode"
           ? instances
-              .where(({ instance }) => eq(instance.workflowName, AUTOMATION_CODEMODE_WORKFLOW))
+              .where(({ instance }) => eq(instance.workflowName, CODEMODE_WORKFLOW))
               .where(({ instance }) =>
                 or(
                   eq(instance.status, "active"),
@@ -163,7 +163,7 @@ export function useWorkflowRunRecords({
     const scriptReference = codemodeWorkflowScriptReferenceSchema.safeParse(params);
     return {
       ...instance,
-      workflowScriptPath: scriptReference.success ? scriptReference.data.script.path : null,
+      workflowScriptPath: scriptReference.success ? scriptReference.data.program.filename : null,
     };
   });
 

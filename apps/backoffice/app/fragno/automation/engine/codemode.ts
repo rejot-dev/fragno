@@ -1,9 +1,7 @@
 import type { RemoteWorkflowStepHost } from "@fragno-dev/workflows/remote-workflow";
 import type { WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 import type { MasterFileSystem } from "@/files/master-file-system";
 import {
   runBackofficeCodemode,
@@ -11,9 +9,7 @@ import {
   type BackofficeCodemodeWorkflowDefinition,
 } from "@/fragno/codemode/execute";
 import { runBackofficeCodemodeWorkflow } from "@/fragno/codemode/workflow-execute";
-import type { PiCodemodeWorkflowParams } from "@/fragno/pi/pi-codemode-workflow";
 import type { AutomationScriptHostContext } from "@/fragno/runtime-tools/automation-host";
-import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
@@ -77,6 +73,7 @@ export const executeCodemodeAutomation = async ({
 
 export const executeWorkflowCodemodeAutomation = async ({
   script,
+  dependencies,
   context,
   masterFs,
   env,
@@ -84,6 +81,7 @@ export const executeWorkflowCodemodeAutomation = async ({
   remote,
 }: {
   script: string;
+  dependencies?: NpmDependencyMap;
   context: AutomationScriptHostContext;
   masterFs: MasterFileSystem;
   env: BackofficeCodemodeEnv;
@@ -99,56 +97,15 @@ export const executeWorkflowCodemodeAutomation = async ({
   const toolContext = createBackofficeToolContext(context);
   const result = await runBackofficeCodemodeWorkflow({
     code: script,
+    dependencies,
     event: { ...workflowEvent, id: context.automation.event.id },
     remote,
     fs: executionFs,
     env,
+    globalOutbound: null,
     families: runtimeToolFamilies,
     toolContext,
   });
 
   return createCodemodeAutomationRunResult({ result, context });
-};
-
-export const executePiCodemodeWorkflow = async ({
-  params,
-  execution,
-  masterFs,
-  env,
-  runtime,
-  workflowEvent,
-  remote,
-}: {
-  params: PiCodemodeWorkflowParams;
-  execution: BackofficeExecutionContext;
-  masterFs: MasterFileSystem;
-  env: BackofficeCodemodeEnv & CloudflareEnv;
-  runtime?: BackofficeRuntimeServices;
-  workflowEvent: WorkflowEvent<unknown>;
-  remote: RemoteWorkflowStepHost;
-}): Promise<unknown> => {
-  if (!runtime) {
-    throw new Error("Pi codemode workflow requires Backoffice runtime services.");
-  }
-
-  const runtimeContext = createRouteBackedRuntimeContext({
-    runtime,
-    kernel: new BackofficeKernel(runtime),
-    execution,
-  });
-  const context = createBackofficeToolContext(runtimeContext);
-  const result = await runBackofficeCodemodeWorkflow({
-    code: params.code,
-    dependencies: params.dependencies,
-    event: workflowEvent,
-    remote,
-    fs: masterFs,
-    env,
-    families: runtimeToolFamilies,
-    toolContext: context,
-  });
-  if (result.error) {
-    throw new Error(result.error);
-  }
-  return result.result;
 };
