@@ -65,9 +65,9 @@ forwards the event.
    ```js
    async () => {
      const path = "/workspace/automations/telegram-hello.workflow.js";
-     await state.writeFile(
+     await state.writeFile({
        path,
-       `defineWorkflow(
+       content: `defineWorkflow(
    { name: "telegram-hello" },
    async (event, step) => {
     return await step.do("capture-event", async () => {
@@ -76,7 +76,7 @@ forwards the event.
    },
    );
    `,
-     );
+     });
      return { path };
    };
    ```
@@ -140,9 +140,10 @@ forwards the event.
    domain data only; trusted execution provenance is recorded by the kernel. Categories are ordinary
    labels. Use `verification` for JSON text that must satisfy a schema.
 
-6. Re-read the completed route with `router.get({ id })` and `state.readFile(workflowScriptPath)`
-   when saved. Run `connections.verify({ id })` for external providers. **Complete only when** the
-   route trigger, action, workflow name, file path, and connection status all line up end to end.
+6. Re-read the completed route with `router.get({ id })` and
+   `state.readFile({ path: workflowScriptPath })` when saved. Run `connections.verify({ id })` for
+   external providers. **Complete only when** the route trigger, action, workflow name, file path,
+   and connection status all line up end to end.
 
 Legacy `router.cm.js` files are outside this topology. Database-backed router rules are the routing
 source of truth; saved workflow files contain the behavior.

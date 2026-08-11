@@ -15,10 +15,12 @@ import { UPLOAD_PROVIDER_DATABASE, type UploadAdminConfigResponse } from "@/frag
 import type { UploadFileRecord } from "@/fragno/upload/file-record";
 
 import { createTestMasterFileSystem } from "../automation/engine/test-master-file-system.test-utils";
+import { createTestStateBackend } from "../codemode/state-backend.test-utils";
 import {
   createPiRuntimeDefinition,
   createPiToolFactory,
   createPiToolRegistry,
+  formatSearchMatches,
   type PiRuntimeToolContext,
   type PiSessionFileSystemContext,
 } from "./pi";
@@ -48,6 +50,7 @@ const testRuntimeConfig: BackofficeRuntimeConfig = {
 
 const createMockRuntimeToolContext = (): PiRuntimeToolContext => ({
   ...EMPTY_BASH_HOST_CONTEXT,
+  stateBackend: createTestStateBackend(),
   automation: null,
   automations: {
     runtime: {
@@ -190,6 +193,81 @@ describe("Backoffice Pi fragment", () => {
   });
 });
 
+describe("Backoffice Pi search output", () => {
+  test("formats matches like ripgrep output", () => {
+    const output = formatSearchMatches([
+      {
+        path: "workspace/src/orders.ts",
+        line: 12,
+        column: 7,
+        text: "createOrder",
+        lineText: "const createOrder = () => undefined;",
+        contextBefore: [],
+        contextAfter: [],
+      },
+      {
+        path: "workspace/src/routes.ts",
+        line: 31,
+        column: 15,
+        text: "createOrder",
+        lineText: "  return await createOrder(input);",
+        contextBefore: [],
+        contextAfter: [],
+      },
+    ]);
+
+    expect(output).toMatchInlineSnapshot(`
+      "workspace/src/orders.ts:12:7:const createOrder = () => undefined;
+      workspace/src/routes.ts:31:15:  return await createOrder(input);"
+    `);
+  });
+
+  test("formats and merges surrounding context", () => {
+    const output = formatSearchMatches([
+      {
+        path: "workspace/src/orders.ts",
+        line: 12,
+        column: 7,
+        text: "createOrder",
+        lineText: "const createOrder = () => undefined;",
+        contextBefore: ["export type Order = {};", ""],
+        contextAfter: ["", "// Public API"],
+      },
+      {
+        path: "workspace/src/orders.ts",
+        line: 15,
+        column: 10,
+        text: "createOrder",
+        lineText: "export { createOrder };",
+        contextBefore: ["// Public API"],
+        contextAfter: [],
+      },
+      {
+        path: "workspace/src/orders.ts",
+        line: 40,
+        column: 3,
+        text: "createOrder",
+        lineText: "  createOrder();",
+        contextBefore: ["function seed() {"],
+        contextAfter: ["}"],
+      },
+    ]);
+
+    expect(output).toMatchInlineSnapshot(`
+      "workspace/src/orders.ts-10-export type Order = {};
+      workspace/src/orders.ts-11-
+      workspace/src/orders.ts:12:7:const createOrder = () => undefined;
+      workspace/src/orders.ts-13-
+      workspace/src/orders.ts-14-// Public API
+      workspace/src/orders.ts:15:10:export { createOrder };
+      --
+      workspace/src/orders.ts-39-function seed() {
+      workspace/src/orders.ts:40:3:  createOrder();
+      workspace/src/orders.ts-41-}"
+    `);
+  });
+});
+
 describe("Backoffice Pi execution", () => {
   test("builds runtime tools from the session creator execution", async () => {
     const sessionExecution = createBackofficeUserExecution({
@@ -264,19 +342,20 @@ Filesystem-defined instructions.
     });
   });
 
-  test("exposes only codemode and declaration-reading tools", () => {
+  test("exposes codemode, declaration-reading, and file-search tools", () => {
     const tools = createPiToolRegistry({
       sessionFileSystems: new Map(),
       sessionFileSystemContext: createContext(),
     });
 
-    expect(Object.keys(tools)).toEqual(["read", "execCodeMode"]);
+    expect(Object.keys(tools)).toEqual(["read", "search", "execCodeMode"]);
   });
 
   test("exposes a read tool that can load starter skill files", async () => {
     const tools = createPiToolRegistry({
       sessionFileSystems: new Map(),
       sessionFileSystemContext: createContext(),
+      runtimeToolContext: createMockRuntimeToolContext(),
     });
 
     const readFactory = tools.read;

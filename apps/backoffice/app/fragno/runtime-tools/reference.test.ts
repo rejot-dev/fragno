@@ -1,11 +1,6 @@
 import { describe, expect, test, assert } from "vitest";
 
-import {
-  CODEMODE_STATE_DTS_PATH,
-  CODEMODE_SYSTEM_DTS_PATH,
-  createCodemodeTypeFiles,
-} from "@/fragno/codemode/codemode-dts";
-import { STATE_TYPES } from "@/fragno/codemode/state-prompt";
+import { CODEMODE_SYSTEM_DTS_PATH, createCodemodeTypeFiles } from "@/fragno/codemode/codemode-dts";
 
 import {
   createRuntimeToolFamilyReference,
@@ -592,6 +587,239 @@ describe("runtime tool reference generation", () => {
 
     expect(types).toMatchInlineSnapshot(`
       "// ── Backoffice domain tool providers ───────────────────────────────────
+
+      // state tools
+      type StateCodemodeProvider = {
+        /** Read a UTF-8 text file from codemode state. */
+        readFile(input: StateReadFileInput): Promise<StateReadFileOutput>;
+        /** Read a file from codemode state as bytes. */
+        readFileBytes(input: StateReadFileBytesInput): Promise<StateReadFileBytesOutput>;
+        /** Write a UTF-8 text file to mutable codemode state. */
+        writeFile(input: StateWriteFileInput): Promise<StateWriteFileOutput>;
+        /** Write bytes to mutable codemode state. */
+        writeFileBytes(input: StateWriteFileBytesInput): Promise<StateWriteFileBytesOutput>;
+        /** Append text or bytes to a file in mutable codemode state. */
+        appendFile(input: StateAppendFileInput): Promise<StateAppendFileOutput>;
+        /** Check whether a codemode state path exists. */
+        exists(input: StateExistsInput): Promise<StateExistsOutput>;
+        /** Read metadata for a codemode state path. */
+        stat(input: StateStatInput): Promise<StateStatOutput>;
+        /** Read metadata for a codemode state path without following links. */
+        lstat(input: StateLstatInput): Promise<StateLstatOutput>;
+        /** Create a directory in mutable codemode state. */
+        mkdir(input: StateMkdirInput): Promise<StateMkdirOutput>;
+        /** List the names directly below a codemode state directory. */
+        readdir(input: StateReaddirInput): Promise<StateReaddirOutput>;
+        /** List names and entry types directly below a codemode state directory. */
+        readdirWithFileTypes(input: StateReaddirWithFileTypesInput): Promise<StateReaddirWithFileTypesOutput>;
+        /** Remove a file or empty directory from mutable codemode state. */
+        rm(input: StateRmInput): Promise<StateRmOutput>;
+        /** Copy one file within mutable codemode state. */
+        cp(input: StateCpInput): Promise<StateCpOutput>;
+        /** Move one file within mutable codemode state. */
+        mv(input: StateMvInput): Promise<StateMvOutput>;
+        /** Resolve and validate a codemode state path. */
+        realpath(input: StateRealpathInput): Promise<StateRealpathOutput>;
+        /** Resolve a path against a base path without accessing storage. */
+        resolvePath(input: StateResolvePathInput): Promise<StateResolvePathOutput>;
+        /** Find codemode state paths matching a glob pattern. */
+        glob(input: StateGlobInput): Promise<StateGlobOutput>;
+        /** Read and parse a JSON file from codemode state. */
+        readJson(input: StateReadJsonInput): Promise<StateReadJsonOutput>;
+        /** Serialize and write a JSON value to mutable codemode state. */
+        writeJson(input: StateWriteJsonInput): Promise<StateWriteJsonOutput>;
+        /** Search for text within one codemode state file. */
+        searchText(input: StateSearchTextInput): Promise<StateSearchTextOutput>;
+        /** Search for text across codemode state files matching a glob pattern. */
+        searchFiles(input: StateSearchFilesInput): Promise<StateSearchFilesOutput>;
+        /** Hash the bytes of one codemode state file. */
+        hashFile(input: StateHashFileInput): Promise<StateHashFileOutput>;
+      };
+      declare const state: StateCodemodeProvider;
+
+      type StateReadFileInput = {
+        path: string;
+      };
+      type StateReadFileOutput = string;
+      type StateReadFileBytesInput = {
+        path: string;
+      };
+      type StateReadFileBytesOutput = Uint8Array;
+      type StateWriteFileInput = {
+        path: string;
+        content: string;
+      };
+      type StateWriteFileOutput = unknown;
+      type StateWriteFileBytesInput = {
+        path: string;
+        content: Uint8Array;
+      };
+      type StateWriteFileBytesOutput = unknown;
+      type StateAppendFileInput = {
+        path: string;
+        content: string | Uint8Array;
+      };
+      type StateAppendFileOutput = unknown;
+      type StateExistsInput = {
+        path: string;
+      };
+      type StateExistsOutput = boolean;
+      type StateStatInput = {
+        path: string;
+      };
+      type StateStatOutput = {
+        type: "file" | "directory";
+        size: number;
+        /** ISO 8601 datetime string. */
+        mtime: string;
+        mode?: number;
+      } | null;
+      type StateLstatInput = {
+        path: string;
+      };
+      type StateLstatOutput = {
+        type: "file" | "directory";
+        size: number;
+        /** ISO 8601 datetime string. */
+        mtime: string;
+        mode?: number;
+      } | null;
+      type StateMkdirInput = {
+        path: string;
+      };
+      type StateMkdirOutput = unknown;
+      type StateReaddirInput = {
+        path: string;
+      };
+      type StateReaddirOutput = string[];
+      type StateReaddirWithFileTypesInput = {
+        path: string;
+      };
+      type StateReaddirWithFileTypesOutput = ({
+        name: string;
+        type: "file" | "directory";
+      })[];
+      type StateRmInput = {
+        path: string;
+        options?: {
+            force?: boolean;
+          };
+      };
+      type StateRmOutput = unknown;
+      type StateCpInput = {
+        src: string;
+        dest: string;
+      };
+      type StateCpOutput = unknown;
+      type StateMvInput = {
+        src: string;
+        dest: string;
+      };
+      type StateMvOutput = unknown;
+      type StateRealpathInput = {
+        path: string;
+      };
+      type StateRealpathOutput = string;
+      type StateResolvePathInput = {
+        base: string;
+        path: string;
+      };
+      type StateResolvePathOutput = string;
+      type StateGlobInput = {
+        pattern: string;
+      };
+      type StateGlobOutput = string[];
+      type StateReadJsonInput = {
+        path: string;
+      };
+      type StateReadJsonOutput = unknown;
+      type StateWriteJsonInput = {
+        path: string;
+        value: unknown;
+        options?: {
+            spaces?: number;
+          };
+      };
+      type StateWriteJsonOutput = unknown;
+      type StateSearchTextInput = {
+        path: string;
+        query: string;
+        options?: {
+            caseSensitive?: boolean;
+            wholeWord?: boolean;
+            contextBefore?: number;
+            contextAfter?: number;
+            maxMatches?: number;
+            regex?: boolean;
+          };
+      };
+      type StateSearchTextOutput = {
+        line: number;
+        column: number;
+        match: string;
+        lineText: string;
+        beforeLines?: string[];
+        afterLines?: string[];
+      }[];
+      type StateSearchFilesInput = {
+        pattern: string;
+        query: string;
+        options?: {
+            upload?: {
+                  caseSensitive?: boolean;
+                  wholeWord?: boolean;
+                  contextBefore?: number;
+                  contextAfter?: number;
+                  maxMatches?: number;
+                  cursor?: string;
+                };
+            static?: {
+                  caseSensitive?: boolean;
+                  wholeWord?: boolean;
+                  contextBefore?: number;
+                  contextAfter?: number;
+                  maxMatches?: number;
+                  cursor?: string;
+                };
+          };
+      };
+      type StateSearchFilesOutput = {
+        upload: {
+            results: {
+                  path: string;
+                  matches: {
+                          line: number;
+                          column: number;
+                          match: string;
+                          lineText: string;
+                          beforeLines?: string[];
+                          afterLines?: string[];
+                        }[];
+                }[];
+            cursor?: string;
+            hasMore: boolean;
+          };
+        static: {
+            results: {
+                  path: string;
+                  matches: {
+                          line: number;
+                          column: number;
+                          match: string;
+                          lineText: string;
+                          beforeLines?: string[];
+                          afterLines?: string[];
+                        }[];
+                }[];
+            cursor?: string;
+            hasMore: boolean;
+          };
+      };
+      type StateHashFileInput = {
+        path: string;
+        algorithm?: "md5" | "sha1" | "sha256";
+      };
+      type StateHashFileOutput = string;
 
       // capabilities tools
       type CapabilitiesCodemodeProvider = {
@@ -2989,6 +3217,7 @@ describe("runtime tool reference generation", () => {
 
       // Scoped context handles target a selected Backoffice context.
       type BackofficeCodemodeScopedProviders = {
+        state: StateCodemodeProvider;
         capabilities: CapabilitiesCodemodeProvider;
         hooks: HooksCodemodeProvider;
         connections: ConnectionsCodemodeProvider;
@@ -3023,29 +3252,29 @@ describe("runtime tool reference generation", () => {
     `);
   });
 
-  test("renders split codemode declarations for every static provider", () => {
-    expect(() =>
-      createCodemodeTypeFiles({
-        families: runtimeToolFamilies,
-        stateTypes: STATE_TYPES,
-      }),
-    ).not.toThrow();
+  test("renders the state provider at its canonical declaration path", () => {
+    const files = createCodemodeTypeFiles({
+      families: runtimeToolFamilies,
+    });
+
+    assert(files.some((file) => file.path === "/static/codemode/providers/state.d.ts"));
+    assert(!files.some((file) => file.path === "/static/codemode/state.d.ts"));
   });
 
   test("renders split codemode index without referencing state declarations", () => {
     const files = createCodemodeTypeFiles({
       families: runtimeToolFamilies,
-      stateTypes: STATE_TYPES,
     });
     const index = files.find((file) => file.path === CODEMODE_SYSTEM_DTS_PATH)?.content;
 
     expect({
       index,
-      hasStateFile: files.some((file) => file.path === CODEMODE_STATE_DTS_PATH),
+      stateProvider: files.find((file) => file.path === "/static/codemode/providers/state.d.ts")
+        ?.content,
     }).toMatchInlineSnapshot(`
       {
-        "hasStateFile": true,
         "index": "/// <reference path="/static/codemode/workflow-authoring.d.ts" />
+      /// <reference path="/static/codemode/providers/state.d.ts" />
       /// <reference path="/static/codemode/providers/capabilities.d.ts" />
       /// <reference path="/static/codemode/providers/hooks.d.ts" />
       /// <reference path="/static/codemode/providers/connections.d.ts" />
@@ -3068,6 +3297,7 @@ describe("runtime tool reference generation", () => {
 
       // Scoped context handles target a selected Backoffice context.
       type BackofficeCodemodeScopedProviders = {
+        state: StateCodemodeProvider;
         capabilities: CapabilitiesCodemodeProvider;
         hooks: HooksCodemodeProvider;
         connections: ConnectionsCodemodeProvider;
@@ -3098,6 +3328,239 @@ describe("runtime tool reference generation", () => {
         /** Project contexts are reserved until the project model exists. */
         project(projectId: string): BackofficeCodemodeScopedProviders;
       };
+      ",
+        "stateProvider": "// state tools
+      type StateCodemodeProvider = {
+        /** Read a UTF-8 text file from codemode state. */
+        readFile(input: StateReadFileInput): Promise<StateReadFileOutput>;
+        /** Read a file from codemode state as bytes. */
+        readFileBytes(input: StateReadFileBytesInput): Promise<StateReadFileBytesOutput>;
+        /** Write a UTF-8 text file to mutable codemode state. */
+        writeFile(input: StateWriteFileInput): Promise<StateWriteFileOutput>;
+        /** Write bytes to mutable codemode state. */
+        writeFileBytes(input: StateWriteFileBytesInput): Promise<StateWriteFileBytesOutput>;
+        /** Append text or bytes to a file in mutable codemode state. */
+        appendFile(input: StateAppendFileInput): Promise<StateAppendFileOutput>;
+        /** Check whether a codemode state path exists. */
+        exists(input: StateExistsInput): Promise<StateExistsOutput>;
+        /** Read metadata for a codemode state path. */
+        stat(input: StateStatInput): Promise<StateStatOutput>;
+        /** Read metadata for a codemode state path without following links. */
+        lstat(input: StateLstatInput): Promise<StateLstatOutput>;
+        /** Create a directory in mutable codemode state. */
+        mkdir(input: StateMkdirInput): Promise<StateMkdirOutput>;
+        /** List the names directly below a codemode state directory. */
+        readdir(input: StateReaddirInput): Promise<StateReaddirOutput>;
+        /** List names and entry types directly below a codemode state directory. */
+        readdirWithFileTypes(input: StateReaddirWithFileTypesInput): Promise<StateReaddirWithFileTypesOutput>;
+        /** Remove a file or empty directory from mutable codemode state. */
+        rm(input: StateRmInput): Promise<StateRmOutput>;
+        /** Copy one file within mutable codemode state. */
+        cp(input: StateCpInput): Promise<StateCpOutput>;
+        /** Move one file within mutable codemode state. */
+        mv(input: StateMvInput): Promise<StateMvOutput>;
+        /** Resolve and validate a codemode state path. */
+        realpath(input: StateRealpathInput): Promise<StateRealpathOutput>;
+        /** Resolve a path against a base path without accessing storage. */
+        resolvePath(input: StateResolvePathInput): Promise<StateResolvePathOutput>;
+        /** Find codemode state paths matching a glob pattern. */
+        glob(input: StateGlobInput): Promise<StateGlobOutput>;
+        /** Read and parse a JSON file from codemode state. */
+        readJson(input: StateReadJsonInput): Promise<StateReadJsonOutput>;
+        /** Serialize and write a JSON value to mutable codemode state. */
+        writeJson(input: StateWriteJsonInput): Promise<StateWriteJsonOutput>;
+        /** Search for text within one codemode state file. */
+        searchText(input: StateSearchTextInput): Promise<StateSearchTextOutput>;
+        /** Search for text across codemode state files matching a glob pattern. */
+        searchFiles(input: StateSearchFilesInput): Promise<StateSearchFilesOutput>;
+        /** Hash the bytes of one codemode state file. */
+        hashFile(input: StateHashFileInput): Promise<StateHashFileOutput>;
+      };
+      declare const state: StateCodemodeProvider;
+
+      type StateReadFileInput = {
+        path: string;
+      };
+      type StateReadFileOutput = string;
+      type StateReadFileBytesInput = {
+        path: string;
+      };
+      type StateReadFileBytesOutput = Uint8Array;
+      type StateWriteFileInput = {
+        path: string;
+        content: string;
+      };
+      type StateWriteFileOutput = unknown;
+      type StateWriteFileBytesInput = {
+        path: string;
+        content: Uint8Array;
+      };
+      type StateWriteFileBytesOutput = unknown;
+      type StateAppendFileInput = {
+        path: string;
+        content: string | Uint8Array;
+      };
+      type StateAppendFileOutput = unknown;
+      type StateExistsInput = {
+        path: string;
+      };
+      type StateExistsOutput = boolean;
+      type StateStatInput = {
+        path: string;
+      };
+      type StateStatOutput = {
+        type: "file" | "directory";
+        size: number;
+        /** ISO 8601 datetime string. */
+        mtime: string;
+        mode?: number;
+      } | null;
+      type StateLstatInput = {
+        path: string;
+      };
+      type StateLstatOutput = {
+        type: "file" | "directory";
+        size: number;
+        /** ISO 8601 datetime string. */
+        mtime: string;
+        mode?: number;
+      } | null;
+      type StateMkdirInput = {
+        path: string;
+      };
+      type StateMkdirOutput = unknown;
+      type StateReaddirInput = {
+        path: string;
+      };
+      type StateReaddirOutput = string[];
+      type StateReaddirWithFileTypesInput = {
+        path: string;
+      };
+      type StateReaddirWithFileTypesOutput = ({
+        name: string;
+        type: "file" | "directory";
+      })[];
+      type StateRmInput = {
+        path: string;
+        options?: {
+            force?: boolean;
+          };
+      };
+      type StateRmOutput = unknown;
+      type StateCpInput = {
+        src: string;
+        dest: string;
+      };
+      type StateCpOutput = unknown;
+      type StateMvInput = {
+        src: string;
+        dest: string;
+      };
+      type StateMvOutput = unknown;
+      type StateRealpathInput = {
+        path: string;
+      };
+      type StateRealpathOutput = string;
+      type StateResolvePathInput = {
+        base: string;
+        path: string;
+      };
+      type StateResolvePathOutput = string;
+      type StateGlobInput = {
+        pattern: string;
+      };
+      type StateGlobOutput = string[];
+      type StateReadJsonInput = {
+        path: string;
+      };
+      type StateReadJsonOutput = unknown;
+      type StateWriteJsonInput = {
+        path: string;
+        value: unknown;
+        options?: {
+            spaces?: number;
+          };
+      };
+      type StateWriteJsonOutput = unknown;
+      type StateSearchTextInput = {
+        path: string;
+        query: string;
+        options?: {
+            caseSensitive?: boolean;
+            wholeWord?: boolean;
+            contextBefore?: number;
+            contextAfter?: number;
+            maxMatches?: number;
+            regex?: boolean;
+          };
+      };
+      type StateSearchTextOutput = {
+        line: number;
+        column: number;
+        match: string;
+        lineText: string;
+        beforeLines?: string[];
+        afterLines?: string[];
+      }[];
+      type StateSearchFilesInput = {
+        pattern: string;
+        query: string;
+        options?: {
+            upload?: {
+                  caseSensitive?: boolean;
+                  wholeWord?: boolean;
+                  contextBefore?: number;
+                  contextAfter?: number;
+                  maxMatches?: number;
+                  cursor?: string;
+                };
+            static?: {
+                  caseSensitive?: boolean;
+                  wholeWord?: boolean;
+                  contextBefore?: number;
+                  contextAfter?: number;
+                  maxMatches?: number;
+                  cursor?: string;
+                };
+          };
+      };
+      type StateSearchFilesOutput = {
+        upload: {
+            results: {
+                  path: string;
+                  matches: {
+                          line: number;
+                          column: number;
+                          match: string;
+                          lineText: string;
+                          beforeLines?: string[];
+                          afterLines?: string[];
+                        }[];
+                }[];
+            cursor?: string;
+            hasMore: boolean;
+          };
+        static: {
+            results: {
+                  path: string;
+                  matches: {
+                          line: number;
+                          column: number;
+                          match: string;
+                          lineText: string;
+                          beforeLines?: string[];
+                          afterLines?: string[];
+                        }[];
+                }[];
+            cursor?: string;
+            hasMore: boolean;
+          };
+      };
+      type StateHashFileInput = {
+        path: string;
+        algorithm?: "md5" | "sha1" | "sha256";
+      };
+      type StateHashFileOutput = string;
       ",
       }
     `);
@@ -3459,7 +3922,6 @@ describe("runtime tool reference generation", () => {
   test("renders recursive automation route matchers in generated router provider types", () => {
     const files = createCodemodeTypeFiles({
       families: runtimeToolFamilies,
-      stateTypes: "declare const state: unknown;",
     });
     const types = readGeneratedFile(files, "/static/codemode/providers/router.d.ts");
 
@@ -4519,7 +4981,6 @@ describe("runtime tool reference generation", () => {
   test("renders codemode provider files from the default dynamic codemode family list", () => {
     const files = createCodemodeTypeFiles({
       families: runtimeToolFamilies,
-      stateTypes: STATE_TYPES,
     });
     const capabilitiesTypes = readGeneratedFile(
       files,
@@ -5264,12 +5725,12 @@ describe("runtime tool reference generation", () => {
   test("renders scoped context handles", () => {
     const files = createCodemodeTypeFiles({
       families: runtimeToolFamilies,
-      stateTypes: STATE_TYPES,
     });
     const types = readGeneratedFile(files, CODEMODE_SYSTEM_DTS_PATH);
 
     expect(types).toMatchInlineSnapshot(`
       "/// <reference path="/static/codemode/workflow-authoring.d.ts" />
+      /// <reference path="/static/codemode/providers/state.d.ts" />
       /// <reference path="/static/codemode/providers/capabilities.d.ts" />
       /// <reference path="/static/codemode/providers/hooks.d.ts" />
       /// <reference path="/static/codemode/providers/connections.d.ts" />
@@ -5292,6 +5753,7 @@ describe("runtime tool reference generation", () => {
 
       // Scoped context handles target a selected Backoffice context.
       type BackofficeCodemodeScopedProviders = {
+        state: StateCodemodeProvider;
         capabilities: CapabilitiesCodemodeProvider;
         hooks: HooksCodemodeProvider;
         connections: ConnectionsCodemodeProvider;
@@ -5329,7 +5791,6 @@ describe("runtime tool reference generation", () => {
   test("renders capability provider types from the start", () => {
     const files = createCodemodeTypeFiles({
       families: runtimeToolFamilies,
-      stateTypes: "declare const state: unknown;",
     });
 
     expect({
@@ -5531,7 +5992,6 @@ describe("runtime tool reference generation", () => {
   test("renders prepared Upload lifecycle provider types from the start", () => {
     const files = createCodemodeTypeFiles({
       families: runtimeToolFamilies,
-      stateTypes: "declare const state: unknown;",
     });
     const types = readGeneratedFile(files, "/static/codemode/providers/upload.d.ts");
 
@@ -5731,7 +6191,6 @@ describe("runtime tool reference generation", () => {
   test("renders installed MCP providers with dash-safe server slugs", () => {
     const files = createCodemodeTypeFiles({
       families: runtimeToolFamilies,
-      stateTypes: "declare const state: unknown;",
       mcpServers: [
         {
           slug: "cloudflare-mcp",

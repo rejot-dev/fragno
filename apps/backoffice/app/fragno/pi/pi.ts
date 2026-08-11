@@ -23,6 +23,7 @@ import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/data
 import { BackofficeForbiddenError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
+import type { FileSearchMatch } from "@/file-collection/file-collection";
 import { createBackofficeFileSystem, type MasterFileSystem } from "@/files";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { automationActorsSchema } from "@/fragno/automation/actors";
@@ -31,6 +32,7 @@ import {
   prepareCodemodeWorkflowInstance,
 } from "@/fragno/automation/engine/codemode-invocation";
 import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-dts";
+import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 
 import type {
   BackofficeCodemodeExecuteResult,
@@ -115,10 +117,35 @@ export type PiCodemodeRuntime = {
     Pick<InternalAutomationWorkflowRuntime, "createInternalInstance">;
 };
 
+const searchParametersSchema = Type.Object({
+  query: Type.String({ minLength: 1, description: "Text to search for." }),
+  glob: Type.Optional(
+    Type.String({
+      minLength: 1,
+      description: "Workspace Upload key glob to search. Defaults to all files.",
+    }),
+  ),
+  caseSensitive: Type.Optional(Type.Boolean()),
+  wholeWord: Type.Optional(Type.Boolean()),
+  contextBefore: Type.Optional(Type.Number({ minimum: 0, maximum: 20 })),
+  contextAfter: Type.Optional(Type.Number({ minimum: 0, maximum: 20 })),
+  maxMatches: Type.Optional(Type.Number({ minimum: 1, maximum: 500 })),
+  cursor: Type.Optional(
+    Type.Object({
+      upload: Type.Optional(Type.String()),
+      static: Type.Optional(Type.String()),
+    }),
+  ),
+});
+
 const readParametersSchema = Type.Object({
-  path: Type.String({ description: "Path to the file to read (relative or absolute)." }),
+  path: Type.String({
+    description: "Path to the file to read (relative or absolute).",
+  }),
   offset: Type.Optional(
-    Type.Number({ description: "Line number to start reading from (1-indexed)." }),
+    Type.Number({
+      description: "Line number to start reading from (1-indexed).",
+    }),
   ),
   limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read." })),
 });
@@ -154,7 +181,162 @@ const applyLineRange = (content: string, offset?: number, limit?: number) => {
   return lines.slice(startIndex, endIndex).join("\n");
 };
 
-const createReadTool = (fs: MasterFileSystem): AgentTool =>
+type SearchMatchWithLineText = FileSearchMatch & { lineText?: string };
+
+type SearchOutputLine = {
+  line: number;
+  column?: number;
+  text: string;
+  isMatch: boolean;
+};
+
+export const formatSearchMatches = (matches: readonly SearchMatchWithLineText[]): string => {
+  const blocks: Array<{
+    path: string;
+    start: number;
+    end: number;
+    hasContext: boolean;
+    lines: Map<number, SearchOutputLine>;
+  }> = [];
+
+  for (const match of matches) {
+    const start = match.line - match.contextBefore.length;
+    const end = match.line + match.contextAfter.length;
+    const previousBlock = blocks.at(-1);
+    const block =
+      previousBlock?.path === match.path && start <= previousBlock.end + 1
+        ? previousBlock
+        : {
+            path: match.path,
+            start,
+            end,
+            hasContext: match.contextBefore.length > 0 || match.contextAfter.length > 0,
+            lines: new Map<number, SearchOutputLine>(),
+          };
+
+    if (block !== previousBlock) {
+      blocks.push(block);
+    } else {
+      block.end = Math.max(block.end, end);
+      block.hasContext ||= match.contextBefore.length > 0 || match.contextAfter.length > 0;
+    }
+
+    match.contextBefore.forEach((text, index) => {
+      const line = start + index;
+      if (!block.lines.has(line)) {
+        block.lines.set(line, { line, text, isMatch: false });
+      }
+    });
+
+    const existingMatchLine = block.lines.get(match.line);
+    block.lines.set(match.line, {
+      line: match.line,
+      column: Math.min(existingMatchLine?.column ?? match.column, match.column),
+      text: match.lineText ?? match.text,
+      isMatch: true,
+    });
+
+    match.contextAfter.forEach((text, index) => {
+      const line = match.line + index + 1;
+      if (!block.lines.has(line)) {
+        block.lines.set(line, { line, text, isMatch: false });
+      }
+    });
+  }
+
+  return blocks
+    .map((block) => ({
+      hasContext: block.hasContext,
+      text: [...block.lines.values()]
+        .sort((left, right) => left.line - right.line)
+        .map((line) =>
+          line.isMatch
+            ? `${block.path}:${line.line}:${line.column}:${line.text}`
+            : `${block.path}-${line.line}-${line.text}`,
+        )
+        .join("\n"),
+    }))
+    .reduce(
+      (output, block, index, formattedBlocks) =>
+        `${output}${index === 0 ? "" : formattedBlocks[index - 1]?.hasContext || block.hasContext ? "\n--\n" : "\n"}${block.text}`,
+      "",
+    );
+};
+
+const createSearchTool = (state: BackofficeStateBackend): AgentTool =>
+  defineTool({
+    name: "search",
+    label: "Search",
+    description: "Search file contents in the current scope.",
+    parameters: searchParametersSchema,
+    execute: async (_toolCallId, params, signal) => {
+      if (signal?.aborted) {
+        throw new Error("Search aborted.");
+      }
+
+      const searchOptions = {
+        caseSensitive: params.caseSensitive,
+        wholeWord: params.wholeWord,
+        contextBefore: params.contextBefore,
+        contextAfter: params.contextAfter,
+        maxMatches: params.maxMatches,
+      };
+      const requestedMounts = params.cursor
+        ? {
+            ...(params.cursor.upload
+              ? { upload: { ...searchOptions, cursor: params.cursor.upload } }
+              : {}),
+            ...(params.cursor.static
+              ? { static: { ...searchOptions, cursor: params.cursor.static } }
+              : {}),
+          }
+        : { upload: searchOptions, static: searchOptions };
+      const result = await state.searchFiles(params.glob ?? "**", params.query, requestedMounts);
+      const matches: FileSearchMatch[] = [result.upload, result.static].flatMap((page) =>
+        page.results.flatMap((file) =>
+          file.matches.map((match) => ({
+            path: file.path,
+            line: match.line,
+            column: match.column,
+            text: match.match,
+            lineText: match.lineText,
+            contextBefore: match.beforeLines ?? [],
+            contextAfter: match.afterLines ?? [],
+          })),
+        ),
+      );
+      const cursor = {
+        ...(result.upload.cursor ? { upload: result.upload.cursor } : {}),
+        ...(result.static.cursor ? { static: result.static.cursor } : {}),
+      };
+      const hasMore = {
+        upload: result.upload.hasMore,
+        static: result.static.hasMore,
+      };
+      const continuation =
+        result.upload.hasMore || result.static.hasMore
+          ? `\n\nMore files are available. Continue with cursor: ${JSON.stringify(cursor)}`
+          : "";
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${formatSearchMatches(matches)}${continuation}`,
+          },
+        ],
+        details: {
+          query: params.query,
+          glob: params.glob ?? "**",
+          matches,
+          cursor,
+          hasMore,
+        },
+      };
+    },
+  });
+
+const createReadTool = (state: BackofficeStateBackend): AgentTool =>
   defineTool({
     name: "read",
     label: "Read",
@@ -167,8 +349,7 @@ const createReadTool = (fs: MasterFileSystem): AgentTool =>
       }
 
       const path = normalizeReadPath(params.path);
-      const content = await fs.readFile(path, { encoding: "utf-8" });
-      const text = applyLineRange(content, params.offset, params.limit);
+      const text = applyLineRange(await state.readFile(path), params.offset, params.limit);
       return {
         content: [{ type: "text", text }],
         details: {
@@ -212,7 +393,6 @@ const formatExecCodeModeText = (result: BackofficeCodemodeExecuteResult) => {
 };
 
 const createExecCodeModeTool = (
-  fs: MasterFileSystem,
   sessionId: string,
   codemode: PiCodemodeRuntime | undefined,
   runtimeToolContext: PiRuntimeToolContext | undefined,
@@ -251,7 +431,6 @@ const createExecCodeModeTool = (
       const result = await codemode.execute({
         code,
         dependencies,
-        fs,
         families: runtimeToolFamilies,
         toolContext: context,
       });
@@ -381,27 +560,19 @@ const resolvePiRuntimeToolContext = (
 
 export const createPiToolFactory =
   ({
-    sessionFileSystems,
-    sessionFileSystemContext,
     codemode,
     runtimeToolContext: runtimeToolContextSource,
   }: CreatePiToolFactoryOptions): BackofficePiToolFactory =>
   async ({ sessionId, execution }) => {
-    const fileSystem = await getSessionFs(sessionFileSystems, sessionId, {
-      ...sessionFileSystemContext,
-      execution,
-    });
     const runtimeToolContext = resolvePiRuntimeToolContext(runtimeToolContextSource, execution);
+    if (!runtimeToolContext?.stateBackend) {
+      throw new Error("Pi tools require a state backend.");
+    }
 
     return {
-      read: createReadTool(fileSystem),
-      execCodeMode: createExecCodeModeTool(
-        fileSystem,
-        sessionId,
-        codemode,
-        runtimeToolContext,
-        execution,
-      ),
+      read: createReadTool(runtimeToolContext.stateBackend),
+      search: createSearchTool(runtimeToolContext.stateBackend),
+      execCodeMode: createExecCodeModeTool(sessionId, codemode, runtimeToolContext, execution),
     };
   };
 
@@ -424,6 +595,7 @@ export const createPiToolRegistry = (options: CreatePiToolFactoryOptions) => {
 
   return {
     read: createSessionTool("read"),
+    search: createSessionTool("search"),
     execCodeMode: createSessionTool("execCodeMode"),
   };
 };
@@ -569,7 +741,10 @@ const createBackofficeInteractiveChatWorkflow = ({
         scope: config.scope,
         actors,
       };
-      const sessionTools = await createTools({ sessionId: event.instanceId, execution });
+      const sessionTools = await createTools({
+        sessionId: event.instanceId,
+        execution,
+      });
       const activeTools = PI_TOOL_IDS.map((toolId) => {
         const tool = sessionTools[toolId];
         if (!tool) {
@@ -577,7 +752,10 @@ const createBackofficeInteractiveChatWorkflow = ({
         }
         return tool;
       });
-      const agentSkills = await skills({ sessionId: event.instanceId, execution });
+      const agentSkills = await skills({
+        sessionId: event.instanceId,
+        execution,
+      });
 
       return {
         model,
@@ -606,7 +784,9 @@ const buildPiRuntime = (
   resolveSystemPrompt: BackofficeSystemPromptResolver,
   onOperationCompleted: PiFragmentConfig["onOperationCompleted"],
 ) => {
-  const models = builtinModels({ authContext: createBackofficeAuthContext(apiKeys) });
+  const models = builtinModels({
+    authContext: createBackofficeAuthContext(apiKeys),
+  });
   const workflows = [
     createBackofficeInteractiveChatWorkflow({
       config,

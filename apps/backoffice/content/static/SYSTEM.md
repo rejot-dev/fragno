@@ -87,8 +87,8 @@ context.
 
 ## Codemode TypeScript reference
 
-The `state` object allows you to interact with the system. Always start by reading:
-`/static/codemode/state.d.ts`.
+The `state` object allows you to interact with the system. Always start by reading
+`/static/codemode/providers/state.d.ts`.
 
 The workflow authoring API is declared in `/static/codemode/workflow-authoring.d.ts`; read that file
 before calling `defineWorkflow`.

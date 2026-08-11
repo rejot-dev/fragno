@@ -7,7 +7,6 @@ import {
   type WorkflowsRegistry,
 } from "@fragno-dev/workflows/workflow";
 import { env } from "cloudflare:workers";
-import { InMemoryFs } from "just-bash";
 import { z } from "zod";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
@@ -30,7 +29,6 @@ const createHarness = async <TRegistry extends WorkflowsRegistry>(workflows: TRe
   });
 
 const createSystemWorkflowOptions = () => ({
-  fs: new InMemoryFs(),
   families: runtimeToolFamilies,
   toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
 });
@@ -233,7 +231,6 @@ describe("codemode workflow execution", () => {
           event,
           remote,
           env,
-          fs: new InMemoryFs(),
           families: runtimeToolFamilies,
           toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
         });
@@ -398,7 +395,6 @@ describe("codemode workflow execution", () => {
         }`,
         env,
         {
-          fs: new InMemoryFs(),
           families: [
             defineBackofficeRuntimeToolFamily({
               namespace: "math",
@@ -769,7 +765,6 @@ describe("codemode workflow execution", () => {
         }`,
         env,
         {
-          fs: new InMemoryFs(),
           families: runtimeToolFamilies,
           toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
         },

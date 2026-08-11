@@ -21,8 +21,8 @@ describe("pi-shared helpers", () => {
     expect(findPiModelOption("openai", "gpt-5.6-terra")).toEqual(openAiModels[1]);
   });
 
-  it("defines one built-in Pi behavior", () => {
-    expect(PI_TOOL_IDS).toEqual(["execCodeMode", "read"]);
+  it("defines the built-in Pi tools", () => {
+    expect(PI_TOOL_IDS).toEqual(["execCodeMode", "read", "search"]);
     expect(PI_SYSTEM_PROMPT.length).toBeGreaterThan(0);
     assert(PI_THINKING_LEVEL === "low");
   });

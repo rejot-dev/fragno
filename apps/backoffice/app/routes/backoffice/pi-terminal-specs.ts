@@ -48,10 +48,29 @@ const appendStandardCommandOptions = (options: readonly AutomationCommandOptionS
   ];
 };
 
-const toCommandSpec = (reference: RuntimeToolReference): DashboardCommandSpec => ({
+const hasBashReference = (
+  reference: RuntimeToolReference,
+): reference is RuntimeToolReference & { bash: NonNullable<RuntimeToolReference["bash"]> } =>
+  reference.bash !== undefined;
+
+const toCommandSpec = (
+  reference: RuntimeToolReference & { bash: NonNullable<RuntimeToolReference["bash"]> },
+): DashboardCommandSpec => ({
   ...reference.bash,
   options: appendStandardCommandOptions(reference.bash.options),
 });
+
+const toBashCommandSpecs = (
+  references: readonly RuntimeToolReference[],
+): DashboardCommandSpec[] => {
+  const commandSpecs: DashboardCommandSpec[] = [];
+  for (const reference of references) {
+    if (hasBashReference(reference)) {
+      commandSpecs.push(toCommandSpec(reference));
+    }
+  }
+  return commandSpecs;
+};
 
 /**
  * Bash shell builtins plus every runtime-tool command (a static superset).
@@ -64,7 +83,7 @@ const toCommandSpec = (reference: RuntimeToolReference): DashboardCommandSpec =>
  */
 export const PI_TERMINAL_COMMAND_SPECS: DashboardCommandSpec[] = [
   ...SHELL_COMMAND_SPECS,
-  ...COMMAND_REFERENCES.map(toCommandSpec),
+  ...toBashCommandSpecs(COMMAND_REFERENCES),
 ];
 
 /**
@@ -80,7 +99,7 @@ export const getAvailablePiTerminalCommandSpecs = (
     families: runtimeToolFamilies.filter((family) => !family.hidden),
     context,
   });
-  return [...SHELL_COMMAND_SPECS, ...references.map(toCommandSpec)];
+  return [...SHELL_COMMAND_SPECS, ...toBashCommandSpecs(references)];
 };
 
 const firstLine = (value: string) => value.trim().split("\n")[0]?.trim() ?? "";

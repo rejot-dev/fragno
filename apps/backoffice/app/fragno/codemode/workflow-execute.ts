@@ -7,7 +7,6 @@ import type { RemoteWorkflowRunFn, WorkflowEvent } from "@fragno-dev/workflows/w
 
 import { compileWorker } from "@/backoffice-runtime/dynamic-workers/compile-worker";
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
-import type { IFileSystem } from "@/files/interface";
 import type {
   BackofficeRuntimeToolFamily,
   BackofficeToolContext,
@@ -58,7 +57,6 @@ type WorkflowWorkerEntrypoint<TParams, TOutput> = {
 };
 
 export type BackofficeCodemodeWorkflowOptions = {
-  fs: IFileSystem;
   families: readonly BackofficeRuntimeToolFamily[];
   toolContext: BackofficeToolContext;
   /**
@@ -270,7 +268,6 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
   event,
   remote,
   env,
-  fs,
   families,
   toolContext,
   globalOutbound,
@@ -290,7 +287,6 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
   });
 
   const providers = await createBackofficeCodemodeResolvedProviders({
-    fs,
     families,
     toolContext,
   });

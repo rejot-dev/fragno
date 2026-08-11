@@ -46,7 +46,10 @@ describe("Backoffice codemode scenarios", () => {
     value: "bar",
   });
 
-  await state.writeFile("/workspace/codemode-output.txt", "codemode wrote this");
+  await state.writeFile({
+    path: "/workspace/codemode-output.txt",
+    content: "codemode wrote this",
+  });
   return { ok: true };
 }`,
             assertToolCalls: ["connections.configure", "store.set"],
@@ -207,6 +210,11 @@ describe("Backoffice codemode scenarios", () => {
             path: "/workspace/setup.txt",
             content: "setup helper wrote this",
           }),
+          given.codemode.writeFile({
+            orgId: "org-1",
+            path: "/workspace/setup.bin",
+            content: new Uint8Array([0x62, 0x69, 0x6e, 0x61, 0x72, 0x79]),
+          }),
         ],
 
         steps: ({ then }) => [
@@ -220,6 +228,11 @@ describe("Backoffice codemode scenarios", () => {
             orgId: "org-1",
             path: "/workspace/setup.txt",
             text: "setup helper wrote this",
+          }),
+          then.files.contains({
+            orgId: "org-1",
+            path: "/workspace/setup.bin",
+            text: "binary",
           }),
           then.codemode.toolCalls({
             include: ["connections.configure", "store.set"],
