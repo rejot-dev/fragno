@@ -68,7 +68,7 @@ export default function BackofficeOrganisationAutomationStore() {
     navigation.state === "submitting" ? String(navigation.formData?.get("key") ?? "") : "";
 
   return (
-    <div className="w-full max-w-7xl space-y-4">
+    <div className="flex w-full max-w-7xl flex-1 flex-col space-y-4">
       {actionData?.message ? (
         <div
           className={
@@ -145,7 +145,7 @@ function AutomationKvStoreTable({
   }
 
   return (
-    <div className="backoffice-scroll overflow-x-auto border border-[color:var(--bo-border)]">
+    <div className="backoffice-scroll flex-1 overflow-x-auto border border-[color:var(--bo-border)]">
       <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
         <thead className="bg-[var(--bo-panel-2)] text-left">
           <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">

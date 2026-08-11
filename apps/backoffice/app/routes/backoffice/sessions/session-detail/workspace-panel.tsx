@@ -40,8 +40,10 @@ import { tapScale } from "./ui";
 import type { WorkflowGraphProjection } from "./workflow-graph-projection";
 import type { SessionWorkspaceItem } from "./workspace-model";
 
-const EMPTY_RUNTIME_TOOL_CALLS: ReadonlyMap<string, readonly ResolvedWorkflowRuntimeToolCall[]> =
-  new Map();
+const EMPTY_RUNTIME_TOOL_CALLS: ReadonlyMap<
+  string,
+  readonly ResolvedWorkflowRuntimeToolCall[]
+> = new Map();
 
 type WorkflowControlGroupId = "detail" | "view";
 
@@ -60,10 +62,13 @@ export function SessionWorkspacePanel({
   scope: BackofficeContextScope;
   onClose: () => void;
 }) {
-  const [toolbarElement, setToolbarElement] = useState<HTMLElement | null>(null);
+  const [toolbarElement, setToolbarElement] = useState<HTMLElement | null>(
+    null,
+  );
   const isGeneratedUi = item.view.type === "generated-ui";
   const [viewMode, setViewMode] = useState<ScriptViewMode>("graph");
-  const [detailMode, setDetailMode] = useState<WorkflowGraphDetailMode>("simple");
+  const [detailMode, setDetailMode] =
+    useState<WorkflowGraphDetailMode>("simple");
   const showGraph = viewMode === "graph" || viewMode === "split";
   const ItemIcon = isGeneratedUi ? PanelsTopLeft : Workflow;
   const itemTypeLabel =
@@ -81,21 +86,23 @@ export function SessionWorkspacePanel({
       <header
         ref={setToolbarElement}
         data-session-workspace-toolbar
-        className="flex min-h-14 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-1.5"
+        className="flex h-16 items-stretch justify-between gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3"
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <span className="flex size-8 shrink-0 items-center justify-center bg-[var(--bo-panel-2)] text-[var(--bo-accent-fg)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
-            <ItemIcon className="size-4" aria-hidden="true" />
-          </span>
-          <div className="min-w-0 leading-tight">
-            <p className="text-[9px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
-              {itemTypeLabel}
-            </p>
-            <h2 className="truncate text-xs font-semibold text-[var(--bo-fg)]">{item.label}</h2>
-          </div>
+        <div className="flex min-w-0 flex-1 items-stretch">
+          <h2
+            title={itemTypeLabel}
+            className="-mb-px flex min-w-0 items-center gap-2 border-b-2 border-[color:var(--bo-accent)] px-1 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"
+          >
+            <ItemIcon className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">{item.label}</span>
+            <span className="sr-only">{itemTypeLabel}</span>
+          </h2>
         </div>
 
-        <div data-session-workspace-actions className="flex min-w-0 shrink-0 items-center gap-2">
+        <div
+          data-session-workspace-actions
+          className="flex min-w-0 shrink-0 items-center gap-2"
+        >
           {item.view.type === "workflow-graph" ? (
             <ProgressiveOverflowControls
               measurementBoundary={toolbarElement}
@@ -111,6 +118,7 @@ export function SessionWorkspacePanel({
                             <WorkflowGraphDetailToggle
                               detailMode={detailMode}
                               onDetailModeChange={setDetailMode}
+                              variant="tabs"
                             />
                           ),
                         },
@@ -120,7 +128,11 @@ export function SessionWorkspacePanel({
                     id: "view" as const,
                     collapsePriority: 1,
                     content: (
-                      <ScriptViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+                      <ScriptViewToggle
+                        viewMode={viewMode}
+                        onViewModeChange={setViewMode}
+                        variant="tabs"
+                      />
                     ),
                   },
                 ] satisfies ProgressiveOverflowControlGroup<WorkflowControlGroupId>[]
@@ -211,7 +223,12 @@ function WorkflowPresentationOverflow({
       </Menu.Trigger>
 
       <Menu.Portal>
-        <Menu.Positioner side="bottom" align="end" sideOffset={8} className="z-50">
+        <Menu.Positioner
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          className="z-50"
+        >
           <Menu.Popup
             data-backoffice-root
             className="bo-popover-surface w-60 origin-top-right bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] transition-[opacity,transform] duration-150 ease-out outline-none data-[ending-style]:-translate-y-1 data-[ending-style]:opacity-0 data-[starting-style]:-translate-y-1 data-[starting-style]:opacity-0"
@@ -224,7 +241,9 @@ function WorkflowPresentationOverflow({
                 <Menu.RadioGroup
                   value={detailMode}
                   onValueChange={(value) => {
-                    const option = WORKFLOW_GRAPH_DETAIL_OPTIONS.find(({ mode }) => mode === value);
+                    const option = WORKFLOW_GRAPH_DETAIL_OPTIONS.find(
+                      ({ mode }) => mode === value,
+                    );
                     if (option) {
                       onDetailModeChange(option.mode);
                     }
@@ -232,7 +251,11 @@ function WorkflowPresentationOverflow({
                   className="space-y-1"
                 >
                   {WORKFLOW_GRAPH_DETAIL_OPTIONS.map(({ mode, label }) => (
-                    <Menu.RadioItem key={mode} value={mode} className={itemClassName}>
+                    <Menu.RadioItem
+                      key={mode}
+                      value={mode}
+                      className={itemClassName}
+                    >
                       <span className="flex-1">{label}</span>
                       <Menu.RadioItemIndicator className="text-[var(--bo-accent-fg)]">
                         <Check className="size-4" aria-hidden="true" />
@@ -240,7 +263,9 @@ function WorkflowPresentationOverflow({
                     </Menu.RadioItem>
                   ))}
                 </Menu.RadioGroup>
-                {showView ? <Menu.Separator className="my-2 h-px bg-[var(--bo-border)]" /> : null}
+                {showView ? (
+                  <Menu.Separator className="my-2 h-px bg-[var(--bo-border)]" />
+                ) : null}
               </>
             ) : null}
 
@@ -252,7 +277,9 @@ function WorkflowPresentationOverflow({
                 <Menu.RadioGroup
                   value={viewMode}
                   onValueChange={(value) => {
-                    const option = SCRIPT_VIEW_OPTIONS.find(({ mode }) => mode === value);
+                    const option = SCRIPT_VIEW_OPTIONS.find(
+                      ({ mode }) => mode === value,
+                    );
                     if (option) {
                       onViewModeChange(option.mode);
                     }
@@ -260,7 +287,11 @@ function WorkflowPresentationOverflow({
                   className="space-y-1"
                 >
                   {SCRIPT_VIEW_OPTIONS.map(({ mode, label, icon: Icon }) => (
-                    <Menu.RadioItem key={mode} value={mode} className={itemClassName}>
+                    <Menu.RadioItem
+                      key={mode}
+                      value={mode}
+                      className={itemClassName}
+                    >
                       <Icon className="size-4 shrink-0" aria-hidden="true" />
                       <span className="flex-1">{label}</span>
                       <Menu.RadioItemIndicator className="text-[var(--bo-accent-fg)]">
@@ -306,9 +337,11 @@ function WorkflowLiveStateBar({
       ? "animate-pulse bg-[var(--bo-accent)]"
       : selectedRun?.status === "waiting" || selectedRun?.status === "paused"
         ? "bg-amber-500"
-        : selectedRun?.status === "complete" || selectedRun?.status === "completed"
+        : selectedRun?.status === "complete" ||
+            selectedRun?.status === "completed"
           ? "bg-emerald-500"
-          : selectedRun?.status === "errored" || selectedRun?.status === "terminated"
+          : selectedRun?.status === "errored" ||
+              selectedRun?.status === "terminated"
             ? "bg-red-500"
             : "bg-[var(--bo-muted-2)]";
 
@@ -320,7 +353,10 @@ function WorkflowLiveStateBar({
       className="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2"
     >
       <div className="flex min-w-0 items-center gap-2">
-        <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${dotClass}`} />
+        <span
+          aria-hidden="true"
+          className={`size-1.5 shrink-0 rounded-full ${dotClass}`}
+        />
         <span className="text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
           Live execution
         </span>
@@ -352,9 +388,8 @@ function SessionWorkflowWorkspace({
   const [selectedSource, setSelectedSource] = useState<SourceRange>();
   const showCode = viewMode === "code" || viewMode === "split";
   const showGraph = viewMode === "graph" || viewMode === "split";
-  const { codeViewport, graphViewport, suspendCodeScrollLink } = useLinkedScrollViewports(
-    viewMode === "split",
-  );
+  const { codeViewport, graphViewport, suspendCodeScrollLink } =
+    useLinkedScrollViewports(viewMode === "split");
   const workflowRun = useWorkflowRun({
     collections: workflowCollections,
     reference: runReference,
@@ -368,7 +403,8 @@ function SessionWorkflowWorkspace({
         selectedRun={workflowRun.selectedRun}
         isLoading={workflowRun.isLoading}
         error={
-          workflowRun.error ?? (!workflowCollections ? (workflowCollectionsError ?? null) : null)
+          workflowRun.error ??
+          (!workflowCollections ? (workflowCollectionsError ?? null) : null)
         }
       />
       <div

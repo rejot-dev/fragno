@@ -34,7 +34,6 @@ describe("Files scope layout without an organisation", () => {
       userId: "user-1",
       label: "user@example.com",
     });
-    expect(result.scopeOptions.map((option) => option.kind)).toEqual(["user"]);
   });
 
   test("opens system files for an admin without loading projects", async () => {
@@ -49,7 +48,6 @@ describe("Files scope layout without an organisation", () => {
 
     expect(fetchAutomationProjectsMock).not.toHaveBeenCalled();
     expect(result.selectedScope).toEqual({ kind: "system", label: "System" });
-    expect(result.scopeOptions.map((option) => option.kind)).toEqual(["system", "user"]);
   });
 });
 

@@ -2,7 +2,6 @@ import { isRouteErrorResponse } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficePageHeader } from "@/components/backoffice";
-import { BackofficeBreadcrumbs } from "@/components/backoffice/breadcrumbs";
 import type { PiRuntimeState } from "@/fragno/pi/pi-shared";
 import type { PiCollectionSource } from "@/fragno/pi/tanstack/browser-database";
 
@@ -17,36 +16,6 @@ export type PiLayoutContext = {
 };
 
 export type PiTab = "sessions";
-
-const PI_WORKSPACE_BREADCRUMBS = [
-  { label: "Backoffice", to: "/backoffice" },
-  { label: "Sessions" },
-];
-
-export function PiWorkspaceHeader({
-  scope,
-  scopeLabel,
-}: {
-  scope: BackofficeContextScope;
-  scopeLabel: string;
-}) {
-  return (
-    <section className="bo-fragment-surface bo-panel-surface overflow-hidden bg-[var(--bo-panel)]">
-      <div className="p-3 md:px-4">
-        <h1 className="sr-only">Pi sessions for {scopeLabel}</h1>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="bo-product-code">SES</span>
-            <BackofficeBreadcrumbs items={PI_WORKSPACE_BREADCRUMBS} />
-          </div>
-          <span className="font-mono text-xs text-[var(--bo-muted)]">
-            {scope.kind} · {scopeLabel}
-          </span>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 export function PiErrorBoundary({ error }: { error: unknown; params: unknown }) {
   let statusCode = 500;

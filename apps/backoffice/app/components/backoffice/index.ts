@@ -1,7 +1,6 @@
 export { BackofficeBreadcrumbs } from "./breadcrumbs";
 export { BackofficeFragmentMark } from "./fragment-mark";
 export { FormContainer, FormField } from "./form-container";
-export { BackofficeOrganisationScopeMenu } from "./organisation-scope-menu";
 export { OverflowTabRow } from "./overflow-tab-row";
 export { BackofficePageHeader } from "./page-header";
 export { BackofficeShell } from "./shell";

@@ -60,7 +60,7 @@ export default function BackofficeAutomationTerminal() {
   const scopePath = automationScopeBasePath(selectedScope);
 
   return (
-    <section className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+    <section className="grid flex-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
       <DashboardTerminalPanel
         key={scopePath}
         scopeId={scopePath}

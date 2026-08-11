@@ -1,100 +1,5 @@
-[data-backoffice-root] {
-  --bo-bg: #f5f7fb;
-  --bo-panel: #ffffff;
-  --bo-panel-2: #eef2f8;
-  --bo-fg: #0b111b;
-  --bo-muted: #56647a;
-  --bo-muted-2: #7a889d;
-  --bo-border: #d2d9e6;
-  --bo-border-strong: #a9b6cc;
-  --bo-accent: #2b5ce6;
-  --bo-accent-strong: #1f4ecc;
-  --bo-accent-bg: #e7eeff;
-  --bo-accent-fg: #0b111b;
-  --bo-accent-rgb: 43, 92, 230;
-  --bo-blue-1: #1f4ecc;
-  --bo-blue-2: #2b5ce6;
-  --bo-blue-3: #6f91ed;
-  --bo-blue-4: #adc2fb;
-  --bo-live: #12856f;
-  --bo-live-bg: #e1f5ef;
-  --bo-waiting: #a7650c;
-  --bo-waiting-bg: #fff2d8;
-  --bo-failed: #c74444;
-  --bo-failed-bg: #fde9e7;
-  --bo-grid: 180, 190, 210;
-  --bo-overlay: 245, 247, 251;
-  --bo-control-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
-  --bo-control-shadow-hover:
-    0 0 0 1px rgba(0, 0, 0, 0.09), 0 1px 2px -1px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06);
-  --bo-panel-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06), 0 3px 8px rgba(0, 0, 0, 0.05);
-  --bo-popover-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.09), 0 12px 28px -8px rgba(15, 23, 42, 0.22),
-    0 24px 48px -16px rgba(15, 23, 42, 0.16);
-}
-
-.dark [data-backoffice-root] {
-  --bo-bg: #070b12;
-  --bo-panel: #0d1422;
-  --bo-panel-2: #0a101b;
-  --bo-fg: #f8fbff;
-  --bo-muted: #c1ccdc;
-  --bo-muted-2: #8f9bb2;
-  --bo-border: #2b3a52;
-  --bo-border-strong: #5e79ad;
-  --bo-accent: #9bbcff;
-  --bo-accent-strong: #c0d6ff;
-  --bo-accent-bg: #13233b;
-  --bo-accent-fg: #f8fbff;
-  --bo-accent-rgb: 155, 188, 255;
-  --bo-blue-1: #6e9cff;
-  --bo-blue-2: #8eb2ff;
-  --bo-blue-3: #abc7ff;
-  --bo-blue-4: #d0deff;
-  --bo-live: #63d7be;
-  --bo-live-bg: #0e2d2a;
-  --bo-waiting: #f0b55c;
-  --bo-waiting-bg: #302410;
-  --bo-failed: #ff8b85;
-  --bo-failed-bg: #32191c;
-  --bo-grid: 43, 58, 82;
-  --bo-overlay: 8, 10, 16;
-  --bo-control-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
-  --bo-control-shadow-hover: 0 0 0 1px rgba(255, 255, 255, 0.13);
-  --bo-panel-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
-  --bo-popover-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 20px 44px -12px rgba(0, 0, 0, 0.7);
-}
-
-.bo-top-bar {
-  container-type: inline-size;
-}
-
-.bo-top-bar-desktop-nav {
-  display: none;
-}
-
-.bo-top-bar-mobile-nav {
-  display: block;
-}
-
-@container (min-width: 960px) {
-  .bo-top-bar-desktop-nav {
-    display: block;
-  }
-
-  .bo-top-bar-mobile-nav {
-    display: none;
-  }
-}
-
-@container (min-width: 1200px) {
-  .bo-top-bar-nav-index {
-    display: inline;
-    margin-right: 0.5rem;
-  }
-}
+/* Theme tokens (--bo-*) are defined centrally in app.css. This file holds
+   component styles only. */
 
 .bo-control-surface {
   box-shadow: var(--bo-control-shadow);
@@ -158,6 +63,22 @@
   height: 18px;
 }
 
+/* Shape variants: shift which quadrant dominates the 2x2 grid. */
+.bo-fragment-mark[data-variant="2"] {
+  grid-template-columns: 5fr 3fr;
+  grid-template-rows: 5fr 3fr;
+}
+
+.bo-fragment-mark[data-variant="3"] {
+  grid-template-columns: 3fr 5fr;
+  grid-template-rows: 5fr 3fr;
+}
+
+.bo-fragment-mark[data-variant="4"] {
+  grid-template-columns: 3fr 5fr;
+  grid-template-rows: 3fr 5fr;
+}
+
 .bo-fragment-mark > span:nth-child(1) {
   background: var(--bo-accent);
 }
@@ -173,6 +94,26 @@
 
 .bo-fragment-mark > span:nth-child(4) {
   background: var(--bo-waiting);
+}
+
+.bo-fragment-mark[data-palette="grey"] {
+  gap: 0;
+}
+
+.bo-fragment-mark[data-palette="grey"] > span:nth-child(1) {
+  background: var(--bo-muted);
+}
+
+.bo-fragment-mark[data-palette="grey"] > span:nth-child(2) {
+  background: var(--bo-muted-2);
+}
+
+.bo-fragment-mark[data-palette="grey"] > span:nth-child(3) {
+  background: var(--bo-muted);
+}
+
+.bo-fragment-mark[data-palette="grey"] > span:nth-child(4) {
+  background: var(--bo-muted-2);
 }
 
 .bo-fragment-mark[data-palette="blue"] > span:nth-child(1) {

@@ -14,9 +14,19 @@ export type OverflowTabRowItem = {
   onSelect?: () => void;
 };
 
-export type OverflowTabRowVariant = "boxed" | "underline";
+export type OverflowTabRowVariant = "boxed" | "underline" | "sidebar";
 
 const tabClassName = (variant: OverflowTabRowVariant, disabled: boolean, active: boolean) => {
+  if (variant === "sidebar") {
+    if (disabled) {
+      return "inline-flex min-h-10 shrink-0 cursor-not-allowed items-center rounded-[4px] border border-transparent px-3 text-sm font-semibold text-[var(--bo-muted-2)] opacity-50";
+    }
+    if (active) {
+      return "inline-flex min-h-10 shrink-0 items-center rounded-[4px] border border-[color:var(--bo-sidebar-item-active-border)] bg-[var(--bo-sidebar-item-active-bg)] px-3 text-sm font-semibold text-[var(--bo-fg)] shadow-[var(--bo-sidebar-item-active-shadow)] outline-none transition-[background-color,border-color,box-shadow,color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30";
+    }
+    return "inline-flex min-h-10 shrink-0 items-center rounded-[4px] border border-transparent px-3 text-sm font-semibold text-[var(--bo-fg)] outline-none transition-[background-color,border-color,box-shadow,color] duration-150 ease-out hover:bg-[var(--bo-sidebar-item-active-bg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30";
+  }
+
   if (variant === "underline") {
     if (disabled) {
       return "inline-flex min-h-10 shrink-0 cursor-not-allowed items-center border-b-2 border-transparent px-1 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase opacity-50";
@@ -36,12 +46,22 @@ const tabClassName = (variant: OverflowTabRowVariant, disabled: boolean, active:
   return "inline-flex min-h-10 shrink-0 items-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase outline-none transition-[scale,background-color,border-color,color] duration-150 ease-out hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]";
 };
 
-const measurementTabClassName = (variant: OverflowTabRowVariant) =>
-  variant === "underline"
+const measurementTabClassName = (variant: OverflowTabRowVariant) => {
+  if (variant === "sidebar") {
+    return "inline-flex min-h-10 shrink-0 items-center rounded-[4px] border px-3 text-sm font-semibold";
+  }
+  return variant === "underline"
     ? "inline-flex min-h-10 shrink-0 items-center border-b-2 px-1 text-[10px] font-semibold tracking-[0.22em] uppercase"
     : "inline-flex min-h-10 shrink-0 items-center border px-3 py-2 text-[10px] font-semibold tracking-[0.22em] uppercase";
+};
 
 const moreTriggerClassName = (variant: OverflowTabRowVariant, active: boolean) => {
+  if (variant === "sidebar") {
+    return active
+      ? "group inline-flex min-h-10 shrink-0 items-center gap-2 rounded-[4px] border border-[color:var(--bo-sidebar-item-active-border)] bg-[var(--bo-sidebar-item-active-bg)] px-3 text-sm font-semibold text-[var(--bo-fg)] shadow-[var(--bo-sidebar-item-active-shadow)] outline-none transition-[background-color,border-color,box-shadow,color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
+      : "group inline-flex min-h-10 shrink-0 items-center gap-2 rounded-[4px] border border-transparent px-3 text-sm font-semibold text-[var(--bo-fg)] outline-none transition-[background-color,border-color,box-shadow,color] duration-150 ease-out hover:bg-[var(--bo-sidebar-item-active-bg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 data-[popup-open]:border-[color:var(--bo-sidebar-item-active-border)] data-[popup-open]:bg-[var(--bo-sidebar-item-active-bg)] data-[popup-open]:shadow-[var(--bo-sidebar-item-active-shadow)]";
+  }
+
   if (variant === "underline") {
     return active
       ? "group inline-flex min-h-10 shrink-0 items-center gap-2 border-b-2 border-[color:var(--bo-accent)] px-1 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase outline-none transition-[scale] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"

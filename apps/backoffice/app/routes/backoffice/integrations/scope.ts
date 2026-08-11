@@ -8,12 +8,9 @@ import {
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
-import type { AutomationProjectRecord } from "../automations/data";
 import {
   automationScopeBasePath,
   automationScopeFromRouteParams,
-  createAutomationScopeOptions,
-  type AutomationScopeOption,
   type AutomationUiScope,
 } from "../automations/scope";
 import { throwOrganisationNotFound } from "../route-errors";
@@ -22,8 +19,6 @@ export type IntegrationRouteParams = {
   scopeKind?: string;
   scopeId?: string;
 };
-
-export type IntegrationScopeSwitchOption = AutomationScopeOption;
 
 export type ScopedIntegrationContext = {
   scope: BackofficeContextScope;
@@ -90,35 +85,6 @@ export const createOrganisationScopeOptions = (organizations: AuthMeData["organi
     id: organization.id,
     label: organization.name ?? organization.id,
   }));
-
-export const createIntegrationScopeSwitchOptions = ({
-  me,
-  projects,
-  projectOrgId,
-  integration,
-  allowedScopes,
-}: {
-  me: AuthMeData;
-  projects: AutomationProjectRecord[];
-  projectOrgId: string;
-  integration: string;
-  allowedScopes?: readonly BackofficeContextScope["kind"][];
-}): IntegrationScopeSwitchOption[] => {
-  const scopeOptions = createAutomationScopeOptions({
-    organisations: me.organizations.map((entry) => entry.organization),
-    projects,
-    user: me.user,
-    currentTab: "integrations",
-    projectOrgId,
-  });
-
-  return scopeOptions
-    .filter((option) => !allowedScopes || allowedScopes.includes(option.kind))
-    .map((option) => ({
-      ...option,
-      to: `${option.to}/${integration}`,
-    }));
-};
 
 export const resolveIntegrationContext = ({
   params,

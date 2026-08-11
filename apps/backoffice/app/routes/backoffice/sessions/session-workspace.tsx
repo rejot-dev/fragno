@@ -1,10 +1,7 @@
 import { Suspense, use, useCallback, useState } from "react";
 import { Outlet, useActionData, useNavigation, useParams } from "react-router";
 
-import {
-  backofficeContextScopeRoutePath,
-  backofficeContextScopeSinglePathSegment,
-} from "@/backoffice-runtime/scope-codec";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import { BackofficeSystemState } from "@/components/backoffice";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { ClientOnly } from "@/components/client-only";
@@ -173,7 +170,6 @@ function PiSessionsWorkspaceView({
 
   return (
     <SessionListSplit
-      storageKey={`backoffice:pi-session-list-width:${backofficeContextScopeSinglePathSegment(scope)}`}
       mobileNavigation={
         <MobileSessionStrip
           basePath={basePath}

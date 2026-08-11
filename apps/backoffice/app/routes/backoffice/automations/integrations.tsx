@@ -53,7 +53,7 @@ export default function BackofficeAutomationIntegrations() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="flex-1 space-y-4">
       <section className="bo-fragment-surface bo-panel-surface bg-[var(--bo-panel)] p-4">
         <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Integrations

@@ -78,27 +78,27 @@ export function BackofficeAccountMenu({ me, isLoading }: BackofficeAccountMenuPr
       <Menu.Trigger
         type="button"
         aria-label={`Open account menu for ${displayName}`}
-        className="bo-control-surface group flex min-h-10 shrink-0 items-center gap-2 bg-[var(--bo-panel)] p-1 text-left transition-[scale,background-color,color,box-shadow] duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] data-[popup-open]:bg-[var(--bo-accent-bg)] sm:pr-2"
+        className="group flex min-h-12 shrink-0 cursor-pointer items-center gap-2.5 self-stretch py-3.5 pr-5.5 pl-6 text-left transition-[scale,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
       >
-        <span className="flex size-8 shrink-0 items-center justify-center bg-[var(--bo-panel-2)] text-xs font-semibold text-[var(--bo-fg)] shadow-[inset_0_0_0_1px_var(--bo-border-strong)] group-data-[popup-open]:bg-[var(--bo-panel)]">
+        <span className="flex size-8 shrink-0 items-center justify-center bg-[var(--bo-panel-2)] text-xs font-semibold text-[var(--bo-fg)] xl:hidden">
           {initials}
         </span>
-        <span className="hidden min-w-0 xl:block">
-          <span className="block max-w-36 truncate text-xs font-semibold text-[var(--bo-fg)]">
-            {displayName}
+        <span className="hidden min-w-0 flex-col gap-0.5 xl:flex">
+          <span className="text-[9px] font-semibold text-[var(--bo-muted-2)]">
+            Account
           </span>
-          <span className="block max-w-36 truncate text-[10px] text-[var(--bo-muted-2)]">
-            {activeOrganization?.name ?? "No organisation"}
+          <span className="max-w-36 min-w-0 truncate text-sm font-extrabold tracking-normal text-[var(--bo-fg)] normal-case">
+            {displayName}
           </span>
         </span>
         <ChevronDown
-          className="hidden size-3.5 shrink-0 text-[var(--bo-muted-2)] transition-transform duration-150 ease-out group-data-[popup-open]:rotate-180 sm:block"
           aria-hidden="true"
+          className="hidden size-3.5 shrink-0 text-[var(--bo-muted-2)] transition-[transform,color] duration-150 ease-out group-data-[popup-open]:rotate-180 group-data-[popup-open]:text-[var(--bo-accent-fg)] sm:block"
         />
       </Menu.Trigger>
 
       <Menu.Portal>
-        <Menu.Positioner side="bottom" align="end" sideOffset={8} className="z-50">
+        <Menu.Positioner side="bottom" align="end" sideOffset={0} className="z-50">
           <Menu.Popup
             data-backoffice-root
             className="bo-popover-surface max-h-[min(36rem,var(--available-height))] w-[min(18rem,calc(100vw-1rem))] origin-top-right overflow-y-auto bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] transition-[opacity,transform] duration-150 ease-out outline-none data-[ending-style]:-translate-y-1 data-[ending-style]:opacity-0 data-[starting-style]:-translate-y-1 data-[starting-style]:opacity-0"

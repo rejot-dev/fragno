@@ -5,12 +5,7 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { AutomationWorkspaceHeader } from "../../automations/shared";
-import {
-  createIntegrationScopeSwitchOptions,
-  integrationBasePath,
-  organizationIdFromScope,
-  resolveIntegrationContext,
-} from "../../integrations/scope";
+import { organizationIdFromScope, resolveIntegrationContext } from "../../integrations/scope";
 import type { Route } from "./+types/organisation-layout";
 import { fetchResendConfig } from "./data";
 import { ResendErrorBoundary, ResendTabs, type ResendConfigState, type ResendTab } from "./shared";
@@ -36,18 +31,6 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
         ?.organization ?? null)
     : null;
 
-  const projectOrgId =
-    organizationForScope ??
-    me.activeOrganization?.organization.id ??
-    me.organizations[0]?.organization.id;
-  const scopeOptions = createIntegrationScopeSwitchOptions({
-    me,
-    projects: [],
-    projectOrgId: projectOrgId ?? "",
-    integration: "resend",
-    allowedScopes: ["org", "system"],
-  });
-
   const { configState, configError } = await fetchResendConfig(context, integration.scope);
   const currentPath = url.pathname.replace(/\/+$/, "");
   const basePath = integration.basePath;
@@ -60,7 +43,6 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     ...integration,
     origin: url.origin,
     organisation,
-    scopeOptions,
     configState,
     configError,
   };
@@ -88,7 +70,6 @@ export default function BackofficeOrganisationResendLayout({
     basePath,
     integrationsPath,
     scopeSegment,
-    scopeOptions,
     configState: initialConfigState,
     configError: initialConfigError,
   } = loaderData;
@@ -123,25 +104,14 @@ export default function BackofficeOrganisationResendLayout({
     <div className="space-y-4">
       <AutomationWorkspaceHeader
         selectedScope={uiScope}
-        scopeOptions={scopeOptions}
-        projectsError={null}
         activeTab="integrations"
-        breadcrumbTail={[{ label: "Resend" }]}
-        subpage={{
-          title: "Resend",
-          description: "Email delivery, domains, and message threads.",
-          pathForScope: (scope) =>
-            scope.kind === "org" || scope.kind === "system"
-              ? integrationBasePath(scope, "resend")
-              : null,
-          navigation: (
-            <ResendTabs
-              basePath={basePath}
-              activeTab={activeTab}
-              isConfigured={Boolean(configState?.configured)}
-            />
-          ),
-        }}
+        subnav={
+          <ResendTabs
+            basePath={basePath}
+            activeTab={activeTab}
+            isConfigured={Boolean(configState?.configured)}
+          />
+        }
       />
       <Outlet
         context={{
@@ -152,7 +122,6 @@ export default function BackofficeOrganisationResendLayout({
           label,
           basePath,
           integrationsPath,
-          scopeOptions,
           configState,
           configLoading,
           configError,

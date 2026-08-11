@@ -138,7 +138,7 @@ export function BackofficeThemeMenu() {
         disabled={!isReady}
         aria-label={`Theme: ${choice}`}
         title="Choose theme"
-        className="bo-control-surface group flex size-10 shrink-0 items-center justify-center bg-[var(--bo-panel)] text-[var(--bo-muted)] transition-[scale,background-color,color,box-shadow] duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:not-disabled:scale-[0.96] disabled:opacity-60 data-[popup-open]:bg-[var(--bo-accent-bg)] data-[popup-open]:text-[var(--bo-accent-fg)]"
+        className="group flex h-full w-14 shrink-0 cursor-pointer items-center justify-center border-l border-[color:var(--bo-border)] text-[var(--bo-muted)] transition-[background-color,color] duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset disabled:cursor-default disabled:opacity-60 data-[popup-open]:bg-[var(--bo-accent-bg)] data-[popup-open]:text-[var(--bo-accent-fg)]"
       >
         <span className="relative size-4" aria-hidden="true">
           {THEME_OPTIONS.map(({ value, icon: Icon }) => (
@@ -158,10 +158,10 @@ export function BackofficeThemeMenu() {
       </Menu.Trigger>
 
       <Menu.Portal>
-        <Menu.Positioner side="bottom" align="end" sideOffset={8} className="z-50">
+        <Menu.Positioner side="bottom" align="start" sideOffset={0} className="z-50">
           <Menu.Popup
             data-backoffice-root
-            className="bo-popover-surface w-60 origin-top-right bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] transition-[opacity,transform] duration-150 ease-out outline-none data-[ending-style]:-translate-y-1 data-[ending-style]:opacity-0 data-[starting-style]:-translate-y-1 data-[starting-style]:opacity-0"
+            className="bo-popover-surface w-60 origin-top-left bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] transition-[opacity,transform] duration-150 ease-out outline-none data-[ending-style]:-translate-y-1 data-[ending-style]:opacity-0 data-[starting-style]:-translate-y-1 data-[starting-style]:opacity-0"
           >
             <Menu.RadioGroup
               value={choice}

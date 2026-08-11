@@ -1,89 +1,30 @@
 import { Activity } from "lucide-react";
-import { Link, NavLink, useLocation } from "react-router";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 import { authClient } from "@/fragno/auth/auth-client";
-import { cn } from "@/lib/utils";
 
 import { BackofficeAccountMenu } from "./account-menu";
-import { BackofficeFragmentMark } from "./fragment-mark";
+import { BackofficeProjectMenu, type BackofficeProjectOption } from "./project-menu";
+import { BackofficeScopeMenu } from "./scope-menu";
+import { BackofficeMobileNav } from "./sidebar-nav";
 import { BackofficeThemeMenu } from "./theme-menu";
 
 type BackofficeTopBarProps = {
   me: AuthMeData | null;
+  currentScope: BackofficeContextScope | null;
+  projects?: BackofficeProjectOption[];
+  projectsError?: string | null;
   isLoading?: boolean;
   workflowDrawerOpen?: boolean;
   onWorkflowDrawerToggle?: () => void;
 };
 
-type PrimaryNavigationItem = {
-  index: string;
-  label: string;
-  to: string;
-  isActive: (pathname: string) => boolean;
-};
-
-const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
-  {
-    index: "01",
-    label: "Automations",
-    to: "/backoffice/automations",
-    isActive: (pathname) => pathname.startsWith("/backoffice/automations"),
-  },
-  {
-    index: "02",
-    label: "Sessions",
-    to: "/backoffice/sessions",
-    isActive: (pathname) => pathname.startsWith("/backoffice/sessions"),
-  },
-  {
-    index: "03",
-    label: "Files",
-    to: "/backoffice/files",
-    isActive: (pathname) => pathname.startsWith("/backoffice/files"),
-  },
-  {
-    index: "04",
-    label: "Marketplace",
-    to: "/backoffice/marketplace",
-    isActive: (pathname) => pathname.startsWith("/backoffice/marketplace"),
-  },
-];
-
-function PrimaryNavigation({ mobile = false }: { mobile?: boolean }) {
-  const location = useLocation();
-
-  return (
-    <nav aria-label="Backoffice" className={mobile ? "grid grid-cols-4" : "flex h-full min-w-0"}>
-      {PRIMARY_NAVIGATION.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          className={({ isActive }) => {
-            const active = isActive || item.isActive(location.pathname);
-            return cn(
-              "relative flex min-w-0 items-center justify-center border-b-2 font-semibold uppercase transition-[scale,background-color,border-color,color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]",
-              mobile
-                ? "min-h-11 px-1 text-[9px] tracking-[0.1em]"
-                : "min-h-14 px-4 text-[10px] tracking-[0.18em]",
-              active
-                ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
-                : "border-transparent text-[var(--bo-muted)] hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)]",
-            );
-          }}
-        >
-          <span className="bo-top-bar-nav-index hidden font-mono text-[8px] tracking-normal text-[var(--bo-muted-2)]">
-            {item.index}
-          </span>
-          {item.label}
-        </NavLink>
-      ))}
-    </nav>
-  );
-}
-
 export function BackofficeTopBar({
   me,
+  currentScope,
+  projects = [],
+  projectsError = null,
   isLoading,
   workflowDrawerOpen = false,
   onWorkflowDrawerToggle,
@@ -93,21 +34,24 @@ export function BackofficeTopBar({
   const sessionLoading = isLoading || (!effectiveMe && meLoading);
 
   return (
-    <header className="bo-top-bar sticky top-0 z-30 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-panel)]/95 shadow-[0_1px_3px_rgba(15,23,42,0.06)] backdrop-blur-md dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
-      <div className="flex min-h-14 items-center gap-2 px-2 sm:gap-3 sm:px-3 lg:px-4">
-        <Link
-          to="/backoffice"
-          className="flex min-h-10 shrink-0 items-center gap-2 px-1 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-fg)] uppercase transition-[scale,color] duration-150 ease-out outline-none hover:text-[var(--bo-accent-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] sm:px-2"
-        >
-          <BackofficeFragmentMark palette="blue" />
-          Backoffice
-        </Link>
-
-        <div className="bo-top-bar-desktop-nav min-w-0 flex-1 self-stretch">
-          <PrimaryNavigation />
+    <header className="sticky top-0 z-30 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-bg)]">
+      <div className="flex h-16 items-stretch">
+        <div className="flex min-w-0 flex-1 items-stretch min-[960px]:w-72 min-[960px]:flex-none min-[960px]:border-r min-[960px]:border-[color:var(--bo-border)]">
+          <BackofficeScopeMenu me={effectiveMe} currentScope={currentScope} />
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        {currentScope?.kind === "org" || currentScope?.kind === "project" ? (
+          <div className="flex min-w-0 flex-1 items-stretch min-[960px]:w-72 min-[960px]:flex-none min-[960px]:border-r min-[960px]:border-[color:var(--bo-border)]">
+            <BackofficeProjectMenu
+              orgId={currentScope.orgId}
+              currentProjectId={currentScope.kind === "project" ? currentScope.projectId : null}
+              projects={projects}
+              projectsError={projectsError}
+            />
+          </div>
+        ) : null}
+
+        <div className="ml-auto flex shrink-0 items-stretch">
           {onWorkflowDrawerToggle ? (
             <button
               type="button"
@@ -115,18 +59,21 @@ export function BackofficeTopBar({
               aria-expanded={workflowDrawerOpen}
               title={`${workflowDrawerOpen ? "Close" : "Open"} recent workflows (⌘I)`}
               onClick={onWorkflowDrawerToggle}
-              className={`bo-control-surface inline-flex size-10 items-center justify-center transition-[background-color,color,scale,box-shadow] duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] ${workflowDrawerOpen ? "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]" : "bg-[var(--bo-panel)] text-[var(--bo-muted)] hover:text-[var(--bo-fg)]"}`}
+              className={`flex w-14 shrink-0 cursor-pointer items-center justify-center border-l border-[color:var(--bo-border)] transition-[background-color,color] duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset ${workflowDrawerOpen ? "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]" : "text-[var(--bo-muted)] hover:text-[var(--bo-fg)]"}`}
             >
               <Activity className="size-4" aria-hidden="true" />
             </button>
           ) : null}
           <BackofficeThemeMenu />
+        </div>
+
+        <div className="flex shrink-0 items-center min-[960px]:border-l min-[960px]:border-[color:var(--bo-border)]">
           <BackofficeAccountMenu me={effectiveMe} isLoading={sessionLoading} />
         </div>
       </div>
 
-      <div className="bo-top-bar-mobile-nav border-t border-[color:var(--bo-border)]">
-        <PrimaryNavigation mobile />
+      <div className="border-t border-[color:var(--bo-border)] min-[960px]:hidden">
+        <BackofficeMobileNav currentScope={currentScope} />
       </div>
     </header>
   );

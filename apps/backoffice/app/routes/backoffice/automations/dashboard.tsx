@@ -336,9 +336,9 @@ function LaneHeader({
       <div className="flex min-w-0 items-center gap-2">
         <span className={`h-1.5 w-1.5 rounded-full ${dotClassName}`} aria-hidden="true" />
         <span className="text-[var(--bo-muted)]">{icon}</span>
-        <h2 className="text-xs font-semibold text-[var(--bo-fg)]">{title}</h2>
+        <h2 className="text-sm font-semibold text-[var(--bo-fg)]">{title}</h2>
       </div>
-      <p className="mt-1 pl-6 text-[9px] text-[var(--bo-muted-2)]">{description}</p>
+      <p className="mt-1 pl-6 text-[11px] text-[var(--bo-muted-2)]">{description}</p>
     </div>
   );
 }
@@ -367,10 +367,10 @@ function SourceCard({
         <SourceIcon source={source.id} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[11px] font-semibold text-[var(--bo-fg)]">
+        <span className="block truncate text-[13px] font-semibold text-[var(--bo-fg)]">
           {source.label}
         </span>
-        <span className="mt-0.5 block truncate text-[8px] tracking-[0.12em] text-[var(--bo-muted-2)] uppercase">
+        <span className="mt-0.5 block truncate text-[10px] tracking-[0.12em] text-[var(--bo-muted-2)] uppercase">
           {source.kind} capability
         </span>
       </span>
@@ -417,16 +417,16 @@ function TriggerCard({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-[11px] font-semibold text-[var(--bo-fg)]">{route.name}</p>
-            <span className="shrink-0 text-[7px] font-semibold tracking-[0.12em] text-[var(--bo-muted-2)] uppercase">
+            <p className="truncate text-[13px] font-semibold text-[var(--bo-fg)]">{route.name}</p>
+            <span className="shrink-0 text-[9px] font-semibold tracking-[0.12em] text-[var(--bo-muted-2)] uppercase">
               P{route.priority}
             </span>
           </div>
-          <p className="mt-0.5 text-[8px] font-semibold tracking-[0.13em] text-orange-700 uppercase dark:text-orange-300">
+          <p className="mt-0.5 text-[10px] font-semibold tracking-[0.13em] text-orange-700 uppercase dark:text-orange-300">
             {triggerLabel}
             {route.enabled ? "" : " · Disabled"}
           </p>
-          <p className="mt-1 truncate font-mono text-[9px] text-[var(--bo-muted-2)]">
+          <p className="mt-1 truncate font-mono text-[11px] text-[var(--bo-muted-2)]">
             {triggerDetail}
           </p>
         </div>
@@ -448,7 +448,7 @@ function WorkflowStatus({ status }: { status: string }) {
 
   return (
     <span
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[7px] font-semibold tracking-[0.1em] uppercase ${className}`}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.1em] uppercase ${className}`}
     >
       {tone === "success" ? (
         <Check className="h-2 w-2" />
@@ -522,17 +522,17 @@ function ActionCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="truncate text-[11px] font-semibold text-[var(--bo-fg)]">
+              <p className="truncate text-[13px] font-semibold text-[var(--bo-fg)]">
                 {destination}
               </p>
-              <p className={`mt-0.5 truncate text-[9px] font-medium ${appearance.labelClassName}`}>
+              <p className={`mt-0.5 truncate text-[11px] font-medium ${appearance.labelClassName}`}>
                 {routeActionLabel(route)}
               </p>
             </div>
             {instance ? <WorkflowStatus status={instance.status} /> : null}
           </div>
           {instance ? (
-            <p className="mt-1 truncate font-mono text-[9px] text-[var(--bo-muted-2)] tabular-nums">
+            <p className="mt-1 truncate font-mono text-[11px] text-[var(--bo-muted-2)] tabular-nums">
               {instance.instanceId} · {formatTimestamp(instance.updatedAt)}
             </p>
           ) : null}
@@ -574,7 +574,7 @@ function DashboardRouteGrid({
   const highlightedSourceId = selectedRoute ? routeSourceId(selectedRoute) : activeSource?.id;
 
   return (
-    <div className="grid auto-rows-[5.25rem] grid-cols-[18rem_minmax(20rem,1fr)_minmax(22rem,1.1fr)] items-stretch gap-x-3 px-3">
+    <div className="grid auto-rows-[5.75rem] grid-cols-[18rem_minmax(20rem,1fr)_minmax(22rem,1.1fr)] items-stretch gap-x-3 px-3">
       {gridRows.map((row) => {
         const { source, route } = row;
         const latestInstance = route ? latestWorkflowRunForRoute(route, workflowInstances) : null;
@@ -583,9 +583,9 @@ function DashboardRouteGrid({
         );
         const rowMuted = Boolean(
           route &&
-          (selectedRoute
-            ? route.id !== selectedRoute.id
-            : activeSource && routeSourceId(route) !== activeSource.id),
+            (selectedRoute
+              ? route.id !== selectedRoute.id
+              : activeSource && routeSourceId(route) !== activeSource.id),
         );
         const emptyTriggerMuted = Boolean(
           highlightedSourceId && row.sourceId !== highlightedSourceId,
@@ -644,7 +644,7 @@ function DashboardRouteGrid({
                 <div
                   className={`min-w-0 py-2.5 transition-opacity ${dividerClassName} ${emptyTriggerMuted ? "opacity-35" : ""}`}
                 >
-                  <div className="flex h-full items-center px-3 text-[10px] text-[var(--bo-muted-2)]">
+                  <div className="flex h-full items-center px-3 text-xs text-[var(--bo-muted-2)]">
                     {routesLoading
                       ? row.sourceId === loadingRowSourceId
                         ? "Synchronizing automation routes…"
@@ -815,37 +815,17 @@ export default function BackofficeAutomationDashboard() {
   };
 
   return (
-    <section className="w-full max-w-none space-y-3 antialiased">
+    <section className="flex w-full max-w-none flex-1 flex-col space-y-3 antialiased">
       {errors.length > 0 ? (
         <AutomationNotice tone="error">
-          <p className="text-[10px] tracking-[0.22em] uppercase">
+          <p className="text-xs tracking-[0.22em] uppercase">
             Some dashboard data could not be synchronized
           </p>
           <p className="mt-2 text-sm">{errors.join(" ")}</p>
         </AutomationNotice>
       ) : null}
 
-      <div className="grid min-w-0 gap-3 xl:grid-cols-[28rem_minmax(0,1fr)]">
-        <DashboardInspector
-          selection={inspectorSelection}
-          workflowSource={loaderData.workflowSource}
-          runtimeToolCatalog={loaderData.runtimeToolCatalog}
-          collections={collections}
-          scriptsPath={automationScopeTabPath(selectedScope, "scripts")}
-          eventsCatalogPath={automationScopeTabPath(selectedScope, "events-catalog")}
-          scope={toBackofficeScope(selectedScope)}
-          onClear={() => {
-            setSearchParams((currentSearchParams) => {
-              const nextSearchParams = new URLSearchParams(currentSearchParams);
-              nextSearchParams.delete(SOURCE_FILTER_PARAM);
-              nextSearchParams.delete(SELECTION_KIND_PARAM);
-              nextSearchParams.delete(SELECTION_ID_PARAM);
-              nextSearchParams.delete(WORKFLOW_SCRIPT_ID_PARAM);
-              return nextSearchParams;
-            }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
-          }}
-        />
-
+      <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_28rem]">
         <div className="min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
           <div className="backoffice-scroll overflow-x-auto">
             <div className="w-full min-w-[1100px]">
@@ -917,6 +897,26 @@ export default function BackofficeAutomationDashboard() {
             </div>
           </div>
         </div>
+
+        <DashboardInspector
+          selection={inspectorSelection}
+          workflowSource={loaderData.workflowSource}
+          runtimeToolCatalog={loaderData.runtimeToolCatalog}
+          collections={collections}
+          scriptsPath={automationScopeTabPath(selectedScope, "scripts")}
+          eventsCatalogPath={automationScopeTabPath(selectedScope, "events-catalog")}
+          scope={toBackofficeScope(selectedScope)}
+          onClear={() => {
+            setSearchParams((currentSearchParams) => {
+              const nextSearchParams = new URLSearchParams(currentSearchParams);
+              nextSearchParams.delete(SOURCE_FILTER_PARAM);
+              nextSearchParams.delete(SELECTION_KIND_PARAM);
+              nextSearchParams.delete(SELECTION_ID_PARAM);
+              nextSearchParams.delete(WORKFLOW_SCRIPT_ID_PARAM);
+              return nextSearchParams;
+            }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
+          }}
+        />
       </div>
     </section>
   );

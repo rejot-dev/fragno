@@ -5,7 +5,6 @@ import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 
 import { AutomationSubpageTabs } from "../../automations/shared";
-import type { IntegrationScopeSwitchOption } from "../../integrations/scope";
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../../route-errors";
 
 type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
@@ -33,7 +32,6 @@ export type GitHubLayoutContext = {
   configState: GitHubAdminConfigState | null;
   configLoading: boolean;
   configError: string | null;
-  scopeOptions: IntegrationScopeSwitchOption[];
   setConfigState: Dispatch<SetStateAction<GitHubAdminConfigState | null>>;
   setConfigError: Dispatch<SetStateAction<string | null>>;
 };

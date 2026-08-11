@@ -6,12 +6,16 @@ import { BackofficeClsDebugger } from "./cls-debugger";
 import { CurrentBackofficeProvider, type CurrentBackofficeContext } from "./current-context";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
 import { GlobalWorkflowDrawer } from "./global-workflow-drawer";
+import type { BackofficeProjectOption } from "./project-menu";
+import { BackofficeSidebarNav } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
 
 type BackofficeShellProps = {
   children: ReactNode;
   me: AuthMeData | null;
   currentContext: CurrentBackofficeContext | null;
+  projects?: BackofficeProjectOption[];
+  projectsError?: string | null;
   isLoading?: boolean;
 };
 
@@ -28,7 +32,14 @@ export function BackofficeShell(props: BackofficeShellProps) {
   );
 }
 
-function BackofficeShellFrame({ children, me, currentContext, isLoading }: BackofficeShellProps) {
+function BackofficeShellFrame({
+  children,
+  me,
+  currentContext,
+  projects,
+  projectsError,
+  isLoading,
+}: BackofficeShellProps) {
   const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
   useGlobalHotkey({
     id: "toggle-recent-workflows",
@@ -45,19 +56,25 @@ function BackofficeShellFrame({ children, me, currentContext, isLoading }: Backo
       className="relative isolate flex min-h-screen bg-[var(--bo-bg)] text-[var(--bo-fg)]"
     >
       <BackofficeClsDebugger />
-      <div className="relative min-w-0 flex-1">
+      <div className="relative flex min-w-0 flex-1 flex-col">
         <div className="bo-grid-backdrop pointer-events-none absolute inset-0" />
         <BackofficeTopBar
           me={me}
+          currentScope={currentContext?.scope ?? null}
+          projects={projects}
+          projectsError={projectsError}
           isLoading={isLoading}
           workflowDrawerOpen={workflowDrawerOpen}
           onWorkflowDrawerToggle={() => {
             setWorkflowDrawerOpen((open) => !open);
           }}
         />
-        <main className="relative z-10 min-w-0 px-2 py-2 sm:px-3 sm:py-3 lg:px-4 lg:py-4">
-          <div className="min-w-0">{children}</div>
-        </main>
+        <div className="flex min-w-0 flex-1">
+          <BackofficeSidebarNav currentScope={currentContext?.scope ?? null} />
+          <main className="relative z-10 flex min-w-0 flex-1 flex-col">
+            <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+          </main>
+        </div>
       </div>
       <GlobalWorkflowDrawer
         open={workflowDrawerOpen}

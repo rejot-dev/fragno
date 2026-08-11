@@ -1,18 +1,28 @@
-import { SCRIPT_VIEW_OPTIONS, WORKFLOW_GRAPH_DETAIL_OPTIONS } from "./script-presentation-options";
-import type { ScriptViewMode, WorkflowGraphDetailMode } from "./script-view-mode";
+import {
+  SCRIPT_VIEW_OPTIONS,
+  WORKFLOW_GRAPH_DETAIL_OPTIONS,
+} from "./script-presentation-options";
+import type {
+  ScriptViewMode,
+  WorkflowGraphDetailMode,
+} from "./script-view-mode";
+
+export type ScriptPresentationToggleVariant = "segmented" | "tabs";
 
 export function ScriptViewToggle({
   viewMode,
   onViewModeChange,
+  variant = "segmented",
 }: {
   viewMode: ScriptViewMode;
   onViewModeChange: (mode: ScriptViewMode) => void;
+  variant?: ScriptPresentationToggleVariant;
 }) {
   return (
     <div
       role="group"
       aria-label="Script view"
-      className="flex shrink-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-0.5"
+      className={toggleGroupClass(variant)}
     >
       {SCRIPT_VIEW_OPTIONS.map(({ mode, label, icon: Icon }) => (
         <button
@@ -22,7 +32,7 @@ export function ScriptViewToggle({
           onClick={() => {
             onViewModeChange(mode);
           }}
-          className={`${segmentedToggleButtonClass(viewMode === mode)} gap-1.5`}
+          className={`${toggleButtonClass(variant, viewMode === mode)} gap-1.5`}
         >
           <Icon className="h-3.5 w-3.5" aria-hidden="true" />
           {label}
@@ -35,15 +45,17 @@ export function ScriptViewToggle({
 export function WorkflowGraphDetailToggle({
   detailMode,
   onDetailModeChange,
+  variant = "segmented",
 }: {
   detailMode: WorkflowGraphDetailMode;
   onDetailModeChange: (mode: WorkflowGraphDetailMode) => void;
+  variant?: ScriptPresentationToggleVariant;
 }) {
   return (
     <div
       role="group"
       aria-label="Workflow graph detail"
-      className="flex shrink-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-0.5"
+      className={toggleGroupClass(variant)}
     >
       {WORKFLOW_GRAPH_DETAIL_OPTIONS.map(({ mode, label }) => (
         <button
@@ -53,7 +65,7 @@ export function WorkflowGraphDetailToggle({
           onClick={() => {
             onDetailModeChange(mode);
           }}
-          className={segmentedToggleButtonClass(detailMode === mode)}
+          className={toggleButtonClass(variant, detailMode === mode)}
         >
           {label}
         </button>
@@ -62,7 +74,24 @@ export function WorkflowGraphDetailToggle({
   );
 }
 
-function segmentedToggleButtonClass(isSelected: boolean): string {
+function toggleGroupClass(variant: ScriptPresentationToggleVariant): string {
+  return variant === "tabs"
+    ? "flex shrink-0 items-center gap-2"
+    : "flex shrink-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-0.5";
+}
+
+function toggleButtonClass(
+  variant: ScriptPresentationToggleVariant,
+  isSelected: boolean,
+): string {
+  if (variant === "tabs") {
+    const interaction =
+      "flex min-h-10 items-center border-b-2 px-1 text-[10px] font-semibold tracking-[0.22em] uppercase outline-none transition-[scale,border-color,color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]";
+    return isSelected
+      ? `${interaction} border-[color:var(--bo-accent)] text-[var(--bo-accent-fg)]`
+      : `${interaction} border-transparent text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]`;
+  }
+
   const interaction =
     "flex min-h-10 items-center px-2.5 text-[10px] font-semibold tracking-[0.12em] uppercase transition-[color,background-color,box-shadow,transform] active:scale-[0.96]";
   return isSelected
