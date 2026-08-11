@@ -73,7 +73,7 @@ export const executeAutomationScript = async ({
       }
 
       const { executeCodemodeAutomation } = await import("@/fragno/automation/engine/codemode");
-      return executeCodemodeAutomation({ script, context, masterFs, env });
+      return executeCodemodeAutomation({ script, context, env });
     }
   }
 

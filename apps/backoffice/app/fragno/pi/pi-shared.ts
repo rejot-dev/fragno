@@ -69,7 +69,7 @@ export const PI_SUPPORTED_MODELS: PiModelOption[] = [
   },
 ];
 
-export const PI_TOOL_IDS = ["execCodeMode", "read"] as const;
+export const PI_TOOL_IDS = ["execCodeMode", "read", "search"] as const;
 export type PiToolId = (typeof PI_TOOL_IDS)[number];
 export const PI_SYSTEM_PROMPT = STATIC_FILE_CONTENT["SYSTEM.md"];
 export const PI_THINKING_LEVEL: PiThinkingLevel = "low";

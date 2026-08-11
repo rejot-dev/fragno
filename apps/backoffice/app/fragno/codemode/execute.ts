@@ -4,7 +4,6 @@ import {
   type WorkerCompiler,
 } from "@/backoffice-runtime/dynamic-workers/compile-worker";
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
-import type { IFileSystem } from "@/files/interface";
 import { createMcpCodemodeProviders } from "@/fragno/codemode/mcp-codemode-tools";
 import {
   createBackofficeCodemodeProviders,
@@ -24,8 +23,6 @@ import {
   type ExecuteResult,
   type ResolvedProvider,
 } from "./codemode-executor";
-import { BackofficeStateFileSystem } from "./master-file-system-state";
-import { BackofficeFileSystemStateBackend, stateToolsFromBackend } from "./state-backend";
 
 export type BackofficeCodemodeEnv = {
   LOADER: WorkerLoader;
@@ -43,7 +40,6 @@ export type BackofficeCodemodeEnv = {
 export type RunBackofficeCodemodeInput = {
   code: string;
   dependencies?: NpmDependencyMap;
-  fs: IFileSystem;
   env: BackofficeCodemodeEnv;
   timeout?: number;
   families: readonly BackofficeRuntimeToolFamily[];
@@ -59,7 +55,6 @@ export type RunBackofficeCodemodeInput = {
 };
 
 export type BackofficeCodemodeProvidersInput = {
-  fs: IFileSystem;
   families: readonly BackofficeRuntimeToolFamily[];
   toolContext: CoreBackofficeToolContext;
   toolCalls?: BackofficeRuntimeToolCall[];
@@ -179,15 +174,11 @@ const createBackofficeScopedCodemodeProvider = ({
 });
 
 export const createBackofficeCodemodeResolvedProviders = async ({
-  fs,
   families,
   toolContext,
   toolCalls,
 }: BackofficeCodemodeProvidersInput): Promise<ResolvedProvider[]> => {
   const providers: ResolvedProvider[] = [];
-
-  const stateBackend = new BackofficeFileSystemStateBackend(new BackofficeStateFileSystem(fs));
-  providers.push(resolveProvider(stateToolsFromBackend(stateBackend)));
 
   const tools = families.flatMap((family) => {
     if (family.isAvailable && !family.isAvailable(toolContext)) {
@@ -226,7 +217,6 @@ export const createBackofficeCodemodeResolvedProviders = async ({
 export const runBackofficeCodemode = async ({
   code,
   dependencies,
-  fs,
   env,
   timeout,
   families,
@@ -244,7 +234,6 @@ export const runBackofficeCodemode = async ({
   });
 
   const providers = await createBackofficeCodemodeResolvedProviders({
-    fs,
     families,
     toolContext,
     toolCalls,

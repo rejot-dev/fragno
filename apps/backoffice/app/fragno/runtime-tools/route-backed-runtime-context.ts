@@ -17,6 +17,11 @@ import {
 import { createRouteBackedAutomationIdentityRuntime } from "@/fragno/automation/external-identities-route-runtime";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
+import {
+  createBackofficeStateBackend,
+  type BackofficeStateBackend,
+} from "@/fragno/codemode/state-backend";
+import { createCodemodeStaticArtifactsResolver } from "@/fragno/codemode/static-codemode-artifacts";
 import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 import { createCloudflareRuntime } from "@/fragno/runtime-tools/families/cloudflare-runtime";
@@ -78,6 +83,27 @@ const ownerOrgScope = (execution: BackofficeExecutionContext): { orgId: string }
 const selectedOrgScope = (execution: BackofficeExecutionContext): { orgId: string } | null =>
   execution.scope.kind === "org" ? { orgId: execution.scope.orgId } : null;
 
+const createExecutionStateBackend = ({
+  runtime,
+  kernel,
+  execution,
+}: Pick<RouteBackedRuntimeContextOptions, "runtime" | "kernel" | "execution">):
+  | BackofficeStateBackend
+  | undefined => {
+  if (!runtime.config.bindings.upload || !isBackofficeRoutableScope(execution.scope)) {
+    return undefined;
+  }
+
+  return createBackofficeStateBackend({
+    uploadObject: kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload),
+    staticFileArtifacts: createCodemodeStaticArtifactsResolver({
+      objects: runtime.objects,
+      config: runtime.config,
+      execution,
+    }),
+  });
+};
+
 const unavailableObject = <T>(resolve: () => T): T | null => {
   try {
     return resolve();
@@ -108,6 +134,7 @@ export const createRouteBackedRuntimeContext = ({
   return {
     execution,
     backofficeKernel: kernel,
+    stateBackend: createExecutionStateBackend({ runtime, kernel, execution }),
     createBackofficeScopedContext: (scope) => {
       kernel.assertScopedContextAccess(execution, scope);
       return createRouteBackedRuntimeContext({
@@ -296,4 +323,14 @@ export const createRouteBackedRuntimeContext = ({
             ),
           },
   };
+};
+
+export const createCodemodeRouteBackedRuntimeContext = (
+  options: RouteBackedRuntimeContextOptions,
+): InteractiveRuntimeToolContext & { stateBackend: BackofficeStateBackend } => {
+  const context = createRouteBackedRuntimeContext(options);
+  if (!context.stateBackend) {
+    throw new Error("Codemode requires Upload-backed state routes.");
+  }
+  return { ...context, stateBackend: context.stateBackend };
 };

@@ -13,7 +13,6 @@ import {
   type CodemodeTypeFile,
 } from "@/fragno/codemode/codemode-dts";
 import { createMcpCodemodeServers } from "@/fragno/codemode/mcp-codemode-tools";
-import { STATE_TYPES } from "@/fragno/codemode/state-prompt";
 import { createMcpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime-tools";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
@@ -82,7 +81,6 @@ export const createCodemodeStaticArtifacts = async ({
   const files = createCodemodeTypeFiles({
     families,
     mcpServers,
-    stateTypes: STATE_TYPES,
   });
 
   return {

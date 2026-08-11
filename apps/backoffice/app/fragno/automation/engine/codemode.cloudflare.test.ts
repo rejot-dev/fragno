@@ -13,6 +13,10 @@ import type { AutomationRuntimeHostContext, AutomationRuntime } from "@/fragno/a
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 import { CODEMODE_CAPABILITY_ACTOR } from "@/fragno/automation/engine/codemode-invocation";
+import {
+  MemoryUploadObject,
+  createTestStateBackend,
+} from "@/fragno/codemode/state-backend.test-utils";
 import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
@@ -23,8 +27,7 @@ import { defineCodemodeWorkflow } from "./codemode-workflow";
 import { createTestMasterFileSystem } from "./test-master-file-system.test-utils";
 
 describe("executeCodemodeAutomation", () => {
-  test("runs a .cm.js automation with state.* and /context/event.json", async () => {
-    const masterFs = createTestMasterFileSystem({});
+  test("runs a .cm.js automation with state.* against Upload", async () => {
     const event: AutomationEvent = {
       id: "event-codemode-1",
       scope: { kind: "org", orgId: "org-1" },
@@ -39,16 +42,23 @@ describe("executeCodemodeAutomation", () => {
       },
     };
 
+    const stateBackend = createTestStateBackend({
+      upload: new MemoryUploadObject({ "event.json": JSON.stringify(event) }),
+    });
+    const context = createAutomationContext(event);
+    context.stateBackend = stateBackend;
     const result = await executeCodemodeAutomation({
       env,
-      masterFs,
-      context: createAutomationContext(event),
+      context,
       script: `async () => {
-        const event = JSON.parse(await state.readFile("/context/event.json"));
-        await state.writeFile("/workspace/output.json", JSON.stringify({
-          id: event.id,
-          text: event.payload.text,
-        }));
+        const event = JSON.parse(await state.readFile({ path: "/workspace/event.json" }));
+        await state.writeFile({
+          path: "/workspace/output.json",
+          content: JSON.stringify({
+            id: event.id,
+            text: event.payload.text,
+          }),
+        });
         console.log("codemode automation wrote output");
         return { ok: true, eventId: event.id };
       }`,
@@ -63,9 +73,12 @@ describe("executeCodemodeAutomation", () => {
       logs: ["codemode automation wrote output"],
       result: { ok: true, eventId: "event-codemode-1" },
       stdout: JSON.stringify({ ok: true, eventId: "event-codemode-1" }),
-      toolCalls: [],
+      toolCalls: [
+        expect.objectContaining({ toolId: "state.readFile", status: "success" }),
+        expect.objectContaining({ toolId: "state.writeFile", status: "success" }),
+      ],
     });
-    await expect(masterFs.readFile("/workspace/output.json")).resolves.toBe(
+    await expect(stateBackend.readFile("/workspace/output.json")).resolves.toBe(
       JSON.stringify({ id: "event-codemode-1", text: "hello" }),
     );
   });
@@ -89,15 +102,11 @@ describe("executeCodemodeAutomation", () => {
 
     const result = await executeCodemodeAutomation({
       env,
-      masterFs: createTestMasterFileSystem({}),
       context: createAutomationContext(event, runtime),
-      script: `async () => {
-        const event = JSON.parse(await state.readFile("/context/event.json"));
-        return await store.set({
-          key: event.source + "/" + event.payload.chatId,
-          value: "user-55",
-        });
-      }`,
+      script: `async () => await store.set({
+        key: "telegram/chat-123",
+        value: "user-55",
+      })`,
     });
 
     expect(result).toMatchObject({
@@ -150,7 +159,6 @@ describe("executeCodemodeAutomation", () => {
 
     const result = await executeCodemodeAutomation({
       env,
-      masterFs: createTestMasterFileSystem({}),
       context: createAutomationContext(event, {
         backofficeRuntime: createRecordingBackofficeRuntime(calls),
       }),
@@ -208,7 +216,6 @@ describe("executeCodemodeAutomation", () => {
           env,
           workflowEvent,
           remote,
-          masterFs: createTestMasterFileSystem({}),
           context: createAutomationContext(event, {
             backofficeRuntime: createRecordingBackofficeRuntime(calls),
           }),
@@ -333,7 +340,6 @@ describe("executeCodemodeAutomation", () => {
           env: { ...env, OUTBOUND: { fetch: outboundFetch } as unknown as Fetcher },
           workflowEvent,
           remote,
-          masterFs: createTestMasterFileSystem({}),
           context: createAutomationContext(event),
           script: `defineWorkflow(
             { name: "blocked-workflow-egress" },
@@ -392,16 +398,12 @@ describe("executeCodemodeAutomation", () => {
 
     const result = await executeCodemodeAutomation({
       env,
-      masterFs: createTestMasterFileSystem({}),
       context: createAutomationContext(eventFixture, runtime),
-      script: `async () => {
-        const eventFixture = JSON.parse(await state.readFile("/context/event.json"));
-        return await events.fire({
-          eventType: "identity.bound",
-          source: eventFixture.source,
-          payload: eventFixture.payload,
-        });
-      }`,
+      script: `async () => await events.fire({
+        eventType: "identity.bound",
+        source: "telegram",
+        payload: { plan: "basic" },
+      })`,
     });
 
     expect(result).toMatchObject({
@@ -451,13 +453,12 @@ describe("executeCodemodeAutomation", () => {
     const context = createAutomationContext(event, runtime);
 
     const bashResult = await executeBashAutomation({
-      masterFs: createTestMasterFileSystem({}),
       context,
+      masterFs: createTestMasterFileSystem({}),
       script: "store.set --key telegram/bash-chat --value user-bash",
     });
     const codemodeResult = await executeCodemodeAutomation({
       env,
-      masterFs: createTestMasterFileSystem({}),
       context,
       script: `async () => {
         return await store.set({
@@ -515,7 +516,6 @@ describe("executeCodemodeAutomation", () => {
 
     const result = await executeCodemodeAutomation({
       env,
-      masterFs: createTestMasterFileSystem({}),
       context: createAutomationContext(event, createRecordingAutomationRuntime(calls)),
       script: `async () => {
         return await store.set({ key: "", value: "" });
@@ -554,6 +554,7 @@ const createAutomationContext = (
 
   return {
     ...EMPTY_BASH_HOST_CONTEXT,
+    stateBackend: createTestStateBackend(),
     backoffice: options.backofficeRuntime ? { runtime: options.backofficeRuntime } : null,
     automation: {
       event,

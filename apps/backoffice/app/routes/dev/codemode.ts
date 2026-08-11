@@ -1,9 +1,8 @@
 import { z } from "zod";
 
-import { createBackofficeFileSystem } from "@/files/create-file-system";
 import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
-import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -48,13 +47,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 
   const { env, runtime, kernel } = context.get(BackofficeWorkerContext);
 
-  const fs = await createBackofficeFileSystem({
-    objects: runtime.objects,
-    kernel,
-    execution,
-    config: runtime.config,
-  });
-  const routeRuntimeContext = createRouteBackedRuntimeContext({
+  const routeRuntimeContext = createCodemodeRouteBackedRuntimeContext({
     runtime,
     kernel,
     execution: execution,
@@ -64,7 +57,6 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const result = await runBackofficeCodemode({
     code: body.code,
     dependencies: body.dependencies,
-    fs,
     env,
     timeout: body.timeout,
     toolContext: toolContext,

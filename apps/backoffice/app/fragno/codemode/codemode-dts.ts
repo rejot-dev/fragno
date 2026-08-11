@@ -17,7 +17,6 @@ import codemodeSystemTypesTemplate from "../../../content/static/codemode/system
 
 const CODEMODE_TYPES_DIR_PATH = "/static/codemode";
 export const CODEMODE_SYSTEM_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/system.d.ts`;
-export const CODEMODE_STATE_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/state.d.ts`;
 const CODEMODE_WORKFLOW_AUTHORING_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/workflow-authoring.d.ts`;
 const CODEMODE_PROVIDER_TYPES_DIR_PATH = `${CODEMODE_TYPES_DIR_PATH}/providers`;
 const CODEMODE_SOURCE_TYPES_DIR_PATH = `${CODEMODE_TYPES_DIR_PATH}/sources`;
@@ -76,8 +75,8 @@ const renderCodemodeSystemTypes = ({
     .replace("/* __BACKOFFICE_CODEMODE_SCOPED_CONTEXT__ */", scopedContext)
     .trimEnd();
 
-const getStaticRuntimeToolReferences = (families: readonly BackofficeRuntimeToolFamily[]) => {
-  const staticFamilies: BackofficeRuntimeToolFamily[] = [];
+const getCodemodeRuntimeToolReferences = (families: readonly BackofficeRuntimeToolFamily[]) => {
+  const visibleFamilies: BackofficeRuntimeToolFamily[] = [];
 
   for (const family of families) {
     if (family.hidden) {
@@ -86,11 +85,11 @@ const getStaticRuntimeToolReferences = (families: readonly BackofficeRuntimeTool
 
     const tools = family.tools.filter((tool) => VALID_DECLARE_CONST_NAME.test(tool.namespace));
     if (tools.length > 0) {
-      staticFamilies.push({ ...family, tools });
+      visibleFamilies.push({ ...family, tools });
     }
   }
 
-  return createRuntimeToolReferences({ families: staticFamilies });
+  return createRuntimeToolReferences({ families: visibleFamilies });
 };
 
 const groupReferencesByNamespace = (references: readonly RuntimeToolReference[]) => {
@@ -107,19 +106,17 @@ const groupReferencesByNamespace = (references: readonly RuntimeToolReference[])
 export const createCodemodeTypeFiles = ({
   families,
   mcpServers = [],
-  stateTypes,
 }: {
   families: readonly BackofficeRuntimeToolFamily[];
   mcpServers?: readonly McpCodemodeServer[];
-  stateTypes: string;
 }): CodemodeTypeFile[] => {
-  const staticReferencesByNamespace = groupReferencesByNamespace(
-    getStaticRuntimeToolReferences(families),
+  const runtimeReferencesByNamespace = groupReferencesByNamespace(
+    getCodemodeRuntimeToolReferences(families),
   );
   const sourceReferencesByNamespace = groupReferencesByNamespace(
     createMcpCodemodeReferences(mcpServers),
   );
-  const providerFiles = [...staticReferencesByNamespace.entries()].map(
+  const providerFiles = [...runtimeReferencesByNamespace.entries()].map(
     ([namespace, namespaceReferences]) => ({
       path: typePathForNamespace(CODEMODE_PROVIDER_TYPES_DIR_PATH, namespace),
       content: renderDtsContent(
@@ -142,7 +139,7 @@ export const createCodemodeTypeFiles = ({
     }),
   );
   const allNamespaces = [
-    ...staticReferencesByNamespace.keys(),
+    ...runtimeReferencesByNamespace.keys(),
     ...sourceReferencesByNamespace.keys(),
   ];
   const referencePaths = [
@@ -160,10 +157,6 @@ export const createCodemodeTypeFiles = ({
           scopedContext: renderCodemodeScopedContextTypes(allNamespaces),
         }),
       ),
-    },
-    {
-      path: CODEMODE_STATE_DTS_PATH,
-      content: renderDtsContent(stateTypes),
     },
     {
       path: CODEMODE_WORKFLOW_AUTHORING_DTS_PATH,

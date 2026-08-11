@@ -16,6 +16,7 @@ import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 import { codemodeWorkflowParamsSchema } from "@/fragno/automation/engine/codemode-invocation";
 
+import { MemoryUploadObject, createTestStateBackend } from "../codemode/state-backend.test-utils";
 import { runBackofficeCodemodeWorkflow } from "../codemode/workflow-execute";
 import type { RegisteredAutomationsRuntime } from "../runtime-tools/bash-host";
 import { EMPTY_BASH_HOST_CONTEXT } from "../runtime-tools/bash-host.test-utils";
@@ -105,9 +106,10 @@ const createPiWorkflowRuntime = (
 });
 
 describe("Pi execCodeMode tool", () => {
-  test("runs codemode against a session filesystem and persists writes", async () => {
-    const fs = createTestMasterFileSystem({
-      "/workspace/input.txt": "hello",
+  test("runs codemode against the session Upload mount and persists writes", async () => {
+    const fs = createTestMasterFileSystem({});
+    const stateBackend = createTestStateBackend({
+      upload: new MemoryUploadObject({ "input.txt": "hello" }),
     });
     const sessionFileSystems = new Map<string, Promise<MasterFileSystem>>([
       ["session-1", Promise.resolve(fs)],
@@ -117,7 +119,7 @@ describe("Pi execCodeMode tool", () => {
       sessionFileSystems,
       sessionFileSystemContext: createPiSessionFileSystemContext(),
       codemode: createPiCodemodeRuntime(env),
-      runtimeToolContext: EMPTY_BASH_HOST_CONTEXT as never,
+      runtimeToolContext: { ...EMPTY_BASH_HOST_CONTEXT, stateBackend } as never,
     });
 
     const execCodeModeFactory = tools.execCodeMode;
@@ -134,9 +136,9 @@ describe("Pi execCodeMode tool", () => {
 
     const result = await tool.execute("tool-call-1", {
       code: `async () => {
-        const input = await state.readFile("/workspace/input.txt");
-        await state.writeFile("/workspace/output.txt", input + " from pi");
-        return await state.readFile("/workspace/output.txt");
+        const input = await state.readFile({ path: "/workspace/input.txt" });
+        await state.writeFile({ path: "/workspace/output.txt", content: input + " from pi" });
+        return await state.readFile({ path: "/workspace/output.txt" });
       }`,
     });
 
@@ -150,7 +152,7 @@ describe("Pi execCodeMode tool", () => {
       throw new Error("Expected text content from execCodeMode.");
     }
     expect(content.text).toContain("hello from pi");
-    await expect(fs.readFile("/workspace/output.txt")).resolves.toBe("hello from pi");
+    await expect(stateBackend.readFile("/workspace/output.txt")).resolves.toBe("hello from pi");
   });
 
   test("preserves an immediate generated UI result in details.result", async () => {
@@ -216,7 +218,7 @@ describe("Pi execCodeMode tool", () => {
     const result = await tool.execute("tool-call-1", {
       code: `defineWorkflow({ name: "pi-session-workflow" }, async (_event, step) => {
         return await step.do("write-file", async () => {
-          await state.writeFile("/workspace/workflow.txt", "from workflow");
+          await state.writeFile({ path: "/workspace/workflow.txt", content: "from workflow" });
           return "defined";
         });
       });`,
@@ -236,6 +238,7 @@ describe("Pi execCodeMode tool", () => {
 
   test("schedules and runs a workflow defined from execCodeMode", async () => {
     const fs = createTestMasterFileSystem({});
+    const stateBackend = createTestStateBackend();
     const sessionFileSystems = new Map<string, Promise<MasterFileSystem>>([
       ["session-1", Promise.resolve(fs)],
     ]);
@@ -251,10 +254,11 @@ describe("Pi execCodeMode tool", () => {
           timestamp: event.timestamp,
         },
         remote,
-        fs,
         env,
         families: runtimeToolFamilies,
-        toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+        toolContext: createTrustedSystemBackofficeToolContext({
+          runtimes: { state: stateBackend },
+        }),
       });
       if (result.error) {
         throw new Error(result.error);
@@ -290,7 +294,7 @@ describe("Pi execCodeMode tool", () => {
           },
         }),
       },
-      runtimeToolContext: EMPTY_BASH_HOST_CONTEXT as never,
+      runtimeToolContext: { ...EMPTY_BASH_HOST_CONTEXT, stateBackend } as never,
     });
     const execCodeModeFactory = tools.execCodeMode;
     if (typeof execCodeModeFactory !== "function") {
@@ -306,8 +310,11 @@ describe("Pi execCodeMode tool", () => {
     const result = await tool.execute("tool-call-1", {
       code: `defineWorkflow({ name: "pi-session-workflow" }, async (_event, step) => {
         return await step.do("write-session-file", async () => {
-          await state.writeFile("/workspace/from-workflow.txt", "ran from execCodeMode workflow");
-          return await state.readFile("/workspace/from-workflow.txt");
+          await state.writeFile({
+            path: "/workspace/from-workflow.txt",
+            content: "ran from execCodeMode workflow",
+          });
+          return await state.readFile({ path: "/workspace/from-workflow.txt" });
         });
       });`,
     });
@@ -325,7 +332,7 @@ describe("Pi execCodeMode tool", () => {
       status: "complete",
       output: "ran from execCodeMode workflow",
     });
-    await expect(fs.readFile("/workspace/from-workflow.txt")).resolves.toBe(
+    await expect(stateBackend.readFile("/workspace/from-workflow.txt")).resolves.toBe(
       "ran from execCodeMode workflow",
     );
   });
@@ -347,7 +354,6 @@ describe("Pi execCodeMode tool", () => {
           timestamp: event.timestamp,
         },
         remote,
-        fs,
         env,
         families: runtimeToolFamilies,
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
@@ -386,7 +392,10 @@ describe("Pi execCodeMode tool", () => {
           },
         }),
       },
-      runtimeToolContext: EMPTY_BASH_HOST_CONTEXT as never,
+      runtimeToolContext: {
+        ...EMPTY_BASH_HOST_CONTEXT,
+        stateBackend: createTestStateBackend(),
+      } as never,
     });
     const execCodeModeFactory = tools.execCodeMode;
     if (typeof execCodeModeFactory !== "function") {
@@ -614,13 +623,18 @@ const createExecCodeModeTool = async ({
     ["session-1", Promise.resolve(fs)],
   ]);
 
+  const stateBackend = createTestStateBackend();
   const tools = createPiToolRegistry({
     sessionFileSystems,
     sessionFileSystemContext: createPiSessionFileSystemContext(),
     codemode: { ...createPiCodemodeRuntime(env), workflow: workflowRuntime },
     runtimeToolContext: automationsRuntime
-      ? ({ ...EMPTY_BASH_HOST_CONTEXT, automations: { runtime: automationsRuntime } } as never)
-      : (EMPTY_BASH_HOST_CONTEXT as never),
+      ? ({
+          ...EMPTY_BASH_HOST_CONTEXT,
+          stateBackend,
+          automations: { runtime: automationsRuntime },
+        } as never)
+      : ({ ...EMPTY_BASH_HOST_CONTEXT, stateBackend } as never),
   });
 
   const execCodeModeFactory = tools.execCodeMode;

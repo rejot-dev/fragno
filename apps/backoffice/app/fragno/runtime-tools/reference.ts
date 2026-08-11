@@ -34,7 +34,7 @@ export type RuntimeToolReference = {
   namespace: string;
   description: string;
   codemode: RuntimeToolCodemodeReference;
-  bash: RuntimeToolBashReference;
+  bash?: RuntimeToolBashReference;
 };
 
 export type RuntimeToolFamilyReference = {
@@ -77,10 +77,6 @@ export const toRuntimeToolReference = (tool: AnyBackofficeRuntimeTool): RuntimeT
   });
   const bash = tool.adapters?.bash;
 
-  if (!bash) {
-    throw new Error(`Runtime tool '${tool.id}' is missing a bash adapter.`);
-  }
-
   return {
     id: tool.id,
     namespace: tool.namespace,
@@ -96,12 +92,16 @@ export const toRuntimeToolReference = (tool: AnyBackofficeRuntimeTool): RuntimeT
       inputTypeDeclarations: inputType.declarations,
       outputTypeDeclarations: outputType.declarations,
     },
-    bash: {
-      command: bash.command,
-      summary: bash.help.summary,
-      options: bash.help.options,
-      examples: bash.help.examples ?? [],
-    },
+    ...(bash
+      ? {
+          bash: {
+            command: bash.command,
+            summary: bash.help.summary,
+            options: bash.help.options,
+            examples: bash.help.examples ?? [],
+          },
+        }
+      : {}),
   };
 };
 

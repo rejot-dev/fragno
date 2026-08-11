@@ -195,7 +195,6 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
         script: params.program.code,
         dependencies: params.program.dependencies,
         context,
-        masterFs: fileSystem,
         env: config.env,
         workflowEvent: {
           ...automationEvent,

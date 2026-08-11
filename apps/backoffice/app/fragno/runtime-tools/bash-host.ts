@@ -5,6 +5,7 @@ import type {
   BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import {
   createBackofficeBashCommands,
   getAvailableRuntimeTools,
@@ -47,6 +48,7 @@ export type RegisteredEventBashCommandContext = AutomationCommandContext & {
 export type BashHostContext = {
   execution: BackofficeExecutionContext;
   backofficeKernel: BackofficeKernel;
+  stateBackend?: BackofficeStateBackend;
   createBackofficeScopedContext(scope: BackofficeContextScope): BashHostContext;
   backoffice: { runtime: BackofficeCapabilitiesRuntime } | null;
   automation: RegisteredEventBashCommandContext | null;

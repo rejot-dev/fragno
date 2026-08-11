@@ -57,7 +57,7 @@ import { BACKOFFICE_PI_WORKFLOW_NAME, type PiModel } from "@/fragno/pi/pi-shared
 import { createPiCollections, type PiCollections } from "@/fragno/pi/tanstack/collections";
 import { createPiRouteRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
-import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
@@ -325,7 +325,11 @@ export type BackofficeScenarioFileSystems = {
   forOrg(orgId?: string): MasterFileSystem;
   forProject(projectId: string): MasterFileSystem;
   listOrgIds(): string[];
-  diff(orgId?: string): Promise<FileDiffEntry[]>;
+  rememberOrgPaths(orgId: string, paths: readonly string[]): void;
+  diff(
+    orgId?: string,
+    readAdditionalPath?: (path: string) => Promise<string | null>,
+  ): Promise<FileDiffEntry[]>;
 };
 
 export type BackofficeScenarioTanStack = {
@@ -1429,9 +1433,38 @@ const readSnapshotContent = async (fs: MasterFileSystem, path: string): Promise<
   }
 };
 
-const snapshotFileSystem = async (fs: MasterFileSystem): Promise<Record<string, string>> => {
+const snapshotFileSystem = async (
+  fs: MasterFileSystem,
+  additionalPaths: readonly string[] = [],
+): Promise<Record<string, string>> => {
   const snapshot: Record<string, string> = {};
-  for (const path of fs.getAllPaths()) {
+
+  const visitDirectory = async (directory: string): Promise<void> => {
+    const entries = await fs.readdirWithFileTypes(directory);
+    await Promise.all(
+      entries.map(async (entry) => {
+        const path = fs.resolvePath(directory, entry.name);
+        if (entry.isDirectory) {
+          await visitDirectory(path);
+          return;
+        }
+        if (!entry.isFile) {
+          return;
+        }
+
+        const content = await readSnapshotContent(fs, path);
+        if (content !== null) {
+          snapshot[path] = content;
+        }
+      }),
+    );
+  };
+
+  await visitDirectory("/");
+  for (const path of additionalPaths) {
+    if (path in snapshot) {
+      continue;
+    }
     const content = await readSnapshotContent(fs, path);
     if (content !== null) {
       snapshot[path] = content;
@@ -1472,6 +1505,7 @@ const createScenarioFileSystems = (
 ): BackofficeScenarioFileSystems => {
   const byOrg = new Map<string, MasterFileSystem>();
   const byProject = new Map<string, MasterFileSystem>();
+  const rememberedOrgPaths = new Map<string, Set<string>>();
 
   const getScopedFs = (map: Map<string, MasterFileSystem>, key: string) => {
     let fs = map.get(key);
@@ -1491,8 +1525,32 @@ const createScenarioFileSystems = (
     forOrg,
     forProject: (projectId) => getScopedFs(byProject, projectId),
     listOrgIds: () => Array.from(orgIds),
-    diff: async (orgId = "__default__") =>
-      diffSnapshots(preset.snapshot, await snapshotFileSystem(forOrg(orgId))),
+    rememberOrgPaths: (orgId, paths) => {
+      const rememberedPaths = rememberedOrgPaths.get(orgId) ?? new Set<string>();
+      paths.forEach((path) => {
+        rememberedPaths.add(path);
+      });
+      rememberedOrgPaths.set(orgId, rememberedPaths);
+    },
+    diff: async (orgId = "__default__", readAdditionalPath) => {
+      const [after, additionalFiles] = await Promise.all([
+        snapshotFileSystem(forOrg(orgId)),
+        Promise.all(
+          Array.from(rememberedOrgPaths.get(orgId) ?? [], async (path) => ({
+            path,
+            content: readAdditionalPath
+              ? await readAdditionalPath(path)
+              : await readSnapshotContent(forOrg(orgId), path),
+          })),
+        ),
+      ]);
+      for (const { path, content } of additionalFiles) {
+        if (content !== null) {
+          after[path] = content;
+        }
+      }
+      return diffSnapshots(preset.snapshot, after);
+    },
   };
 };
 
@@ -1717,7 +1775,7 @@ const getReadableScenarioFileSystem = async (
 
 const getConnectionRuntime = (ctx: BackofficeScenarioContext, orgId: string) =>
   createBackofficeToolContext(
-    createRouteBackedRuntimeContext({
+    createCodemodeRouteBackedRuntimeContext({
       runtime: ctx.runtime.services,
       kernel: new BackofficeKernel(ctx.runtime.services),
       execution: createBackofficeSystemExecution({ kind: "org", orgId }),
@@ -1805,10 +1863,12 @@ const runScenarioCodemode = async (
 ) => {
   ctx.rememberOrg(input.orgId);
 
-  const runtimeContext = createRouteBackedRuntimeContext({
+  const kernel = new BackofficeKernel(ctx.runtime.services);
+  const execution = createBackofficeSystemExecution({ kind: "org", orgId: input.orgId });
+  const runtimeContext = createCodemodeRouteBackedRuntimeContext({
     runtime: ctx.runtime.services,
-    kernel: new BackofficeKernel(ctx.runtime.services),
-    execution: createBackofficeSystemExecution({ kind: "org", orgId: input.orgId }),
+    kernel,
+    execution,
   });
   const toolContext = createBackofficeToolContext(runtimeContext);
   const loader = ctx.runtime.env.LOADER;
@@ -1817,7 +1877,6 @@ const runScenarioCodemode = async (
   }
   const result = await runBackofficeCodemode({
     code: input.code,
-    fs: ctx.files.forOrg(input.orgId),
     env: { LOADER: loader, compileWorker: ctx.runtime.env.compileWorker },
     timeout: input.timeout,
     families: runtimeToolFamilies,
@@ -2436,12 +2495,12 @@ const buildStepBuilders = <
               code:
                 input.content instanceof Uint8Array
                   ? `async () => {
-  await state.writeFileBytes(${JSON.stringify(input.path)}, new Uint8Array(${JSON.stringify([
-    ...input.content,
-  ])}));
+  await state.writeFileBytes({ path: ${JSON.stringify(input.path)}, content: new Uint8Array(${JSON.stringify(
+    [...input.content],
+  )}) });
 }`
                   : `async () => {
-  await state.writeFile(${JSON.stringify(input.path)}, ${JSON.stringify(input.content)});
+  await state.writeFile({ path: ${JSON.stringify(input.path)}, content: ${JSON.stringify(input.content)} });
 }`,
             });
           },
@@ -3808,7 +3867,16 @@ const buildStepBuilders = <
       diff: (input) =>
         createStep("then", "files.diff", `assert file diff ${input.orgId}`, async (ctx) => {
           ctx.rememberOrg(input.orgId);
-          const diff = await ctx.files.diff(input.orgId);
+          ctx.files.rememberOrgPaths(
+            input.orgId,
+            (input.include ?? []).map((expected) =>
+              typeof expected === "string" ? expected : expected.path,
+            ),
+          );
+          const diff = await ctx.files.diff(input.orgId, async (path) => {
+            const fs = await getReadableScenarioFileSystem(ctx, input.orgId, path);
+            return fs ? await readSnapshotContent(fs, path) : null;
+          });
           if (!input.include || input.include.length === 0) {
             if (diff.length === 0) {
               throw new Error(`Expected file diff for ${input.orgId}, got no changes.`);

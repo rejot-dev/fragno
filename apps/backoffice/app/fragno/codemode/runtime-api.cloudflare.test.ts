@@ -22,7 +22,8 @@ describe("normalizeCode", () => {
   });
 
   test("does not strip `return` that is not at the top level", () => {
-    const code = "async () => { return await state.readFile('/workspace/codemode.d.ts'); }";
+    const code =
+      "async () => { return await state.readFile({ path: '/workspace/codemode.d.ts' }); }";
     expect(normalizeCode(code)).toBe(code);
   });
 

@@ -1,7 +1,6 @@
 import { describe, expect, test, assert } from "vitest";
 
 import { env } from "cloudflare:workers";
-import { InMemoryFs } from "just-bash";
 
 import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import {
@@ -12,11 +11,13 @@ import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry, McpObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { MasterFileSystem } from "@/files/master-file-system";
-import type { ResolvedFileMount } from "@/files/types";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
+import {
+  MemoryUploadObject,
+  createTestStateBackend,
+} from "@/fragno/codemode/state-backend.test-utils";
 import type { RegisteredAutomationsRuntime } from "@/fragno/runtime-tools/bash-host";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 import { type EventRuntime } from "@/fragno/runtime-tools/families/event";
@@ -30,57 +31,59 @@ import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 describe("runBackofficeCodemode", () => {
-  test("runs dynamic worker code with state.* against a mounted filesystem", async () => {
-    const fs = createTestMasterFileSystem({
-      "/workspace/input.txt": "hello",
-    });
+  test("runs dynamic worker code with state.* against Upload", async () => {
+    const upload = new MemoryUploadObject({ "input.txt": "hello" });
+    const stateBackend = createTestStateBackend({ upload });
 
     const result = await runBackofficeCodemode({
       env,
-      fs,
       families: runtimeToolFamilies,
-      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+      toolContext: createTrustedSystemBackofficeToolContext({
+        runtimes: { state: stateBackend },
+      }),
       code: `async () => {
-        const input = await state.readFile("/workspace/input.txt");
-        await state.writeFile("/workspace/output.txt", input + " codemode");
+        const input = await state.readFile({ path: "/workspace/input.txt" });
+        await state.writeFile({ path: "/workspace/output.txt", content: input + " codemode" });
         console.log("wrote output");
-        return await state.readFile("/workspace/output.txt");
+        return await state.readFile({ path: "/workspace/output.txt" });
       }`,
     });
 
     expect(result.error).toBeUndefined();
     assert(result.result === "hello codemode");
     expect(result.logs).toContain("wrote output");
-    await expect(fs.readFile("/workspace/output.txt")).resolves.toBe("hello codemode");
+    await expect(stateBackend.readFile("/workspace/output.txt")).resolves.toBe("hello codemode");
   });
 
   test("awaits promise-valued expression codemode", async () => {
-    const fs = createTestMasterFileSystem({
-      "/workspace/input.txt": "hello expression",
+    const stateBackend = createTestStateBackend({
+      upload: new MemoryUploadObject({ "input.txt": "hello expression" }),
     });
 
     const result = await runBackofficeCodemode({
       env,
-      fs,
       families: runtimeToolFamilies,
-      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
-      code: `state.readFile("/workspace/input.txt")`,
+      toolContext: createTrustedSystemBackofficeToolContext({
+        runtimes: { state: stateBackend },
+      }),
+      code: `state.readFile({ path: "/workspace/input.txt" })`,
     });
 
     expect(result.error).toBeUndefined();
     assert(result.result === "hello expression");
   });
 
-  test("reports unsupported test state tools explicitly", async () => {
+  test("does not expose unsupported state tools", async () => {
     const result = await runBackofficeCodemode({
       env,
-      fs: createTestMasterFileSystem({}),
       families: runtimeToolFamilies,
-      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+      toolContext: createTrustedSystemBackofficeToolContext({
+        runtimes: { state: createTestStateBackend() },
+      }),
       code: `async () => await state.find("/")`,
     });
 
-    assert(result.error === "state.find is not implemented for test codemode.");
+    assert(result.error === "Unknown tool: find");
   });
 
   test("calls automation identity tools through codemode providers", async () => {
@@ -117,7 +120,6 @@ describe("runBackofficeCodemode", () => {
 
     const result = await runBackofficeCodemode({
       env,
-      fs: createTestMasterFileSystem({}),
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({
         runtimes: { automations: automationsRuntime },
@@ -188,7 +190,6 @@ describe("runBackofficeCodemode", () => {
 
     const result = await runBackofficeCodemode({
       env,
-      fs: createTestMasterFileSystem({}),
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { event: eventRuntime } }),
       code: `async () => {
@@ -245,7 +246,6 @@ describe("runBackofficeCodemode", () => {
 
     const result = await runBackofficeCodemode({
       env,
-      fs: createTestMasterFileSystem({}),
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { otp: otpRuntime } }),
       code: `async () => {
@@ -302,7 +302,6 @@ describe("runBackofficeCodemode", () => {
 
     const result = await runBackofficeCodemode({
       env,
-      fs: createTestMasterFileSystem({}),
       families: runtimeToolFamilies,
       toolContext: systemContext.createScopedContext({ kind: "org", orgId: "org-1" }),
       code: `async () => {
@@ -360,7 +359,6 @@ describe("runBackofficeCodemode", () => {
 
     const result = await runBackofficeCodemode({
       env,
-      fs: createTestMasterFileSystem({}),
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({
         runtimes: { telegram: telegramRuntime },
@@ -457,7 +455,6 @@ describe("runBackofficeCodemode", () => {
 
     const result = await runBackofficeCodemode({
       env,
-      fs: createTestMasterFileSystem({}),
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { mcp: mcpRuntime } }),
       code: `async () => {
@@ -523,7 +520,6 @@ describe("runBackofficeCodemode", () => {
     await expect(
       runBackofficeCodemode({
         env,
-        fs: createTestMasterFileSystem({}),
         families: runtimeToolFamilies,
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { mcp: mcpRuntime } }),
         code: `async () => "ok"`,
@@ -534,7 +530,6 @@ describe("runBackofficeCodemode", () => {
   test("does not expose runtime tools that were not provided", async () => {
     const result = await runBackofficeCodemode({
       env,
-      fs: createTestMasterFileSystem({}),
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       code: `async () => {
@@ -575,7 +570,6 @@ describe("runBackofficeCodemode", () => {
 
     const result = await runBackofficeCodemode({
       env,
-      fs: createTestMasterFileSystem({}),
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({
         runtimes: { automations: automationsRuntime },
@@ -608,7 +602,6 @@ describe("runBackofficeCodemode", () => {
 
     const result = await runBackofficeCodemode({
       env,
-      fs: createTestMasterFileSystem({}),
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { otp: otpRuntime } }),
       code: `async () => {
@@ -644,7 +637,6 @@ describe("runBackofficeCodemode", () => {
 
     const result = await runBackofficeCodemode({
       env,
-      fs: createTestMasterFileSystem({}),
       families: runtimeToolFamilies,
       toolContext: context,
       code: `async () => {
@@ -700,7 +692,6 @@ describe("runBackofficeCodemode", () => {
 
       const result = await runBackofficeCodemode({
         env,
-        fs: createTestMasterFileSystem({}),
         families: runtimeToolFamilies,
         toolContext: createBackofficeToolContext(routeContext),
         code: `async () => {
@@ -744,7 +735,6 @@ describe("runBackofficeCodemode", () => {
 
       const result = await runBackofficeCodemode({
         env,
-        fs: createTestMasterFileSystem({}),
         families: runtimeToolFamilies,
         toolContext: createBackofficeToolContext(routeContext),
         code: `async () => {
@@ -805,7 +795,6 @@ describe("runBackofficeCodemode", () => {
   test("blocks direct network access by default", async () => {
     const result = await runBackofficeCodemode({
       env,
-      fs: createTestMasterFileSystem({}),
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       code: `async () => {
@@ -901,52 +890,5 @@ const createScopedMcpRuntimeServices = (
         sandbox: false,
       },
     },
-  };
-};
-
-const createTestMasterFileSystem = (files: Record<string, string | Uint8Array>): MasterFileSystem =>
-  new MasterFileSystem({
-    mounts: [createMount("workspace", "/workspace", files)],
-  });
-
-const createMount = (
-  id: string,
-  mountPoint: string,
-  files: Record<string, string | Uint8Array>,
-): ResolvedFileMount => ({
-  id,
-  kind: "custom",
-  mountPoint,
-  title: id,
-  readOnly: false,
-  persistence: "session",
-  fs: createMountedInMemoryFs(files),
-});
-
-const createMountedInMemoryFs = (files: Record<string, string | Uint8Array>) => {
-  const fs = new InMemoryFs(files);
-
-  return {
-    readFile: (path: string) => fs.readFile(path),
-    readFileBuffer: (path: string) => fs.readFileBuffer(path),
-    writeFile: (path: string, content: string | Uint8Array) => fs.writeFile(path, content),
-    appendFile: (path: string, content: string | Uint8Array) => fs.appendFile(path, content),
-    exists: (path: string) => fs.exists(path),
-    stat: (path: string) => fs.stat(path),
-    mkdir: (path: string, options?: { recursive?: boolean }) => fs.mkdir(path, options),
-    readdir: (path: string) => fs.readdir(path),
-    readdirWithFileTypes: (path: string) => fs.readdirWithFileTypes(path),
-    rm: (path: string, options?: { recursive?: boolean; force?: boolean }) => fs.rm(path, options),
-    cp: (src: string, dest: string, options?: { recursive?: boolean }) => fs.cp(src, dest, options),
-    mv: (src: string, dest: string) => fs.mv(src, dest),
-    resolvePath: (base: string, path: string) => fs.resolvePath(base, path),
-    getAllPaths: () => fs.getAllPaths(),
-    chmod: (path: string, mode: number) => fs.chmod(path, mode),
-    symlink: (target: string, linkPath: string) => fs.symlink(target, linkPath),
-    link: (existingPath: string, newPath: string) => fs.link(existingPath, newPath),
-    readlink: (path: string) => fs.readlink(path),
-    lstat: (path: string) => fs.lstat(path),
-    realpath: (path: string) => fs.realpath(path),
-    utimes: (path: string, atime: Date, mtime: Date) => fs.utimes(path, atime, mtime),
   };
 };
