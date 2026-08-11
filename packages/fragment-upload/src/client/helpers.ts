@@ -43,13 +43,9 @@ export type SearchFileCandidatesOptions = {
 
 export type HydrateSearchMatchesOptions = StateSearchOptions & {
   provider: string;
+  searchOffset?: number;
   maxBytes: number;
 };
-
-export type SearchFilesOptions = StateSearchOptions &
-  SearchFileCandidatesOptions & {
-    maxBytes: number;
-  };
 
 export type SearchFileCandidate = {
   key: string;
@@ -65,17 +61,20 @@ export type SearchFileCandidatesResult = {
   hasMoreCandidates: boolean;
 };
 
+export type SearchTruncationReason = "max_matches" | "max_bytes";
+
 export type HydrateSearchMatchesResult = {
   matches: StateTextMatch[];
   scannedFiles: number;
+  scannedBytes: number;
   consumedCandidates: number;
   skippedCandidates: Array<{
     key: string;
     reason: "not_found" | "too_large";
   }>;
+  nextSearchOffset?: number;
+  truncated: false | { reason: SearchTruncationReason };
 };
-
-export type SearchFilesResult = SearchFileCandidatesResult & HydrateSearchMatchesResult;
 
 export type UploadCreateResponse = {
   uploadId: string;
@@ -102,7 +101,9 @@ export type UploadCreateResponse = {
   };
 };
 
-export type UploadTransferResult = { upload: UploadCreateResponse } & UploadCompletionResult;
+export type UploadTransferResult = {
+  upload: UploadCreateResponse;
+} & UploadCompletionResult;
 
 export type UploadHelpers = {
   createUploadAndTransfer: (
@@ -120,11 +121,6 @@ export type UploadHelpers = {
     query: string,
     options: HydrateSearchMatchesOptions,
   ) => Promise<HydrateSearchMatchesResult>;
-  searchFiles: (
-    glob: string,
-    query: string,
-    options: SearchFilesOptions,
-  ) => Promise<SearchFilesResult>;
 };
 
 const DEFAULT_CONTENT_TYPE = "application/octet-stream";
@@ -694,7 +690,7 @@ export const createUploadHelpers = (input: {
       throw new Error("Search byte budget must be a positive number");
     }
 
-    const { provider, maxBytes, ...searchOptions } = options;
+    const { provider, searchOffset, maxBytes, ...searchOptions } = options;
     return await fetchJson<HydrateSearchMatchesResult>("/files/search/hydrate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -703,40 +699,10 @@ export const createUploadHelpers = (input: {
         candidateKeys,
         query,
         options: searchOptions,
+        searchOffset,
         maxBytes,
       }),
     });
-  };
-
-  const searchFiles: UploadHelpers["searchFiles"] = async (glob, query, options) => {
-    const { provider, maxCandidateFiles, cursor, maxBytes, ...searchOptions } = options;
-    const candidates = await searchFileCandidates(glob, query, {
-      provider,
-      maxCandidateFiles,
-      cursor,
-    });
-    const hydrated =
-      candidates.candidates.length === 0
-        ? {
-            matches: [],
-            scannedFiles: 0,
-            consumedCandidates: 0,
-            skippedCandidates: [],
-          }
-        : await hydrateSearchMatches(
-            candidates.candidates.map((candidate) => candidate.key),
-            query,
-            {
-              provider,
-              maxBytes,
-              ...searchOptions,
-            },
-          );
-
-    return {
-      ...candidates,
-      ...hydrated,
-    };
   };
 
   const downloadFile: UploadHelpers["downloadFile"] = async (fileKey, options) => {
@@ -865,6 +831,5 @@ export const createUploadHelpers = (input: {
     downloadFile,
     hydrateSearchMatches,
     searchFileCandidates,
-    searchFiles,
   };
 };

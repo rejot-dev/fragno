@@ -153,7 +153,7 @@ describe("Upload file collection", () => {
     await drainDurableHooks(uploadTest.fragments.upload.fragment);
     requests.length = 0;
 
-    const matches = await createCollection(object, "workspace").search("revenue");
+    const { matches } = await createCollection(object, "workspace").searchFiles("**", "revenue");
 
     expect(requests.map((request) => request.pathname)).toEqual([
       "/api/upload/files/search",
@@ -167,6 +167,52 @@ describe("Upload file collection", () => {
         text: "Revenue",
       }),
     ]);
+  });
+
+  test("paginates matches within one indexed Upload file", async () => {
+    const { object } = createUploadObject();
+    await uploadFile(object, {
+      fileKey: "workspace/repeated.txt",
+      content: "needle needle needle",
+    });
+    await drainDurableHooks(uploadTest.fragments.upload.fragment);
+
+    const collection = createCollection(object, "workspace");
+    const firstPage = await collection.searchFiles("**", "needle", { maxMatches: 1 });
+    assert(firstPage.cursor);
+    expect(JSON.parse(Buffer.from(firstPage.cursor, "base64url").toString("utf8"))).toMatchObject({
+      version: 3,
+      candidateOffset: 0,
+      searchOffset: 7,
+    });
+    const secondPage = await collection.searchFiles(
+      "**",
+      "needle",
+      { maxMatches: 1 },
+      firstPage.cursor,
+    );
+    const thirdPage = await collection.searchFiles(
+      "**",
+      "needle",
+      { maxMatches: 1 },
+      secondPage.cursor,
+    );
+
+    expect(firstPage).toMatchObject({
+      matches: [expect.objectContaining({ path: "repeated.txt", column: 1 })],
+      cursor: expect.any(String),
+      hasMore: true,
+    });
+    expect(secondPage).toMatchObject({
+      matches: [expect.objectContaining({ path: "repeated.txt", column: 8 })],
+      cursor: expect.any(String),
+      hasMore: true,
+    });
+    expect(thirdPage).toMatchObject({
+      matches: [expect.objectContaining({ path: "repeated.txt", column: 15 })],
+      hasMore: false,
+    });
+    expect(thirdPage.cursor).toBeUndefined();
   });
 
   test("retrieves a complete Upload tree across metadata pages", async () => {

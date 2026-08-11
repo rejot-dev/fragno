@@ -1,7 +1,23 @@
-import { searchTextContent, shouldIndexContentType } from "@fragno-dev/upload/text-index";
+import {
+  globToRegExp,
+  searchTextContent,
+  shouldIndexContentType,
+} from "@fragno-dev/upload/text-index";
+import { z } from "zod";
 
 import { createFileTree } from "./create-file-tree";
-import type { FileCollection, FileSearchMatch, FileTreeEntry } from "./file-collection";
+import {
+  createFileSearchFingerprint,
+  type FileCollection,
+  type FileSearchMatch,
+  type FileTreeEntry,
+} from "./file-collection";
+
+const staticFileSearchCursorSchema = z.object({
+  version: z.literal(1),
+  fingerprint: z.string(),
+  offset: z.number().int().nonnegative(),
+});
 
 /**
  * Creates a collection whose tree and contents are both held in memory.
@@ -78,28 +94,72 @@ export function createStaticFileCollection(
         sizeBytes: file.sizeBytes,
       };
     },
-    async search(query, options = {}) {
+    async searchFiles(pattern, query, options = {}, cursor) {
       const maxMatches = options.maxMatches ?? 50;
-      const matches: FileSearchMatch[] = [];
+      if (maxMatches <= 0 || query.length === 0) {
+        return { matches: [], hasMore: false };
+      }
 
-      for (const [path, file] of contents) {
-        if (matches.length >= maxMatches || !shouldIndexContentType(file.contentType)) {
-          continue;
+      const fingerprint = createFileSearchFingerprint(pattern, query, options);
+      let offset = 0;
+      if (cursor !== undefined) {
+        try {
+          const position = staticFileSearchCursorSchema.parse(
+            JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")),
+          );
+          if (position.fingerprint !== fingerprint) {
+            throw new Error("Search changed.");
+          }
+          offset = position.offset;
+        } catch {
+          throw new Error("Invalid static file search cursor.");
         }
+      }
 
+      const expression = globToRegExp(pattern);
+      const matches: FileSearchMatch[] = [];
+      const matchingFiles = [...contents]
+        .filter(([path, file]) => expression.test(path) && shouldIndexContentType(file.contentType))
+        .sort(([leftPath], [rightPath]) => leftPath.localeCompare(rightPath));
+      const searchLimit = offset + maxMatches + 1;
+
+      for (const [path, file] of matchingFiles) {
+        if (matches.length >= searchLimit) {
+          break;
+        }
         const text =
           typeof file.content === "string"
             ? file.content
             : new TextDecoder("utf-8", { fatal: false }).decode(file.content);
+        const lines = text.split(/\r?\n/);
         matches.push(
           ...searchTextContent(path, text, query, {
             ...options,
-            maxMatches: maxMatches - matches.length,
-          }),
+            maxMatches: searchLimit - matches.length,
+          }).map((match) => ({
+            ...match,
+            lineText: lines[match.line - 1] ?? "",
+          })),
         );
       }
 
-      return matches;
+      const pageMatches = matches.slice(offset, offset + maxMatches);
+      const hasMore = matches.length > offset + pageMatches.length;
+      return {
+        matches: pageMatches,
+        ...(hasMore
+          ? {
+              cursor: Buffer.from(
+                JSON.stringify({
+                  version: 1,
+                  fingerprint,
+                  offset: offset + pageMatches.length,
+                }),
+              ).toString("base64url"),
+            }
+          : {}),
+        hasMore,
+      };
     },
   };
 }

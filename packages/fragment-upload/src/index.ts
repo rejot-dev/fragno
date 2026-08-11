@@ -54,8 +54,6 @@ export type {
   HydrateSearchMatchesResult,
   SearchFileCandidate,
   SearchFileCandidatesResult,
-  SearchFilesOptions,
-  SearchFilesResult,
   UploadHelpers,
   UploadProgress,
 } from "./client/helpers";

@@ -43,8 +43,8 @@ export function createBackofficeStaticFileCollection(
     async getFile(path) {
       return (await getCollection()).getFile(path);
     },
-    async search(query, options) {
-      return (await getCollection()).search(query, options);
+    async searchFiles(pattern, query, options, cursor) {
+      return (await getCollection()).searchFiles(pattern, query, options, cursor);
     },
   };
 }

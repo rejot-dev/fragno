@@ -25,6 +25,10 @@ export type StateSearchOptions = {
   maxMatches?: number;
 };
 
+export type SearchTextContentOptions = StateSearchOptions & {
+  startOffset?: number;
+};
+
 export type StateTextMatch = {
   path: string;
   line: number;
@@ -32,12 +36,15 @@ export type StateTextMatch = {
   startOffset: number;
   endOffset: number;
   text: string;
+  lineText: string;
   contextBefore: string[];
   contextAfter: string[];
 };
 
 const DEFAULT_MIN_TERM_LENGTH = 2;
 const DEFAULT_MAX_TERM_LENGTH = 128;
+export const MAX_SEARCH_LINE_TEXT_LENGTH = 2048;
+export const MAX_SEARCH_CONTEXT_LINE_LENGTH = 256;
 const TEXT_CONTENT_TYPES = [
   "application/javascript",
   "application/json",
@@ -133,7 +140,7 @@ const isWholeWordMatch = (text: string, startOffset: number, endOffset: number) 
   return (!before || !isWordCharacter(before)) && (!after || !isWordCharacter(after));
 };
 
-const getLineStarts = (text: string): number[] => {
+export const getTextLineStarts = (text: string): number[] => {
   const starts = [0];
   for (let index = 0; index < text.length; index += 1) {
     if (text[index] === "\n") {
@@ -143,7 +150,7 @@ const getLineStarts = (text: string): number[] => {
   return starts;
 };
 
-const getLineForOffset = (lineStarts: number[], offset: number) => {
+export const findTextLineIndex = (lineStarts: readonly number[], offset: number) => {
   let low = 0;
   let high = lineStarts.length - 1;
   while (low <= high) {
@@ -164,11 +171,30 @@ const getLineForOffset = (lineStarts: number[], offset: number) => {
 
 const getLines = (text: string) => text.split(/\r?\n/);
 
+const truncateSearchLine = (line: string, maxLength: number, focusOffset?: number): string => {
+  if (line.length <= maxLength) {
+    return line;
+  }
+
+  const ellipsis = "…";
+  if (focusOffset === undefined) {
+    return `${line.slice(0, maxLength - ellipsis.length)}${ellipsis}`;
+  }
+
+  const contentLength = maxLength - ellipsis.length * 2;
+  const start = Math.min(
+    line.length - contentLength,
+    Math.max(0, focusOffset - Math.floor(contentLength / 2)),
+  );
+  const end = start + contentLength;
+  return `${start > 0 ? ellipsis : ""}${line.slice(start, end)}${end < line.length ? ellipsis : ""}`;
+};
+
 export const searchTextContent = (
   path: string,
   text: string,
   query: string,
-  options: StateSearchOptions = {},
+  options: SearchTextContentOptions = {},
 ): StateTextMatch[] => {
   const maxMatches = options.maxMatches ?? 50;
   if (maxMatches <= 0 || query.length === 0) {
@@ -181,10 +207,10 @@ export const searchTextContent = (
 
   const haystack = options.caseSensitive ? text : text.toLocaleLowerCase();
   const needle = options.caseSensitive ? query : query.toLocaleLowerCase();
-  const lineStarts = getLineStarts(text);
+  const lineStarts = getTextLineStarts(text);
   const lines = getLines(text);
   const matches: StateTextMatch[] = [];
-  let searchOffset = 0;
+  let searchOffset = Math.min(text.length, Math.max(0, Math.trunc(options.startOffset ?? 0)));
 
   while (matches.length < maxMatches) {
     const startOffset = haystack.indexOf(needle, searchOffset);
@@ -199,7 +225,7 @@ export const searchTextContent = (
       continue;
     }
 
-    const lineIndex = getLineForOffset(lineStarts, startOffset);
+    const lineIndex = findTextLineIndex(lineStarts, startOffset);
     const lineStart = lineStarts[lineIndex] ?? 0;
     const contextBefore = Math.max(0, options.contextBefore ?? 0);
     const contextAfter = Math.max(0, options.contextAfter ?? 0);
@@ -211,8 +237,17 @@ export const searchTextContent = (
       startOffset,
       endOffset,
       text: text.slice(startOffset, endOffset),
-      contextBefore: lines.slice(Math.max(0, lineIndex - contextBefore), lineIndex),
-      contextAfter: lines.slice(lineIndex + 1, lineIndex + 1 + contextAfter),
+      lineText: truncateSearchLine(
+        lines[lineIndex] ?? "",
+        MAX_SEARCH_LINE_TEXT_LENGTH,
+        startOffset - lineStart,
+      ),
+      contextBefore: lines
+        .slice(Math.max(0, lineIndex - contextBefore), lineIndex)
+        .map((line) => truncateSearchLine(line, MAX_SEARCH_CONTEXT_LINE_LENGTH)),
+      contextAfter: lines
+        .slice(lineIndex + 1, lineIndex + 1 + contextAfter)
+        .map((line) => truncateSearchLine(line, MAX_SEARCH_CONTEXT_LINE_LENGTH)),
     });
   }
 
@@ -238,6 +273,12 @@ export const globToRegExp = (glob: string) => {
   for (let index = 0; index < normalized.length; index += 1) {
     const char = normalized[index];
     const next = normalized[index + 1];
+    const afterNext = normalized[index + 2];
+    if (char === "*" && next === "*" && afterNext === "/") {
+      pattern += "(?:.*/)?";
+      index += 2;
+      continue;
+    }
     if (char === "*" && next === "*") {
       pattern += ".*";
       index += 1;

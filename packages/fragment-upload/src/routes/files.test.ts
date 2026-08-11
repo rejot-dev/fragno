@@ -1060,6 +1060,77 @@ describe("upload file routes", async () => {
     assert(response.data.files[0]?.fileKey.startsWith("users/1/"));
   });
 
+  it("GET /files filters prefix-scoped pages with a glob", async () => {
+    const createForm = (fileKey: string) => {
+      const form = new FormData();
+      form.set("file", new File([fileKey], fileKey.split("/").at(-1) ?? "file.txt"));
+      form.set("provider", provider);
+      form.set("fileKey", fileKey);
+      return form;
+    };
+
+    await fragment.callRoute("POST", "/files", {
+      body: createForm("projects/one.ts"),
+    });
+    await fragment.callRoute("POST", "/files", {
+      body: createForm("projects/nested/two.ts"),
+    });
+    await fragment.callRoute("POST", "/files", {
+      body: createForm("outside/three.ts"),
+    });
+
+    const response = await fragment.callRoute("GET", "/files", {
+      query: { glob: "projects/**/*.ts", pageSize: "20" },
+    });
+
+    assert(response.type === "json");
+    expect(response.data.files.map((file) => file.fileKey)).toEqual([
+      "projects/nested/two.ts",
+      "projects/one.ts",
+    ]);
+  });
+
+  it("GET /files preserves the underlying cursor when a glob produces an empty page", async () => {
+    const createForm = (fileKey: string) => {
+      const form = new FormData();
+      form.set("file", new File([fileKey], fileKey.split("/").at(-1) ?? "file.txt"));
+      form.set("provider", provider);
+      form.set("fileKey", fileKey);
+      return form;
+    };
+
+    await fragment.callRoute("POST", "/files", {
+      body: createForm("scope/a.bin"),
+    });
+    await fragment.callRoute("POST", "/files", {
+      body: createForm("scope/b.txt"),
+    });
+
+    const firstPage = await fragment.callRoute("GET", "/files", {
+      query: { glob: "scope/*.txt", pageSize: "1" },
+    });
+    assert(firstPage.type === "json");
+    expect(firstPage.data.files).toEqual([]);
+    assert(firstPage.data.hasNextPage);
+    assert(firstPage.data.cursor);
+
+    const secondPage = await fragment.callRoute("GET", "/files", {
+      query: { glob: "scope/*.txt", pageSize: "1", cursor: firstPage.data.cursor },
+    });
+    assert(secondPage.type === "json");
+    expect(secondPage.data.files.map((file) => file.fileKey)).toEqual(["scope/b.txt"]);
+  });
+
+  it("GET /files rejects combining prefix and glob", async () => {
+    const response = await fragment.callRoute("GET", "/files", {
+      query: { prefix: "projects/", glob: "projects/**/*.ts" },
+    });
+
+    assert(response.type === "error");
+    assert(response.status === 400);
+    assert(response.error.code === "INVALID_REQUEST");
+  });
+
   it("GET /files supports larger explicit page sizes", async () => {
     const response = await fragment.callRoute("GET", "/files", {
       query: { pageSize: "200" },
@@ -1078,6 +1149,21 @@ describe("upload file routes", async () => {
     assert(response.type === "error");
     assert(response.status === 400);
     assert(response.error.code === "INVALID_REQUEST");
+  });
+
+  it("POST /files/search/hydrate rejects search offsets above 30 MiB", async () => {
+    const response = await fragment.callRoute("POST", "/files/search/hydrate", {
+      body: {
+        provider,
+        candidateKeys: ["workspace/file.txt"],
+        query: "workflow",
+        searchOffset: 30 * 1024 * 1024 + 1,
+        maxBytes: 30 * 1024 * 1024,
+      },
+    });
+
+    assert(response.type === "error");
+    assert(response.status === 400);
   });
 
   it("POST /files/search/hydrate rejects hydration budgets above 30 MiB", async () => {

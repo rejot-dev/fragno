@@ -6,6 +6,7 @@ import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test"
 import { uploadFragmentDefinition } from "../../definition";
 import { uploadRoutes } from "../../routes";
 import { uploadSchema } from "../../schema";
+import { MAX_SEARCH_LINE_TEXT_LENGTH } from "../../text-index";
 import { createDatabaseStorageAdapter } from "../db";
 import type { StorageAdapter } from "../types";
 
@@ -255,6 +256,7 @@ describe("database storage adapter", () => {
             ],
             "endOffset": 65,
             "line": 2,
+            "lineText": "export const createWorkflow = () => workflow();",
             "path": "workspace/src/workflows.ts",
             "startOffset": 51,
             "text": "createWorkflow",
@@ -267,15 +269,78 @@ describe("database storage adapter", () => {
             ],
             "endOffset": 100,
             "line": 3,
+            "lineText": "createWorkflow();",
             "path": "workspace/src/workflows.ts",
             "startOffset": 86,
             "text": "createWorkflow",
           },
         ],
+        "scannedBytes": 103,
         "scannedFiles": 1,
         "skippedCandidates": [],
+        "truncated": false,
       }
     `);
+  });
+
+  it("falls back to document candidates for literal queries without index terms", async () => {
+    const { fragment } = build.fragments.upload;
+    const content = "export const transform = (value) => value => value;";
+    const form = new FormData();
+    form.set("provider", storage.name);
+    form.set("fileKey", "workspace/src/operator.ts");
+    form.set("file", new File([content], "operator.ts", { type: "application/typescript" }));
+    const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
+    assert(uploadResponse.type === "json");
+    await drainDurableHooks(fragment);
+
+    const candidateResponse = await fragment.callRoute("POST", "/files/search", {
+      body: {
+        provider: storage.name,
+        glob: "/workspace/**/*.ts",
+        query: "=>",
+      },
+    });
+
+    assert(candidateResponse.type === "json");
+    expect(candidateResponse.data.candidates).toEqual([
+      {
+        key: "workspace/src/operator.ts",
+        positions: [],
+        count: 0,
+      },
+    ]);
+
+    const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
+      body: {
+        provider: storage.name,
+        candidateKeys: candidateResponse.data.candidates.map((candidate) => candidate.key),
+        query: "=>",
+        maxBytes: 1024 * 1024,
+      },
+    });
+
+    assert(hydrateResponse.type === "json");
+    expect(hydrateResponse.data.matches).toMatchObject([
+      {
+        path: "workspace/src/operator.ts",
+        line: 1,
+        text: "=>",
+        lineText: "export const transform = (value) => value => value;",
+      },
+      {
+        path: "workspace/src/operator.ts",
+        line: 1,
+        text: "=>",
+        lineText: "export const transform = (value) => value => value;",
+      },
+    ]);
+    expect(hydrateResponse.data).toMatchObject({
+      scannedFiles: 1,
+      scannedBytes: Buffer.byteLength(content),
+      consumedCandidates: 1,
+      truncated: false,
+    });
   });
 
   it("indexes a batch upload only after atomic publication", async () => {
@@ -498,6 +563,7 @@ describe("database storage adapter", () => {
             "contextBefore": [],
             "endOffset": 27,
             "line": 1,
+            "lineText": "export const createWorkflow = 'workspace/src/a.ts';",
             "path": "workspace/src/a.ts",
             "startOffset": 13,
             "text": "createWorkflow",
@@ -508,13 +574,16 @@ describe("database storage adapter", () => {
             "contextBefore": [],
             "endOffset": 27,
             "line": 1,
+            "lineText": "export const createWorkflow = 'workspace/src/b.ts';",
             "path": "workspace/src/b.ts",
             "startOffset": 13,
             "text": "createWorkflow",
           },
         ],
+        "scannedBytes": 104,
         "scannedFiles": 2,
         "skippedCandidates": [],
+        "truncated": false,
       }
     `);
 
@@ -538,15 +607,189 @@ describe("database storage adapter", () => {
             "contextBefore": [],
             "endOffset": 27,
             "line": 1,
+            "lineText": "export const createWorkflow = 'workspace/src/c.ts';",
             "path": "workspace/src/c.ts",
             "startOffset": 13,
             "text": "createWorkflow",
           },
         ],
+        "scannedBytes": 52,
         "scannedFiles": 1,
         "skippedCandidates": [],
+        "truncated": false,
       }
     `);
+  });
+
+  it("resumes hydration from a character offset within one file", async () => {
+    const { fragment } = build.fragments.upload;
+    const fileKey = "workspace/src/repeated.txt";
+    const content = "needle needle needle needle needle";
+    const form = new FormData();
+    form.set("provider", storage.name);
+    form.set("fileKey", fileKey);
+    form.set("file", new File([content], "repeated.txt", { type: "text/plain" }));
+    const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
+    assert(uploadResponse.type === "json");
+    await drainDurableHooks(fragment);
+
+    const firstPage = await fragment.callRoute("POST", "/files/search/hydrate", {
+      body: {
+        provider: storage.name,
+        candidateKeys: [fileKey],
+        query: "needle",
+        options: { maxMatches: 2 },
+        maxBytes: 1024 * 1024,
+      },
+    });
+
+    assert(firstPage.type === "json");
+    expect(firstPage.data.matches.map((match) => match.startOffset)).toEqual([0, 7]);
+    expect(firstPage.data).toMatchObject({
+      consumedCandidates: 0,
+      nextSearchOffset: 14,
+      truncated: { reason: "max_matches" },
+    });
+
+    const secondPage = await fragment.callRoute("POST", "/files/search/hydrate", {
+      body: {
+        provider: storage.name,
+        candidateKeys: [fileKey],
+        query: "needle",
+        options: { maxMatches: 2 },
+        searchOffset: firstPage.data.nextSearchOffset,
+        maxBytes: 1024 * 1024,
+      },
+    });
+
+    assert(secondPage.type === "json");
+    expect(secondPage.data.matches.map((match) => match.startOffset)).toEqual([14, 21]);
+    expect(secondPage.data).toMatchObject({
+      consumedCandidates: 0,
+      nextSearchOffset: 28,
+      truncated: { reason: "max_matches" },
+    });
+  });
+
+  it("continues from a resumed file into the next candidate", async () => {
+    const { fragment } = build.fragments.upload;
+    const files = [
+      { key: "workspace/src/resumed-a.txt", content: "needle needle" },
+      { key: "workspace/src/resumed-b.txt", content: "needle" },
+    ];
+
+    for (const file of files) {
+      const form = new FormData();
+      form.set("provider", storage.name);
+      form.set("fileKey", file.key);
+      form.set("file", new File([file.content], file.key, { type: "text/plain" }));
+      const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
+      assert(uploadResponse.type === "json");
+    }
+    await drainDurableHooks(fragment);
+
+    const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
+      body: {
+        provider: storage.name,
+        candidateKeys: files.map((file) => file.key),
+        query: "needle",
+        options: { maxMatches: 2 },
+        searchOffset: 7,
+        maxBytes: 1024 * 1024,
+      },
+    });
+
+    assert(hydrateResponse.type === "json");
+    expect(
+      hydrateResponse.data.matches.map((match) => ({
+        path: match.path,
+        startOffset: match.startOffset,
+      })),
+    ).toEqual([
+      { path: files[0]?.key, startOffset: 7 },
+      { path: files[1]?.key, startOffset: 0 },
+    ]);
+    expect(hydrateResponse.data).toMatchObject({
+      consumedCandidates: 2,
+      truncated: false,
+    });
+    expect(hydrateResponse.data.nextSearchOffset).toBeUndefined();
+  });
+
+  it("applies a continuation offset to the current file revision", async () => {
+    const { fragment } = build.fragments.upload;
+    const fileKey = "workspace/src/replaced-between-pages.txt";
+    const uploadFile = async (content: string) => {
+      const form = new FormData();
+      form.set("provider", storage.name);
+      form.set("fileKey", fileKey);
+      form.set("file", new File([content], "replaced-between-pages.txt", { type: "text/plain" }));
+      const response = await fragment.callRoute("POST", "/files", { body: form });
+      assert(response.type === "json");
+      await drainDurableHooks(fragment);
+    };
+
+    await uploadFile("needle needle needle");
+    const firstPage = await fragment.callRoute("POST", "/files/search/hydrate", {
+      body: {
+        provider: storage.name,
+        candidateKeys: [fileKey],
+        query: "needle",
+        options: { maxMatches: 1 },
+        maxBytes: 1024 * 1024,
+      },
+    });
+    assert(firstPage.type === "json");
+    assert(firstPage.data.nextSearchOffset === 7);
+
+    await uploadFile("prefix needle needle");
+    const nextPage = await fragment.callRoute("POST", "/files/search/hydrate", {
+      body: {
+        provider: storage.name,
+        candidateKeys: [fileKey],
+        query: "needle",
+        options: { maxMatches: 1 },
+        searchOffset: firstPage.data.nextSearchOffset,
+        maxBytes: 1024 * 1024,
+      },
+    });
+
+    assert(nextPage.type === "json");
+    expect(nextPage.data.matches.map((match) => match.startOffset)).toEqual([7]);
+    assert(nextPage.data.nextSearchOffset === 14);
+  });
+
+  it("bounds repeated source lines in hydrated search responses", async () => {
+    const { fragment } = build.fragments.upload;
+    const fileKey = "workspace/src/large-line.txt";
+    const content = `${"a".repeat(10_000)}${" needle".repeat(500)}${"b".repeat(10_000)}`;
+    const form = new FormData();
+    form.set("provider", storage.name);
+    form.set("fileKey", fileKey);
+    form.set("file", new File([content], "large-line.txt", { type: "text/plain" }));
+    const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
+    assert(uploadResponse.type === "json");
+    await drainDurableHooks(fragment);
+
+    const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
+      body: {
+        provider: storage.name,
+        candidateKeys: [fileKey],
+        query: "needle",
+        options: { maxMatches: 500 },
+        maxBytes: 1024 * 1024,
+      },
+    });
+
+    assert(hydrateResponse.type === "json");
+    expect(hydrateResponse.data.matches).toHaveLength(500);
+    assert(
+      hydrateResponse.data.matches.every(
+        (match) =>
+          match.lineText.length <= MAX_SEARCH_LINE_TEXT_LENGTH && match.lineText.includes("needle"),
+      ),
+    );
+    expect(JSON.stringify(hydrateResponse.data).length).toBeLessThan(1_500_000);
   });
 
   it("hydrates only explicit candidates within the byte budget", async () => {
@@ -597,6 +840,8 @@ describe("database storage adapter", () => {
       scannedFiles: 1,
       consumedCandidates: 1,
       skippedCandidates: [],
+      nextSearchOffset: 0,
+      truncated: { reason: "max_bytes" },
     });
 
     const remainingPage = await fragment.callRoute("POST", "/files/search/hydrate", {
@@ -637,8 +882,10 @@ describe("database storage adapter", () => {
     expect(hydrateResponse.data).toEqual({
       matches: [],
       scannedFiles: 0,
+      scannedBytes: 0,
       consumedCandidates: 1,
       skippedCandidates: [{ key: fileKey, reason: "too_large" }],
+      truncated: false,
     });
   });
 
@@ -675,13 +922,16 @@ describe("database storage adapter", () => {
             "contextBefore": [],
             "endOffset": 27,
             "line": 1,
+            "lineText": "export const createWorkflow = () => {};",
             "path": "workspace/src/stale.ts",
             "startOffset": 13,
             "text": "createWorkflow",
           },
         ],
+        "scannedBytes": 40,
         "scannedFiles": 1,
         "skippedCandidates": [],
+        "truncated": false,
       }
     `);
 
@@ -701,8 +951,10 @@ describe("database storage adapter", () => {
       {
         "consumedCandidates": 1,
         "matches": [],
+        "scannedBytes": 36,
         "scannedFiles": 1,
         "skippedCandidates": [],
+        "truncated": false,
       }
     `);
   });
@@ -737,8 +989,10 @@ describe("database storage adapter", () => {
     expect(searchResponse.data).toEqual({
       matches: [],
       scannedFiles: 0,
+      scannedBytes: 0,
       consumedCandidates: 1,
       skippedCandidates: [{ key: "workspace/src/replaced.ts", reason: "not_found" }],
+      truncated: false,
     });
   });
 
@@ -789,8 +1043,10 @@ describe("database storage adapter", () => {
     expect(searchResponse.data).toEqual({
       matches: [],
       scannedFiles: 0,
+      scannedBytes: 0,
       consumedCandidates: 1,
       skippedCandidates: [{ key: "workspace/src/deleted.ts", reason: "not_found" }],
+      truncated: false,
     });
 
     await fragment.inContext(async function () {
@@ -821,8 +1077,10 @@ describe("database storage adapter", () => {
     expect(repeatedSearchResponse.data).toEqual({
       matches: [],
       scannedFiles: 0,
+      scannedBytes: 0,
       consumedCandidates: 1,
       skippedCandidates: [{ key: "workspace/src/deleted.ts", reason: "not_found" }],
+      truncated: false,
     });
   });
 

@@ -151,7 +151,7 @@ describe("Marketplace artifact files", () => {
 
     expect(result).toEqual({
       state: "error",
-      message: "Upload file tree exceeded its 1-page retrieval limit.",
+      message: "Upload file listing exceeded its 1-page retrieval limit.",
     });
     assert(requests.length === 1);
   }, 30_000);
