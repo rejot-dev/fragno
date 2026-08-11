@@ -82,12 +82,14 @@ const createTextStreamFn = (text: string) => () => {
 };
 
 const createErrorStreamFn =
-  (errorMessage: string): StreamFn =>
+  (errorMessage?: string): StreamFn =>
   () => {
     const stream = createAssistantMessageEventStream();
     const message = createAssistantMessage("");
     message.stopReason = "error";
-    message.errorMessage = errorMessage;
+    if (errorMessage !== undefined) {
+      message.errorMessage = errorMessage;
+    }
     stream.push({ type: "error", reason: "error", error: message });
     return stream;
   };
@@ -433,6 +435,148 @@ describe("Interactive chat workflow scenarios", () => {
         ],
       }),
     );
+  });
+
+  test("continues the interactive session after a provider stream error", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const streamFn = vi.fn<StreamFn>((model, context, options) => {
+      const latestMessage = context.messages.at(-1);
+      assert(latestMessage, "expected a model message");
+
+      if (modelMessageText(latestMessage) === "continue") {
+        return createTextStreamFn("continued after provider error")();
+      }
+
+      return createErrorStreamFn()(model, context, options);
+    });
+    const interactiveChatWorkflow = createInteractiveChatWorkflow({
+      name: "interactive-chat-provider-error-continuation-workflow",
+      options: {
+        model: mockModel,
+        models: createModelsForStreamFn(mockModel, streamFn),
+      },
+    });
+    const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
+
+    try {
+      await runScenario(
+        defineScenario({
+          name: "pi-harness-interactive-chat-provider-error-continuation",
+          workflows: createPiWorkflows({ workflows: config.workflows }),
+          vars: () => ({ sessionId: undefined as string | undefined }),
+          harness: {
+            configureFragments: (harness) => ({
+              pi: instantiate(piHarnessDefinition)
+                .withConfig(config)
+                .withRoutes([piRoutesFactory])
+                .withServices({ workflows: harness.fragment.services }),
+            }),
+          },
+          clients: ({ clientConfig }) => ({
+            user: createPiFragmentClients(clientConfig("pi", { runner: "user" })),
+          }),
+          runners: ["agent", "user"],
+          steps: ({ workflow, runners, clients }) => [
+            workflow.read({
+              read: async () => {
+                const session = await clients.user.useCreateSession.mutateQuery({
+                  path: { workflowName: interactiveChatWorkflow.name },
+                  body: { name: "Provider error continuation", input: {} },
+                });
+                assert(session && !Array.isArray(session), "expected session response");
+                return session.id;
+              },
+              storeAs: "sessionId",
+            }),
+            runners.agent.runUntilIdle({
+              workflow: interactiveChatWorkflow.name,
+              instanceId: (ctx) => ctx.vars.sessionId!,
+              reason: "create",
+            }),
+            workflow.read({
+              read: async (ctx) =>
+                clients.user.useCommandSession.mutateQuery({
+                  path: {
+                    workflowName: interactiveChatWorkflow.name,
+                    sessionId: ctx.vars.sessionId!,
+                  },
+                  body: { kind: "prompt", input: { text: "fail" } },
+                }),
+            }),
+            runners.agent.runUntilIdle({
+              workflow: interactiveChatWorkflow.name,
+              instanceId: (ctx) => ctx.vars.sessionId!,
+              reason: "event",
+            }),
+            workflow.read({
+              read: async (ctx) =>
+                clients.user.useCommandSession.mutateQuery({
+                  path: {
+                    workflowName: interactiveChatWorkflow.name,
+                    sessionId: ctx.vars.sessionId!,
+                  },
+                  body: { kind: "prompt", input: { text: "continue" } },
+                }),
+              assert: (ack) => {
+                assert(ack && !Array.isArray(ack), "expected command acknowledgement");
+                assert(ack.accepted);
+              },
+            }),
+            runners.agent.runUntilIdle({
+              workflow: interactiveChatWorkflow.name,
+              instanceId: (ctx) => ctx.vars.sessionId!,
+              reason: "event",
+            }),
+            workflow.read({
+              read: async (ctx) => ({
+                status: await ctx.state.getStatus(
+                  interactiveChatWorkflow.name,
+                  ctx.vars.sessionId!,
+                ),
+                detail: await clients.user.useSessionDetail.query({
+                  path: {
+                    workflowName: interactiveChatWorkflow.name,
+                    sessionId: ctx.vars.sessionId!,
+                  },
+                }),
+              }),
+              assert: ({ status, detail }) => {
+                assert(status.status === "waiting");
+                expect(streamFn).toHaveBeenCalledTimes(2);
+                expect(consoleError).toHaveBeenCalledTimes(1);
+                expect(consoleError).toHaveBeenCalledWith(
+                  "Pi interactive chat model operation failed.",
+                  expect.objectContaining({
+                    workflowName: interactiveChatWorkflow.name,
+                    commandKind: "prompt",
+                    provider: "openai",
+                    model: "test-model",
+                  }),
+                );
+                expect(consoleError.mock.calls[0]?.[1]).not.toHaveProperty("errorMessage");
+                assert(detail && !Array.isArray(detail), "expected session detail response");
+                expect(detail.agent.state.messages).toMatchObject([
+                  { role: "user", content: [{ type: "text", text: "fail" }] },
+                  {
+                    role: "assistant",
+                    stopReason: "error",
+                  },
+                  { role: "user", content: [{ type: "text", text: "continue" }] },
+                  {
+                    role: "assistant",
+                    stopReason: "stop",
+                    content: [{ type: "text", text: "continued after provider error" }],
+                  },
+                ]);
+                expect(detail.agent.state.messages[1]).not.toHaveProperty("errorMessage");
+              },
+            }),
+          ],
+        }),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   test("keeps the session alive when there is nothing to compact", async () => {
@@ -4239,9 +4383,11 @@ describe("Interactive chat workflow scenarios", () => {
             }),
             assert: ({ status, detail }) => {
               assert(detail && !Array.isArray(detail), "expected session detail response");
-              expect(status).toMatchObject({
-                status: "errored",
-                error: { message: "Pi harness agent stream failed: provider failed" },
+              assert(status.status === "waiting");
+              expect(detail.agent.state.messages.at(-1)).toMatchObject({
+                role: "assistant",
+                stopReason: "error",
+                errorMessage: "provider failed",
               });
               expect(onOperationCompleted).toHaveBeenCalledTimes(2);
               expect(onOperationCompleted).toHaveBeenLastCalledWith(
