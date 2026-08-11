@@ -337,11 +337,11 @@ describe("workflow-backed AgentHarness state", () => {
     expect(replayStream).not.toHaveBeenCalled();
   });
 
-  test("reports and rejects a failed terminal assistant without checkpointing it", async () => {
-    const operationId = "failed-assistant:prompt";
+  test("rejects a terminal assistant error by default when the callback transforms its result", async () => {
+    const operationId = "failed-assistant-default:prompt";
     const state = createPiHarnessSessionState({
       metadata: {
-        id: "failed-assistant",
+        id: "failed-assistant-default",
         createdAt: "2026-07-01T12:00:00.000Z",
       },
     });
@@ -369,7 +369,7 @@ describe("workflow-backed AgentHarness state", () => {
         storage,
         harness,
         tx: emissions.tx,
-        runDurableStep: () => harness.prompt("hello"),
+        runDurableStep: async () => messageText(await harness.prompt("hello")),
         onTerminalOutcome: terminalOutcome,
       }),
     ).rejects.toThrow("Pi harness agent stream failed: provider down");
@@ -386,6 +386,63 @@ describe("workflow-backed AgentHarness state", () => {
       }),
     );
     expect(emissions.emitted).not.toContainEqual(
+      expect.objectContaining({ kind: "harness-operation-complete", operationId }),
+    );
+  });
+
+  test("checkpoints a failed terminal assistant when explicitly configured", async () => {
+    const operationId = "failed-assistant:prompt";
+    const state = createPiHarnessSessionState({
+      metadata: {
+        id: "failed-assistant",
+        createdAt: "2026-07-01T12:00:00.000Z",
+      },
+    });
+    const {
+      session,
+      storage,
+      options: restoredOptions,
+    } = restoreWorkflowBackedSession({
+      operationId,
+      state,
+      previousEmissions: [],
+      models: createModelsForStreamFn([mockModel, alternateModel], createTextStreamFn("unused")),
+    });
+    const harness = new AgentHarness({
+      models: createModelsForStreamFn(mockModel, createErrorStreamFn("provider down")),
+      model: mockModel,
+      ...restoredOptions,
+    });
+    const emissions = createEmissionRecorder();
+    const terminalOutcome = vi.fn();
+
+    const result = await withWorkflowAgentHarness({
+      session,
+      storage,
+      harness,
+      tx: emissions.tx,
+      runDurableStep: () => harness.prompt("hello"),
+      checkpointTerminalAssistantError: true,
+      onTerminalOutcome: terminalOutcome,
+    });
+
+    expect(result.value).toMatchObject({
+      role: "assistant",
+      stopReason: "error",
+      errorMessage: "provider down",
+    });
+    expect(terminalOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationId,
+        operationEntries: expect.arrayContaining([
+          expect.objectContaining({
+            type: "message",
+            message: expect.objectContaining({ role: "assistant", stopReason: "error" }),
+          }),
+        ]),
+      }),
+    );
+    expect(emissions.emitted).toContainEqual(
       expect.objectContaining({ kind: "harness-operation-complete", operationId }),
     );
   });

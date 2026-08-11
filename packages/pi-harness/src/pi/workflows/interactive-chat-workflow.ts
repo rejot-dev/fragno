@@ -11,6 +11,7 @@ import {
   type AgentMessage,
   type ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 import { schedulePiOperationCompletedHook } from "../harness/pi-operation-completed";
 import { agentMessageSchema, piSessionCommandPayloadSchema } from "../route-schemas";
@@ -50,6 +51,27 @@ export const interactiveChatWorkflowParamsSchema: z.ZodType<InteractiveChatWorkf
     systemPrompt: z.string().optional(),
     thinkingLevel: z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]).optional(),
   });
+
+const logInteractiveChatAssistantError = (
+  assistant: AssistantMessage,
+  context: {
+    workflowName: string;
+    sessionId: string;
+    commandId: string;
+    commandKind: "prompt" | "skill" | "promptFromTemplate";
+  },
+): void => {
+  if (assistant.stopReason !== "error") {
+    return;
+  }
+
+  console.error("Pi interactive chat model operation failed.", {
+    ...context,
+    provider: assistant.provider,
+    model: assistant.model,
+    ...(assistant.errorMessage !== undefined ? { errorMessage: assistant.errorMessage } : {}),
+  });
+};
 
 export type CreateInteractiveChatWorkflowOptions = {
   name?: string;
@@ -168,25 +190,50 @@ export const createInteractiveChatWorkflow = (config: CreateInteractiveChatWorkf
                 }
               });
             },
+            checkpointTerminalAssistantError: true,
             runDurableStep: async () => {
               tx.emit({
                 kind: "pi-session-command-start",
                 command: { commandId: command.commandId, kind: command.kind },
               } satisfies PiSessionCommandStartEmission);
 
+              const logAssistantError = (
+                commandKind: "prompt" | "skill" | "promptFromTemplate",
+                assistant: AssistantMessage,
+              ) => {
+                logInteractiveChatAssistantError(assistant, {
+                  workflowName,
+                  sessionId: event.instanceId,
+                  commandId: command.commandId,
+                  commandKind,
+                });
+              };
+
               switch (command.kind) {
-                case "prompt":
-                  return await harness.prompt(
+                case "prompt": {
+                  const assistant = await harness.prompt(
                     command.input.text,
                     command.input.images ? { images: command.input.images } : undefined,
                   );
-                case "skill":
-                  return await harness.skill(
+                  logAssistantError("prompt", assistant);
+                  return assistant;
+                }
+                case "skill": {
+                  const assistant = await harness.skill(
                     command.input.name,
                     command.input.additionalInstructions,
                   );
-                case "promptFromTemplate":
-                  return await harness.promptFromTemplate(command.input.name, command.input.args);
+                  logAssistantError("skill", assistant);
+                  return assistant;
+                }
+                case "promptFromTemplate": {
+                  const assistant = await harness.promptFromTemplate(
+                    command.input.name,
+                    command.input.args,
+                  );
+                  logAssistantError("promptFromTemplate", assistant);
+                  return assistant;
+                }
                 case "compact": {
                   const preparationResult = prepareCompaction(
                     await session.getBranch(),

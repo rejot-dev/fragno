@@ -256,6 +256,7 @@ const runAccountingInvocation = async (options: {
   previousEmissions?: readonly WorkflowStepEmission[];
   streamFn: ReturnType<typeof createTextStreamFn>;
   tools?: readonly AgentTool[];
+  checkpointTerminalAssistantError?: boolean;
   attempt: AccountingAttempt;
 }) => {
   const models = createModelsForStreamFn(mockModel, options.streamFn);
@@ -284,6 +285,7 @@ const runAccountingInvocation = async (options: {
     harness,
     tx: options.attempt.tx,
     runDurableStep: () => harness.prompt("hello"),
+    checkpointTerminalAssistantError: options.checkpointTerminalAssistantError,
     onTerminalOutcome: ({ operationEntries }) => {
       schedulePiOperationCompletedHook({
         tx: options.attempt.tx,
@@ -505,7 +507,7 @@ describe("workflow AgentHarness recovery accounting", () => {
     ]);
   });
 
-  test("accounts only the winning call after an uncommitted provider failure", async () => {
+  test("accounts only the winning call after a provider failure fails the default workflow step", async () => {
     const operationId = "failed-attempt-winner";
     const failedUsage = usage({ input: 500, output: 10, cacheRead: 50 });
     const successfulUsage = usage({ input: 60, output: 15, cacheRead: 5 });
@@ -538,6 +540,53 @@ describe("workflow AgentHarness recovery accounting", () => {
         payload: expect.objectContaining({
           modelCalls: [expect.objectContaining({ stopReason: "stop", usage: successfulUsage })],
           usage: successfulUsage,
+        }),
+      },
+    ]);
+  });
+
+  test("replays an explicitly checkpointed provider failure without calling the provider again", async () => {
+    const operationId = "checkpointed-provider-failure";
+    const failedUsage = usage({ input: 500, output: 10, cacheRead: 50 });
+    const firstStreamFn = vi.fn(createErrorStreamFn("provider down", failedUsage));
+    const firstAttempt = createAccountingAttempt();
+
+    const firstResult = await runAccountingInvocation({
+      operationId,
+      streamFn: firstStreamFn,
+      attempt: firstAttempt,
+      checkpointTerminalAssistantError: true,
+    });
+    expect(firstResult.value).toMatchObject({
+      stopReason: "error",
+      errorMessage: "provider down",
+    });
+    expect(firstAttempt.emitted).toContainEqual(
+      expect.objectContaining({ kind: "harness-operation-complete" }),
+    );
+
+    const replayStreamFn = vi.fn(
+      createTextStreamFn("must not run", usage({ input: 1, output: 1 })),
+    );
+    const replayAttempt = createAccountingAttempt();
+    const replayResult = await runAccountingInvocation({
+      operationId,
+      streamFn: replayStreamFn,
+      attempt: replayAttempt,
+      previousEmissions: toPreviousEmissions(firstAttempt.emitted),
+      checkpointTerminalAssistantError: true,
+    });
+    const hooks = replayAttempt.commit();
+
+    expect(firstStreamFn).toHaveBeenCalledTimes(1);
+    expect(replayStreamFn).not.toHaveBeenCalled();
+    expect(replayResult).toEqual(firstResult);
+    expect(hooks).toEqual([
+      {
+        name: "onOperationCompleted",
+        payload: expect.objectContaining({
+          modelCalls: [expect.objectContaining({ stopReason: "error", usage: failedUsage })],
+          usage: failedUsage,
         }),
       },
     ]);

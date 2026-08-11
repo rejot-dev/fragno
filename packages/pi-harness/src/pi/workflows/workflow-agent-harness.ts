@@ -495,6 +495,8 @@ export type WithWorkflowAgentHarnessOptions<TResult = unknown> = {
   /** Configure observation of workflow events delivered live while the durable step is running. */
   observeLiveEvents?: (onLiveEvent: WorkflowAgentHarnessOnLiveEvent) => void;
   runDurableStep: () => Promise<TResult>;
+  /** Persist terminal provider errors as completed operations instead of failing the workflow step. */
+  checkpointTerminalAssistantError?: boolean;
   /** May run more than once before the enclosing workflow step commits. */
   onTerminalOutcome?: (
     outcome: WorkflowAgentHarnessTerminalOutcome<TResult>,
@@ -557,6 +559,7 @@ export const withWorkflowAgentHarness = async <TResult>({
   tx,
   observeLiveEvents,
   runDurableStep,
+  checkpointTerminalAssistantError = false,
   onTerminalOutcome,
 }: WithWorkflowAgentHarnessOptions<TResult>): Promise<WorkflowAgentHarnessStepResult<TResult>> => {
   const { operationId, persistedEntryIds, recovery } = storage.workflowMetadata;
@@ -568,6 +571,9 @@ export const withWorkflowAgentHarness = async <TResult>({
       operationEntries: recovery.operationEntries,
       result,
     });
+    if (!checkpointTerminalAssistantError) {
+      assertTerminalAssistantSucceeded(recovery.operationEntries);
+    }
     return result;
   }
 
@@ -676,7 +682,10 @@ export const withWorkflowAgentHarness = async <TResult>({
       operationEntries,
       result,
     });
-    assertTerminalAssistantSucceeded(operationEntries);
+
+    if (!checkpointTerminalAssistantError) {
+      assertTerminalAssistantSucceeded(operationEntries);
+    }
 
     tx.emit({
       kind: "harness-operation-complete",
