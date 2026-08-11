@@ -1,6 +1,8 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, expectTypeOf, test } from "vitest";
 
 import { Worker, threadId } from "node:worker_threads";
+
+import { z } from "zod";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
@@ -11,9 +13,60 @@ import {
 } from "./remote-workflow-message";
 import { defineScenario, runScenario } from "./scenario";
 import { createWorkflowsTestHarness } from "./test";
-import { defineRemoteWorkflow, defineWorkflow, type WorkflowEvent } from "./workflow";
+import {
+  defineRemoteWorkflow,
+  defineWorkflow,
+  type WorkflowEvent,
+  type WorkflowOutputFromEntry,
+  type WorkflowParamsFromEntry,
+} from "./workflow";
 
 type WorkerMessage = { type: "result"; result: unknown } | { type: "error"; error: string };
+
+test("defineRemoteWorkflow infers input and output schema types", () => {
+  const RemoteWorkflow = defineRemoteWorkflow(
+    {
+      name: "typed-remote-workflow",
+      schema: z.object({ requestId: z.string() }),
+      outputSchema: z.object({ accepted: z.boolean() }),
+    },
+    async (event) => {
+      expectTypeOf(event.payload).toExtend<{ requestId: string }>();
+      return { accepted: event.payload.requestId.length > 0 };
+    },
+  );
+
+  expectTypeOf<WorkflowParamsFromEntry<typeof RemoteWorkflow>>().toEqualTypeOf<{
+    requestId: string;
+  }>();
+  expectTypeOf<WorkflowOutputFromEntry<typeof RemoteWorkflow>>().toEqualTypeOf<{
+    accepted: boolean;
+  }>();
+
+  const validParams: WorkflowParamsFromEntry<typeof RemoteWorkflow> = { requestId: "request-1" };
+  // @ts-expect-error schema output requires a string requestId
+  const invalidParams: WorkflowParamsFromEntry<typeof RemoteWorkflow> = { requestId: 1 };
+  void validParams;
+  void invalidParams;
+});
+
+test("defineRemoteWorkflow accepts an output schema without an input schema", () => {
+  const RemoteWorkflow = defineRemoteWorkflow(
+    {
+      name: "typed-remote-output-workflow",
+      outputSchema: z.object({ accepted: z.boolean() }),
+    },
+    async () => ({ accepted: true }),
+  );
+
+  expectTypeOf<WorkflowOutputFromEntry<typeof RemoteWorkflow>>().toEqualTypeOf<{
+    accepted: boolean;
+  }>();
+
+  // @ts-expect-error output schema requires a boolean accepted value
+  const invalidOutput: WorkflowOutputFromEntry<typeof RemoteWorkflow> = { accepted: "yes" };
+  void invalidOutput;
+});
 
 const remoteWorkerSource = (messageKey: string) => String.raw`
 const { parentPort, threadId } = require("node:worker_threads");

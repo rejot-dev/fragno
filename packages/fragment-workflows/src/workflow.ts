@@ -374,6 +374,66 @@ export function defineRemoteWorkflow<TName extends string, TParams = unknown, TO
   },
   run: RemoteWorkflowRunFn<TParams, TOutput>,
 ): WorkflowDefinition<TParams, TOutput, undefined, undefined, TName> & { remote: true };
+export function defineRemoteWorkflow<
+  TName extends string,
+  TInputSchema extends StandardSchemaV1,
+  TOutput = unknown,
+>(
+  options: {
+    name: TName;
+    schema: TInputSchema;
+    outputSchema?: undefined;
+    checkpoint?: "step";
+  },
+  run: RemoteWorkflowRunFn<StandardSchemaV1.InferOutput<TInputSchema>, TOutput>,
+): WorkflowDefinition<
+  StandardSchemaV1.InferOutput<TInputSchema>,
+  TOutput,
+  TInputSchema,
+  undefined,
+  TName
+> & { remote: true };
+export function defineRemoteWorkflow<
+  TName extends string,
+  TOutputSchema extends StandardSchemaV1,
+  TParams = unknown,
+>(
+  options: {
+    name: TName;
+    schema?: undefined;
+    outputSchema: TOutputSchema;
+    checkpoint?: "step";
+  },
+  run: RemoteWorkflowRunFn<TParams, StandardSchemaV1.InferOutput<TOutputSchema>>,
+): WorkflowDefinition<
+  TParams,
+  StandardSchemaV1.InferOutput<TOutputSchema>,
+  undefined,
+  TOutputSchema,
+  TName
+> & { remote: true };
+export function defineRemoteWorkflow<
+  TName extends string,
+  TInputSchema extends StandardSchemaV1,
+  TOutputSchema extends StandardSchemaV1,
+>(
+  options: {
+    name: TName;
+    schema: TInputSchema;
+    outputSchema: TOutputSchema;
+    checkpoint?: "step";
+  },
+  run: RemoteWorkflowRunFn<
+    StandardSchemaV1.InferOutput<TInputSchema>,
+    StandardSchemaV1.InferOutput<TOutputSchema>
+  >,
+): WorkflowDefinition<
+  StandardSchemaV1.InferOutput<TInputSchema>,
+  StandardSchemaV1.InferOutput<TOutputSchema>,
+  TInputSchema,
+  TOutputSchema,
+  TName
+> & { remote: true };
 export function defineRemoteWorkflow<TName extends string>(
   options: {
     name: TName;
@@ -403,10 +463,10 @@ export type WorkflowRegistryEntry = WorkflowDefinition<any, any, any, any, strin
 export type WorkflowParamsFromEntry<TEntry> =
   TEntry extends WorkflowDefinition<
     infer TParams,
-    unknown,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
+    infer _TOutput,
+    infer _TInputSchema,
+    infer _TOutputSchema,
+    infer _TName,
     infer _THooks
   >
     ? TParams
@@ -414,11 +474,11 @@ export type WorkflowParamsFromEntry<TEntry> =
 
 export type WorkflowOutputFromEntry<TEntry> =
   TEntry extends WorkflowDefinition<
-    unknown,
+    infer _TParams,
     infer TOutput,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
+    infer _TInputSchema,
+    infer _TOutputSchema,
+    infer _TName,
     infer _THooks
   >
     ? TOutput
@@ -426,10 +486,10 @@ export type WorkflowOutputFromEntry<TEntry> =
 
 export type WorkflowNameFromEntry<TEntry> =
   TEntry extends WorkflowDefinition<
-    unknown,
-    unknown,
-    StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
+    infer _TParams,
+    infer _TOutput,
+    infer _TInputSchema,
+    infer _TOutputSchema,
     infer TName,
     infer _THooks
   >
