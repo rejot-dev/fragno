@@ -409,7 +409,6 @@ function PiSessionDetailView({
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         <SessionHeader
           session={session}
-          modelLabel={modelLabel}
           options={
             <SessionDisplayOptions
               exportHref={`${scopedPublicMountPath({ publicPrefix: "/api/pi", scope })}/workflows/${encodeURIComponent(session.workflowName)}/sessions/${encodeURIComponent(session.id)}/export/pi-jsonl`}

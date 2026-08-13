@@ -49,7 +49,7 @@
   --spacing: 0.2rem;
 
   /* Light theme: slightly warm paper + deep ink, with a vivid indigo primary */
-  --background: oklch(0.99 0.01 255);
+  --background: #fbf9f8;
   --foreground: oklch(0.2 0.04 265);
   --card: oklch(0.995 0.006 255);
   --card-foreground: oklch(0.2 0.04 265);
@@ -66,8 +66,8 @@
   --accent-foreground: oklch(0.22 0.04 265);
 
   --destructive: oklch(0.6 0.23 25);
-  --border: oklch(0.92 0.01 255);
-  --input: oklch(0.92 0.01 255);
+  --border: #ece9e6;
+  --input: #ece9e6;
   --ring: oklch(0.7 0.1 264);
 
   /* Charts: slightly more vibrant (still accessible on light bg) */
@@ -84,7 +84,7 @@
   --sidebar-primary-foreground: oklch(0.985 0.01 255);
   --sidebar-accent: oklch(0.955 0.03 200);
   --sidebar-accent-foreground: oklch(0.22 0.04 265);
-  --sidebar-border: oklch(0.92 0.01 255);
+  --sidebar-border: #ece9e6;
   --sidebar-ring: oklch(0.7 0.1 264);
 }
 
@@ -125,6 +125,93 @@
   --sidebar-accent-foreground: oklch(0.97 0.01 255);
   --sidebar-border: oklch(1 0 0 / 12%);
   --sidebar-ring: oklch(0.75 0.12 264);
+}
+
+/* Backoffice + landing palette. Both surfaces render inside [data-backoffice-root];
+   this file is the single source of truth for all theme tokens. */
+[data-backoffice-root] {
+  --bo-bg: #fbf9f8;
+  --bo-sidebar-bg: #f8f5f2;
+  --bo-sidebar-item-active-bg: #ffffff;
+  --bo-sidebar-item-active-border: #ece9e6;
+  --bo-sidebar-item-active-shadow: 2px 2px 0 0 rgba(207, 207, 207, 0.25);
+  --bo-panel: #ffffff;
+  --bo-panel-2: #fbf9f8;
+  --bo-header-bg: #f8f5f2;
+  --bo-fg: #25211c;
+  --bo-muted: #56647a;
+  --bo-muted-2: #7a889d;
+  --bo-border: #ece9e6;
+  --bo-border-strong: #ece9e6;
+  --bo-accent: #ea580c;
+  --bo-accent-strong: #c2410c;
+  --bo-accent-bg: #ffedda;
+  --bo-accent-fg: #1b110b;
+  --bo-accent-rgb: 234, 88, 12;
+  --bo-btn-bg: #f7c396;
+  --bo-btn-bg-hover: #f2b077;
+  --bo-btn-fg: #4a2a12;
+  --bo-blue-1: #1f4ecc;
+  --bo-blue-2: #2b5ce6;
+  --bo-blue-3: #6f91ed;
+  --bo-blue-4: #adc2fb;
+  --bo-live: #12856f;
+  --bo-live-bg: #e1f5ef;
+  --bo-waiting: #a7650c;
+  --bo-waiting-bg: #fff2d8;
+  --bo-failed: #c74444;
+  --bo-failed-bg: #fde9e7;
+  --bo-grid: 180, 190, 210;
+  --bo-overlay: 251, 249, 248;
+  --bo-control-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --bo-control-shadow-hover:
+    0 0 0 1px rgba(0, 0, 0, 0.09), 0 1px 2px -1px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --bo-panel-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06), 0 3px 8px rgba(0, 0, 0, 0.05);
+  --bo-popover-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.09), 0 12px 28px -8px rgba(15, 23, 42, 0.22),
+    0 24px 48px -16px rgba(15, 23, 42, 0.16);
+}
+
+.dark [data-backoffice-root] {
+  --bo-bg: #070b12;
+  --bo-sidebar-bg: #070b12;
+  --bo-sidebar-item-active-bg: #0d1422;
+  --bo-sidebar-item-active-border: #2b3a52;
+  --bo-sidebar-item-active-shadow: 2px 2px 0 0 rgba(0, 0, 0, 0.35);
+  --bo-panel: #0d1422;
+  --bo-panel-2: #0a101b;
+  --bo-header-bg: #0d1422;
+  --bo-fg: #f8fbff;
+  --bo-muted: #c1ccdc;
+  --bo-muted-2: #8f9bb2;
+  --bo-border: #2b3a52;
+  --bo-border-strong: #5e79ad;
+  --bo-accent: #ffb374;
+  --bo-accent-strong: #ffcda3;
+  --bo-accent-bg: #3b2313;
+  --bo-accent-fg: #fffbf8;
+  --bo-accent-rgb: 255, 179, 116;
+  --bo-btn-bg: #ffcda3;
+  --bo-btn-bg-hover: #ffdec2;
+  --bo-btn-fg: #2a1608;
+  --bo-blue-1: #6e9cff;
+  --bo-blue-2: #8eb2ff;
+  --bo-blue-3: #abc7ff;
+  --bo-blue-4: #d0deff;
+  --bo-live: #63d7be;
+  --bo-live-bg: #0e2d2a;
+  --bo-waiting: #f0b55c;
+  --bo-waiting-bg: #302410;
+  --bo-failed: #ff8b85;
+  --bo-failed-bg: #32191c;
+  --bo-grid: 43, 58, 82;
+  --bo-overlay: 8, 10, 16;
+  --bo-control-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --bo-control-shadow-hover: 0 0 0 1px rgba(255, 255, 255, 0.13);
+  --bo-panel-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --bo-popover-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 20px 44px -12px rgba(0, 0, 0, 0.7);
 }
 
 @layer components {
@@ -264,9 +351,8 @@
     @apply border-border outline-ring/50;
   }
   html {
-    scrollbar-gutter: stable;
     font-family:
-      "Space Grotesk",
+      "Plus Jakarta Sans",
       ui-sans-serif,
       system-ui,
       -apple-system,

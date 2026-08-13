@@ -82,7 +82,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
 function SettingsHeader() {
   return (
-    <section className="bo-fragment-surface bo-panel-surface overflow-hidden bg-[var(--bo-panel)]">
+    <section className="bo-fragment-surface bo-panel-surface overflow-hidden bg-[var(--bo-header-bg)]">
       <div className="p-3 md:px-4">
         <h1 className="sr-only">Backoffice settings</h1>
         <div className="flex min-w-0 items-center gap-2">
@@ -92,7 +92,7 @@ function SettingsHeader() {
           />
         </div>
       </div>
-      <div className="border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
+      <div className="border-t border-[color:var(--bo-border)] bg-[var(--bo-header-bg)] p-2">
         <OverflowTabRow
           items={[
             {

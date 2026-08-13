@@ -16,17 +16,8 @@ export type AutomationUiScope =
   | { kind: "project"; orgId: string; projectId: string; label: string }
   | { kind: "user"; userId: string; label: string };
 
-export type AutomationScopeOption = {
-  id: string;
-  kind: AutomationScopeKind;
-  label: string;
-  description: string;
-  to: string;
-};
-
 type Organisation = AuthMeData["organizations"][number]["organization"];
 
-const SYSTEM_AUTOMATION_SCOPE_ID = "system";
 const SYSTEM_AUTOMATION_SCOPE_LABEL = "System";
 
 const userName = (user: AuthMeData["user"]) => user.email ?? user.id;
@@ -95,86 +86,6 @@ export const automationScopeTabPath = (
   scope: AutomationUiScope,
   tab: AutomationScopeTab = "dashboard",
 ) => `${automationScopeBasePath(scope)}/${tab}`;
-
-export const createAutomationScopeOptions = ({
-  organisations,
-  projects,
-  user,
-  currentTab,
-  projectOrgId,
-  pathForScope,
-}: {
-  organisations: Organisation[];
-  projects: AutomationProjectRecord[];
-  user: AuthMeData["user"];
-  currentTab: AutomationScopeTab;
-  projectOrgId: string | null;
-  pathForScope?: (scope: AutomationUiScope) => string;
-}): AutomationScopeOption[] => {
-  const destinationFor = (scope: AutomationUiScope) =>
-    pathForScope?.(scope) ??
-    automationScopeTabPath(scope, resolveAutomationScopeTab(scope, currentTab));
-  const orgOptions = organisations.map((organisation) => ({
-    id: `org:${organisation.id}`,
-    kind: "org" as const,
-    label: organisation.name ?? organisation.id,
-    description: "Organisation scope",
-    to: destinationFor({
-      kind: "org",
-      orgId: organisation.id,
-      label: organisation.name ?? organisation.id,
-    }),
-  }));
-
-  const projectOptions = projects.flatMap((project) => {
-    if (!projectOrgId || project.archivedAt) {
-      return [];
-    }
-
-    const projectId = toExternalId(project.id);
-    const option = {
-      id: `project:${projectOrgId}:${projectId}`,
-      kind: "project" as const,
-      label: projectLabel(project),
-      description: project.slug?.trim() ? `Project · ${project.slug}` : "Project scope",
-      to: destinationFor({
-        kind: "project",
-        orgId: projectOrgId,
-        projectId,
-        label: projectLabel(project),
-      }),
-    };
-
-    return option.to.includes("/project/") ? [option] : [];
-  });
-
-  const userScope = { kind: "user" as const, userId: user.id, label: userName(user) };
-  const systemScope = { kind: "system" as const, label: SYSTEM_AUTOMATION_SCOPE_LABEL };
-  const systemOptions: AutomationScopeOption[] = isAutomationAdmin(user)
-    ? [
-        {
-          id: `system:${SYSTEM_AUTOMATION_SCOPE_ID}`,
-          kind: "system",
-          label: SYSTEM_AUTOMATION_SCOPE_LABEL,
-          description: "Global system automation scope",
-          to: destinationFor(systemScope),
-        },
-      ]
-    : [];
-
-  return [
-    ...systemOptions,
-    ...orgOptions,
-    ...projectOptions,
-    {
-      id: `user:${user.id}`,
-      kind: "user",
-      label: userName(user),
-      description: "Personal user scope",
-      to: destinationFor(userScope),
-    },
-  ];
-};
 
 export const automationScopeFromRouteParams = (params: {
   scopeKind?: string;

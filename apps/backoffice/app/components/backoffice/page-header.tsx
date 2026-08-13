@@ -49,7 +49,7 @@ export function BackofficePageHeader({
   const sectionCode = code ?? resolveSectionCode(breadcrumbs, eyebrow);
 
   return (
-    <section className="bo-fragment-surface bo-panel-surface bg-[var(--bo-panel)] p-4">
+    <section className="bo-fragment-surface bo-panel-surface bg-[var(--bo-header-bg)] p-4">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-3">
           <BackofficeBreadcrumbs items={breadcrumbs} />

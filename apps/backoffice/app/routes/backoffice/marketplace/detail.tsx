@@ -455,7 +455,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
                   <button
                     type="submit"
                     disabled={navigation.state !== "idle"}
-                    className="inline-flex min-h-11 w-full items-center justify-center bg-[var(--bo-accent)] px-4 text-[10px] font-semibold tracking-[0.16em] text-white uppercase shadow-[0_8px_20px_rgba(var(--bo-accent-rgb),0.2)] transition-[scale,background-color,box-shadow,opacity] duration-150 ease-out hover:bg-[var(--bo-accent-strong)] hover:shadow-[0_10px_24px_rgba(var(--bo-accent-rgb),0.26)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/35 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100"
+                    className="inline-flex min-h-11 w-full items-center justify-center bg-[var(--bo-btn-bg)] px-4 text-[10px] font-semibold tracking-[0.16em] text-[var(--bo-btn-fg)] uppercase shadow-[0_8px_20px_rgba(var(--bo-accent-rgb),0.2)] transition-[scale,background-color,box-shadow,opacity] duration-150 ease-out hover:bg-[var(--bo-btn-bg-hover)] hover:shadow-[0_10px_24px_rgba(var(--bo-accent-rgb),0.26)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/35 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100"
                   >
                     {navigation.state === "submitting" ? "Requesting…" : installationActionLabel}
                   </button>

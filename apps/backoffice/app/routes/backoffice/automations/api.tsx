@@ -1659,7 +1659,7 @@ export default function BackofficeAutomationApiConfiguration() {
   }
 
   return (
-    <section className="grid min-h-[min(820px,calc(100vh-15rem))] grid-rows-1 gap-4 lg:grid-cols-[minmax(300px,400px)_minmax(0,1fr)]">
+    <section className="grid min-h-[min(820px,calc(100vh-15rem))] flex-1 grid-rows-1 gap-4 lg:grid-cols-[minmax(300px,400px)_minmax(0,1fr)]">
       <div className="flex min-h-0 flex-col gap-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
         <div>
           <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">API</p>

@@ -33,7 +33,6 @@ import {
   automationScopeBasePath,
   automationScopeFromRouteParams,
   automationScopeTabPath,
-  createAutomationScopeOptions,
   resolveAutomationUiScope,
   toBackofficeScope,
 } from "./scope";
@@ -184,18 +183,10 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   return {
     selectedScope,
-    scopeOptions: createAutomationScopeOptions({
-      organisations,
-      projects: projectsResult.projects,
-      user: me.user,
-      currentTab,
-      projectOrgId: activeOrgId,
-    }),
     scripts: workspaceResult.scripts,
     scriptsError: workspaceResult.scriptsError,
     uploadCollectionSource: uploadCollectionState.source,
     uploadCollectionError: uploadCollectionState.error,
-    projectsError: projectsResult.projectsError,
   };
 }
 
@@ -406,42 +397,26 @@ export default function BackofficeAutomationScopeLayout({
   const storeBasePath = automationScopeTabPath(loaderData.selectedScope, "store");
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-1 flex-col">
       <AutomationWorkspaceHeader
         selectedScope={loaderData.selectedScope}
-        scopeOptions={loaderData.scopeOptions}
-        projectsError={loaderData.projectsError}
-        createProjectPath={`${currentPath}?createProject=1`}
         isCreatingProject={isCreatingProject}
         activeTab={activeTab}
-        subpage={
-          activeTab === "store" && !isCreatingProject
-            ? {
-                title: "Store",
-                description:
-                  "Key-value state and external identity bindings for this automation scope.",
-                pathForScope: (scope) => {
-                  const basePath = automationScopeTabPath(scope, "store");
-                  return activeStoreTab === "identity-bindings"
-                    ? `${basePath}/identity-bindings`
-                    : basePath;
+        subnav={
+          activeTab === "store" && !isCreatingProject ? (
+            <AutomationSubpageTabs
+              tabs={[
+                { id: "key-value", label: "Key-value", to: storeBasePath },
+                {
+                  id: "identity-bindings",
+                  label: "Identity bindings",
+                  to: `${storeBasePath}/identity-bindings`,
                 },
-                navigation: (
-                  <AutomationSubpageTabs
-                    tabs={[
-                      { id: "key-value", label: "Key-value", to: storeBasePath },
-                      {
-                        id: "identity-bindings",
-                        label: "Identity bindings",
-                        to: `${storeBasePath}/identity-bindings`,
-                      },
-                    ]}
-                    activeTab={activeStoreTab}
-                    ariaLabel="Automation store sections"
-                  />
-                ),
-              }
-            : undefined
+              ]}
+              activeTab={activeStoreTab}
+              ariaLabel="Automation store sections"
+            />
+          ) : undefined
         }
       />
       {isCreatingProject ? (

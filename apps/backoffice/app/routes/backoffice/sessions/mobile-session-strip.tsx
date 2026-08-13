@@ -27,7 +27,7 @@ export function MobileSessionStrip({
       <Link
         to={basePath}
         onClick={onNewChat}
-        className="sticky left-0 z-10 mr-2 inline-flex min-h-12 flex-none items-center border-r-2 border-[color:var(--bo-panel)] bg-[var(--bo-accent)] px-4 text-xs font-semibold tracking-[0.08em] text-white uppercase transition-[background-color,scale] duration-150 ease-out hover:bg-[var(--bo-accent-strong)] active:scale-[0.96]"
+        className="sticky left-0 z-10 mr-2 inline-flex min-h-12 flex-none items-center border-r-2 border-[color:var(--bo-panel)] bg-[var(--bo-btn-bg)] px-4 text-xs font-semibold tracking-[0.08em] text-[var(--bo-btn-fg)] uppercase transition-[background-color,scale] duration-150 ease-out hover:bg-[var(--bo-btn-bg-hover)] active:scale-[0.96]"
       >
         New chat
       </Link>

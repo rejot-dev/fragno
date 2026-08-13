@@ -81,18 +81,17 @@ export function SessionWorkspacePanel({
       <header
         ref={setToolbarElement}
         data-session-workspace-toolbar
-        className="flex min-h-14 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-1.5"
+        className="flex h-16 items-stretch justify-between gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3"
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <span className="flex size-8 shrink-0 items-center justify-center bg-[var(--bo-panel-2)] text-[var(--bo-accent-fg)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
-            <ItemIcon className="size-4" aria-hidden="true" />
-          </span>
-          <div className="min-w-0 leading-tight">
-            <p className="text-[9px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
-              {itemTypeLabel}
-            </p>
-            <h2 className="truncate text-xs font-semibold text-[var(--bo-fg)]">{item.label}</h2>
-          </div>
+        <div className="flex min-w-0 flex-1 items-stretch">
+          <h2
+            title={itemTypeLabel}
+            className="-mb-px flex min-w-0 items-center gap-2 border-b-2 border-[color:var(--bo-accent)] px-1 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"
+          >
+            <ItemIcon className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">{item.label}</span>
+            <span className="sr-only">{itemTypeLabel}</span>
+          </h2>
         </div>
 
         <div data-session-workspace-actions className="flex min-w-0 shrink-0 items-center gap-2">
@@ -111,6 +110,7 @@ export function SessionWorkspacePanel({
                             <WorkflowGraphDetailToggle
                               detailMode={detailMode}
                               onDetailModeChange={setDetailMode}
+                              variant="tabs"
                             />
                           ),
                         },
@@ -120,7 +120,11 @@ export function SessionWorkspacePanel({
                     id: "view" as const,
                     collapsePriority: 1,
                     content: (
-                      <ScriptViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+                      <ScriptViewToggle
+                        viewMode={viewMode}
+                        onViewModeChange={setViewMode}
+                        variant="tabs"
+                      />
                     ),
                   },
                 ] satisfies ProgressiveOverflowControlGroup<WorkflowControlGroupId>[]

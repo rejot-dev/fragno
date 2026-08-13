@@ -30,7 +30,7 @@ export function SessionSidebar({
         <Link
           to={basePath}
           onClick={onNewChat}
-          className="flex min-h-11 items-center justify-center bg-[var(--bo-accent)] px-4 text-xs font-semibold tracking-[0.08em] text-white uppercase transition-[background-color,scale] duration-150 ease-out hover:bg-[var(--bo-accent-strong)] active:scale-[0.96]"
+          className="flex min-h-11 items-center justify-center bg-[var(--bo-btn-bg)] px-4 text-xs font-semibold tracking-[0.08em] text-[var(--bo-btn-fg)] uppercase transition-[background-color,scale] duration-150 ease-out hover:bg-[var(--bo-btn-bg-hover)] active:scale-[0.96]"
         >
           New chat
         </Link>

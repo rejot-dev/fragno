@@ -125,7 +125,7 @@ export default function BackofficeAutomationEventsCatalog() {
   }, [pageCount]);
 
   return (
-    <section className="w-full max-w-7xl space-y-3">
+    <section className="flex w-full max-w-7xl flex-1 flex-col space-y-3">
       {eventDefinitionsQuery.isLoading && eventDefinitions.length === 0 ? (
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3 text-sm text-[var(--bo-muted)]">
           Loading dynamic event definitions…
@@ -230,7 +230,7 @@ export default function BackofficeAutomationEventsCatalog() {
         ) : null}
       </div>
 
-      <div className="backoffice-scroll overflow-x-auto border border-[color:var(--bo-border)]">
+      <div className="backoffice-scroll flex-1 overflow-x-auto border border-[color:var(--bo-border)]">
         <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
           <thead className="bg-[var(--bo-panel-2)] text-left">
             <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">

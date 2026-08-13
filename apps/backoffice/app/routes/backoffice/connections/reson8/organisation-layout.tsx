@@ -5,11 +5,7 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { AutomationWorkspaceHeader } from "../../automations/shared";
-import {
-  createIntegrationScopeSwitchOptions,
-  integrationBasePath,
-  resolveIntegrationContext,
-} from "../../integrations/scope";
+import { resolveIntegrationContext } from "../../integrations/scope";
 import type { Route } from "./+types/organisation-layout";
 import { fetchReson8Config } from "./data";
 import { Reson8ErrorBoundary, Reson8Tabs, type Reson8ConfigState, type Reson8Tab } from "./shared";
@@ -33,13 +29,6 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   const orgId = integration.scope.orgId;
   const organisation =
     me.organizations.find((entry) => entry.organization.id === orgId)?.organization ?? null;
-  const scopeOptions = createIntegrationScopeSwitchOptions({
-    me,
-    projects: [],
-    projectOrgId: orgId,
-    integration: "reson8",
-    allowedScopes: ["org"],
-  });
 
   const { configState, configError } = await fetchReson8Config(context, orgId);
   const currentPath = url.pathname.replace(/\/+$/, "");
@@ -53,7 +42,6 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     ...integration,
     orgId,
     organisation,
-    scopeOptions,
     configState,
     configError,
   };
@@ -97,7 +85,6 @@ function Reson8LayoutContent({
     basePath,
     integrationsPath,
     scopeSegment,
-    scopeOptions,
     configState: initialConfigState,
     configError: initialConfigError,
   } = loaderData;
@@ -118,23 +105,14 @@ function Reson8LayoutContent({
     <div className="space-y-4">
       <AutomationWorkspaceHeader
         selectedScope={uiScope}
-        scopeOptions={scopeOptions}
-        projectsError={null}
         activeTab="integrations"
-        breadcrumbTail={[{ label: "Reson8" }]}
-        subpage={{
-          title: "Reson8",
-          description: "Speech transcription, realtime capture, and custom vocabulary models.",
-          pathForScope: (candidateScope) =>
-            candidateScope.kind === "org" ? integrationBasePath(candidateScope, "reson8") : null,
-          navigation: (
-            <Reson8Tabs
-              basePath={basePath}
-              activeTab={activeTab}
-              isConfigured={Boolean(configState?.configured)}
-            />
-          ),
-        }}
+        subnav={
+          <Reson8Tabs
+            basePath={basePath}
+            activeTab={activeTab}
+            isConfigured={Boolean(configState?.configured)}
+          />
+        }
       />
       <Outlet
         context={{
@@ -145,7 +123,6 @@ function Reson8LayoutContent({
           label,
           basePath,
           integrationsPath,
-          scopeOptions,
           configState,
           configLoading,
           configError,

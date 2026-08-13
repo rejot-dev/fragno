@@ -936,7 +936,7 @@ export default function BackofficeOrganisationMcpConfiguration() {
     : "block w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-left text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
 
   return (
-    <section className="grid min-h-[min(760px,calc(100vh-15rem))] grid-rows-1 gap-4 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)]">
+    <section className="grid min-h-[min(760px,calc(100vh-15rem))] flex-1 grid-rows-1 gap-4 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)]">
       <div className="flex min-h-0 flex-col gap-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
         <div className="flex items-center justify-between">
           <div>

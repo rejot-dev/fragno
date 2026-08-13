@@ -4,11 +4,13 @@ export function BackofficeFragmentMark({
   animated = false,
   size = "sm",
   palette = "system",
+  variant,
   className,
 }: {
   animated?: boolean;
   size?: "sm" | "md";
-  palette?: "system" | "blue";
+  palette?: "system" | "blue" | "grey";
+  variant?: 1 | 2 | 3 | 4;
   className?: string;
 }) {
   return (
@@ -17,6 +19,7 @@ export function BackofficeFragmentMark({
       data-animated={animated || undefined}
       data-size={size}
       data-palette={palette}
+      data-variant={variant}
       className={cn("bo-fragment-mark", className)}
     >
       <span />

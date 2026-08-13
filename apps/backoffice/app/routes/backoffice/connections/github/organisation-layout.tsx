@@ -5,12 +5,7 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { AutomationWorkspaceHeader } from "../../automations/shared";
-import {
-  createIntegrationScopeSwitchOptions,
-  integrationBasePath,
-  organizationIdFromScope,
-  resolveIntegrationContext,
-} from "../../integrations/scope";
+import { organizationIdFromScope, resolveIntegrationContext } from "../../integrations/scope";
 import type { Route } from "./+types/organisation-layout";
 import {
   fetchGitHubAdminConfig,
@@ -47,18 +42,6 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     me.organizations.find((entry) => entry.organization.id === organizationId)?.organization ??
     null;
 
-  const projectOrgId =
-    organizationId ??
-    me.activeOrganization?.organization.id ??
-    me.organizations[0]?.organization.id;
-  const scopeOptions = createIntegrationScopeSwitchOptions({
-    me,
-    projects: [],
-    projectOrgId: projectOrgId ?? "",
-    integration: "github",
-    allowedScopes: ["org"],
-  });
-
   const origin = url.origin;
   const { configState, configError } = await fetchGitHubAdminConfig(
     context,
@@ -77,7 +60,6 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     organizationId,
     origin,
     organisation,
-    scopeOptions,
     configState,
     configError,
     repositoriesEnabled,
@@ -105,7 +87,6 @@ export default function BackofficeOrganisationGitHubLayout({
     basePath,
     integrationsPath,
     scopeSegment,
-    scopeOptions,
     configState: initialConfigState,
     configError: initialConfigError,
     repositoriesEnabled,
@@ -132,23 +113,15 @@ export default function BackofficeOrganisationGitHubLayout({
     <div className="space-y-4">
       <AutomationWorkspaceHeader
         selectedScope={uiScope}
-        scopeOptions={scopeOptions}
-        projectsError={null}
         activeTab="integrations"
-        breadcrumbTail={[{ label: "GitHub" }]}
-        subpage={{
-          title: "GitHub",
-          description: "App installation and linked repositories.",
-          pathForScope: (scope) =>
-            scope.kind === "org" ? integrationBasePath(scope, "github") : null,
-          navigation: (
-            <GitHubTabs
-              basePath={basePath}
-              activeTab={activeTab}
-              repositoriesEnabled={repositoriesEnabled}
-            />
-          ),
-        }}
+        heading={`GitHub setup for ${uiScope.label}`}
+        subnav={
+          <GitHubTabs
+            basePath={basePath}
+            activeTab={activeTab}
+            repositoriesEnabled={repositoriesEnabled}
+          />
+        }
       />
       <Outlet
         context={{
@@ -157,7 +130,6 @@ export default function BackofficeOrganisationGitHubLayout({
           organisation,
           basePath,
           integrationsPath,
-          scopeOptions,
           configState,
           configLoading,
           configError,

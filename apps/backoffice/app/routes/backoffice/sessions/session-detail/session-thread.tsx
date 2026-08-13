@@ -75,7 +75,7 @@ export function SessionThread({
   };
 
   return (
-    <ThreadPrimitive.Root className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--bo-panel)]">
+    <ThreadPrimitive.Root className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--bo-bg)]">
       <ThreadPrimitive.Viewport
         ref={viewportRef}
         autoScroll
@@ -108,7 +108,7 @@ export function SessionThread({
           ) : null}
         </div>
 
-        <ThreadPrimitive.ViewportFooter className="sticky bottom-0 z-20 mx-auto w-full max-w-3xl bg-[linear-gradient(to_bottom,transparent,var(--bo-panel)_1.5rem)] pt-8 pb-3 sm:pb-5">
+        <ThreadPrimitive.ViewportFooter className="sticky bottom-0 z-20 mx-auto w-full max-w-3xl bg-[linear-gradient(to_bottom,transparent,var(--bo-bg)_1.5rem)] pt-8 pb-3 sm:pb-5">
           {error ? (
             <p className="mb-2 border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 py-2 text-xs text-pretty text-[var(--bo-failed)]">
               {error}

@@ -220,7 +220,7 @@ function AutomationScriptsView({
   }
 
   return (
-    <section className="w-full max-w-[120rem] space-y-4">
+    <section className="flex w-full max-w-[120rem] flex-1 flex-col space-y-4">
       {!workspaceScriptsReady ? (
         <AutomationNotice tone="info">
           <p className="text-[10px] tracking-[0.22em] uppercase">Loading local workspace scripts</p>
@@ -234,7 +234,7 @@ function AutomationScriptsView({
         </AutomationNotice>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[24rem_minmax(0,1fr)]">
+      <div className="grid flex-1 gap-4 lg:grid-cols-[24rem_minmax(0,1fr)]">
         <div
           className={`${isDetailVisible ? "hidden lg:block" : "block"} border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
         >

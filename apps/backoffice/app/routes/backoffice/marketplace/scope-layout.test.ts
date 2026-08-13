@@ -40,44 +40,28 @@ describe("personal Marketplace scope", () => {
       userId: "user-1",
       label: "ada@example.com",
     });
-    expect(result.scopeOptions).toEqual([
-      {
-        id: "user:user-1",
-        kind: "user",
-        label: "ada@example.com",
-        description: "Personal workspace",
-        to: "/backoffice/marketplace/user/user-1/marketplace",
-      },
-    ]);
     expect(fetchAutomationProjectsMock).not.toHaveBeenCalled();
   });
+});
 
-  test("keeps the current listing and query when switching scopes", async () => {
-    const listingRef = "c3lzdGVtI3RlbGVncmFtLXRlc3QtY29tbWFuZA";
-    const detailUrl = new URL(
-      `https://example.test/backoffice/marketplace/user/user-1/marketplace/${listingRef}?versionCursor=next-page`,
-    );
+describe("organisation Marketplace scope", () => {
+  test("resolves the organisation without fetching Automations projects", async () => {
+    const orgUrl = new URL("https://example.test/backoffice/marketplace/org/org-1/marketplace");
     getAuthMeMock.mockResolvedValue({
       user: { id: "user-1", email: "ada@example.com" },
       organizations: [{ organization: { id: "org-1", name: "Ada Labs" } }],
       activeOrganization: { organization: { id: "org-1", name: "Ada Labs" } },
     });
-    fetchAutomationProjectsMock.mockResolvedValue({ projects: [], projectsError: null });
 
     const result = await loader({
-      request: new Request(detailUrl),
-      params: { scopeKind: "user", scopeId: "user-1", listingRef },
+      request: new Request(orgUrl),
+      params: { scopeKind: "org", scopeId: "org-1" },
       context: {},
-      url: detailUrl,
+      url: orgUrl,
     } as never);
 
     assert(!(result instanceof Response));
-    expect(result.scopeOptions).toContainEqual({
-      id: "org:org-1",
-      kind: "org",
-      label: "Ada Labs",
-      description: "Organisation workspace",
-      to: `/backoffice/marketplace/org/org-1/marketplace/${listingRef}?versionCursor=next-page`,
-    });
+    expect(result.selectedScope).toEqual({ kind: "org", orgId: "org-1", label: "Ada Labs" });
+    expect(fetchAutomationProjectsMock).not.toHaveBeenCalled();
   });
 });

@@ -4,14 +4,8 @@ import { Outlet } from "react-router";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
-import { fetchAutomationProjects } from "../../automations/data.server";
 import { AutomationWorkspaceHeader } from "../../automations/shared";
-import {
-  createIntegrationScopeSwitchOptions,
-  integrationBasePath,
-  organizationIdFromScope,
-  resolveIntegrationContext,
-} from "../../integrations/scope";
+import { organizationIdFromScope, resolveIntegrationContext } from "../../integrations/scope";
 import type { Route } from "./+types/organisation-layout";
 import { fetchTelegramConfig } from "./data";
 import {
@@ -37,28 +31,12 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
         ?.organization ?? null)
     : null;
 
-  const projectOrgId =
-    organizationForScope ??
-    me.activeOrganization?.organization.id ??
-    me.organizations[0]?.organization.id;
-  const projectsResult = projectOrgId
-    ? await fetchAutomationProjects(context, projectOrgId)
-    : { projects: [], projectsError: null };
-  const scopeOptions = createIntegrationScopeSwitchOptions({
-    me,
-    projects: projectsResult.projects,
-    projectOrgId: projectOrgId ?? "",
-    integration: "telegram",
-  });
-
   const { configState, configError } = await fetchTelegramConfig(context, integration.scope);
 
   return {
     ...integration,
     origin: url.origin,
     organisation,
-    scopeOptions,
-    projectsError: projectsResult.projectsError ?? null,
     configState,
     configError,
   };
@@ -86,8 +64,6 @@ export default function BackofficeOrganisationTelegramLayout({
     basePath,
     integrationsPath,
     scopeSegment,
-    scopeOptions,
-    projectsError,
     configState: initialConfigState,
     configError: initialConfigError,
   } = loaderData;
@@ -113,22 +89,14 @@ export default function BackofficeOrganisationTelegramLayout({
     <div className="space-y-4">
       <AutomationWorkspaceHeader
         selectedScope={uiScope}
-        scopeOptions={scopeOptions}
-        projectsError={projectsError}
         activeTab="integrations"
-        breadcrumbTail={[{ label: "Telegram" }]}
-        subpage={{
-          title: "Telegram",
-          description: "Bot connection and incoming messages.",
-          pathForScope: (scope) => integrationBasePath(scope, "telegram"),
-          navigation: (
-            <TelegramTabs
-              basePath={basePath}
-              activeTab={activeTab}
-              isConfigured={Boolean(configState?.configured)}
-            />
-          ),
-        }}
+        subnav={
+          <TelegramTabs
+            basePath={basePath}
+            activeTab={activeTab}
+            isConfigured={Boolean(configState?.configured)}
+          />
+        }
       />
       <Outlet
         context={{
@@ -139,7 +107,6 @@ export default function BackofficeOrganisationTelegramLayout({
           label,
           basePath,
           integrationsPath,
-          scopeOptions,
           configState,
           configLoading,
           configError,

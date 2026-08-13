@@ -13,11 +13,13 @@ export default function BackofficeLayout({
   children?: ReactNode;
   loaderData: Route.ComponentProps["loaderData"];
 }) {
-  const { me, currentScope, automationCollectionSource } = loaderData;
+  const { me, currentScope, automationCollectionSource, projects, projectsError } = loaderData;
   return (
     <BackofficeShell
       me={me}
       currentContext={{ scope: currentScope, automationCollectionSource }}
+      projects={projects}
+      projectsError={projectsError}
       isLoading={false}
     >
       {children ?? <Outlet context={{ me }} />}

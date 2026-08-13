@@ -92,7 +92,7 @@ export function NewSessionComposer({
             <button
               type="submit"
               disabled={creating || !draftPrompt.trim() || availableModelOptions.length === 0}
-              className={`min-h-11 bg-[var(--bo-accent)] px-6 text-xs font-semibold text-white transition-[background-color,scale] duration-150 ease-out hover:bg-[var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-35 ${tapScale}`}
+              className={`min-h-11 bg-[var(--bo-btn-bg)] px-6 text-xs font-semibold text-[var(--bo-btn-fg)] transition-[background-color,scale] duration-150 ease-out hover:bg-[var(--bo-btn-bg-hover)] disabled:cursor-not-allowed disabled:opacity-35 ${tapScale}`}
             >
               {creating ? "Sending…" : "Send"}
             </button>

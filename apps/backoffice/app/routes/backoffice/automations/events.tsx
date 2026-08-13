@@ -121,7 +121,7 @@ export default function BackofficeAutomationEvents() {
   };
 
   return (
-    <section className="space-y-4">
+    <section className="flex flex-1 flex-col space-y-4">
       {eventsQuery.isLoading && events.length === 0 ? (
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
           Loading automation events…
@@ -137,13 +137,13 @@ export default function BackofficeAutomationEvents() {
             : "No automation events have been recorded for this scope yet."}
         </div>
       ) : (
-        <div className="w-full max-w-7xl space-y-3">
+        <div className="flex w-full max-w-7xl flex-1 flex-col space-y-3">
           {eventsError ? (
             <div className="border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-200">
               Could not synchronize all automation events: {eventsError}
             </div>
           ) : null}
-          <div className="backoffice-scroll w-full [scrollbar-gutter:stable] overflow-x-auto border border-[color:var(--bo-border)]">
+          <div className="backoffice-scroll w-full flex-1 [scrollbar-gutter:stable] overflow-x-auto border border-[color:var(--bo-border)]">
             <table className="w-full table-fixed divide-y divide-[color:var(--bo-border)] text-sm">
               <colgroup>
                 <col className="w-12" />

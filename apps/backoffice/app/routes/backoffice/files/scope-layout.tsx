@@ -6,14 +6,12 @@ import { buildBackofficeLoginPath } from "../auth-navigation";
 import { fetchAutomationProjects } from "../automations/data.server";
 import {
   automationScopeFromRouteParams,
-  createAutomationScopeOptions,
   resolveAutomationUiScope,
   toBackofficeScope,
 } from "../automations/scope";
 import type { Route } from "./+types/scope-layout";
 import type { FilesLayoutContext } from "./layout-context";
-import { filesScopeBasePath } from "./scope";
-import { FilesErrorBoundary, FilesWorkspaceHeader } from "./shared";
+import { FilesErrorBoundary } from "./shared";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const returnTo = `${url.pathname}${url.search}`;
@@ -44,15 +42,6 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   return {
     origin: url.origin,
     selectedScope,
-    scopeOptions: createAutomationScopeOptions({
-      organisations,
-      projects: projectsResult.projects,
-      user: me.user,
-      currentTab: "dashboard",
-      projectOrgId,
-      pathForScope: filesScopeBasePath,
-    }),
-    projectsError: projectsResult.projectsError,
   };
 }
 
@@ -72,12 +61,8 @@ export default function BackofficeFilesScopeLayout({ loaderData }: Route.Compone
   } satisfies FilesLayoutContext;
 
   return (
-    <div className="flex h-[calc(100dvh-7.25rem)] min-h-0 flex-col gap-4 overflow-hidden sm:h-[calc(100dvh-5rem)]">
-      <FilesWorkspaceHeader
-        selectedScope={loaderData.selectedScope}
-        scopeOptions={loaderData.scopeOptions}
-        projectsError={loaderData.projectsError}
-      />
+    <div className="flex h-[calc(100dvh-6.75rem)] min-h-0 flex-col gap-4 overflow-hidden sm:h-[calc(100dvh-4rem)]">
+      <h1 className="sr-only">Files for {loaderData.selectedScope.label}</h1>
       <Outlet context={outletContext} />
     </div>
   );
