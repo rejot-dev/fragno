@@ -746,7 +746,7 @@ export default function BackofficeAutomationDashboard() {
   const selectionId = searchParams.get(SELECTION_ID_PARAM)?.trim() ?? "";
   const selectedRoute = routes.find((route) => route.id === selectionId) ?? null;
   const selectedSource = sources.find((source) => source.id === selectionId) ?? null;
-  const inspectorSelection: DashboardInspectorSelection =
+  const inspectorSelection: DashboardInspectorSelection | null =
     selectionKind === "source" && selectedSource
       ? {
           kind: "source",
@@ -825,7 +825,11 @@ export default function BackofficeAutomationDashboard() {
         </AutomationNotice>
       ) : null}
 
-      <div className="grid min-w-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_28rem]">
+      <div
+        className={`grid min-w-0 flex-1 gap-3 ${
+          inspectorSelection ? "xl:grid-cols-[minmax(0,1fr)_28rem]" : ""
+        }`}
+      >
         <div className="min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
           <div className="backoffice-scroll overflow-x-auto">
             <div className="w-full min-w-[1100px]">
@@ -898,25 +902,27 @@ export default function BackofficeAutomationDashboard() {
           </div>
         </div>
 
-        <DashboardInspector
-          selection={inspectorSelection}
-          workflowSource={loaderData.workflowSource}
-          runtimeToolCatalog={loaderData.runtimeToolCatalog}
-          collections={collections}
-          scriptsPath={automationScopeTabPath(selectedScope, "scripts")}
-          eventsCatalogPath={automationScopeTabPath(selectedScope, "events-catalog")}
-          scope={toBackofficeScope(selectedScope)}
-          onClear={() => {
-            setSearchParams((currentSearchParams) => {
-              const nextSearchParams = new URLSearchParams(currentSearchParams);
-              nextSearchParams.delete(SOURCE_FILTER_PARAM);
-              nextSearchParams.delete(SELECTION_KIND_PARAM);
-              nextSearchParams.delete(SELECTION_ID_PARAM);
-              nextSearchParams.delete(WORKFLOW_SCRIPT_ID_PARAM);
-              return nextSearchParams;
-            }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
-          }}
-        />
+        {inspectorSelection ? (
+          <DashboardInspector
+            selection={inspectorSelection}
+            workflowSource={loaderData.workflowSource}
+            runtimeToolCatalog={loaderData.runtimeToolCatalog}
+            collections={collections}
+            scriptsPath={automationScopeTabPath(selectedScope, "scripts")}
+            eventsCatalogPath={automationScopeTabPath(selectedScope, "events-catalog")}
+            scope={toBackofficeScope(selectedScope)}
+            onClear={() => {
+              setSearchParams((currentSearchParams) => {
+                const nextSearchParams = new URLSearchParams(currentSearchParams);
+                nextSearchParams.delete(SOURCE_FILTER_PARAM);
+                nextSearchParams.delete(SELECTION_KIND_PARAM);
+                nextSearchParams.delete(SELECTION_ID_PARAM);
+                nextSearchParams.delete(WORKFLOW_SCRIPT_ID_PARAM);
+                return nextSearchParams;
+              }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
+            }}
+          />
+        ) : null}
       </div>
     </section>
   );

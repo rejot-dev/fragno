@@ -1,41 +1,54 @@
+import {
+  Folder,
+  MessagesSquare,
+  Store,
+  Workflow,
+  type LucideIcon,
+} from "lucide-react";
 import { NavLink, useLocation } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { cn } from "@/lib/utils";
 
-import { BackofficeFragmentMark } from "./fragment-mark";
 import { scopeSwitchPath } from "./scope-menu";
 
 type PrimaryNavigationItem = {
   label: string;
   to: string;
+  icon: LucideIcon;
   isActive: (pathname: string) => boolean;
 };
 
 // Section links carry the current scope so switching sections keeps the
 // selected organisation/project instead of falling back to the default scope.
-const navigationItemPath = (item: PrimaryNavigationItem, scope: BackofficeContextScope | null) =>
-  scope ? scopeSwitchPath(item.to, scope) : item.to;
+const navigationItemPath = (
+  item: PrimaryNavigationItem,
+  scope: BackofficeContextScope | null,
+) => (scope ? scopeSwitchPath(item.to, scope) : item.to);
 
 export const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
   {
     label: "Automations",
     to: "/backoffice/automations",
+    icon: Workflow,
     isActive: (pathname) => pathname.startsWith("/backoffice/automations"),
   },
   {
     label: "Sessions",
     to: "/backoffice/sessions",
+    icon: MessagesSquare,
     isActive: (pathname) => pathname.startsWith("/backoffice/sessions"),
   },
   {
     label: "Files",
     to: "/backoffice/files",
+    icon: Folder,
     isActive: (pathname) => pathname.startsWith("/backoffice/files"),
   },
   {
     label: "Marketplace",
     to: "/backoffice/marketplace",
+    icon: Store,
     isActive: (pathname) => pathname.startsWith("/backoffice/marketplace"),
   },
 ];
@@ -50,7 +63,7 @@ export function BackofficeSidebarNav({
   return (
     <aside className="sticky top-16 z-20 hidden h-[calc(100svh-4rem)] w-72 shrink-0 self-start border-r border-[color:var(--bo-border)] bg-[color:var(--bo-sidebar-bg)] min-[960px]:block">
       <nav aria-label="Backoffice" className="flex flex-col gap-2.5 px-3 py-4">
-        {PRIMARY_NAVIGATION.map((item, index) => (
+        {PRIMARY_NAVIGATION.map((item) => (
           <NavLink
             key={item.to}
             to={navigationItemPath(item, currentScope)}
@@ -64,10 +77,10 @@ export function BackofficeSidebarNav({
               );
             }}
           >
-            <BackofficeFragmentMark
-              size="sm"
-              palette="grey"
-              variant={((index % 4) + 1) as 1 | 2 | 3 | 4}
+            <item.icon
+              aria-hidden="true"
+              className="size-4 shrink-0 text-[var(--bo-muted)]"
+              strokeWidth={1.75}
             />
             {item.label}
           </NavLink>

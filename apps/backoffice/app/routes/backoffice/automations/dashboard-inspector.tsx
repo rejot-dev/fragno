@@ -36,8 +36,7 @@ export type DashboardInspectorSelection =
       routes: readonly AutomationRouteDefinition[];
     }
   | { kind: "trigger"; route: AutomationRouteDefinition }
-  | { kind: "action"; route: AutomationRouteDefinition }
-  | null;
+  | { kind: "action"; route: AutomationRouteDefinition };
 
 export function DashboardInspector({
   selection,
@@ -67,21 +66,19 @@ export function DashboardInspector({
         <p className="text-[11px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
           Inspector
         </p>
-        {selection ? (
-          <button
-            type="button"
-            aria-label="Clear dashboard selection"
-            onClick={onClear}
-            className="flex h-10 w-10 items-center justify-center text-[var(--bo-muted-2)] transition-[color,transform] hover:text-[var(--bo-fg)] active:scale-[0.96]"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        ) : null}
+        <button
+          type="button"
+          aria-label="Clear dashboard selection"
+          onClick={onClear}
+          className="flex h-10 w-10 items-center justify-center text-[var(--bo-muted-2)] transition-[color,transform] hover:text-[var(--bo-fg)] active:scale-[0.96]"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       <div className="backoffice-scroll xl:max-h-[calc(100vh-10.25rem)] xl:overflow-y-auto">
-        {selection?.kind === "source" ? <SourceInspector selection={selection} /> : null}
-        {selection?.kind === "trigger" ? (
+        {selection.kind === "source" ? <SourceInspector selection={selection} /> : null}
+        {selection.kind === "trigger" ? (
           <div className="p-3">
             <AutomationRouteDetail
               route={selection.route}
@@ -91,7 +88,7 @@ export function DashboardInspector({
             />
           </div>
         ) : null}
-        {selection?.kind === "action" ? (
+        {selection.kind === "action" ? (
           <ActionInspector
             route={selection.route}
             source={workflowSource}
@@ -100,15 +97,6 @@ export function DashboardInspector({
             scriptsPath={scriptsPath}
             scope={scope}
           />
-        ) : null}
-        {!selection ? (
-          <div
-            role="status"
-            aria-label="No item selected"
-            className="flex min-h-48 items-center justify-center"
-          >
-            <CircleDot aria-hidden="true" className="h-5 w-5 text-[var(--bo-muted-2)] opacity-40" />
-          </div>
         ) : null}
       </div>
     </aside>

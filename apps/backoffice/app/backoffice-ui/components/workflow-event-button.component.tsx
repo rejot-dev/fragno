@@ -62,7 +62,7 @@ export const WorkflowEventButton: ComponentFn<
         className={`inline-flex min-h-10 items-center justify-center px-4 text-xs font-semibold transition-[background-color,border-color,color,scale,opacity] duration-150 ease-out active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100 ${
           danger
             ? "border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] text-[var(--bo-failed)] hover:bg-red-500/15"
-            : "border border-[color:var(--bo-accent)] bg-[var(--bo-accent)] text-white hover:bg-[var(--bo-accent-strong)]"
+            : "border border-[color:var(--bo-btn-bg)] bg-[var(--bo-btn-bg)] text-[var(--bo-btn-fg)] hover:bg-[var(--bo-btn-bg-hover)]"
         }`}
       >
         {label}

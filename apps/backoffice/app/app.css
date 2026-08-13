@@ -148,6 +148,9 @@
   --bo-accent-bg: #ffedda;
   --bo-accent-fg: #1b110b;
   --bo-accent-rgb: 234, 88, 12;
+  --bo-btn-bg: #f7c396;
+  --bo-btn-bg-hover: #f2b077;
+  --bo-btn-fg: #4a2a12;
   --bo-blue-1: #1f4ecc;
   --bo-blue-2: #2b5ce6;
   --bo-blue-3: #6f91ed;
@@ -190,6 +193,9 @@
   --bo-accent-bg: #3b2313;
   --bo-accent-fg: #fffbf8;
   --bo-accent-rgb: 255, 179, 116;
+  --bo-btn-bg: #ffcda3;
+  --bo-btn-bg-hover: #ffdec2;
+  --bo-btn-fg: #2a1608;
   --bo-blue-1: #6e9cff;
   --bo-blue-2: #8eb2ff;
   --bo-blue-3: #abc7ff;

@@ -14,17 +14,17 @@ export type OverflowTabRowItem = {
   onSelect?: () => void;
 };
 
-export type OverflowTabRowVariant = "boxed" | "underline" | "sidebar";
+export type OverflowTabRowVariant = "boxed" | "underline" | "browser";
 
 const tabClassName = (variant: OverflowTabRowVariant, disabled: boolean, active: boolean) => {
-  if (variant === "sidebar") {
+  if (variant === "browser") {
     if (disabled) {
-      return "inline-flex min-h-10 shrink-0 cursor-not-allowed items-center rounded-[4px] border border-transparent px-3 text-sm font-semibold text-[var(--bo-muted-2)] opacity-50";
+      return "inline-flex min-h-10 shrink-0 cursor-not-allowed items-center rounded-t-[6px] border border-transparent px-4 text-sm font-semibold text-[var(--bo-muted-2)] opacity-50";
     }
     if (active) {
-      return "inline-flex min-h-10 shrink-0 items-center rounded-[4px] border border-[color:var(--bo-sidebar-item-active-border)] bg-[var(--bo-sidebar-item-active-bg)] px-3 text-sm font-semibold text-[var(--bo-fg)] shadow-[var(--bo-sidebar-item-active-shadow)] outline-none transition-[background-color,border-color,box-shadow,color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30";
+      return "inline-flex min-h-10 shrink-0 items-center rounded-t-[6px] border border-[color:var(--bo-border)] border-b-transparent bg-[var(--bo-panel)] px-4 text-sm font-semibold text-[var(--bo-fg)] outline-none transition-[background-color,border-color,color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30";
     }
-    return "inline-flex min-h-10 shrink-0 items-center rounded-[4px] border border-transparent px-3 text-sm font-semibold text-[var(--bo-fg)] outline-none transition-[background-color,border-color,box-shadow,color] duration-150 ease-out hover:bg-[var(--bo-sidebar-item-active-bg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30";
+    return "inline-flex min-h-10 shrink-0 items-center rounded-t-[6px] border border-transparent px-4 text-sm font-semibold text-[var(--bo-muted)] outline-none transition-[background-color,border-color,color] duration-150 ease-out hover:bg-[color-mix(in_srgb,var(--bo-panel)_55%,transparent)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30";
   }
 
   if (variant === "underline") {
@@ -47,8 +47,8 @@ const tabClassName = (variant: OverflowTabRowVariant, disabled: boolean, active:
 };
 
 const measurementTabClassName = (variant: OverflowTabRowVariant) => {
-  if (variant === "sidebar") {
-    return "inline-flex min-h-10 shrink-0 items-center rounded-[4px] border px-3 text-sm font-semibold";
+  if (variant === "browser") {
+    return "inline-flex min-h-10 shrink-0 items-center rounded-t-[6px] border px-4 text-sm font-semibold";
   }
   return variant === "underline"
     ? "inline-flex min-h-10 shrink-0 items-center border-b-2 px-1 text-[10px] font-semibold tracking-[0.22em] uppercase"
@@ -56,10 +56,10 @@ const measurementTabClassName = (variant: OverflowTabRowVariant) => {
 };
 
 const moreTriggerClassName = (variant: OverflowTabRowVariant, active: boolean) => {
-  if (variant === "sidebar") {
+  if (variant === "browser") {
     return active
-      ? "group inline-flex min-h-10 shrink-0 items-center gap-2 rounded-[4px] border border-[color:var(--bo-sidebar-item-active-border)] bg-[var(--bo-sidebar-item-active-bg)] px-3 text-sm font-semibold text-[var(--bo-fg)] shadow-[var(--bo-sidebar-item-active-shadow)] outline-none transition-[background-color,border-color,box-shadow,color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
-      : "group inline-flex min-h-10 shrink-0 items-center gap-2 rounded-[4px] border border-transparent px-3 text-sm font-semibold text-[var(--bo-fg)] outline-none transition-[background-color,border-color,box-shadow,color] duration-150 ease-out hover:bg-[var(--bo-sidebar-item-active-bg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 data-[popup-open]:border-[color:var(--bo-sidebar-item-active-border)] data-[popup-open]:bg-[var(--bo-sidebar-item-active-bg)] data-[popup-open]:shadow-[var(--bo-sidebar-item-active-shadow)]";
+      ? "group inline-flex min-h-10 shrink-0 items-center gap-2 rounded-t-[6px] border border-[color:var(--bo-border)] border-b-transparent bg-[var(--bo-panel)] px-4 text-sm font-semibold text-[var(--bo-fg)] outline-none transition-[background-color,border-color,color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
+      : "group inline-flex min-h-10 shrink-0 items-center gap-2 rounded-t-[6px] border border-transparent px-4 text-sm font-semibold text-[var(--bo-muted)] outline-none transition-[background-color,border-color,color] duration-150 ease-out hover:bg-[color-mix(in_srgb,var(--bo-panel)_55%,transparent)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 data-[popup-open]:border-[color:var(--bo-border)] data-[popup-open]:border-b-transparent data-[popup-open]:bg-[var(--bo-panel)] data-[popup-open]:text-[var(--bo-fg)]";
   }
 
   if (variant === "underline") {
@@ -139,13 +139,14 @@ export function OverflowTabRow({
   const visibleTabs = items.slice(0, visibleTabCount);
   const overflowTabs = items.slice(visibleTabCount);
   const activeTabIsOverflowing = overflowTabs.some((tab) => tab.active);
+  const rowGapClassName = variant === "browser" ? "gap-1" : "gap-2";
 
   return (
     <div className="relative">
       <div
         ref={measurementRef}
         aria-hidden="true"
-        className="invisible absolute flex min-w-max items-center gap-2 whitespace-nowrap"
+        className={`invisible absolute flex min-w-max items-center ${rowGapClassName} whitespace-nowrap`}
       >
         {items.map((tab) => (
           <span key={tab.id} data-overflow-tab-measure className={measurementTabClassName(variant)}>
@@ -161,7 +162,7 @@ export function OverflowTabRow({
       </div>
 
       <nav ref={railRef} aria-label={ariaLabel} className="overflow-hidden">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className={`flex min-w-0 items-center ${rowGapClassName}`}>
           {visibleTabs.map((tab, index) => {
             const startsGroup = index > 0 && visibleTabs[index - 1].groupId !== tab.groupId;
             return (

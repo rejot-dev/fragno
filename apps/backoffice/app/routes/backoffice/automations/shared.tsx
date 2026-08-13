@@ -6,11 +6,7 @@ import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../route-errors";
 import type { AutomationTab } from "./layout-context";
-import {
-  automationScopeTabPath,
-  resolveAutomationScopeTab,
-  type AutomationUiScope,
-} from "./scope";
+import { automationScopeTabPath, resolveAutomationScopeTab, type AutomationUiScope } from "./scope";
 import {
   SCRIPT_VIEW_MODE_SEARCH_PARAM,
   WORKFLOW_GRAPH_DETAIL_MODE_SEARCH_PARAM,
@@ -47,7 +43,10 @@ const AUTOMATION_TAB_GROUPS = [
     { id: "mcp", label: "MCP" },
   ],
   [{ id: "sandboxes", label: "Sandboxes" }],
-] as const satisfies readonly (readonly { id: AutomationTab; label: string }[])[];
+] as const satisfies readonly (readonly {
+  id: AutomationTab;
+  label: string;
+}[])[];
 
 const AUTOMATION_TABS = AUTOMATION_TAB_GROUPS.flatMap((group, groupIndex) =>
   group.map((tab) => ({ ...tab, groupIndex })),
@@ -77,8 +76,8 @@ function AutomationTabRail({
   }));
 
   return (
-    <div className="flex h-16 flex-col justify-center bg-[color:var(--bo-sidebar-bg)] px-2">
-      <OverflowTabRow items={items} ariaLabel="Automation workspace sections" variant="sidebar" />
+    <div className="flex flex-col bg-[color:var(--bo-sidebar-bg)] px-2 pt-4">
+      <OverflowTabRow items={items} ariaLabel="Automation workspace sections" variant="browser" />
     </div>
   );
 }
@@ -123,7 +122,7 @@ export function AutomationWorkspaceHeader({
   const workspaceLabel = isCreatingProject ? "New project" : selectedScope.label;
 
   return (
-    <section className="bo-fragment-surface bo-panel-surface overflow-hidden bg-[var(--bo-header-bg)]">
+    <section className="bo-fragment-surface overflow-hidden bg-[var(--bo-header-bg)]">
       <h1 className="sr-only">Automations for {workspaceLabel}</h1>
       <AutomationTabRail
         selectedScope={selectedScope}
@@ -131,11 +130,7 @@ export function AutomationWorkspaceHeader({
         disabled={isCreatingProject}
         scriptPresentation={scriptPresentation}
       />
-      {subnav ? (
-        <div className="border-t border-[color:var(--bo-border)] bg-[var(--bo-header-bg)] px-3 py-2 md:px-4">
-          {subnav}
-        </div>
-      ) : null}
+      {subnav ? <div className="bg-[var(--bo-panel)] px-3 py-2 md:px-4">{subnav}</div> : null}
     </section>
   );
 }
