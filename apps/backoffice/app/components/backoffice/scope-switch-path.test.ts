@@ -1,6 +1,6 @@
 import { assert, describe, test } from "vitest";
 
-import { scopeSwitchPath } from "./scope-menu";
+import { scopeSwitchPath } from "./scope-switch-path";
 
 const projectScope = { kind: "project" as const, orgId: "org-a", projectId: "proj-1" };
 

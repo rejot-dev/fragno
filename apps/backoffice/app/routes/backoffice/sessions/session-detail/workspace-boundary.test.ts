@@ -35,8 +35,8 @@ describe("session workspace dependency boundary", () => {
       "utf8",
     );
 
-    expect(organisationLayout).toContain("h-[calc(100dvh-6.25rem)]");
-    expect(organisationLayout).toContain("sm:h-[calc(100dvh-3.5rem)]");
+    expect(organisationLayout).toContain("h-[calc(100dvh-6.75rem)]");
+    expect(organisationLayout).toContain("sm:h-[calc(100dvh-4rem)]");
     expect(organisationLayout).not.toContain("min-h-[calc(100dvh");
     expect(threadSource).toContain("overflow-y-auto overscroll-contain");
     expect(panelSource).toContain("overflow-auto overscroll-contain");

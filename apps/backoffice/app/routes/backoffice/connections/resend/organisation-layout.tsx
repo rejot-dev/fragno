@@ -105,6 +105,7 @@ export default function BackofficeOrganisationResendLayout({
       <AutomationWorkspaceHeader
         selectedScope={uiScope}
         activeTab="integrations"
+        heading={`Resend setup for ${uiScope.label}`}
         subnav={
           <ResendTabs
             basePath={basePath}

@@ -166,7 +166,9 @@ function ActionPayloadDetail({ payload }: { payload: unknown }) {
           <Braces className="h-3.5 w-3.5" strokeWidth={1.8} />
         </span>
         <div>
-          <p className="text-[11px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">Payload</p>
+          <p className="text-[11px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+            Payload
+          </p>
           <p className="mt-1 text-sm font-medium text-[var(--bo-fg)]">
             {forwardsTriggerEvent ? "Original triggering event" : "Static event payload"}
           </p>
@@ -221,9 +223,7 @@ function ActionInspector({
         <h2 className="mt-1 truncate text-lg font-semibold text-[var(--bo-fg)]">
           {automationRouteActionLabel(route)}
         </h2>
-        <p className="mt-1 font-mono text-xs break-all text-[var(--bo-muted-2)]">
-          {route.name}
-        </p>
+        <p className="mt-1 font-mono text-xs break-all text-[var(--bo-muted-2)]">{route.name}</p>
       </div>
 
       <section className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">

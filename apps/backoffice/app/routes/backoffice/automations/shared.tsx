@@ -112,18 +112,20 @@ export function AutomationWorkspaceHeader({
   isCreatingProject = false,
   activeTab,
   subnav,
+  heading,
 }: {
   selectedScope: AutomationUiScope;
   isCreatingProject?: boolean;
   activeTab: AutomationTab;
   subnav?: ReactNode;
+  heading?: string;
 }) {
   const scriptPresentation = useScriptPresentation();
   const workspaceLabel = isCreatingProject ? "New project" : selectedScope.label;
 
   return (
     <section className="bo-fragment-surface overflow-hidden bg-[var(--bo-header-bg)]">
-      <h1 className="sr-only">Automations for {workspaceLabel}</h1>
+      <h1 className="sr-only">{heading ?? `Automations for ${workspaceLabel}`}</h1>
       <AutomationTabRail
         selectedScope={selectedScope}
         activeTab={activeTab}

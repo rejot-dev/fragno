@@ -24,4 +24,18 @@ describe("isPiSessionsPath", () => {
   ])("does not apply the workspace layout outside the sessions branch: %s", (pathname) => {
     assert(!isPiSessionsPath(scope, pathname));
   });
+
+  // Scope ids with reserved characters stay encoded inside the once-decoded
+  // pathname; decoding again would corrupt them.
+  const colonScope = { kind: "project" as const, orgId: "org-1", projectId: "a:b" };
+  const slashScope = { kind: "project" as const, orgId: "org-1", projectId: "a/b" };
+
+  test.each([
+    [colonScope, "/backoffice/sessions/project/org-1%3Aa%253Ab/sessions/pi/session-1"],
+    [colonScope, "/backoffice/sessions/project/org-1:a%3Ab/sessions/pi/session-1"],
+    [slashScope, "/backoffice/sessions/project/org-1%3Aa%252Fb/sessions/pi/session-1"],
+    [slashScope, "/backoffice/sessions/project/org-1:a%2Fb/sessions/pi/session-1"],
+  ])("matches scope ids containing encoded characters: %o %s", (encodedScope, pathname) => {
+    assert(isPiSessionsPath(encodedScope, pathname));
+  });
 });

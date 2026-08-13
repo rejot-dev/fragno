@@ -1,11 +1,5 @@
-import {
-  SCRIPT_VIEW_OPTIONS,
-  WORKFLOW_GRAPH_DETAIL_OPTIONS,
-} from "./script-presentation-options";
-import type {
-  ScriptViewMode,
-  WorkflowGraphDetailMode,
-} from "./script-view-mode";
+import { SCRIPT_VIEW_OPTIONS, WORKFLOW_GRAPH_DETAIL_OPTIONS } from "./script-presentation-options";
+import type { ScriptViewMode, WorkflowGraphDetailMode } from "./script-view-mode";
 
 export type ScriptPresentationToggleVariant = "segmented" | "tabs";
 
@@ -19,11 +13,7 @@ export function ScriptViewToggle({
   variant?: ScriptPresentationToggleVariant;
 }) {
   return (
-    <div
-      role="group"
-      aria-label="Script view"
-      className={toggleGroupClass(variant)}
-    >
+    <div role="group" aria-label="Script view" className={toggleGroupClass(variant)}>
       {SCRIPT_VIEW_OPTIONS.map(({ mode, label, icon: Icon }) => (
         <button
           key={mode}
@@ -52,11 +42,7 @@ export function WorkflowGraphDetailToggle({
   variant?: ScriptPresentationToggleVariant;
 }) {
   return (
-    <div
-      role="group"
-      aria-label="Workflow graph detail"
-      className={toggleGroupClass(variant)}
-    >
+    <div role="group" aria-label="Workflow graph detail" className={toggleGroupClass(variant)}>
       {WORKFLOW_GRAPH_DETAIL_OPTIONS.map(({ mode, label }) => (
         <button
           key={mode}
@@ -80,10 +66,7 @@ function toggleGroupClass(variant: ScriptPresentationToggleVariant): string {
     : "flex shrink-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-0.5";
 }
 
-function toggleButtonClass(
-  variant: ScriptPresentationToggleVariant,
-  isSelected: boolean,
-): string {
+function toggleButtonClass(variant: ScriptPresentationToggleVariant, isSelected: boolean): string {
   if (variant === "tabs") {
     const interaction =
       "flex min-h-10 items-center border-b-2 px-1 text-[10px] font-semibold tracking-[0.22em] uppercase outline-none transition-[scale,border-color,color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]";

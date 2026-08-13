@@ -1,16 +1,10 @@
-import {
-  Folder,
-  MessagesSquare,
-  Store,
-  Workflow,
-  type LucideIcon,
-} from "lucide-react";
+import { Folder, MessagesSquare, Store, Workflow, type LucideIcon } from "lucide-react";
 import { NavLink, useLocation } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { cn } from "@/lib/utils";
 
-import { scopeSwitchPath } from "./scope-menu";
+import { scopeSwitchPath } from "./scope-switch-path";
 
 type PrimaryNavigationItem = {
   label: string;
@@ -21,12 +15,10 @@ type PrimaryNavigationItem = {
 
 // Section links carry the current scope so switching sections keeps the
 // selected organisation/project instead of falling back to the default scope.
-const navigationItemPath = (
-  item: PrimaryNavigationItem,
-  scope: BackofficeContextScope | null,
-) => (scope ? scopeSwitchPath(item.to, scope) : item.to);
+const navigationItemPath = (item: PrimaryNavigationItem, scope: BackofficeContextScope | null) =>
+  scope ? scopeSwitchPath(item.to, scope) : item.to;
 
-export const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
+const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
   {
     label: "Automations",
     to: "/backoffice/automations",
@@ -73,7 +65,7 @@ export function BackofficeSidebarNav({
                 "flex min-h-11 items-center gap-3 rounded-[4px] border px-3 text-sm font-semibold text-[var(--bo-fg)] transition-[background-color,border-color,box-shadow,color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none",
                 active
                   ? "border-[color:var(--bo-sidebar-item-active-border)] bg-[var(--bo-sidebar-item-active-bg)] shadow-[var(--bo-sidebar-item-active-shadow)]"
-                  : "border-transparent hover:bg-white",
+                  : "border-transparent hover:bg-[var(--bo-panel-2)]",
               );
             }}
           >

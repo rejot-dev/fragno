@@ -10,6 +10,8 @@ import { BackofficeScopeMenu } from "./scope-menu";
 import { BackofficeMobileNav } from "./sidebar-nav";
 import { BackofficeThemeMenu } from "./theme-menu";
 
+const EMPTY_PROJECTS: BackofficeProjectOption[] = [];
+
 type BackofficeTopBarProps = {
   me: AuthMeData | null;
   currentScope: BackofficeContextScope | null;
@@ -23,7 +25,7 @@ type BackofficeTopBarProps = {
 export function BackofficeTopBar({
   me,
   currentScope,
-  projects = [],
+  projects = EMPTY_PROJECTS,
   projectsError = null,
   isLoading,
   workflowDrawerOpen = false,

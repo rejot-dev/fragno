@@ -114,6 +114,7 @@ export default function BackofficeOrganisationGitHubLayout({
       <AutomationWorkspaceHeader
         selectedScope={uiScope}
         activeTab="integrations"
+        heading={`GitHub setup for ${uiScope.label}`}
         subnav={
           <GitHubTabs
             basePath={basePath}

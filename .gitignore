@@ -23,6 +23,7 @@ coverage.json
 .vercel
 
 # Build Outputs
+next-env.d.ts
 .next/
 out/
 build

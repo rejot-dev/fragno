@@ -84,9 +84,7 @@ export function BackofficeAccountMenu({ me, isLoading }: BackofficeAccountMenuPr
           {initials}
         </span>
         <span className="hidden min-w-0 flex-col gap-0.5 xl:flex">
-          <span className="text-[9px] font-semibold text-[var(--bo-muted-2)]">
-            Account
-          </span>
+          <span className="text-[9px] font-semibold text-[var(--bo-muted-2)]">Account</span>
           <span className="max-w-36 min-w-0 truncate text-sm font-extrabold tracking-normal text-[var(--bo-fg)] normal-case">
             {displayName}
           </span>

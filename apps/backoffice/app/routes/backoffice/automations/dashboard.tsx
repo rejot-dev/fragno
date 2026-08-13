@@ -583,9 +583,9 @@ function DashboardRouteGrid({
         );
         const rowMuted = Boolean(
           route &&
-            (selectedRoute
-              ? route.id !== selectedRoute.id
-              : activeSource && routeSourceId(route) !== activeSource.id),
+          (selectedRoute
+            ? route.id !== selectedRoute.id
+            : activeSource && routeSourceId(route) !== activeSource.id),
         );
         const emptyTriggerMuted = Boolean(
           highlightedSourceId && row.sourceId !== highlightedSourceId,

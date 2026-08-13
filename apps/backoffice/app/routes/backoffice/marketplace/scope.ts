@@ -103,4 +103,3 @@ export const resolveMarketplaceUiScope = ({
   }
   return { kind: "user", userId: user.id, label: userName(user) };
 };
-

@@ -4,7 +4,7 @@ import { Link, useLocation } from "react-router";
 
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 
-import { scopeSwitchPath } from "./scope-menu";
+import { scopeSwitchPath } from "./scope-switch-path";
 
 export type BackofficeProjectOption = {
   id: string;
@@ -47,9 +47,7 @@ export function BackofficeProjectMenu({
         className="group flex min-h-12 w-full min-w-0 cursor-pointer items-center gap-2.5 py-3.5 pr-5.5 pl-6 text-left transition-[scale,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
       >
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="text-[11px] font-semibold text-[var(--bo-muted-2)]">
-            Project
-          </span>
+          <span className="text-[11px] font-semibold text-[var(--bo-muted-2)]">Project</span>
           <span
             className={`min-w-0 truncate text-sm tracking-normal normal-case ${currentProject ? "font-extrabold text-[var(--bo-fg)]" : "font-medium text-[var(--bo-muted-2)]"}`}
           >
@@ -134,7 +132,9 @@ export function BackofficeProjectMenu({
                 </p>
               ) : null}
               {projectsError ? (
-                <p className="px-2 py-1.5 text-xs text-red-700 dark:text-red-200">{projectsError}</p>
+                <p className="px-2 py-1.5 text-xs text-red-700 dark:text-red-200">
+                  {projectsError}
+                </p>
               ) : null}
               <Menu.Item
                 render={<Link to={createProjectPath} preventScrollReset />}
