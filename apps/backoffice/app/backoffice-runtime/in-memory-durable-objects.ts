@@ -276,10 +276,11 @@ export class InMemoryDurableObjectNamespace<TObject> {
 
   #createStub(object: TObject, state: InMemoryDurableObjectState): TObject {
     const cache = new Map<PropertyKey, unknown>();
+    const target = object as Record<PropertyKey, unknown>;
 
-    return new Proxy(object as object, {
-      get(target, property, _receiver): unknown {
-        const value: unknown = Reflect.get(target, property, target);
+    return new Proxy(target, {
+      get(target, property): unknown {
+        const value = target[property];
         if (typeof value !== "function") {
           return value;
         }

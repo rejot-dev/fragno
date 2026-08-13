@@ -1,14 +1,20 @@
 import { DurableHooksLogger } from "./durable-hooks-logger";
 import type { HookProcessorConfig } from "./hooks";
 
+declare const durableHooksRuntimeTokenBrand: unique symbol;
+
+export type DurableHooksRuntimeToken = {
+  readonly [durableHooksRuntimeTokenBrand]?: never;
+};
+
 type DurableHooksRuntimeState = {
-  token: object;
+  token: DurableHooksRuntimeToken;
   config: HookProcessorConfig;
   dispatcherRegistered: boolean;
   dispatcherWarningEmitted: boolean;
 };
 
-const runtimeByToken = new WeakMap<object, DurableHooksRuntimeState>();
+const runtimeByToken = new WeakMap<DurableHooksRuntimeToken, DurableHooksRuntimeState>();
 const runtimeByConfig = new WeakMap<HookProcessorConfig, DurableHooksRuntimeState>();
 const runtimesByInternalFragment = new WeakMap<
   HookProcessorConfig["internalFragment"],
@@ -28,13 +34,13 @@ function getNamespaceRuntimeMap(
   return created;
 }
 
-export function registerDurableHooksRuntime(config: HookProcessorConfig): object {
+export function registerDurableHooksRuntime(config: HookProcessorConfig): DurableHooksRuntimeToken {
   const existing = runtimeByConfig.get(config);
   if (existing) {
     return existing.token;
   }
 
-  const token = {};
+  const token: DurableHooksRuntimeToken = {};
   const runtime: DurableHooksRuntimeState = {
     token,
     config,
@@ -56,7 +62,9 @@ export function registerDurableHooksRuntime(config: HookProcessorConfig): object
   return token;
 }
 
-export function getDurableHooksRuntimeByToken(token: object): DurableHooksRuntimeState | undefined {
+export function getDurableHooksRuntimeByToken(
+  token: DurableHooksRuntimeToken,
+): DurableHooksRuntimeState | undefined {
   return runtimeByToken.get(token);
 }
 

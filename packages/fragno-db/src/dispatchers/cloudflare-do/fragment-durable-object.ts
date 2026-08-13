@@ -98,7 +98,8 @@ const isFetchTarget = (value: unknown): value is FragmentDurableObjectFetchTarge
   return (
     typeof value === "object" &&
     value !== null &&
-    typeof Reflect.get(value, "handler") === "function"
+    "handler" in value &&
+    typeof value.handler === "function"
   );
 };
 
@@ -114,7 +115,7 @@ const createHostedFragment = <TFragment extends AnyFragnoInstantiatedDatabaseFra
 
   return new Proxy(fragment, {
     get(target, property) {
-      const value = Reflect.get(target, property, target);
+      const value = target[property as keyof TFragment];
       if (typeof value !== "function") {
         return value;
       }

@@ -1,3 +1,5 @@
+import type { RequestThisContext } from "./api";
+
 // Recursively remove 'this' parameter from all functions in an object
 export type BoundServices<T> = {
   [K in keyof T]: T[K] extends (...args: never[]) => unknown
@@ -17,7 +19,7 @@ export type BoundServices<T> = {
  */
 export function bindServicesToContext<T extends object>(
   services: T,
-  context: object,
+  context: RequestThisContext,
 ): BoundServices<T> {
   const bound = {} as BoundServices<T>;
 

@@ -22,7 +22,7 @@ import {
   RequestContextStorage,
   type RequestPropagationContext,
 } from "./request-context-storage";
-import { RequestInputContext, type RequestBodyType } from "./request-input-context";
+import { RequestInputContext } from "./request-input-context";
 import {
   RequestMiddlewareInputContext,
   RequestMiddlewareOutputContext,
@@ -625,7 +625,7 @@ export class FragnoInstantiatedFragment<
     const expectedContentType = routeConfig.contentType ?? "application/json";
 
     // Parse request body based on route's expected content type
-    let requestBody: RequestBodyType = undefined;
+    let requestBody: unknown = undefined;
     let rawBody: string | undefined = undefined;
 
     if (req.body instanceof ReadableStream) {
@@ -830,7 +830,7 @@ export class FragnoInstantiatedFragment<
     const requestState = new MutableRequestState({
       pathParams: pathParams as Record<string, string>,
       searchParams,
-      body: body as RequestBodyType,
+      body,
       headers: requestHeaders,
     });
     const routeMatch = { data: route, params: pathParams } as ReturnType<typeof findRoute>;

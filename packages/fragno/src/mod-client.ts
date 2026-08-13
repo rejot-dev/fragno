@@ -106,7 +106,7 @@ export function instantiate(_definition: unknown) {
     {
       get(target, prop): unknown {
         if (prop in target) {
-          return Reflect.get(target, prop) as unknown;
+          return target[prop as keyof typeof target];
         }
         // Return a function that returns the stub for method chaining
         return () => fragmentStub;
@@ -133,7 +133,7 @@ export function instantiate(_definition: unknown) {
     {
       get(target, prop): unknown {
         if (prop in target) {
-          return Reflect.get(target, prop) as unknown;
+          return target[prop as keyof typeof target];
         }
         // Return a function that returns the stub for method chaining
         return () => builderStub;

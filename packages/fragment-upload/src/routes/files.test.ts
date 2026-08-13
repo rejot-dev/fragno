@@ -13,7 +13,7 @@ import { uploadRoutes } from "../index";
 import { uploadSchema } from "../schema";
 import { createFilesystemStorageAdapter } from "../storage/fs";
 import type { StorageAdapter } from "../storage/types";
-import type { UploadFileWritePrecondition } from "../types";
+import type { FileMutationResult, UploadFileWritePrecondition } from "../types";
 
 describe("upload file routes", async () => {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-routes-"));
@@ -64,7 +64,7 @@ describe("upload file routes", async () => {
     return form;
   };
 
-  const expectMutationResultWithoutTimestamps = (result: object) => {
+  const expectMutationResultWithoutTimestamps = (result: FileMutationResult) => {
     expect(result).not.toHaveProperty("createdAt");
     expect(result).not.toHaveProperty("updatedAt");
     expect(result).not.toHaveProperty("completedAt");

@@ -4,9 +4,6 @@ import { FragnoApiValidationError, type HTTPMethod } from "./api";
 import type { ExtractPathParams } from "./internal/path";
 import type { MutableRequestState } from "./mutable-request-state";
 
-/** Raw request input before route-specific validation and parsing. */
-export type RequestBodyType = unknown;
-
 type ValidatedInputContext<TInputSchema extends StandardSchemaV1 | undefined> =
   TInputSchema extends undefined
     ? undefined
@@ -30,7 +27,7 @@ export class RequestInputContext<
   readonly #headers: Headers;
   readonly #body: string | undefined;
   readonly #request: Request | undefined;
-  readonly #parsedBody: RequestBodyType;
+  readonly #parsedBody: unknown;
   readonly #inputSchema: TInputSchema | undefined;
   readonly #shouldValidateInput: boolean;
 
@@ -39,7 +36,7 @@ export class RequestInputContext<
     method: string;
     pathParams: ExtractPathParams<TPath>;
     searchParams: URLSearchParams;
-    parsedBody: RequestBodyType;
+    parsedBody: unknown;
     rawBody?: string;
     headers: Headers;
     request?: Request;
@@ -110,7 +107,7 @@ export class RequestInputContext<
           pathParams: ExtractPathParams<TPath>;
           searchParams?: URLSearchParams;
           headers?: Headers;
-          body: RequestBodyType;
+          body: unknown;
           inputSchema?: TInputSchema;
         },
   ): RequestInputContext<TPath, TInputSchema> {

@@ -5,7 +5,7 @@ export class Webhook {
     this.#secret = secret;
   }
 
-  verify(payload: string | object, _headers: Record<string, string>) {
+  verify(payload: string | Readonly<Record<string, unknown>>, _headers: Record<string, string>) {
     void this.#secret;
 
     if (typeof payload === "string") {

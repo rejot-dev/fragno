@@ -4031,7 +4031,7 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
       };
 
       return new Proxy(object, {
-        get(target, property, receiver) {
+        get(target, property) {
           if (property === "fetchWithContext") {
             return async (request: Request, context: BackofficeActionRpcContext) =>
               new URL(request.url).pathname.startsWith("/api/pi")
@@ -4041,11 +4041,11 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
           if (property === "getPiRuntimeState") {
             return async () => ({ configured: true, modelCatalog: [] });
           }
-          const value = Reflect.get(target, property, receiver) as unknown;
+          const value = target[property as keyof typeof target];
           if (typeof value !== "function") {
             return value;
           }
-          return (...args: unknown[]): unknown => Reflect.apply(value, target, args) as unknown;
+          return value.bind(target);
         },
       });
     };

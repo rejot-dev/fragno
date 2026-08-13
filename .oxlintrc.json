@@ -7,7 +7,8 @@
     "./packages-private/oxlint-plugins/docs-icons-sync.js",
     "./packages-private/oxlint-plugins/vitest-assert-json-response.js",
     "./packages-private/oxlint-plugins/zod-inline-schema-definitions.js",
-    "./packages-private/oxlint-plugins/zod-v4-object-factories.js"
+    "./packages-private/oxlint-plugins/zod-v4-object-factories.js",
+    "./packages-private/oxlint-plugins/anti-slop/index.ts"
   ],
   "env": {
     "builtin": true
@@ -106,6 +107,11 @@
     "vitest-assert-json-response/assert-json-response": "error",
     "zod-inline-schema-definitions/inline-one-line": "error",
     "zod-v4-object-factories/prefer-object-factories": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-reflect-get": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop/no-widen-then-assert": "error",
     "for-direction": "error",
     "no-async-promise-executor": "error",
     "no-case-declarations": "error",

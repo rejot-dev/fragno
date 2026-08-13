@@ -207,23 +207,12 @@ function unwrapVueStoreValue<T extends object>(value: T): FragnoVueStoreValue<T>
     return useStore(value as Store) as FragnoVueStoreValue<T>;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result: any = {};
+  const entries = Object.keys(value).map((key) => {
+    const fieldValue = value[key as keyof T];
+    return [key, isReadableAtom(fieldValue) ? useStore(fieldValue) : fieldValue] as const;
+  });
 
-  for (const key in value) {
-    if (!Object.prototype.hasOwnProperty.call(value, key)) {
-      continue;
-    }
-
-    const fieldValue = value[key];
-    if (isReadableAtom(fieldValue)) {
-      result[key] = useStore(fieldValue);
-    } else {
-      result[key] = fieldValue;
-    }
-  }
-
-  return result as FragnoVueStoreValue<T>;
+  return Object.fromEntries(entries) as FragnoVueStoreValue<T>;
 }
 
 // Helper function to create a Vue composable from a store

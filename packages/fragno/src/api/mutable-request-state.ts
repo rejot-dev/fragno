@@ -1,5 +1,3 @@
-import type { RequestBodyType } from "./request-input-context";
-
 /**
  * Holds mutable request state that can be modified by middleware and consumed by handlers.
  *
@@ -34,13 +32,13 @@ export class MutableRequestState {
   readonly #searchParams: URLSearchParams;
   readonly #headers: Headers;
   // oxlint-disable-next-line no-unused-private-class-members False Positive?
-  readonly #initialBody: RequestBodyType;
-  #bodyOverride: { body: RequestBodyType } | undefined;
+  readonly #initialBody: unknown;
+  #bodyOverride: { body: unknown } | undefined;
 
   constructor(config: {
     pathParams: Record<string, string>;
     searchParams: URLSearchParams;
-    body: RequestBodyType;
+    body: unknown;
     headers: Headers;
   }) {
     this.#pathParams = config.pathParams;
@@ -77,7 +75,7 @@ export class MutableRequestState {
    * Get the current body value.
    * Returns the override if set, otherwise the initial body.
    */
-  get body(): RequestBodyType {
+  get body(): unknown {
     return this.#bodyOverride ? this.#bodyOverride.body : this.#initialBody;
   }
 
@@ -93,7 +91,7 @@ export class MutableRequestState {
    * state.setBody({ modifiedField: "new value" });
    * ```
    */
-  setBody(body: RequestBodyType): void {
+  setBody(body: unknown): void {
     this.#bodyOverride = { body };
   }
 

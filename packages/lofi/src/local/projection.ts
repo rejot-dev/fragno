@@ -275,7 +275,10 @@ export const projectionRowToRecord = (
   return record;
 };
 
-const isPlainObject = (value: object): value is Record<string, unknown> => {
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 };
@@ -320,7 +323,7 @@ export const resolveProjectionReadPlan = <TPlan extends LofiProjectionReadPlan |
         : resolvedItems;
     }
 
-    if (typeof value === "object" && value !== null && isPlainObject(value)) {
+    if (isPlainObject(value)) {
       const entries = Object.entries(value).map(
         ([key, nested]) => [key, resolveValue(nested)] as const,
       );

@@ -190,11 +190,6 @@ function areStoreFactoryArgsEqual(left: unknown[], right: unknown[]): boolean {
   );
 }
 
-const getStoreDisposer = (value: object): (() => void) | undefined => {
-  const disposer = (value as { [Symbol.dispose]?: (() => void) | undefined })[Symbol.dispose];
-  return typeof disposer === "function" ? disposer.bind(value) : undefined;
-};
-
 // The React adapter intentionally bridges Nanostores' `any` defaults into mapped store types.
 // oxlint-disable typescript/no-unsafe-return
 const createReactStoreObjectView = <T extends object>(
@@ -206,7 +201,7 @@ const createReactStoreObjectView = <T extends object>(
 
   return new Proxy(value, {
     get(target, property, _receiver) {
-      const propertyValue = Reflect.get(target, property, target);
+      const propertyValue = target[property as keyof T];
 
       if (isReadableAtom(propertyValue)) {
         if (atomValues.has(propertyValue)) {
@@ -319,7 +314,8 @@ function createReactStore<const T extends object, const TArgs extends unknown[]>
     }, [hook, stableArgs]);
 
     useEffect(() => {
-      const disposer = getStoreDisposer(value);
+      const dispose = (value as { [Symbol.dispose]?: (() => void) | undefined })[Symbol.dispose];
+      const disposer = typeof dispose === "function" ? dispose.bind(value) : undefined;
       const pendingTimeout = pendingDisposals.get(value);
       if (pendingTimeout !== undefined) {
         clearTimeout(pendingTimeout);

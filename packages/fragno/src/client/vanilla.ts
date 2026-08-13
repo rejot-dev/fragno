@@ -231,11 +231,6 @@ export type FragnoVanillaStoreFromData<TStore> = TStore extends {
     ? TObject
     : never;
 
-const getStoreDisposer = (value: object): (() => void) | undefined => {
-  const disposer = (value as { [Symbol.dispose]?: (() => void) | undefined })[Symbol.dispose];
-  return typeof disposer === "function" ? disposer.bind(value) : undefined;
-};
-
 function createVanillaStore<const TStore extends FragnoStoreData<object, unknown[]>>(
   hook: TStore,
 ): FragnoVanillaStoreFromData<TStore> {
@@ -245,7 +240,8 @@ function createVanillaStore<const TStore extends FragnoStoreData<object, unknown
 
   return ((...args: Parameters<typeof hook.factory>) => {
     const value = hook.factory(...args);
-    const disposer = getStoreDisposer(value);
+    const dispose = (value as { [Symbol.dispose]?: (() => void) | undefined })[Symbol.dispose];
+    const disposer = typeof dispose === "function" ? dispose.bind(value) : undefined;
     if (!disposer) {
       return value as ReturnType<typeof hook.factory> & { destroy?: () => void };
     }
