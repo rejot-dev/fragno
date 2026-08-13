@@ -14,7 +14,8 @@
     "./docs-icons-sync": "./docs-icons-sync.js",
     "./vitest-assert-json-response": "./vitest-assert-json-response.js",
     "./zod-inline-schema-definitions": "./zod-inline-schema-definitions.js",
-    "./zod-v4-object-factories": "./zod-v4-object-factories.js"
+    "./zod-v4-object-factories": "./zod-v4-object-factories.js",
+    "./anti-slop": "./anti-slop/index.ts"
   },
   "scripts": {
     "types:check": "tsc --noEmit",
@@ -25,6 +26,7 @@
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
+    "@oxlint/plugins": "1.78.0",
     "@types/eslint": "^9.6.1",
     "@types/node": "^22.19.7"
   }
