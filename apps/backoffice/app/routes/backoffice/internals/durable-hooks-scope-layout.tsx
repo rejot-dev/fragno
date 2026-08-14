@@ -5,7 +5,6 @@ import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router"
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
   backofficeContextScopeFromRouteParams,
-  backofficeContextScopeRoutePath,
   BackofficeScopeCodecError,
 } from "@/backoffice-runtime/scope-codec";
 import { BackofficePageHeader } from "@/components/backoffice";
@@ -18,7 +17,6 @@ import { fetchAutomationProjects, toExternalId } from "../automations/data.serve
 import type { Route } from "./+types/durable-hooks-scope-layout";
 import {
   createDurableHooksObjectOptions,
-  createDurableHooksScopeOptions,
   durableHooksSelectionPath,
   DURABLE_HOOKS_OBJECT_CONFIGURE_META,
   getDurableHooksLoaderErrorMessage,
@@ -26,7 +24,6 @@ import {
   resolveDurableHooksScopeSelection,
   type DurableHooksObjectOption,
   type DurableHooksProject,
-  type DurableHooksScopeOption,
   type DurableHooksScopeSelection,
 } from "./durable-hooks-scope";
 import { formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";
@@ -38,9 +35,7 @@ export type DurableHooksScopeOutletContext = {
 
 type DurableHooksScopeLoaderData = DurableHookQueueResponse & {
   error: string | null;
-  projectsError: string | null;
   selection: DurableHooksScopeSelection;
-  scopeOptions: DurableHooksScopeOption[];
   objectOptions: DurableHooksObjectOption[];
 };
 
@@ -181,10 +176,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  const projectOrgId =
-    routeScope.kind === "org" || routeScope.kind === "project"
-      ? routeScope.orgId
-      : (me.activeOrganization?.organization.id ?? organisations[0]?.id ?? null);
+  const projectOrgId = routeScope.kind === "project" ? routeScope.orgId : null;
   const projectsResult = projectOrgId
     ? await fetchAutomationProjects(context, projectOrgId)
     : { projects: [], projectsError: null };
@@ -212,15 +204,8 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   const cursor = url.searchParams.get("cursor") ?? undefined;
   const pageSize = parsePageSize(url.searchParams.get("pageSize"));
-  const selectorData = {
-    projectsError: projectsResult.projectsError,
+  const inspectorData = {
     selection,
-    scopeOptions: createDurableHooksScopeOptions({
-      organisations,
-      projects,
-      user: me.user,
-      selection,
-    }),
     objectOptions: createDurableHooksObjectOptions(selection),
   };
 
@@ -229,7 +214,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     return {
       ...queue,
       error: null,
-      ...selectorData,
+      ...inspectorData,
     } satisfies DurableHooksScopeLoaderData;
   } catch (error) {
     return {
@@ -240,7 +225,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       cursor: undefined,
       hasNextPage: false,
       error: getDurableHooksLoaderErrorMessage({ selection, error }),
-      ...selectorData,
+      ...inspectorData,
     } satisfies DurableHooksScopeLoaderData;
   }
 }
@@ -251,61 +236,6 @@ export function meta({ loaderData }: Route.MetaArgs) {
     ? (getDurableHooksObjectDefinition(loaderData.selection.objectId)?.label ?? "object")
     : "object";
   return [{ title: `Durable Hooks · ${scopeLabel} · ${objectLabel}` }];
-}
-
-function DurableHooksScopePicker({
-  selection,
-  options,
-  projectsError,
-}: {
-  selection: DurableHooksScopeSelection;
-  options: DurableHooksScopeOption[];
-  projectsError: string | null;
-}) {
-  const selectedId = backofficeContextScopeRoutePath(selection.scope);
-
-  return (
-    <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-        <div>
-          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">Scope</p>
-          <p className="mt-1 text-sm text-[var(--bo-muted)]">
-            Select the singleton, organisation, project, or user scope to inspect.
-          </p>
-        </div>
-        {projectsError ? (
-          <p className="text-xs text-red-700 dark:text-red-200">{projectsError}</p>
-        ) : null}
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {options.map((option) => {
-          const isActive = option.id === selectedId;
-          return (
-            <Link
-              key={option.id}
-              to={option.to}
-              aria-current={isActive ? "page" : undefined}
-              className={
-                isActive
-                  ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-left text-[var(--bo-accent-fg)]"
-                  : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-left text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-              }
-            >
-              <span className="block text-[10px] font-semibold tracking-[0.22em] uppercase">
-                {option.kind}
-              </span>
-              <span className="mt-1 block text-sm font-medium text-[var(--bo-fg)]">
-                {option.label}
-              </span>
-              <span className="mt-1 block text-xs text-[var(--bo-muted-2)]">
-                {option.description}
-              </span>
-            </Link>
-          );
-        })}
-      </div>
-    </section>
-  );
 }
 
 function DurableHooksObjectPicker({
@@ -362,8 +292,6 @@ export default function BackofficeDurableHooksScopeLayout({ loaderData }: Route.
     cursor,
     hasNextPage,
     selection,
-    projectsError,
-    scopeOptions,
     objectOptions,
   } = loaderData;
   const location = useLocation();
@@ -417,11 +345,6 @@ export default function BackofficeDurableHooksScopeLayout({ loaderData }: Route.
         description={`Review queued hooks and retry state for durable objects in this ${selection.kind} scope.`}
       />
 
-      <DurableHooksScopePicker
-        selection={selection}
-        options={scopeOptions}
-        projectsError={projectsError}
-      />
       <DurableHooksObjectPicker selectedObjectId={selection.objectId} options={objectOptions} />
 
       <section className="grid min-w-0 gap-4 lg:grid-cols-[1.5fr_1fr]">

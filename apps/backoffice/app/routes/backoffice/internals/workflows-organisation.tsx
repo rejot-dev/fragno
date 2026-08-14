@@ -84,20 +84,11 @@ export default function BackofficeWorkflowsOrganisation() {
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
           { label: "Internals", to: "/backoffice/internals" },
-          { label: "Workflows", to: "/backoffice/internals/workflows" },
-          { label: scopeLabel },
+          { label: "Workflows" },
         ]}
         eyebrow="Internals"
         title={`Workflow instances · ${scopeLabel}`}
-        description="Review workflow execution state, current step, and event history for this scope."
-        actions={
-          <Link
-            to="/backoffice/internals/workflows"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-          >
-            Back to scopes
-          </Link>
-        }
+        description="Review workflow execution state, current step, and event history for the globally selected scope."
       />
 
       <section className="grid min-w-0 gap-4 lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
