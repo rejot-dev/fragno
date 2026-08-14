@@ -46,9 +46,13 @@ export const zodSchemaToJsonSchema = (
       if (typeof metadata?.codemodeType === "string") {
         jsonSchema.codemodeType = metadata.codemodeType;
       }
-      if ((zodSchema as unknown as z.ZodType)._zod.def.type === "date") {
+      const zodType = (zodSchema as unknown as z.ZodType)._zod.def.type;
+      if (zodType === "date") {
         jsonSchema.type = "string";
         jsonSchema.format = "date-time";
+      }
+      if (zodType === "void") {
+        jsonSchema.codemodeType = "void";
       }
       delete jsonSchema["~standard"];
       delete jsonSchema.codemodeInputId;
@@ -211,8 +215,14 @@ const typeNameForRef = (
   return typeName;
 };
 
-const resolveRefType = (ref: string, context: JsonSchemaTypeScriptContext) => {
+const resolveRefType = (ref: string, context: JsonSchemaTypeScriptContext): string => {
   if (ref === "#") {
+    if (context.rootSchema.$ref && context.rootSchema.$ref !== "#") {
+      return resolveRefType(context.rootSchema.$ref, context);
+    }
+    if (typeof context.rootSchema.id === "string" && context.rootSchema.id.trim()) {
+      return sanitizeTypeName(context.rootSchema.id.trim());
+    }
     return context.rootTypeName ?? "unknown";
   }
 
@@ -294,14 +304,14 @@ const renderJsonSchemaType = (
           name,
           schema: propertySchema,
           required: required.has(name),
-          depth: depth + 1,
+          depth: 0,
           context,
         }),
       );
 
       if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
         propertyLines.push(
-          `[key: string]: ${renderJsonSchemaType(schema.additionalProperties, depth + 1, context)};`,
+          `[key: string]: ${renderJsonSchemaType(schema.additionalProperties, 0, context)};`,
         );
       } else if (schema.additionalProperties === true) {
         propertyLines.push("[key: string]: unknown;");
@@ -311,7 +321,7 @@ const renderJsonSchemaType = (
         return "Record<string, unknown>";
       }
 
-      return `\n{\n${indent(propertyLines.join("\n"), (depth + 1) * 2)}\n${" ".repeat(depth * 2)}}`.trimStart();
+      return `{\n${indent(propertyLines.join("\n"))}\n}`;
     }
     case undefined:
       return "unknown";

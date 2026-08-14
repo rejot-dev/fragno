@@ -83,8 +83,8 @@ describe("zodSchemaToTypeScript", () => {
         id: string;
         count?: number;
         metadata: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
       }"
     `);
   });
@@ -399,6 +399,10 @@ describe("zodSchemaToTypeScript", () => {
         "type": "ReusableRoute",
       }
     `);
+  });
+
+  test("renders Zod void as TypeScript void", () => {
+    assert(zodSchemaToTypeScript(z.void(), "output") === "void");
   });
 
   test("renders explicit codemode types for values JSON Schema cannot represent", () => {

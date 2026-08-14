@@ -206,6 +206,19 @@ const renderJSDoc = (value: string, spaces = 0) => {
 
 export const renderCodemodeWorkflowTypes = () => workflowAuthoringTypes.trimEnd();
 
+const INLINE_CODEMODE_TYPES = new Set([
+  "boolean",
+  "never",
+  "null",
+  "number",
+  "string",
+  "undefined",
+  "unknown",
+  "void",
+]);
+
+const shouldInlineCodemodeType = (type: string): boolean => INLINE_CODEMODE_TYPES.has(type.trim());
+
 const groupReferencesByNamespace = (references: readonly RuntimeToolReference[]) => {
   const byNamespace = new Map<string, RuntimeToolReference[]>();
   for (const reference of references) {
@@ -247,15 +260,23 @@ const renderCodemodeProviderSection = ({
     ...sharedTypeDeclarations,
     ...references.flatMap((reference) => {
       const { inputTypeName, outputTypeName, inputType, outputType } = reference.codemode;
-      return [`type ${inputTypeName} = ${inputType};`, `type ${outputTypeName} = ${outputType};`];
+      return [
+        ...(shouldInlineCodemodeType(inputType) ? [] : [`type ${inputTypeName} = ${inputType};`]),
+        ...(shouldInlineCodemodeType(outputType)
+          ? []
+          : [`type ${outputTypeName} = ${outputType};`]),
+      ];
     }),
   ];
 
   const methods = references.map((reference) => {
-    const { toolName, description, inputTypeName, outputTypeName } = reference.codemode;
+    const { toolName, description, inputTypeName, outputTypeName, inputType, outputType } =
+      reference.codemode;
+    const renderedInputType = shouldInlineCodemodeType(inputType) ? inputType : inputTypeName;
+    const renderedOutputType = shouldInlineCodemodeType(outputType) ? outputType : outputTypeName;
     return [
       renderJSDoc(description, 2),
-      `  ${toolName}(input: ${inputTypeName}): Promise<${outputTypeName}>;`,
+      `  ${toolName}(input: ${renderedInputType}): Promise<${renderedOutputType}>;`,
     ]
       .filter(Boolean)
       .join("\n");

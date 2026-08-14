@@ -69,6 +69,78 @@ describe("BackofficeStateBackend", () => {
     expect(upload.readyKeys()).not.toContain("workspace/state-backend-fixture-workspace.md");
   });
 
+  test("applies state edits atomically through Upload", async () => {
+    const upload = new MemoryUploadObject({
+      "batch/first.txt": "first old",
+      "batch/second.json": "{}\n",
+    });
+    const tools = createStateTools(upload);
+
+    const result = await tools.applyEdits?.execute({
+      edits: [
+        {
+          kind: "replace",
+          path: "/workspace/batch/first.txt",
+          search: "old",
+          replacement: "new",
+        },
+        {
+          kind: "writeJson",
+          path: "/workspace/batch/second.json",
+          value: { enabled: true },
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      totalChanged: 2,
+      edits: [
+        { path: "/workspace/batch/first.txt", changed: true, content: "first new" },
+        {
+          path: "/workspace/batch/second.json",
+          changed: true,
+          content: '{\n  "enabled": true\n}\n',
+        },
+      ],
+    });
+    expect(upload.requests).toContain("POST /api/upload/files/apply-edits");
+    await expect(tools.readFile?.execute({ path: "/workspace/batch/first.txt" })).resolves.toBe(
+      "first new",
+    );
+    await expect(tools.readFile?.execute({ path: "/workspace/batch/second.json" })).resolves.toBe(
+      '{\n  "enabled": true\n}\n',
+    );
+  });
+
+  test("uses Upload edit validation in the memory backend", async () => {
+    const tools = createStateTools(new MemoryUploadObject({ "file.txt": "content" }));
+
+    await expect(
+      tools.applyEdits?.execute({
+        edits: [
+          {
+            kind: "replace",
+            path: "/workspace/file.txt",
+            search: "",
+            replacement: "invalid",
+          },
+        ],
+      }),
+    ).rejects.toThrow("Search query must not be empty");
+  });
+
+  test("rejects state edits outside the mutable Upload mount", async () => {
+    const upload = new MemoryUploadObject();
+    const tools = createStateTools(upload, { "read-only.txt": "static" });
+
+    await expect(
+      tools.applyEdits?.execute({
+        edits: [{ kind: "write", path: "/static/read-only.txt", content: "changed" }],
+      }),
+    ).rejects.toThrow("EROFS");
+    expect(upload.requests).not.toContain("POST /api/upload/files/apply-edits");
+  });
+
   test("reports regex positions correctly after CRLF line endings", async () => {
     const backend = createTestStateBackend({
       staticFiles: {

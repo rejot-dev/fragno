@@ -1,5 +1,7 @@
 import { globToRegExp, searchTextContent } from "@fragno-dev/upload/text-index";
 
+import { applyFileEditOperation, diffContent, type FileEditOperation } from "@fragno-dev/upload";
+
 import type { FetchObject } from "@/backoffice-runtime/object-registry";
 
 import { createBackofficeStateBackend, type BackofficeStateBackend } from "./state-backend";
@@ -107,6 +109,9 @@ export class MemoryUploadObject implements FetchObject {
     if (request.method === "GET" && url.pathname === "/api/upload/files/by-key/content") {
       return this.#readFile(url);
     }
+    if (request.method === "POST" && url.pathname === "/api/upload/files/apply-edits") {
+      return await this.#applyEdits(request);
+    }
     if (request.method === "POST" && url.pathname === "/api/upload/files/search") {
       return await this.#searchCandidates(request);
     }
@@ -131,6 +136,59 @@ export class MemoryUploadObject implements FetchObject {
     }
 
     return Response.json({ message: "Not found", code: "FILE_NOT_FOUND" }, { status: 404 });
+  }
+
+  async #applyEdits(request: Request): Promise<Response> {
+    const input = (await request.json()) as { provider: string; edits: FileEditOperation[] };
+    const originalContent = new Map<string, string | null>();
+    const currentContent = new Map<string, string | null>();
+    const results = [];
+
+    try {
+      for (const edit of input.edits) {
+        if (!currentContent.has(edit.fileKey)) {
+          const record = this.#records.get(edit.fileKey);
+          const content =
+            record?.status === "ready" ? new TextDecoder().decode(record.content) : null;
+          originalContent.set(edit.fileKey, content);
+          currentContent.set(edit.fileKey, content);
+        }
+        const before = currentContent.get(edit.fileKey) ?? null;
+        const content = applyFileEditOperation(before, edit);
+        currentContent.set(edit.fileKey, content);
+        results.push({
+          fileKey: edit.fileKey,
+          changed: content !== before,
+          content,
+          diff: diffContent(before ?? "", content, `a/${edit.fileKey}`, `b/${edit.fileKey}`),
+        });
+      }
+    } catch (cause) {
+      return Response.json(
+        {
+          message: cause instanceof Error ? cause.message : String(cause),
+          code: "INVALID_REQUEST",
+        },
+        { status: 400 },
+      );
+    }
+
+    let totalChanged = 0;
+    for (const [fileKey, content] of currentContent) {
+      if (content === null || content === originalContent.get(fileKey)) {
+        continue;
+      }
+      totalChanged++;
+      const existing = this.#records.get(fileKey);
+      this.#setFile(
+        fileKey,
+        content,
+        existing?.contentType ?? inferTestContentType(fileKey),
+        existing?.metadata ?? null,
+        existing?.filename,
+      );
+    }
+    return Response.json({ edits: results, totalChanged });
   }
 
   #getFile(url: URL): Response {

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ToolProvider } from "@/fragno/codemode/runtime-api";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
+import { jsonValueSchema } from "@/lib/zod/json-value";
 
 import {
   createBackofficeCodemodeProviders,
@@ -45,6 +46,38 @@ const fileSearchOptionsByMountSchema = z.strictObject({
 });
 const textSearchOptionsSchema = fileSearchOptionsSchema.extend({
   regex: z.boolean().optional(),
+});
+const fileEditSearchOptionsSchema = z.strictObject({
+  caseSensitive: z.boolean().optional(),
+  regex: z.boolean().optional(),
+  wholeWord: z.boolean().optional(),
+  maxMatches: z.number().optional(),
+});
+const fileEditSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("write"),
+    path: z.string(),
+    content: z.string(),
+  }),
+  z.strictObject({
+    kind: z.literal("replace"),
+    path: z.string(),
+    search: z.string(),
+    replacement: z.string(),
+    options: fileEditSearchOptionsSchema.optional(),
+  }),
+  z.strictObject({
+    kind: z.literal("writeJson"),
+    path: z.string(),
+    value: jsonValueSchema,
+    options: z.strictObject({ spaces: z.number().optional() }).optional(),
+  }),
+]);
+const appliedFileEditSchema = z.strictObject({
+  path: z.string(),
+  changed: z.boolean(),
+  content: z.string(),
+  diff: z.string(),
 });
 const statOutputSchema = z
   .strictObject({
@@ -332,7 +365,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       description: "Read and parse a JSON file from codemode state.",
       requiredPermissions: ["read"],
       inputSchema: pathInputSchema,
-      outputSchema: z.unknown(),
+      outputSchema: jsonValueSchema,
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).readJson(path),
     }),
@@ -345,7 +378,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       requiredPermissions: ["modify"],
       inputSchema: z.strictObject({
         path: z.string(),
-        value: z.unknown(),
+        value: jsonValueSchema,
         options: z
           .strictObject({
             spaces: z.number().optional(),
@@ -356,6 +389,23 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       execute: async ({ path, value, options }, context: StateToolContext) => {
         await getStateRuntime(context).writeJson(path, value, options);
       },
+    }),
+    defineBackofficeRuntimeTool({
+      id: "state.applyEdits",
+      namespace: "state",
+      authorizationNamespace: "upload",
+      name: "applyEdits",
+      description: "Atomically apply text and JSON edits to mutable codemode state files.",
+      requiredPermissions: ["modify"],
+      inputSchema: z.strictObject({
+        edits: z.array(fileEditSchema),
+      }),
+      outputSchema: z.strictObject({
+        edits: z.array(appliedFileEditSchema),
+        totalChanged: z.number(),
+      }),
+      execute: async ({ edits }, context: StateToolContext) =>
+        await getStateRuntime(context).applyEdits(edits),
     }),
     defineBackofficeRuntimeTool({
       id: "state.searchText",
