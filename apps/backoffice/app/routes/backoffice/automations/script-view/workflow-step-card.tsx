@@ -70,10 +70,7 @@ export function WorkflowStepCard({
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
-            {step.stepType}
-          </p>
-          <p className="mt-1 text-sm font-medium text-[var(--bo-fg)]">{step.label}</p>
+          <p className="text-sm font-medium text-[var(--bo-fg)]">{step.label}</p>
         </div>
         <div className="flex items-center gap-2">
           {runState && runPresentation.showBadge ? (

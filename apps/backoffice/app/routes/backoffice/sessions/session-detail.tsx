@@ -187,8 +187,14 @@ function PiSessionDetailView({
   projectionError: string | null;
   instanceStatus: string | null;
 }) {
-  const { workspaceStates, updateWorkspaceState, workflowCollections, workflowCollectionsError } =
-    useOutletContext<PiSessionsOutletContext>();
+  const {
+    basePath,
+    startNewSession,
+    workspaceStates,
+    updateWorkspaceState,
+    workflowCollections,
+    workflowCollectionsError,
+  } = useOutletContext<PiSessionsOutletContext>();
   const { displayOptions, updateDisplayOption } = useSessionDisplayOptions();
   const [commandKind, setCommandKind] = useState<"followUp" | "steer">("followUp");
   const [composerAction, setComposerAction] = useState<"message" | "compact">("message");
@@ -408,6 +414,8 @@ function PiSessionDetailView({
     <AssistantRuntimeProvider runtime={runtime}>
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         <SessionHeader
+          newSessionHref={basePath}
+          onStartNewSession={startNewSession}
           session={session}
           options={
             <SessionDisplayOptions

@@ -1,5 +1,5 @@
 import { Menu } from "@base-ui/react/menu";
-import { Check, Ellipsis, PanelsTopLeft, Workflow, X } from "lucide-react";
+import { Check, Code2, Ellipsis, ListTree, PanelsTopLeft, X } from "lucide-react";
 import { useState } from "react";
 
 import type { SourceRange } from "@fragno-dev/workflow-visualizer-tokens";
@@ -13,14 +13,6 @@ import {
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 import { useLinkedScrollViewports } from "@/routes/backoffice/automations/script-view/linked-scroll";
 import { ScriptCodeView } from "@/routes/backoffice/automations/script-view/script-code-view";
-import {
-  ScriptViewToggle,
-  WorkflowGraphDetailToggle,
-} from "@/routes/backoffice/automations/script-view/script-presentation-controls";
-import {
-  SCRIPT_VIEW_OPTIONS,
-  WORKFLOW_GRAPH_DETAIL_OPTIONS,
-} from "@/routes/backoffice/automations/script-view/script-presentation-options";
 import type {
   ScriptViewMode,
   WorkflowGraphDetailMode,
@@ -30,10 +22,7 @@ import {
   type WorkflowRunCollections,
 } from "@/routes/backoffice/automations/script-view/use-workflow-run";
 import { ScriptWorkflowGraph } from "@/routes/backoffice/automations/script-view/workflow-graph";
-import type {
-  ScriptWorkflowRun,
-  WorkflowRunReference,
-} from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
+import type { WorkflowRunReference } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
 import { ResultContent } from "./result-content";
 import { tapScale } from "./ui";
@@ -43,9 +32,13 @@ import type { SessionWorkspaceItem } from "./workspace-model";
 const EMPTY_RUNTIME_TOOL_CALLS: ReadonlyMap<string, readonly ResolvedWorkflowRuntimeToolCall[]> =
   new Map();
 
-type WorkflowControlGroupId = "detail" | "view";
+type WorkflowDisplay = "ui" | "simple" | "code";
 
-const SESSION_WORKSPACE_TOOLBAR_RESERVED_WIDTH = 144;
+const WORKFLOW_DISPLAY_OPTIONS = [
+  { mode: "ui" as const, label: "UI", icon: PanelsTopLeft },
+  { mode: "simple" as const, label: "Flow", icon: ListTree },
+  { mode: "code" as const, label: "Code", icon: Code2 },
+];
 
 export function SessionWorkspacePanel({
   item,
@@ -60,18 +53,8 @@ export function SessionWorkspacePanel({
   scope: BackofficeContextScope;
   onClose: () => void;
 }) {
+  const [display, setDisplay] = useState<WorkflowDisplay>("ui");
   const [toolbarElement, setToolbarElement] = useState<HTMLElement | null>(null);
-  const isGeneratedUi = item.view.type === "generated-ui";
-  const [viewMode, setViewMode] = useState<ScriptViewMode>("graph");
-  const [detailMode, setDetailMode] = useState<WorkflowGraphDetailMode>("simple");
-  const showGraph = viewMode === "graph" || viewMode === "split";
-  const ItemIcon = isGeneratedUi ? PanelsTopLeft : Workflow;
-  const itemTypeLabel =
-    item.view.type === "generated-ui"
-      ? "Generated interface"
-      : item.view.projection.status === "constructing"
-        ? "Building workflow"
-        : "Workflow";
 
   return (
     <aside
@@ -83,61 +66,30 @@ export function SessionWorkspacePanel({
         data-session-workspace-toolbar
         className="flex h-16 items-stretch justify-between gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3"
       >
-        <div className="flex min-w-0 flex-1 items-stretch">
-          <h2
-            title={itemTypeLabel}
-            className="-mb-px flex min-w-0 items-center gap-2 border-b-2 border-[color:var(--bo-accent)] px-1 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"
-          >
-            <ItemIcon className="size-3.5 shrink-0" aria-hidden="true" />
-            <span className="truncate">{item.label}</span>
-            <span className="sr-only">{itemTypeLabel}</span>
-          </h2>
-        </div>
-
-        <div data-session-workspace-actions className="flex min-w-0 shrink-0 items-center gap-2">
+        <div
+          data-session-workspace-actions
+          className="ml-auto flex min-w-0 shrink-0 items-center gap-2"
+        >
           {item.view.type === "workflow-graph" ? (
             <ProgressiveOverflowControls
               measurementBoundary={toolbarElement}
-              reservedWidth={SESSION_WORKSPACE_TOOLBAR_RESERVED_WIDTH}
+              reservedWidth={56}
               groups={
                 [
-                  ...(showGraph
-                    ? [
-                        {
-                          id: "detail" as const,
-                          collapsePriority: 0,
-                          content: (
-                            <WorkflowGraphDetailToggle
-                              detailMode={detailMode}
-                              onDetailModeChange={setDetailMode}
-                              variant="tabs"
-                            />
-                          ),
-                        },
-                      ]
-                    : []),
                   {
-                    id: "view" as const,
-                    collapsePriority: 1,
+                    id: "display" as const,
+                    collapsePriority: 0,
                     content: (
-                      <ScriptViewToggle
-                        viewMode={viewMode}
-                        onViewModeChange={setViewMode}
-                        variant="tabs"
-                      />
+                      <WorkflowDisplayButtons display={display} onDisplayChange={setDisplay} />
                     ),
                   },
-                ] satisfies ProgressiveOverflowControlGroup<WorkflowControlGroupId>[]
+                ] satisfies ProgressiveOverflowControlGroup<"display">[]
               }
-              renderOverflow={(hiddenGroupIds) => (
-                <WorkflowPresentationOverflow
-                  detailMode={detailMode}
-                  hiddenGroupIds={hiddenGroupIds}
-                  viewMode={viewMode}
-                  onDetailModeChange={setDetailMode}
-                  onViewModeChange={setViewMode}
-                />
-              )}
+              renderOverflow={(hiddenGroupIds) =>
+                hiddenGroupIds.has("display") ? (
+                  <WorkflowDisplayMenu display={display} onDisplayChange={setDisplay} />
+                ) : null
+              }
             />
           ) : null}
 
@@ -171,8 +123,8 @@ export function SessionWorkspacePanel({
         ) : (
           <SessionWorkflowWorkspace
             projection={item.view.projection}
-            viewMode={viewMode}
-            detailMode={detailMode}
+            viewMode={display === "code" ? "code" : "graph"}
+            detailMode={display === "simple" ? "simple" : "ui"}
             runReference={item.view.run}
             workflowCollections={workflowCollections}
             workflowCollectionsError={workflowCollectionsError}
@@ -184,28 +136,47 @@ export function SessionWorkspacePanel({
   );
 }
 
-function WorkflowPresentationOverflow({
-  detailMode,
-  hiddenGroupIds,
-  viewMode,
-  onDetailModeChange,
-  onViewModeChange,
+function WorkflowDisplayButtons({
+  display,
+  onDisplayChange,
 }: {
-  detailMode: WorkflowGraphDetailMode;
-  hiddenGroupIds: ReadonlySet<WorkflowControlGroupId>;
-  viewMode: ScriptViewMode;
-  onDetailModeChange: (mode: WorkflowGraphDetailMode) => void;
-  onViewModeChange: (mode: ScriptViewMode) => void;
+  display: WorkflowDisplay;
+  onDisplayChange: (display: WorkflowDisplay) => void;
 }) {
-  const showGraphDetail = hiddenGroupIds.has("detail");
-  const showView = hiddenGroupIds.has("view");
-  const itemClassName =
-    "flex min-h-10 cursor-default items-center gap-3 px-2.5 text-xs text-[var(--bo-muted)] transition-[background-color,color,scale] duration-150 ease-out outline-none active:scale-[0.96] data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)]";
+  return (
+    <div role="group" aria-label="Workflow display" className="flex items-center gap-2">
+      {WORKFLOW_DISPLAY_OPTIONS.map(({ mode, label, icon: Icon }) => (
+        <button
+          key={mode}
+          type="button"
+          aria-pressed={display === mode}
+          onClick={() => {
+            onDisplayChange(mode);
+          }}
+          className={`flex min-h-10 items-center gap-1.5 border-b-2 px-1 text-[10px] font-semibold tracking-[0.22em] uppercase transition-[scale,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] ${
+            display === mode
+              ? "border-[color:var(--bo-accent)] text-[var(--bo-accent-fg)]"
+              : "border-transparent text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+          }`}
+        >
+          <Icon className="size-3.5" aria-hidden="true" />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
+function WorkflowDisplayMenu({
+  display,
+  onDisplayChange,
+}: {
+  display: WorkflowDisplay;
+  onDisplayChange: (display: WorkflowDisplay) => void;
+}) {
   return (
     <Menu.Root modal={false}>
       <Menu.Trigger
-        data-session-workspace-overflow
         type="button"
         aria-label="Workflow display options"
         title="Workflow display options"
@@ -213,126 +184,40 @@ function WorkflowPresentationOverflow({
       >
         <Ellipsis className="size-4" aria-hidden="true" />
       </Menu.Trigger>
-
       <Menu.Portal>
         <Menu.Positioner side="bottom" align="end" sideOffset={8} className="z-50">
           <Menu.Popup
             data-backoffice-root
-            className="bo-popover-surface w-60 origin-top-right bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] transition-[opacity,transform] duration-150 ease-out outline-none data-[ending-style]:-translate-y-1 data-[ending-style]:opacity-0 data-[starting-style]:-translate-y-1 data-[starting-style]:opacity-0"
+            className="bo-popover-surface w-44 origin-top-right bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] outline-none"
           >
-            {showGraphDetail ? (
-              <>
-                <p className="px-2.5 py-1 text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-                  Graph detail
-                </p>
-                <Menu.RadioGroup
-                  value={detailMode}
-                  onValueChange={(value) => {
-                    const option = WORKFLOW_GRAPH_DETAIL_OPTIONS.find(({ mode }) => mode === value);
-                    if (option) {
-                      onDetailModeChange(option.mode);
-                    }
-                  }}
-                  className="space-y-1"
+            <Menu.RadioGroup
+              value={display}
+              onValueChange={(value) => {
+                const option = WORKFLOW_DISPLAY_OPTIONS.find(({ mode }) => mode === value);
+                if (option) {
+                  onDisplayChange(option.mode);
+                }
+              }}
+              className="space-y-1"
+            >
+              {WORKFLOW_DISPLAY_OPTIONS.map(({ mode, label, icon: Icon }) => (
+                <Menu.RadioItem
+                  key={mode}
+                  value={mode}
+                  className="flex min-h-10 items-center gap-2 px-2.5 text-xs text-[var(--bo-muted)] outline-none data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)]"
                 >
-                  {WORKFLOW_GRAPH_DETAIL_OPTIONS.map(({ mode, label }) => (
-                    <Menu.RadioItem key={mode} value={mode} className={itemClassName}>
-                      <span className="flex-1">{label}</span>
-                      <Menu.RadioItemIndicator className="text-[var(--bo-accent-fg)]">
-                        <Check className="size-4" aria-hidden="true" />
-                      </Menu.RadioItemIndicator>
-                    </Menu.RadioItem>
-                  ))}
-                </Menu.RadioGroup>
-                {showView ? <Menu.Separator className="my-2 h-px bg-[var(--bo-border)]" /> : null}
-              </>
-            ) : null}
-
-            {showView ? (
-              <>
-                <p className="px-2.5 py-1 text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-                  View
-                </p>
-                <Menu.RadioGroup
-                  value={viewMode}
-                  onValueChange={(value) => {
-                    const option = SCRIPT_VIEW_OPTIONS.find(({ mode }) => mode === value);
-                    if (option) {
-                      onViewModeChange(option.mode);
-                    }
-                  }}
-                  className="space-y-1"
-                >
-                  {SCRIPT_VIEW_OPTIONS.map(({ mode, label, icon: Icon }) => (
-                    <Menu.RadioItem key={mode} value={mode} className={itemClassName}>
-                      <Icon className="size-4 shrink-0" aria-hidden="true" />
-                      <span className="flex-1">{label}</span>
-                      <Menu.RadioItemIndicator className="text-[var(--bo-accent-fg)]">
-                        <Check className="size-4" aria-hidden="true" />
-                      </Menu.RadioItemIndicator>
-                    </Menu.RadioItem>
-                  ))}
-                </Menu.RadioGroup>
-              </>
-            ) : null}
+                  <Icon className="size-4" aria-hidden="true" />
+                  <span className="flex-1">{label}</span>
+                  <Menu.RadioItemIndicator className="text-[var(--bo-accent-fg)]">
+                    <Check className="size-4" aria-hidden="true" />
+                  </Menu.RadioItemIndicator>
+                </Menu.RadioItem>
+              ))}
+            </Menu.RadioGroup>
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>
     </Menu.Root>
-  );
-}
-
-function WorkflowLiveStateBar({
-  reference,
-  selectedRun,
-  isLoading,
-  error,
-}: {
-  reference: WorkflowRunReference | null;
-  selectedRun: ScriptWorkflowRun | null;
-  isLoading: boolean;
-  error: string | null;
-}) {
-  if (!reference) {
-    return null;
-  }
-
-  const status = error
-    ? "Synchronization failed"
-    : isLoading
-      ? "Synchronizing…"
-      : selectedRun
-        ? selectedRun.status
-        : "Waiting for run data…";
-  const dotClass = error
-    ? "bg-red-500"
-    : isLoading || selectedRun?.status === "active"
-      ? "animate-pulse bg-[var(--bo-accent)]"
-      : selectedRun?.status === "waiting" || selectedRun?.status === "paused"
-        ? "bg-amber-500"
-        : selectedRun?.status === "complete" || selectedRun?.status === "completed"
-          ? "bg-emerald-500"
-          : selectedRun?.status === "errored" || selectedRun?.status === "terminated"
-            ? "bg-red-500"
-            : "bg-[var(--bo-muted-2)]";
-
-  return (
-    <div
-      data-session-workflow-live-state
-      aria-live="polite"
-      title={error ?? undefined}
-      className="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2"
-    >
-      <div className="flex min-w-0 items-center gap-2">
-        <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${dotClass}`} />
-        <span className="text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
-          Live execution
-        </span>
-      </div>
-      <span className="min-w-0 truncate font-mono text-[9px] text-[var(--bo-muted)]">
-        {reference.instanceId} · {status}
-      </span>
-    </div>
   );
 }
 
@@ -364,17 +249,32 @@ function SessionWorkflowWorkspace({
     reference: runReference,
     visualization: projection.visualization,
   });
+  const synchronizationError =
+    workflowRun.error ?? (runReference && !workflowCollections ? workflowCollectionsError : null);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bo-panel)]">
-      <WorkflowLiveStateBar
-        reference={runReference}
-        selectedRun={workflowRun.selectedRun}
-        isLoading={workflowRun.isLoading}
-        error={
-          workflowRun.error ?? (!workflowCollections ? (workflowCollectionsError ?? null) : null)
-        }
-      />
+      {synchronizationError ? (
+        <div
+          data-session-workflow-sync-state="error"
+          role="alert"
+          className="flex min-h-8 shrink-0 items-center gap-2 border-b border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 text-xs text-[var(--bo-failed)]"
+        >
+          <span className="size-1.5 shrink-0 rounded-full bg-[var(--bo-failed)]" />
+          <span className="truncate" title={synchronizationError}>
+            Workflow synchronization failed: {synchronizationError}
+          </span>
+        </div>
+      ) : workflowRun.isLoading ? (
+        <div
+          data-session-workflow-sync-state="loading"
+          role="status"
+          className="flex min-h-8 shrink-0 items-center gap-2 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 text-xs text-[var(--bo-muted)]"
+        >
+          <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-[var(--bo-accent)]" />
+          Synchronizing workflow…
+        </div>
+      ) : null}
       <div
         className={
           viewMode === "split"
@@ -398,6 +298,7 @@ function SessionWorkflowWorkspace({
             detailMode={detailMode}
             runtimeToolCallsByStepId={EMPTY_RUNTIME_TOOL_CALLS}
             selectedRun={workflowRun.selectedRun}
+            sourceCode={projection.source}
             scrollViewport={graphViewport}
             currentScope={scope.kind === "system" ? undefined : scope}
             workflowEventSender={async ({

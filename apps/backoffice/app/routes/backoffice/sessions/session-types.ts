@@ -19,6 +19,7 @@ export type PiSessionsOutletContext = {
   persistenceSource: NonNullable<PiLayoutContext["persistenceSource"]>;
   basePath: string;
   createSessionPanel?: ReactNode;
+  startNewSession: () => void;
   workspaceStates: SessionWorkspaceStateBySession;
   updateWorkspaceState: (sessionKey: string, update: SessionWorkspaceStateUpdate) => void;
   workflowCollections?: WorkflowRunCollections;

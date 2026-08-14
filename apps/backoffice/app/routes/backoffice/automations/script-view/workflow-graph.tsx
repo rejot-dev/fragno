@@ -2,13 +2,13 @@ import {
   AlertTriangle,
   CheckCircle2,
   Code2,
+  Copy,
   GitBranch,
   Layers3,
   LogOut,
   OctagonX,
   Repeat2,
   ShieldCheck,
-  Workflow as WorkflowIcon,
 } from "lucide-react";
 
 import type {
@@ -36,7 +36,6 @@ import type { WorkflowGraphDetailMode } from "./script-view-mode";
 import { SourceLocationButton } from "./source-location-button";
 import { WorkflowGeneratedUi, type WorkflowEventSender } from "./workflow-generated-ui";
 import {
-  countRenderedWorkflowSteps,
   createWorkflowGraphPresentation,
   workflowTerminalDetails,
   type WorkflowEventGuardPresentation,
@@ -60,6 +59,7 @@ export function ScriptWorkflowGraph({
   detailMode,
   runtimeToolCallsByStepId,
   selectedRun,
+  sourceCode,
   scrollViewport,
   fillHeight = false,
   currentScope,
@@ -70,6 +70,7 @@ export function ScriptWorkflowGraph({
   detailMode: WorkflowGraphDetailMode;
   runtimeToolCallsByStepId: ReadonlyMap<string, readonly ResolvedWorkflowRuntimeToolCall[]>;
   selectedRun: ScriptWorkflowRun | null;
+  sourceCode?: string;
   scrollViewport?: LinkedScrollViewport;
   fillHeight?: boolean;
   currentScope?: BackofficeRoutableScope;
@@ -92,64 +93,29 @@ export function ScriptWorkflowGraph({
         <div className="space-y-6">
           {workflows.map((workflow) => {
             const eventGuard = presentation.eventGuardByWorkflowId.get(workflow.id);
-            const rawStepCount = countRenderedWorkflowSteps(
-              workflow.id,
-              presentation.childrenByParent,
-            );
             const workflowRun =
               selectedRun?.workflowName === workflow.name ? selectedRun : undefined;
             const uiWaitPairings = createWorkflowUiWaitPairings({
               childrenByParent: presentation.childrenByParent,
               stepStatesByNodeId: workflowRun?.stepStatesByNodeId,
             });
-            const stepCount = rawStepCount - uiWaitPairings.byUiStepId.size;
-            const hasCurrentStep = workflowRun
-              ? workflowRun.hasUnmappedCurrentStep ||
-                [...workflowRun.stepStatesByNodeId.values()].some((state) => state.current)
-              : false;
-
             return (
               <section key={workflow.id} aria-labelledby={`${workflow.id}-title`}>
-                <div className="flex items-start gap-3 border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] p-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]">
-                    <WorkflowIcon className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3
-                        id={`${workflow.id}-title`}
-                        className="truncate text-sm font-semibold text-[var(--bo-fg)]"
-                      >
-                        {workflow.name}
-                      </h3>
-                      {workflow.remote ? <GraphBadge label="Remote" /> : null}
-                      {workflowRun ? (
-                        <GraphBadge label={`${workflowRun.status} run`} tone="active" />
-                      ) : null}
-                      {workflowRun?.status === "active" && !hasCurrentStep ? (
-                        <GraphBadge label="Between checkpoints" />
-                      ) : null}
-                      {workflowRun?.unmappedRuntimeSteps.length ? (
-                        <GraphBadge
-                          label={`${workflowRun.unmappedRuntimeSteps.length} unmapped runtime ${workflowRun.unmappedRuntimeSteps.length === 1 ? "step" : "steps"}`}
-                          tone="warning"
-                        />
-                      ) : null}
-                      <SourceLocationButton source={workflow.source} onSelect={onSourceSelect} />
-                      {workflow.construction.status === "partial" ? (
-                        <GraphBadge label={workflow.construction.phase} tone="warning" />
-                      ) : null}
-                    </div>
-                    <p className="mt-1 font-mono text-[10px] text-[var(--bo-muted-2)] tabular-nums">
-                      {stepCount} durable {stepCount === 1 ? "step" : "steps"}
-                    </p>
-                    {eventGuard ? (
-                      <WorkflowEventGuard eventGuard={eventGuard} onSourceSelect={onSourceSelect} />
-                    ) : null}
-                  </div>
-                </div>
-
-                <UnmappedRuntimeSteps run={workflowRun} />
+                <h3
+                  id={`${workflow.id}-title`}
+                  className="mb-2 truncate px-1 text-[10px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase"
+                  title={workflow.name}
+                >
+                  {workflow.name}
+                </h3>
+                {eventGuard ? (
+                  <WorkflowEventGuard eventGuard={eventGuard} onSourceSelect={onSourceSelect} />
+                ) : null}
+                <RuntimeMismatchNotice
+                  run={workflowRun}
+                  sourceCode={sourceCode}
+                  sourcePath={workflow.source.path}
+                />
 
                 {detailMode === "ui" ? (
                   <WorkflowUiResults
@@ -804,42 +770,177 @@ function branchLabel(branch: BranchNode): string {
   throw new Error("Unsupported workflow branch type.");
 }
 
-function UnmappedRuntimeSteps({ run }: { run?: ScriptWorkflowRun }) {
+function buildRuntimeMismatchReport(
+  run: ScriptWorkflowRun,
+  sourcePath: string,
+  sourceCode?: string,
+): string {
+  const longestBacktickRun = Math.max(
+    0,
+    ...(sourceCode?.match(/`+/g)?.map((run) => run.length) ?? []),
+  );
+  const codeFence = "`".repeat(Math.max(3, longestBacktickRun + 1));
+  const steps = run.unmappedRuntimeSteps
+    .map(
+      (step, index) =>
+        `${index + 1}. **${step.name ?? "Unnamed step"}**\n` +
+        `   - Key: \`${step.stepKey}\`\n` +
+        `   - Type: \`${step.type ?? "unknown"}\`\n` +
+        `   - Status: \`${step.status}\`${step.current ? " (current)" : ""}\n` +
+        `   - Record ID: \`${step.stepRecordId ?? "unknown"}\``,
+    )
+    .join("\n");
+
+  return `# Runtime mismatch report
+
+## Run
+
+- Instance ID: \`${run.instanceId}\`
+- Run record ID: \`${run.id}\`
+- Workflow: \`${run.workflowName}\`
+- Runtime workflow: \`${run.instanceWorkflowName}\`
+- Status: \`${run.status}\`
+- Updated: \`${String(run.updatedAt)}\`
+- Matched steps: ${run.stepStatesByNodeId.size}
+- Unmatched steps: ${run.unmappedRuntimeSteps.length}
+- Waiting events: ${run.waitingEventTypes.length > 0 ? run.waitingEventTypes.map((event) => `\`${event}\``).join(", ") : "None"}
+
+## Unmatched runtime steps
+
+${steps}
+
+## Source
+
+Path: \`${sourcePath}\`
+
+${codeFence}typescript
+${sourceCode ?? "// Source code unavailable"}
+${codeFence}
+`;
+}
+
+function RuntimeMismatchNotice({
+  run,
+  sourceCode,
+  sourcePath,
+}: {
+  run?: ScriptWorkflowRun;
+  sourceCode?: string;
+  sourcePath: string;
+}) {
   if (!run?.unmappedRuntimeSteps.length) {
     return null;
   }
 
-  const visibleSteps = run.unmappedRuntimeSteps.slice(-5);
-  const hiddenStepCount = run.unmappedRuntimeSteps.length - visibleSteps.length;
+  const count = run.unmappedRuntimeSteps.length;
+  const matchedStepCount = run.stepStatesByNodeId.size;
+
   return (
-    <div className="border-x border-b border-amber-500/35 bg-amber-500/8 px-3 py-2 text-amber-950 dark:text-amber-100">
-      <div className="flex items-start gap-2">
-        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold">Runtime steps could not be matched to source</p>
-          <p className="mt-0.5 text-[10px] text-amber-900/75 dark:text-amber-100/70">
-            Results and controls are withheld to avoid attaching them to the wrong step.
+    <details className="group/mismatch mb-2 border border-amber-500/35 bg-amber-500/8 text-amber-900 dark:text-amber-100">
+      <summary className="flex min-h-6 cursor-pointer list-none items-center gap-1.5 px-2 text-[9px] font-semibold tracking-[0.12em] uppercase outline-none marker:hidden hover:border-amber-500/60 focus-visible:ring-2 focus-visible:ring-amber-500/35">
+        <AlertTriangle className="size-3 shrink-0" aria-hidden="true" />
+        <span>Runtime mismatch</span>
+        <span className="font-mono tabular-nums opacity-70">{count}</span>
+        <span className="ml-auto opacity-70 group-open/mismatch:hidden">Show</span>
+        <span className="ml-auto hidden opacity-70 group-open/mismatch:inline">Hide</span>
+      </summary>
+      <div className="space-y-3 border-t border-amber-500/25 px-3 py-3 text-xs leading-5 normal-case">
+        <p className="text-pretty">
+          {count} runtime {count === 1 ? "step could" : "steps could"} not be matched to the
+          currently displayed source. Results, generated UI, and controls for these steps are hidden
+          to avoid attaching them to the wrong source step.
+        </p>
+
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono text-[10px]">
+          <dt className="text-amber-900/65 dark:text-amber-100/60">Instance</dt>
+          <dd className="truncate select-all" title={run.instanceId}>
+            {run.instanceId}
+          </dd>
+          <dt className="text-amber-900/65 dark:text-amber-100/60">Run record</dt>
+          <dd className="truncate select-all" title={run.id}>
+            {run.id}
+          </dd>
+          <dt className="text-amber-900/65 dark:text-amber-100/60">Workflow</dt>
+          <dd className="truncate select-all" title={run.workflowName}>
+            {run.workflowName}
+          </dd>
+          <dt className="text-amber-900/65 dark:text-amber-100/60">Runtime workflow</dt>
+          <dd className="truncate select-all" title={run.instanceWorkflowName}>
+            {run.instanceWorkflowName}
+          </dd>
+          <dt className="text-amber-900/65 dark:text-amber-100/60">Run status</dt>
+          <dd>{run.status}</dd>
+          <dt className="text-amber-900/65 dark:text-amber-100/60">Matched steps</dt>
+          <dd className="tabular-nums">{matchedStepCount}</dd>
+          <dt className="text-amber-900/65 dark:text-amber-100/60">Unmatched steps</dt>
+          <dd className="tabular-nums">{count}</dd>
+          <dt className="text-amber-900/65 dark:text-amber-100/60">Waiting events</dt>
+          <dd className="break-all">
+            {run.waitingEventTypes.length > 0 ? run.waitingEventTypes.join(", ") : "None"}
+          </dd>
+          <dt className="text-amber-900/65 dark:text-amber-100/60">Updated</dt>
+          <dd className="break-all">{String(run.updatedAt)}</dd>
+        </dl>
+
+        <div>
+          <p className="mb-1 text-[9px] font-semibold tracking-[0.14em] uppercase opacity-70">
+            Unmatched runtime steps
           </p>
-          <ul className="mt-2 space-y-1 font-mono text-[10px]">
-            {visibleSteps.map((step) => (
-              <li key={step.stepKey} className="flex min-w-0 items-center gap-2">
-                <span className="truncate" title={step.stepKey}>
-                  {step.name ?? step.stepKey}
-                </span>
-                <span className="shrink-0 text-amber-900/65 dark:text-amber-100/60">
-                  {step.current ? "current" : step.status}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {hiddenStepCount > 0 ? (
-            <p className="mt-1 text-[10px] text-amber-900/65 tabular-nums dark:text-amber-100/60">
-              +{hiddenStepCount} earlier {hiddenStepCount === 1 ? "step" : "steps"}
-            </p>
-          ) : null}
+          <div className="overflow-x-auto border border-amber-500/25 bg-[var(--bo-panel)]">
+            <table className="min-w-full border-collapse text-left font-mono text-[10px]">
+              <thead className="text-amber-900/65 dark:text-amber-100/60">
+                <tr className="border-b border-amber-500/25">
+                  <th className="px-2 py-1.5 font-medium">Name</th>
+                  <th className="px-2 py-1.5 font-medium">Key</th>
+                  <th className="px-2 py-1.5 font-medium">Type</th>
+                  <th className="px-2 py-1.5 font-medium">Status</th>
+                  <th className="px-2 py-1.5 font-medium">Record</th>
+                </tr>
+              </thead>
+              <tbody>
+                {run.unmappedRuntimeSteps.map((step) => (
+                  <tr
+                    key={`${step.stepKey}:${step.stepRecordId ?? "unknown"}`}
+                    className="border-b border-amber-500/15 last:border-b-0"
+                  >
+                    <td className="max-w-48 truncate px-2 py-1.5" title={step.name}>
+                      {step.name ?? "—"}
+                    </td>
+                    <td className="max-w-64 truncate px-2 py-1.5 select-all" title={step.stepKey}>
+                      {step.stepKey}
+                    </td>
+                    <td className="px-2 py-1.5">{step.type ?? "—"}</td>
+                    <td className="px-2 py-1.5">
+                      {step.status}
+                      {step.current ? " · current" : ""}
+                    </td>
+                    <td
+                      className="max-w-64 truncate px-2 py-1.5 select-all"
+                      title={step.stepRecordId}
+                    >
+                      {step.stepRecordId ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard.writeText(
+              buildRuntimeMismatchReport(run, sourcePath, sourceCode),
+            );
+          }}
+          className="inline-flex min-h-7 items-center gap-1.5 border border-amber-500/35 bg-[var(--bo-panel)] px-2 text-[9px] font-semibold tracking-[0.12em] uppercase transition-colors hover:border-amber-500/60 hover:bg-amber-500/10 focus-visible:ring-2 focus-visible:ring-amber-500/35"
+        >
+          <Copy className="size-3" aria-hidden="true" />
+          Copy report
+        </button>
       </div>
-    </div>
+    </details>
   );
 }
 

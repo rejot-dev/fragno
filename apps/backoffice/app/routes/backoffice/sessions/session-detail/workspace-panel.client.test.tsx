@@ -66,7 +66,7 @@ describe("SessionWorkspacePanel", () => {
     render(<WorkspaceHarness item={generatedUiItem("generated-ui:first", "Orders", "24")} />);
 
     expect(screen.getByLabelText("Orders")).toBeDefined();
-    expect(screen.getByText("Generated interface")).toBeDefined();
+    expect(screen.queryByText("Generated interface")).toBeNull();
     expect(screen.queryByRole("tablist")).toBeNull();
     expect(screen.queryByRole("tab")).toBeNull();
   });
@@ -98,44 +98,37 @@ describe("SessionWorkspacePanel", () => {
       />,
     );
 
-    expect(screen.getByText("Building workflow")).toBeDefined();
+    expect(screen.queryByText("Building workflow")).toBeNull();
     const toolbar = container.querySelector<HTMLElement>("[data-session-workspace-toolbar]");
     const actions = container.querySelector<HTMLElement>("[data-session-workspace-actions]");
     assert(toolbar && actions);
-    expect(within(toolbar).getByRole("group", { name: "Workflow graph detail" })).toBeDefined();
-    expect(within(toolbar).getByRole("group", { name: "Script view" })).toBeDefined();
+    expect(within(toolbar).getByRole("group", { name: "Workflow display" })).toBeDefined();
+    expect(toolbar.querySelector("[data-progressive-overflow-controls]")).toBeDefined();
     expect(within(toolbar).getByRole("button", { name: "Close session workspace" })).toBeDefined();
 
     const workflowGraph = screen.getByLabelText("Workflow graph");
-    expect(within(workflowGraph).getByText("order-workflow")).toBeDefined();
-    expect(within(workflowGraph).getByText("load orders")).toBeDefined();
-    expect(screen.getByText("Live execution")).toBeDefined();
-    expect(screen.getByText(/workflow-instance/)).toBeDefined();
-    expect(screen.queryByText("Synchronization failed")).toBeNull();
-    expect(screen.getByText(/Waiting for run data/)).toBeDefined();
-    assert(
-      screen.getByRole("button", { name: /^simple$/i }).getAttribute("aria-pressed") === "true",
-    );
-    expect(screen.getByRole("button", { name: /^UI$/ })).toBeDefined();
-    assert(screen.getByRole("button", { name: /^Graph$/ }).getAttribute("aria-pressed") === "true");
-    expect(container.querySelectorAll('button[title^="Show "]')).toHaveLength(0);
+    expect(within(workflowGraph).getByLabelText("order-workflow")).toBeDefined();
+    expect(within(workflowGraph).getByText("No generated UI results yet.")).toBeDefined();
+    expect(screen.queryByText("Live execution")).toBeNull();
+    assert(screen.getByRole("button", { name: /^UI$/ }).getAttribute("aria-pressed") === "true");
+    expect(screen.getByRole("button", { name: /^Flow$/ })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /^Graph$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Both$/ })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /^verbose$/i }));
-    assert(
-      screen.getByRole("button", { name: /^verbose$/i }).getAttribute("aria-pressed") === "true",
-    );
+    fireEvent.click(screen.getByRole("button", { name: /^Flow$/ }));
+    expect(screen.getByText("load orders")).toBeDefined();
+    expect(screen.queryByText("do")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /^Code$/ }));
     expect(screen.queryByLabelText("Workflow graph")).toBeNull();
     expect(screen.getByLabelText("Script source").textContent).toContain("defineWorkflow");
 
-    fireEvent.click(screen.getByRole("button", { name: /^Both$/ }));
-    expect(screen.getByLabelText("Script source")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: /^UI$/ }));
+    expect(screen.queryByLabelText("Script source")).toBeNull();
     expect(screen.getByLabelText("Workflow graph")).toBeDefined();
-    expect(container.querySelectorAll('button[title^="Show "]').length).toBeGreaterThan(0);
   });
 
-  test("shows genuine workflow synchronization failures", () => {
+  test("surfaces workflow synchronization failures", () => {
     const projection = projectWorkflowGraph({
       complete: true,
       toolCallId: "failed-workflow",
@@ -163,13 +156,11 @@ describe("SessionWorkspacePanel", () => {
       />,
     );
 
-    expect(screen.getByText(/Synchronization failed/)).toBeDefined();
-    assert(
-      screen
-        .getByText(/Synchronization failed/)
-        .closest("[data-session-workflow-live-state]")
-        ?.getAttribute("title") === "Failed to load workflow synchronization.",
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Workflow synchronization failed: Failed to load workflow synchronization.",
     );
+    expect(document.querySelector('[data-session-workflow-sync-state="error"]')).toBeDefined();
+    expect(screen.queryByText(/Live execution/)).toBeNull();
   });
 
   test("provides an accessible close action", () => {

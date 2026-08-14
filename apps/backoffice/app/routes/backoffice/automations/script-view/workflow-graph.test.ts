@@ -210,7 +210,7 @@ describe("ScriptWorkflowGraph generated UI presentation", () => {
     expect(markup).not.toContain(">Error</div>");
   });
 
-  test("shows unresolved runtime steps without reporting an active run between checkpoints", () => {
+  test("shows unresolved runtime-step diagnostics as a compact notice", () => {
     const unresolvedRun: ScriptWorkflowRun = {
       ...run,
       status: "active",
@@ -236,10 +236,12 @@ describe("ScriptWorkflowGraph generated UI presentation", () => {
       }),
     );
 
-    expect(markup).toContain("1 unmapped runtime step");
-    expect(markup).toContain("Runtime steps could not be matched to source");
+    expect(markup).toContain("Runtime mismatch");
+    expect(markup).toContain("runtime step could not be matched to the currently displayed source");
+    expect(markup).toContain("Unmatched runtime steps");
+    expect(markup).toContain("Copy report");
+    expect(markup).not.toContain("Likely causes");
     expect(markup).toContain("task-one");
-    expect(markup).toContain("current");
     expect(markup).not.toContain("Between checkpoints");
   });
 
@@ -307,7 +309,7 @@ describe("ScriptWorkflowGraph generated UI presentation", () => {
     expect(markup).not.toContain("question-answer");
     expect(markup).toContain("Waiting");
     expect(markup).not.toContain("Complete");
-    expect(markup).toContain("1 durable step");
+    expect(markup).not.toContain("durable step");
     expect(markup).not.toContain(">event<");
     expect(markup).not.toContain(">timeout<");
     expect(markup).not.toContain("1 day");

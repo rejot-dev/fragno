@@ -1,5 +1,5 @@
 import { Suspense, use, useCallback, useState } from "react";
-import { Outlet, useActionData, useNavigation, useParams } from "react-router";
+import { Outlet, useActionData, useNavigation } from "react-router";
 
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import { BackofficeSystemState } from "@/components/backoffice";
@@ -10,7 +10,6 @@ import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
 import type { PiSessionListingState } from "@/fragno/pi/tanstack/session-listing";
 import { usePiSessionListing } from "@/fragno/pi/tanstack/use-session-listing";
 
-import { MobileSessionStrip } from "./mobile-session-strip";
 import { NewSessionComposer } from "./new-session-composer";
 import {
   updateSessionWorkspaceStateBySession,
@@ -18,7 +17,6 @@ import {
   type SessionWorkspaceStateUpdate,
 } from "./session-detail/workspace-model";
 import { SessionListSplit } from "./session-list-split";
-import { SessionSidebar } from "./session-sidebar";
 import type { PiCreateSessionActionData, PiSessionsOutletContext } from "./session-types";
 import type { PiLayoutContext } from "./shared";
 
@@ -120,7 +118,6 @@ function PiSessionsWorkspaceView({
 }) {
   const actionData = useActionData() as PiCreateSessionActionData | undefined;
   const navigation = useNavigation();
-  const { sessionId, workflowName } = useParams();
   const { scope, runtimeState } = layoutContext;
   const basePath = `/backoffice/sessions/${backofficeContextScopeRoutePath(scope)}/sessions`;
   const { sessions, workflowStatuses } = listingState.snapshot;
@@ -151,9 +148,9 @@ function PiSessionsWorkspaceView({
   const createError =
     actionData?.intent === "create-session" && !actionData.ok ? (actionData.message ?? null) : null;
 
-  const startNewSession = () => {
+  const startNewSession = useCallback(() => {
     setDraftPrompt("");
-  };
+  }, []);
 
   const createSessionPanel = (
     <NewSessionComposer
@@ -165,39 +162,21 @@ function PiSessionsWorkspaceView({
       selectedModelOption={selectedModelOption}
       onDraftPromptChange={setDraftPrompt}
       onModelChange={setPreferredModelOption}
+      listingError={listingError}
+      sessions={sessions}
+      workflowStatuses={workflowStatuses}
     />
   );
 
   return (
-    <SessionListSplit
-      mobileNavigation={
-        <MobileSessionStrip
-          basePath={basePath}
-          selectedSessionId={sessionId ?? null}
-          selectedWorkflowName={workflowName ?? null}
-          sessions={sessions}
-          workflowStatuses={workflowStatuses}
-          onNewChat={startNewSession}
-        />
-      }
-      sidebar={
-        <SessionSidebar
-          basePath={basePath}
-          listingError={listingError}
-          selectedSessionId={sessionId ?? null}
-          selectedWorkflowName={workflowName ?? null}
-          sessions={sessions}
-          workflowStatuses={workflowStatuses}
-          onNewChat={startNewSession}
-        />
-      }
-    >
+    <SessionListSplit>
       <Outlet
         context={{
           scope,
           persistenceSource: source,
           basePath,
           createSessionPanel,
+          startNewSession,
           workspaceStates,
           updateWorkspaceState,
           workflowCollections,

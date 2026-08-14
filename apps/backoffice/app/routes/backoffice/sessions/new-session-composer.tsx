@@ -1,11 +1,15 @@
-import { Form } from "react-router";
+import { useState } from "react";
+import { Form, Link } from "react-router";
 
 import type { PiModelOption } from "@/fragno/pi/pi-shared";
+import type { PiSessionListingState } from "@/fragno/pi/tanstack/session-listing";
 
+import { formatTimestamp } from "./formatting";
 import { SessionSelect } from "./session-select";
 
 const tapScale =
   "transition-transform duration-150 ease-out active:not-disabled:scale-[0.96] disabled:active:scale-100";
+const INITIAL_HISTORY_COUNT = 2;
 
 type NewSessionComposerProps = {
   availableModelOptions: PiModelOption[];
@@ -14,6 +18,9 @@ type NewSessionComposerProps = {
   creating: boolean;
   draftPrompt: string;
   selectedModelOption: string;
+  listingError: string | null;
+  sessions: PiSessionListingState["snapshot"]["sessions"];
+  workflowStatuses: PiSessionListingState["snapshot"]["workflowStatuses"];
   onDraftPromptChange: (value: string) => void;
   onModelChange: (value: string) => void;
 };
@@ -25,85 +32,167 @@ export function NewSessionComposer({
   creating,
   draftPrompt,
   selectedModelOption,
+  listingError,
+  sessions,
+  workflowStatuses,
   onDraftPromptChange,
   onModelChange,
 }: NewSessionComposerProps) {
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  const visibleSessions = showAllHistory ? sessions : sessions.slice(0, INITIAL_HISTORY_COUNT);
+
   return (
-    <div className="mx-auto flex h-full w-full max-w-3xl flex-col justify-center px-4 py-6 sm:px-8">
-      <h2 className="mb-5 text-xl font-semibold tracking-[-0.02em] text-balance text-[var(--bo-fg)] sm:text-2xl">
-        New session
-      </h2>
+    <div className="backoffice-scroll h-full overflow-y-auto">
+      <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-center px-4 py-8 sm:px-8">
+        <h2 className="mb-5 text-xl font-semibold tracking-[-0.02em] text-balance text-[var(--bo-fg)] sm:text-2xl">
+          New session
+        </h2>
 
-      {availableModelOptions.length === 0 ? (
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4 text-sm text-pretty text-[var(--bo-muted)]">
-          Sorry, no models are available for you to start a session with. Please check back later.
-        </div>
-      ) : (
-        <Form method="post" action={basePath} className="w-full">
-          <input type="hidden" name="intent" value="create-session" />
-          <div className="border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] focus-within:border-[color:var(--bo-accent)] focus-within:ring-2 focus-within:ring-[color:var(--bo-accent)]/15">
-            <label
-              htmlFor="new-session-prompt"
-              className="block px-4 pt-3 font-mono text-[10px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase"
-            >
-              Message
-            </label>
-            <textarea
-              id="new-session-prompt"
-              name="prompt"
-              required
-              autoFocus
-              rows={3}
-              value={draftPrompt}
-              onChange={(event) => {
-                onDraftPromptChange(event.target.value);
-              }}
-              onKeyDown={(event) => {
-                if (
-                  event.key !== "Enter" ||
-                  event.shiftKey ||
-                  event.nativeEvent.isComposing ||
-                  creating
-                ) {
-                  return;
-                }
-                event.preventDefault();
-                event.currentTarget.form?.requestSubmit();
-              }}
-              placeholder="Message Pi"
-              className="block min-h-28 w-full resize-none bg-transparent px-4 pt-2 pb-4 text-base leading-7 text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] sm:min-h-32"
-            />
+        {availableModelOptions.length === 0 ? (
+          <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4 text-sm text-pretty text-[var(--bo-muted)]">
+            Sorry, no models are available for you to start a session with. Please check back later.
           </div>
+        ) : (
+          <Form method="post" action={basePath} className="w-full">
+            <input type="hidden" name="intent" value="create-session" />
+            <div className="border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] focus-within:border-[color:var(--bo-accent)] focus-within:ring-2 focus-within:ring-[color:var(--bo-accent)]/15">
+              <label
+                htmlFor="new-session-prompt"
+                className="block px-4 pt-3 font-mono text-[10px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase"
+              >
+                Message
+              </label>
+              <textarea
+                id="new-session-prompt"
+                name="prompt"
+                required
+                autoFocus
+                rows={3}
+                value={draftPrompt}
+                onChange={(event) => {
+                  onDraftPromptChange(event.target.value);
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    event.key !== "Enter" ||
+                    event.shiftKey ||
+                    event.nativeEvent.isComposing ||
+                    creating
+                  ) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }}
+                placeholder="Message Pi"
+                className="block min-h-28 w-full resize-none bg-transparent px-4 pt-2 pb-4 text-base leading-7 text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] sm:min-h-32"
+              />
+            </div>
 
-          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-            <SessionSelect
-              label="Model"
-              name="modelOption"
-              options={availableModelOptions.map((option) => ({
-                value: `${option.provider}::${option.name}`,
-                label: option.label,
-                description: option.provider.toUpperCase(),
-              }))}
-              placeholder="No model available"
-              value={selectedModelOption}
-              onValueChange={onModelChange}
-            />
+            <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <SessionSelect
+                label="Model"
+                name="modelOption"
+                options={availableModelOptions.map((option) => ({
+                  value: `${option.provider}::${option.name}`,
+                  label: option.label,
+                  description: option.provider.toUpperCase(),
+                }))}
+                placeholder="No model available"
+                value={selectedModelOption}
+                onValueChange={onModelChange}
+              />
 
-            <button
-              type="submit"
-              disabled={creating || !draftPrompt.trim() || availableModelOptions.length === 0}
-              className={`min-h-11 bg-[var(--bo-btn-bg)] px-6 text-xs font-semibold text-[var(--bo-btn-fg)] transition-[background-color,scale] duration-150 ease-out hover:bg-[var(--bo-btn-bg-hover)] disabled:cursor-not-allowed disabled:opacity-35 ${tapScale}`}
-            >
-              {creating ? "Sending…" : "Send"}
-            </button>
-          </div>
-          {createError ? (
-            <p className="mt-3 border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 py-2 text-sm text-pretty text-[var(--bo-failed)]">
-              {createError}
-            </p>
+              <button
+                type="submit"
+                disabled={creating || !draftPrompt.trim() || availableModelOptions.length === 0}
+                className={`min-h-11 bg-[var(--bo-btn-bg)] px-6 text-xs font-semibold text-[var(--bo-btn-fg)] transition-[background-color,scale] duration-150 ease-out hover:bg-[var(--bo-btn-bg-hover)] disabled:cursor-not-allowed disabled:opacity-35 ${tapScale}`}
+              >
+                {creating ? "Sending…" : "Send"}
+              </button>
+            </div>
+            {createError ? (
+              <p className="mt-3 border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 py-2 text-sm text-pretty text-[var(--bo-failed)]">
+                {createError}
+              </p>
+            ) : null}
+          </Form>
+        )}
+
+        <section className="mt-8 border-t border-[color:var(--bo-border)] pt-3">
+          <button
+            type="button"
+            aria-expanded={historyOpen}
+            onClick={() => {
+              setHistoryOpen((open) => !open);
+            }}
+            className="flex min-h-10 w-full items-center justify-between gap-4 text-left text-[10px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase hover:text-[var(--bo-fg)]"
+          >
+            <span>History</span>
+            <span className="flex items-center gap-2">
+              <span className="tabular-nums">{sessions.length}</span>
+              <span aria-hidden="true">{historyOpen ? "−" : "+"}</span>
+            </span>
+          </button>
+
+          {historyOpen ? (
+            <div className="pt-1">
+              {listingError ? (
+                <p className="mb-2 border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 py-2 text-xs text-pretty text-[var(--bo-failed)]">
+                  {listingError}
+                </p>
+              ) : null}
+
+              {sessions.length === 0 ? (
+                <p className="py-5 text-sm text-[var(--bo-muted-2)]">No previous sessions</p>
+              ) : (
+                <div className="divide-y divide-[color:var(--bo-border)]">
+                  {visibleSessions.map((session) => {
+                    const workflowStatus = workflowStatuses[session.id] ?? "unknown";
+                    return (
+                      <Link
+                        key={session.id}
+                        to={`${basePath}/${encodeURIComponent(session.workflowName)}/${encodeURIComponent(session.id)}`}
+                        preventScrollReset
+                        className="group flex min-h-14 items-center justify-between gap-4 px-1 py-3 transition-colors hover:bg-[rgba(var(--bo-grid),0.12)] sm:px-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-[var(--bo-fg)]">
+                            {session.name || session.id}
+                          </p>
+                          <time className="mt-1 block text-[10px] text-[var(--bo-muted-2)] tabular-nums">
+                            {formatTimestamp(session.updatedAt)}
+                          </time>
+                        </div>
+                        <span
+                          role="img"
+                          aria-label={workflowStatus}
+                          className={`size-1.5 flex-none rounded-full ${workflowStatus === "active" ? "animate-pulse bg-[var(--bo-accent)]" : workflowStatus === "errored" || workflowStatus === "terminated" ? "bg-[var(--bo-failed)]" : workflowStatus === "waiting" || workflowStatus === "paused" ? "bg-[var(--bo-waiting)]" : "bg-[var(--bo-live)]"}`}
+                        />
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+
+              {sessions.length > INITIAL_HISTORY_COUNT ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAllHistory((showAll) => !showAll);
+                  }}
+                  className="mt-2 min-h-10 text-xs font-semibold text-[var(--bo-accent-fg)] hover:underline"
+                >
+                  {showAllHistory
+                    ? "Show less"
+                    : `Show ${sessions.length - INITIAL_HISTORY_COUNT} more`}
+                </button>
+              ) : null}
+            </div>
           ) : null}
-        </Form>
-      )}
+        </section>
+      </div>
     </div>
   );
 }
