@@ -75,6 +75,7 @@ export type {
   TerminalConstructionPhase,
   TerminalNode,
   TerminalType,
+  TerminalValue,
   TryConstructionPhase,
   TryNode,
   WorkflowChildNode,

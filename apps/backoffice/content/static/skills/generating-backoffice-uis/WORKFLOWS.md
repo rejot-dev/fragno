@@ -10,7 +10,9 @@ Apply this reference together with `/static/skills/workflows/SKILL.md`.
 - Keep every identifier and value needed by later steps as an ordinary sibling field beside `$ui`.
 - Consume later values from the resolved step result's ordinary fields. `$ui.state` is presentation
   state, not the workflow's durable dataflow API.
-- Returning the same result from the workflow function renders it as the final output.
+- Returning the same result from the workflow function renders it as the final output. When the
+  return directly delegates to that UI step, the Backoffice keeps the UI on the step instead of
+  rendering a duplicate final-output card.
 - Final workflow output is terminal and cannot collect workflow input.
 
 ## Collecting workflow input

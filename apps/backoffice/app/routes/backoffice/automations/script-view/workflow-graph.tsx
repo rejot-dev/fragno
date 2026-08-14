@@ -177,7 +177,11 @@ function WorkflowUiResults({
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   const uiSteps = collectWorkflowUiSteps(workflowId, childrenByParent, run?.stepStatesByNodeId);
-  const hasFinalOutput = workflowRunHasGeneratedUiOutput(run);
+  const finalOutputIsRenderedByStep = workflowFinalOutputSourceNodeIds(
+    workflowId,
+    childrenByParent,
+  ).some((nodeId) => uiSteps.some((step) => step.id === nodeId));
+  const hasFinalOutput = workflowRunHasGeneratedUiOutput(run) && !finalOutputIsRenderedByStep;
 
   if (uiSteps.length === 0 && !hasFinalOutput) {
     return (
@@ -210,7 +214,7 @@ function WorkflowUiResults({
           />
         );
       })}
-      <WorkflowFinalOutput run={run} />
+      {hasFinalOutput ? <WorkflowFinalOutput run={run} /> : null}
     </div>
   );
 }
@@ -231,6 +235,23 @@ function collectWorkflowUiSteps(
       parseBackofficeUiResult(runState.result).kind !== "ordinary"
       ? [child, ...nestedUiSteps]
       : nestedUiSteps;
+  });
+}
+
+function workflowFinalOutputSourceNodeIds(
+  parentId: string,
+  childrenByParent: Map<string, WorkflowChildNode[]>,
+): string[] {
+  return (childrenByParent.get(parentId) ?? []).flatMap((child) => {
+    const nestedSourceNodeIds = workflowFinalOutputSourceNodeIds(child.id, childrenByParent);
+    if (
+      child.kind === "terminal" &&
+      child.terminalType === "final-return" &&
+      child.value.kind === "workflow-child"
+    ) {
+      return [child.value.nodeId, ...nestedSourceNodeIds];
+    }
+    return nestedSourceNodeIds;
   });
 }
 

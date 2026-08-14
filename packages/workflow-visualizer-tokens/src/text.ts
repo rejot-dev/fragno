@@ -121,8 +121,8 @@ function appendChildren(
         lines.push(
           `${prefix}${connector} ${child.order}. terminal ${terminalLabel}${label}${constructionSuffix(child.construction)}`,
         );
-        if (child.value) {
-          lines.push(`${childPrefix}value: ${singleLine(child.value)}`);
+        if (child.value.kind === "expression") {
+          lines.push(`${childPrefix}value: ${singleLine(child.value.expression)}`);
         }
         break;
       }

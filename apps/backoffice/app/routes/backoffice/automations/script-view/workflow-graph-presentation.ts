@@ -41,7 +41,7 @@ export function workflowTerminalDetails(
 
   return {
     ...(label ? { label } : {}),
-    ...(terminal.value ? { value: terminal.value } : {}),
+    ...(terminal.value.kind === "expression" ? { value: terminal.value.expression } : {}),
   };
 }
 
