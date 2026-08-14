@@ -241,7 +241,7 @@ class SerializedIntervalLoop {
 }
 
 type BufferedPumpLifecycle = {
-  stop(): void;
+  stopAndDrain(): Promise<void>;
   flushNow(): Promise<void>;
   waitForNextFlush(): Promise<void>;
 };
@@ -272,8 +272,8 @@ export class BufferedPumpRegistry<TPump extends BufferedPumpLifecycle> {
       closed = true;
       entry.handles -= 1;
       if (entry.handles === 0) {
-        entry.pump.stop();
         this.#entries.delete(key);
+        await entry.pump.stopAndDrain();
       }
     };
 
@@ -432,6 +432,11 @@ export class BufferedDatabasePump<
 
   stop(): void {
     this.#loop.stop();
+  }
+
+  async stopAndDrain(): Promise<void> {
+    this.stop();
+    await this.#pumpTail;
   }
 
   isRunning(): boolean {

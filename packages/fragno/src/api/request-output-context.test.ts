@@ -463,25 +463,47 @@ describe("RequestOutputContext", () => {
       reader.releaseLock();
     });
 
-    test("Should handle stream abort", async () => {
+    test("Should await asynchronous stream abort handlers", async () => {
       const ctx = new RequestOutputContext();
       let streamRef: ResponseStream<unknown> | undefined;
+      let resolveAbortStarted!: () => void;
+      const abortStarted = new Promise<void>((resolve) => {
+        resolveAbortStarted = resolve;
+      });
+      let releaseAbort!: () => void;
+      const abortReleased = new Promise<void>((resolve) => {
+        releaseAbort = resolve;
+      });
+      let finishStream!: () => void;
+      const streamFinished = new Promise<void>((resolve) => {
+        finishStream = resolve;
+      });
+      let abortCompleted = false;
 
-      const _response = ctx.jsonStream((stream) => {
+      const response = ctx.jsonStream(async (stream) => {
         streamRef = stream;
-        stream.onAbort(() => {
-          // Abort handler
+        stream.onAbort(async () => {
+          resolveAbortStarted();
+          await abortReleased;
+          abortCompleted = true;
+          finishStream();
         });
+        await streamFinished;
       });
 
-      // Wait for setup
       await new Promise((resolve) => setTimeout(resolve, 1));
-
       assert(!streamRef!.aborted);
 
-      streamRef!.abort();
-
+      const reader = response.body!.getReader();
+      const abort = reader.cancel();
+      await abortStarted;
       assert(streamRef!.aborted);
+      assert(!abortCompleted);
+
+      releaseAbort();
+      await abort;
+      assert(abortCompleted);
+      reader.releaseLock();
     });
 
     test("Should close stream after callback execution", async () => {
