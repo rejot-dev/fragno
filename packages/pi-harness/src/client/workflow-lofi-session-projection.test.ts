@@ -23,9 +23,14 @@ import {
   type LofiMutation,
 } from "@fragno-dev/lofi";
 
-import type { AgentMessage, SessionTreeEntry } from "@earendil-works/pi-agent-core";
+import type { SessionTreeEntry } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage, fauxText, type UserMessage } from "@earendil-works/pi-ai";
 
+import {
+  PiHarnessEventEncoder,
+  type PiHarnessSubscribedEvent,
+} from "../pi/harness/agent-harness-event-protocol";
+import type { PiHarnessFrontendAgentMessage } from "../pi/harness/agent-harness-event-protocol";
 import { piWorkflowStepEmissionEphemeralTable } from "./pi-workflow-emission-stream";
 import {
   createSessionProjectionDataStore,
@@ -37,9 +42,31 @@ const sessionId = "session-1";
 const instanceRef = buildScopedInstanceRowId(workflowName, sessionId);
 const schemaName = workflowsSchema.name;
 
-type MessageWithTextContent = AgentMessage & { content: readonly [{ text: string }] };
+type MessageWithTextContent = PiHarnessFrontendAgentMessage & {
+  content: readonly [{ text: string }];
+};
 
 const assistantMessage = (text: string) => fauxAssistantMessage(fauxText(text), { timestamp: 1 });
+
+const encodeHarnessEvents = (events: readonly PiHarnessSubscribedEvent[]) => {
+  const encoder = new PiHarnessEventEncoder();
+  return events.map((event) => encoder.encode(event));
+};
+
+const encodeActiveAssistantDraft = (text: string) =>
+  encodeHarnessEvents([
+    { type: "message_start", message: assistantMessage("") },
+    {
+      type: "message_update",
+      message: assistantMessage(text),
+      assistantMessageEvent: {
+        type: "text_delta",
+        contentIndex: 0,
+        delta: text,
+        partial: assistantMessage(text),
+      },
+    },
+  ]);
 
 const userMessage = (text: string): UserMessage => ({
   role: "user",
@@ -158,7 +185,7 @@ const workflowStepMutation = (
   },
 });
 
-const messageText = (message: AgentMessage): string =>
+const messageText = (message: PiHarnessFrontendAgentMessage): string =>
   (message as MessageWithTextContent).content[0].text;
 
 const createRuntime = async (mutations: readonly LofiMutation[] = []) => {
@@ -244,6 +271,29 @@ describe("createSessionProjectionDataStore", () => {
   });
 
   it("reduces ephemeral workflow emissions without storing or querying emission rows", async () => {
+    const [messageStart, firstDelta, secondDelta] = encodeHarnessEvents([
+      { type: "message_start", message: assistantMessage("") },
+      {
+        type: "message_update",
+        message: assistantMessage("hel"),
+        assistantMessageEvent: {
+          type: "text_delta",
+          contentIndex: 0,
+          delta: "hel",
+          partial: assistantMessage("hel"),
+        },
+      },
+      {
+        type: "message_update",
+        message: assistantMessage("hello"),
+        assistantMessageEvent: {
+          type: "text_delta",
+          contentIndex: 0,
+          delta: "lo",
+          partial: assistantMessage("hello"),
+        },
+      },
+    ]);
     const entry = outboxEntry([
       workflowInstanceMutation(),
       workflowEmissionMutation("operation-start", 0, {
@@ -253,21 +303,15 @@ describe("createSessionProjectionDataStore", () => {
       }),
       workflowEmissionMutation("emission-start", 1, {
         kind: "harness-event",
-        event: { type: "message_start", message: assistantMessage("") },
+        event: messageStart,
       }),
       workflowEmissionMutation("emission-delta", 2, {
-        kind: "harness-message-update",
-        update: {
-          type: "message_update",
-          assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "hel" },
-        },
+        kind: "harness-event",
+        event: firstDelta,
       }),
       workflowEmissionMutation("emission-delta-2", 3, {
-        kind: "harness-message-update",
-        update: {
-          type: "message_update",
-          assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "lo" },
-        },
+        kind: "harness-event",
+        event: secondDelta,
       }),
     ]);
     const adapter = new IndexedDbAdapter({
@@ -322,13 +366,15 @@ describe("createSessionProjectionDataStore", () => {
         "losing-downstream",
         1,
         {
-          kind: "harness-message-update",
-          update: {
+          kind: "harness-event",
+          event: {
             type: "message_update",
+            message: assistantMessage("discarded"),
             assistantMessageEvent: {
               type: "text_delta",
               contentIndex: 0,
               delta: "discarded",
+              partial: assistantMessage("discarded"),
             },
           },
         },
@@ -366,6 +412,7 @@ describe("createSessionProjectionDataStore", () => {
   });
 
   it("does not share mutable assistant drafts between stores", async () => {
+    const [messageStart, messageDelta] = encodeActiveAssistantDraft("hello");
     const entry = outboxEntry([
       workflowInstanceMutation(),
       workflowEmissionMutation("operation-start", 0, {
@@ -375,14 +422,11 @@ describe("createSessionProjectionDataStore", () => {
       }),
       workflowEmissionMutation("message-start", 1, {
         kind: "harness-event",
-        event: { type: "message_start", message: assistantMessage("") },
+        event: messageStart,
       }),
       workflowEmissionMutation("message-delta", 2, {
-        kind: "harness-message-update",
-        update: {
-          type: "message_update",
-          assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "hello" },
-        },
+        kind: "harness-event",
+        event: messageDelta,
       }),
     ]);
     const adapter = new IndexedDbAdapter({
@@ -485,6 +529,7 @@ describe("createSessionProjectionDataStore", () => {
   });
 
   it("rebuilds an active Pi draft after the runtime reloads before the store mounts", async () => {
+    const [messageStart, messageDelta] = encodeActiveAssistantDraft("hello");
     const entry = outboxEntry([
       workflowInstanceMutation(),
       workflowEmissionMutation("operation-start", 0, {
@@ -494,14 +539,11 @@ describe("createSessionProjectionDataStore", () => {
       }),
       workflowEmissionMutation("message-start", 1, {
         kind: "harness-event",
-        event: { type: "message_start", message: assistantMessage("") },
+        event: messageStart,
       }),
       workflowEmissionMutation("message-delta", 2, {
-        kind: "harness-message-update",
-        update: {
-          type: "message_update",
-          assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "hello" },
-        },
+        kind: "harness-event",
+        event: messageDelta,
       }),
     ]);
     const adapter = new IndexedDbAdapter({

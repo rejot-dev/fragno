@@ -5,9 +5,10 @@ import { z } from "zod";
 
 import type { HookContext } from "@fragno-dev/db";
 
-import type { AgentMessage, AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
+import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
+import type { PiHarnessFrontendAgentMessage } from "./harness/agent-harness-event-protocol";
 import type { PiHarnessOperation } from "./workflows/workflow-agent-harness";
 
 export type PiLoggerConfig = {
@@ -156,7 +157,7 @@ export type PiSessionCommandPayload =
   | { commandId: string; kind: "followUp"; input: PiPromptInput };
 
 export type PiAgentStateSnapshot = {
-  messages: AgentMessage[];
+  messages: PiHarnessFrontendAgentMessage[];
 };
 
 export type PiSessionDetail = PiSession & {

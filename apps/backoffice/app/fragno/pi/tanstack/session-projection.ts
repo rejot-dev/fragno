@@ -25,6 +25,7 @@ type PiWorkflowStepEmissionProjectionRow = {
   stepKey: string;
   executionId: string;
   epoch: string;
+  sequence: number;
   payload: unknown;
   createdAt: Date;
 };
@@ -65,6 +66,9 @@ export function projectPiSessionCollectionRows({
     })),
     workflowStepEmissions: canonicalEmissions.map((emission) => ({
       stepKey: emission.stepKey,
+      executionId: emission.executionId,
+      epoch: emission.epoch,
+      sequence: emission.sequence,
       payload: emission.payload as PiWorkflowSessionProjectionEmission["payload"],
       createdAt: emission.createdAt,
     })),

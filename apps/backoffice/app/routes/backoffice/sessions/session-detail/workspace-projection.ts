@@ -1,9 +1,8 @@
+import type { PiHarnessFrontendAgentMessage } from "@fragno-dev/pi-harness/harness/agent-harness-event-protocol";
 import type {
   DraftAgentMessage,
   DraftTool,
 } from "@fragno-dev/pi-harness/workflow-session-projection";
-
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
 
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 
@@ -22,7 +21,7 @@ export function projectSessionWorkspaceItems({
   messages,
 }: {
   draftAgentMessage: DraftAgentMessage | null;
-  messages: readonly AgentMessage[];
+  messages: readonly PiHarnessFrontendAgentMessage[];
 }): SessionWorkspaceItem[] {
   const items: SessionWorkspaceItem[] = [];
   const projectedItemIds = new Set<string>();

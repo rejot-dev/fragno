@@ -1,5 +1,6 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { Usage } from "@earendil-works/pi-ai";
+
+import type { PiHarnessFrontendAgentMessage } from "./harness/agent-harness-event-protocol";
 
 export type PiContextUsageEstimate = {
   tokens: number;
@@ -13,7 +14,7 @@ const ESTIMATED_IMAGE_CHARS = 4_800;
 const contextTokensFromUsage = (usage: Usage): number =>
   usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 
-const validAssistantUsage = (message: AgentMessage): Usage | undefined => {
+const validAssistantUsage = (message: PiHarnessFrontendAgentMessage): Usage | undefined => {
   if (message.role !== "assistant") {
     return undefined;
   }
@@ -58,7 +59,7 @@ const readableJsonLength = (value: unknown): number => {
 };
 
 /** Estimate one message using the same conservative four-characters-per-token heuristic as Pi. */
-export const estimatePiMessageTokens = (message: AgentMessage): number => {
+export const estimatePiMessageTokens = (message: PiHarnessFrontendAgentMessage): number => {
   let chars = 0;
 
   switch (message.role) {
@@ -99,7 +100,7 @@ export const estimatePiMessageTokens = (message: AgentMessage): number => {
  * that point use the same character heuristic Pi applies while preparing compaction.
  */
 export const estimatePiContextUsage = (
-  messages: readonly AgentMessage[],
+  messages: readonly PiHarnessFrontendAgentMessage[],
 ): PiContextUsageEstimate => {
   let lastUsageIndex: number | null = null;
   let usageTokens = 0;

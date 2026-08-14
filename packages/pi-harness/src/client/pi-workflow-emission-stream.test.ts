@@ -24,7 +24,7 @@ describe("piWorkflowStepEmissionEphemeralTable", () => {
         },
       }) === "start",
     );
-    assert(boundary({ payload: { kind: "harness-message-update" } }) === "item");
+    assert(boundary({ payload: { kind: "harness-event" } }) === "item");
     assert(boundary({ payload: { control: "step-committed", epoch: "epoch-1" } }) === "end");
   });
 });

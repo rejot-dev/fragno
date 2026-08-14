@@ -116,7 +116,9 @@ describe("pi-harness wait-for-agent-end route", () => {
         models: createModelsForStreamFn(mockModel, streamFn),
       },
     });
-    const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
+    const config: PiFragmentConfig = {
+      workflows: [interactiveChatWorkflow],
+    };
     harness = await buildHarness(config, { autoTickHooks: false });
   };
 

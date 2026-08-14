@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 
+import type { PiHarnessFrontendAgentMessage } from "./harness/agent-harness-event-protocol";
 import {
   MAX_PI_COMMAND_IMAGE_DATA_LENGTH,
   type PiSessionCommandPayload,
@@ -45,7 +46,7 @@ const workflowStatusSchema = z.object({
 });
 
 const piAgentStateSnapshotSchema = z.object({
-  messages: z.array(agentMessageSchema),
+  messages: z.array(z.unknown() as z.ZodType<PiHarnessFrontendAgentMessage>),
 });
 
 const sessionDetailSchema = sessionBaseSchema.extend({

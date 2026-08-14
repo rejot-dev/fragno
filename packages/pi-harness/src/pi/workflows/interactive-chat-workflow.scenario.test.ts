@@ -12,7 +12,6 @@ import { instantiate } from "@fragno-dev/core";
 
 import {
   formatSkillsForSystemPrompt,
-  type AgentEvent,
   type AgentHarnessEvent,
   type AgentMessage,
   type AgentTool,
@@ -32,7 +31,9 @@ import { createPiFragmentClients } from "../../client/clients";
 import { piRoutesFactory } from "../../routes";
 import { piHarnessDefinition } from "../definition";
 import { createPiWorkflows } from "../factory";
+import type { PiHarnessFrontendAgentMessage } from "../harness/agent-harness-event-protocol";
 import { createModelsForStreamFn } from "../harness/test-models";
+import { createPiHarnessScenarioEventDecoder } from "../pi-test-utils";
 import { definePiTool } from "../tools";
 import { MAX_PI_COMMAND_IMAGE_DATA_LENGTH, type PiFragmentConfig } from "../types";
 import { createInteractiveChatWorkflow } from "./interactive-chat-workflow";
@@ -119,7 +120,7 @@ const modelMessageText = (message: Message): string =>
         .flatMap((content) => (content.type === "text" ? [content.text] : []))
         .join("");
 
-const agentMessageText = (message: AgentMessage): string => {
+const agentMessageText = (message: PiHarnessFrontendAgentMessage): string => {
   if (message.role !== "user" && message.role !== "assistant") {
     return "";
   }
@@ -144,22 +145,12 @@ const createCompactionInitialMessages = (): AgentMessage[] =>
     },
   ]).flat();
 
-const harnessEventFromEmission = (emission: {
-  payload: unknown;
-}): AgentHarnessEvent | undefined => {
-  const payload = emission.payload;
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !("kind" in payload) ||
-    payload.kind !== "harness-event" ||
-    !("event" in payload)
-  ) {
-    return undefined;
-  }
+const decodeScenarioHarnessEvent = createPiHarnessScenarioEventDecoder();
 
-  return payload.event as AgentHarnessEvent;
-};
+const harnessEventFromEmission = (
+  emission: WorkflowScenarioObservedEmission,
+): AgentHarnessEvent | undefined =>
+  decodeScenarioHarnessEvent(emission) as AgentHarnessEvent | undefined;
 
 const createCompletionGate = (): { promise: Promise<void>; release: () => void } => {
   let release!: () => void;
@@ -1657,18 +1648,8 @@ describe("Interactive chat workflow scenarios", () => {
                 workflow: interactiveChatWorkflow.name,
                 instanceId: (ctx) => ctx.vars.sessionId!,
                 match: (emission) => {
-                  const payload = emission.payload;
-                  if (
-                    typeof payload !== "object" ||
-                    payload === null ||
-                    !("kind" in payload) ||
-                    payload.kind !== "harness-event" ||
-                    !("event" in payload)
-                  ) {
-                    return false;
-                  }
-                  const event = payload.event as AgentEvent;
-                  return event.type === "message_start" && event.message.role === "assistant";
+                  const event = harnessEventFromEmission(emission);
+                  return event?.type === "message_start" && event.message.role === "assistant";
                 },
               }),
               workflow.read({
@@ -1796,18 +1777,8 @@ describe("Interactive chat workflow scenarios", () => {
                 workflow: interactiveChatWorkflow.name,
                 instanceId: (ctx) => ctx.vars.sessionId!,
                 match: (emission) => {
-                  const payload = emission.payload;
-                  if (
-                    typeof payload !== "object" ||
-                    payload === null ||
-                    !("kind" in payload) ||
-                    payload.kind !== "harness-event" ||
-                    !("event" in payload)
-                  ) {
-                    return false;
-                  }
-                  const event = payload.event as AgentEvent;
-                  return event.type === "message_start" && event.message.role === "assistant";
+                  const event = harnessEventFromEmission(emission);
+                  return event?.type === "message_start" && event.message.role === "assistant";
                 },
               }),
               workflow.read({
@@ -1826,19 +1797,9 @@ describe("Interactive chat workflow scenarios", () => {
                 workflow: interactiveChatWorkflow.name,
                 instanceId: (ctx) => ctx.vars.sessionId!,
                 match: (emission) => {
-                  const payload = emission.payload;
-                  if (
-                    typeof payload !== "object" ||
-                    payload === null ||
-                    !("kind" in payload) ||
-                    payload.kind !== "harness-event" ||
-                    !("event" in payload)
-                  ) {
-                    return false;
-                  }
-                  const event = payload.event as AgentHarnessEvent;
+                  const event = harnessEventFromEmission(emission);
                   return (
-                    event.type === "queue_update" &&
+                    event?.type === "queue_update" &&
                     event.steer.some(
                       (message) =>
                         message.role === "user" &&

@@ -57,6 +57,7 @@ describe("projectPiSessionCollectionRows", () => {
           stepKey: "do:contested",
           executionId: "losing-execution",
           epoch: "losing-contested-epoch",
+          sequence: 0,
           payload: {
             kind: "pi-session-command-start",
             command: { commandId: "compact-1", kind: "compact" },
@@ -68,6 +69,7 @@ describe("projectPiSessionCollectionRows", () => {
           stepKey: "do:speculative-downstream",
           executionId: "losing-execution",
           epoch: "losing-downstream-epoch",
+          sequence: 1,
           payload: {
             kind: "harness-event",
             event: {

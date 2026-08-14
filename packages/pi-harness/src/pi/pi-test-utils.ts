@@ -40,6 +40,8 @@ import { piSchema } from "../schema";
 import { piHarnessDefinition } from "./definition";
 import type { PiHarnessHooksMap } from "./definition";
 import { createPiWorkflows, type createPiFragment } from "./factory";
+import { PiHarnessEventStreamDecoders } from "./harness/agent-harness-event-protocol";
+import type { PiHarnessFrontendEvent } from "./harness/agent-harness-event-protocol";
 import { createModelsForStreamFn } from "./harness/test-models";
 import type { PiFragmentConfig } from "./types";
 import {
@@ -506,26 +508,101 @@ const createCheckpointState = (checkpoints: readonly FauxCheckpointMatcher[]) =>
     ]),
   );
 
-const harnessEventFromMutation = (
+export type PiHarnessScenarioEmission = {
+  readonly id: string;
+  readonly workflowName: string;
+  readonly instanceId: string;
+  readonly stepKey: string;
+  readonly epoch: string;
+  readonly payload: unknown;
+};
+
+export const createPiHarnessScenarioEventDecoder = () => {
+  const decoders = new PiHarnessEventStreamDecoders();
+  const decodedEventsByEmissionId = new Map<string, PiHarnessFrontendEvent | undefined>();
+
+  return (emission: PiHarnessScenarioEmission): PiHarnessFrontendEvent | undefined => {
+    const emissionId = `${emission.workflowName}\u0000${emission.instanceId}\u0000${emission.id}`;
+    if (decodedEventsByEmissionId.has(emissionId)) {
+      return decodedEventsByEmissionId.get(emissionId);
+    }
+
+    const payload = emission.payload;
+    if (typeof payload !== "object" || payload === null || !("kind" in payload)) {
+      decodedEventsByEmissionId.set(emissionId, undefined);
+      return undefined;
+    }
+
+    const identity = {
+      stepKey: `${emission.workflowName}\u0000${emission.instanceId}\u0000${emission.stepKey}`,
+      executionId: emission.epoch,
+      epoch: emission.epoch,
+    };
+    if (payload.kind === "harness-operation-start") {
+      decoders.start(identity);
+      decodedEventsByEmissionId.set(emissionId, undefined);
+      return undefined;
+    }
+    if (payload.kind === "harness-operation-complete") {
+      decoders.finish(identity);
+      decodedEventsByEmissionId.set(emissionId, undefined);
+      return undefined;
+    }
+    if (payload.kind !== "harness-event" || !("event" in payload)) {
+      decodedEventsByEmissionId.set(emissionId, undefined);
+      return undefined;
+    }
+
+    try {
+      const event = decoders.decode(identity, payload.event);
+      decodedEventsByEmissionId.set(emissionId, event);
+      return event;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (
+        message.startsWith("PI_HARNESS_EVENT_PROTOCOL_UNKNOWN_") ||
+        message === "PI_HARNESS_EVENT_PROTOCOL_MESSAGE_UPDATE_WITHOUT_ASSISTANT_START"
+      ) {
+        decodedEventsByEmissionId.set(emissionId, undefined);
+        return undefined;
+      }
+      throw error;
+    }
+  };
+};
+
+const decodedHarnessEventFromMutation = (
   mutation: MutationOperation<AnySchema>,
+  decoders: PiHarnessEventStreamDecoders,
 ): Record<string, unknown> | null => {
   if (mutation.type !== "create" || mutation.table !== "workflow_step_emission") {
     return null;
   }
-  const payload = (mutation.values as Record<string, unknown>)["payload"];
+  const values = mutation.values as Record<string, unknown>;
+  const stepKey = values["stepKey"];
+  const executionId = values["executionId"];
+  const epoch = values["epoch"];
+  if (typeof stepKey !== "string" || typeof executionId !== "string" || typeof epoch !== "string") {
+    throw new Error("Faux Pi harness emission is missing its stream identity.");
+  }
+  const identity = { stepKey, executionId, epoch };
+  const payload = values["payload"];
   if (!payload || typeof payload !== "object") {
     return null;
   }
   const payloadRecord = payload as Record<string, unknown>;
-  const event = payloadRecord["event"];
-  if (payloadRecord["kind"] === "harness-event" && event && typeof event === "object") {
-    return event as Record<string, unknown>;
+  if (payloadRecord["kind"] === "harness-operation-start") {
+    decoders.start(identity);
+    return null;
   }
-
-  const update = payloadRecord["update"];
-  return payloadRecord["kind"] === "harness-message-update" && update && typeof update === "object"
-    ? (update as Record<string, unknown>)
-    : null;
+  if (payloadRecord["kind"] === "harness-operation-complete") {
+    decoders.finish(identity);
+    return null;
+  }
+  if (payloadRecord["kind"] !== "harness-event") {
+    return null;
+  }
+  return decoders.decode(identity, payloadRecord["event"]) as unknown as Record<string, unknown>;
 };
 
 export type FauxPiHarnessCheckpointResult = {
@@ -653,6 +730,7 @@ export const startFauxPiHarnessPrompt = (
   };
 
   const models = createModelsForStreamFn(model, streamFn);
+  const eventDecoders = new PiHarnessEventStreamDecoders();
   const done = recordWorkflowStepRunForTest({
     workflowName: options.workflowName,
     instanceId: options.sessionId,
@@ -663,7 +741,7 @@ export const startFauxPiHarnessPrompt = (
       mutations = [...allMutations];
       const previousMutationCount = allMutations.length - newMutations.length;
       for (const [index, mutation] of newMutations.entries()) {
-        const event = harnessEventFromMutation(mutation);
+        const event = decodedHarnessEventFromMutation(mutation, eventDecoders);
         if (!event) {
           continue;
         }

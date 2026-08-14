@@ -103,6 +103,19 @@ const workflow = defineWorkflow(
 
 `activeToolNames` is a per-harness-operation policy for exposing only a subset of registered tools.
 
+## Harness event protocol
+
+Pi Harness encodes every subscribed `AgentHarness` event with its compact, versioned event protocol.
+Workflow projections, routes, and clients use the same protocol automatically. Protocol selection is
+not configurable.
+
+The frontend projection preserves event count, order, and event type while omitting provider-owned
+assistant metadata and signatures. Import the projected event types separately when needed:
+
+```ts
+import type { PiHarnessFrontendEvent } from "@fragno-dev/pi-harness/harness/agent-harness-event-protocol";
+```
+
 ## Operation completion hook
 
 Interactive workflow input may include an opaque, JSON-serializable `actor`. It remains part of the

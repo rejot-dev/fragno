@@ -45,6 +45,11 @@
       "types": "./dist/node/pi/factory.d.ts",
       "default": "./dist/node/pi/factory.js"
     },
+    "./harness/agent-harness-event-protocol": {
+      "types": "./dist/browser/pi/harness/agent-harness-event-protocol.d.ts",
+      "browser": "./dist/browser/pi/harness/agent-harness-event-protocol.js",
+      "default": "./dist/node/pi/harness/agent-harness-event-protocol.js"
+    },
     "./harness/pi-operation-completed": {
       "types": "./dist/node/pi/harness/pi-operation-completed.d.ts",
       "default": "./dist/node/pi/harness/pi-operation-completed.js"
