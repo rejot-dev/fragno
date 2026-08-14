@@ -1,49 +1,22 @@
-import { assert, describe, test } from "vitest";
+import { afterEach, assert, describe, expect, test, vi } from "vitest";
 
 import { describeAutomationCollectionSource } from "./browser-database";
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.resetModules();
+});
+
 describe("Automation collection sources", () => {
-  test("describes an organization-scoped outbox and stable collection ids", () => {
+  test("describes the organization-scoped Automations Durable Object", () => {
     const description = describeAutomationCollectionSource({
       scope: { kind: "org", orgId: "org-1" },
       adapterIdentity: "adapter-1",
     });
 
-    assert(description.internalUrl === "/api/automations-scoped/org/org-1/_internal");
-    assert(
-      description.collectionId("automation_event") ===
-        JSON.stringify(["backoffice", "automations", "org:org-1", "adapter-1", "automation_event"]),
-    );
-    assert(
-      description.collectionId("marketplace_ingestion") ===
-        JSON.stringify([
-          "backoffice",
-          "automations",
-          "org:org-1",
-          "adapter-1",
-          "marketplace_ingestion",
-        ]),
-    );
-    assert(
-      description.collectionId("external_identity_binding") ===
-        JSON.stringify([
-          "backoffice",
-          "automations",
-          "org:org-1",
-          "adapter-1",
-          "external_identity_binding",
-        ]),
-    );
-    assert(
-      description.collectionId("workflows.workflow_step") ===
-        JSON.stringify([
-          "backoffice",
-          "automations",
-          "org:org-1",
-          "adapter-1",
-          "workflows.workflow_step",
-        ]),
-    );
+    assert.equal(description.baseUrl, "/api/automations-scoped/org/org-1");
+    assert.equal(description.internalUrl, "/api/automations-scoped/org/org-1/_internal");
+    assert.equal(description.resourceKey, JSON.stringify(["org:org-1", "adapter-1"]));
   });
 
   test("uses the encoded route id for project-scoped outboxes", () => {
@@ -56,9 +29,9 @@ describe("Automation collection sources", () => {
       adapterIdentity: "adapter-1",
     });
 
-    assert(
-      description.internalUrl ===
-        "/api/automations-scoped/project/org-1%3Aproject%252Fone/_internal",
+    assert.equal(
+      description.internalUrl,
+      "/api/automations-scoped/project/org-1%3Aproject%252Fone/_internal",
     );
   });
 
@@ -68,9 +41,23 @@ describe("Automation collection sources", () => {
     const second = describeAutomationCollectionSource({ scope, adapterIdentity: "adapter-2" });
 
     assert.notEqual(first.resourceKey, second.resourceKey);
-    assert.notEqual(
-      first.collectionId("automation_event"),
-      second.collectionId("automation_event"),
-    );
+  });
+
+  test("keeps a rejected Suspense resource cached", async () => {
+    const fetchMock = vi.fn(async () => new Response("Unavailable", { status: 503 }));
+    vi.stubGlobal("location", new URL("http://localhost:5173/backoffice"));
+    vi.stubGlobal("fetch", fetchMock);
+    const { getAutomationBrowserDatabase } = await import("./browser-database");
+    const source = {
+      scope: { kind: "org", orgId: "org-1" },
+      adapterIdentity: "adapter-1",
+    } as const;
+
+    const first = getAutomationBrowserDatabase(source);
+    await expect(first).rejects.toThrow(/503/);
+    const second = getAutomationBrowserDatabase(source);
+
+    assert.equal(second, first);
+    assert.equal(fetchMock.mock.calls.length, 1);
   });
 });

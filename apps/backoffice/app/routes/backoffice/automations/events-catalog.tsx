@@ -71,13 +71,8 @@ export default function BackofficeAutomationEventsCatalog() {
     ...definition,
     capabilityId: "dynamic",
   }));
-  const eventDefinitionsError = eventDefinitionsQuery.isError
-    ? collections.eventDefinitions.utils.getLastError()
-    : null;
-  const eventDefinitionsErrorMessage = eventDefinitionsError
-    ? eventDefinitionsError instanceof Error
-      ? eventDefinitionsError.message
-      : "Automation event definition synchronization failed."
+  const eventDefinitionsErrorMessage = eventDefinitionsQuery.isError
+    ? "Automation event definition synchronization failed."
     : null;
   const [payloadFormat, setPayloadFormat] = useState<"typescript" | "jsonschema">("typescript");
   const [search, setSearch] = useState(() => searchParams.get("search")?.trim() ?? "");

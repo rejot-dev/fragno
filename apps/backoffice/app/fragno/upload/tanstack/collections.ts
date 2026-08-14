@@ -1,28 +1,23 @@
-import type { FragnoOutboxCoordinator } from "@fragno-dev/tanstack-db-adapter/coordinator";
 import { uploadSchema } from "@fragno-dev/upload/schema";
 
-import type { FragnoCollection, FragnoCollectionFactory } from "@fragno-dev/tanstack-db-adapter";
+import {
+  type FragnoCollectionRow,
+  type FragnoOutboxCoordinator,
+} from "@fragno-dev/tanstack-db-adapter";
+
+import type { Collection } from "@tanstack/react-db";
 
 export type UploadCollections = {
-  files: FragnoCollection<typeof uploadSchema, "file">;
+  files: Collection<FragnoCollectionRow<(typeof uploadSchema.tables)["file"]>, string>;
 };
 
 /** Only metadata needed by the file explorer is eligible for browser synchronization. */
 export type UploadCollectionTarget = "file";
 
-export function createUploadCollections(options: {
-  coordinator: FragnoOutboxCoordinator;
-  collectionId(target: UploadCollectionTarget): string;
-  createCollection: FragnoCollectionFactory;
-}): UploadCollections {
+export function createUploadCollections(
+  coordinator: FragnoOutboxCoordinator<readonly [typeof uploadSchema]>,
+): UploadCollections {
   return {
-    files: options.createCollection({
-      id: options.collectionId("file"),
-      coordinator: options.coordinator,
-      target: {
-        schema: uploadSchema,
-        table: "file",
-      },
-    }),
+    files: coordinator.collection(uploadSchema, "file"),
   };
 }

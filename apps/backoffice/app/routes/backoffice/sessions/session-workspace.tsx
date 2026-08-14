@@ -3,7 +3,6 @@ import { Outlet, useActionData, useNavigation } from "react-router";
 
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import { BackofficeSystemState } from "@/components/backoffice";
-import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { ClientOnly } from "@/components/client-only";
 import { getAutomationBrowserDatabase } from "@/fragno/automation/tanstack/browser-database";
 import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
@@ -79,14 +78,8 @@ function SynchronizedPiSessionsWorkspace({
     source,
     workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
   });
-  const automationDatabase = use(getAutomationBrowserDatabase());
-  const { automationCollectionSource } = useCurrentBackofficeContext();
-  const workflowCollections =
-    automationCollectionSource.status === "ready"
-      ? automationDatabase.collectionsFor(automationCollectionSource.source)
-      : undefined;
-  const workflowCollectionsError =
-    automationCollectionSource.status === "unavailable" ? automationCollectionSource.message : null;
+  const { collections: workflowCollections } = use(getAutomationBrowserDatabase(source));
+  const workflowCollectionsError = null;
 
   if (listingState.status === "synchronizing" && listingState.snapshot.sessions.length === 0) {
     return <PiSessionsLoading />;

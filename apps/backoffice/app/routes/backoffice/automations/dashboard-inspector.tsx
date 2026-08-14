@@ -7,7 +7,7 @@ import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
-import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
+import type { AutomationBrowserCollections as AutomationCollections } from "@/fragno/automation/tanstack/browser-database";
 import type { BackofficeCapabilityKind } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 import { resolveWorkflowRuntimeToolCalls } from "@/fragno/runtime-tools/workflow-catalog";

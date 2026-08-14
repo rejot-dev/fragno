@@ -1,11 +1,18 @@
-import type { FragnoOutboxCoordinator } from "@fragno-dev/tanstack-db-adapter/coordinator";
+import type { AnyTable } from "@fragno-dev/db/schema";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
-import type { FragnoCollection, FragnoCollectionFactory } from "@fragno-dev/tanstack-db-adapter";
+import {
+  type FragnoCollectionRow,
+  type FragnoOutboxCoordinator,
+} from "@fragno-dev/tanstack-db-adapter";
+
+import type { Collection } from "@tanstack/react-db";
 
 import { automationFragmentSchema } from "../schema";
 
 type AutomationTableName = keyof (typeof automationFragmentSchema)["tables"];
+
+type TableCollection<TTable extends AnyTable> = Collection<FragnoCollectionRow<TTable>, string>;
 
 export type AutomationCollectionTarget =
   | AutomationTableName
@@ -15,86 +22,62 @@ export type AutomationCollectionTarget =
   | "workflows.workflow_step_emission";
 
 export type AutomationCollections = {
-  kvStore: FragnoCollection<typeof automationFragmentSchema, "kv_store">;
-  sandboxInstances: FragnoCollection<typeof automationFragmentSchema, "sandbox_instance">;
-  routes: FragnoCollection<typeof automationFragmentSchema, "automation_route">;
-  routeScheduleStates: FragnoCollection<
-    typeof automationFragmentSchema,
-    "automation_route_schedule_state"
+  kvStore: TableCollection<(typeof automationFragmentSchema.tables)["kv_store"]>;
+  sandboxInstances: TableCollection<(typeof automationFragmentSchema.tables)["sandbox_instance"]>;
+  routes: TableCollection<(typeof automationFragmentSchema.tables)["automation_route"]>;
+  routeScheduleStates: TableCollection<
+    (typeof automationFragmentSchema.tables)["automation_route_schedule_state"]
   >;
-  events: FragnoCollection<typeof automationFragmentSchema, "automation_event">;
-  marketplaceIngestions: FragnoCollection<typeof automationFragmentSchema, "marketplace_ingestion">;
-  eventDefinitions: FragnoCollection<
-    typeof automationFragmentSchema,
-    "automation_event_definition"
+  events: TableCollection<(typeof automationFragmentSchema.tables)["automation_event"]>;
+  marketplaceIngestions: TableCollection<
+    (typeof automationFragmentSchema.tables)["marketplace_ingestion"]
   >;
-  externalIdentityBindings: FragnoCollection<
-    typeof automationFragmentSchema,
-    "external_identity_binding"
+  eventDefinitions: TableCollection<
+    (typeof automationFragmentSchema.tables)["automation_event_definition"]
   >;
-  workflowInstances: FragnoCollection<typeof workflowsSchema, "workflow_instance">;
-  workflowSteps: FragnoCollection<typeof workflowsSchema, "workflow_step">;
-  workflowEvents: FragnoCollection<typeof workflowsSchema, "workflow_event">;
-  workflowStepEmissions: FragnoCollection<typeof workflowsSchema, "workflow_step_emission">;
+  externalIdentityBindings: TableCollection<
+    (typeof automationFragmentSchema.tables)["external_identity_binding"]
+  >;
+  workflowInstances: TableCollection<(typeof workflowsSchema.tables)["workflow_instance"]>;
+  workflowSteps: TableCollection<(typeof workflowsSchema.tables)["workflow_step"]>;
+  workflowEvents: TableCollection<(typeof workflowsSchema.tables)["workflow_event"]>;
+  workflowStepEmissions: TableCollection<(typeof workflowsSchema.tables)["workflow_step_emission"]>;
 };
 
-export function createAutomationCollections(options: {
-  coordinator: FragnoOutboxCoordinator;
-  collectionId(target: AutomationCollectionTarget): string;
-  createCollection: FragnoCollectionFactory;
-}): AutomationCollections {
-  const createAutomationTableCollection = <TTableName extends AutomationTableName>(
-    table: TTableName,
-  ) =>
-    options.createCollection({
-      id: options.collectionId(table),
-      coordinator: options.coordinator,
-      target: {
-        schema: automationFragmentSchema,
-        table,
-      },
-    });
+type AutomationCoordinator = FragnoOutboxCoordinator<
+  readonly [typeof automationFragmentSchema, typeof workflowsSchema]
+>;
 
+export function createAutomationCollections(
+  coordinator: AutomationCoordinator,
+): AutomationCollections {
   return {
-    kvStore: createAutomationTableCollection("kv_store"),
-    sandboxInstances: createAutomationTableCollection("sandbox_instance"),
-    routes: createAutomationTableCollection("automation_route"),
-    routeScheduleStates: createAutomationTableCollection("automation_route_schedule_state"),
-    events: createAutomationTableCollection("automation_event"),
-    marketplaceIngestions: createAutomationTableCollection("marketplace_ingestion"),
-    eventDefinitions: createAutomationTableCollection("automation_event_definition"),
-    externalIdentityBindings: createAutomationTableCollection("external_identity_binding"),
-    workflowInstances: options.createCollection({
-      id: options.collectionId("workflows.workflow_instance"),
-      coordinator: options.coordinator,
-      target: {
-        schema: workflowsSchema,
-        table: "workflow_instance",
-      },
-    }),
-    workflowSteps: options.createCollection({
-      id: options.collectionId("workflows.workflow_step"),
-      coordinator: options.coordinator,
-      target: {
-        schema: workflowsSchema,
-        table: "workflow_step",
-      },
-    }),
-    workflowEvents: options.createCollection({
-      id: options.collectionId("workflows.workflow_event"),
-      coordinator: options.coordinator,
-      target: {
-        schema: workflowsSchema,
-        table: "workflow_event",
-      },
-    }),
-    workflowStepEmissions: options.createCollection({
-      id: options.collectionId("workflows.workflow_step_emission"),
-      coordinator: options.coordinator,
-      target: {
-        schema: workflowsSchema,
-        table: "workflow_step_emission",
-      },
+    kvStore: coordinator.collection(automationFragmentSchema, "kv_store"),
+    sandboxInstances: coordinator.collection(automationFragmentSchema, "sandbox_instance"),
+    routes: coordinator.collection(automationFragmentSchema, "automation_route"),
+    routeScheduleStates: coordinator.collection(
+      automationFragmentSchema,
+      "automation_route_schedule_state",
+    ),
+    events: coordinator.collection(automationFragmentSchema, "automation_event"),
+    marketplaceIngestions: coordinator.collection(
+      automationFragmentSchema,
+      "marketplace_ingestion",
+    ),
+    eventDefinitions: coordinator.collection(
+      automationFragmentSchema,
+      "automation_event_definition",
+    ),
+    externalIdentityBindings: coordinator.collection(
+      automationFragmentSchema,
+      "external_identity_binding",
+    ),
+    workflowInstances: coordinator.collection(workflowsSchema, "workflow_instance"),
+    workflowSteps: coordinator.collection(workflowsSchema, "workflow_step"),
+    workflowEvents: coordinator.collection(workflowsSchema, "workflow_event"),
+    workflowStepEmissions: coordinator.collection(workflowsSchema, "workflow_step_emission", {
+      rowUpdateMode: "full",
+      skipMissingTruncateDeletes: true,
     }),
   };
 }

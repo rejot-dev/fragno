@@ -1,5 +1,6 @@
-import { createFetchFragnoOutboxTransport } from "@fragno-dev/tanstack-db-adapter/transport";
 import type { RouterContextProvider } from "react-router";
+
+import { fetchFragnoOutboxDescription } from "@fragno-dev/tanstack-db-adapter";
 
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
@@ -12,15 +13,13 @@ export async function fetchUploadAdapterIdentity(
 ): Promise<string> {
   await requireBackofficeContext(request, context, scope);
   const uploadObject = getBackofficeObjects(context).upload.for(scope);
-  const url = new URL(request.url);
-  url.pathname = "/api/upload/_internal";
-  url.search = "";
-
-  const transport = createFetchFragnoOutboxTransport({
-    internalUrl: url,
+  const baseUrl = new URL("/api/upload", request.url);
+  const description = await fetchFragnoOutboxDescription({
+    baseUrl,
+    signal: request.signal,
     fetch: (input, init) =>
       uploadObject.fetch(new Request(input, { ...init, headers: request.headers })),
   });
 
-  return transport.getAdapterIdentity({ signal: request.signal });
+  return description.adapterIdentity;
 }

@@ -13,41 +13,13 @@
     "dist"
   ],
   "type": "module",
-  "main": "./dist/collection-options.js",
-  "module": "./dist/collection-options.js",
-  "types": "./dist/collection-options.d.ts",
+  "main": "./dist/coordinator.js",
+  "module": "./dist/coordinator.js",
+  "types": "./dist/coordinator.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/collection-options.d.ts",
-      "default": "./dist/collection-options.js"
-    },
-    "./checkpoint": {
-      "types": "./dist/checkpoint.d.ts",
-      "default": "./dist/checkpoint.js"
-    },
-    "./coordinator": {
       "types": "./dist/coordinator.d.ts",
       "default": "./dist/coordinator.js"
-    },
-    "./persistence": {
-      "types": "./dist/persistence.d.ts",
-      "default": "./dist/persistence.js"
-    },
-    "./protocol": {
-      "types": "./dist/protocol.d.ts",
-      "default": "./dist/protocol.js"
-    },
-    "./transport": {
-      "types": "./dist/transport.d.ts",
-      "default": "./dist/transport.js"
-    },
-    "./streaming-transport": {
-      "types": "./dist/streaming-transport.d.ts",
-      "default": "./dist/streaming-transport.js"
-    },
-    "./scenario": {
-      "types": "./dist/scenario.d.ts",
-      "default": "./dist/scenario.js"
     }
   },
   "scripts": {
@@ -63,7 +35,6 @@
   },
   "dependencies": {
     "@fragno-dev/db": "workspace:*",
-    "@standard-schema/spec": "^1.1.0",
     "@tanstack/db-sqlite-persistence-core": "0.2.8",
     "superjson": "^2.2.1"
   },
@@ -72,6 +43,8 @@
     "@fragno-dev/test": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
+    "@journeyapps/wa-sqlite": "^1.4.1",
+    "@tanstack/browser-db-sqlite-persistence": "0.2.8",
     "@tanstack/db": "0.6.16",
     "@tanstack/node-db-sqlite-persistence": "0.2.8",
     "@types/better-sqlite3": "^7.6.13",
@@ -84,6 +57,8 @@
   "peerDependencies": {
     "@fragno-dev/core": "^0.2.2",
     "@fragno-dev/test": "^2.0.0",
+    "@journeyapps/wa-sqlite": "^1.4.1",
+    "@tanstack/browser-db-sqlite-persistence": "^0.2.8",
     "@tanstack/db": "^0.6.16",
     "@tanstack/node-db-sqlite-persistence": "^0.2.8",
     "better-sqlite3": "^12.6.2"
@@ -93,6 +68,12 @@
       "optional": true
     },
     "@fragno-dev/test": {
+      "optional": true
+    },
+    "@journeyapps/wa-sqlite": {
+      "optional": true
+    },
+    "@tanstack/browser-db-sqlite-persistence": {
       "optional": true
     },
     "@tanstack/node-db-sqlite-persistence": {

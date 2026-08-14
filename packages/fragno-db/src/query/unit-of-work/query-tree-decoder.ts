@@ -88,19 +88,7 @@ type MySQLOrderedJoinManyItem = [ordinal: number, row: Record<string, unknown>];
 const restoreMySQLJoinManyOrderInPlace = (items: unknown[]): MySQLOrderedJoinManyItem[] => {
   const orderedItems = items as MySQLOrderedJoinManyItem[];
 
-  // JSON_ARRAYAGG normally leaves the ordinals already or nearly ordered. Insertion sort keeps that
-  // common case linear, with the remaining work proportional to the number of inversions.
-  for (let index = 1; index < orderedItems.length; index++) {
-    const current = orderedItems[index];
-    let position = index;
-
-    while (position > 0 && orderedItems[position - 1][0] > current[0]) {
-      orderedItems[position] = orderedItems[position - 1]!;
-      position--;
-    }
-
-    orderedItems[position] = current;
-  }
+  orderedItems.sort((left, right) => left[0] - right[0]);
 
   return orderedItems;
 };

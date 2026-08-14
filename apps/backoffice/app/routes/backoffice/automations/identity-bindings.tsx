@@ -46,9 +46,6 @@ const searchableBindingText = (binding: {
     .join("\n")
     .toLowerCase();
 
-const toErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "External identity binding synchronization failed.";
-
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const scope = automationScopeFromRouteParams(params);
   const execution = await requireBackofficeContext(request, context, scope);
@@ -143,7 +140,7 @@ export default function BackofficeAutomationIdentityBindings() {
   const bindings = pageRows.slice(0, BINDINGS_PAGE_SIZE);
   const hasFilters = Boolean(normalizedSearch) || status !== "all";
   const bindingsError = bindingsQuery.isError
-    ? toErrorMessage(collections.externalIdentityBindings.utils.getLastError())
+    ? "External identity binding synchronization failed."
     : null;
 
   return (

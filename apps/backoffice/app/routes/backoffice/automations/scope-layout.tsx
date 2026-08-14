@@ -1,4 +1,4 @@
-import { Suspense, use } from "react";
+import { Suspense, use, useSyncExternalStore } from "react";
 import {
   Form,
   Link,
@@ -16,6 +16,8 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 import {
   describeAutomationCollectionSource,
   getAutomationBrowserDatabase,
+  getAutomationCatchUpProgress,
+  subscribeAutomationCatchUpProgress,
 } from "@/fragno/automation/tanstack/browser-database";
 import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
 import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
@@ -334,12 +336,27 @@ function CreateProjectPanel({
 }
 
 function AutomationClientLoading() {
+  const { automationCollectionSource } = useCurrentBackofficeContext();
+  const resourceKey =
+    automationCollectionSource.status === "ready"
+      ? describeAutomationCollectionSource(automationCollectionSource.source).resourceKey
+      : null;
+  const progress = useSyncExternalStore(
+    (listener) =>
+      resourceKey ? subscribeAutomationCatchUpProgress(resourceKey, listener) : () => {},
+    () => (resourceKey ? getAutomationCatchUpProgress(resourceKey) : null),
+    () => null,
+  );
+  const progressDescription = progress
+    ? `${progress.percent}%`
+    : "Connecting routes, workflows, scripts, and runtime state for this scope.";
+
   return (
     <BackofficeSystemState
       tone="loading"
       label="Mounting workspace"
       title="Synchronizing automation data…"
-      description="Connecting routes, workflows, scripts, and runtime state for this scope."
+      description={progressDescription}
     >
       <noscript>
         <span className="text-[var(--bo-failed)]">
@@ -355,7 +372,6 @@ function AutomationClientOutlet({
 }: {
   loaderData: Route.ComponentProps["loaderData"];
 }) {
-  const database = use(getAutomationBrowserDatabase());
   const { automationCollectionSource } = useCurrentBackofficeContext();
   if (automationCollectionSource.status === "unavailable") {
     return (
@@ -368,7 +384,7 @@ function AutomationClientOutlet({
     );
   }
   const collectionSource = automationCollectionSource.source;
-  const collections = database.collectionsFor(collectionSource);
+  const { collections } = use(getAutomationBrowserDatabase(collectionSource));
   const outletKey = describeAutomationCollectionSource(collectionSource).resourceKey;
   const outletContext = {
     selectedScope: loaderData.selectedScope,

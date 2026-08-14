@@ -78,7 +78,7 @@ function SynchronizedFilesExplorer({
   synchronizedSource: SynchronizedFilesExplorerSource;
 }) {
   const database = use(getUploadBrowserDatabase());
-  const collections = database.collectionsFor(synchronizedSource.synchronization.source);
+  const collections = use(database.readyCollectionsFor(synchronizedSource.synchronization.source));
   const filesQuery = useLiveQuery(
     (query) =>
       query

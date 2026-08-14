@@ -141,19 +141,7 @@ export function useWorkflowRunRecords({
       selector?.type === "instance" ? selector.workflowName : null,
     ],
   );
-  const sourceError =
-    collections && selector && runsQuery.isError
-      ? (collections.workflowInstances.utils.getLastError() ??
-        collections.workflowSteps.utils.getLastError() ??
-        collections.workflowEvents.utils.getLastError() ??
-        collections.workflowStepEmissions.utils.getLastError())
-      : undefined;
-  const error =
-    sourceError instanceof Error
-      ? sourceError.message
-      : selector && runsQuery.isError
-        ? "Workflow synchronization failed."
-        : null;
+  const error = selector && runsQuery.isError ? "Workflow synchronization failed." : null;
 
   type PersistedAutomationWorkflowRun = Omit<AutomationWorkflowRun, "workflowScriptPath"> & {
     params: unknown;
