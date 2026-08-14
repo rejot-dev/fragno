@@ -31,6 +31,18 @@ const step: StepNode = {
 };
 
 describe("WorkflowStepCard", () => {
+  it("filters template expressions from the displayed step label", () => {
+    const templateStep: StepNode = {
+      ...step,
+      label: "request OGA upload ${count}",
+      nameTemplate: { staticParts: ["request OGA upload ", ""] },
+    };
+    const markup = renderToStaticMarkup(createElement(WorkflowStepCard, { step: templateStep }));
+
+    assert.include(markup, ">request OGA upload</p>");
+    assert.notInclude(markup, "${count}");
+  });
+
   it("renders runtime-tool scope and prefers workflow-specific descriptions", () => {
     const runtimeToolCalls: ResolvedWorkflowRuntimeToolCall[] = [
       runtimeToolCall({
@@ -137,6 +149,83 @@ describe("WorkflowStepCard", () => {
     assert.include(markup, 'data-workflow-output="true"');
     assert.include(markup, "&quot;recordId&quot;: &quot;record-1&quot;");
     assert.notInclude(markup, "&quot;$ui&quot;");
+  });
+
+  it("hides generated UI step output toggles in UI mode", () => {
+    const markup = renderToStaticMarkup(
+      createElement(WorkflowStepCard, {
+        step,
+        detailMode: "ui",
+        runState: {
+          status: "completed",
+          attempts: 1,
+          emissionCount: 0,
+          current: false,
+          result: {
+            recordId: "record-1",
+            $ui: {
+              version: 1,
+              state: {},
+              spec: {
+                root: "metric",
+                elements: {
+                  metric: {
+                    type: "Metric",
+                    props: { label: "Orders", value: "24" },
+                    children: [],
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    assert.include(markup, "data-workflow-step-generated-ui");
+    assert.notInclude(markup, 'data-workflow-output="true"');
+  });
+
+  it("renders section-root generated UI without the workflow step card in UI mode", () => {
+    const markup = renderToStaticMarkup(
+      createElement(WorkflowStepCard, {
+        step,
+        detailMode: "ui",
+        runState: {
+          status: "completed",
+          attempts: 1,
+          emissionCount: 0,
+          current: false,
+          result: {
+            $ui: {
+              version: 1,
+              state: {},
+              spec: {
+                root: "summary",
+                elements: {
+                  summary: {
+                    type: "Section",
+                    props: { label: "Summary", variant: "live" },
+                    children: ["orders"],
+                  },
+                  orders: {
+                    type: "Metric",
+                    props: { label: "Orders", value: "24" },
+                    children: [],
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    assert.include(markup, "data-workflow-step-generated-ui");
+    assert.include(markup, "Summary");
+    assert.notInclude(markup, "data-workflow-step-card");
+    assert.notInclude(markup, 'class="mt-3 border-t');
+    assert.notInclude(markup, "max-w-3xl");
   });
 
   it.each([0, 1])("keeps waiting attempts %i labeled as waiting", (attempts) => {

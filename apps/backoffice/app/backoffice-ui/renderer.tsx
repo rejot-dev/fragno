@@ -39,16 +39,18 @@ export class BackofficeUiErrorBoundary extends Component<
 }
 
 export function BackofficeUiRenderer({
+  fillAvailableWidth = false,
   workflowInteractionHost,
   onStateChange,
   ui,
 }: {
+  fillAvailableWidth?: boolean;
   workflowInteractionHost?: WorkflowUiInteractionHost;
   onStateChange?: (changes: BackofficeUiStateChange[]) => void;
   ui: BackofficeUiResultV1["$ui"];
 }) {
   return (
-    <div className="w-full max-w-3xl min-w-0">
+    <div className={fillAvailableWidth ? "w-full min-w-0" : "w-full max-w-3xl min-w-0"}>
       <WorkflowUiInteractionProvider host={workflowInteractionHost}>
         <JSONUIProvider
           registry={backofficeUiRegistry}

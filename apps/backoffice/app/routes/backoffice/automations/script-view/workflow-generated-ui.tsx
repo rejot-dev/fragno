@@ -15,10 +15,12 @@ export type WorkflowEventSender = (input: {
 }) => Promise<void>;
 
 export function WorkflowGeneratedUi({
+  fillAvailableWidth = false,
   workflowInteractionHost,
   onStateChange,
   value,
 }: {
+  fillAvailableWidth?: boolean;
   workflowInteractionHost?: WorkflowUiInteractionHost;
   onStateChange?: (changes: BackofficeUiStateChange[]) => void;
   value: unknown;
@@ -35,6 +37,7 @@ export function WorkflowGeneratedUi({
   return (
     <BackofficeUiErrorBoundary fallback={<WorkflowGeneratedUiUnavailable />}>
       <BackofficeUiRenderer
+        fillAvailableWidth={fillAvailableWidth}
         workflowInteractionHost={workflowInteractionHost}
         onStateChange={onStateChange}
         ui={parsedResult.value.$ui}

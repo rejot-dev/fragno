@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { SourceRange, StepNode } from "@fragno-dev/workflow-visualizer-tokens";
 
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
+import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 
 import { GraphBadge } from "./graph-badge";
@@ -50,18 +51,47 @@ export function WorkflowStepCard({
   waitingEventTypes?: readonly string[];
   onSourceSelect?: (source: SourceRange) => void;
 }) {
+  const label = workflowStepDisplayLabel(step);
   const details = [
     ...workflowStepDetails(step),
     ...(continuationStep && detailMode === "verbose" ? workflowStepDetails(continuationStep) : []),
   ];
+  const generatedUiPresentationState = generatedUiState ?? runState;
+  const parsedGeneratedUi = parseBackofficeUiResult(generatedUiPresentationState?.result);
+  const hasGeneratedUiOutput = parsedGeneratedUi.kind !== "ordinary";
+  const hasSectionRoot =
+    parsedGeneratedUi.kind === "valid" &&
+    parsedGeneratedUi.value.$ui.spec.elements[
+      parsedGeneratedUi.value.$ui.spec.root
+    ]?.type.toLowerCase() === "section";
   const hasCollapsibleOutput =
-    runState?.status === "completed" && hasVisibleWorkflowOutput(runState.result);
+    runState?.status === "completed" &&
+    hasVisibleWorkflowOutput(runState.result) &&
+    !(detailMode === "ui" && hasGeneratedUiOutput);
   const recentlyCompleted = useRecentWorkflowStepCompletion(runState);
   const runPresentation = workflowStepRunPresentation(
     runState,
     recentlyCompleted,
     Boolean(continuationStep),
   );
+  const generatedUi = (
+    <WorkflowStepGeneratedUi
+      state={generatedUiPresentationState}
+      standalone={detailMode === "ui" && hasSectionRoot}
+      workflowEvents={workflowEvents}
+      workflowRunRecordId={workflowRunRecordId}
+      currentScope={currentScope}
+      workflowName={workflowEventWorkflowName}
+      workflowInstanceId={workflowInstanceId}
+      workflowEventSender={workflowEventSender}
+      waitingEventTypes={waitingEventTypes}
+    />
+  );
+
+  if (detailMode === "ui" && hasSectionRoot) {
+    return generatedUi;
+  }
+
   return (
     <div
       data-workflow-step-card
@@ -70,7 +100,7 @@ export function WorkflowStepCard({
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-[var(--bo-fg)]">{step.label}</p>
+          <p className="text-sm font-medium text-[var(--bo-fg)]">{label}</p>
         </div>
         <div className="flex items-center gap-2">
           {runState && runPresentation.showBadge ? (
@@ -97,19 +127,20 @@ export function WorkflowStepCard({
         </div>
       ) : null}
 
-      <WorkflowStepGeneratedUi
-        state={generatedUiState ?? runState}
-        workflowEvents={workflowEvents}
-        workflowRunRecordId={workflowRunRecordId}
-        currentScope={currentScope}
-        workflowName={workflowEventWorkflowName}
-        workflowInstanceId={workflowInstanceId}
-        workflowEventSender={workflowEventSender}
-        waitingEventTypes={waitingEventTypes}
-      />
+      {generatedUi}
 
       {hasCollapsibleOutput ? <WorkflowOutputDisclosure value={runState.result} /> : null}
     </div>
+  );
+}
+
+function workflowStepDisplayLabel(step: StepNode): string {
+  if (!step.nameTemplate) {
+    return step.label;
+  }
+
+  return (
+    step.nameTemplate.staticParts.join("").replaceAll(/\s+/g, " ").trim() || `${step.stepType} step`
   );
 }
 

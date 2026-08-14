@@ -22,6 +22,7 @@ import { activeWorkflowUiEventTypes, submittedWorkflowUiEvent } from "./workflow
 
 export function WorkflowStepGeneratedUi({
   state,
+  standalone = false,
   workflowEvents,
   workflowRunRecordId,
   currentScope,
@@ -31,6 +32,7 @@ export function WorkflowStepGeneratedUi({
   waitingEventTypes,
 }: {
   state?: WorkflowStepRunState;
+  standalone?: boolean;
   workflowEvents: readonly WorkflowRunEvent[];
   workflowRunRecordId?: string;
   currentScope?: BackofficeRoutableScope;
@@ -50,12 +52,13 @@ export function WorkflowStepGeneratedUi({
   return (
     <div
       data-workflow-step-generated-ui
-      className="mt-3 border-t border-[color:var(--bo-border)] pt-3"
+      className={standalone ? undefined : "mt-3 border-t border-[color:var(--bo-border)] pt-3"}
     >
       {parsedResult.kind === "valid" ? (
         <InteractiveWorkflowStepGeneratedUi
           result={parsedResult.value}
           state={state}
+          fillAvailableWidth={standalone}
           workflowEvents={workflowEvents}
           workflowRunRecordId={workflowRunRecordId}
           currentScope={currentScope}
@@ -65,7 +68,7 @@ export function WorkflowStepGeneratedUi({
           waitingEventTypes={waitingEventTypes}
         />
       ) : (
-        <WorkflowGeneratedUi value={state.result} />
+        <WorkflowGeneratedUi value={state.result} fillAvailableWidth={standalone} />
       )}
     </div>
   );
@@ -74,6 +77,7 @@ export function WorkflowStepGeneratedUi({
 function InteractiveWorkflowStepGeneratedUi({
   result,
   state,
+  fillAvailableWidth,
   workflowEvents,
   workflowRunRecordId,
   currentScope,
@@ -84,6 +88,7 @@ function InteractiveWorkflowStepGeneratedUi({
 }: {
   result: BackofficeUiResultV1;
   state: WorkflowStepRunState;
+  fillAvailableWidth: boolean;
   workflowEvents: readonly WorkflowRunEvent[];
   workflowRunRecordId?: string;
   currentScope?: BackofficeRoutableScope;
@@ -144,6 +149,7 @@ function InteractiveWorkflowStepGeneratedUi({
   return (
     <WorkflowGeneratedUi
       value={{ ...result, $ui: ui }}
+      fillAvailableWidth={fillAvailableWidth}
       onStateChange={
         usesBrowserDraft && draftId
           ? (changes) => {
