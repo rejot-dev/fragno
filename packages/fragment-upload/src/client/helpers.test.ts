@@ -818,4 +818,47 @@ describe("upload client helpers", () => {
       } as never),
     ).rejects.toThrow(/File key is required/);
   });
+
+  it("sends file edits to the server in one request", async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ url: input.toString(), init });
+      return jsonResponse({
+        edits: [
+          {
+            fileKey: "src/config.ts",
+            changed: true,
+            content: "export const enabled = true;",
+            diff: "--- a/src/config.ts",
+          },
+        ],
+        totalChanged: 1,
+      });
+    };
+    const helpers = createUploadHelpers({
+      buildUrl: (path) => `https://local${path}`,
+      fetcher: fetcher as typeof fetch,
+    });
+
+    const input = {
+      provider: TEST_PROVIDER,
+      edits: [
+        {
+          kind: "replace" as const,
+          fileKey: "src/config.ts",
+          search: "false",
+          replacement: "true",
+        },
+      ],
+    };
+    const result = await helpers.applyEdits(input);
+
+    assert(result.totalChanged === 1);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      url: "https://local/files/apply-edits",
+      init: { method: "POST" },
+    });
+    expect(JSON.parse(requests[0].init?.body as string)).toEqual(input);
+  });
 });

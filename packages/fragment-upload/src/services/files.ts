@@ -14,6 +14,11 @@ export type FileByKeyInput = {
   fileKey: string;
 };
 
+export type FilesByKeysInput = {
+  provider: string;
+  fileKeys: string[];
+};
+
 export type ListFilesInput = {
   provider?: string;
   prefix?: string;
@@ -71,6 +76,19 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
           ),
         )
         .transformRetrieve(([file]) => file ?? null)
+        .build();
+    },
+
+    findFilesByKeys: function (this: UploadServiceContext, input: FilesByKeysInput) {
+      return this.serviceTx(uploadSchema)
+        .retrieve((uow) =>
+          uow.find("file", (b) =>
+            b.whereIndex("idx_file_provider_key", (eb) =>
+              eb.and(eb("provider", "=", input.provider), eb("key", "in", input.fileKeys)),
+            ),
+          ),
+        )
+        .transformRetrieve(([files]) => files)
         .build();
     },
 
