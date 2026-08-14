@@ -28,6 +28,29 @@ describe("scopeSwitchPath", () => {
     );
   });
 
+  test("switches the scope used by the durable hooks inspector", () => {
+    assert(
+      scopeSwitchPath("/backoffice/internals/durable-hooks/org/org-a/api/hook-1", projectScope) ===
+        "/backoffice/internals/durable-hooks/project/org-a%3Aproj-1/api",
+    );
+  });
+
+  test("switches the scope used by the workflows inspector", () => {
+    assert(
+      scopeSwitchPath(
+        "/backoffice/internals/workflows/org/org-a/example/instance-1",
+        projectScope,
+      ) === "/backoffice/internals/workflows/project/org-a%3Aproj-1",
+    );
+  });
+
+  test("keeps unscoped internals tools in place", () => {
+    assert(
+      scopeSwitchPath("/backoffice/internals/users", projectScope) ===
+        "/backoffice/internals/users",
+    );
+  });
+
   test("lands unknown sections on the automations dashboard", () => {
     assert(
       scopeSwitchPath("/backoffice/organisations", projectScope) ===

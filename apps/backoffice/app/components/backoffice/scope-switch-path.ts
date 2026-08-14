@@ -46,6 +46,18 @@ export const scopeSwitchPath = (pathname: string, scope: BackofficeContextScope)
       const tab = rest[0] && MARKETPLACE_TABS.has(rest[0]) ? rest[0] : "marketplace";
       return `/backoffice/marketplace/${scopePath}/${tab}`;
     }
+    case "internals": {
+      const internalTool = segments[2];
+      if (internalTool === "durable-hooks") {
+        const objectId = segments[5];
+        const objectPath = objectId ? `/${encodeURIComponent(objectId)}` : "";
+        return `/backoffice/internals/durable-hooks/${scopePath}${objectPath}`;
+      }
+      if (internalTool === "workflows") {
+        return `/backoffice/internals/workflows/${scopePath}`;
+      }
+      return pathname;
+    }
     default:
       return `/backoffice/automations/${scopePath}/dashboard`;
   }
