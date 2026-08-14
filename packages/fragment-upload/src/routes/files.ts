@@ -1,9 +1,16 @@
+import type { TableToColumnValues } from "@fragno-dev/db/query";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
 import { resolveUploadFragmentConfig } from "../config";
 import { uploadFragmentDefinition } from "../definition";
+import {
+  applyFileEditOperation,
+  diffContent,
+  FileEditError,
+  type FileEditOperation,
+} from "../file-edits";
 import { uploadSchema } from "../schema";
 import { UploadServiceError } from "../services/errors";
 import { resolveFileKeyInput } from "../services/helpers";
@@ -15,6 +22,7 @@ import {
   globToRegExp,
   searchTextContent,
 } from "../text-index";
+import type { PreparedFileBatchEntry } from "../types";
 import {
   checksumSchema,
   fileMetadataSchema,
@@ -86,6 +94,96 @@ const preparedFileBatchEntrySchema = z.discriminatedUnion("kind", [
 const commitPreparedFilesSchema = z.object({
   entries: z.array(preparedFileBatchEntrySchema).min(1).max(MAX_PREPARED_FILE_BATCH_ENTRIES),
 });
+
+const MAX_FILE_EDIT_OPERATIONS = 10;
+const MAX_FILE_EDIT_FILES = 10;
+const MAX_FILE_EDIT_TEXT_BYTES = 10 * 1024 * 1024;
+const MAX_FILE_EDIT_PATTERN_LENGTH = 16 * 1024;
+const FILE_EDIT_STORAGE_CONCURRENCY = 4;
+
+const fileEditSearchOptionsSchema = z.object({
+  caseSensitive: z.boolean().optional(),
+  regex: z.boolean().optional(),
+  wholeWord: z.boolean().optional(),
+  maxMatches: z.number().int().min(1).max(10_000).optional(),
+});
+
+const fileEditOperationSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("write"),
+    fileKey: z.string().min(1),
+    content: z.string().max(MAX_FILE_EDIT_TEXT_BYTES),
+  }),
+  z.object({
+    kind: z.literal("replace"),
+    fileKey: z.string().min(1),
+    search: z.string().max(MAX_FILE_EDIT_PATTERN_LENGTH),
+    replacement: z.string().max(MAX_FILE_EDIT_TEXT_BYTES),
+    options: fileEditSearchOptionsSchema.optional(),
+  }),
+  z.object({
+    kind: z.literal("writeJson"),
+    fileKey: z.string().min(1),
+    value: z.unknown(),
+    options: z.object({ spaces: z.number().int().min(0).max(10).optional() }).optional(),
+  }),
+]);
+
+const applyFileEditsSchema = z.object({
+  provider: providerNamespaceSchema,
+  edits: z.array(fileEditOperationSchema).min(1).max(MAX_FILE_EDIT_OPERATIONS),
+});
+
+const appliedFileEditSchema = z.object({
+  fileKey: z.string(),
+  changed: z.boolean(),
+  content: z.string(),
+  diff: z.string(),
+});
+
+const applyFileEditsResultSchema = z.object({
+  edits: z.array(appliedFileEditSchema),
+  totalChanged: z.number().int().nonnegative(),
+});
+
+type FileRow = TableToColumnValues<typeof uploadSchema.tables.file>;
+
+type EvaluatedFile = {
+  fileKey: string;
+  original: FileRow | null;
+  content: string;
+  contentType: string;
+  filename: string;
+};
+
+const mapWithConcurrency = async <Input, Output>(
+  values: readonly Input[],
+  concurrency: number,
+  operation: (value: Input) => Promise<Output>,
+): Promise<Output[]> => {
+  const results = Array.from<Output>({ length: values.length });
+  let nextIndex = 0;
+  let failure: unknown;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+      while (failure === undefined) {
+        const index = nextIndex++;
+        if (index >= values.length) {
+          return;
+        }
+        try {
+          results[index] = await operation(values[index]);
+        } catch (cause) {
+          failure = cause;
+        }
+      }
+    }),
+  );
+  if (failure !== undefined) {
+    throw failure instanceof Error ? failure : new Error(String(failure));
+  }
+  return results;
+};
 
 const updateFileSchema = z.object({
   filename: z.string().min(1).optional(),
@@ -530,6 +628,368 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
               return handleServiceError(mapStorageOperationError(cause), error);
             }
             return handleServiceError(err, error);
+          }
+        },
+      }),
+
+      defineRoute({
+        method: "POST",
+        path: "/files/apply-edits",
+        inputSchema: applyFileEditsSchema,
+        outputSchema: applyFileEditsResultSchema,
+        errorCodes,
+        handler: async function ({ input }, { json, error }) {
+          const payload = await input.valid();
+          const resolvedConfig = getResolvedConfig();
+          if (payload.provider !== resolvedConfig.storage.name) {
+            return handleServiceError(
+              new UploadServiceError(
+                "PROVIDER_MISMATCH",
+                "The edit provider does not match the active storage provider.",
+              ),
+              error,
+            );
+          }
+
+          let edits: FileEditOperation[];
+          try {
+            edits = payload.edits.map((edit) => ({
+              ...edit,
+              fileKey: resolveFileKeyInput({ fileKey: edit.fileKey }).fileKey,
+            })) as FileEditOperation[];
+          } catch (cause) {
+            return handleServiceError(cause, error);
+          }
+
+          const fileKeys = Array.from(new Set(edits.map((edit) => edit.fileKey)));
+          if (fileKeys.length > MAX_FILE_EDIT_FILES) {
+            return handleServiceError(
+              new UploadServiceError(
+                "INVALID_REQUEST",
+                `File edits may address at most ${MAX_FILE_EDIT_FILES} unique files.`,
+              ),
+              error,
+            );
+          }
+
+          try {
+            const snapshots = (await this.handlerTx()
+              .withServiceCalls(() => [
+                services.findFilesByKeys({ provider: payload.provider, fileKeys }),
+              ])
+              .transform(({ serviceResult: [files] }) => files)
+              .execute()) as FileRow[];
+            const snapshotsByKey = new Map(snapshots.map((file) => [file.key, file]));
+            const firstEditByKey = new Map<string, FileEditOperation>();
+            for (const edit of edits) {
+              if (!firstEditByKey.has(edit.fileKey)) {
+                firstEditByKey.set(edit.fileKey, edit);
+              }
+            }
+            const filesRequiringInitialContent = snapshots.filter(
+              (file) => file.status === "ready" && firstEditByKey.get(file.key)?.kind === "replace",
+            );
+            const expectedDownloadBytes = filesRequiringInitialContent.reduce(
+              (total, file) => total + file.sizeBytes,
+              0n,
+            );
+            if (expectedDownloadBytes > BigInt(MAX_FILE_EDIT_TEXT_BYTES)) {
+              throw new UploadServiceError(
+                "INVALID_REQUEST",
+                `File edits may read at most ${MAX_FILE_EDIT_TEXT_BYTES} bytes.`,
+              );
+            }
+            if (
+              filesRequiringInitialContent.length > 0 &&
+              !resolvedConfig.storage.getDownloadStream
+            ) {
+              throw new UploadServiceError(
+                "STORAGE_ERROR",
+                "The storage adapter does not support server-side file reads.",
+              );
+            }
+
+            let downloadedBytes = 0;
+            const downloaded = await mapWithConcurrency(
+              filesRequiringInitialContent,
+              FILE_EDIT_STORAGE_CONCURRENCY,
+              async (file) => {
+                let response: Response;
+                try {
+                  response = await resolvedConfig.storage.getDownloadStream!({
+                    storageKey: file.objectKey,
+                  });
+                } catch (cause) {
+                  throw mapStorageOperationError(cause);
+                }
+                if (!response.ok) {
+                  throw new UploadServiceError(
+                    "STORAGE_ERROR",
+                    "The storage adapter could not read an edited file.",
+                    { provider: file.provider, fileKey: file.key },
+                  );
+                }
+                let bytes: Uint8Array;
+                try {
+                  bytes = new Uint8Array(await response.arrayBuffer());
+                } catch (cause) {
+                  throw mapStorageOperationError(cause);
+                }
+                downloadedBytes += bytes.byteLength;
+                if (downloadedBytes > MAX_FILE_EDIT_TEXT_BYTES) {
+                  throw new UploadServiceError(
+                    "INVALID_REQUEST",
+                    `File edits may read at most ${MAX_FILE_EDIT_TEXT_BYTES} bytes.`,
+                  );
+                }
+                try {
+                  return [
+                    file.key,
+                    new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+                  ] as const;
+                } catch (cause) {
+                  throw new UploadServiceError(
+                    "INVALID_REQUEST",
+                    "Edited files must contain valid UTF-8 text.",
+                    { provider: file.provider, fileKey: file.key },
+                    { cause },
+                  );
+                }
+              },
+            );
+            const initialContents = new Map(downloaded);
+            const currentContents = new Map<string, string | null>(
+              fileKeys.map((fileKey) => [fileKey, initialContents.get(fileKey) ?? null]),
+            );
+            const operationResults = [];
+            let generatedBytes = 0;
+
+            for (const edit of edits) {
+              const previous = currentContents.get(edit.fileKey) ?? null;
+              let content: string;
+              try {
+                content = applyFileEditOperation(previous, edit);
+              } catch (cause) {
+                if (cause instanceof FileEditError) {
+                  if (previous === null && edit.kind === "replace") {
+                    throw new UploadServiceError("FILE_NOT_FOUND", cause.message, {
+                      provider: payload.provider,
+                      fileKey: edit.fileKey,
+                    });
+                  }
+                  throw new UploadServiceError("INVALID_REQUEST", cause.message, {
+                    provider: payload.provider,
+                    fileKey: edit.fileKey,
+                  });
+                }
+                throw cause;
+              }
+              generatedBytes += new TextEncoder().encode(content).byteLength;
+              if (generatedBytes > MAX_FILE_EDIT_TEXT_BYTES) {
+                throw new UploadServiceError(
+                  "INVALID_REQUEST",
+                  `File edits may generate at most ${MAX_FILE_EDIT_TEXT_BYTES} bytes.`,
+                );
+              }
+              let diff: string;
+              try {
+                diff = diffContent(
+                  previous ?? "",
+                  content,
+                  `a/${edit.fileKey}`,
+                  `b/${edit.fileKey}`,
+                );
+              } catch (cause) {
+                if (cause instanceof FileEditError) {
+                  throw new UploadServiceError("INVALID_REQUEST", cause.message, {
+                    provider: payload.provider,
+                    fileKey: edit.fileKey,
+                  });
+                }
+                throw cause;
+              }
+              operationResults.push({
+                fileKey: edit.fileKey,
+                changed: previous !== content,
+                content,
+                diff,
+              });
+              currentContents.set(edit.fileKey, content);
+            }
+
+            const changedFiles: EvaluatedFile[] = fileKeys.flatMap((fileKey) => {
+              const snapshot = snapshotsByKey.get(fileKey) ?? null;
+              const original = snapshot?.status === "ready" ? snapshot : null;
+              const originalContent = initialContents.get(fileKey) ?? null;
+              const content = currentContents.get(fileKey);
+              if (content === null || content === undefined || content === originalContent) {
+                return [];
+              }
+              const lastOperation = edits.findLast((edit) => edit.fileKey === fileKey)!;
+              // TODO: Track publication metadata from the latest write/writeJson operation per
+              // file. A later replace only transforms content and must not change a new JSON
+              // file's content type back to text/plain.
+              return [
+                {
+                  fileKey,
+                  original,
+                  content,
+                  contentType:
+                    original?.contentType ??
+                    (lastOperation.kind === "writeJson" ? "application/json" : "text/plain"),
+                  filename: original?.filename ?? fileKey.split("/").at(-1)!,
+                },
+              ];
+            });
+
+            if (changedFiles.length > 0 && !resolvedConfig.storage.writeStream) {
+              throw new UploadServiceError(
+                "STORAGE_ERROR",
+                "The storage adapter does not support server-side file writes.",
+              );
+            }
+
+            const stagedObjects: Array<{
+              file: EvaluatedFile;
+              bytes: Uint8Array;
+              storageInit: Awaited<ReturnType<typeof resolvedConfig.storage.initUpload>>;
+            }> = [];
+            const initializedStorageWrites: typeof stagedObjects = [];
+            try {
+              const staged = await mapWithConcurrency(
+                changedFiles,
+                FILE_EDIT_STORAGE_CONCURRENCY,
+                async (file) => {
+                  const bytes = new TextEncoder().encode(file.content);
+                  let storageInit;
+                  try {
+                    storageInit = await resolvedConfig.storage.initUpload({
+                      provider: payload.provider,
+                      fileKey: resolveFileKeyInput({ fileKey: file.fileKey }).fileKey,
+                      sizeBytes: BigInt(bytes.byteLength),
+                      contentType: file.contentType,
+                      checksum: null,
+                      metadata: file.original?.metadata ?? null,
+                      objectKeyVersionSegment: buildStorageObjectVersionSegment(),
+                    });
+                    if (storageInit.strategy !== "proxy") {
+                      if (
+                        storageInit.strategy === "direct-multipart" &&
+                        storageInit.storageUploadId &&
+                        resolvedConfig.storage.abortMultipartUpload
+                      ) {
+                        try {
+                          await resolvedConfig.storage.abortMultipartUpload({
+                            storageKey: storageInit.storageKey,
+                            storageUploadId: storageInit.storageUploadId,
+                          });
+                        } catch {
+                          // The edit request is invalid for this strategy even when abort fails.
+                        }
+                      }
+                      throw new UploadServiceError(
+                        "STORAGE_ERROR",
+                        "Server-side file edits require the proxy upload strategy.",
+                      );
+                    }
+                    const stagedObject = { file, bytes, storageInit };
+                    initializedStorageWrites.push(stagedObject);
+                    await resolvedConfig.storage.writeStream!({
+                      storageKey: storageInit.storageKey,
+                      body: new Blob([bytes]).stream(),
+                      contentType: file.contentType,
+                      sizeBytes: BigInt(bytes.byteLength),
+                    });
+                    if (resolvedConfig.storage.finalizeUpload) {
+                      await resolvedConfig.storage.finalizeUpload({
+                        storageKey: storageInit.storageKey,
+                        expectedSizeBytes: BigInt(bytes.byteLength),
+                        checksum: null,
+                      });
+                    }
+                  } catch (cause) {
+                    throw mapStorageOperationError(cause);
+                  }
+                  return { file, bytes, storageInit };
+                },
+              );
+              stagedObjects.push(...staged);
+            } catch (cause) {
+              await Promise.allSettled(
+                initializedStorageWrites.map(({ storageInit }) =>
+                  resolvedConfig.storage.deleteObject({ storageKey: storageInit.storageKey }),
+                ),
+              );
+              throw cause;
+            }
+
+            let prepared: Array<{ uploadId: string }> = [];
+            if (stagedObjects.length > 0) {
+              // TODO: Reconcile staged object keys against prepared-upload rows so objects can be
+              // deleted after a known rollback while preserving them after an ambiguous commit.
+              // Until then, retain staged objects on database errors because the commit may have
+              // succeeded even when its acknowledgement was lost.
+              prepared = await this.handlerTx()
+                .withServiceCalls(() => [
+                  services.createPreparedFileUploads(
+                    stagedObjects.map(({ file, bytes, storageInit }) => ({
+                      provider: payload.provider,
+                      fileKey: file.fileKey,
+                      filename: file.filename,
+                      sizeBytes: bytes.byteLength,
+                      contentType: file.contentType,
+                      checksum: null,
+                      tags: file.original?.tags ?? undefined,
+                      visibility: file.original?.visibility as
+                        | "private"
+                        | "public"
+                        | "unlisted"
+                        | undefined,
+                      uploaderId: file.original?.uploaderId ?? undefined,
+                      metadata: file.original?.metadata ?? undefined,
+                      publicationMode: "batch",
+                      storageInit,
+                      completedSizeBytes: BigInt(bytes.byteLength),
+                    })),
+                  ),
+                ])
+                .transform(({ serviceResult: [uploads] }) => uploads)
+                .execute();
+            }
+
+            const preparedByKey = new Map(
+              prepared.map((upload, index) => [changedFiles[index].fileKey, upload]),
+            );
+            const changedKeys = new Set(changedFiles.map((file) => file.fileKey));
+            const entries: PreparedFileBatchEntry[] = fileKeys.map((fileKey) => {
+              const original = snapshotsByKey.get(fileKey);
+              const precondition =
+                original?.status === "ready"
+                  ? { kind: "revision" as const, revision: original.id.version }
+                  : { kind: "absent" as const };
+              const preparedUpload = preparedByKey.get(fileKey);
+              return changedKeys.has(fileKey) && preparedUpload
+                ? { kind: "write" as const, uploadId: preparedUpload.uploadId, precondition }
+                : {
+                    kind: "assert" as const,
+                    provider: payload.provider,
+                    fileKey,
+                    precondition,
+                  };
+            });
+
+            await this.handlerTx()
+              .withServiceCalls(() => [
+                services.commitPreparedFileWrites({
+                  entries,
+                  activeProvider: payload.provider,
+                }),
+              ])
+              .execute();
+
+            return json({ edits: operationResults, totalChanged: changedFiles.length });
+          } catch (cause) {
+            return handleServiceError(cause, error);
           }
         },
       }),

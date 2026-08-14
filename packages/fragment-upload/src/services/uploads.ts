@@ -38,6 +38,11 @@ const BATCH_QUERY_CHUNK_SIZE = 200;
 type UploadWithFile = UploadSnapshot & { file: FileRow | null };
 type UploadInsert = TableToInsertValues<typeof uploadSchema.tables.upload>;
 
+export type StagedPreparedFileUpload = CreateUploadInput & {
+  storageInit: InitializedUpload;
+  completedSizeBytes: bigint;
+};
+
 type UploadHooks = {
   onFileReady: (payload: FileHookPayload) => void | Promise<void>;
   onFileTextIndexRequested: (payload: FileHookPayload) => void | Promise<void>;
@@ -164,6 +169,82 @@ export const createUploadServices = () => {
           };
 
           return { reused: false as const, upload };
+        })
+        .build();
+    },
+
+    createPreparedFileUploads: function (
+      this: UploadServiceContext,
+      inputs: StagedPreparedFileUpload[],
+    ) {
+      if (inputs.length === 0 || inputs.length > MAX_PREPARED_FILE_BATCH_ENTRIES) {
+        throw new UploadServiceError(
+          "INVALID_REQUEST",
+          `Prepared upload batches must contain between 1 and ${MAX_PREPARED_FILE_BATCH_ENTRIES} files.`,
+        );
+      }
+
+      const prepared = inputs.map((input) => ({
+        resolved: resolveFileKeyInput(input),
+        normalized: normalizeUploadInput({ ...input, publicationMode: "batch" }),
+        storageInit: input.storageInit,
+        completedSizeBytes: input.completedSizeBytes,
+      }));
+
+      return this.serviceTx(uploadSchema)
+        .mutate(({ uow }) => {
+          const databaseNow = uow.now();
+          return prepared.map(({ resolved, normalized, storageInit, completedSizeBytes }) => {
+            const uploadId = uow.create("upload", {
+              key: resolved.fileKey,
+              provider: normalized.provider,
+              uploaderId: normalized.uploaderId,
+              filename: normalized.filename,
+              expectedSizeBytes: normalized.expectedSizeBytes,
+              contentType: normalized.contentType,
+              checksum: normalized.checksum,
+              visibility: normalized.visibility,
+              tags: normalized.tags,
+              metadata: normalized.metadata,
+              status: "prepared",
+              publicationMode: "batch",
+              strategy: storageInit.strategy,
+              objectKey: storageInit.storageKey,
+              storageUploadId: storageInit.storageUploadId ?? null,
+              uploadUrl: storageInit.uploadUrl ?? null,
+              uploadHeaders: storageInit.uploadHeaders ?? null,
+              bytesUploaded: completedSizeBytes,
+              partsUploaded: 0,
+              partSizeBytes: storageInit.partSizeBytes ?? null,
+              expiresAt: storageInit.expiresAt,
+              createdAt: databaseNow,
+              updatedAt: databaseNow,
+              completedAt: databaseNow,
+              errorCode: null,
+              errorMessage: null,
+            });
+
+            uow.triggerHook(
+              "onUploadTimeout",
+              {
+                uploadId: uploadId.toString(),
+                provider: normalized.provider,
+                fileKey: resolved.fileKey,
+              },
+              { processAt: storageInit.expiresAt },
+            );
+
+            return {
+              uploadId: uploadId.toString(),
+              provider: normalized.provider,
+              fileKey: resolved.fileKey,
+              objectKey: storageInit.storageKey,
+              sizeBytes: Number(completedSizeBytes),
+              contentType: normalized.contentType,
+              checksum: normalized.checksum,
+              expiresAt: storageInit.expiresAt.toISOString(),
+            };
+          });
         })
         .build();
     },

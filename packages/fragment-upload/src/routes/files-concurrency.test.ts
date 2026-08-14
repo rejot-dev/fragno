@@ -46,14 +46,14 @@ const isUploadTimeoutRetrieval = (context: UOWInstrumentationContext): boolean =
   return operations.length === 2 && operations.every((operation) => !operationHasJoins(operation));
 };
 
-const buildUploadRoutesTest = async (instrumentation?: UOWInstrumentation) => {
+const buildUploadRoutesTest = async (instrumentation?: UOWInstrumentation, maxRoundtrips = 2) => {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-concurrency-"));
   const filesystemStorage = createFilesystemStorageAdapter({ rootDir });
   const deleteObject = vi.fn(filesystemStorage.deleteObject.bind(filesystemStorage));
   const storage = { ...filesystemStorage, deleteObject };
   const build = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite", uowConfig: { instrumentation } })
-    .withDbRoundtripGuard({ maxRoundtrips: 2 })
+    .withDbRoundtripGuard({ maxRoundtrips })
     .withFragment(
       "upload",
       instantiate(uploadFragmentDefinition).withConfig({ storage }).withRoutes(uploadRoutes),
@@ -375,6 +375,90 @@ describe("prepared file commit concurrency", () => {
       query: { provider, key: assertedFileKey },
     });
     assert((await assertedContent.text()) === "concurrent");
+  });
+
+  it("rejects all server-side edits when one source changes before atomic publication", async () => {
+    const batchRetrieved = Promise.withResolvers<void>();
+    const releaseBatchMutation = Promise.withResolvers<void>();
+    let pauseBatch = false;
+    let batchPaused = false;
+    const instrumentation: UOWInstrumentation = {
+      async afterRetrieve(context) {
+        if (pauseBatch && !batchPaused && isPreparedBatchRetrieval(context)) {
+          batchPaused = true;
+          batchRetrieved.resolve();
+          await releaseBatchMutation.promise;
+        }
+      },
+    };
+    const { fragments, provider, test } = await buildUploadRoutesTest(instrumentation, 3);
+    const { fragment } = fragments.upload;
+    await replaceFile(fragment, provider, "edits/first.txt", "first-v1");
+    await replaceFile(fragment, provider, "edits/second.txt", "second-v1");
+
+    pauseBatch = true;
+    const editRequest = fragment.callRoute("POST", "/files/apply-edits", {
+      body: {
+        provider,
+        edits: [
+          {
+            kind: "replace",
+            fileKey: "edits/first.txt",
+            search: "v1",
+            replacement: "from-batch",
+          },
+          {
+            kind: "replace",
+            fileKey: "edits/second.txt",
+            search: "v1",
+            replacement: "from-batch",
+          },
+        ],
+      },
+    });
+    await batchRetrieved.promise;
+
+    await replaceFile(fragment, provider, "edits/first.txt", "first-concurrent");
+    releaseBatchMutation.resolve();
+
+    const rejected = await editRequest;
+    assert(rejected.type === "error");
+    assert(rejected.status === 412);
+    assert(rejected.error.code === "FILE_PRECONDITION_FAILED");
+
+    const firstContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: "edits/first.txt" },
+    });
+    const secondContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: "edits/second.txt" },
+    });
+    assert((await firstContent.text()) === "first-concurrent");
+    assert((await secondContent.text()) === "second-v1");
+
+    const internalFragment = getInternalFragment(test.adapter);
+    const hooks = await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace("upload")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+    const editUploadIds = hooks.flatMap((hook) => {
+      const payload = hook.payload as { uploadId?: string; fileKey?: string } | null;
+      return hook.hookName === "onUploadTimeout" && payload?.fileKey?.startsWith("edits/")
+        ? [payload.uploadId]
+        : [];
+    });
+    expect(editUploadIds).toHaveLength(2);
+    for (const uploadId of editUploadIds) {
+      assert(uploadId);
+      const upload = await fragment.callRoute("GET", "/uploads/:uploadId", {
+        pathParams: { uploadId },
+      });
+      assert(upload.type === "json");
+      assert(upload.data.status === "prepared");
+    }
   });
 
   it("maps descriptive prepared-batch failures through their structured error codes", async () => {

@@ -1,3 +1,4 @@
+import type { ApplyFileEditsInput, ApplyFileEditsResult } from "../file-edits";
 import type { UploadChecksum } from "../storage/types";
 import type { StateSearchOptions, StateTextMatch } from "../text-index";
 import type {
@@ -6,6 +7,14 @@ import type {
   UploadPublicationMode,
   UploadStrategy,
 } from "../types";
+
+export type {
+  ApplyFileEditsInput,
+  ApplyFileEditsResult,
+  AppliedFileEdit,
+  FileEditOperation,
+  FileEditSearchOptions,
+} from "../file-edits";
 
 export type UploadProgress = {
   bytesUploaded: number;
@@ -110,6 +119,7 @@ export type UploadHelpers = {
     file: Blob,
     options: CreateUploadAndTransferOptions,
   ) => Promise<UploadTransferResult>;
+  applyEdits: (input: ApplyFileEditsInput) => Promise<ApplyFileEditsResult>;
   downloadFile: (fileKey: string, options: DownloadFileOptions) => Promise<Response>;
   searchFileCandidates: (
     glob: string,
@@ -826,7 +836,15 @@ export const createUploadHelpers = (input: {
     return contentResponse;
   };
 
+  const applyEdits: UploadHelpers["applyEdits"] = async (input) =>
+    fetchJson<ApplyFileEditsResult>("/files/apply-edits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+
   return {
+    applyEdits,
     createUploadAndTransfer,
     downloadFile,
     hydrateSearchMatches,
