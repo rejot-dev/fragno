@@ -101,14 +101,17 @@ const dispatchOrganizationEvent = async (
   });
 };
 
-const createDevRejotAdminHook = (): BeforeCreateUserHook | undefined => {
-  if (import.meta.env.MODE !== "development") {
-    return undefined;
-  }
-
-  return ({ email }) =>
-    email.trim().toLowerCase().endsWith("@rejot.dev") ? { role: "admin" } : undefined;
-};
+const createRejotAccountPolicyHook =
+  (): BeforeCreateUserHook =>
+  ({ email }) => {
+    if (!email.trim().toLowerCase().endsWith("@rejot.dev")) {
+      return undefined;
+    }
+    if (import.meta.env.MODE !== "development") {
+      throw new Error("rejot.dev account creation is disabled outside development.");
+    }
+    return { role: "admin" };
+  };
 
 const isDevelopmentAdminEmailVerificationExempt = (user: Pick<UserSummary, "role">): boolean =>
   import.meta.env.MODE === "development" && user.role === "admin";
@@ -191,7 +194,7 @@ export class InMemoryAuthObject implements AuthObject {
       },
       {
         baseUrl,
-        beforeCreateUser: createDevRejotAdminHook(),
+        beforeCreateUser: createRejotAccountPolicyHook(),
         ...(emailVerification.enabled
           ? {
               emailVerification: {

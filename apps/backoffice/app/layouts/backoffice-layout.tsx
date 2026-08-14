@@ -24,10 +24,6 @@ export default function BackofficeLayoutRoute(props: Route.ComponentProps) {
 }
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  if (import.meta.env.MODE !== "development") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const returnTo = `${url.pathname}${url.search}`;
   const me = await getAuthMe(request, context);
   if (!me?.user) {

@@ -73,8 +73,57 @@ afterEach(async () => {
   try {
     await Promise.all(runtimes.splice(0).map(async (runtime) => await runtime.cleanup()));
   } finally {
+    vi.unstubAllEnvs();
     vi.useRealTimers();
   }
+});
+
+describe("Auth Durable Object account creation policy", () => {
+  test("rejects rejot.dev account creation outside development", async () => {
+    vi.stubEnv("MODE", "production");
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+
+    const response = await runtime.objects.auth.singleton().fetch(
+      new Request("https://backoffice.example/api/auth/sign-up", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "admin@rejot.dev",
+          password: "password123",
+        }),
+      }),
+    );
+
+    assert(response.status === 500);
+    expect(await response.json()).toEqual({
+      error: "Internal server error",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  });
+
+  test("creates rejot.dev administrators in development", async () => {
+    vi.stubEnv("MODE", "development");
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+
+    const response = await runtime.objects.auth.singleton().fetch(
+      new Request("https://backoffice.example/api/auth/sign-up", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "admin@rejot.dev",
+          password: "password123",
+        }),
+      }),
+    );
+
+    assert(response.ok);
+    expect(await response.json()).toMatchObject({
+      status: "authenticated",
+      role: "admin",
+    });
+  });
 });
 
 describe("Auth Durable Object email verification delivery", () => {
