@@ -6,7 +6,6 @@ import type {
 
 import type {
   AgentHarness,
-  AgentHarnessEvent,
   AgentHarnessOptions,
   AgentHarnessTool,
   AgentMessage,
@@ -20,9 +19,10 @@ import type {
 import { Session } from "@earendil-works/pi-agent-core";
 
 import {
-  piHarnessMessageUpdateFromPiEvent,
-  type PiHarnessMessageUpdateEmission,
-} from "../harness/message-update-protocol";
+  PiHarnessEventEncoder,
+  type PiHarnessEncodedEventEmission,
+  type PiHarnessSubscribedEvent,
+} from "../harness/agent-harness-event-protocol";
 import {
   createWorkflowBackedSessionEntryIdAllocator,
   nextWorkflowBackedSessionEntryIndex,
@@ -49,11 +49,6 @@ export type PiHarnessSessionEntryEmission = {
   entry: SessionTreeEntry;
 };
 
-export type PiHarnessEventEmission = {
-  kind: "harness-event";
-  event: AgentHarnessEvent;
-};
-
 export type PiHarnessOperationStartEmission = {
   kind: "harness-operation-start";
   operationId: string;
@@ -71,8 +66,7 @@ export type PiHarnessOperationCompleteEmission<TResult = PiHarnessStepResult> = 
 
 export type PiHarnessEmission<TResult = PiHarnessStepResult> =
   | PiHarnessSessionEntryEmission
-  | PiHarnessEventEmission
-  | PiHarnessMessageUpdateEmission
+  | PiHarnessEncodedEventEmission
   | PiHarnessOperationStartEmission
   | PiHarnessOperationCompleteEmission<TResult>;
 
@@ -539,19 +533,6 @@ const assertTerminalAssistantSucceeded = (entries: readonly SessionTreeEntry[]):
 export const hasSummarizableCompactionHistory = (preparation: CompactionPreparation): boolean =>
   preparation.messagesToSummarize.length > 0 || preparation.turnPrefixMessages.length > 0;
 
-const emissionFromHarnessEvent = (
-  event: AgentHarnessEvent,
-): PiHarnessEventEmission | PiHarnessMessageUpdateEmission => {
-  if (event.type === "message_update") {
-    return {
-      kind: "harness-message-update",
-      update: piHarnessMessageUpdateFromPiEvent(event),
-    };
-  }
-
-  return { kind: "harness-event", event };
-};
-
 export const withWorkflowAgentHarness = async <TResult>({
   session,
   storage,
@@ -580,8 +561,12 @@ export const withWorkflowAgentHarness = async <TResult>({
   const unsubscribeEntries = storage.subscribeToAppendedEntries((entry) => {
     tx.emit({ kind: "harness-session-entry", entry } satisfies WorkflowAgentHarnessEmission);
   });
+  const eventEncoder = new PiHarnessEventEncoder();
   const unsubscribeHarness = harness.subscribe((event) => {
-    tx.emit(emissionFromHarnessEvent(event));
+    tx.emit({
+      kind: "harness-event",
+      event: eventEncoder.encode(event as PiHarnessSubscribedEvent),
+    } satisfies PiHarnessEncodedEventEmission);
   });
 
   try {

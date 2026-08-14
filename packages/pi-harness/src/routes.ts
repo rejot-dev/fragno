@@ -12,6 +12,7 @@ import { serviceCalls } from "@fragno-dev/db";
 import { validateWorkflowParams } from "@fragno-dev/workflows";
 
 import { piHarnessDefinition, type PiSessionDetailSnapshot } from "./pi/definition";
+import { piHarnessEventProtocol } from "./pi/harness/agent-harness-event-protocol";
 import {
   createWorkflowBackedSessionEntryIdAllocator,
   WorkflowBackedSessionStorage,
@@ -354,7 +355,7 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
               await emissionBusHandle.pump.waitForObserved(
                 (emission) =>
                   emission.payload.kind === "harness-event" &&
-                  emission.payload.event.type === "agent_end",
+                  piHarnessEventProtocol.eventType(emission.payload.event) === "agent_end",
                 {
                   after: emissionSnapshot,
                   timeoutMs: waitTimeoutMs,

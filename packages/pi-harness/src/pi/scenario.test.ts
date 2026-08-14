@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { instantiate } from "@fragno-dev/core";
 
-import type { AgentEvent, AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
+import type { AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type Api,
@@ -21,10 +21,13 @@ import { piRoutesFactory } from "../routes";
 import { piHarnessDefinition } from "./definition";
 import { createPiWorkflows } from "./factory";
 import { createModelsForStreamFn } from "./harness/test-models";
+import { createPiHarnessScenarioEventDecoder } from "./pi-test-utils";
 import { piSessionCommandPayloadSchema } from "./route-schemas";
 import { definePiTool } from "./tools";
 import type { PiFragmentConfig } from "./types";
 import { createInteractiveChatWorkflow } from "./workflows/interactive-chat-workflow";
+
+const decodeScenarioHarnessEvent = createPiHarnessScenarioEventDecoder();
 
 const mockModel: Model<Api> = {
   id: "test-model",
@@ -575,18 +578,8 @@ describe("Pi harness workflow scenarios", () => {
                 workflow: interactiveChatWorkflow.name,
                 instanceId: (ctx) => ctx.vars.sessionId!,
                 match: (emission) => {
-                  const payload = emission.payload;
-                  if (
-                    typeof payload !== "object" ||
-                    payload === null ||
-                    !("kind" in payload) ||
-                    payload.kind !== "harness-event" ||
-                    !("event" in payload)
-                  ) {
-                    return false;
-                  }
-                  const event = payload.event as AgentEvent;
-                  return event.type === "message_start" && event.message.role === "assistant";
+                  const event = decodeScenarioHarnessEvent(emission);
+                  return event?.type === "message_start" && event.message.role === "assistant";
                 },
               }),
               workflow.read({

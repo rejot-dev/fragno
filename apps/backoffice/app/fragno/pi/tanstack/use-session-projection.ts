@@ -61,6 +61,7 @@ export function usePiSessionProjection({
                 stepKey: emission.stepKey,
                 executionId: emission.executionId,
                 epoch: emission.epoch,
+                sequence: emission.sequence,
                 payload: emission.payload,
                 createdAt: emission.createdAt,
               })),

@@ -1,12 +1,12 @@
+import type { PiHarnessFrontendAgentMessage } from "@fragno-dev/pi-harness/harness/agent-harness-event-protocol";
 import type {
   DraftAgentMessage,
   DraftTool,
 } from "@fragno-dev/pi-harness/workflow-session-projection";
 
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
 
-export type ToolResultMessage = Extract<AgentMessage, { role: "toolResult" }>;
+export type ToolResultMessage = Extract<PiHarnessFrontendAgentMessage, { role: "toolResult" }>;
 
 export type PiContentBlock =
   | { type: "text"; text: string }
@@ -24,8 +24,8 @@ export type PiAssistantMessageMetadata = {
   tokensBefore?: number;
   errorMessage?: string;
   statusText?: string | null;
-  stopReason?: Extract<AgentMessage, { role: "assistant" }>["stopReason"];
-  usage?: Extract<AgentMessage, { role: "assistant" }>["usage"];
+  stopReason?: Extract<PiHarnessFrontendAgentMessage, { role: "assistant" }>["stopReason"];
+  usage?: Extract<PiHarnessFrontendAgentMessage, { role: "assistant" }>["usage"];
 };
 
 type AssistantContentBlock = ThreadMessageLike["content"] extends string | readonly (infer Block)[]
@@ -161,7 +161,7 @@ export function createAssistantUiMessages({
   statusText,
 }: {
   draftAgentMessage: DraftAgentMessage | null;
-  messages: AgentMessage[];
+  messages: PiHarnessFrontendAgentMessage[];
   readyForInput: boolean;
   statusText: string | null;
 }): ThreadMessageLike[] {

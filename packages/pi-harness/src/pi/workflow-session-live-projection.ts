@@ -1,10 +1,12 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, ToolCall } from "@earendil-works/pi-ai";
+import type { ToolCall } from "@earendil-works/pi-ai";
 
+import { PiHarnessEventStreamDecoders } from "./harness/agent-harness-event-protocol";
 import {
   piToolCallArgumentsText,
-  type PiHarnessAssistantMessageEvent,
-} from "./harness/message-update-protocol";
+  type PiHarnessFrontendAgentMessage,
+  type PiHarnessFrontendAssistantMessage,
+  type PiHarnessFrontendEvent,
+} from "./harness/agent-harness-event-protocol";
 import type { PiSessionActiveCommand } from "./session-command-protocol";
 import type { PiWorkflowStatus } from "./types";
 import type {
@@ -16,15 +18,20 @@ import type {
 } from "./workflow-session-projection";
 
 export type PiWorkflowSessionLiveState = {
-  inFlightMessagesByStepKey: Map<string, AgentMessage[]>;
+  inFlightMessagesByStepKey: Map<string, PiHarnessFrontendAgentMessage[]>;
   inFlightStepKeys: string[];
   draftAgentMessage: DraftAgentMessage | null;
-  currentAssistantMessage?: AssistantMessage;
+  currentAssistantMessage?: PiHarnessFrontendAssistantMessage;
   draftStepKey?: string;
   activeCommand: PiSessionActiveCommand | null;
   activeCommandStepKey?: string;
   hasOpenMessageDraft: boolean;
   activeLiveWork: boolean;
+};
+
+export type PiWorkflowSessionEmissionReducer = {
+  live: PiWorkflowSessionLiveState;
+  eventDecoders: PiHarnessEventStreamDecoders;
 };
 
 export const isPiWorkflowStepActive = (step: PiWorkflowSessionProjectionStep): boolean =>
@@ -43,7 +50,10 @@ export const createPiWorkflowSessionLiveState = (
 });
 
 const draftActivityForAssistantEvent = (
-  type: PiHarnessAssistantMessageEvent["type"],
+  type: Extract<
+    PiHarnessFrontendEvent,
+    { type: "message_update" }
+  >["assistantMessageEvent"]["type"],
 ): DraftAgentActivity | null => {
   if (type === "start") {
     return "starting";
@@ -72,65 +82,9 @@ const updateDraftTool = (tools: Record<string, DraftTool>, toolCall: ToolCall): 
   };
 };
 
-const updateAssistantContent = (
-  message: AssistantMessage | undefined,
-  event: PiHarnessAssistantMessageEvent,
-): void => {
-  if (!message || !("contentIndex" in event)) {
-    return;
-  }
-
-  switch (event.type) {
-    case "text_start":
-      message.content[event.contentIndex] = { type: "text", text: "" };
-      return;
-    case "text_delta": {
-      const content = message.content[event.contentIndex];
-      if (content?.type === "text") {
-        message.content[event.contentIndex] = { ...content, text: content.text + event.delta };
-      }
-      return;
-    }
-    case "text_end": {
-      const content = message.content[event.contentIndex];
-      if (content?.type === "text") {
-        message.content[event.contentIndex] = { ...content, text: event.content };
-      }
-      return;
-    }
-    case "thinking_start":
-      message.content[event.contentIndex] = { type: "thinking", thinking: "" };
-      return;
-    case "thinking_delta": {
-      const content = message.content[event.contentIndex];
-      if (content?.type === "thinking") {
-        message.content[event.contentIndex] = {
-          ...content,
-          thinking: content.thinking + event.delta,
-        };
-      }
-      return;
-    }
-    case "thinking_end": {
-      const content = message.content[event.contentIndex];
-      if (content?.type === "thinking") {
-        message.content[event.contentIndex] = { ...content, thinking: event.content };
-      }
-      return;
-    }
-    case "toolcall_start":
-    case "toolcall_delta":
-    case "toolcall_end":
-      if (event.toolCall) {
-        message.content[event.contentIndex] = event.toolCall;
-      }
-      return;
-  }
-};
-
 const ensureDraftAgentMessage = (
   state: PiWorkflowSessionLiveState,
-  emission: PiWorkflowSessionProjectionEmission,
+  emission: Pick<PiWorkflowSessionProjectionEmission, "createdAt" | "stepKey">,
 ): DraftAgentMessage => {
   const eventTime = new Date(emission.createdAt).getTime();
   if (!Number.isFinite(eventTime)) {
@@ -151,36 +105,10 @@ const ensureDraftAgentMessage = (
   return state.draftAgentMessage;
 };
 
-const reduceCompactMessageUpdate = (
-  state: PiWorkflowSessionLiveState,
-  draft: DraftAgentMessage,
-  event: PiHarnessAssistantMessageEvent,
-): void => {
-  state.hasOpenMessageDraft = true;
-  updateAssistantContent(state.currentAssistantMessage, event);
-
-  if (
-    (event.type === "toolcall_start" ||
-      event.type === "toolcall_delta" ||
-      event.type === "toolcall_end") &&
-    event.toolCall
-  ) {
-    updateDraftTool(draft.tools, event.toolCall);
-  }
-
-  if (state.currentAssistantMessage) {
-    draft.assistant = state.currentAssistantMessage;
-  }
-  const activity = draftActivityForAssistantEvent(event.type);
-  if (activity) {
-    draft.activity = activity;
-  }
-};
-
 const recordInFlightMessage = (
   state: PiWorkflowSessionLiveState,
   stepKey: string,
-  message: AgentMessage,
+  message: PiHarnessFrontendAgentMessage,
 ): void => {
   let messages = state.inFlightMessagesByStepKey.get(stepKey);
   if (!messages) {
@@ -191,32 +119,67 @@ const recordInFlightMessage = (
   messages.push(message);
 };
 
+export const createPiWorkflowSessionEmissionReducer = (
+  activeLiveWork = false,
+): PiWorkflowSessionEmissionReducer => ({
+  live: createPiWorkflowSessionLiveState(activeLiveWork),
+  eventDecoders: new PiHarnessEventStreamDecoders(),
+});
+
 export const reducePiWorkflowSessionEmission = (
-  state: PiWorkflowSessionLiveState,
+  reducer: PiWorkflowSessionEmissionReducer,
   emission: PiWorkflowSessionProjectionEmission,
 ): void => {
+  const state = reducer.live;
   const payload = emission.payload;
   if (!payload?.kind) {
     return;
   }
 
   state.activeLiveWork = true;
+  if (payload.kind === "harness-operation-start") {
+    if (!emission.executionId || !emission.epoch) {
+      throw new Error(`Pi workflow emission ${emission.stepKey} is missing its stream identity.`);
+    }
+    reducer.eventDecoders.start({
+      stepKey: emission.stepKey,
+      executionId: emission.executionId,
+      epoch: emission.epoch,
+    });
+    return;
+  }
   if (payload.kind === "pi-session-command-start") {
     state.activeCommand = payload.command;
     state.activeCommandStepKey = emission.stepKey;
     return;
   }
-  if (payload.kind !== "harness-event" && payload.kind !== "harness-message-update") {
+  if (payload.kind === "harness-operation-complete") {
+    if (!emission.executionId || !emission.epoch) {
+      throw new Error(`Pi workflow emission ${emission.stepKey} is missing its stream identity.`);
+    }
+    reducer.eventDecoders.finish({
+      stepKey: emission.stepKey,
+      executionId: emission.executionId,
+      epoch: emission.epoch,
+    });
+    return;
+  }
+  if (payload.kind !== "harness-event") {
     return;
   }
 
+  if (!emission.executionId || !emission.epoch) {
+    throw new Error(`Pi workflow emission ${emission.stepKey} is missing its stream identity.`);
+  }
+  const event = reducer.eventDecoders.decode(
+    {
+      stepKey: emission.stepKey,
+      executionId: emission.executionId,
+      epoch: emission.epoch,
+    },
+    payload.event,
+  );
   const draft = ensureDraftAgentMessage(state, emission);
-  if (payload.kind === "harness-message-update") {
-    reduceCompactMessageUpdate(state, draft, payload.update.assistantMessageEvent);
-    return;
-  }
-
-  const event = payload.event;
   switch (event.type) {
     case "message_start":
       draft.activity = "starting";
@@ -232,25 +195,18 @@ export const reducePiWorkflowSessionEmission = (
       return;
     case "message_update": {
       state.hasOpenMessageDraft = true;
-      if (event.message.role === "assistant") {
-        const assistantMessage = {
-          ...event.message,
-          content: [...event.message.content],
-        };
-        state.currentAssistantMessage = assistantMessage;
-        draft.assistant = assistantMessage;
+      if (event.message.role !== "assistant") {
+        throw new Error("Pi harness message_update did not contain an assistant message.");
       }
+      const assistantMessage = structuredClone(event.message);
+      state.currentAssistantMessage = assistantMessage;
+      draft.assistant = assistantMessage;
       const activity = draftActivityForAssistantEvent(event.assistantMessageEvent.type);
       if (activity) {
         draft.activity = activity;
       }
-      if (
-        event.assistantMessageEvent.type === "toolcall_start" ||
-        event.assistantMessageEvent.type === "toolcall_delta" ||
-        event.assistantMessageEvent.type === "toolcall_end"
-      ) {
-        const toolCall =
-          state.currentAssistantMessage?.content[event.assistantMessageEvent.contentIndex];
+      if ("contentIndex" in event.assistantMessageEvent) {
+        const toolCall = assistantMessage.content[event.assistantMessageEvent.contentIndex];
         if (toolCall?.type === "toolCall") {
           updateDraftTool(draft.tools, toolCall);
         }
@@ -362,8 +318,8 @@ export const settleCompletedPiWorkflowSessionLiveSteps = (
 };
 
 export type PiWorkflowSessionLiveOverlay = {
-  contextMessages: AgentMessage[];
-  timelineMessages: AgentMessage[];
+  contextMessages: PiHarnessFrontendAgentMessage[];
+  timelineMessages: PiHarnessFrontendAgentMessage[];
   draftAgentMessage: DraftAgentMessage | null;
   activeCommand: PiSessionActiveCommand | null;
   readyForInput: boolean;
@@ -377,8 +333,8 @@ export const projectPiWorkflowSessionLiveOverlay = ({
   workflowSteps,
   live,
 }: {
-  contextMessages: readonly AgentMessage[];
-  timelineMessages: readonly AgentMessage[];
+  contextMessages: readonly PiHarnessFrontendAgentMessage[];
+  timelineMessages: readonly PiHarnessFrontendAgentMessage[];
   instanceStatus: PiWorkflowStatus;
   workflowSteps: readonly PiWorkflowSessionProjectionStep[];
   live: PiWorkflowSessionLiveState;

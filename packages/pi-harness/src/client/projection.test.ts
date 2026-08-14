@@ -33,6 +33,8 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
 
+import { PiHarnessEventEncoder } from "../pi/harness/agent-harness-event-protocol";
+import type { PiHarnessFrontendAgentMessage } from "../pi/harness/agent-harness-event-protocol";
 import {
   fauxAssistantMessageWithCheckpoints,
   fauxCheckpoint,
@@ -262,6 +264,7 @@ const projectManualWorkflow = async (
         id: `${instanceRef}:emission:${index}`,
         instanceRef,
         stepKey: emission.stepKey,
+        executionId: "manual-execution",
         epoch: "manual-epoch",
         sequence: emission.sequence ?? index,
         actor: "user",
@@ -349,7 +352,7 @@ const harnessRunResult = (entries: readonly SessionTreeEntry[]) => ({
   leafId: entries.at(-1)?.id ?? null,
 });
 
-const messageTextContent = (message: AgentMessage): string => {
+const messageTextContent = (message: PiHarnessFrontendAgentMessage): string => {
   if (!("content" in message)) {
     return "";
   }
@@ -1209,18 +1212,6 @@ describe("Pi harness workflow projection", () => {
             result: harnessRunResult([committed]),
           },
         ],
-        emissions: [
-          {
-            stepKey: "do:agent-turn-2",
-            payload: {
-              kind: "harness-message-update",
-              update: {
-                type: "message_update",
-                assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "streaming" },
-              },
-            },
-          },
-        ],
       });
 
       expect(projection.contextMessages.map(messageTextContent)).toEqual(["committed"]);
@@ -1771,17 +1762,37 @@ describe("Pi harness workflow projection", () => {
     });
 
     it("orders in-flight settled messages by workflow step and emission order", async () => {
+      const stepBEncoder = new PiHarnessEventEncoder();
+      const stepAEncoder = new PiHarnessEventEncoder();
       const projection = await projectManualWorkflow("manual-inflight-order", {
         emissions: [
           {
             stepKey: "step-b",
             sequence: 0,
             payload: {
+              kind: "harness-operation-start",
+              operationId: "step-b:operation",
+              replay: { protocol: "pi-harness-operation", version: 1 },
+            },
+          },
+          {
+            stepKey: "step-b",
+            sequence: 1,
+            payload: {
               kind: "harness-event",
-              event: {
+              event: stepBEncoder.encode({
                 type: "message_end",
                 message: fauxAssistantMessage(fauxText("B1"), { timestamp: 1 }),
-              },
+              }),
+            },
+          },
+          {
+            stepKey: "step-a",
+            sequence: 0,
+            payload: {
+              kind: "harness-operation-start",
+              operationId: "step-a:operation",
+              replay: { protocol: "pi-harness-operation", version: 1 },
             },
           },
           {
@@ -1789,10 +1800,10 @@ describe("Pi harness workflow projection", () => {
             sequence: 1,
             payload: {
               kind: "harness-event",
-              event: {
+              event: stepAEncoder.encode({
                 type: "message_end",
                 message: fauxAssistantMessage(fauxText("A1"), { timestamp: 1 }),
-              },
+              }),
             },
           },
           {
@@ -1800,10 +1811,10 @@ describe("Pi harness workflow projection", () => {
             sequence: 2,
             payload: {
               kind: "harness-event",
-              event: {
+              event: stepBEncoder.encode({
                 type: "message_end",
                 message: fauxAssistantMessage(fauxText("B2"), { timestamp: 1 }),
-              },
+              }),
             },
           },
         ],

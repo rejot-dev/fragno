@@ -9,8 +9,6 @@ import { instantiate } from "@fragno-dev/core";
 
 import {
   AgentHarness,
-  type AgentEvent,
-  type AgentHarnessEvent,
   type AgentMessage,
   type AgentTool,
   type SessionTreeEntry,
@@ -28,6 +26,7 @@ import { createPiFragmentClients } from "../../client/clients";
 import { piRoutesFactory } from "../../routes";
 import { piHarnessDefinition } from "../definition";
 import { createPiWorkflows } from "../factory";
+import { createPiHarnessScenarioEventDecoder } from "../pi-test-utils";
 import { piSessionCommandPayloadSchema } from "../route-schemas";
 import { definePiTool } from "../tools";
 import type { PiFragmentConfig, PiOperationCompletedHookPayload } from "../types";
@@ -43,6 +42,8 @@ import {
 import { schedulePiOperationCompletedHook } from "./pi-operation-completed";
 import { sessionEntriesLeafId } from "./session-storage";
 import { createModelsForStreamFn, mockAgentHarnessCompaction } from "./test-models";
+
+const decodeScenarioHarnessEvent = createPiHarnessScenarioEventDecoder();
 
 const mockModel: Model<Api> = {
   id: "test-model",
@@ -881,18 +882,8 @@ describe("workflow-backed AgentHarness scenario", () => {
                 workflow: restoreWorkflow.name,
                 instanceId: "restore-prompt-session",
                 match: (emission) => {
-                  const payload = emission.payload;
-                  if (
-                    typeof payload !== "object" ||
-                    payload === null ||
-                    !("kind" in payload) ||
-                    payload.kind !== "harness-event" ||
-                    !("event" in payload)
-                  ) {
-                    return false;
-                  }
-                  const event = payload.event as AgentEvent;
-                  return event.type === "message_end" && event.message.role === "user";
+                  const event = decodeScenarioHarnessEvent(emission);
+                  return event?.type === "message_end" && event.message.role === "user";
                 },
               }),
               runners.killer.restart(),
@@ -1049,21 +1040,8 @@ describe("workflow-backed AgentHarness scenario", () => {
                 workflow: "CUSTOM_CONTROL",
                 instanceId: "custom-control-session",
                 match: (emission) => {
-                  const payload = emission.payload;
-                  if (
-                    typeof payload !== "object" ||
-                    payload === null ||
-                    !("kind" in payload) ||
-                    payload.kind !== "harness-event" ||
-                    !("event" in payload)
-                  ) {
-                    return false;
-                  }
-                  const harnessEvent = payload.event as AgentHarnessEvent;
-                  return (
-                    harnessEvent.type === "message_start" &&
-                    harnessEvent.message.role === "assistant"
-                  );
+                  const event = decodeScenarioHarnessEvent(emission);
+                  return event?.type === "message_start" && event.message.role === "assistant";
                 },
               }),
               workflow.event({
@@ -1078,20 +1056,10 @@ describe("workflow-backed AgentHarness scenario", () => {
                 workflow: "CUSTOM_CONTROL",
                 instanceId: "custom-control-session",
                 match: (emission) => {
-                  const payload = emission.payload;
-                  if (
-                    typeof payload !== "object" ||
-                    payload === null ||
-                    !("kind" in payload) ||
-                    payload.kind !== "harness-event" ||
-                    !("event" in payload)
-                  ) {
-                    return false;
-                  }
-                  const harnessEvent = payload.event as AgentHarnessEvent;
+                  const event = decodeScenarioHarnessEvent(emission);
                   return (
-                    harnessEvent.type === "queue_update" &&
-                    harnessEvent.steer.some(
+                    event?.type === "queue_update" &&
+                    event.steer.some(
                       (message) =>
                         message.role === "user" &&
                         (typeof message.content === "string"

@@ -5,9 +5,10 @@ import { defineFragment } from "@fragno-dev/core";
 import { serviceCalls, withDatabase, type HookFn } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
-import type { AgentMessage, SessionTreeEntry } from "@earendil-works/pi-agent-core";
+import type { SessionTreeEntry } from "@earendil-works/pi-agent-core";
 
 import { piSchema } from "../schema";
+import type { PiHarnessFrontendAgentMessage } from "./harness/agent-harness-event-protocol";
 import { latestCompletedPiHarnessEntries } from "./session-entry-projection";
 import {
   PiSessionDataUnavailableError,
@@ -28,7 +29,7 @@ export type PiHarnessHooksMap = {
 export type PiSessionDetailSnapshot = {
   session: PiSession;
   workflowStatus: InstanceStatus;
-  messages: AgentMessage[];
+  messages: PiHarnessFrontendAgentMessage[];
   sessionEntries: readonly SessionTreeEntry[];
 };
 
@@ -82,6 +83,9 @@ export const piHarnessDefinition = defineFragment<PiFragmentConfig>("pi-harness"
               workflowSteps,
               workflowStepEmissions: selectedEmissions.map((emission) => ({
                 stepKey: emission.stepKey,
+                executionId: emission.executionId,
+                epoch: emission.epoch,
+                sequence: emission.sequence,
                 payload:
                   typeof emission.payload === "object" && emission.payload !== null
                     ? (emission.payload as never)

@@ -10,7 +10,7 @@ import {
 
 import type { PiAgentStateSnapshot, PiWorkflowStatus } from "../pi/types";
 import {
-  createPiWorkflowSessionLiveState,
+  createPiWorkflowSessionEmissionReducer,
   isPiWorkflowStepActive,
   projectPiWorkflowSessionLiveOverlay,
   reducePiWorkflowSessionEmission,
@@ -70,17 +70,18 @@ type PiWorkflowLofiEmission = {
   stepKey: string;
   executionId: string;
   epoch: string;
+  sequence: number;
   payload: unknown;
   createdAt: Date;
 };
 
 type PiWorkflowLofiLiveState = {
-  projection: ReturnType<typeof createPiWorkflowSessionLiveState>;
+  reducer: ReturnType<typeof createPiWorkflowSessionEmissionReducer>;
   emissions: PiWorkflowLofiEmission[];
 };
 
 const createPiWorkflowLofiLiveState = (): PiWorkflowLofiLiveState => ({
-  projection: createPiWorkflowSessionLiveState(),
+  reducer: createPiWorkflowSessionEmissionReducer(),
   emissions: [],
 });
 
@@ -94,27 +95,30 @@ const rebuildCanonicalPiWorkflowLiveProjection = (
     steps: workflowSteps,
     emissions: state.emissions,
   });
-  const projection = createPiWorkflowSessionLiveState();
+  const reducer = createPiWorkflowSessionEmissionReducer();
 
   for (const emission of canonicalEmissions) {
     if (completedStepKeySet.has(emission.stepKey)) {
       continue;
     }
-    reducePiWorkflowSessionEmission(projection, {
+    reducePiWorkflowSessionEmission(reducer, {
       stepKey: emission.stepKey,
+      executionId: emission.executionId,
+      epoch: emission.epoch,
+      sequence: emission.sequence,
       payload: emission.payload as PiWorkflowSessionProjectionEmission["payload"],
       createdAt: emission.createdAt,
     });
   }
 
-  state.projection = projection;
+  state.reducer = reducer;
 };
 
 const projectWorkflowInstanceRow = (
   rawInstance: WorkflowInstanceProjectionRow,
   workflowName: string,
   sessionId: string,
-  options: SessionProjectionOptions = {},
+  options: SessionProjectionOptions,
 ): PiWorkflowSessionProjectionState => {
   const instance = rawInstance as PiHarnessWorkflowInstanceProjectionRow | null;
   return projectPiWorkflowSession({
@@ -122,7 +126,7 @@ const projectWorkflowInstanceRow = (
     sessionId,
     instance,
     workflowSteps: instance?.workflowSteps ?? [],
-    ...options,
+    baseline: options.baseline,
   });
 };
 
@@ -144,7 +148,7 @@ export const createSessionProjectionDataStore = (
       projectWorkflowInstanceRow(instance, workflowName, sessionId, options),
     )
     .withEphemeral(workflowsSchema, "workflow_step_emission", {
-      initialState: createPiWorkflowLofiLiveState,
+      initialState: () => createPiWorkflowLofiLiveState(),
 
       // Buffer raw emissions so durable winner changes can rebuild the live projection.
       reduce: (liveState, item, { retrieved: { instance }, durableData }) => {
@@ -154,19 +158,34 @@ export const createSessionProjectionDataStore = (
 
         const projectedInstance = instance as PiHarnessWorkflowInstanceProjectionRow;
         const emission = item as typeof item & { actor: string };
-        liveState.emissions.push({
+        const bufferedEmission = {
           actor: emission.actor,
           stepKey: emission.stepKey,
           executionId: emission.executionId,
           epoch: emission.epoch,
+          sequence: emission.sequence,
           payload: emission.payload,
           createdAt: emission.createdAt,
+        };
+        liveState.emissions.push(bufferedEmission);
+
+        const [canonicalEmission] = selectCanonicalWorkflowStepEmissions({
+          steps: projectedInstance.workflowSteps,
+          emissions: [bufferedEmission],
         });
-        rebuildCanonicalPiWorkflowLiveProjection(
-          liveState,
-          projectedInstance.workflowSteps,
-          durableData.completedStepKeys,
-        );
+        if (
+          canonicalEmission &&
+          !new Set(durableData.completedStepKeys).has(canonicalEmission.stepKey)
+        ) {
+          reducePiWorkflowSessionEmission(liveState.reducer, {
+            stepKey: canonicalEmission.stepKey,
+            executionId: canonicalEmission.executionId,
+            epoch: canonicalEmission.epoch,
+            sequence: canonicalEmission.sequence,
+            payload: canonicalEmission.payload as PiWorkflowSessionProjectionEmission["payload"],
+            createdAt: canonicalEmission.createdAt,
+          });
+        }
         return liveState;
       },
 
@@ -182,10 +201,10 @@ export const createSessionProjectionDataStore = (
           durableData.completedStepKeys,
         );
         settleCompletedPiWorkflowSessionLiveSteps(
-          liveState.projection,
+          liveState.reducer.live,
           new Set(durableData.completedStepKeys),
         );
-        liveState.projection.activeLiveWork ||=
+        liveState.reducer.live.activeLiveWork ||=
           projectedInstance.workflowSteps.some(isPiWorkflowStepActive);
       },
 
@@ -202,7 +221,7 @@ export const createSessionProjectionDataStore = (
             timelineMessages: durableData.timelineMessages,
             instanceStatus: projectedInstance.status,
             workflowSteps: projectedInstance.workflowSteps,
-            live: liveState.projection,
+            live: liveState.reducer.live,
           }),
         };
       },
@@ -217,7 +236,10 @@ export const createSessionProjectionDataStore = (
 
 export const readPiWorkflowLofiSessionProjection = async (
   runtime: LofiRuntime,
-  args: { workflowName: string; sessionId: string },
+  args: {
+    workflowName: string;
+    sessionId: string;
+  },
 ): Promise<PiSessionProjectionSourceState> => {
   const query = runtime.adapter.createQueryEngine(workflowsSchema);
   const instance = await query.findFirst(
@@ -225,7 +247,7 @@ export const readPiWorkflowLofiSessionProjection = async (
     workflowInstanceProjectionQuery(args),
   );
 
-  const data = projectWorkflowInstanceRow(instance, args.workflowName, args.sessionId);
+  const data = projectWorkflowInstanceRow(instance, args.workflowName, args.sessionId, {});
   return {
     state: { messages: data.contextMessages },
     status: data.status,

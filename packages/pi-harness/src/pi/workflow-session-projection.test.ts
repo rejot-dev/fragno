@@ -9,6 +9,11 @@ import {
   type UserMessage,
 } from "@earendil-works/pi-ai";
 
+import {
+  PiHarnessEventEncoder,
+  type PiHarnessSubscribedEvent,
+} from "./harness/agent-harness-event-protocol";
+import type { PiHarnessFrontendAgentMessage } from "./harness/agent-harness-event-protocol";
 import { PiSessionDataIntegrityError, type PiWorkflowStatus } from "./types";
 import {
   createLoadingPiWorkflowSessionProjection,
@@ -53,7 +58,7 @@ const agentMessageEntry = (
   message,
 });
 
-const textContent = (message: AgentMessage) =>
+const textContent = (message: PiHarnessFrontendAgentMessage) =>
   (message as AgentMessage & { content: readonly [{ text: string }] }).content[0].text;
 
 const completedStep = (
@@ -81,28 +86,41 @@ const waitingCommandStep = (): PiWorkflowSessionProjectionStep => ({
   result: null,
 });
 
-const harnessEmission = (
-  stepKey: string,
-  event: unknown,
-  index: number,
-): PiWorkflowSessionProjectionEmission => {
-  const eventRecord =
-    event && typeof event === "object" ? (event as Record<string, unknown>) : null;
-  const payload =
-    eventRecord?.["type"] === "message_update"
-      ? {
-          kind: "harness-message-update",
-          update: {
-            type: "message_update",
-            assistantMessageEvent: eventRecord["assistantMessageEvent"],
-          },
-        }
-      : { kind: "harness-event", event };
+const eventEncodersByStepKey = new Map<string, PiHarnessEventEncoder>();
 
+const harnessOperationStartEmission = (
+  stepKey: string,
+  index = 0,
+): PiWorkflowSessionProjectionEmission => {
+  eventEncodersByStepKey.set(stepKey, new PiHarnessEventEncoder());
   return {
     stepKey,
+    executionId: `${stepKey}:execution`,
+    epoch: `${stepKey}:epoch`,
+    sequence: index,
     createdAt: new Date(index),
-    payload: payload as never,
+    payload: {
+      kind: "harness-operation-start",
+      operationId: `${stepKey}:operation`,
+      replay: { protocol: "pi-harness-operation", version: 1 },
+    },
+  };
+};
+
+const harnessEmission = (
+  stepKey: string,
+  event: PiHarnessSubscribedEvent,
+  index: number,
+): PiWorkflowSessionProjectionEmission => {
+  const encoder = eventEncodersByStepKey.get(stepKey) ?? new PiHarnessEventEncoder();
+  eventEncodersByStepKey.set(stepKey, encoder);
+  return {
+    stepKey,
+    executionId: `${stepKey}:execution`,
+    epoch: `${stepKey}:epoch`,
+    sequence: index,
+    createdAt: new Date(index),
+    payload: { kind: "harness-event", event: encoder.encode(event) },
   };
 };
 
@@ -146,6 +164,9 @@ describe("projectPiWorkflowSession", () => {
       workflowStepEmissions: [
         {
           stepKey: "command:compact-1",
+          executionId: "command:compact-1:execution",
+          epoch: "command:compact-1:epoch",
+          sequence: 1,
           payload: {
             kind: "pi-session-command-start",
             command: { commandId: "compact-1", kind: "compact" },
@@ -176,6 +197,9 @@ describe("projectPiWorkflowSession", () => {
       workflowStepEmissions: [
         {
           stepKey: "command:compact-1",
+          executionId: "command:compact-1:execution",
+          epoch: "command:compact-1:epoch",
+          sequence: 1,
           payload: {
             kind: "pi-session-command-start",
             command: { commandId: "compact-1", kind: "compact" },
@@ -448,6 +472,7 @@ describe("projectPiWorkflowSession", () => {
         { stepKey, type: "do", status: "running", waitEventType: null, result: null },
       ],
       workflowStepEmissions: [
+        harnessOperationStartEmission(stepKey),
         harnessEmission(stepKey, { type: "message_start", message: partial }, 1),
         harnessEmission(
           stepKey,
@@ -485,29 +510,38 @@ describe("projectPiWorkflowSession", () => {
         { stepKey, type: "do", status: "running", waitEventType: null, result: null },
       ],
       workflowStepEmissions: [
-        {
+        harnessOperationStartEmission(stepKey),
+        harnessEmission(
           stepKey,
-          createdAt: new Date(1),
-          payload: {
-            kind: "harness-event",
-            event: {
-              type: "message_update",
-              message: updateMessage,
-              assistantMessageEvent: {
-                type: "text_start",
-                contentIndex: 0,
-                partial: updateMessage,
-              },
-            },
-          },
-        },
+          { type: "message_start", message: fauxAssistantMessage([], { timestamp: 1 }) },
+          1,
+        ),
         harnessEmission(
           stepKey,
           {
             type: "message_update",
-            assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "hello" },
+            message: updateMessage,
+            assistantMessageEvent: {
+              type: "text_start",
+              contentIndex: 0,
+              partial: updateMessage,
+            },
           },
           2,
+        ),
+        harnessEmission(
+          stepKey,
+          {
+            type: "message_update",
+            message: assistantMessage("hello"),
+            assistantMessageEvent: {
+              type: "text_delta",
+              contentIndex: 0,
+              delta: "hello",
+              partial: assistantMessage("hello"),
+            },
+          },
+          3,
         ),
       ],
     });
@@ -517,7 +551,7 @@ describe("projectPiWorkflowSession", () => {
     assert(textContent(updateMessage) === "");
   });
 
-  it("reconstructs live assistant text from delta-only message updates", () => {
+  it("projects live assistant text from full message updates", () => {
     const stepKey = "do:delta-only";
 
     const projection = projectPiWorkflowSession({
@@ -528,12 +562,19 @@ describe("projectPiWorkflowSession", () => {
         { stepKey, type: "do", status: "running", waitEventType: null, result: null },
       ],
       workflowStepEmissions: [
+        harnessOperationStartEmission(stepKey),
         harnessEmission(stepKey, { type: "message_start", message: assistantMessage("") }, 1),
         harnessEmission(
           stepKey,
           {
             type: "message_update",
-            assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "hel" },
+            message: assistantMessage("hel"),
+            assistantMessageEvent: {
+              type: "text_delta",
+              contentIndex: 0,
+              delta: "hel",
+              partial: assistantMessage("hel"),
+            },
           },
           2,
         ),
@@ -541,7 +582,13 @@ describe("projectPiWorkflowSession", () => {
           stepKey,
           {
             type: "message_update",
-            assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "lo" },
+            message: assistantMessage("hello"),
+            assistantMessageEvent: {
+              type: "text_delta",
+              contentIndex: 0,
+              delta: "lo",
+              partial: assistantMessage("hello"),
+            },
           },
           3,
         ),
@@ -554,7 +601,7 @@ describe("projectPiWorkflowSession", () => {
     assert(!projection.readyForInput);
   });
 
-  it("does not mutate message_start emissions while applying compact deltas", () => {
+  it("does not mutate message_start emissions while projecting full updates", () => {
     const stepKey = "do:immutable-input";
     const startMessage = assistantMessage("");
 
@@ -566,12 +613,19 @@ describe("projectPiWorkflowSession", () => {
         { stepKey, type: "do", status: "running", waitEventType: null, result: null },
       ],
       workflowStepEmissions: [
+        harnessOperationStartEmission(stepKey),
         harnessEmission(stepKey, { type: "message_start", message: startMessage }, 1),
         harnessEmission(
           stepKey,
           {
             type: "message_update",
-            assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "hello" },
+            message: assistantMessage("hello"),
+            assistantMessageEvent: {
+              type: "text_delta",
+              contentIndex: 0,
+              delta: "hello",
+              partial: assistantMessage("hello"),
+            },
           },
           2,
         ),
@@ -597,6 +651,9 @@ describe("projectPiWorkflowSession", () => {
       { timestamp: 1 },
     );
 
+    const toolCall = toolMessage.content[0];
+    assert(toolCall?.type === "toolCall");
+
     const projection = projectPiWorkflowSession({
       workflowName,
       sessionId,
@@ -605,14 +662,21 @@ describe("projectPiWorkflowSession", () => {
         { stepKey, type: "do", status: "running", waitEventType: null, result: null },
       ],
       workflowStepEmissions: [
+        harnessOperationStartEmission(stepKey),
+        harnessEmission(stepKey, { type: "message_start", message: thinking }, 1),
         harnessEmission(
           stepKey,
           {
             type: "message_update",
             message: thinking,
-            assistantMessageEvent: { type: "thinking_delta", partial: thinking, contentIndex: 0 },
+            assistantMessageEvent: {
+              type: "thinking_delta",
+              partial: thinking,
+              contentIndex: 0,
+              delta: "plan",
+            },
           },
-          1,
+          2,
         ),
         harnessEmission(
           stepKey,
@@ -623,10 +687,10 @@ describe("projectPiWorkflowSession", () => {
               type: "toolcall_end",
               partial: toolMessage,
               contentIndex: 0,
-              toolCall: toolMessage.content[0],
+              toolCall,
             },
           },
-          2,
+          3,
         ),
         harnessEmission(
           stepKey,
@@ -731,11 +795,13 @@ describe("projectPiWorkflowSession", () => {
           { type: "message_end", message: assistantMessage("ignored") },
           1,
         ),
+        harnessOperationStartEmission("do:live-b", 1),
         harnessEmission(
           "do:live-b",
           { type: "message_end", message: assistantMessage("live b") },
           2,
         ),
+        harnessOperationStartEmission("do:live-a", 2),
         harnessEmission(
           "do:live-a",
           { type: "message_end", message: assistantMessage("live a") },

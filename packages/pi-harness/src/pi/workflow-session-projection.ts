@@ -1,7 +1,12 @@
-import type { AgentMessage, SessionTreeEntry } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
+import type { SessionTreeEntry } from "@earendil-works/pi-agent-core";
+import type { ToolResultMessage } from "@earendil-works/pi-ai";
 
 import { projectPiCompactCommandOutcomes } from "./compact-command-outcome-projection";
+import type { PiHarnessEncodedEventEmission } from "./harness/agent-harness-event-protocol";
+import type {
+  PiHarnessFrontendAgentMessage,
+  PiHarnessFrontendAssistantMessage,
+} from "./harness/agent-harness-event-protocol";
 import type {
   PiSessionActiveCommand,
   PiSessionCommandStartEmission,
@@ -13,12 +18,16 @@ import {
 } from "./session-entry-projection";
 import type { PiCompactCommandOutcome, PiWorkflowStatus } from "./types";
 import {
-  createPiWorkflowSessionLiveState,
+  createPiWorkflowSessionEmissionReducer,
   isPiWorkflowStepActive,
   projectPiWorkflowSessionLiveOverlay,
   reducePiWorkflowSessionEmission,
 } from "./workflow-session-live-projection";
-import type { PiHarnessEmission } from "./workflows/workflow-agent-harness";
+import type {
+  PiHarnessOperationCompleteEmission,
+  PiHarnessOperationStartEmission,
+  PiHarnessSessionEntryEmission,
+} from "./workflows/workflow-agent-harness";
 
 export type PiSessionProjectionStatus = "loading" | "ready" | "not-found";
 
@@ -43,7 +52,7 @@ export interface DraftTool {
 
 export interface DraftAgentMessage {
   activity: DraftAgentActivity;
-  assistant?: AssistantMessage;
+  assistant?: PiHarnessFrontendAssistantMessage;
   tools: Record<string, DraftTool>;
   startedAt: number;
   updatedAt: number;
@@ -52,8 +61,8 @@ export interface DraftAgentMessage {
 export type PiSessionActivity = DraftAgentActivity | "working" | null;
 
 type PiWorkflowSessionProjectionData = {
-  contextMessages: AgentMessage[];
-  timelineMessages: AgentMessage[];
+  contextMessages: PiHarnessFrontendAgentMessage[];
+  timelineMessages: PiHarnessFrontendAgentMessage[];
   completedStepKeys: string[];
   draftAgentMessage: DraftAgentMessage | null;
   activeCommand: PiSessionActiveCommand | null;
@@ -91,8 +100,14 @@ export type PiWorkflowSessionProjectionStep = {
 
 export type PiWorkflowSessionProjectionEmission = {
   stepKey: string;
+  executionId: string;
+  epoch: string;
+  sequence: number;
   payload:
-    | PiHarnessEmission
+    | PiHarnessEncodedEventEmission
+    | PiHarnessSessionEntryEmission
+    | PiHarnessOperationStartEmission
+    | PiHarnessOperationCompleteEmission
     | PiSessionCommandStartEmission
     | { kind: undefined; control: string }
     | null;
@@ -205,17 +220,19 @@ export const projectPiWorkflowSession = ({
   }
 
   const compactCommandOutcomes = projectPiCompactCommandOutcomes(workflowSteps, identity);
-  const live = createPiWorkflowSessionLiveState(workflowSteps.some(isPiWorkflowStepActive));
+  const emissionReducer = createPiWorkflowSessionEmissionReducer(
+    workflowSteps.some(isPiWorkflowStepActive),
+  );
   for (const emission of workflowStepEmissions) {
     if (!completedStepKeys.has(emission.stepKey)) {
-      reducePiWorkflowSessionEmission(live, emission);
+      reducePiWorkflowSessionEmission(emissionReducer, emission);
     }
   }
   const liveOverlay = projectPiWorkflowSessionLiveOverlay({
     ...projectedEntries,
     instanceStatus: instance.status,
     workflowSteps,
-    live,
+    live: emissionReducer.live,
   });
 
   return {

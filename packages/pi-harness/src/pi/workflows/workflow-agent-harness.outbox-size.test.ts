@@ -1,10 +1,8 @@
 import { assert, describe, expect, test } from "vitest";
 
-import type { MutationOperation } from "@fragno-dev/db/mutation-recorder";
-import { FragnoId, type AnySchema } from "@fragno-dev/db/schema";
+import { FragnoId } from "@fragno-dev/db/schema";
 import { buildScopedInstanceRowId } from "@fragno-dev/workflows/instance-ref";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
-import { recordWorkflowStepRunForTest } from "@fragno-dev/workflows/test";
 import {
   IDBCursor,
   IDBDatabase,
@@ -27,28 +25,15 @@ import {
   type LofiRuntime,
 } from "@fragno-dev/lofi";
 
-import { AgentHarness } from "@earendil-works/pi-agent-core";
-import {
-  createModels,
-  fauxAssistantMessage,
-  fauxProvider,
-  fauxText,
-  type Model,
-} from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 
 import { createSessionProjectionDataStore } from "../../client/workflow-lofi-session-projection";
-import { piSchema } from "../../schema";
 import { recordFauxPiHarnessPrompt } from "../pi-test-utils";
 import {
   createLoadingPiWorkflowSessionProjection,
   projectPiWorkflowSession,
   type PiWorkflowSessionProjectionState,
 } from "../workflow-session-projection";
-import {
-  createPiHarnessSessionState,
-  restoreWorkflowBackedSession,
-  withWorkflowAgentHarness,
-} from "./workflow-agent-harness";
 
 const workflowName = "workflow-agent-harness-outbox-size";
 const responseText = "x".repeat(10_000);
@@ -68,7 +53,7 @@ const installFakeIndexedDb = () => {
   globalThis.IDBTransaction = IDBTransaction;
 };
 
-const recordCompactOutboxMutations = async (sessionId: string): Promise<LofiMutation[]> => {
+const recordOutboxMutations = async (sessionId: string): Promise<LofiMutation[]> => {
   const recording = await recordFauxPiHarnessPrompt({
     workflowName,
     sessionId,
@@ -80,75 +65,6 @@ const recordCompactOutboxMutations = async (sessionId: string): Promise<LofiMuta
   return uowOperationsToLofiMutations(recording.mutations, {
     now: new Date("2026-07-03T00:00:00.000Z"),
   });
-};
-
-const isCompactMessageUpdateMutation = (mutation: MutationOperation<AnySchema>): boolean => {
-  if (mutation.type !== "create" || mutation.table !== "workflow_step_emission") {
-    return false;
-  }
-  const payload = (mutation.values as Record<string, unknown>)["payload"];
-  return (
-    typeof payload === "object" &&
-    payload !== null &&
-    "kind" in payload &&
-    payload.kind === "harness-message-update"
-  );
-};
-
-const recordLegacyFullSnapshotOutboxMutations = async (
-  sessionId: string,
-): Promise<LofiMutation[]> => {
-  const faux = fauxProvider({
-    api: "faux",
-    tokenSize: { min: 1, max: 1 },
-    tokensPerSecond: 0,
-  });
-  faux.setResponses([fauxAssistantMessage(fauxText(responseText), { timestamp: 1 })]);
-  const models = createModels();
-  models.setProvider(faux.provider);
-  const model: Model<string> = faux.getModel();
-  const state = createPiHarnessSessionState({
-    metadata: { id: sessionId, createdAt: "2000-01-01T00:00:00.000Z" },
-  });
-  const operationId = `${workflowName}:${sessionId}:faux-turn`;
-
-  const recording = await recordWorkflowStepRunForTest({
-    workflowName,
-    instanceId: sessionId,
-    schemas: [{ schema: piSchema, namespace: "pi-harness" }],
-    run: async (step) =>
-      await step.do("faux-turn", async (tx) => {
-        const restored = restoreWorkflowBackedSession({
-          operationId,
-          state,
-          previousEmissions: await tx.previousEmissions(),
-          models,
-        });
-        const harness = new AgentHarness({ models, model, ...restored.options });
-        const unsubscribeLegacyUpdates = harness.subscribe((event) => {
-          if (event.type === "message_update") {
-            tx.emit({ kind: "legacy-harness-message-update", event });
-          }
-        });
-
-        try {
-          return await withWorkflowAgentHarness({
-            session: restored.session,
-            storage: restored.storage,
-            harness,
-            tx,
-            runDurableStep: () => harness.prompt("measure stream size"),
-          });
-        } finally {
-          unsubscribeLegacyUpdates();
-        }
-      }),
-  });
-
-  return uowOperationsToLofiMutations(
-    recording.mutations.filter((mutation) => !isCompactMessageUpdateMutation(mutation)),
-    { now: new Date("2026-07-03T00:00:00.000Z") },
-  );
 };
 
 type ProjectionInput = Parameters<typeof projectPiWorkflowSession>[0];
@@ -309,7 +225,7 @@ const projectedAssistantTextLength = (state: MeasuredProjectionState): number =>
 
 describe("workflow AgentHarness outbox stream size", () => {
   test("keeps compact message updates below two megabytes", async () => {
-    const mutations = await recordCompactOutboxMutations("message-update-compact");
+    const mutations = await recordOutboxMutations("message-update-compact");
     expect(serializedByteSize(mutations)).toBeLessThan(2_000_000);
   });
 
@@ -317,7 +233,7 @@ describe("workflow AgentHarness outbox stream size", () => {
     "measures compact projection query and store update cost",
     async () => {
       const sessionId = "compact-projection-compute";
-      const mutations = await recordCompactOutboxMutations(sessionId);
+      const mutations = await recordOutboxMutations(sessionId);
       const mutationBytes = serializedByteSize(mutations);
 
       installFakeIndexedDb();
@@ -379,7 +295,7 @@ describe("workflow AgentHarness outbox stream size", () => {
     "measures mounted compact projection under repeated refresh churn",
     async () => {
       const sessionId = "compact-mounted-refresh-churn";
-      const mutations = await recordCompactOutboxMutations(sessionId);
+      const mutations = await recordOutboxMutations(sessionId);
       const baseMutations = mutations.filter(
         (mutation) => mutation.table !== "workflow_step_emission",
       );
@@ -450,7 +366,7 @@ describe("workflow AgentHarness outbox stream size", () => {
     async () => {
       const sessionId = "ephemeral-mounted-projection";
       const mutations = withExternalWorkflowReferences(
-        await recordCompactOutboxMutations(sessionId),
+        await recordOutboxMutations(sessionId),
         sessionId,
       );
       const initialMutation = mutations[0];
@@ -517,23 +433,6 @@ describe("workflow AgentHarness outbox stream size", () => {
         unlistenRevision();
         unlistenStore();
       }
-    },
-  );
-
-  test.skipIf(!!process.env["CI"])(
-    "reproduces the large outbox payload caused by full message-update snapshots",
-    async () => {
-      const compactSize = serializedByteSize(
-        await recordCompactOutboxMutations("message-update-compact-control"),
-      );
-      const legacySize = serializedByteSize(
-        await recordLegacyFullSnapshotOutboxMutations("message-update-legacy-control"),
-      );
-
-      expect(compactSize).toBeLessThan(2_000_000);
-      expect(legacySize).toBeGreaterThan(50_000_000);
-      expect(legacySize).toBeLessThan(56_000_000);
-      expect(legacySize).toBeGreaterThan(compactSize * 25);
     },
   );
 });
