@@ -196,9 +196,9 @@ const stateSearchOptionsSchema = z.object({
   caseSensitive: z.boolean().optional(),
   regex: z.boolean().optional(),
   wholeWord: z.boolean().optional(),
-  contextBefore: z.number().int().min(0).max(20).optional(),
-  contextAfter: z.number().int().min(0).max(20).optional(),
-  maxMatches: z.number().int().min(1).max(500).optional(),
+  contextBefore: z.number().int().min(0).max(200).optional(),
+  contextAfter: z.number().int().min(0).max(200).optional(),
+  maxMatches: z.number().int().min(1).max(100).optional(),
 });
 
 const searchFilesSchema = z.object({

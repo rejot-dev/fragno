@@ -127,9 +127,9 @@ const searchParametersSchema = Type.Object({
   ),
   caseSensitive: Type.Optional(Type.Boolean()),
   wholeWord: Type.Optional(Type.Boolean()),
-  contextBefore: Type.Optional(Type.Number({ minimum: 0, maximum: 20 })),
-  contextAfter: Type.Optional(Type.Number({ minimum: 0, maximum: 20 })),
-  maxMatches: Type.Optional(Type.Number({ minimum: 1, maximum: 500 })),
+  contextBefore: Type.Optional(Type.Number({ minimum: 0, maximum: 200 })),
+  contextAfter: Type.Optional(Type.Number({ minimum: 0, maximum: 200 })),
+  maxMatches: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
   cursor: Type.Optional(
     Type.Object({
       upload: Type.Optional(Type.String()),
@@ -182,6 +182,69 @@ const applyLineRange = (content: string, offset?: number, limit?: number) => {
 };
 
 type SearchMatchWithLineText = FileSearchMatch & { lineText?: string };
+type SearchMountPage = Awaited<ReturnType<BackofficeStateBackend["searchFiles"]>>["upload"];
+type SearchMountCursor = { sourceCursor?: string; skip: number };
+
+const SEARCH_MOUNT_CURSOR_PREFIX = "pi-search:";
+
+const decodeSearchMountCursor = (cursor: string | undefined): SearchMountCursor => {
+  if (!cursor) {
+    return { skip: 0 };
+  }
+  if (!cursor.startsWith(SEARCH_MOUNT_CURSOR_PREFIX)) {
+    return { sourceCursor: cursor, skip: 0 };
+  }
+
+  const parsed = JSON.parse(cursor.slice(SEARCH_MOUNT_CURSOR_PREFIX.length)) as unknown;
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !("skip" in parsed) ||
+    !Number.isInteger(parsed.skip) ||
+    (parsed.skip as number) < 0 ||
+    ("sourceCursor" in parsed &&
+      parsed.sourceCursor !== undefined &&
+      typeof parsed.sourceCursor !== "string")
+  ) {
+    throw new Error("Invalid search cursor.");
+  }
+  return parsed as SearchMountCursor;
+};
+
+const encodeSearchMountCursor = (cursor: SearchMountCursor): string =>
+  `${SEARCH_MOUNT_CURSOR_PREFIX}${JSON.stringify(cursor)}`;
+
+const flattenSearchMountPage = (page: SearchMountPage): SearchMatchWithLineText[] =>
+  page.results.flatMap((file) =>
+    file.matches.map((match) => ({
+      path: file.path,
+      line: match.line,
+      column: match.column,
+      text: match.match,
+      lineText: match.lineText,
+      contextBefore: match.beforeLines ?? [],
+      contextAfter: match.afterLines ?? [],
+    })),
+  );
+
+const nextSearchMountCursor = (
+  current: SearchMountCursor,
+  page: SearchMountPage,
+  pageMatchCount: number,
+  consumedCount: number,
+): string | undefined => {
+  const remainingInPage = Math.max(0, pageMatchCount - current.skip);
+  if (consumedCount < remainingInPage) {
+    return encodeSearchMountCursor({
+      ...(current.sourceCursor ? { sourceCursor: current.sourceCursor } : {}),
+      skip: current.skip + consumedCount,
+    });
+  }
+  if (page.hasMore && page.cursor) {
+    return encodeSearchMountCursor({ sourceCursor: page.cursor, skip: 0 });
+  }
+  return undefined;
+};
 
 type SearchOutputLine = {
   line: number;
@@ -195,7 +258,6 @@ export const formatSearchMatches = (matches: readonly SearchMatchWithLineText[])
     path: string;
     start: number;
     end: number;
-    hasContext: boolean;
     lines: Map<number, SearchOutputLine>;
   }> = [];
 
@@ -210,7 +272,6 @@ export const formatSearchMatches = (matches: readonly SearchMatchWithLineText[])
             path: match.path,
             start,
             end,
-            hasContext: match.contextBefore.length > 0 || match.contextAfter.length > 0,
             lines: new Map<number, SearchOutputLine>(),
           };
 
@@ -218,7 +279,6 @@ export const formatSearchMatches = (matches: readonly SearchMatchWithLineText[])
       blocks.push(block);
     } else {
       block.end = Math.max(block.end, end);
-      block.hasContext ||= match.contextBefore.length > 0 || match.contextAfter.length > 0;
     }
 
     match.contextBefore.forEach((text, index) => {
@@ -245,22 +305,18 @@ export const formatSearchMatches = (matches: readonly SearchMatchWithLineText[])
   }
 
   return blocks
-    .map((block) => ({
-      hasContext: block.hasContext,
-      text: [...block.lines.values()]
+    .map((block) => {
+      const lines = [...block.lines.values()]
         .sort((left, right) => left.line - right.line)
         .map((line) =>
           line.isMatch
-            ? `${block.path}:${line.line}:${line.column}:${line.text}`
-            : `${block.path}-${line.line}-${line.text}`,
+            ? `> ${line.line}:${line.column} | ${line.text}`
+            : `  ${line.line} | ${line.text}`,
         )
-        .join("\n"),
-    }))
-    .reduce(
-      (output, block, index, formattedBlocks) =>
-        `${output}${index === 0 ? "" : formattedBlocks[index - 1]?.hasContext || block.hasContext ? "\n--\n" : "\n"}${block.text}`,
-      "",
-    );
+        .join("\n");
+      return `${block.path}\n${lines}`;
+    })
+    .join("\n\n");
 };
 
 const createSearchTool = (state: BackofficeStateBackend): AgentTool =>
@@ -274,47 +330,69 @@ const createSearchTool = (state: BackofficeStateBackend): AgentTool =>
         throw new Error("Search aborted.");
       }
 
+      const maxMatches = params.maxMatches ?? 50;
       const searchOptions = {
         caseSensitive: params.caseSensitive,
         wholeWord: params.wholeWord,
         contextBefore: params.contextBefore,
         contextAfter: params.contextAfter,
-        maxMatches: params.maxMatches,
+        maxMatches,
       };
+      const uploadCursor = decodeSearchMountCursor(params.cursor?.upload);
+      const staticCursor = decodeSearchMountCursor(params.cursor?.static);
       const requestedMounts = params.cursor
         ? {
             ...(params.cursor.upload
-              ? { upload: { ...searchOptions, cursor: params.cursor.upload } }
+              ? {
+                  upload: {
+                    ...searchOptions,
+                    ...(uploadCursor.sourceCursor ? { cursor: uploadCursor.sourceCursor } : {}),
+                  },
+                }
               : {}),
             ...(params.cursor.static
-              ? { static: { ...searchOptions, cursor: params.cursor.static } }
+              ? {
+                  static: {
+                    ...searchOptions,
+                    ...(staticCursor.sourceCursor ? { cursor: staticCursor.sourceCursor } : {}),
+                  },
+                }
               : {}),
           }
         : { upload: searchOptions, static: searchOptions };
       const result = await state.searchFiles(params.glob ?? "**", params.query, requestedMounts);
-      const matches: FileSearchMatch[] = [result.upload, result.static].flatMap((page) =>
-        page.results.flatMap((file) =>
-          file.matches.map((match) => ({
-            path: file.path,
-            line: match.line,
-            column: match.column,
-            text: match.match,
-            lineText: match.lineText,
-            contextBefore: match.beforeLines ?? [],
-            contextAfter: match.afterLines ?? [],
-          })),
-        ),
+      const uploadPageMatches = flattenSearchMountPage(result.upload);
+      const staticPageMatches = flattenSearchMountPage(result.static);
+      const uploadMatches = uploadPageMatches.slice(uploadCursor.skip);
+      const staticMatches = staticPageMatches.slice(staticCursor.skip);
+      const matches: SearchMatchWithLineText[] = [...uploadMatches, ...staticMatches].slice(
+        0,
+        maxMatches,
+      );
+      const consumedUploadMatches = Math.min(matches.length, uploadMatches.length);
+      const consumedStaticMatches = matches.length - consumedUploadMatches;
+      const nextUploadCursor = nextSearchMountCursor(
+        uploadCursor,
+        result.upload,
+        uploadPageMatches.length,
+        consumedUploadMatches,
+      );
+      const nextStaticCursor = nextSearchMountCursor(
+        staticCursor,
+        result.static,
+        staticPageMatches.length,
+        consumedStaticMatches,
       );
       const cursor = {
-        ...(result.upload.cursor ? { upload: result.upload.cursor } : {}),
-        ...(result.static.cursor ? { static: result.static.cursor } : {}),
+        ...(nextUploadCursor ? { upload: nextUploadCursor } : {}),
+        ...(nextStaticCursor ? { static: nextStaticCursor } : {}),
       };
       const hasMore = {
-        upload: result.upload.hasMore,
-        static: result.static.hasMore,
+        upload: nextUploadCursor !== undefined,
+        static: nextStaticCursor !== undefined,
       };
       const continuation =
-        result.upload.hasMore || result.static.hasMore
+        hasMore.upload || hasMore.static
           ? `\n\nMore files are available. Continue with cursor: ${JSON.stringify(cursor)}`
           : "";
 
