@@ -944,7 +944,7 @@ export function createWorkflowTokenMachine({
       kind: "terminal",
       label,
       terminalType,
-      value: "",
+      value: { kind: "none" },
       workflowName: workflow.node.name,
       order: nextChildOrder(workflow, parentId),
       sourceOrder: ordinal,
@@ -974,7 +974,7 @@ export function createWorkflowTokenMachine({
       node.order = terminalOrder;
     }
     if (delegatesReturnValue) {
-      returnMachine.markDelegatedValue();
+      returnMachine.setDelegatedValueCandidate(node.id, node.source, source);
     }
   }
 
@@ -1167,7 +1167,7 @@ export function createWorkflowTokenMachine({
     }
 
     return {
-      version: 6,
+      version: 7,
       nodes,
       edges,
       diagnostics: materializeDiagnostics(),
@@ -1733,7 +1733,7 @@ function caughtThrowNode(terminal: TerminalNode): CaughtThrowNode {
     id: terminal.id,
     kind: "caught-throw",
     label: "throw to catch",
-    value: terminal.value,
+    value: terminal.value.kind === "expression" ? terminal.value.expression : "",
     workflowName: terminal.workflowName,
     order: terminal.order,
     sourceOrder: terminal.sourceOrder,
@@ -1744,7 +1744,7 @@ function caughtThrowNode(terminal: TerminalNode): CaughtThrowNode {
 }
 
 function emptyGraph(): WorkflowGraph {
-  return { version: 6, nodes: [], edges: [], diagnostics: [] };
+  return { version: 7, nodes: [], edges: [], diagnostics: [] };
 }
 
 function cloneNode<T extends WorkflowNode | WorkflowChildNode>(node: T): T {
@@ -1776,6 +1776,14 @@ function cloneNode<T extends WorkflowNode | WorkflowChildNode>(node: T): T {
       source: cloneSourceRange(node.source),
       construction: { ...node.construction },
       analysis: cloneConditionAnalysis(node.analysis),
+    } as T;
+  }
+  if (node.kind === "terminal") {
+    return {
+      ...node,
+      value: { ...node.value },
+      source: cloneSourceRange(node.source),
+      construction: { ...node.construction },
     } as T;
   }
   return {
@@ -1830,7 +1838,7 @@ function cloneDiagnostic(diagnostic: Diagnostic): Diagnostic {
 
 function cloneGraph(graph: WorkflowGraph): WorkflowGraph {
   return {
-    version: 6,
+    version: 7,
     nodes: graph.nodes.map(cloneNode),
     edges: graph.edges.map((edge) => ({ ...edge })),
     diagnostics: graph.diagnostics.map(cloneDiagnostic),

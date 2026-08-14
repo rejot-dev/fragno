@@ -1580,8 +1580,12 @@ export class ReturnStatementMachine implements TokenSubmachine {
   readonly parentId: string;
   readonly #terminal: TerminalNode;
   readonly #scanner: ReturnExpressionScanner;
+  readonly #expressionStart: number;
   #reasonState: "reason" | "value" | undefined;
-  #delegatesValueToChild = false;
+  #expression = "";
+  #delegatedValueCandidate:
+    | { nodeId: string; source: SourceRange; childStartInExpression: number }
+    | undefined;
 
   constructor({
     id,
@@ -1599,15 +1603,14 @@ export class ReturnStatementMachine implements TokenSubmachine {
     this.id = id;
     this.parentId = parentId;
     this.#terminal = terminal;
+    this.#expressionStart = statement.end;
     this.#scanner = new ReturnExpressionScanner({
       source: terminal.source,
       statement,
       baseDepth,
       onValue: (value, token) => {
-        if (this.#delegatesValueToChild) {
-          return;
-        }
-        terminal.value = value;
+        this.#expression = value;
+        this.updateTerminalValue();
         if (token) {
           this.consumeReason(token);
         }
@@ -1630,9 +1633,15 @@ export class ReturnStatementMachine implements TokenSubmachine {
     return this.#terminal;
   }
 
-  markDelegatedValue(): void {
-    this.#delegatesValueToChild = true;
-    this.#terminal.value = "";
+  setDelegatedValueCandidate(nodeId: string, source: SourceRange, workflowSource: string): void {
+    this.#delegatedValueCandidate = {
+      nodeId,
+      source,
+      childStartInExpression: workflowSource
+        .slice(this.#expressionStart, source.start.offset)
+        .trimStart().length,
+    };
+    this.updateTerminalValue();
   }
 
   consume(
@@ -1644,6 +1653,17 @@ export class ReturnStatementMachine implements TokenSubmachine {
 
   finish(context: TokenMachineContext): TokenSubmachineStatus {
     return this.#scanner.finish(context);
+  }
+
+  private updateTerminalValue(): void {
+    const candidate = this.#delegatedValueCandidate;
+    if (candidate && returnExpressionDelegatesToChild(this.#expression, candidate)) {
+      this.#terminal.value = { kind: "workflow-child", nodeId: candidate.nodeId };
+      return;
+    }
+    this.#terminal.value = this.#expression
+      ? { kind: "expression", expression: this.#expression }
+      : { kind: "none" };
   }
 
   private consumeReason(token: PositionedWorkflowToken["token"]): void {
@@ -1665,6 +1685,29 @@ export class ReturnStatementMachine implements TokenSubmachine {
     }
     this.#reasonState = undefined;
   }
+}
+
+function returnExpressionDelegatesToChild(
+  expression: string,
+  candidate: { source: SourceRange; childStartInExpression: number },
+): boolean {
+  const childLength = candidate.source.end.offset - candidate.source.start.offset;
+  const prefix = expression.slice(0, candidate.childStartInExpression);
+  const suffix = expression.slice(candidate.childStartInExpression + childLength);
+  const prefixTokens = [...tokenizeWorkflowSource(prefix)].filter((token) => !isTriviaToken(token));
+  const suffixTokens = [...tokenizeWorkflowSource(suffix)].filter((token) => !isTriviaToken(token));
+  const wrapperParentheses = prefixTokens.reduce<number | null>((count, token) => {
+    if (count === null || (token.value !== "(" && token.value !== "await")) {
+      return null;
+    }
+    return token.value === "(" ? count + 1 : count;
+  }, 0);
+
+  return (
+    wrapperParentheses !== null &&
+    suffixTokens.length === wrapperParentheses &&
+    suffixTokens.every((token) => token.value === ")")
+  );
 }
 
 export class ThrowStatementMachine implements TokenSubmachine {
@@ -1727,7 +1770,7 @@ export class ThrowStatementMachine implements TokenSubmachine {
     }
 
     extendSourceRangeToToken(this.#terminal.source, positioned);
-    this.#terminal.value = context.source.slice(this.#expressionStart, positioned.end).trim();
+    this.setExpression(context.source.slice(this.#expressionStart, positioned.end).trim());
     const message = staticStringValue(positioned.token);
     if (message !== undefined) {
       this.#terminal.label = message || "error";
@@ -1736,19 +1779,27 @@ export class ThrowStatementMachine implements TokenSubmachine {
   }
 
   finish(context: TokenMachineContext): TokenSubmachineStatus {
-    this.#terminal.value = context.source.slice(this.#expressionStart).trim();
+    this.setExpression(context.source.slice(this.#expressionStart).trim());
     this.labelRethrow();
     return "active";
   }
 
   private complete(source: string, expressionEnd: number): void {
-    this.#terminal.value = source.slice(this.#expressionStart, expressionEnd).trim();
+    this.setExpression(source.slice(this.#expressionStart, expressionEnd).trim());
     this.labelRethrow();
     this.#terminal.construction = { status: "complete", phase: "complete" };
   }
 
+  private setExpression(expression: string): void {
+    this.#terminal.value = expression ? { kind: "expression", expression } : { kind: "none" };
+  }
+
   private labelRethrow(): void {
-    if (this.#rethrowIdentifier && this.#terminal.value === this.#rethrowIdentifier) {
+    if (
+      this.#rethrowIdentifier &&
+      this.#terminal.value.kind === "expression" &&
+      this.#terminal.value.expression === this.#rethrowIdentifier
+    ) {
       this.#terminal.label = `rethrow ${this.#rethrowIdentifier}`;
     }
   }

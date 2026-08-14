@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
 import { ScriptWorkflowGraph } from "./workflow-graph";
-import type { ScriptWorkflowRun } from "./workflow-run-presentation";
+import type { ScriptWorkflowRun, WorkflowStepRunState } from "./workflow-run-presentation";
 
 const visualization = visualizeWorkflowSource(
   "automations/ui-results.workflow.js",
@@ -125,6 +125,91 @@ describe("ScriptWorkflowGraph generated UI presentation", () => {
     expect(markup).toContain("Final output");
     expect(markup).toContain('aria-label="Final metric"');
     expect(markup).not.toContain("Final return");
+  });
+
+  test("does not repeat final generated UI returned directly by its step", () => {
+    const directReturnVisualization = visualizeWorkflowSource(
+      "automations/direct-ui-return.workflow.js",
+      `defineWorkflow({ name: "direct-ui-return" }, async (_event, step) => {
+        return await step.do("return success UI", async () => ({ $ui: successUi }));
+      });`,
+    );
+    const outputStep = directReturnVisualization.graph.nodes.find(
+      (node) => node.kind === "step" && node.label === "return success UI",
+    );
+    assert(outputStep?.kind === "step");
+    const output = generatedUiResult("Result", "Success");
+    const markup = renderToStaticMarkup(
+      createElement(ScriptWorkflowGraph, {
+        visualization: directReturnVisualization,
+        detailMode: "ui",
+        runtimeToolCallsByStepId: new Map(),
+        selectedRun: {
+          ...run,
+          workflowName: "direct-ui-return",
+          output,
+          stepStatesByNodeId: new Map<string, WorkflowStepRunState>([
+            [
+              outputStep.id,
+              {
+                status: "completed",
+                attempts: 1,
+                completedAt: "2026-07-31T10:00:02.000Z",
+                result: output,
+                emissionCount: 0,
+                current: false,
+              },
+            ],
+          ]),
+        },
+      }),
+    );
+
+    expect(markup).toContain("return success UI");
+    expect(markup.match(/aria-label="Result"/g)).toHaveLength(1);
+    expect(markup).not.toContain("Final output");
+  });
+
+  test("keeps transformed generated UI as a distinct final output", () => {
+    const transformedReturnVisualization = visualizeWorkflowSource(
+      "automations/transformed-ui-return.workflow.js",
+      `defineWorkflow({ name: "transformed-ui-return" }, async (_event, step) => {
+        return transform(await step.do("build source UI", async () => ({ $ui: sourceUi })));
+      });`,
+    );
+    const sourceStep = transformedReturnVisualization.graph.nodes.find(
+      (node) => node.kind === "step" && node.label === "build source UI",
+    );
+    assert(sourceStep?.kind === "step");
+    const markup = renderToStaticMarkup(
+      createElement(ScriptWorkflowGraph, {
+        visualization: transformedReturnVisualization,
+        detailMode: "ui",
+        runtimeToolCallsByStepId: new Map(),
+        selectedRun: {
+          ...run,
+          workflowName: "transformed-ui-return",
+          output: generatedUiResult("Final result", "Transformed"),
+          stepStatesByNodeId: new Map<string, WorkflowStepRunState>([
+            [
+              sourceStep.id,
+              {
+                status: "completed",
+                attempts: 1,
+                completedAt: "2026-07-31T10:00:02.000Z",
+                result: generatedUiResult("Source result", "Original"),
+                emissionCount: 0,
+                current: false,
+              },
+            ],
+          ]),
+        },
+      }),
+    );
+
+    expect(markup).toContain('aria-label="Source result"');
+    expect(markup).toContain("Final output");
+    expect(markup).toContain('aria-label="Final result"');
   });
 
   test("renders try and catch as distinct error-boundary paths", () => {

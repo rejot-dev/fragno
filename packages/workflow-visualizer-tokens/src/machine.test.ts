@@ -66,7 +66,7 @@ describe("workflow token state machine", () => {
 
     for (const token of tokenizeWorkflowSource(source)) {
       const update = machine.push(token);
-      assert(update.graph.version === 6);
+      assert(update.graph.version === 7);
       assert(update.state.sourceLength === machine.source().length);
       assertUsableGraph(update.graph.nodes, update.graph.edges);
     }
@@ -107,7 +107,7 @@ describe("workflow token state machine", () => {
     expect(rethrow).toMatchObject({
       terminalType: "error",
       label: "rethrow error",
-      value: "error",
+      value: { kind: "expression", expression: "error" },
     });
     assert(
       !snapshot.graph.edges.some(
@@ -333,7 +333,10 @@ describe("workflow token state machine", () => {
     });
     expect(
       snapshot.graph.nodes.filter(
-        (node) => node.kind === "terminal" && node.value === 'new Error("use fallback")',
+        (node) =>
+          node.kind === "terminal" &&
+          node.value.kind === "expression" &&
+          node.value.expression === 'new Error("use fallback")',
       ),
     ).toEqual([]);
   });
@@ -378,7 +381,10 @@ describe("workflow token state machine", () => {
       snapshot.graph.nodes.find(
         (node): node is TerminalNode => node.kind === "terminal" && node.label === "rethrow error",
       ),
-    ).toMatchObject({ terminalType: "error", value: "error" });
+    ).toMatchObject({
+      terminalType: "error",
+      value: { kind: "expression", expression: "error" },
+    });
   });
 
   it("routes a throw through an inner finally to an outer catch", () => {
@@ -399,7 +405,10 @@ describe("workflow token state machine", () => {
     expect(snapshot.graph.nodes.filter((node) => node.kind === "caught-throw")).toHaveLength(1);
     expect(
       snapshot.graph.nodes.filter(
-        (node) => node.kind === "terminal" && node.value.includes("outer handles this"),
+        (node) =>
+          node.kind === "terminal" &&
+          node.value.kind === "expression" &&
+          node.value.expression.includes("outer handles this"),
       ),
     ).toEqual([]);
   });
@@ -415,7 +424,10 @@ describe("workflow token state machine", () => {
     );
     expect(testExit).toMatchObject({
       label: "not-test-command",
-      value: '{ skipped: true, reason: "not-test-command" }',
+      value: {
+        kind: "expression",
+        expression: '{ skipped: true, reason: "not-test-command" }',
+      },
     });
     expect(testSteps[0]).toMatchObject({
       label: "wait 3 seconds",
@@ -448,7 +460,10 @@ describe("workflow token state machine", () => {
     );
     expect(thrown).toMatchObject({
       label: "organization.created event is missing subject.orgId.",
-      value: 'new Error("organization.created event is missing subject.orgId.")',
+      value: {
+        kind: "expression",
+        expression: 'new Error("organization.created event is missing subject.orgId.")',
+      },
     });
   });
 
@@ -644,7 +659,7 @@ describe("workflow token state machine", () => {
     ]);
     expect(terminal).toMatchObject({
       label: "skip",
-      value: '{ skipped: true, reason: "skip" }',
+      value: { kind: "expression", expression: '{ skipped: true, reason: "skip" }' },
     });
     assert(terminal);
     expect(ancestorLabels(snapshot.graph, terminal)).toEqual([
@@ -698,7 +713,10 @@ describe("workflow token state machine", () => {
     expect(ancestorLabels(snapshot.graph, steps[2]!)).toEqual(["branches"]);
     expect(retryTerminal).toMatchObject({
       terminalType: "early-return",
-      value: '{ skipped: true, reason: "retry-later" }',
+      value: {
+        kind: "expression",
+        expression: '{ skipped: true, reason: "retry-later" }',
+      },
     });
   });
 
@@ -896,7 +914,9 @@ describe("workflow token state machine", () => {
     const terminal = finished.nodes.find((node) => node.kind === "terminal");
     expect(terminal).toEqual(expect.objectContaining({ order: 0 }));
     assert(terminal?.kind === "terminal");
-    expect(terminal.value).toContain('status: event.payload.ready ? "ready" : "waiting"');
+    expect(terminalExpression(terminal)).toContain(
+      'status: event.payload.ready ? "ready" : "waiting"',
+    );
   });
 
   it("keeps incomplete ternary branches structurally usable while tokens arrive", () => {
@@ -991,7 +1011,11 @@ describe("workflow token state machine", () => {
     );
 
     expect(
-      terminals.map(({ terminalType, label, value }) => ({ terminalType, label, value })),
+      terminals.map(({ terminalType, label, value }) => ({
+        terminalType,
+        label,
+        value: value.kind === "expression" ? value.expression : "",
+      })),
     ).toEqual([
       {
         terminalType: "early-return",
@@ -1044,11 +1068,39 @@ describe("workflow token state machine", () => {
     }).toEqual({
       stepOrder: 0,
       terminalOrder: 1,
-      terminalValue: "",
+      terminalValue: { kind: "workflow-child", nodeId: step.id },
     });
     expect(snapshot.graph.edges).toContainEqual(
       expect.objectContaining({ from: step.id, to: terminal.id, type: "sequence" }),
     );
+  });
+
+  it("keeps a transformed step result as a distinct final return expression", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/return-transformed-step.workflow.js",
+      `defineWorkflow({ name: "return-transformed-step" }, async (_event, step) => {
+        return transform(await step.do("produce result", async () => ({ ok: true })));
+      });`,
+    );
+    const step = stepByLabel(snapshot.graph, "produce result");
+    const terminal = snapshot.graph.nodes.find(
+      (node): node is TerminalNode =>
+        node.kind === "terminal" && node.terminalType === "final-return",
+    );
+
+    assert(terminal);
+    expect({
+      stepOrder: step.order,
+      terminalOrder: terminal.order,
+      terminalValue: terminal.value,
+    }).toEqual({
+      stepOrder: 0,
+      terminalOrder: 1,
+      terminalValue: {
+        kind: "expression",
+        expression: 'transform(await step.do("produce result", async () => ({ ok: true })))',
+      },
+    });
   });
 
   it("orders a ternary wrapped by return before its final terminal", () => {
@@ -1078,7 +1130,7 @@ describe("workflow token state machine", () => {
     expect(snapshot.graph.edges).not.toContainEqual(
       expect.objectContaining({ from: terminal.id, to: condition.id, type: "sequence" }),
     );
-    assert(terminal.value === "");
+    expect(terminal.value).toEqual({ kind: "workflow-child", nodeId: condition.id });
   });
 
   it("preserves a return terminal when a ternary has no durable work", () => {
@@ -1096,7 +1148,10 @@ describe("workflow token state machine", () => {
     expect(snapshot.graph.nodes.filter((node) => node.kind === "condition")).toEqual([]);
     expect(terminal).toMatchObject({
       order: 0,
-      value: "event.payload.ready ? { ready: true } : { ready: false }",
+      value: {
+        kind: "expression",
+        expression: "event.payload.ready ? { ready: true } : { ready: false }",
+      },
     });
   });
 
@@ -1318,7 +1373,12 @@ describe("workflow token state machine", () => {
     ]);
     expect(
       snapshot.graph.nodes.filter((node): node is TerminalNode => node.kind === "terminal"),
-    ).toEqual([expect.objectContaining({ terminalType: "final-return", value: "{ ok: true }" })]);
+    ).toEqual([
+      expect.objectContaining({
+        terminalType: "final-return",
+        value: { kind: "expression", expression: "{ ok: true }" },
+      }),
+    ]);
     expect(snapshot.graph.nodes.filter((node) => node.kind === "condition")).toEqual([]);
     expect(snapshot.graph.nodes.filter((node) => node.kind === "loop")).toEqual([]);
     expect(snapshot.graph.nodes.filter((node) => node.kind === "parallel")).toEqual([]);
@@ -1609,7 +1669,7 @@ describe("workflow token state machine", () => {
         expect.objectContaining({
           kind: "terminal",
           terminalType: "final-return",
-          value: "",
+          value: { kind: "none" },
           construction: { status: "complete", phase: "complete" },
         }),
       ]),
@@ -1793,7 +1853,7 @@ describe("workflow token state machine", () => {
     }
 
     const snapshot = machine.finish();
-    expect(snapshot.graph).toEqual({ version: 6, nodes: [], edges: [], diagnostics: [] });
+    expect(snapshot.graph).toEqual({ version: 7, nodes: [], edges: [], diagnostics: [] });
     expect(snapshot.state).toMatchObject({ status: "finished", activeConstructs: [] });
     assert(renderWorkflowVisualizationText(snapshot) === "(no workflows)");
   });
@@ -1836,6 +1896,10 @@ function visualizeFixture(path: string) {
   const source = AUTOMATIONS.get(path);
   assert(source !== undefined);
   return visualizeWorkflowSource(path, source);
+}
+
+function terminalExpression(terminal: TerminalNode): string {
+  return terminal.value.kind === "expression" ? terminal.value.expression : "";
 }
 
 function stepByLabel(graph: WorkflowGraph, label: string): StepNode {

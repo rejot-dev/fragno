@@ -232,6 +232,10 @@ export interface BranchNode {
 
 export type TerminalType = "early-return" | "final-return" | "error";
 export type TerminalConstructionPhase = "returning" | "throwing" | "complete";
+export type TerminalValue =
+  | { kind: "none" }
+  | { kind: "expression"; expression: string }
+  | { kind: "workflow-child"; nodeId: string };
 
 export interface CaughtThrowNode {
   id: string;
@@ -251,7 +255,7 @@ export interface TerminalNode {
   kind: "terminal";
   label: string;
   terminalType: TerminalType;
-  value: string;
+  value: TerminalValue;
   workflowName: string;
   order: number;
   sourceOrder: number;
@@ -288,7 +292,7 @@ export interface Diagnostic {
 }
 
 export interface WorkflowGraph {
-  version: 6;
+  version: 7;
   nodes: GraphNode[];
   edges: GraphEdge[];
   diagnostics: Diagnostic[];
