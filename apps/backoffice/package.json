@@ -11,7 +11,7 @@
     "build": "react-router build",
     "deploy": "pnpm run build && wrangler deploy",
     "dev": "react-router dev",
-    "preview": "pnpm run build && vite preview",
+    "preview": "vite preview",
     "types:check": "tsc -b --noEmit",
     "types:check:watch": "tsc -b --noEmit --watch",
     "types:generate": "wrangler types --env-interface CloudflareEnv --env-file .dev.vars.example && react-router typegen",
