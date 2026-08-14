@@ -1,8 +1,7 @@
 import type { FragnoOutboxEntry } from "./protocol";
 
-export const FRAGNO_OUTBOX_CHECKPOINT_METADATA_KEY = "fragno.outbox.checkpoint.v1";
-export const FRAGNO_OUTBOX_SOURCE_METADATA_KEY = "fragno.outbox.source.v1";
-export const FRAGNO_OUTBOX_INITIALIZED_METADATA_KEY = "fragno.outbox.initialized.v1";
+export const FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY =
+  "fragno.outbox.collection-checkpoint.v1";
 
 export type FragnoOutboxCheckpoint = {
   versionstamp: string;
@@ -26,21 +25,28 @@ export function shouldApplyOutboxEntry(
   checkpoint: FragnoOutboxCheckpoint | undefined,
   entry: FragnoOutboxEntry,
 ): boolean {
-  if (!checkpoint) {
+  return shouldApplyOutboxCheckpoint(checkpoint, checkpointForEntry(entry));
+}
+
+export function shouldApplyOutboxCheckpoint(
+  appliedCheckpoint: FragnoOutboxCheckpoint | undefined,
+  incomingCheckpoint: FragnoOutboxCheckpoint,
+): boolean {
+  if (!appliedCheckpoint) {
     return true;
   }
 
-  if (entry.versionstamp < checkpoint.versionstamp) {
+  if (incomingCheckpoint.versionstamp < appliedCheckpoint.versionstamp) {
     return false;
   }
 
-  if (entry.versionstamp > checkpoint.versionstamp) {
+  if (incomingCheckpoint.versionstamp > appliedCheckpoint.versionstamp) {
     return true;
   }
 
-  if (entry.uowId !== checkpoint.uowId) {
+  if (incomingCheckpoint.uowId !== appliedCheckpoint.uowId) {
     throw new Error(
-      `Outbox versionstamp ${entry.versionstamp} changed from UOW ${checkpoint.uowId} to ${entry.uowId}.`,
+      `Outbox versionstamp ${incomingCheckpoint.versionstamp} changed from UOW ${appliedCheckpoint.uowId} to ${incomingCheckpoint.uowId}.`,
     );
   }
 

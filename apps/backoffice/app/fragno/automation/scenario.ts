@@ -1,6 +1,7 @@
+import { workflowsSchema } from "@fragno-dev/workflows/schema";
+
 import type { UserAuthorityFacts } from "@fragno-dev/auth";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
-import { createFragnoCollection } from "@fragno-dev/tanstack-db-adapter";
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
 
 import {
@@ -43,6 +44,7 @@ import {
   WORKSPACE_STARTER_CONTENT,
 } from "@/files";
 import type { MasterFileSystem } from "@/files";
+import { automationFragmentSchema } from "@/fragno/automation/schema";
 import {
   createAutomationCollections,
   type AutomationCollections,
@@ -1614,11 +1616,11 @@ const getHooks = (ctx: BackofficeScenarioContext, orgId: string) =>
     orgId,
   });
 
-const automationScopedInternalUrl = (scope: BackofficeContextScope) =>
-  `http://scenario.local/api/automations-scoped/${backofficeContextScopeRoutePath(scope)}/_internal`;
+const automationScopedBaseUrl = (scope: BackofficeContextScope) =>
+  `http://scenario.local/api/automations-scoped/${backofficeContextScopeRoutePath(scope)}`;
 
-const piScopedInternalUrl = (scope: BackofficeContextScope) =>
-  `http://scenario.local${scopedPublicMountPath({ publicPrefix: "/api/pi", scope })}/_internal`;
+const piScopedBaseUrl = (scope: BackofficeContextScope) =>
+  `http://scenario.local${scopedPublicMountPath({ publicPrefix: "/api/pi", scope })}`;
 
 const internalRouteSuffix = (requestUrl: URL) => {
   const internalPathIndex = requestUrl.pathname.indexOf("/_internal");
@@ -1665,27 +1667,19 @@ const createScenarioPiTanStackFetch = (
 const createScenarioTanStack = (runtime: InMemoryBackofficeRuntime): BackofficeScenarioTanStack => {
   const automations = createScenarioCollectionDatabase({
     name: "Automation collections",
+    schemas: [automationFragmentSchema, workflowsSchema] as const,
     drainRuntime: () => runtime.drain(),
-    internalUrl: automationScopedInternalUrl,
+    baseUrl: automationScopedBaseUrl,
     createFetch: (scope) => createScenarioAutomationTanStackFetch(runtime, scope),
-    createCollections: ({ coordinator, scopeKey }) =>
-      createAutomationCollections({
-        coordinator,
-        collectionId: (table) => `backoffice-scenario.automations.${scopeKey}.${table}`,
-        createCollection: createFragnoCollection,
-      }),
+    createCollections: createAutomationCollections,
   });
   const pi = createScenarioCollectionDatabase({
     name: "Pi collections",
+    schemas: [workflowsSchema] as const,
     drainRuntime: () => runtime.drain(),
-    internalUrl: piScopedInternalUrl,
+    baseUrl: piScopedBaseUrl,
     createFetch: (scope) => createScenarioPiTanStackFetch(runtime, scope),
-    createCollections: ({ coordinator, scopeKey }) =>
-      createPiCollections({
-        coordinator,
-        collectionId: (target) => `backoffice-scenario.pi.${scopeKey}.${target}`,
-        createCollection: createFragnoCollection,
-      }),
+    createCollections: createPiCollections,
   });
 
   return {

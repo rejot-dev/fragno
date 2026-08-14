@@ -1,4 +1,4 @@
-import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
+import type { AutomationBrowserCollections as AutomationCollections } from "@/fragno/automation/tanstack/browser-database";
 import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
 
 import type { AutomationScriptRecord } from "./data";

@@ -6,7 +6,7 @@ import { visualizeWorkflowSource, type SourceRange } from "@fragno-dev/workflow-
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
-import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
+import type { AutomationBrowserCollections as AutomationCollections } from "@/fragno/automation/tanstack/browser-database";
 import {
   resolveWorkflowRuntimeToolCalls,
   type RuntimeToolWorkflowDescriptor,

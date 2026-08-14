@@ -59,9 +59,6 @@ type AutomationEventCursor = {
   id: string;
 };
 
-const toErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "Automation event synchronization failed.";
-
 export default function BackofficeAutomationEvents() {
   const { collections } = useOutletContext<AutomationLayoutContext>();
   const [pageCursors, setPageCursors] = useState<AutomationEventCursor[]>([]);
@@ -104,9 +101,7 @@ export default function BackofficeAutomationEvents() {
     ? { occurredAt: nextPageBoundary.occurredAt, id: nextPageBoundary.id }
     : null;
   const events = pageRows.slice(0, EVENTS_PAGE_SIZE);
-  const eventsError = eventsQuery.isError
-    ? toErrorMessage(collections.events.utils.getLastError())
-    : null;
+  const eventsError = eventsQuery.isError ? "Automation event synchronization failed." : null;
 
   const togglePayload = (eventId: string) => {
     setExpandedEventIds((current) => {

@@ -1,5 +1,6 @@
-import { createFetchFragnoOutboxTransport } from "@fragno-dev/tanstack-db-adapter/transport";
 import type { RouterContextProvider } from "react-router";
+
+import { fetchFragnoOutboxDescription } from "@fragno-dev/tanstack-db-adapter";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -13,14 +14,14 @@ export async function fetchAutomationCollectionSource(
 ): Promise<AutomationCollectionSource> {
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const automations = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
-  const internalUrl = new URL("/api/automations/_internal", request.url);
-  const transport = createFetchFragnoOutboxTransport({
-    internalUrl,
+  const description = await fetchFragnoOutboxDescription({
+    baseUrl: new URL("/api/automations", request.url),
+    signal: request.signal,
     fetch: (input, init) => automations.fetch(new Request(input, init)),
   });
 
   return {
     scope,
-    adapterIdentity: await transport.getAdapterIdentity({ signal: request.signal }),
+    adapterIdentity: description.adapterIdentity,
   };
 }

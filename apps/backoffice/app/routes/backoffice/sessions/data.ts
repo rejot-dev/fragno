@@ -1,8 +1,9 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { createPiHarness } from "@fragno-dev/pi-harness/factory";
 import type { PiSession, PiSessionDetail, PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
-import { createFetchFragnoOutboxTransport } from "@fragno-dev/tanstack-db-adapter/transport";
 import type { RouterContextProvider } from "react-router";
+
+import { fetchFragnoOutboxDescription } from "@fragno-dev/tanstack-db-adapter";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
@@ -84,17 +85,18 @@ export async function fetchPiAdapterIdentity(
   scope: BackofficeContextScope,
 ): Promise<string> {
   const piDo = getScopedAutomationsDurableObject(context, scope);
-  const url = new URL(request.url);
-  url.pathname = "/api/pi/_internal";
-  url.search = "";
-  url.searchParams.set("scope", backofficeContextScopeSinglePathSegment(scope));
-
-  const transport = createFetchFragnoOutboxTransport({
-    internalUrl: url,
-    fetch: (input, init) => piDo.fetch(new Request(input, { ...init, headers: request.headers })),
+  const scopeKey = backofficeContextScopeSinglePathSegment(scope);
+  const description = await fetchFragnoOutboxDescription({
+    baseUrl: new URL("/api/pi", request.url),
+    signal: request.signal,
+    fetch: (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      url.searchParams.set("scope", scopeKey);
+      return piDo.fetch(new Request(url, { ...init, headers: request.headers }));
+    },
   });
 
-  return transport.getAdapterIdentity({ signal: request.signal });
+  return description.adapterIdentity;
 }
 
 export async function fetchPiRuntimeState(

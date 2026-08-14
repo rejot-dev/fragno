@@ -6,7 +6,11 @@ import { use } from "react";
 
 import { and, eq, toArray, useLiveQuery } from "@tanstack/react-db";
 
-import { getPiBrowserDatabase, type PiCollectionSource } from "./browser-database";
+import {
+  getAutomationBrowserDatabase,
+  type AutomationCollectionSource,
+} from "@/fragno/automation/tanstack/browser-database";
+
 import { projectPiSessionCollectionRows } from "./session-projection";
 
 export function usePiSessionProjection({
@@ -14,12 +18,11 @@ export function usePiSessionProjection({
   workflowName,
   sessionId,
 }: {
-  source: PiCollectionSource;
+  source: AutomationCollectionSource;
   workflowName: string;
   sessionId: string;
 }) {
-  const database = use(getPiBrowserDatabase());
-  const collections = database.collectionsFor(source);
+  const { collections } = use(getAutomationBrowserDatabase(source));
   const projectionQuery = useLiveQuery(
     (query) =>
       query
@@ -94,20 +97,13 @@ export function usePiSessionProjection({
     workflowStepEmissions: projectionRows?.workflowStepEmissions ?? [],
     synchronized: projectionQuery.isReady,
   });
-  const sourceError = projectionQuery.isError
-    ? (collections.workflowInstances.utils.getLastError() ??
-      collections.workflowSteps.utils.getLastError() ??
-      collections.workflowStepEmissions.utils.getLastError())
-    : undefined;
   const error =
     projection.error?.message ??
     (projectionRows && !session
       ? `Workflow ${workflowName}/${sessionId} does not contain Pi session data.`
-      : sourceError instanceof Error
-        ? sourceError.message
-        : projectionQuery.isError
-          ? "Pi session synchronization failed."
-          : null);
+      : projectionQuery.isError
+        ? "Pi session synchronization failed."
+        : null);
 
   return {
     session,

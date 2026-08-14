@@ -1,7 +1,11 @@
-import type { FragnoOutboxCoordinator } from "@fragno-dev/tanstack-db-adapter/coordinator";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
-import type { FragnoCollection, FragnoCollectionFactory } from "@fragno-dev/tanstack-db-adapter";
+import {
+  type FragnoCollectionRow,
+  type FragnoOutboxCoordinator,
+} from "@fragno-dev/tanstack-db-adapter";
+
+import type { Collection } from "@tanstack/react-db";
 
 export type PiCollectionTarget =
   | "workflows.workflow_instance"
@@ -9,40 +13,29 @@ export type PiCollectionTarget =
   | "workflows.workflow_step_emission";
 
 export type PiCollections = {
-  workflowInstances: FragnoCollection<typeof workflowsSchema, "workflow_instance">;
-  workflowSteps: FragnoCollection<typeof workflowsSchema, "workflow_step">;
-  workflowStepEmissions: FragnoCollection<typeof workflowsSchema, "workflow_step_emission">;
+  workflowInstances: Collection<
+    FragnoCollectionRow<(typeof workflowsSchema.tables)["workflow_instance"]>,
+    string
+  >;
+  workflowSteps: Collection<
+    FragnoCollectionRow<(typeof workflowsSchema.tables)["workflow_step"]>,
+    string
+  >;
+  workflowStepEmissions: Collection<
+    FragnoCollectionRow<(typeof workflowsSchema.tables)["workflow_step_emission"]>,
+    string
+  >;
 };
 
-export function createPiCollections(options: {
-  coordinator: FragnoOutboxCoordinator;
-  collectionId(target: PiCollectionTarget): string;
-  createCollection: FragnoCollectionFactory;
-}): PiCollections {
+export function createPiCollections(
+  coordinator: FragnoOutboxCoordinator<readonly [typeof workflowsSchema]>,
+): PiCollections {
   return {
-    workflowInstances: options.createCollection({
-      id: options.collectionId("workflows.workflow_instance"),
-      coordinator: options.coordinator,
-      target: {
-        schema: workflowsSchema,
-        table: "workflow_instance",
-      },
-    }),
-    workflowSteps: options.createCollection({
-      id: options.collectionId("workflows.workflow_step"),
-      coordinator: options.coordinator,
-      target: {
-        schema: workflowsSchema,
-        table: "workflow_step",
-      },
-    }),
-    workflowStepEmissions: options.createCollection({
-      id: options.collectionId("workflows.workflow_step_emission"),
-      coordinator: options.coordinator,
-      target: {
-        schema: workflowsSchema,
-        table: "workflow_step_emission",
-      },
+    workflowInstances: coordinator.collection(workflowsSchema, "workflow_instance"),
+    workflowSteps: coordinator.collection(workflowsSchema, "workflow_step"),
+    workflowStepEmissions: coordinator.collection(workflowsSchema, "workflow_step_emission", {
+      rowUpdateMode: "full",
+      skipMissingTruncateDeletes: true,
     }),
   };
 }

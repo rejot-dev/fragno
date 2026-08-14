@@ -6,7 +6,7 @@ import {
 
 import { eq, type InitialQueryBuilder } from "@tanstack/react-db";
 
-import type { PiCollections } from "./collections";
+import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
 
 const PI_WORKFLOW_STATUSES = new Set<string>([
   "active",
@@ -46,7 +46,7 @@ export function buildPiSessionListingQuery(
     workflowName,
     limit,
   }: {
-    collections: Pick<PiCollections, "workflowInstances">;
+    collections: Pick<AutomationBrowserCollections, "workflowInstances">;
     workflowName: string;
     limit: number;
   },

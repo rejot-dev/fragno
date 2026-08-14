@@ -2,14 +2,14 @@ import { isRouteErrorResponse } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficePageHeader } from "@/components/backoffice";
+import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
 import type { PiRuntimeState } from "@/fragno/pi/pi-shared";
-import type { PiCollectionSource } from "@/fragno/pi/tanstack/browser-database";
 
 import { getRouteErrorDebugDetails, getRouteErrorMessage } from "../route-errors";
 
 export type PiLayoutContext = {
   scope: BackofficeContextScope;
-  persistenceSource: PiCollectionSource | null;
+  persistenceSource: AutomationCollectionSource | null;
   persistenceError: string | null;
   runtimeState: PiRuntimeState | null;
   runtimeError: string | null;

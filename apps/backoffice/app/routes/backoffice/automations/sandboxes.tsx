@@ -294,7 +294,7 @@ export default function BackofficeAutomationSandboxes() {
     return id && isSandboxStatus(instance.status) ? [{ id, status: instance.status }] : [];
   });
   const sandboxesError = sandboxesQuery.isError
-    ? toErrorMessage(collections.sandboxInstances.utils.getLastError())
+    ? "Automation sandbox synchronization failed."
     : null;
   const [searchParams] = useSearchParams();
   const actionData = useActionData<typeof action>();

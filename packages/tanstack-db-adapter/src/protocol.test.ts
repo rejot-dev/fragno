@@ -107,10 +107,6 @@ describe("Fragno outbox protocol", () => {
         type: "insert",
         key: "user-1",
         value: { id: "user-1", name: "Ada" },
-        metadata: {
-          versionstamp: "000000000000000000000001",
-          uowId: "uow-1",
-        },
       },
     ]);
   });

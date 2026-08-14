@@ -1,3 +1,7 @@
+import { uploadSchema } from "@fragno-dev/upload/schema";
+
+import { createFragnoOutboxCoordinator } from "@fragno-dev/tanstack-db-adapter";
+
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import {
   backofficeContextScopeRoutePath,
@@ -5,51 +9,58 @@ import {
 } from "@/backoffice-runtime/scope-codec";
 import {
   createBrowserCollectionDatabaseLoader,
-  openBrowserCollectionDatabase,
-  type BrowserCollectionSourceDescription,
+  createCollectionResourceRegistry,
+  type BrowserCollectionDatabase,
 } from "@/fragno/tanstack/browser-collection-database";
 
-import {
-  createUploadCollections,
-  type UploadCollections,
-  type UploadCollectionTarget,
-} from "./collections";
-
-const UPLOAD_DATABASE_NAME = "fragno-backoffice-upload.sqlite";
-const UPLOAD_DATABASE_COORDINATOR_NAME = "fragno-backoffice-upload";
-const UPLOAD_COLLECTION_SCHEMA_VERSION = 1;
+import { createUploadCollections, type UploadCollections } from "./collections";
 
 export type UploadCollectionSource = {
   scope: BackofficeRoutableScope;
   adapterIdentity: string;
 };
 
-export function describeUploadCollectionSource(
-  source: UploadCollectionSource,
-): BrowserCollectionSourceDescription<UploadCollectionTarget> {
+export function describeUploadCollectionSource(source: UploadCollectionSource) {
   const scopeKey = backofficeScopeSinglePathSegment(source.scope);
   return {
     resourceKey: JSON.stringify([scopeKey, source.adapterIdentity]),
-    internalUrl: `/api/upload-scoped/${backofficeContextScopeRoutePath(source.scope)}/_internal`,
-    bootstrap: { adapterIdentity: source.adapterIdentity },
-    collectionId: (target) =>
-      JSON.stringify(["backoffice", "upload", scopeKey, source.adapterIdentity, target]),
+    baseUrl: `/api/upload-scoped/${backofficeContextScopeRoutePath(source.scope)}`,
   };
 }
 
 export const getUploadBrowserDatabase = createBrowserCollectionDatabaseLoader({
   name: "The Upload collection database",
-  open: () =>
-    openBrowserCollectionDatabase<
-      UploadCollectionSource,
-      UploadCollections,
-      UploadCollectionTarget
-    >({
-      databaseName: UPLOAD_DATABASE_NAME,
-      coordinatorName: UPLOAD_DATABASE_COORDINATOR_NAME,
-      schemaVersion: UPLOAD_COLLECTION_SCHEMA_VERSION,
-      describeSource: describeUploadCollectionSource,
-      createCollections: ({ coordinator, collectionId, createCollection }) =>
-        createUploadCollections({ coordinator, collectionId, createCollection }),
-    }),
+  async open(): Promise<BrowserCollectionDatabase<UploadCollectionSource, UploadCollections>> {
+    const resources = createCollectionResourceRegistry({
+      resourceKey: (source: UploadCollectionSource) =>
+        describeUploadCollectionSource(source).resourceKey,
+      createResource: (source: UploadCollectionSource) => {
+        const description = describeUploadCollectionSource(source);
+        const resource = (async () => {
+          const coordinator = await createFragnoOutboxCoordinator({
+            baseUrl: description.baseUrl,
+            fetch: (input, init) => globalThis.fetch(input, init),
+            schemas: [uploadSchema] as const,
+          });
+          const collections = createUploadCollections(coordinator);
+
+          try {
+            await coordinator.preload();
+            return collections;
+          } catch (error) {
+            await coordinator.cleanup().catch(() => {});
+            throw error;
+          }
+        })();
+        void resource.catch(() => {});
+        return resource;
+      },
+    });
+
+    return {
+      readyCollectionsFor(source) {
+        return resources.resourceFor(source);
+      },
+    };
+  },
 });

@@ -7,8 +7,8 @@ import type {
   OutboxEntry,
   OutboxMatchScalar,
   OutboxMutation,
+  OutboxOperation,
   OutboxPayload,
-  OutboxTruncateNotification,
 } from "@fragno-dev/db";
 
 import type { ChangeMessageOrDeleteKeyMessage } from "@tanstack/db";
@@ -42,24 +42,17 @@ export type FragnoCollectionChange<TRow extends object> =
       type: "insert";
       key: string;
       value: TRow;
-      metadata: FragnoRowSyncMetadata;
     }
   | {
       type: "update";
       key: string;
       value: Partial<TRow>;
-      metadata: FragnoRowSyncMetadata;
     }
   | {
       type: "delete";
       key: string;
-      metadata: FragnoRowSyncMetadata;
+      origin: "delete" | "truncate";
     };
-
-export type FragnoRowSyncMetadata = {
-  versionstamp: string;
-  uowId: string;
-};
 
 export function decodeFragnoOutboxPayload(payload: unknown): OutboxPayload {
   const decoded = superjson.deserialize(payload as SuperJSONResult) as unknown;
@@ -117,30 +110,36 @@ export function projectFragnoOutboxEntry<
   entry: FragnoOutboxEntry,
   target: FragnoCollectionTarget<TSchema, TTableName>,
 ): FragnoCollectionChange<FragnoCollectionRow<TSchema["tables"][TTableName]>>[] {
-  type Row = FragnoCollectionRow<TSchema["tables"][TTableName]>;
-
   const payload = decodeFragnoOutboxPayload(entry.payload);
   const targetNamespace = resolveDatabaseNamespace(target.schema.name, target.namespace) ?? "";
+  const operations = payload.operations.filter((operation) => {
+    const operationTarget = fragnoOutboxOperationTarget(operation);
+    return operationTarget.namespace === targetNamespace && operationTarget.table === target.table;
+  });
+  return projectFragnoOutboxOperations(entry, operations, target);
+}
+
+export function projectFragnoOutboxOperations<
+  TSchema extends AnySchema,
+  TTableName extends keyof TSchema["tables"] & string,
+>(
+  entry: FragnoOutboxEntry,
+  operations: readonly OutboxOperation[],
+  target: FragnoCollectionTarget<TSchema, TTableName>,
+): FragnoCollectionChange<FragnoCollectionRow<TSchema["tables"][TTableName]>>[] {
+  type Row = FragnoCollectionRow<TSchema["tables"][TTableName]>;
+
   const table = target.schema.tables[target.table];
   const externalIdColumnName = table.getIdColumn().name;
-  const metadata = {
-    versionstamp: entry.versionstamp,
-    uowId: entry.uowId,
-  } satisfies FragnoRowSyncMetadata;
-
   const changes: FragnoCollectionChange<Row>[] = [];
 
-  for (const mutation of payload.operations) {
-    if (resolveMutationNamespace(mutation) !== targetNamespace || mutation.table !== target.table) {
-      continue;
-    }
-
+  for (const mutation of operations) {
     if (mutation.op === "truncate") {
       for (const externalId of mutation.externalIds) {
         changes.push({
           type: "delete",
           key: externalId,
-          metadata,
+          origin: "truncate",
         });
       }
       continue;
@@ -155,7 +154,6 @@ export function projectFragnoOutboxEntry<
           ...resolvedMutation.values,
           [externalIdColumnName]: resolvedMutation.externalId,
         } as Row,
-        metadata,
       });
       continue;
     }
@@ -168,7 +166,6 @@ export function projectFragnoOutboxEntry<
           ...resolvedMutation.set,
           [externalIdColumnName]: resolvedMutation.externalId,
         } as Partial<Row>,
-        metadata,
       });
       continue;
     }
@@ -176,11 +173,21 @@ export function projectFragnoOutboxEntry<
     changes.push({
       type: "delete",
       key: resolvedMutation.externalId,
-      metadata,
+      origin: "delete",
     });
   }
 
   return changes;
+}
+
+export function fragnoOutboxOperationTarget(operation: OutboxOperation): {
+  namespace: string;
+  table: string;
+} {
+  return {
+    namespace: operation.namespace ?? operation.schema,
+    table: operation.table,
+  };
 }
 
 /** Converts the protocol plan to TanStack messages at the sync boundary. */
@@ -191,19 +198,13 @@ export function toTanStackChangeMessage<TRow extends object>(
     return {
       type: "delete",
       key: change.key,
-      metadata: change.metadata,
     };
   }
 
   return {
     type: change.type,
     value: change.value as TRow,
-    metadata: change.metadata,
   };
-}
-
-function resolveMutationNamespace(mutation: OutboxMutation | OutboxTruncateNotification): string {
-  return mutation.namespace ?? mutation.schema;
 }
 
 function isOutboxMatchScalar(value: unknown): value is OutboxMatchScalar {

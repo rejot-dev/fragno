@@ -38,9 +38,6 @@ const routeSections = (routes: AutomationRouteDefinition[]) => [
   },
 ];
 
-const toErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "Automation route synchronization failed.";
-
 export default function BackofficeAutomationRouter() {
   const { selectedScope, collections } = useOutletContext<AutomationLayoutContext>();
   const routesQuery = useLiveQuery(
@@ -68,12 +65,7 @@ export default function BackofficeAutomationRouter() {
     ...route,
     nextOccurrenceAt: route.nextOccurrenceAt?.toISOString() ?? null,
   }));
-  const routeError = routesQuery.isError
-    ? toErrorMessage(
-        collections.routes.utils.getLastError() ??
-          collections.routeScheduleStates.utils.getLastError(),
-      )
-    : null;
+  const routeError = routesQuery.isError ? "Automation route synchronization failed." : null;
   const [searchParams] = useSearchParams();
   const selectedRouteId = searchParams.get("route")?.trim() ?? "";
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? null;

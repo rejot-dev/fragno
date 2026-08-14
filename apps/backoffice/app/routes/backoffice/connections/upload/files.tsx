@@ -708,7 +708,7 @@ function UploadFilesLoading() {
 
 function SynchronizedUploadFiles({ source }: { source: UploadCollectionSource }) {
   const database = use(getUploadBrowserDatabase());
-  const collections = database.collectionsFor(source);
+  const collections = use(database.readyCollectionsFor(source));
   const filesQuery = useLiveQuery(
     (query) =>
       query.from({ file: collections.files }).where(({ file }) => eq(file.status, "ready")),

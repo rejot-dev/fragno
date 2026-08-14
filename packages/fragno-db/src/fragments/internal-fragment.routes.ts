@@ -4,8 +4,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import { BufferedDatabasePump } from "../buffered-pump";
 import type { DatabaseHandlerContext, DatabaseHandlerTx } from "../db-fragment-definition-builder";
-import { isUniqueConstraintError } from "../errors";
-import type { OutboxEntry } from "../outbox/outbox";
+import { FRAGNO_OUTBOX_PAGE_SIZE, type OutboxEntry } from "../outbox/outbox";
 import { submitSyncRequest, type SyncRequestRecord } from "../sync/submit";
 import type { SubmitRequest, SyncCommandDefinition } from "../sync/types";
 import {
@@ -17,6 +16,7 @@ import {
 
 type InternalDescribeResponse = {
   adapterIdentity: string;
+  currentVersionstamp: string | null;
   fragments: Array<{ name: string; mountRoute: string }>;
   schemas: Array<{
     name: string;
@@ -52,11 +52,11 @@ const parseLimitQueryParam = (limitValue: string | null): QueryLimitResult => {
   }
 
   const parsed = Number.parseInt(limitValue, 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > FRAGNO_OUTBOX_PAGE_SIZE) {
     return {
       ok: false,
       response: {
-        error: "Invalid limit query parameter.",
+        error: `Limit query parameter must be between 1 and ${FRAGNO_OUTBOX_PAGE_SIZE}.`,
         code: "INVALID_LIMIT",
       },
       status: 400,
@@ -82,45 +82,22 @@ const getOrCreateAdapterIdentity = async (
   handlerTx: () => ReturnType<DatabaseHandlerContext["handlerTx"]>,
   services: Pick<InternalFragmentInstance["services"], "settingsService">,
 ): Promise<AdapterIdentityResult> => {
-  const readAdapterIdentity = async () =>
-    await handlerTx()
-      .withServiceCalls(
-        () => [services.settingsService.get(SETTINGS_NAMESPACE, ADAPTER_IDENTITY_KEY)] as const,
-      )
-      .transform(({ serviceResult: [result] }) => result?.value)
-      .execute();
-
   try {
-    const adapterIdentity = crypto.randomUUID();
-
-    try {
-      const identity = await handlerTx()
-        .withServiceCalls(
-          () =>
-            [
-              services.settingsService.getOrCreate(
-                SETTINGS_NAMESPACE,
-                ADAPTER_IDENTITY_KEY,
-                adapterIdentity,
-              ),
-            ] as const,
-        )
-        .transform(({ serviceResult: [result] }) => result)
-        .execute();
-      return { ok: true, value: identity };
-    } catch (error) {
-      if (!isUniqueConstraintError(error)) {
-        throw error;
-      }
-
-      // Concurrent cold-start requests can both observe the missing setting. The unique index
-      // chooses the persisted identity; the losing request reads that committed value.
-      const concurrentIdentity = await readAdapterIdentity();
-      if (concurrentIdentity !== undefined) {
-        return { ok: true, value: concurrentIdentity };
-      }
-      throw error;
-    }
+    const generatedIdentity = crypto.randomUUID();
+    const adapterIdentity = await handlerTx()
+      .withServiceCalls(
+        () =>
+          [
+            services.settingsService.getOrCreate(
+              SETTINGS_NAMESPACE,
+              ADAPTER_IDENTITY_KEY,
+              generatedIdentity,
+            ),
+          ] as const,
+      )
+      .transform(({ serviceResult: [identity] }) => identity)
+      .execute();
+    return { ok: true, value: adapterIdentity };
   } catch (error) {
     return {
       ok: false,
@@ -154,17 +131,44 @@ export const createInternalFragmentDescribeRoutes = () =>
           );
         }
 
-        const adapterIdentityResult = await getOrCreateAdapterIdentity(
-          () => this.handlerTx(),
-          services,
-        );
-        if (!adapterIdentityResult.ok) {
-          return json(adapterIdentityResult.error, { status: 500 });
+        const outboxEnabled = registry.isOutboxEnabled();
+        const generatedIdentity = crypto.randomUUID();
+        let adapterIdentity: string;
+        let currentVersionstamp: string | null;
+        try {
+          ({ adapterIdentity, currentVersionstamp } = await this.handlerTx()
+            .withServiceCalls(
+              () =>
+                [
+                  services.settingsService.getOrCreate(
+                    SETTINGS_NAMESPACE,
+                    ADAPTER_IDENTITY_KEY,
+                    generatedIdentity,
+                  ),
+                  services.outboxService.latestVersionstamp(),
+                ] as const,
+            )
+            .transform(({ serviceResult: [identity, versionstamp] }) => ({
+              adapterIdentity: identity,
+              currentVersionstamp: outboxEnabled ? versionstamp : null,
+            }))
+            .execute());
+        } catch (error) {
+          return json(
+            {
+              error: {
+                code: "SETTINGS_UNAVAILABLE",
+                message: "Internal settings table is not available.",
+                detail: error instanceof Error ? error.message : undefined,
+              },
+            } satisfies InternalDescribeError,
+            { status: 500 },
+          );
         }
 
-        const outboxEnabled = registry.isOutboxEnabled();
         const response: InternalDescribeResponse = {
-          adapterIdentity: adapterIdentityResult.value,
+          adapterIdentity,
+          currentVersionstamp,
           fragments: outboxEnabled ? registry.listOutboxFragments() : [],
           schemas: registry.listSchemas(),
           routes: {

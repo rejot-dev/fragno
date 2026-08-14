@@ -181,7 +181,11 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
           .transformRetrieve(([result]) => result)
           .mutate(({ uow, retrieveResult }) => {
             if (!retrieveResult) {
-              uow.create(SETTINGS_TABLE_NAME, { key: fullKey, value });
+              uow.create(
+                SETTINGS_TABLE_NAME,
+                { key: fullKey, value },
+                { retryOnUniqueConflict: () => true },
+              );
             }
           })
           .transform(({ retrieveResult }) => retrieveResult?.value ?? value)
@@ -574,6 +578,20 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
   })
   .providesService("outboxService", ({ defineService }) => {
     return defineService({
+      latestVersionstamp() {
+        return this.serviceTx(internalSchema, { name: "internal.outbox.latestVersionstamp" })
+          .retrieve((uow) =>
+            uow.findFirst("fragno_db_outbox", (b) =>
+              b
+                .whereIndex("idx_outbox_versionstamp")
+                .orderByIndex("idx_outbox_versionstamp", "desc")
+                .select(["versionstamp"]),
+            ),
+          )
+          .transformRetrieve(([entry]) => entry?.versionstamp ?? null)
+          .build();
+      },
+
       /**
        * List outbox entries ordered by versionstamp (ascending).
        */

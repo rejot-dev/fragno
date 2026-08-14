@@ -9,6 +9,7 @@ import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { getInternalFragment, getRegistryForAdapterSync } from "../internal/adapter-registry";
 import type { DatabaseRequestContext } from "../mod";
+import { FRAGNO_OUTBOX_PAGE_SIZE } from "../outbox/outbox";
 import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
 import { schema, idColumn, column } from "../schema/create";
 import type { SyncCommandDefinition } from "../sync/types";
@@ -72,6 +73,7 @@ describe("internal fragment describe routes", () => {
     const payload = await response.json();
 
     expect(payload.adapterIdentity).toEqual(expect.any(String));
+    expect(payload.currentVersionstamp).toBeNull();
     assert(payload.routes.internal === "/_internal");
     expect(payload.routes.outbox).toBeUndefined();
 
@@ -172,6 +174,7 @@ describe("internal fragment describe routes", () => {
     const payload = await response.json();
     assert(payload.routes.outbox === "/_internal/outbox");
     assert(payload.routes.outboxStream === "/_internal/outbox/stream");
+    expect(payload.currentVersionstamp).toBeNull();
     expect(payload.fragments).toEqual(
       expect.arrayContaining([{ name: "alpha-fragment", mountRoute: "/alpha" }]),
     );
@@ -208,6 +211,49 @@ describe("internal fragment describe routes", () => {
     assert(noOutboxStreamResponse.status === 404);
 
     await closeNoOutbox();
+  });
+
+  it("returns the latest outbox versionstamp", async () => {
+    const { adapter, close } = await setupAdapter();
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({
+        databaseAdapter: adapter,
+        mountRoute: "/alpha",
+        outbox: { enabled: true },
+      })
+      .build();
+    const namespace = (alphaFragment.$internal.deps as { namespace: string | null }).namespace;
+    await adapter.prepareMigrations(alphaSchema, namespace).executeWithDriver(adapter.driver, 0);
+
+    await alphaFragment.inContext(async function (this: DatabaseRequestContext) {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => forSchema(alphaSchema).create("alpha_items", { name: "First" }))
+        .execute();
+    });
+    const firstOutboxResponse = await alphaFragment.callRouteRaw(
+      "GET",
+      "/_internal/outbox" as never,
+    );
+    const firstEntries = (await firstOutboxResponse.json()) as Array<{ versionstamp: string }>;
+
+    await alphaFragment.inContext(async function (this: DatabaseRequestContext) {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => forSchema(alphaSchema).create("alpha_items", { name: "Second" }))
+        .execute();
+    });
+    const secondOutboxResponse = await alphaFragment.callRouteRaw(
+      "GET",
+      "/_internal/outbox" as never,
+    );
+    const secondEntries = (await secondOutboxResponse.json()) as Array<{ versionstamp: string }>;
+
+    const response = await alphaFragment.callRouteRaw("GET", "/_internal" as never);
+    const payload = await response.json();
+    expect(payload.currentVersionstamp).toBe(secondEntries.at(-1)?.versionstamp);
+    expect(payload.currentVersionstamp).not.toBe(firstEntries.at(-1)?.versionstamp);
+
+    await close();
   });
 
   it("does not expose internal hook mutations through the public outbox", async () => {
@@ -254,6 +300,32 @@ describe("internal fragment describe routes", () => {
     await expect(outboxResponse.json()).resolves.toEqual([]);
 
     await close();
+  });
+
+  it("rejects outbox pages larger than the maximum", async () => {
+    const { adapter, close } = await setupAdapter();
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({
+        databaseAdapter: adapter,
+        mountRoute: "/alpha",
+        outbox: { enabled: true },
+      })
+      .build();
+
+    try {
+      const response = await alphaFragment.callRoute(
+        "GET",
+        "/_internal/outbox" as never,
+        {
+          query: { limit: String(FRAGNO_OUTBOX_PAGE_SIZE + 1) },
+        } as unknown as Parameters<typeof alphaFragment.callRoute>[2],
+      );
+
+      assert(response.status === 400);
+    } finally {
+      await close();
+    }
   });
 
   it("streams outbox entries after the requested versionstamp", async () => {

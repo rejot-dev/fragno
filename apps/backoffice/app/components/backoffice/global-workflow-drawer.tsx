@@ -23,9 +23,9 @@ import { ClientOnly } from "@/components/client-only";
 import {
   describeAutomationCollectionSource,
   getAutomationBrowserDatabase,
+  type AutomationBrowserDatabase,
   type AutomationCollectionSource,
 } from "@/fragno/automation/tanstack/browser-database";
-import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 import {
   currentWorkflowWaitingEventTypes,
   type WorkflowRunEvent,
@@ -246,17 +246,22 @@ class WorkflowDrawerErrorBoundary extends Component<
 }
 
 function GlobalWorkflowDrawerData({ source }: { source: AutomationCollectionSource }) {
-  const database = use(getAutomationBrowserDatabase());
-  return <RecentWorkflowRuns collections={database.collectionsFor(source)} source={source} />;
+  const database = use(getAutomationBrowserDatabase(source));
+  return <RecentWorkflowRuns database={database} source={source} />;
 }
 
 function RecentWorkflowRuns({
-  collections,
+  database,
   source,
 }: {
-  collections: AutomationCollections;
+  database: AutomationBrowserDatabase;
   source: AutomationCollectionSource;
 }) {
+  const { collections, coordinator } = database;
+  const statusQuery = useLiveQuery(
+    (builder) => builder.from({ status: coordinator.internal.collection }),
+    [coordinator.internal.collection],
+  );
   const query = useLiveQuery(
     (builder) =>
       builder
@@ -323,8 +328,14 @@ function RecentWorkflowRuns({
   if (query.isLoading && runs.length === 0) {
     return <DrawerState message="Synchronizing recent workflows…" />;
   }
-  if (query.isError) {
-    return <DrawerState message="Workflow synchronization failed." tone="error" />;
+  const synchronizationStatus = statusQuery.data?.[0];
+  if (query.isError || synchronizationStatus?.state === "failed") {
+    return (
+      <DrawerState
+        message={synchronizationStatus?.error?.message ?? "Workflow synchronization failed."}
+        tone="error"
+      />
+    );
   }
   if (runs.length === 0) {
     return <DrawerState message="No workflow runs yet. New runs will appear here live." />;

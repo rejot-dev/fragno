@@ -113,9 +113,6 @@ export function shouldRevalidate({
   );
 }
 
-const toErrorMessage = (error: unknown, fallback: string) =>
-  error instanceof Error ? error.message : fallback;
-
 const normalizedSourceId = (source: string) => source.trim().toLowerCase();
 
 const routeSourceId = (route: DashboardRoute) =>
@@ -761,19 +758,8 @@ export default function BackofficeAutomationDashboard() {
           ? { kind: "action", route: selectedRoute }
           : null;
   const errors = [
-    routesQuery.isError
-      ? toErrorMessage(
-          collections.routes.utils.getLastError() ??
-            collections.routeScheduleStates.utils.getLastError(),
-          "Route synchronization failed.",
-        )
-      : null,
-    workflowsQuery.isError
-      ? toErrorMessage(
-          collections.workflowInstances.utils.getLastError(),
-          "Workflow synchronization failed.",
-        )
-      : null,
+    routesQuery.isError ? "Route synchronization failed." : null,
+    workflowsQuery.isError ? "Workflow synchronization failed." : null,
   ].filter((message): message is string => Boolean(message));
 
   const updateSelection = ({

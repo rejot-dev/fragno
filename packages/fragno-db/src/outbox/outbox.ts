@@ -1,6 +1,8 @@
 import type { MutationOperation } from "../query/unit-of-work/mutation-recorder";
 import type { AnyColumn, AnySchema, AnyTable, FragnoId, FragnoReference } from "../schema/create";
 
+export const FRAGNO_OUTBOX_PAGE_SIZE = 500;
+
 export type OutboxConfig = {
   enabled: boolean;
   shouldInclude?: (operation: MutationOperation<AnySchema>) => boolean;
@@ -129,9 +131,32 @@ export function versionstampToHex(bytes: Uint8Array): string {
   return hex;
 }
 
+export function outboxPageAfterVersionstamp(versionstamp: string): string | undefined {
+  const bytes = hexToVersionstamp(versionstamp);
+  if (bytes.length !== 12) {
+    throw new Error(`Invalid outbox versionstamp byte length: ${bytes.length}`);
+  }
+
+  const transactionVersion = bytesToBigint(bytes.subarray(0, 10));
+  const pageSize = BigInt(FRAGNO_OUTBOX_PAGE_SIZE);
+  const pageOffset = transactionVersion % pageSize;
+
+  if (pageOffset === pageSize - 1n) {
+    return versionstampToHex(encodeVersionstamp(transactionVersion, 0));
+  }
+
+  const pageStartVersion = transactionVersion - pageOffset;
+  return pageStartVersion === 0n
+    ? undefined
+    : versionstampToHex(encodeVersionstamp(pageStartVersion - 1n, 0));
+}
+
 export function hexToVersionstamp(hex: string): Uint8Array {
   if (hex.length % 2 !== 0) {
     throw new Error(`Invalid versionstamp hex length: ${hex.length}`);
+  }
+  if (!/^[0-9a-f]*$/i.test(hex)) {
+    throw new Error("Invalid hexadecimal outbox versionstamp.");
   }
 
   const bytes = new Uint8Array(hex.length / 2);
@@ -155,6 +180,14 @@ export function parseOutboxVersionValue(value: unknown): bigint {
   }
 
   throw new Error(`Invalid outbox version value: ${String(value)}`);
+}
+
+function bytesToBigint(bytes: Uint8Array): bigint {
+  let value = 0n;
+  for (const byte of bytes) {
+    value = (value << 8n) | BigInt(byte);
+  }
+  return value;
 }
 
 function bigintToBytes(value: bigint, length: number): Uint8Array {

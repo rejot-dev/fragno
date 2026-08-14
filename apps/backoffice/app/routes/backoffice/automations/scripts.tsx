@@ -125,7 +125,7 @@ function SynchronizedAutomationScripts({
   source: UploadCollectionSource;
 }) {
   const database = use(getUploadBrowserDatabase());
-  const files = database.collectionsFor(source).files;
+  const files = use(database.readyCollectionsFor(source)).files;
   const filesQuery = useLiveQuery(
     (query) =>
       query
