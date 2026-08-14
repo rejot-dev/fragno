@@ -381,6 +381,42 @@ describe("BufferedDatabasePump", () => {
     assert(!pump.isRunning());
   });
 
+  test("stopAndDrain waits for an active flush before shutdown completes", async () => {
+    let resolveFlushStarted!: () => void;
+    const flushStarted = new Promise<void>((resolve) => {
+      resolveFlushStarted = resolve;
+    });
+    let releaseFlush!: () => void;
+    const flushReleased = new Promise<void>((resolve) => {
+      releaseFlush = resolve;
+    });
+    const pump = new BufferedDatabasePump({
+      handlerTx,
+      flush: async () => {
+        resolveFlushStarted();
+        await flushReleased;
+        return {};
+      },
+    });
+
+    const flush = pump.flushNow();
+    await flushStarted;
+
+    let shutdownCompleted = false;
+    const shutdown = pump.stopAndDrain().then(() => {
+      shutdownCompleted = true;
+    });
+    await nextMicrotask();
+    assert(!shutdownCompleted);
+
+    releaseFlush();
+    await flush;
+    await shutdown;
+
+    assert(shutdownCompleted);
+    assert(!pump.isRunning());
+  });
+
   test("snapshot uses explicit snapshot override when provided", async () => {
     const pump = new BufferedDatabasePump({
       handlerTx,

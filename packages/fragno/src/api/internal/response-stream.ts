@@ -18,6 +18,7 @@ export class ResponseStream<TArray> {
   readonly #responseReadable: ReadableStream;
 
   #aborted: boolean = false;
+  #abortPromise: Promise<void> | undefined;
   #closed: boolean = false;
 
   /**
@@ -62,9 +63,7 @@ export class ResponseStream<TArray> {
           controller.enqueue(value);
         }
       },
-      cancel: () => {
-        this.abort();
-      },
+      cancel: () => this.abort(),
     });
   }
 
@@ -111,10 +110,24 @@ export class ResponseStream<TArray> {
    * Abort the stream.
    * You can call this method when stream is aborted by external event.
    */
-  abort() {
-    if (!this.aborted) {
+  abort(): Promise<void> {
+    if (!this.#abortPromise) {
       this.#aborted = true;
-      this.#abortSubscribers.forEach((subscriber) => void subscriber());
+      this.#abortPromise = Promise.allSettled(
+        this.#abortSubscribers.map(async (subscriber) => subscriber()),
+      ).then((results) => {
+        const errors: unknown[] = [];
+        for (const result of results) {
+          if (result.status === "rejected") {
+            errors.push(result.reason);
+          }
+        }
+        if (errors.length > 0) {
+          throw new AggregateError(errors, "Failed to abort response stream.");
+        }
+      });
     }
+
+    return this.#abortPromise;
   }
 }

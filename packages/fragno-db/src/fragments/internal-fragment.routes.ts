@@ -279,9 +279,9 @@ export const createInternalFragmentOutboxRoutes = () =>
 
           let stopObserving = () => {};
           const waitForAbort = new Promise<void>((resolve) => {
-            stream.onAbort(() => {
+            stream.onAbort(async () => {
               stopObserving();
-              pump.stop();
+              await pump.stopAndDrain();
               resolve();
             });
           });
@@ -298,7 +298,7 @@ export const createInternalFragmentOutboxRoutes = () =>
             await waitForAbort;
           } finally {
             stopObserving();
-            pump.stop();
+            await pump.stopAndDrain();
           }
         });
       },
