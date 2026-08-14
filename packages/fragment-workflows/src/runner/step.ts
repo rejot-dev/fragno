@@ -501,11 +501,6 @@ export class RunnerStep implements WorkflowStep {
     const tx = {
       ...txQueue.tx,
       emit: (payload: unknown) => {
-        WorkflowsLogger.debug("workflow tx.emit", () => ({
-          workflowName: this.#workflowName,
-          instanceId: this.#instanceId,
-          stepKey: identity.stepKey,
-        }));
         emissionScope.enqueueOutgoing(payload);
       },
       onEvent: (type: string, handler: (event: WorkflowStepEvent) => void | Promise<void>) => {
