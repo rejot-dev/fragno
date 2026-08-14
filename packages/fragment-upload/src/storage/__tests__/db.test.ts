@@ -776,13 +776,13 @@ describe("database storage adapter", () => {
         provider: storage.name,
         candidateKeys: [fileKey],
         query: "needle",
-        options: { maxMatches: 500 },
+        options: { maxMatches: 100 },
         maxBytes: 1024 * 1024,
       },
     });
 
     assert(hydrateResponse.type === "json");
-    expect(hydrateResponse.data.matches).toHaveLength(500);
+    expect(hydrateResponse.data.matches).toHaveLength(100);
     assert(
       hydrateResponse.data.matches.every(
         (match) =>

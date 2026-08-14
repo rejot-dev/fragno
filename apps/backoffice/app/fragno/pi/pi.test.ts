@@ -8,6 +8,7 @@ import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/aut
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
+import type { FileSearchMatch } from "@/file-collection/file-collection";
 import * as files from "@/files";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
@@ -15,7 +16,7 @@ import { UPLOAD_PROVIDER_DATABASE, type UploadAdminConfigResponse } from "@/frag
 import type { UploadFileRecord } from "@/fragno/upload/file-record";
 
 import { createTestMasterFileSystem } from "../automation/engine/test-master-file-system.test-utils";
-import { createTestStateBackend } from "../codemode/state-backend.test-utils";
+import { createTestStateBackend, MemoryUploadObject } from "../codemode/state-backend.test-utils";
 import {
   createPiRuntimeDefinition,
   createPiToolFactory,
@@ -194,7 +195,7 @@ describe("Backoffice Pi fragment", () => {
 });
 
 describe("Backoffice Pi search output", () => {
-  test("formats matches like ripgrep output", () => {
+  test("formats matches in file blocks", () => {
     const output = formatSearchMatches([
       {
         path: "workspace/src/orders.ts",
@@ -217,9 +218,57 @@ describe("Backoffice Pi search output", () => {
     ]);
 
     expect(output).toMatchInlineSnapshot(`
-      "workspace/src/orders.ts:12:7:const createOrder = () => undefined;
-      workspace/src/routes.ts:31:15:  return await createOrder(input);"
+      "workspace/src/orders.ts
+      > 12:7 | const createOrder = () => undefined;
+
+      workspace/src/routes.ts
+      > 31:15 |   return await createOrder(input);"
     `);
+  });
+
+  test("paginates the combined upload and static match budget", async () => {
+    const stateBackend = createTestStateBackend({
+      upload: new MemoryUploadObject({
+        "upload-a.ts": "needle",
+        "upload-b.ts": "needle",
+      }),
+      staticFiles: {
+        "static-a.ts": "needle",
+        "static-b.ts": "needle",
+      },
+    });
+    const context = createContext();
+    const tools = await createPiToolFactory({
+      sessionFileSystems: new Map(),
+      sessionFileSystemContext: context,
+      runtimeToolContext: { ...createMockRuntimeToolContext(), stateBackend },
+    })({ sessionId: "search-pagination", execution: context.execution });
+    assert(tools.search, "search tool should be configured");
+
+    const firstPage = await tools.search.execute("search-1", {
+      query: "needle",
+      maxMatches: 3,
+    } as never);
+    const firstDetails = firstPage.details as {
+      matches: FileSearchMatch[];
+      cursor: { upload?: string; static?: string };
+    };
+    expect(firstDetails.matches).toHaveLength(3);
+    expect(firstDetails.cursor.upload).toBeUndefined();
+    expect(firstDetails.cursor.static).toBeDefined();
+
+    const secondPage = await tools.search.execute("search-2", {
+      query: "needle",
+      maxMatches: 3,
+      cursor: firstDetails.cursor,
+    } as never);
+    const secondDetails = secondPage.details as {
+      matches: FileSearchMatch[];
+      cursor: { upload?: string; static?: string };
+    };
+    expect(secondDetails.matches).toHaveLength(1);
+    assert(secondDetails.matches[0]?.path === "/static/static-b.ts");
+    expect(secondDetails.cursor).toEqual({});
   });
 
   test("formats and merges surrounding context", () => {
@@ -253,18 +302,22 @@ describe("Backoffice Pi search output", () => {
       },
     ]);
 
-    expect(output).toMatchInlineSnapshot(`
-      "workspace/src/orders.ts-10-export type Order = {};
-      workspace/src/orders.ts-11-
-      workspace/src/orders.ts:12:7:const createOrder = () => undefined;
-      workspace/src/orders.ts-13-
-      workspace/src/orders.ts-14-// Public API
-      workspace/src/orders.ts:15:10:export { createOrder };
-      --
-      workspace/src/orders.ts-39-function seed() {
-      workspace/src/orders.ts:40:3:  createOrder();
-      workspace/src/orders.ts-41-}"
-    `);
+    expect(output).toBe(
+      [
+        "workspace/src/orders.ts",
+        "  10 | export type Order = {};",
+        "  11 | ",
+        "> 12:7 | const createOrder = () => undefined;",
+        "  13 | ",
+        "  14 | // Public API",
+        "> 15:10 | export { createOrder };",
+        "",
+        "workspace/src/orders.ts",
+        "  39 | function seed() {",
+        "> 40:3 |   createOrder();",
+        "  41 | }",
+      ].join("\n"),
+    );
   });
 });
 
