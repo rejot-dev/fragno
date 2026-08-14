@@ -2,7 +2,7 @@ import { assert, describe, expect, test } from "vitest";
 
 import { projectWorkflowGraph } from "./workflow-graph-projection";
 import { generatedUiWorkspaceId, workflowGraphWorkspaceId } from "./workspace-model";
-import { projectSessionWorkspaceItems } from "./workspace-projection";
+import { getSessionWorkflowRunIds, projectSessionWorkspaceItems } from "./workspace-projection";
 
 const generatedUiResult = {
   total: 24,
@@ -47,10 +47,26 @@ const toolResult = (id: string, result: unknown, details: Record<string, unknown
     timestamp: 2,
   }) as never;
 
+describe("getSessionWorkflowRunIds", () => {
+  test("returns only workflow runs referenced by the current session", () => {
+    expect(
+      getSessionWorkflowRunIds({
+        draftAgentMessage: null,
+        messages: [
+          assistantToolCall("workflow-call", "defineWorkflow({ name: 'demo' }, async () => {});"),
+          toolResult("workflow-call", null, { run: { instanceId: "session-run" } }),
+          toolResult("ui-call", generatedUiResult),
+        ],
+      }),
+    ).toEqual(["session-run"]);
+  });
+});
+
 describe("projectSessionWorkspaceItems", () => {
   test("projects workflow construction and multiple generated interfaces in session order", () => {
     const items = projectSessionWorkspaceItems({
       draftAgentMessage: null,
+      startedWorkflowRunIds: new Set(["workflow-instance"]),
       messages: [
         assistantToolCall(
           "workflow-call",
@@ -91,6 +107,7 @@ describe("projectSessionWorkspaceItems", () => {
 
   test("deduplicates persisted and draft versions of the same tool call", () => {
     const items = projectSessionWorkspaceItems({
+      startedWorkflowRunIds: new Set(["draft-run"]),
       messages: [
         assistantToolCall("shared-call", `defineWorkflow({ name: "old-name" }, async () => {});`),
         toolResult("shared-call", generatedUiResult),
@@ -129,6 +146,7 @@ describe("projectSessionWorkspaceItems", () => {
   test("keeps malformed generated UI in the tool card instead of creating a workspace item", () => {
     const items = projectSessionWorkspaceItems({
       draftAgentMessage: null,
+      startedWorkflowRunIds: new Set(),
       messages: [
         assistantToolCall("invalid-ui", "async () => ({})"),
         toolResult("invalid-ui", {
@@ -141,9 +159,10 @@ describe("projectSessionWorkspaceItems", () => {
     expect(items).toEqual([]);
   });
 
-  test("projects a workflow from draft tool arguments before execution completes", () => {
+  test("does not project an inline workflow before its first step starts", () => {
     const items = projectSessionWorkspaceItems({
       messages: [],
+      startedWorkflowRunIds: new Set(),
       draftAgentMessage: {
         activity: "tool_calling",
         startedAt: 1,
@@ -162,12 +181,25 @@ describe("projectSessionWorkspaceItems", () => {
       },
     });
 
-    expect(items).toHaveLength(1);
-    assert(items[0]?.view.type === "workflow-graph");
-    assert(items[0].view.projection.status === "constructing");
-    expect(items[0].view.projection.visualization.graph.nodes).toEqual(
-      expect.arrayContaining([expect.objectContaining({ kind: "workflow" })]),
-    );
+    expect(items).toEqual([]);
+  });
+
+  test("projects an inline workflow after its first step starts", () => {
+    const items = projectSessionWorkspaceItems({
+      draftAgentMessage: null,
+      startedWorkflowRunIds: new Set(["started-run"]),
+      messages: [
+        assistantToolCall(
+          "started-workflow",
+          `defineWorkflow({ name: "started-workflow" }, async (_event, step) => {
+            await step.do("first step", async () => true);
+          });`,
+        ),
+        toolResult("started-workflow", null, { run: { instanceId: "started-run" } }),
+      ],
+    });
+
+    expect(items.map((item) => item.id)).toEqual([workflowGraphWorkspaceId("started-workflow")]);
   });
 });
 

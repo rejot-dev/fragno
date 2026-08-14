@@ -10,8 +10,10 @@ import {
   type AppendMessage,
   type AssistantRuntime,
 } from "@assistant-ui/react";
+import { eq, inArray, useLiveQuery } from "@tanstack/react-db";
 
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { createPiClient } from "@/fragno/pi/pi-client";
 import { findPiModelOption, piSessionModel } from "@/fragno/pi/pi-shared";
 import { piSessionActivityLabel } from "@/fragno/pi/session-activity";
@@ -36,9 +38,40 @@ import {
   toggleSessionWorkspaceItem,
 } from "./session-detail/workspace-model";
 import { SessionWorkspacePanel } from "./session-detail/workspace-panel";
-import { projectSessionWorkspaceItems } from "./session-detail/workspace-projection";
+import {
+  getSessionWorkflowRunIds,
+  projectSessionWorkspaceItems,
+} from "./session-detail/workspace-projection";
 import { SessionWorkspaceSplit } from "./session-detail/workspace-split";
 import type { PiSessionsOutletContext } from "./session-types";
+
+function useStartedWorkflowRunIds(
+  collections: PiSessionsOutletContext["workflowCollections"],
+  sessionWorkflowRunIds: string[],
+): ReadonlySet<string> {
+  const query = useLiveQuery(
+    (builder) => {
+      if (!collections || sessionWorkflowRunIds.length === 0) {
+        return undefined;
+      }
+
+      return builder
+        .from({ step: collections.workflowSteps })
+        .innerJoin({ instance: collections.workflowInstances }, ({ step, instance }) =>
+          eq(step.instanceRef, instance.id),
+        )
+        .where(({ instance }) => eq(instance.workflowName, CODEMODE_WORKFLOW))
+        .where(({ instance }) => inArray(instance.instanceId, sessionWorkflowRunIds))
+        .select(({ instance }) => ({ instanceId: instance.instanceId }));
+    },
+    [collections?.workflowInstances, collections?.workflowSteps, sessionWorkflowRunIds],
+  );
+
+  return useMemo(
+    () => new Set((query.data ?? []).map(({ instanceId }) => instanceId)),
+    [query.data],
+  );
+}
 
 const TERMINAL_SESSION_LABELS: Record<string, string> = {
   complete: "Session completed",
@@ -243,13 +276,26 @@ function PiSessionDetailView({
       }),
     [messages, projection.draftAgentMessage, projection.readyForInput, statusText],
   );
+  const sessionWorkflowRunIds = useMemo(
+    () =>
+      getSessionWorkflowRunIds({
+        draftAgentMessage: projection.draftAgentMessage,
+        messages,
+      }),
+    [messages, projection.draftAgentMessage],
+  );
+  const startedWorkflowRunIds = useStartedWorkflowRunIds(
+    workflowCollections,
+    sessionWorkflowRunIds,
+  );
   const workspaceItems = useMemo(
     () =>
       projectSessionWorkspaceItems({
         draftAgentMessage: projection.draftAgentMessage,
         messages,
+        startedWorkflowRunIds,
       }),
-    [messages, projection.draftAgentMessage],
+    [messages, projection.draftAgentMessage, startedWorkflowRunIds],
   );
   const workspaceStateKey = getWorkspaceStateKey(scope, session);
   const workspaceState = workspaceStates[workspaceStateKey] ?? createSessionWorkspaceState();

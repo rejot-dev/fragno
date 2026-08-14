@@ -1,10 +1,11 @@
 import { Menu } from "@base-ui/react/menu";
 import { Check, Code2, Ellipsis, ListTree, PanelsTopLeft, X } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type { SourceRange } from "@fragno-dev/workflow-visualizer-tokens";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import {
   ProgressiveOverflowControls,
@@ -53,8 +54,11 @@ export function SessionWorkspacePanel({
   scope: BackofficeContextScope;
   onClose: () => void;
 }) {
-  const [display, setDisplay] = useState<WorkflowDisplay>("ui");
+  const [display, setDisplay] = useState<WorkflowDisplay>("simple");
   const [toolbarElement, setToolbarElement] = useState<HTMLElement | null>(null);
+  const showGeneratedUi = useCallback(() => {
+    setDisplay("ui");
+  }, []);
 
   return (
     <aside
@@ -129,6 +133,7 @@ export function SessionWorkspacePanel({
             workflowCollections={workflowCollections}
             workflowCollectionsError={workflowCollectionsError}
             scope={scope}
+            onGeneratedUiAvailable={showGeneratedUi}
           />
         )}
       </section>
@@ -229,6 +234,7 @@ function SessionWorkflowWorkspace({
   workflowCollections,
   workflowCollectionsError,
   scope,
+  onGeneratedUiAvailable,
 }: {
   projection: WorkflowGraphProjection;
   viewMode: ScriptViewMode;
@@ -237,6 +243,7 @@ function SessionWorkflowWorkspace({
   workflowCollections?: WorkflowRunCollections;
   workflowCollectionsError?: string | null;
   scope: BackofficeContextScope;
+  onGeneratedUiAvailable: () => void;
 }) {
   const [selectedSource, setSelectedSource] = useState<SourceRange>();
   const showCode = viewMode === "code" || viewMode === "split";
@@ -251,6 +258,18 @@ function SessionWorkflowWorkspace({
   });
   const synchronizationError =
     workflowRun.error ?? (runReference && !workflowCollections ? workflowCollectionsError : null);
+  const hasGeneratedUi = workflowRun.selectedRun
+    ? [
+        workflowRun.selectedRun.output,
+        ...[...workflowRun.selectedRun.stepStatesByNodeId.values()].map((step) => step.result),
+      ].some((result) => parseBackofficeUiResult(result).kind === "valid")
+    : false;
+
+  useEffect(() => {
+    if (hasGeneratedUi) {
+      onGeneratedUiAvailable();
+    }
+  }, [hasGeneratedUi, onGeneratedUiAvailable]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bo-panel)]">

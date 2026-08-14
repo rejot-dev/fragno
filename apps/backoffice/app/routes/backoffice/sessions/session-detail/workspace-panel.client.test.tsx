@@ -108,10 +108,10 @@ describe("SessionWorkspacePanel", () => {
 
     const workflowGraph = screen.getByLabelText("Workflow graph");
     expect(within(workflowGraph).getByLabelText("order-workflow")).toBeDefined();
-    expect(within(workflowGraph).getByText("No generated UI results yet.")).toBeDefined();
+    expect(within(workflowGraph).getByText("load orders")).toBeDefined();
     expect(screen.queryByText("Live execution")).toBeNull();
-    assert(screen.getByRole("button", { name: /^UI$/ }).getAttribute("aria-pressed") === "true");
-    expect(screen.getByRole("button", { name: /^Flow$/ })).toBeDefined();
+    assert(screen.getByRole("button", { name: /^Flow$/ }).getAttribute("aria-pressed") === "true");
+    expect(screen.getByRole("button", { name: /^UI$/ })).toBeDefined();
     expect(screen.queryByRole("button", { name: /^Graph$/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Both$/ })).toBeNull();
 

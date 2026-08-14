@@ -16,12 +16,43 @@ import {
   workflowGraphWorkspaceId,
 } from "./workspace-model";
 
-export function projectSessionWorkspaceItems({
+export function getSessionWorkflowRunIds({
   draftAgentMessage,
   messages,
 }: {
   draftAgentMessage: DraftAgentMessage | null;
   messages: readonly PiHarnessFrontendAgentMessage[];
+}): string[] {
+  const runIds = new Set<string>();
+  const addRun = (resultMessage: ToolResultMessage | null) => {
+    const run = getExecCodeModeResultDetails(resultMessage?.details).run;
+    if (run) {
+      runIds.add(run.instanceId);
+    }
+  };
+
+  for (const message of messages) {
+    if (message.role === "toolResult" && message.toolName === "execCodeMode") {
+      addRun(message);
+    }
+  }
+  for (const draftTool of Object.values(draftAgentMessage?.tools ?? {})) {
+    if (draftTool.name === "execCodeMode") {
+      addRun(completedDraftToolResult(draftTool));
+    }
+  }
+
+  return [...runIds];
+}
+
+export function projectSessionWorkspaceItems({
+  draftAgentMessage,
+  messages,
+  startedWorkflowRunIds,
+}: {
+  draftAgentMessage: DraftAgentMessage | null;
+  messages: readonly PiHarnessFrontendAgentMessage[];
+  startedWorkflowRunIds: ReadonlySet<string>;
 }): SessionWorkspaceItem[] {
   const items: SessionWorkspaceItem[] = [];
   const projectedItemIds = new Set<string>();
@@ -50,7 +81,7 @@ export function projectSessionWorkspaceItems({
     toolCallId: string;
   }) => {
     const id = workflowGraphWorkspaceId(toolCallId);
-    if (projectedItemIds.has(id)) {
+    if (projectedItemIds.has(id) || !run || !startedWorkflowRunIds.has(run.instanceId)) {
       return;
     }
 
