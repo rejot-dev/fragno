@@ -66,6 +66,10 @@ export async function createKyselySqliteAdapter(
       );
     }
 
+    await kysely.connection().execute(async (connection) => {
+      await sql`PRAGMA foreign_keys = ON`.execute(connection);
+    });
+
     const createAdditionalAdapter = async () =>
       new SqlAdapter({
         dialect,

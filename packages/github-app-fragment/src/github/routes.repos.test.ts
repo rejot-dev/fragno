@@ -2,7 +2,7 @@ import { describe, expect, it, assert } from "vitest";
 
 import { githubAppSchema } from "../schema";
 import { buildHarness, runGithubUowCreate } from "./test-utils";
-import { normalizeJoinedInstallation, normalizeJoinedLinks } from "./utils";
+import { normalizeJoinedLinks } from "./utils";
 
 const createConfig = () => ({
   appId: "42",
@@ -474,39 +474,6 @@ describe("github-app repo linking routes", () => {
     }
   });
 
-  it("rejects unlink when installation join is missing", async () => {
-    const { fragments, test } = await buildHarness(createConfig());
-
-    try {
-      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
-        id: "40",
-        installationId: 999n,
-        ownerLogin: "octo",
-        name: "orphan",
-        fullName: "octo/orphan",
-        isPrivate: false,
-        isFork: false,
-        defaultBranch: "main",
-        removedAt: null,
-      });
-
-      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
-        repoId: "40",
-        linkKey: "default",
-      });
-
-      const response = (await fragments.githubApp.callRoute("POST", "/repositories/unlink", {
-        body: { repoId: "40" },
-      })) as { type: "error"; error: { code: string } };
-
-      assert(response.type === "error");
-
-      assert(response.error.code === "INSTALLATION_NOT_FOUND");
-    } finally {
-      await test.cleanup();
-    }
-  });
-
   it("rejects link when installation is missing", async () => {
     const { fragments, test } = await buildHarness(createConfig());
 
@@ -841,52 +808,6 @@ describe("github-app repo linking routes", () => {
       }
 
       expect(normalizeJoinedLinks(repo.links)).toEqual([]);
-    } finally {
-      await test.cleanup();
-    }
-  });
-
-  it("returns null installations when joins are missing", async () => {
-    const { fragments, test } = await buildHarness(createConfig());
-
-    try {
-      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
-        id: "120",
-        installationId: 999n,
-        ownerLogin: "octo",
-        name: "orphan",
-        fullName: "octo/orphan",
-        isPrivate: false,
-        isFork: false,
-        defaultBranch: "main",
-        removedAt: null,
-      });
-
-      const db = fragments.githubApp.db;
-      const repos = (
-        await db
-          .createUnitOfWork("read")
-          .forSchema(githubAppSchema)
-          .find("installation_repo", (b) =>
-            b
-              .whereIndex("idx_installation_repo_installation", (eb) =>
-                eb("installationId", "=", 999n),
-              )
-              .joinOne("installation", "installation", (installation) =>
-                installation.onIndex("primary", (eb) => eb("id", "=", eb.parent("installationId"))),
-              ),
-          )
-          .executeRetrieve()
-      )[0];
-
-      expect(repos).toHaveLength(1);
-      const [repo] = repos;
-      if (!repo) {
-        throw new Error("Expected repo result");
-      }
-
-      assert(!repo.installation);
-      expect(normalizeJoinedInstallation(repo.installation)).toBeNull();
     } finally {
       await test.cleanup();
     }

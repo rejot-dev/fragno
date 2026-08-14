@@ -344,7 +344,32 @@ for (const adapterCase of adapterCases) {
   });
 }
 
-describe("adapter conformance (kysely-sqlite instrumentation)", () => {
+describe("adapter conformance (kysely-sqlite)", () => {
+  it("keeps foreign-key enforcement enabled across resets", async () => {
+    const { testContext } = await createAdapter({ type: "kysely-sqlite" }, [
+      { schema: conformanceSchema, namespace },
+    ]);
+    const db = testContext.getDb(namespace);
+
+    const expectOrphanPostToFail = async () => {
+      const uow = db.createUnitOfWork("create-orphan-post").forSchema(conformanceSchema);
+      uow.create("posts", { title: "Orphan", authorId: 999n });
+
+      await expect(uow.executeMutations()).rejects.toMatchObject({
+        name: "DatabaseConstraintError",
+        kind: "foreign-key",
+      });
+    };
+
+    try {
+      await expectOrphanPostToFail();
+      await testContext.resetDatabase();
+      await expectOrphanPostToFail();
+    } finally {
+      await testContext.cleanup();
+    }
+  });
+
   it("invokes instrumentation hooks in order", async () => {
     const calls: string[] = [];
     const { testContext } = await createAdapter(
