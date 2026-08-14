@@ -42,6 +42,10 @@ export type WorkflowSendEventArgs = {
   payload?: unknown;
 };
 
+export type WorkflowSendEventResult = {
+  accepted: true;
+};
+
 export type WorkflowListInstancesArgs = {
   status?: WorkflowInstanceStatus["status"];
   pageSize?: number;
@@ -125,7 +129,7 @@ export type InternalAutomationWorkflowRuntime = {
     input: InternalWorkflowCreateInstanceArgs,
   ) => Promise<{ workflowName: string; instanceId: string }>;
   getInternalStatus: (input: InternalWorkflowInstanceArgs) => Promise<WorkflowInstanceStatus>;
-  sendInternalEvent: (input: InternalWorkflowSendEventArgs) => Promise<unknown>;
+  sendInternalEvent: (input: InternalWorkflowSendEventArgs) => Promise<WorkflowSendEventResult>;
   listInternalWorkflows: () => Promise<{ workflows: Array<{ name: string }> }>;
   listInternalInstances: (
     input: InternalWorkflowListInstancesArgs,
@@ -147,7 +151,7 @@ export type AutomationWorkflowRuntime = {
   listInstances: (input: WorkflowListInstancesArgs) => Promise<WorkflowListInstancesResult>;
   getInstance: (input: WorkflowGetInstanceArgs) => Promise<WorkflowInstanceDetails>;
   retryInstance: (input: WorkflowRetryInstanceArgs) => Promise<WorkflowRetryInstanceResult>;
-  sendEvent: (input: WorkflowSendEventArgs) => Promise<unknown>;
+  sendEvent: (input: WorkflowSendEventArgs) => Promise<WorkflowSendEventResult>;
   getHistory: (input: WorkflowGetInstanceArgs) => Promise<WorkflowHistory>;
 };
 
@@ -355,7 +359,7 @@ const workflowInstanceSendEventTool = defineAutomationWorkflowTool({
     type: z.string().trim().min(1),
     payload: z.unknown().optional(),
   }),
-  outputSchema: z.unknown(),
+  outputSchema: z.strictObject({ accepted: z.literal(true) }),
   execute: async (input, context) =>
     await getAutomationWorkflowRuntime(context.runtimes.workflow).sendEvent(input),
   reference: { codemode: { description: "Send an event to a waiting durable workflow instance." } },

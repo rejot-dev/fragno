@@ -100,7 +100,7 @@ const createPiWorkflowRuntime = (
       scheduledAt: "2026-08-11T00:00:00.000Z",
     },
   }),
-  sendEvent: async () => null,
+  sendEvent: async () => ({ accepted: true }),
   getHistory: async () => ({ steps: [], events: [], emissions: [] }),
   ...overrides,
 });
@@ -467,7 +467,7 @@ describe("Pi execCodeMode tool", () => {
             completedAt: null,
           },
         }),
-        sendEvent: async (input) => input,
+        sendEvent: async () => ({ accepted: true }),
       }),
     });
 

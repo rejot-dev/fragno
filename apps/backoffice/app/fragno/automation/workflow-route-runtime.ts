@@ -9,6 +9,7 @@ import type {
   InternalWorkflowCreateInstanceArgs,
   WorkflowCreateInstanceArgs,
   WorkflowInstanceDetails,
+  WorkflowSendEventArgs,
 } from "../runtime-tools/families/automations-workflow";
 import { CODEMODE_WORKFLOW } from "./engine/codemode-invocation";
 import { createWorkflowsRouteCaller } from "./route-callers";
@@ -97,12 +98,7 @@ export const createRouteBackedAutomationWorkflowRuntime = ({
     instanceId,
     type,
     payload,
-  }: {
-    workflowName: string;
-    instanceId: string;
-    type: string;
-    payload?: unknown;
-  }) => {
+  }: WorkflowSendEventArgs & { workflowName: string }) => {
     const response = await callRoute("POST", "/:workflowName/instances/:instanceId/events", {
       pathParams: { workflowName, instanceId },
       body: { type, payload },
