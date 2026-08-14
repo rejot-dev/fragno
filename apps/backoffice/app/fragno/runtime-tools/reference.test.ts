@@ -1538,7 +1538,9 @@ describe("runtime tool reference generation", () => {
         type: string;
         payload?: unknown;
       };
-      type WorkflowSendEventOutput = unknown;
+      type WorkflowSendEventOutput = {
+        accepted: true;
+      };
       type WorkflowRetryInstanceInput = {
         instanceId: string;
         stepKey?: string;
@@ -5690,7 +5692,9 @@ describe("runtime tool reference generation", () => {
         type: string;
         payload?: unknown;
       };
-      type WorkflowSendEventOutput = unknown;
+      type WorkflowSendEventOutput = {
+        accepted: true;
+      };
       type WorkflowRetryInstanceInput = {
         instanceId: string;
         stepKey?: string;
