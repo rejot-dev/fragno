@@ -74,6 +74,27 @@ const dynamicLoopVisualization = visualizeWorkflowSource(
     "});",
   ].join("\n"),
 );
+const staticLoopWaitVisualization = visualizeWorkflowSource(
+  absolutePath,
+  [
+    'defineWorkflow({ name: "demo" }, async (_event, step) => {',
+    "  while (true) {",
+    '    await step.waitForEvent("wait for OGA upload", { type: "oga.uploaded" });',
+    "  }",
+    "});",
+  ].join("\n"),
+);
+const duplicateStaticLoopWaitVisualization = visualizeWorkflowSource(
+  absolutePath,
+  [
+    'defineWorkflow({ name: "demo" }, async (_event, step) => {',
+    "  while (true) {",
+    '    await step.waitForEvent("wait for OGA upload", { type: "oga.uploaded" });',
+    '    await step.waitForEvent("wait for OGA upload", { type: "oga.uploaded" });',
+    "  }",
+    "});",
+  ].join("\n"),
+);
 const ambiguousTemplateVisualization = visualizeWorkflowSource(
   absolutePath,
   [
@@ -635,6 +656,90 @@ describe("automation script workflow run presentation", () => {
       current: true,
     });
     expect(run.waitingEventTypes).toEqual(["inline-oga-upload-submitted"]);
+  });
+
+  it("maps repeated static loop steps back to their single source node", () => {
+    const runtimeSteps = [
+      workflowStep({
+        id: "first-wait",
+        stepKey: "waitForEvent:wait for OGA upload",
+        name: "wait for OGA upload",
+        type: "waitForEvent",
+        status: "completed",
+        waitEventType: "oga.uploaded",
+        createdAt: "2026-08-13T15:00:01.000Z",
+      }),
+      workflowStep({
+        id: "second-wait",
+        stepKey: "waitForEvent:wait for OGA upload#1",
+        name: "wait for OGA upload",
+        type: "waitForEvent",
+        status: "waiting",
+        waitEventType: "oga.uploaded",
+        createdAt: "2026-08-13T15:00:02.000Z",
+      }),
+    ];
+    const run = projectWorkflowRun({
+      visualization: staticLoopWaitVisualization,
+      instance: workflowRun({ status: "waiting", workflowSteps: runtimeSteps }),
+    });
+
+    assert(run);
+    expect(
+      run.stepStatesByNodeId.get(stepNodeIn(staticLoopWaitVisualization, "wait for OGA upload").id),
+    ).toMatchObject({
+      stepRecordId: "second-wait",
+      status: "waiting",
+      waitEventType: "oga.uploaded",
+      current: true,
+    });
+    expect(run.unmappedRuntimeSteps).toEqual([]);
+    expect(run.waitingEventTypes).toEqual(["oga.uploaded"]);
+  });
+
+  it("does not collapse repeated runtime occurrences onto ambiguous static loop steps", () => {
+    const runtimeSteps = [
+      workflowStep({
+        id: "first-wait",
+        stepKey: "waitForEvent:wait for OGA upload",
+        name: "wait for OGA upload",
+        type: "waitForEvent",
+        status: "completed",
+        createdAt: "2026-08-13T15:00:01.000Z",
+      }),
+      workflowStep({
+        id: "second-wait",
+        stepKey: "waitForEvent:wait for OGA upload#1",
+        name: "wait for OGA upload",
+        type: "waitForEvent",
+        status: "completed",
+        createdAt: "2026-08-13T15:00:02.000Z",
+      }),
+      workflowStep({
+        id: "third-wait",
+        stepKey: "waitForEvent:wait for OGA upload#2",
+        name: "wait for OGA upload",
+        type: "waitForEvent",
+        status: "waiting",
+        waitEventType: "oga.uploaded",
+        createdAt: "2026-08-13T15:00:03.000Z",
+      }),
+    ];
+    const run = projectWorkflowRun({
+      visualization: duplicateStaticLoopWaitVisualization,
+      instance: workflowRun({ status: "waiting", workflowSteps: runtimeSteps }),
+    });
+
+    assert(run);
+    assert(run.stepStatesByNodeId.size === 2);
+    expect(run.unmappedRuntimeSteps).toEqual([
+      expect.objectContaining({
+        stepKey: "waitForEvent:wait for OGA upload#2",
+        stepRecordId: "third-wait",
+        status: "waiting",
+        current: true,
+      }),
+    ]);
   });
 
   it("maps equally specific template-named steps in runtime order", () => {

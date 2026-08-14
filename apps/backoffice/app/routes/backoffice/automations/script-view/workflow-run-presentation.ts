@@ -347,6 +347,7 @@ type DynamicWorkflowStepFamilyMatch = {
 type WorkflowStepNodeIndex = {
   nodeIdsByScopeAndIdentity: Map<string, string[]>;
   dynamicNodesByScopeAndType: Map<string, DynamicWorkflowStepNode[]>;
+  repeatingStaticNodeIds: Set<string>;
   sourceOrderByNodeId: Map<string, number>;
 };
 
@@ -360,6 +361,7 @@ function indexWorkflowStepNodes(
     .sort((left, right) => left.sourceOrder - right.sourceOrder);
   const nodeIdsByScopeAndIdentity = new Map<string, string[]>();
   const dynamicNodesByScopeAndType = new Map<string, DynamicWorkflowStepNode[]>();
+  const repeatingStaticNodeIds = new Set<string>();
   const sourceOrderByNodeId = new Map(stepNodes.map((step) => [step.id, step.sourceOrder]));
 
   for (const step of stepNodes) {
@@ -385,9 +387,17 @@ function indexWorkflowStepNodes(
     const nodeIds = nodeIdsByScopeAndIdentity.get(scopedIdentity) ?? [];
     nodeIds.push(step.id);
     nodeIdsByScopeAndIdentity.set(scopedIdentity, nodeIds);
+    if (hasLoopAncestor(step.parentId, nodesById)) {
+      repeatingStaticNodeIds.add(step.id);
+    }
   }
 
-  return { nodeIdsByScopeAndIdentity, dynamicNodesByScopeAndType, sourceOrderByNodeId };
+  return {
+    nodeIdsByScopeAndIdentity,
+    dynamicNodesByScopeAndType,
+    repeatingStaticNodeIds,
+    sourceOrderByNodeId,
+  };
 }
 
 function nearestAncestorStepNodeId(
@@ -470,6 +480,12 @@ function createWorkflowStepNodeResolver(
       });
 
       if (exactCandidates?.length) {
+        const singleRepeatingStaticNodeId =
+          exactCandidates.length === 1 &&
+          !dynamicFamily &&
+          index.repeatingStaticNodeIds.has(exactCandidates[0])
+            ? exactCandidates[0]
+            : undefined;
         const dynamicCandidateNodeIds = dynamicFamily ? new Set(dynamicFamily.nodeIds) : undefined;
         const candidates = dynamicFamily
           ? [...exactCandidates, ...dynamicFamily.nodeIds].sort(
@@ -478,7 +494,7 @@ function createWorkflowStepNodeResolver(
                 (index.sourceOrderByNodeId.get(right) ?? 0),
             )
           : exactCandidates;
-        nodeId = candidates[identity.occurrence];
+        nodeId = singleRepeatingStaticNodeId ?? candidates[identity.occurrence];
 
         if (nodeId && dynamicFamily && dynamicCandidateNodeIds?.has(nodeId)) {
           const family = workflowStepDynamicFamily(scope, identity.type, dynamicFamily.key);
