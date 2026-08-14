@@ -34,10 +34,6 @@ const signUpActionInputSchema = z.discriminatedUnion("intent", [
 ]);
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  if (import.meta.env.MODE !== "development") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const me = await getAuthMe(request, context);
   if (me?.user) {
     return Response.redirect(new URL("/backoffice", request.url), 302);
@@ -47,10 +43,6 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  if (import.meta.env.MODE !== "development") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const formData = await request.formData();
   const input = signUpActionInputSchema.safeParse(Object.fromEntries(formData));
   if (!input.success) {

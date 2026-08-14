@@ -49,10 +49,6 @@ const loginActionInputSchema = z.discriminatedUnion("intent", [
 ]);
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  if (import.meta.env.MODE !== "development") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const me = await getAuthMe(request, context);
   const returnTo = readBackofficeReturnTo(url);
 
@@ -121,10 +117,6 @@ export async function clientLoader({ serverLoader }: Route.ClientLoaderArgs) {
 clientLoader.hydrate = true;
 
 export async function action({ request, context, url }: Route.ActionArgs) {
-  if (import.meta.env.MODE !== "development") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const formData = await request.formData();
   const returnTo = readBackofficeReturnTo(url);
   const input = loginActionInputSchema.safeParse(Object.fromEntries(formData));
