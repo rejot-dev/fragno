@@ -456,11 +456,11 @@ describe("runtime tool reference generation", () => {
           start_ms?: number;
           duration_ms?: number;
           words?: {
-              text: string;
-              start_ms?: number;
-              duration_ms?: number;
-              confidence?: number;
-            }[];
+            text: string;
+            start_ms?: number;
+            duration_ms?: number;
+            confidence?: number;
+          }[];
         };
 
         // Scoped context handles target a selected Backoffice context.
@@ -591,56 +591,60 @@ describe("runtime tool reference generation", () => {
       // state tools
       type StateCodemodeProvider = {
         /** Read a UTF-8 text file from codemode state. */
-        readFile(input: StateReadFileInput): Promise<StateReadFileOutput>;
+        readFile(input: StateReadFileInput): Promise<string>;
         /** Read a file from codemode state as bytes. */
         readFileBytes(input: StateReadFileBytesInput): Promise<StateReadFileBytesOutput>;
         /** Write a UTF-8 text file to mutable codemode state. */
-        writeFile(input: StateWriteFileInput): Promise<StateWriteFileOutput>;
+        writeFile(input: StateWriteFileInput): Promise<void>;
         /** Write bytes to mutable codemode state. */
-        writeFileBytes(input: StateWriteFileBytesInput): Promise<StateWriteFileBytesOutput>;
+        writeFileBytes(input: StateWriteFileBytesInput): Promise<void>;
         /** Append text or bytes to a file in mutable codemode state. */
-        appendFile(input: StateAppendFileInput): Promise<StateAppendFileOutput>;
+        appendFile(input: StateAppendFileInput): Promise<void>;
         /** Check whether a codemode state path exists. */
-        exists(input: StateExistsInput): Promise<StateExistsOutput>;
+        exists(input: StateExistsInput): Promise<boolean>;
         /** Read metadata for a codemode state path. */
         stat(input: StateStatInput): Promise<StateStatOutput>;
         /** Read metadata for a codemode state path without following links. */
         lstat(input: StateLstatInput): Promise<StateLstatOutput>;
         /** Create a directory in mutable codemode state. */
-        mkdir(input: StateMkdirInput): Promise<StateMkdirOutput>;
+        mkdir(input: StateMkdirInput): Promise<void>;
         /** List the names directly below a codemode state directory. */
         readdir(input: StateReaddirInput): Promise<StateReaddirOutput>;
         /** List names and entry types directly below a codemode state directory. */
         readdirWithFileTypes(input: StateReaddirWithFileTypesInput): Promise<StateReaddirWithFileTypesOutput>;
         /** Remove a file or empty directory from mutable codemode state. */
-        rm(input: StateRmInput): Promise<StateRmOutput>;
+        rm(input: StateRmInput): Promise<void>;
         /** Copy one file within mutable codemode state. */
-        cp(input: StateCpInput): Promise<StateCpOutput>;
+        cp(input: StateCpInput): Promise<void>;
         /** Move one file within mutable codemode state. */
-        mv(input: StateMvInput): Promise<StateMvOutput>;
+        mv(input: StateMvInput): Promise<void>;
         /** Resolve and validate a codemode state path. */
-        realpath(input: StateRealpathInput): Promise<StateRealpathOutput>;
+        realpath(input: StateRealpathInput): Promise<string>;
         /** Resolve a path against a base path without accessing storage. */
-        resolvePath(input: StateResolvePathInput): Promise<StateResolvePathOutput>;
+        resolvePath(input: StateResolvePathInput): Promise<string>;
         /** Find codemode state paths matching a glob pattern. */
         glob(input: StateGlobInput): Promise<StateGlobOutput>;
         /** Read and parse a JSON file from codemode state. */
         readJson(input: StateReadJsonInput): Promise<StateReadJsonOutput>;
         /** Serialize and write a JSON value to mutable codemode state. */
-        writeJson(input: StateWriteJsonInput): Promise<StateWriteJsonOutput>;
+        writeJson(input: StateWriteJsonInput): Promise<void>;
+        /** Atomically apply text and JSON edits to mutable codemode state files. */
+        applyEdits(input: StateApplyEditsInput): Promise<StateApplyEditsOutput>;
         /** Search for text within one codemode state file. */
         searchText(input: StateSearchTextInput): Promise<StateSearchTextOutput>;
         /** Search for text across codemode state files matching a glob pattern. */
         searchFiles(input: StateSearchFilesInput): Promise<StateSearchFilesOutput>;
         /** Hash the bytes of one codemode state file. */
-        hashFile(input: StateHashFileInput): Promise<StateHashFileOutput>;
+        hashFile(input: StateHashFileInput): Promise<string>;
       };
       declare const state: StateCodemodeProvider;
 
+      type JsonValue = null | boolean | number | string | JsonValue[] | {
+        [key: string]: JsonValue;
+      };
       type StateReadFileInput = {
         path: string;
       };
-      type StateReadFileOutput = string;
       type StateReadFileBytesInput = {
         path: string;
       };
@@ -649,21 +653,17 @@ describe("runtime tool reference generation", () => {
         path: string;
         content: string;
       };
-      type StateWriteFileOutput = unknown;
       type StateWriteFileBytesInput = {
         path: string;
         content: Uint8Array;
       };
-      type StateWriteFileBytesOutput = unknown;
       type StateAppendFileInput = {
         path: string;
         content: string | Uint8Array;
       };
-      type StateAppendFileOutput = unknown;
       type StateExistsInput = {
         path: string;
       };
-      type StateExistsOutput = boolean;
       type StateStatInput = {
         path: string;
       };
@@ -687,7 +687,6 @@ describe("runtime tool reference generation", () => {
       type StateMkdirInput = {
         path: string;
       };
-      type StateMkdirOutput = unknown;
       type StateReaddirInput = {
         path: string;
       };
@@ -702,29 +701,24 @@ describe("runtime tool reference generation", () => {
       type StateRmInput = {
         path: string;
         options?: {
-            force?: boolean;
-          };
+          force?: boolean;
+        };
       };
-      type StateRmOutput = unknown;
       type StateCpInput = {
         src: string;
         dest: string;
       };
-      type StateCpOutput = unknown;
       type StateMvInput = {
         src: string;
         dest: string;
       };
-      type StateMvOutput = unknown;
       type StateRealpathInput = {
         path: string;
       };
-      type StateRealpathOutput = string;
       type StateResolvePathInput = {
         base: string;
         path: string;
       };
-      type StateResolvePathOutput = string;
       type StateGlobInput = {
         pattern: string;
       };
@@ -732,26 +726,59 @@ describe("runtime tool reference generation", () => {
       type StateReadJsonInput = {
         path: string;
       };
-      type StateReadJsonOutput = unknown;
+      type StateReadJsonOutput = JsonValue;
       type StateWriteJsonInput = {
         path: string;
-        value: unknown;
+        value: JsonValue;
         options?: {
+          spaces?: number;
+        };
+      };
+      type StateApplyEditsInput = {
+        edits: ({
+          kind: "write";
+          path: string;
+          content: string;
+        } | {
+          kind: "replace";
+          path: string;
+          search: string;
+          replacement: string;
+          options?: {
+            caseSensitive?: boolean;
+            regex?: boolean;
+            wholeWord?: boolean;
+            maxMatches?: number;
+          };
+        } | {
+          kind: "writeJson";
+          path: string;
+          value: JsonValue;
+          options?: {
             spaces?: number;
           };
+        })[];
       };
-      type StateWriteJsonOutput = unknown;
+      type StateApplyEditsOutput = {
+        edits: {
+          path: string;
+          changed: boolean;
+          content: string;
+          diff: string;
+        }[];
+        totalChanged: number;
+      };
       type StateSearchTextInput = {
         path: string;
         query: string;
         options?: {
-            caseSensitive?: boolean;
-            wholeWord?: boolean;
-            contextBefore?: number;
-            contextAfter?: number;
-            maxMatches?: number;
-            regex?: boolean;
-          };
+          caseSensitive?: boolean;
+          wholeWord?: boolean;
+          contextBefore?: number;
+          contextAfter?: number;
+          maxMatches?: number;
+          regex?: boolean;
+        };
       };
       type StateSearchTextOutput = {
         line: number;
@@ -765,61 +792,60 @@ describe("runtime tool reference generation", () => {
         pattern: string;
         query: string;
         options?: {
-            upload?: {
-                  caseSensitive?: boolean;
-                  wholeWord?: boolean;
-                  contextBefore?: number;
-                  contextAfter?: number;
-                  maxMatches?: number;
-                  cursor?: string;
-                };
-            static?: {
-                  caseSensitive?: boolean;
-                  wholeWord?: boolean;
-                  contextBefore?: number;
-                  contextAfter?: number;
-                  maxMatches?: number;
-                  cursor?: string;
-                };
+          upload?: {
+            caseSensitive?: boolean;
+            wholeWord?: boolean;
+            contextBefore?: number;
+            contextAfter?: number;
+            maxMatches?: number;
+            cursor?: string;
           };
+          static?: {
+            caseSensitive?: boolean;
+            wholeWord?: boolean;
+            contextBefore?: number;
+            contextAfter?: number;
+            maxMatches?: number;
+            cursor?: string;
+          };
+        };
       };
       type StateSearchFilesOutput = {
         upload: {
-            results: {
-                  path: string;
-                  matches: {
-                          line: number;
-                          column: number;
-                          match: string;
-                          lineText: string;
-                          beforeLines?: string[];
-                          afterLines?: string[];
-                        }[];
-                }[];
-            cursor?: string;
-            hasMore: boolean;
-          };
+          results: {
+            path: string;
+            matches: {
+              line: number;
+              column: number;
+              match: string;
+              lineText: string;
+              beforeLines?: string[];
+              afterLines?: string[];
+            }[];
+          }[];
+          cursor?: string;
+          hasMore: boolean;
+        };
         static: {
-            results: {
-                  path: string;
-                  matches: {
-                          line: number;
-                          column: number;
-                          match: string;
-                          lineText: string;
-                          beforeLines?: string[];
-                          afterLines?: string[];
-                        }[];
-                }[];
-            cursor?: string;
-            hasMore: boolean;
-          };
+          results: {
+            path: string;
+            matches: {
+              line: number;
+              column: number;
+              match: string;
+              lineText: string;
+              beforeLines?: string[];
+              afterLines?: string[];
+            }[];
+          }[];
+          cursor?: string;
+          hasMore: boolean;
+        };
       };
       type StateHashFileInput = {
         path: string;
         algorithm?: "md5" | "sha1" | "sha256";
       };
-      type StateHashFileOutput = string;
 
       // capabilities tools
       type CapabilitiesCodemodeProvider = {
@@ -870,17 +896,17 @@ describe("runtime tool reference generation", () => {
         hooksEnabled: boolean;
         namespace: string | null;
         items: ({
-            id: string;
-            hookName: string;
-            status: string;
-            attempts: number;
-            maxAttempts: number;
-            lastAttemptAt: string | null;
-            nextRetryAt: string | null;
-            createdAt: string | null;
-            error: string | null;
-            payload: unknown;
-          })[];
+          id: string;
+          hookName: string;
+          status: string;
+          attempts: number;
+          maxAttempts: number;
+          lastAttemptAt: string | null;
+          nextRetryAt: string | null;
+          createdAt: string | null;
+          error: string | null;
+          payload: unknown;
+        })[];
         cursor?: string;
         hasNextPage: boolean;
       };
@@ -940,14 +966,14 @@ describe("runtime tool reference generation", () => {
         kind: "connection" | "system";
         configured: boolean;
         config?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         missing?: string[];
         nextSteps?: string[];
         verification?: {
-            ok: boolean;
-            message: string;
-          };
+          ok: boolean;
+          message: string;
+        };
       };
       type ConnectionsSetupInput = {
         id: string;
@@ -957,21 +983,21 @@ describe("runtime tool reference generation", () => {
         label: string;
         overview: string;
         manualSteps: {
-            id: string;
-            title: string;
-            instructions: string;
-            expectedUserInput?: string[];
-          }[];
+          id: string;
+          title: string;
+          instructions: string;
+          expectedUserInput?: string[];
+        }[];
         fields: {
-            name: string;
-            required?: boolean;
-            secret?: boolean;
-            description?: string;
-          }[];
+          name: string;
+          required?: boolean;
+          secret?: boolean;
+          description?: string;
+        }[];
         verify?: {
-            tool: string;
-            description: string;
-          };
+          tool: string;
+          description: string;
+        };
         configureExample: string;
       };
       type ConnectionsSchemaInput = {
@@ -981,11 +1007,11 @@ describe("runtime tool reference generation", () => {
         id: string;
         label: string;
         fields: {
-            name: string;
-            required?: boolean;
-            secret?: boolean;
-            description?: string;
-          }[];
+          name: string;
+          required?: boolean;
+          secret?: boolean;
+          description?: string;
+        }[];
       };
       type ConnectionsVerifyInput = {
         id: string;
@@ -996,14 +1022,14 @@ describe("runtime tool reference generation", () => {
         kind: "connection" | "system";
         configured: boolean;
         config?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         missing?: string[];
         nextSteps?: string[];
         verification: {
-            ok: boolean;
-            message: string;
-          };
+          ok: boolean;
+          message: string;
+        };
       };
       type ConnectionsResetInput = {
         id: string;
@@ -1015,14 +1041,14 @@ describe("runtime tool reference generation", () => {
         kind: "connection" | "system";
         configured: boolean;
         config?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         missing?: string[];
         nextSteps?: string[];
         verification?: {
-            ok: boolean;
-            message: string;
-          };
+          ok: boolean;
+          message: string;
+        };
       };
       type ConnectionsConfigureInput = {
         id: string;
@@ -1035,14 +1061,14 @@ describe("runtime tool reference generation", () => {
         kind: "connection" | "system";
         configured: boolean;
         config?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         missing?: string[];
         nextSteps?: string[];
         verification?: {
-            ok: boolean;
-            message: string;
-          };
+          ok: boolean;
+          message: string;
+        };
       };
 
       // store tools
@@ -1078,9 +1104,9 @@ describe("runtime tool reference generation", () => {
         description?: string | null;
         category?: string[];
         verification?: {
-            type: "json-schema";
-            schema: unknown;
-          }[];
+          type: "json-schema";
+          schema: unknown;
+        }[];
       };
       type StoreSetOutput = {
         id: string;
@@ -1154,106 +1180,106 @@ describe("runtime tool reference generation", () => {
         action: AutomationRouteAction;
         description?: string | null;
         metadata: {
-            createdByActors: {
-                  initiator: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        };
-                  principal: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | null;
-                  delegation: ({
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        })[];
-                };
-            updatedByActors: {
-                  initiator: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        };
-                  principal: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | null;
-                  delegation: ({
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        })[];
-                };
-            managedBy: AutomationRouteManagedBy | null;
-          } | null;
+          createdByActors: {
+            initiator: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "initiator";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "initiator";
+            };
+            principal: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "principal";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "principal";
+            } | null;
+            delegation: ({
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "assistant";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "assistant";
+            })[];
+          };
+          updatedByActors: {
+            initiator: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "initiator";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "initiator";
+            };
+            principal: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "principal";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "principal";
+            } | null;
+            delegation: ({
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "assistant";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "assistant";
+            })[];
+          };
+          managedBy: AutomationRouteManagedBy | null;
+        } | null;
         nextOccurrenceAt: string | null;
       };
       type AutomationRouteTrigger = {
@@ -1264,14 +1290,14 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "schedule";
         cadence: {
-            kind: "once";
-            /** ISO 8601 datetime string. */
-            at: string;
-          } | {
-            kind: "cron";
-            expression: string;
-            timeZone: string;
-          };
+          kind: "once";
+          /** ISO 8601 datetime string. */
+          at: string;
+        } | {
+          kind: "cron";
+          expression: string;
+          timeZone: string;
+        };
       };
       type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction;
       type AutomationRouteManagedBy = {
@@ -1282,41 +1308,41 @@ describe("runtime tool reference generation", () => {
       };
       type AutomationEventMatcher = {
         actor: {
-            participation: "initiator";
-            scope: "internal";
-            type?: string;
-            id?: string;
-          } | {
-            participation: "initiator";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-          } | {
-            participation: "principal";
-            scope: "internal";
-            type?: string;
-            id?: string;
-          } | {
-            participation: "principal";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-          } | {
-            participation: "delegation";
-            scope: "internal";
-            type?: string;
-            id?: string;
-            role?: "delegate" | "assistant";
-          } | {
-            participation: "delegation";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-            role?: "delegate" | "assistant";
-          };
+          participation: "initiator";
+          scope: "internal";
+          type?: string;
+          id?: string;
+        } | {
+          participation: "initiator";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+        } | {
+          participation: "principal";
+          scope: "internal";
+          type?: string;
+          id?: string;
+        } | {
+          participation: "principal";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+        } | {
+          participation: "delegation";
+          scope: "internal";
+          type?: string;
+          id?: string;
+          role?: "delegate" | "assistant";
+        } | {
+          participation: "delegation";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+          role?: "delegate" | "assistant";
+        };
       } | {
         path: string;
         op: "exists";
@@ -1334,10 +1360,10 @@ describe("runtime tool reference generation", () => {
       type AutomationStartWorkflowAction = {
         kind: "start_workflow";
         authority: {
-            kind: "delegated-user";
-          } | {
-            kind: "organization-automation";
-          };
+          kind: "delegated-user";
+        } | {
+          kind: "organization-automation";
+        };
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
@@ -1382,23 +1408,23 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "schedule";
         cadence: {
-            kind: "once";
-            /** ISO 8601 datetime string. */
-            at: string;
-          } | {
-            kind: "cron";
-            expression: string;
-            timeZone?: string;
-          };
+          kind: "once";
+          /** ISO 8601 datetime string. */
+          at: string;
+        } | {
+          kind: "cron";
+          expression: string;
+          timeZone?: string;
+        };
       };
       type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
         authority: {
-            kind: "delegated-user";
-          } | {
-            kind: "organization-automation";
-          };
+          kind: "delegated-user";
+        } | {
+          kind: "organization-automation";
+        };
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
@@ -1476,8 +1502,8 @@ describe("runtime tool reference generation", () => {
         path: string;
         instanceId: string;
         payload?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
       };
       type WorkflowCreateInstanceOutput = {
         instanceId: string;
@@ -1489,17 +1515,17 @@ describe("runtime tool reference generation", () => {
       };
       type WorkflowListInstancesOutput = {
         instances: ({
-            id: string;
-            details: {
-                  status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-                  error?: {
-                          name: string;
-                          message: string;
-                        };
-                  output?: unknown;
-                };
-            createdAt: string;
-          })[];
+          id: string;
+          details: {
+            status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+            error?: {
+              name: string;
+              message: string;
+            };
+            output?: unknown;
+          };
+          createdAt: string;
+        })[];
         nextCursor?: string;
         hasNextPage: boolean;
       };
@@ -1509,21 +1535,21 @@ describe("runtime tool reference generation", () => {
       type WorkflowGetInstanceOutput = {
         id: string;
         details: {
-            status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-            error?: {
-                  name: string;
-                  message: string;
-                };
-            output?: unknown;
-          };
-        meta: {
+          status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+          error?: {
             name: string;
-            path: string;
-            createdAt: string;
-            updatedAt: string;
-            startedAt: string | null;
-            completedAt: string | null;
+            message: string;
           };
+          output?: unknown;
+        };
+        meta: {
+          name: string;
+          path: string;
+          createdAt: string;
+          updatedAt: string;
+          startedAt: string | null;
+          completedAt: string | null;
+        };
       };
       type WorkflowGetHistoryInput = {
         instanceId: string;
@@ -1550,22 +1576,22 @@ describe("runtime tool reference generation", () => {
       type WorkflowRetryInstanceOutput = {
         accepted: true;
         instance: {
-            id: string;
-            details: {
-                  status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-                  error?: {
-                          name: string;
-                          message: string;
-                        };
-                  output?: unknown;
-                };
+          id: string;
+          details: {
+            status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+            error?: {
+              name: string;
+              message: string;
+            };
+            output?: unknown;
           };
+        };
         retry: {
-            stepKey: string;
-            attempts: number;
-            maxAttempts: number;
-            scheduledAt: string;
-          };
+          stepKey: string;
+          attempts: number;
+          maxAttempts: number;
+          scheduledAt: string;
+        };
       };
 
       // events tools
@@ -1586,38 +1612,38 @@ describe("runtime tool reference generation", () => {
         source?: string;
         subjectUserId?: string;
         payload?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         targetScope?: {
-            kind: "system";
-          } | {
-            kind: "org";
-            orgId: string;
-          } | {
-            kind: "user";
-            userId: string;
-          } | {
-            kind: "project";
-            orgId: string;
-            projectId: string;
-          };
+          kind: "system";
+        } | {
+          kind: "org";
+          orgId: string;
+        } | {
+          kind: "user";
+          userId: string;
+        } | {
+          kind: "project";
+          orgId: string;
+          projectId: string;
+        };
       };
       type EventsFireOutput = {
         accepted: boolean;
         eventId: string;
         scope: {
-            kind: "system";
-          } | {
-            kind: "org";
-            orgId: string;
-          } | {
-            kind: "user";
-            userId: string;
-          } | {
-            kind: "project";
-            orgId: string;
-            projectId: string;
-          };
+          kind: "system";
+        } | {
+          kind: "org";
+          orgId: string;
+        } | {
+          kind: "user";
+          userId: string;
+        } | {
+          kind: "project";
+          orgId: string;
+          projectId: string;
+        };
         source: string;
         eventType: string;
       };
@@ -1641,14 +1667,14 @@ describe("runtime tool reference generation", () => {
         description?: string;
         capabilityId: string;
         payloadSchema?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         actorSchema?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         subjectSchema?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         example?: unknown;
       } | null;
       type EventsCatalogCreateInput = {
@@ -1657,14 +1683,14 @@ describe("runtime tool reference generation", () => {
         label: string;
         description?: string | null;
         payloadSchema?: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         actorSchema?: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         subjectSchema?: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         example?: unknown | null;
         enabled?: boolean;
       };
@@ -1675,14 +1701,14 @@ describe("runtime tool reference generation", () => {
         label: string;
         description?: string | null;
         payloadSchema?: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         actorSchema?: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         subjectSchema?: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         example?: unknown | null;
         enabled: boolean;
         capabilityId: string;
@@ -1704,17 +1730,17 @@ describe("runtime tool reference generation", () => {
       type CloudflareBrowserRunCaptureInput = {
         action: "pdf";
         input: {
-            url?: string;
-            html?: string;
-            [key: string]: unknown;
-          };
+          url?: string;
+          html?: string;
+          [key: string]: unknown;
+        };
       } | {
         action: "screenshot";
         input: {
-            url?: string;
-            html?: string;
-            [key: string]: unknown;
-          };
+          url?: string;
+          html?: string;
+          [key: string]: unknown;
+        };
       };
       type CloudflareBrowserRunCaptureOutput = {
         contentType: string;
@@ -1723,9 +1749,9 @@ describe("runtime tool reference generation", () => {
       type CloudflareBrowserRunCrawlInput = {
         action: "start";
         input: {
-            url: string;
-            [key: string]: unknown;
-          };
+          url: string;
+          [key: string]: unknown;
+        };
       } | {
         action: "get";
         jobId: string;
@@ -1736,8 +1762,8 @@ describe("runtime tool reference generation", () => {
       type CloudflareBrowserRunCrawlOutput = {
         action: "start";
         result: {
-            jobId: string;
-          };
+          jobId: string;
+        };
       } | {
         action: "get";
         result: unknown;
@@ -1756,17 +1782,17 @@ describe("runtime tool reference generation", () => {
       type WebExtractInput = {
         action: "content";
         input: {
-            url?: string;
-            html?: string;
-            [key: string]: unknown;
-          };
+          url?: string;
+          html?: string;
+          [key: string]: unknown;
+        };
       } | {
         action: "markdown";
         input: {
-            url?: string;
-            html?: string;
-            [key: string]: unknown;
-          };
+          url?: string;
+          html?: string;
+          [key: string]: unknown;
+        };
       };
       type WebExtractOutput = {
         action: "content";
@@ -1810,41 +1836,41 @@ describe("runtime tool reference generation", () => {
       type ApiListConnectionsInput = Record<string, unknown>;
       type ApiListConnectionsOutput = {
         connections: ({
-            slug: string;
-            name?: string | null;
-            baseUrl: string;
-            authMode: string;
-            status: string;
-            createdAt?: string;
-            updatedAt?: string;
-          })[];
+          slug: string;
+          name?: string | null;
+          baseUrl: string;
+          authMode: string;
+          status: string;
+          createdAt?: string;
+          updatedAt?: string;
+        })[];
       };
       type ApiCreateConnectionInput = {
         slug: string;
         name?: string;
         baseUrl: string;
         auth?: {
-            type: "none";
-          } | {
-            type: "bearer";
-            token: string;
-          } | {
-            type: "oauth";
-            authorizationEndpoint: string;
-            tokenEndpoint: string;
-            clientId: string;
-            clientSecret?: string;
-            scopes?: string[];
-            tokenEndpointAuthMethod: "client_secret_basic" | "client_secret_post" | "none";
-          } | {
-            type: "client_credentials";
-            tokenEndpoint: string;
-            clientId: string;
-            clientSecret: string;
-            scopes?: string[];
-            audience?: string;
-            tokenEndpointAuthMethod: "client_secret_basic" | "client_secret_post";
-          };
+          type: "none";
+        } | {
+          type: "bearer";
+          token: string;
+        } | {
+          type: "oauth";
+          authorizationEndpoint: string;
+          tokenEndpoint: string;
+          clientId: string;
+          clientSecret?: string;
+          scopes?: string[];
+          tokenEndpointAuthMethod: "client_secret_basic" | "client_secret_post" | "none";
+        } | {
+          type: "client_credentials";
+          tokenEndpoint: string;
+          clientId: string;
+          clientSecret: string;
+          scopes?: string[];
+          audience?: string;
+          tokenEndpointAuthMethod: "client_secret_basic" | "client_secret_post";
+        };
       };
       type ApiCreateConnectionOutput = {
         slug: string;
@@ -1882,8 +1908,8 @@ describe("runtime tool reference generation", () => {
         slug: string;
         scopes?: string[];
         extraAuthorizationParams?: {
-            [key: string]: string;
-          };
+          [key: string]: string;
+        };
       };
       type ApiStartOAuthOutput = {
         authorizationUrl: string;
@@ -1898,57 +1924,57 @@ describe("runtime tool reference generation", () => {
       type ApiListWebhookEndpointsInput = Record<string, unknown>;
       type ApiListWebhookEndpointsOutput = {
         endpoints: ({
-            id: string;
+          id: string;
+          name: string;
+          status: "draft" | "active" | "disabled";
+          authConfig: {
+            type: "none";
+          } | {
+            type: "bearer";
+            tokenRef: string;
+          } | {
+            type: "apiKey";
+            location: "header" | "query";
             name: string;
-            status: "draft" | "active" | "disabled";
-            authConfig: {
-                  type: "none";
-                } | {
-                  type: "bearer";
-                  tokenRef: string;
-                } | {
-                  type: "apiKey";
-                  location: "header" | "query";
-                  name: string;
-                  secretRef: string;
-                } | {
-                  type: "basic";
-                  usernameRef: string;
-                  passwordRef: string;
-                } | {
-                  type: "hmac";
-                  secretRef: string;
-                  algorithm: "sha1" | "sha256" | "sha512";
-                  signature: {
-                          location: "header" | "query";
-                          name: string;
-                          encoding: "hex" | "base64" | "base64url";
-                          prefix?: string;
-                        };
-                  signedPayload: {
-                          type: "rawBody";
-                        } | {
-                          type: "timestampBody";
-                          timestampHeader: string;
-                          delimiter: string;
-                          toleranceSeconds: number;
-                        };
-                };
-            deliveryIdentity: {
-                  type: "header";
-                  name: string;
-                } | {
-                  type: "query";
-                  name: string;
-                } | {
-                  type: "jsonBodyPath";
-                  path: string[];
-                };
-            secretRefs: string[];
-            createdAt?: string;
-            updatedAt?: string;
-            publicUrl: string | null;
-          })[];
+            secretRef: string;
+          } | {
+            type: "basic";
+            usernameRef: string;
+            passwordRef: string;
+          } | {
+            type: "hmac";
+            secretRef: string;
+            algorithm: "sha1" | "sha256" | "sha512";
+            signature: {
+              location: "header" | "query";
+              name: string;
+              encoding: "hex" | "base64" | "base64url";
+              prefix?: string;
+            };
+            signedPayload: {
+              type: "rawBody";
+            } | {
+              type: "timestampBody";
+              timestampHeader: string;
+              delimiter: string;
+              toleranceSeconds: number;
+            };
+          };
+          deliveryIdentity: {
+            type: "header";
+            name: string;
+          } | {
+            type: "query";
+            name: string;
+          } | {
+            type: "jsonBodyPath";
+            path: string[];
+          };
+          secretRefs: string[];
+          createdAt?: string;
+          updatedAt?: string;
+          publicUrl: string | null;
+        })[];
       };
       type ApiGetWebhookEndpointInput = {
         endpointId: string;
@@ -1958,48 +1984,48 @@ describe("runtime tool reference generation", () => {
         name: string;
         status: "draft" | "active" | "disabled";
         authConfig: {
-            type: "none";
-          } | {
-            type: "bearer";
-            tokenRef: string;
-          } | {
-            type: "apiKey";
+          type: "none";
+        } | {
+          type: "bearer";
+          tokenRef: string;
+        } | {
+          type: "apiKey";
+          location: "header" | "query";
+          name: string;
+          secretRef: string;
+        } | {
+          type: "basic";
+          usernameRef: string;
+          passwordRef: string;
+        } | {
+          type: "hmac";
+          secretRef: string;
+          algorithm: "sha1" | "sha256" | "sha512";
+          signature: {
             location: "header" | "query";
             name: string;
-            secretRef: string;
-          } | {
-            type: "basic";
-            usernameRef: string;
-            passwordRef: string;
-          } | {
-            type: "hmac";
-            secretRef: string;
-            algorithm: "sha1" | "sha256" | "sha512";
-            signature: {
-                  location: "header" | "query";
-                  name: string;
-                  encoding: "hex" | "base64" | "base64url";
-                  prefix?: string;
-                };
-            signedPayload: {
-                  type: "rawBody";
-                } | {
-                  type: "timestampBody";
-                  timestampHeader: string;
-                  delimiter: string;
-                  toleranceSeconds: number;
-                };
+            encoding: "hex" | "base64" | "base64url";
+            prefix?: string;
           };
+          signedPayload: {
+            type: "rawBody";
+          } | {
+            type: "timestampBody";
+            timestampHeader: string;
+            delimiter: string;
+            toleranceSeconds: number;
+          };
+        };
         deliveryIdentity: {
-            type: "header";
-            name: string;
-          } | {
-            type: "query";
-            name: string;
-          } | {
-            type: "jsonBodyPath";
-            path: string[];
-          };
+          type: "header";
+          name: string;
+        } | {
+          type: "query";
+          name: string;
+        } | {
+          type: "jsonBodyPath";
+          path: string[];
+        };
         secretRefs: string[];
         createdAt?: string;
         updatedAt?: string;
@@ -2009,48 +2035,48 @@ describe("runtime tool reference generation", () => {
         name: string;
         status?: "draft" | "active" | "disabled";
         deliveryIdentity: {
-            type: "header";
-            name: string;
-          } | {
-            type: "query";
-            name: string;
-          } | {
-            type: "jsonBodyPath";
-            path: string[];
-          };
+          type: "header";
+          name: string;
+        } | {
+          type: "query";
+          name: string;
+        } | {
+          type: "jsonBodyPath";
+          path: string[];
+        };
         auth: {
-            type: "none";
-          } | {
-            type: "bearer";
-            token: string;
-          } | {
-            type: "apiKey";
+          type: "none";
+        } | {
+          type: "bearer";
+          token: string;
+        } | {
+          type: "apiKey";
+          location: "header" | "query";
+          name: string;
+          secret: string;
+        } | {
+          type: "basic";
+          username: string;
+          password: string;
+        } | {
+          type: "hmac";
+          secret: string;
+          algorithm: "sha1" | "sha256" | "sha512";
+          signature: {
             location: "header" | "query";
             name: string;
-            secret: string;
-          } | {
-            type: "basic";
-            username: string;
-            password: string;
-          } | {
-            type: "hmac";
-            secret: string;
-            algorithm: "sha1" | "sha256" | "sha512";
-            signature: {
-                  location: "header" | "query";
-                  name: string;
-                  encoding: "hex" | "base64" | "base64url";
-                  prefix?: string;
-                };
-            signedPayload: {
-                  type: "rawBody";
-                } | {
-                  type: "timestampBody";
-                  timestampHeader: string;
-                  delimiter: string;
-                  toleranceSeconds: number;
-                };
+            encoding: "hex" | "base64" | "base64url";
+            prefix?: string;
           };
+          signedPayload: {
+            type: "rawBody";
+          } | {
+            type: "timestampBody";
+            timestampHeader: string;
+            delimiter: string;
+            toleranceSeconds: number;
+          };
+        };
         endpointId: string;
       };
       type ApiCreateWebhookEndpointOutput = {
@@ -2058,48 +2084,48 @@ describe("runtime tool reference generation", () => {
         name: string;
         status: "draft" | "active" | "disabled";
         authConfig: {
-            type: "none";
-          } | {
-            type: "bearer";
-            tokenRef: string;
-          } | {
-            type: "apiKey";
+          type: "none";
+        } | {
+          type: "bearer";
+          tokenRef: string;
+        } | {
+          type: "apiKey";
+          location: "header" | "query";
+          name: string;
+          secretRef: string;
+        } | {
+          type: "basic";
+          usernameRef: string;
+          passwordRef: string;
+        } | {
+          type: "hmac";
+          secretRef: string;
+          algorithm: "sha1" | "sha256" | "sha512";
+          signature: {
             location: "header" | "query";
             name: string;
-            secretRef: string;
-          } | {
-            type: "basic";
-            usernameRef: string;
-            passwordRef: string;
-          } | {
-            type: "hmac";
-            secretRef: string;
-            algorithm: "sha1" | "sha256" | "sha512";
-            signature: {
-                  location: "header" | "query";
-                  name: string;
-                  encoding: "hex" | "base64" | "base64url";
-                  prefix?: string;
-                };
-            signedPayload: {
-                  type: "rawBody";
-                } | {
-                  type: "timestampBody";
-                  timestampHeader: string;
-                  delimiter: string;
-                  toleranceSeconds: number;
-                };
+            encoding: "hex" | "base64" | "base64url";
+            prefix?: string;
           };
+          signedPayload: {
+            type: "rawBody";
+          } | {
+            type: "timestampBody";
+            timestampHeader: string;
+            delimiter: string;
+            toleranceSeconds: number;
+          };
+        };
         deliveryIdentity: {
-            type: "header";
-            name: string;
-          } | {
-            type: "query";
-            name: string;
-          } | {
-            type: "jsonBodyPath";
-            path: string[];
-          };
+          type: "header";
+          name: string;
+        } | {
+          type: "query";
+          name: string;
+        } | {
+          type: "jsonBodyPath";
+          path: string[];
+        };
         secretRefs: string[];
         createdAt?: string;
         updatedAt?: string;
@@ -2109,48 +2135,48 @@ describe("runtime tool reference generation", () => {
         name?: string;
         status?: "draft" | "active" | "disabled";
         deliveryIdentity?: {
-            type: "header";
-            name: string;
-          } | {
-            type: "query";
-            name: string;
-          } | {
-            type: "jsonBodyPath";
-            path: string[];
-          };
+          type: "header";
+          name: string;
+        } | {
+          type: "query";
+          name: string;
+        } | {
+          type: "jsonBodyPath";
+          path: string[];
+        };
         auth?: {
-            type: "none";
-          } | {
-            type: "bearer";
-            token: string;
-          } | {
-            type: "apiKey";
+          type: "none";
+        } | {
+          type: "bearer";
+          token: string;
+        } | {
+          type: "apiKey";
+          location: "header" | "query";
+          name: string;
+          secret: string;
+        } | {
+          type: "basic";
+          username: string;
+          password: string;
+        } | {
+          type: "hmac";
+          secret: string;
+          algorithm: "sha1" | "sha256" | "sha512";
+          signature: {
             location: "header" | "query";
             name: string;
-            secret: string;
-          } | {
-            type: "basic";
-            username: string;
-            password: string;
-          } | {
-            type: "hmac";
-            secret: string;
-            algorithm: "sha1" | "sha256" | "sha512";
-            signature: {
-                  location: "header" | "query";
-                  name: string;
-                  encoding: "hex" | "base64" | "base64url";
-                  prefix?: string;
-                };
-            signedPayload: {
-                  type: "rawBody";
-                } | {
-                  type: "timestampBody";
-                  timestampHeader: string;
-                  delimiter: string;
-                  toleranceSeconds: number;
-                };
+            encoding: "hex" | "base64" | "base64url";
+            prefix?: string;
           };
+          signedPayload: {
+            type: "rawBody";
+          } | {
+            type: "timestampBody";
+            timestampHeader: string;
+            delimiter: string;
+            toleranceSeconds: number;
+          };
+        };
         endpointId: string;
       };
       type ApiUpdateWebhookEndpointOutput = {
@@ -2158,48 +2184,48 @@ describe("runtime tool reference generation", () => {
         name: string;
         status: "draft" | "active" | "disabled";
         authConfig: {
-            type: "none";
-          } | {
-            type: "bearer";
-            tokenRef: string;
-          } | {
-            type: "apiKey";
+          type: "none";
+        } | {
+          type: "bearer";
+          tokenRef: string;
+        } | {
+          type: "apiKey";
+          location: "header" | "query";
+          name: string;
+          secretRef: string;
+        } | {
+          type: "basic";
+          usernameRef: string;
+          passwordRef: string;
+        } | {
+          type: "hmac";
+          secretRef: string;
+          algorithm: "sha1" | "sha256" | "sha512";
+          signature: {
             location: "header" | "query";
             name: string;
-            secretRef: string;
-          } | {
-            type: "basic";
-            usernameRef: string;
-            passwordRef: string;
-          } | {
-            type: "hmac";
-            secretRef: string;
-            algorithm: "sha1" | "sha256" | "sha512";
-            signature: {
-                  location: "header" | "query";
-                  name: string;
-                  encoding: "hex" | "base64" | "base64url";
-                  prefix?: string;
-                };
-            signedPayload: {
-                  type: "rawBody";
-                } | {
-                  type: "timestampBody";
-                  timestampHeader: string;
-                  delimiter: string;
-                  toleranceSeconds: number;
-                };
+            encoding: "hex" | "base64" | "base64url";
+            prefix?: string;
           };
+          signedPayload: {
+            type: "rawBody";
+          } | {
+            type: "timestampBody";
+            timestampHeader: string;
+            delimiter: string;
+            toleranceSeconds: number;
+          };
+        };
         deliveryIdentity: {
-            type: "header";
-            name: string;
-          } | {
-            type: "query";
-            name: string;
-          } | {
-            type: "jsonBodyPath";
-            path: string[];
-          };
+          type: "header";
+          name: string;
+        } | {
+          type: "query";
+          name: string;
+        } | {
+          type: "jsonBodyPath";
+          path: string[];
+        };
         secretRefs: string[];
         createdAt?: string;
         updatedAt?: string;
@@ -2216,11 +2242,11 @@ describe("runtime tool reference generation", () => {
         method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
         path: string;
         query?: {
-            [key: string]: string;
-          };
+          [key: string]: string;
+        };
         headers?: {
-            [key: string]: string;
-          };
+          [key: string]: string;
+        };
         json?: unknown;
         body?: string;
         timeoutMs?: number;
@@ -2229,8 +2255,8 @@ describe("runtime tool reference generation", () => {
         status: number;
         statusText: string;
         headers: {
-            [key: string]: string;
-          };
+          [key: string]: string;
+        };
         body: unknown | null;
       };
 
@@ -2256,52 +2282,52 @@ describe("runtime tool reference generation", () => {
       type McpListServersInput = Record<string, unknown>;
       type McpListServersOutput = {
         servers: ({
-            slug: string;
-            name?: string | null;
-            endpointUrl: string;
-            authMode: string;
-            cache?: {
-                  protocolVersion?: string | null;
-                  serverInfo?: unknown | null;
-                  capabilities?: unknown | null;
-                  tools?: {
-                          name: string;
-                          title?: string;
-                          description?: string;
-                          inputSchema?: {
-                                    [key: string]: unknown;
-                                  };
-                          annotations?: {
-                                    [key: string]: unknown;
-                                  };
-                          _meta?: {
-                                    [key: string]: unknown;
-                                  };
-                        }[] | null;
-                  updatedAt?: string;
-                } | null;
-          })[];
+          slug: string;
+          name?: string | null;
+          endpointUrl: string;
+          authMode: string;
+          cache?: {
+            protocolVersion?: string | null;
+            serverInfo?: unknown | null;
+            capabilities?: unknown | null;
+            tools?: {
+              name: string;
+              title?: string;
+              description?: string;
+              inputSchema?: {
+                [key: string]: unknown;
+              };
+              annotations?: {
+                [key: string]: unknown;
+              };
+              _meta?: {
+                [key: string]: unknown;
+              };
+            }[] | null;
+            updatedAt?: string;
+          } | null;
+        })[];
       };
       type McpCreateServerInput = {
         slug: string;
         name?: string;
         endpointUrl: string;
         auth?: {
-            type: "none";
-          } | {
-            type: "bearer";
-            token: string;
-          } | {
-            type: "oauth";
-            clientId?: string;
-            clientSecret?: string;
-            scopes?: string[];
-          } | {
-            type: "client_credentials";
-            clientId: string;
-            clientSecret: string;
-            scopes?: string[];
-          };
+          type: "none";
+        } | {
+          type: "bearer";
+          token: string;
+        } | {
+          type: "oauth";
+          clientId?: string;
+          clientSecret?: string;
+          scopes?: string[];
+        } | {
+          type: "client_credentials";
+          clientId: string;
+          clientSecret: string;
+          scopes?: string[];
+        };
       };
       type McpCreateServerOutput = {
         slug: string;
@@ -2309,25 +2335,25 @@ describe("runtime tool reference generation", () => {
         endpointUrl: string;
         authMode: string;
         cache?: {
-            protocolVersion?: string | null;
-            serverInfo?: unknown | null;
-            capabilities?: unknown | null;
-            tools?: {
-                  name: string;
-                  title?: string;
-                  description?: string;
-                  inputSchema?: {
-                          [key: string]: unknown;
-                        };
-                  annotations?: {
-                          [key: string]: unknown;
-                        };
-                  _meta?: {
-                          [key: string]: unknown;
-                        };
-                }[] | null;
-            updatedAt?: string;
-          } | null;
+          protocolVersion?: string | null;
+          serverInfo?: unknown | null;
+          capabilities?: unknown | null;
+          tools?: {
+            name: string;
+            title?: string;
+            description?: string;
+            inputSchema?: {
+              [key: string]: unknown;
+            };
+            annotations?: {
+              [key: string]: unknown;
+            };
+            _meta?: {
+              [key: string]: unknown;
+            };
+          }[] | null;
+          updatedAt?: string;
+        } | null;
       };
       type McpDeleteServerInput = {
         slug: string;
@@ -2341,64 +2367,64 @@ describe("runtime tool reference generation", () => {
       type McpRefreshServerOutput = {
         ok: boolean;
         tools: {
-            name: string;
-            title?: string;
-            description?: string;
-            inputSchema?: {
-                  [key: string]: unknown;
-                };
-            annotations?: {
-                  [key: string]: unknown;
-                };
-            _meta?: {
-                  [key: string]: unknown;
-                };
-          }[];
+          name: string;
+          title?: string;
+          description?: string;
+          inputSchema?: {
+            [key: string]: unknown;
+          };
+          annotations?: {
+            [key: string]: unknown;
+          };
+          _meta?: {
+            [key: string]: unknown;
+          };
+        }[];
         stage: "auth" | "list_tools" | null;
         checkedAt: string;
         server: {
-            slug: string;
-            name?: string | null;
-            endpointUrl: string;
-            authMode: string;
-          };
+          slug: string;
+          name?: string | null;
+          endpointUrl: string;
+          authMode: string;
+        };
         auth: {
-            authenticated: boolean;
-            mode: string;
-            tokenPresent: boolean;
-            expiresAt: string | null;
-            expired: boolean | null;
-            scopes: {
-                  requested: string[] | null;
-                  granted: string[] | null;
-                  missing: string[] | null;
-                  raw: string | null;
-                };
+          authenticated: boolean;
+          mode: string;
+          tokenPresent: boolean;
+          expiresAt: string | null;
+          expired: boolean | null;
+          scopes: {
+            requested: string[] | null;
+            granted: string[] | null;
+            missing: string[] | null;
+            raw: string | null;
           };
+        };
         live: {
-            reachable: boolean;
-            listToolsOk: boolean;
-            toolCount: number | null;
-            protocolVersion: string | null;
-            serverInfo: unknown | null;
-            capabilities: unknown | null;
-          };
+          reachable: boolean;
+          listToolsOk: boolean;
+          toolCount: number | null;
+          protocolVersion: string | null;
+          serverInfo: unknown | null;
+          capabilities: unknown | null;
+        };
         cache: {
-            presentBeforeCheck: boolean;
-            previousToolCount: number | null;
-            updatedToolCount: number | null;
-          };
+          presentBeforeCheck: boolean;
+          previousToolCount: number | null;
+          updatedToolCount: number | null;
+        };
         error: {
-            code: string;
-            message: string;
-          } | null;
+          code: string;
+          message: string;
+        } | null;
       };
       type McpCallToolInput = {
         slug: string;
         name: string;
         arguments?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         timeoutMs?: number;
       };
       type McpCallToolOutput = {
@@ -2439,11 +2465,11 @@ describe("runtime tool reference generation", () => {
         externalId: string;
         code: string;
         actor: {
-            scope: "external";
-            source: string;
-            type: string;
-            id: string;
-          };
+          scope: "external";
+          source: string;
+          type: string;
+          id: string;
+        };
         type?: string;
         expiresAt?: string;
       };
@@ -2463,14 +2489,14 @@ describe("runtime tool reference generation", () => {
 
       type PiCreateSessionInput = {
         model?: {
-            provider: "openai" | "anthropic" | "gemini";
-            name: string;
-          };
+          provider: "openai" | "anthropic" | "gemini";
+          name: string;
+        };
         name?: string;
         systemMessage?: string;
         metadata?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";
       };
@@ -2479,8 +2505,8 @@ describe("runtime tool reference generation", () => {
         name: string | null;
         status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         metadata: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -2499,26 +2525,26 @@ describe("runtime tool reference generation", () => {
         name: string | null;
         status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         metadata: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
         updatedAt: string;
         workflow: {
-            status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-            error?: {
-                  name: string;
-                  message: string;
-                };
-            output?: unknown;
+          status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+          error?: {
+            name: string;
+            message: string;
           };
+          output?: unknown;
+        };
         agent: {
-            state: {
-                  messages: unknown[];
-                  errorMessage?: string;
-                };
+          state: {
+            messages: unknown[];
+            errorMessage?: string;
           };
+        };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";
       };
@@ -2530,8 +2556,8 @@ describe("runtime tool reference generation", () => {
         name: string | null;
         status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         metadata: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -2548,35 +2574,35 @@ describe("runtime tool reference generation", () => {
         name: string | null;
         status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         metadata: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
         updatedAt: string;
         workflow: {
-            status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-            error?: {
-                  name: string;
-                  message: string;
-                };
-            output?: unknown;
+          status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+          error?: {
+            name: string;
+            message: string;
           };
+          output?: unknown;
+        };
         agent: {
-            state: {
-                  messages: unknown[];
-                  errorMessage?: string;
-                };
+          state: {
+            messages: unknown[];
+            errorMessage?: string;
           };
+        };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";
         assistantText: string;
         commandStatus: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         stream: unknown[];
         terminalState: {
-            messages: unknown[];
-            errorMessage?: string;
-          };
+          messages: unknown[];
+          errorMessage?: string;
+        };
       };
 
       // resend tools
@@ -2598,66 +2624,66 @@ describe("runtime tool reference generation", () => {
       };
       type ResendGetThreadOutput = {
         thread: {
-            id: string;
-            subject: string | null;
-            normalizedSubject: string;
-            participants: string[];
-            messageCount: number;
-            /** ISO 8601 datetime string. */
-            firstMessageAt: string;
-            /** ISO 8601 datetime string. */
-            lastMessageAt: string;
-            lastDirection: string | null;
-            lastMessagePreview: string | null;
-            /** ISO 8601 datetime string. */
-            createdAt: string;
-            /** ISO 8601 datetime string. */
-            updatedAt: string;
-            replyToAddress: string | null;
-          };
+          id: string;
+          subject: string | null;
+          normalizedSubject: string;
+          participants: string[];
+          messageCount: number;
+          /** ISO 8601 datetime string. */
+          firstMessageAt: string;
+          /** ISO 8601 datetime string. */
+          lastMessageAt: string;
+          lastDirection: string | null;
+          lastMessagePreview: string | null;
+          /** ISO 8601 datetime string. */
+          createdAt: string;
+          /** ISO 8601 datetime string. */
+          updatedAt: string;
+          replyToAddress: string | null;
+        };
         messages: ({
+          id: string;
+          threadId: string;
+          direction: "inbound" | "outbound";
+          status: string;
+          from: string | null;
+          to: string[];
+          cc: string[];
+          bcc: string[];
+          replyTo: string[];
+          subject: string | null;
+          normalizedSubject: string;
+          participants: string[];
+          messageId: string | null;
+          inReplyTo: string | null;
+          references: string[];
+          providerEmailId: string | null;
+          attachments: ({
             id: string;
-            threadId: string;
-            direction: "inbound" | "outbound";
-            status: string;
-            from: string | null;
-            to: string[];
-            cc: string[];
-            bcc: string[];
-            replyTo: string[];
-            subject: string | null;
-            normalizedSubject: string;
-            participants: string[];
-            messageId: string | null;
-            inReplyTo: string | null;
-            references: string[];
-            providerEmailId: string | null;
-            attachments: ({
-                  id: string;
-                  filename: string | null;
-                  size: number;
-                  contentType: string;
-                  contentDisposition: string | null;
-                  contentId: string | null;
-                })[];
-            html: string | null;
-            text: string | null;
-            headers: {
-                  [key: string]: string;
-                } | null;
-            /** ISO 8601 datetime string. */
-            occurredAt: string;
-            scheduledAt: string | null;
-            sentAt: string | null;
-            lastEventType: string | null;
-            lastEventAt: string | null;
-            errorCode: string | null;
-            errorMessage: string | null;
-            /** ISO 8601 datetime string. */
-            createdAt: string;
-            /** ISO 8601 datetime string. */
-            updatedAt: string;
+            filename: string | null;
+            size: number;
+            contentType: string;
+            contentDisposition: string | null;
+            contentId: string | null;
           })[];
+          html: string | null;
+          text: string | null;
+          headers: {
+            [key: string]: string;
+          } | null;
+          /** ISO 8601 datetime string. */
+          occurredAt: string;
+          scheduledAt: string | null;
+          sentAt: string | null;
+          lastEventType: string | null;
+          lastEventAt: string | null;
+          errorCode: string | null;
+          errorMessage: string | null;
+          /** ISO 8601 datetime string. */
+          createdAt: string;
+          /** ISO 8601 datetime string. */
+          updatedAt: string;
+        })[];
         cursor?: string;
         hasNextPage: boolean;
         markdown: string;
@@ -2669,22 +2695,22 @@ describe("runtime tool reference generation", () => {
       };
       type ResendListThreadsOutput = {
         threads: ({
-            id: string;
-            subject: string | null;
-            normalizedSubject: string;
-            participants: string[];
-            messageCount: number;
-            /** ISO 8601 datetime string. */
-            firstMessageAt: string;
-            /** ISO 8601 datetime string. */
-            lastMessageAt: string;
-            lastDirection: string | null;
-            lastMessagePreview: string | null;
-            /** ISO 8601 datetime string. */
-            createdAt: string;
-            /** ISO 8601 datetime string. */
-            updatedAt: string;
-          })[];
+          id: string;
+          subject: string | null;
+          normalizedSubject: string;
+          participants: string[];
+          messageCount: number;
+          /** ISO 8601 datetime string. */
+          firstMessageAt: string;
+          /** ISO 8601 datetime string. */
+          lastMessageAt: string;
+          lastDirection: string | null;
+          lastMessagePreview: string | null;
+          /** ISO 8601 datetime string. */
+          createdAt: string;
+          /** ISO 8601 datetime string. */
+          updatedAt: string;
+        })[];
         cursor?: string;
         hasNextPage: boolean;
       };
@@ -2695,66 +2721,66 @@ describe("runtime tool reference generation", () => {
       };
       type ResendReplyToThreadOutput = {
         thread: {
-            id: string;
-            subject: string | null;
-            normalizedSubject: string;
-            participants: string[];
-            messageCount: number;
-            /** ISO 8601 datetime string. */
-            firstMessageAt: string;
-            /** ISO 8601 datetime string. */
-            lastMessageAt: string;
-            lastDirection: string | null;
-            lastMessagePreview: string | null;
-            /** ISO 8601 datetime string. */
-            createdAt: string;
-            /** ISO 8601 datetime string. */
-            updatedAt: string;
-            replyToAddress: string | null;
-          };
+          id: string;
+          subject: string | null;
+          normalizedSubject: string;
+          participants: string[];
+          messageCount: number;
+          /** ISO 8601 datetime string. */
+          firstMessageAt: string;
+          /** ISO 8601 datetime string. */
+          lastMessageAt: string;
+          lastDirection: string | null;
+          lastMessagePreview: string | null;
+          /** ISO 8601 datetime string. */
+          createdAt: string;
+          /** ISO 8601 datetime string. */
+          updatedAt: string;
+          replyToAddress: string | null;
+        };
         message: {
+          id: string;
+          threadId: string;
+          direction: "inbound" | "outbound";
+          status: string;
+          from: string | null;
+          to: string[];
+          cc: string[];
+          bcc: string[];
+          replyTo: string[];
+          subject: string | null;
+          normalizedSubject: string;
+          participants: string[];
+          messageId: string | null;
+          inReplyTo: string | null;
+          references: string[];
+          providerEmailId: string | null;
+          attachments: ({
             id: string;
-            threadId: string;
-            direction: "inbound" | "outbound";
-            status: string;
-            from: string | null;
-            to: string[];
-            cc: string[];
-            bcc: string[];
-            replyTo: string[];
-            subject: string | null;
-            normalizedSubject: string;
-            participants: string[];
-            messageId: string | null;
-            inReplyTo: string | null;
-            references: string[];
-            providerEmailId: string | null;
-            attachments: ({
-                  id: string;
-                  filename: string | null;
-                  size: number;
-                  contentType: string;
-                  contentDisposition: string | null;
-                  contentId: string | null;
-                })[];
-            html: string | null;
-            text: string | null;
-            headers: {
-                  [key: string]: string;
-                } | null;
-            /** ISO 8601 datetime string. */
-            occurredAt: string;
-            scheduledAt: string | null;
-            sentAt: string | null;
-            lastEventType: string | null;
-            lastEventAt: string | null;
-            errorCode: string | null;
-            errorMessage: string | null;
-            /** ISO 8601 datetime string. */
-            createdAt: string;
-            /** ISO 8601 datetime string. */
-            updatedAt: string;
-          };
+            filename: string | null;
+            size: number;
+            contentType: string;
+            contentDisposition: string | null;
+            contentId: string | null;
+          })[];
+          html: string | null;
+          text: string | null;
+          headers: {
+            [key: string]: string;
+          } | null;
+          /** ISO 8601 datetime string. */
+          occurredAt: string;
+          scheduledAt: string | null;
+          sentAt: string | null;
+          lastEventType: string | null;
+          lastEventAt: string | null;
+          errorCode: string | null;
+          errorMessage: string | null;
+          /** ISO 8601 datetime string. */
+          createdAt: string;
+          /** ISO 8601 datetime string. */
+          updatedAt: string;
+        };
       };
 
       // reson8 tools
@@ -2779,11 +2805,11 @@ describe("runtime tool reference generation", () => {
         start_ms?: number;
         duration_ms?: number;
         words?: {
-            text: string;
-            start_ms?: number;
-            duration_ms?: number;
-            confidence?: number;
-          }[];
+          text: string;
+          start_ms?: number;
+          duration_ms?: number;
+          confidence?: number;
+        }[];
       };
 
       // sandbox tools
@@ -2916,135 +2942,8 @@ describe("runtime tool reference generation", () => {
 
       type UploadReadPreparedInput = {
         file: {
-            kind: "prepared-upload";
-            scope: {
-                  kind: "org";
-                  orgId: string;
-                } | {
-                  kind: "user";
-                  userId: string;
-                } | {
-                  kind: "project";
-                  orgId: string;
-                  projectId: string;
-                };
-            uploadId: string;
-            provider: string;
-            fileKey: string;
-            filename: string;
-            sizeBytes: number;
-            contentType: string;
-            /** ISO 8601 datetime string. */
-            expiresAt: string;
-          };
-        encoding?: "utf8" | "base64" | "bytes";
-        maxBytes?: number;
-      };
-      type UploadReadPreparedOutput = {
-        file: {
-            kind: "prepared-upload";
-            scope: {
-                  kind: "org";
-                  orgId: string;
-                } | {
-                  kind: "user";
-                  userId: string;
-                } | {
-                  kind: "project";
-                  orgId: string;
-                  projectId: string;
-                };
-            uploadId: string;
-            provider: string;
-            fileKey: string;
-            filename: string;
-            sizeBytes: number;
-            contentType: string;
-            /** ISO 8601 datetime string. */
-            expiresAt: string;
-          };
-        byteLength: number;
-        encoding: "utf8";
-        text: string;
-      } | {
-        file: {
-            kind: "prepared-upload";
-            scope: {
-                  kind: "org";
-                  orgId: string;
-                } | {
-                  kind: "user";
-                  userId: string;
-                } | {
-                  kind: "project";
-                  orgId: string;
-                  projectId: string;
-                };
-            uploadId: string;
-            provider: string;
-            fileKey: string;
-            filename: string;
-            sizeBytes: number;
-            contentType: string;
-            /** ISO 8601 datetime string. */
-            expiresAt: string;
-          };
-        byteLength: number;
-        encoding: "base64";
-        base64: string;
-      } | {
-        file: {
-            kind: "prepared-upload";
-            scope: {
-                  kind: "org";
-                  orgId: string;
-                } | {
-                  kind: "user";
-                  userId: string;
-                } | {
-                  kind: "project";
-                  orgId: string;
-                  projectId: string;
-                };
-            uploadId: string;
-            provider: string;
-            fileKey: string;
-            filename: string;
-            sizeBytes: number;
-            contentType: string;
-            /** ISO 8601 datetime string. */
-            expiresAt: string;
-          };
-        byteLength: number;
-        encoding: "bytes";
-        bytes: Uint8Array;
-      };
-      type UploadCommitPreparedInput = {
-        file: {
-            kind: "prepared-upload";
-            scope: {
-                  kind: "org";
-                  orgId: string;
-                } | {
-                  kind: "user";
-                  userId: string;
-                } | {
-                  kind: "project";
-                  orgId: string;
-                  projectId: string;
-                };
-            uploadId: string;
-            provider: string;
-            fileKey: string;
-            filename: string;
-            sizeBytes: number;
-            contentType: string;
-            /** ISO 8601 datetime string. */
-            expiresAt: string;
-          };
-      };
-      type UploadCommitPreparedOutput = {
-        scope: {
+          kind: "prepared-upload";
+          scope: {
             kind: "org";
             orgId: string;
           } | {
@@ -3055,6 +2954,133 @@ describe("runtime tool reference generation", () => {
             orgId: string;
             projectId: string;
           };
+          uploadId: string;
+          provider: string;
+          fileKey: string;
+          filename: string;
+          sizeBytes: number;
+          contentType: string;
+          /** ISO 8601 datetime string. */
+          expiresAt: string;
+        };
+        encoding?: "utf8" | "base64" | "bytes";
+        maxBytes?: number;
+      };
+      type UploadReadPreparedOutput = {
+        file: {
+          kind: "prepared-upload";
+          scope: {
+            kind: "org";
+            orgId: string;
+          } | {
+            kind: "user";
+            userId: string;
+          } | {
+            kind: "project";
+            orgId: string;
+            projectId: string;
+          };
+          uploadId: string;
+          provider: string;
+          fileKey: string;
+          filename: string;
+          sizeBytes: number;
+          contentType: string;
+          /** ISO 8601 datetime string. */
+          expiresAt: string;
+        };
+        byteLength: number;
+        encoding: "utf8";
+        text: string;
+      } | {
+        file: {
+          kind: "prepared-upload";
+          scope: {
+            kind: "org";
+            orgId: string;
+          } | {
+            kind: "user";
+            userId: string;
+          } | {
+            kind: "project";
+            orgId: string;
+            projectId: string;
+          };
+          uploadId: string;
+          provider: string;
+          fileKey: string;
+          filename: string;
+          sizeBytes: number;
+          contentType: string;
+          /** ISO 8601 datetime string. */
+          expiresAt: string;
+        };
+        byteLength: number;
+        encoding: "base64";
+        base64: string;
+      } | {
+        file: {
+          kind: "prepared-upload";
+          scope: {
+            kind: "org";
+            orgId: string;
+          } | {
+            kind: "user";
+            userId: string;
+          } | {
+            kind: "project";
+            orgId: string;
+            projectId: string;
+          };
+          uploadId: string;
+          provider: string;
+          fileKey: string;
+          filename: string;
+          sizeBytes: number;
+          contentType: string;
+          /** ISO 8601 datetime string. */
+          expiresAt: string;
+        };
+        byteLength: number;
+        encoding: "bytes";
+        bytes: Uint8Array;
+      };
+      type UploadCommitPreparedInput = {
+        file: {
+          kind: "prepared-upload";
+          scope: {
+            kind: "org";
+            orgId: string;
+          } | {
+            kind: "user";
+            userId: string;
+          } | {
+            kind: "project";
+            orgId: string;
+            projectId: string;
+          };
+          uploadId: string;
+          provider: string;
+          fileKey: string;
+          filename: string;
+          sizeBytes: number;
+          contentType: string;
+          /** ISO 8601 datetime string. */
+          expiresAt: string;
+        };
+      };
+      type UploadCommitPreparedOutput = {
+        scope: {
+          kind: "org";
+          orgId: string;
+        } | {
+          kind: "user";
+          userId: string;
+        } | {
+          kind: "project";
+          orgId: string;
+          projectId: string;
+        };
         uploadId: string;
         provider: string;
         fileKey: string;
@@ -3065,27 +3091,27 @@ describe("runtime tool reference generation", () => {
       };
       type UploadDiscardPreparedInput = {
         file: {
-            kind: "prepared-upload";
-            scope: {
-                  kind: "org";
-                  orgId: string;
-                } | {
-                  kind: "user";
-                  userId: string;
-                } | {
-                  kind: "project";
-                  orgId: string;
-                  projectId: string;
-                };
-            uploadId: string;
-            provider: string;
-            fileKey: string;
-            filename: string;
-            sizeBytes: number;
-            contentType: string;
-            /** ISO 8601 datetime string. */
-            expiresAt: string;
+          kind: "prepared-upload";
+          scope: {
+            kind: "org";
+            orgId: string;
+          } | {
+            kind: "user";
+            userId: string;
+          } | {
+            kind: "project";
+            orgId: string;
+            projectId: string;
           };
+          uploadId: string;
+          provider: string;
+          fileKey: string;
+          filename: string;
+          sizeBytes: number;
+          contentType: string;
+          /** ISO 8601 datetime string. */
+          expiresAt: string;
+        };
       };
       type UploadDiscardPreparedOutput = {
         discarded: true;
@@ -3137,44 +3163,44 @@ describe("runtime tool reference generation", () => {
       type InternalMarketplacePushInput = Record<string, unknown>;
       type InternalMarketplacePushOutput = {
         publications: ({
-            listingId: string;
-            slug: string;
-            version: string;
-            workflowInstanceId: string;
-            state: "published";
-          } | {
-            listingId: string;
-            slug: string;
-            version: string;
-            workflowInstanceId: string;
-            state: "requested";
-            workflowStatus: "active";
-          } | {
-            listingId: string;
-            slug: string;
-            version: string;
-            workflowInstanceId: string;
-            state: "queued";
-            blockedByVersion: string;
-          } | {
-            listingId: string;
-            slug: string;
-            version: string;
-            workflowInstanceId: string;
-            state: "pending";
-            workflowStatus: "active" | "waiting" | "paused";
-          } | {
-            listingId: string;
-            slug: string;
-            version: string;
-            workflowInstanceId: string;
-            state: "failed";
-            workflowStatus: "errored" | "terminated" | "complete";
-            error: {
-                  name: string;
-                  message: string;
-                };
-          })[];
+          listingId: string;
+          slug: string;
+          version: string;
+          workflowInstanceId: string;
+          state: "published";
+        } | {
+          listingId: string;
+          slug: string;
+          version: string;
+          workflowInstanceId: string;
+          state: "requested";
+          workflowStatus: "active";
+        } | {
+          listingId: string;
+          slug: string;
+          version: string;
+          workflowInstanceId: string;
+          state: "queued";
+          blockedByVersion: string;
+        } | {
+          listingId: string;
+          slug: string;
+          version: string;
+          workflowInstanceId: string;
+          state: "pending";
+          workflowStatus: "active" | "waiting" | "paused";
+        } | {
+          listingId: string;
+          slug: string;
+          version: string;
+          workflowInstanceId: string;
+          state: "failed";
+          workflowStatus: "errored" | "terminated" | "complete";
+          error: {
+            name: string;
+            message: string;
+          };
+        })[];
       };
       type InternalHooksListInput = {
         fragment: string;
@@ -3186,17 +3212,17 @@ describe("runtime tool reference generation", () => {
         hooksEnabled: boolean;
         namespace: string | null;
         items: ({
-            id: string;
-            hookName: string;
-            status: string;
-            attempts: number;
-            maxAttempts: number;
-            lastAttemptAt: string | null;
-            nextRetryAt: string | null;
-            createdAt: string | null;
-            error: string | null;
-            payload: unknown;
-          })[];
+          id: string;
+          hookName: string;
+          status: string;
+          attempts: number;
+          maxAttempts: number;
+          lastAttemptAt: string | null;
+          nextRetryAt: string | null;
+          createdAt: string | null;
+          error: string | null;
+          payload: unknown;
+        })[];
         cursor?: string;
         hasNextPage: boolean;
       };
@@ -3334,56 +3360,60 @@ describe("runtime tool reference generation", () => {
         "stateProvider": "// state tools
       type StateCodemodeProvider = {
         /** Read a UTF-8 text file from codemode state. */
-        readFile(input: StateReadFileInput): Promise<StateReadFileOutput>;
+        readFile(input: StateReadFileInput): Promise<string>;
         /** Read a file from codemode state as bytes. */
         readFileBytes(input: StateReadFileBytesInput): Promise<StateReadFileBytesOutput>;
         /** Write a UTF-8 text file to mutable codemode state. */
-        writeFile(input: StateWriteFileInput): Promise<StateWriteFileOutput>;
+        writeFile(input: StateWriteFileInput): Promise<void>;
         /** Write bytes to mutable codemode state. */
-        writeFileBytes(input: StateWriteFileBytesInput): Promise<StateWriteFileBytesOutput>;
+        writeFileBytes(input: StateWriteFileBytesInput): Promise<void>;
         /** Append text or bytes to a file in mutable codemode state. */
-        appendFile(input: StateAppendFileInput): Promise<StateAppendFileOutput>;
+        appendFile(input: StateAppendFileInput): Promise<void>;
         /** Check whether a codemode state path exists. */
-        exists(input: StateExistsInput): Promise<StateExistsOutput>;
+        exists(input: StateExistsInput): Promise<boolean>;
         /** Read metadata for a codemode state path. */
         stat(input: StateStatInput): Promise<StateStatOutput>;
         /** Read metadata for a codemode state path without following links. */
         lstat(input: StateLstatInput): Promise<StateLstatOutput>;
         /** Create a directory in mutable codemode state. */
-        mkdir(input: StateMkdirInput): Promise<StateMkdirOutput>;
+        mkdir(input: StateMkdirInput): Promise<void>;
         /** List the names directly below a codemode state directory. */
         readdir(input: StateReaddirInput): Promise<StateReaddirOutput>;
         /** List names and entry types directly below a codemode state directory. */
         readdirWithFileTypes(input: StateReaddirWithFileTypesInput): Promise<StateReaddirWithFileTypesOutput>;
         /** Remove a file or empty directory from mutable codemode state. */
-        rm(input: StateRmInput): Promise<StateRmOutput>;
+        rm(input: StateRmInput): Promise<void>;
         /** Copy one file within mutable codemode state. */
-        cp(input: StateCpInput): Promise<StateCpOutput>;
+        cp(input: StateCpInput): Promise<void>;
         /** Move one file within mutable codemode state. */
-        mv(input: StateMvInput): Promise<StateMvOutput>;
+        mv(input: StateMvInput): Promise<void>;
         /** Resolve and validate a codemode state path. */
-        realpath(input: StateRealpathInput): Promise<StateRealpathOutput>;
+        realpath(input: StateRealpathInput): Promise<string>;
         /** Resolve a path against a base path without accessing storage. */
-        resolvePath(input: StateResolvePathInput): Promise<StateResolvePathOutput>;
+        resolvePath(input: StateResolvePathInput): Promise<string>;
         /** Find codemode state paths matching a glob pattern. */
         glob(input: StateGlobInput): Promise<StateGlobOutput>;
         /** Read and parse a JSON file from codemode state. */
         readJson(input: StateReadJsonInput): Promise<StateReadJsonOutput>;
         /** Serialize and write a JSON value to mutable codemode state. */
-        writeJson(input: StateWriteJsonInput): Promise<StateWriteJsonOutput>;
+        writeJson(input: StateWriteJsonInput): Promise<void>;
+        /** Atomically apply text and JSON edits to mutable codemode state files. */
+        applyEdits(input: StateApplyEditsInput): Promise<StateApplyEditsOutput>;
         /** Search for text within one codemode state file. */
         searchText(input: StateSearchTextInput): Promise<StateSearchTextOutput>;
         /** Search for text across codemode state files matching a glob pattern. */
         searchFiles(input: StateSearchFilesInput): Promise<StateSearchFilesOutput>;
         /** Hash the bytes of one codemode state file. */
-        hashFile(input: StateHashFileInput): Promise<StateHashFileOutput>;
+        hashFile(input: StateHashFileInput): Promise<string>;
       };
       declare const state: StateCodemodeProvider;
 
+      type JsonValue = null | boolean | number | string | JsonValue[] | {
+        [key: string]: JsonValue;
+      };
       type StateReadFileInput = {
         path: string;
       };
-      type StateReadFileOutput = string;
       type StateReadFileBytesInput = {
         path: string;
       };
@@ -3392,21 +3422,17 @@ describe("runtime tool reference generation", () => {
         path: string;
         content: string;
       };
-      type StateWriteFileOutput = unknown;
       type StateWriteFileBytesInput = {
         path: string;
         content: Uint8Array;
       };
-      type StateWriteFileBytesOutput = unknown;
       type StateAppendFileInput = {
         path: string;
         content: string | Uint8Array;
       };
-      type StateAppendFileOutput = unknown;
       type StateExistsInput = {
         path: string;
       };
-      type StateExistsOutput = boolean;
       type StateStatInput = {
         path: string;
       };
@@ -3430,7 +3456,6 @@ describe("runtime tool reference generation", () => {
       type StateMkdirInput = {
         path: string;
       };
-      type StateMkdirOutput = unknown;
       type StateReaddirInput = {
         path: string;
       };
@@ -3445,29 +3470,24 @@ describe("runtime tool reference generation", () => {
       type StateRmInput = {
         path: string;
         options?: {
-            force?: boolean;
-          };
+          force?: boolean;
+        };
       };
-      type StateRmOutput = unknown;
       type StateCpInput = {
         src: string;
         dest: string;
       };
-      type StateCpOutput = unknown;
       type StateMvInput = {
         src: string;
         dest: string;
       };
-      type StateMvOutput = unknown;
       type StateRealpathInput = {
         path: string;
       };
-      type StateRealpathOutput = string;
       type StateResolvePathInput = {
         base: string;
         path: string;
       };
-      type StateResolvePathOutput = string;
       type StateGlobInput = {
         pattern: string;
       };
@@ -3475,26 +3495,59 @@ describe("runtime tool reference generation", () => {
       type StateReadJsonInput = {
         path: string;
       };
-      type StateReadJsonOutput = unknown;
+      type StateReadJsonOutput = JsonValue;
       type StateWriteJsonInput = {
         path: string;
-        value: unknown;
+        value: JsonValue;
         options?: {
+          spaces?: number;
+        };
+      };
+      type StateApplyEditsInput = {
+        edits: ({
+          kind: "write";
+          path: string;
+          content: string;
+        } | {
+          kind: "replace";
+          path: string;
+          search: string;
+          replacement: string;
+          options?: {
+            caseSensitive?: boolean;
+            regex?: boolean;
+            wholeWord?: boolean;
+            maxMatches?: number;
+          };
+        } | {
+          kind: "writeJson";
+          path: string;
+          value: JsonValue;
+          options?: {
             spaces?: number;
           };
+        })[];
       };
-      type StateWriteJsonOutput = unknown;
+      type StateApplyEditsOutput = {
+        edits: {
+          path: string;
+          changed: boolean;
+          content: string;
+          diff: string;
+        }[];
+        totalChanged: number;
+      };
       type StateSearchTextInput = {
         path: string;
         query: string;
         options?: {
-            caseSensitive?: boolean;
-            wholeWord?: boolean;
-            contextBefore?: number;
-            contextAfter?: number;
-            maxMatches?: number;
-            regex?: boolean;
-          };
+          caseSensitive?: boolean;
+          wholeWord?: boolean;
+          contextBefore?: number;
+          contextAfter?: number;
+          maxMatches?: number;
+          regex?: boolean;
+        };
       };
       type StateSearchTextOutput = {
         line: number;
@@ -3508,61 +3561,60 @@ describe("runtime tool reference generation", () => {
         pattern: string;
         query: string;
         options?: {
-            upload?: {
-                  caseSensitive?: boolean;
-                  wholeWord?: boolean;
-                  contextBefore?: number;
-                  contextAfter?: number;
-                  maxMatches?: number;
-                  cursor?: string;
-                };
-            static?: {
-                  caseSensitive?: boolean;
-                  wholeWord?: boolean;
-                  contextBefore?: number;
-                  contextAfter?: number;
-                  maxMatches?: number;
-                  cursor?: string;
-                };
+          upload?: {
+            caseSensitive?: boolean;
+            wholeWord?: boolean;
+            contextBefore?: number;
+            contextAfter?: number;
+            maxMatches?: number;
+            cursor?: string;
           };
+          static?: {
+            caseSensitive?: boolean;
+            wholeWord?: boolean;
+            contextBefore?: number;
+            contextAfter?: number;
+            maxMatches?: number;
+            cursor?: string;
+          };
+        };
       };
       type StateSearchFilesOutput = {
         upload: {
-            results: {
-                  path: string;
-                  matches: {
-                          line: number;
-                          column: number;
-                          match: string;
-                          lineText: string;
-                          beforeLines?: string[];
-                          afterLines?: string[];
-                        }[];
-                }[];
-            cursor?: string;
-            hasMore: boolean;
-          };
+          results: {
+            path: string;
+            matches: {
+              line: number;
+              column: number;
+              match: string;
+              lineText: string;
+              beforeLines?: string[];
+              afterLines?: string[];
+            }[];
+          }[];
+          cursor?: string;
+          hasMore: boolean;
+        };
         static: {
-            results: {
-                  path: string;
-                  matches: {
-                          line: number;
-                          column: number;
-                          match: string;
-                          lineText: string;
-                          beforeLines?: string[];
-                          afterLines?: string[];
-                        }[];
-                }[];
-            cursor?: string;
-            hasMore: boolean;
-          };
+          results: {
+            path: string;
+            matches: {
+              line: number;
+              column: number;
+              match: string;
+              lineText: string;
+              beforeLines?: string[];
+              afterLines?: string[];
+            }[];
+          }[];
+          cursor?: string;
+          hasMore: boolean;
+        };
       };
       type StateHashFileInput = {
         path: string;
         algorithm?: "md5" | "sha1" | "sha256";
       };
-      type StateHashFileOutput = string;
       ",
       }
     `);
@@ -3603,106 +3655,106 @@ describe("runtime tool reference generation", () => {
         action: AutomationRouteAction;
         description?: string | null;
         metadata: {
-            createdByActors: {
-                  initiator: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        };
-                  principal: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | null;
-                  delegation: ({
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        })[];
-                };
-            updatedByActors: {
-                  initiator: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        };
-                  principal: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | null;
-                  delegation: ({
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        })[];
-                };
-            managedBy: AutomationRouteManagedBy | null;
-          } | null;
+          createdByActors: {
+            initiator: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "initiator";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "initiator";
+            };
+            principal: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "principal";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "principal";
+            } | null;
+            delegation: ({
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "assistant";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "assistant";
+            })[];
+          };
+          updatedByActors: {
+            initiator: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "initiator";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "initiator";
+            };
+            principal: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "principal";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "principal";
+            } | null;
+            delegation: ({
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "assistant";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "assistant";
+            })[];
+          };
+          managedBy: AutomationRouteManagedBy | null;
+        } | null;
         nextOccurrenceAt: string | null;
       };
       type AutomationRouteTrigger = {
@@ -3713,14 +3765,14 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "schedule";
         cadence: {
-            kind: "once";
-            /** ISO 8601 datetime string. */
-            at: string;
-          } | {
-            kind: "cron";
-            expression: string;
-            timeZone: string;
-          };
+          kind: "once";
+          /** ISO 8601 datetime string. */
+          at: string;
+        } | {
+          kind: "cron";
+          expression: string;
+          timeZone: string;
+        };
       };
       type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction;
       type AutomationRouteManagedBy = {
@@ -3731,41 +3783,41 @@ describe("runtime tool reference generation", () => {
       };
       type AutomationEventMatcher = {
         actor: {
-            participation: "initiator";
-            scope: "internal";
-            type?: string;
-            id?: string;
-          } | {
-            participation: "initiator";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-          } | {
-            participation: "principal";
-            scope: "internal";
-            type?: string;
-            id?: string;
-          } | {
-            participation: "principal";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-          } | {
-            participation: "delegation";
-            scope: "internal";
-            type?: string;
-            id?: string;
-            role?: "delegate" | "assistant";
-          } | {
-            participation: "delegation";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-            role?: "delegate" | "assistant";
-          };
+          participation: "initiator";
+          scope: "internal";
+          type?: string;
+          id?: string;
+        } | {
+          participation: "initiator";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+        } | {
+          participation: "principal";
+          scope: "internal";
+          type?: string;
+          id?: string;
+        } | {
+          participation: "principal";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+        } | {
+          participation: "delegation";
+          scope: "internal";
+          type?: string;
+          id?: string;
+          role?: "delegate" | "assistant";
+        } | {
+          participation: "delegation";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+          role?: "delegate" | "assistant";
+        };
       } | {
         path: string;
         op: "exists";
@@ -3783,10 +3835,10 @@ describe("runtime tool reference generation", () => {
       type AutomationStartWorkflowAction = {
         kind: "start_workflow";
         authority: {
-            kind: "delegated-user";
-          } | {
-            kind: "organization-automation";
-          };
+          kind: "delegated-user";
+        } | {
+          kind: "organization-automation";
+        };
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
@@ -3831,23 +3883,23 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "schedule";
         cadence: {
-            kind: "once";
-            /** ISO 8601 datetime string. */
-            at: string;
-          } | {
-            kind: "cron";
-            expression: string;
-            timeZone?: string;
-          };
+          kind: "once";
+          /** ISO 8601 datetime string. */
+          at: string;
+        } | {
+          kind: "cron";
+          expression: string;
+          timeZone?: string;
+        };
       };
       type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
         authority: {
-            kind: "delegated-user";
-          } | {
-            kind: "organization-automation";
-          };
+          kind: "delegated-user";
+        } | {
+          kind: "organization-automation";
+        };
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
@@ -3954,106 +4006,106 @@ describe("runtime tool reference generation", () => {
         action: AutomationRouteAction;
         description?: string | null;
         metadata: {
-            createdByActors: {
-                  initiator: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        };
-                  principal: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | null;
-                  delegation: ({
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        })[];
-                };
-            updatedByActors: {
-                  initiator: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        };
-                  principal: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | null;
-                  delegation: ({
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        })[];
-                };
-            managedBy: AutomationRouteManagedBy | null;
-          } | null;
+          createdByActors: {
+            initiator: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "initiator";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "initiator";
+            };
+            principal: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "principal";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "principal";
+            } | null;
+            delegation: ({
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "assistant";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "assistant";
+            })[];
+          };
+          updatedByActors: {
+            initiator: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "initiator";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "initiator";
+            };
+            principal: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "principal";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "principal";
+            } | null;
+            delegation: ({
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "assistant";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "assistant";
+            })[];
+          };
+          managedBy: AutomationRouteManagedBy | null;
+        } | null;
         nextOccurrenceAt: string | null;
       };
       type AutomationRouteTrigger = {
@@ -4064,14 +4116,14 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "schedule";
         cadence: {
-            kind: "once";
-            /** ISO 8601 datetime string. */
-            at: string;
-          } | {
-            kind: "cron";
-            expression: string;
-            timeZone: string;
-          };
+          kind: "once";
+          /** ISO 8601 datetime string. */
+          at: string;
+        } | {
+          kind: "cron";
+          expression: string;
+          timeZone: string;
+        };
       };
       type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction;
       type AutomationRouteManagedBy = {
@@ -4082,41 +4134,41 @@ describe("runtime tool reference generation", () => {
       };
       type AutomationEventMatcher = {
         actor: {
-            participation: "initiator";
-            scope: "internal";
-            type?: string;
-            id?: string;
-          } | {
-            participation: "initiator";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-          } | {
-            participation: "principal";
-            scope: "internal";
-            type?: string;
-            id?: string;
-          } | {
-            participation: "principal";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-          } | {
-            participation: "delegation";
-            scope: "internal";
-            type?: string;
-            id?: string;
-            role?: "delegate" | "assistant";
-          } | {
-            participation: "delegation";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-            role?: "delegate" | "assistant";
-          };
+          participation: "initiator";
+          scope: "internal";
+          type?: string;
+          id?: string;
+        } | {
+          participation: "initiator";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+        } | {
+          participation: "principal";
+          scope: "internal";
+          type?: string;
+          id?: string;
+        } | {
+          participation: "principal";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+        } | {
+          participation: "delegation";
+          scope: "internal";
+          type?: string;
+          id?: string;
+          role?: "delegate" | "assistant";
+        } | {
+          participation: "delegation";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+          role?: "delegate" | "assistant";
+        };
       } | {
         path: string;
         op: "exists";
@@ -4134,10 +4186,10 @@ describe("runtime tool reference generation", () => {
       type AutomationStartWorkflowAction = {
         kind: "start_workflow";
         authority: {
-            kind: "delegated-user";
-          } | {
-            kind: "organization-automation";
-          };
+          kind: "delegated-user";
+        } | {
+          kind: "organization-automation";
+        };
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
@@ -4182,23 +4234,23 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "schedule";
         cadence: {
-            kind: "once";
-            /** ISO 8601 datetime string. */
-            at: string;
-          } | {
-            kind: "cron";
-            expression: string;
-            timeZone?: string;
-          };
+          kind: "once";
+          /** ISO 8601 datetime string. */
+          at: string;
+        } | {
+          kind: "cron";
+          expression: string;
+          timeZone?: string;
+        };
       };
       type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
         authority: {
-            kind: "delegated-user";
-          } | {
-            kind: "organization-automation";
-          };
+          kind: "delegated-user";
+        } | {
+          kind: "organization-automation";
+        };
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
@@ -4276,9 +4328,9 @@ describe("runtime tool reference generation", () => {
       types,
     }).toMatchInlineSnapshot(`
       {
-        "createInputIndex": 8427,
-        "listOutputIndex": 8296,
-        "matcherIndex": 5046,
+        "createInputIndex": 7197,
+        "listOutputIndex": 7066,
+        "matcherIndex": 3918,
         "types": "// ── Backoffice domain tool providers ───────────────────────────────────
 
       // router tools
@@ -4307,106 +4359,106 @@ describe("runtime tool reference generation", () => {
         action: AutomationRouteAction;
         description?: string | null;
         metadata: {
-            createdByActors: {
-                  initiator: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        };
-                  principal: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | null;
-                  delegation: ({
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        })[];
-                };
-            updatedByActors: {
-                  initiator: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        };
-                  principal: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | null;
-                  delegation: ({
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        })[];
-                };
-            managedBy: AutomationRouteManagedBy | null;
-          } | null;
+          createdByActors: {
+            initiator: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "initiator";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "initiator";
+            };
+            principal: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "principal";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "principal";
+            } | null;
+            delegation: ({
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "assistant";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "assistant";
+            })[];
+          };
+          updatedByActors: {
+            initiator: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "initiator";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "initiator";
+            };
+            principal: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "principal";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "principal";
+            } | null;
+            delegation: ({
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "assistant";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "assistant";
+            })[];
+          };
+          managedBy: AutomationRouteManagedBy | null;
+        } | null;
         nextOccurrenceAt: string | null;
       };
       type AutomationRouteTrigger = {
@@ -4417,14 +4469,14 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "schedule";
         cadence: {
-            kind: "once";
-            /** ISO 8601 datetime string. */
-            at: string;
-          } | {
-            kind: "cron";
-            expression: string;
-            timeZone: string;
-          };
+          kind: "once";
+          /** ISO 8601 datetime string. */
+          at: string;
+        } | {
+          kind: "cron";
+          expression: string;
+          timeZone: string;
+        };
       };
       type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction;
       type AutomationRouteManagedBy = {
@@ -4435,41 +4487,41 @@ describe("runtime tool reference generation", () => {
       };
       type AutomationEventMatcher = {
         actor: {
-            participation: "initiator";
-            scope: "internal";
-            type?: string;
-            id?: string;
-          } | {
-            participation: "initiator";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-          } | {
-            participation: "principal";
-            scope: "internal";
-            type?: string;
-            id?: string;
-          } | {
-            participation: "principal";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-          } | {
-            participation: "delegation";
-            scope: "internal";
-            type?: string;
-            id?: string;
-            role?: "delegate" | "assistant";
-          } | {
-            participation: "delegation";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-            role?: "delegate" | "assistant";
-          };
+          participation: "initiator";
+          scope: "internal";
+          type?: string;
+          id?: string;
+        } | {
+          participation: "initiator";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+        } | {
+          participation: "principal";
+          scope: "internal";
+          type?: string;
+          id?: string;
+        } | {
+          participation: "principal";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+        } | {
+          participation: "delegation";
+          scope: "internal";
+          type?: string;
+          id?: string;
+          role?: "delegate" | "assistant";
+        } | {
+          participation: "delegation";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+          role?: "delegate" | "assistant";
+        };
       } | {
         path: string;
         op: "exists";
@@ -4487,10 +4539,10 @@ describe("runtime tool reference generation", () => {
       type AutomationStartWorkflowAction = {
         kind: "start_workflow";
         authority: {
-            kind: "delegated-user";
-          } | {
-            kind: "organization-automation";
-          };
+          kind: "delegated-user";
+        } | {
+          kind: "organization-automation";
+        };
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
@@ -4535,23 +4587,23 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "schedule";
         cadence: {
-            kind: "once";
-            /** ISO 8601 datetime string. */
-            at: string;
-          } | {
-            kind: "cron";
-            expression: string;
-            timeZone?: string;
-          };
+          kind: "once";
+          /** ISO 8601 datetime string. */
+          at: string;
+        } | {
+          kind: "cron";
+          expression: string;
+          timeZone?: string;
+        };
       };
       type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
         authority: {
-            kind: "delegated-user";
-          } | {
-            kind: "organization-automation";
-          };
+          kind: "delegated-user";
+        } | {
+          kind: "organization-automation";
+        };
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
@@ -4622,7 +4674,7 @@ describe("runtime tool reference generation", () => {
         /** Project contexts are reserved until the project model exists. */
         project(projectId: string): BackofficeCodemodeScopedProviders;
       };",
-        "updateInputIndex": 8728,
+        "updateInputIndex": 7498,
       }
     `);
   });
@@ -4662,106 +4714,106 @@ describe("runtime tool reference generation", () => {
         action: AutomationRouteAction;
         description?: string | null;
         metadata: {
-            createdByActors: {
-                  initiator: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        };
-                  principal: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | null;
-                  delegation: ({
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        })[];
-                };
-            updatedByActors: {
-                  initiator: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "initiator";
-                        };
-                  principal: {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "principal";
-                        } | null;
-                  delegation: ({
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "delegate";
-                        } | {
-                          scope: "internal";
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        } | {
-                          scope: "external";
-                          source: string;
-                          type: string;
-                          id: string;
-                          role: "assistant";
-                        })[];
-                };
-            managedBy: AutomationRouteManagedBy | null;
-          } | null;
+          createdByActors: {
+            initiator: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "initiator";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "initiator";
+            };
+            principal: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "principal";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "principal";
+            } | null;
+            delegation: ({
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "assistant";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "assistant";
+            })[];
+          };
+          updatedByActors: {
+            initiator: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "initiator";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "initiator";
+            };
+            principal: {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "principal";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "principal";
+            } | null;
+            delegation: ({
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "delegate";
+            } | {
+              scope: "internal";
+              type: string;
+              id: string;
+              role: "assistant";
+            } | {
+              scope: "external";
+              source: string;
+              type: string;
+              id: string;
+              role: "assistant";
+            })[];
+          };
+          managedBy: AutomationRouteManagedBy | null;
+        } | null;
         nextOccurrenceAt: string | null;
       };
       type AutomationRouteTrigger = {
@@ -4772,14 +4824,14 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "schedule";
         cadence: {
-            kind: "once";
-            /** ISO 8601 datetime string. */
-            at: string;
-          } | {
-            kind: "cron";
-            expression: string;
-            timeZone: string;
-          };
+          kind: "once";
+          /** ISO 8601 datetime string. */
+          at: string;
+        } | {
+          kind: "cron";
+          expression: string;
+          timeZone: string;
+        };
       };
       type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction;
       type AutomationRouteManagedBy = {
@@ -4790,41 +4842,41 @@ describe("runtime tool reference generation", () => {
       };
       type AutomationEventMatcher = {
         actor: {
-            participation: "initiator";
-            scope: "internal";
-            type?: string;
-            id?: string;
-          } | {
-            participation: "initiator";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-          } | {
-            participation: "principal";
-            scope: "internal";
-            type?: string;
-            id?: string;
-          } | {
-            participation: "principal";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-          } | {
-            participation: "delegation";
-            scope: "internal";
-            type?: string;
-            id?: string;
-            role?: "delegate" | "assistant";
-          } | {
-            participation: "delegation";
-            scope: "external";
-            source?: string;
-            type?: string;
-            id?: string;
-            role?: "delegate" | "assistant";
-          };
+          participation: "initiator";
+          scope: "internal";
+          type?: string;
+          id?: string;
+        } | {
+          participation: "initiator";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+        } | {
+          participation: "principal";
+          scope: "internal";
+          type?: string;
+          id?: string;
+        } | {
+          participation: "principal";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+        } | {
+          participation: "delegation";
+          scope: "internal";
+          type?: string;
+          id?: string;
+          role?: "delegate" | "assistant";
+        } | {
+          participation: "delegation";
+          scope: "external";
+          source?: string;
+          type?: string;
+          id?: string;
+          role?: "delegate" | "assistant";
+        };
       } | {
         path: string;
         op: "exists";
@@ -4842,10 +4894,10 @@ describe("runtime tool reference generation", () => {
       type AutomationStartWorkflowAction = {
         kind: "start_workflow";
         authority: {
-            kind: "delegated-user";
-          } | {
-            kind: "organization-automation";
-          };
+          kind: "delegated-user";
+        } | {
+          kind: "organization-automation";
+        };
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
@@ -4890,23 +4942,23 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "schedule";
         cadence: {
-            kind: "once";
-            /** ISO 8601 datetime string. */
-            at: string;
-          } | {
-            kind: "cron";
-            expression: string;
-            timeZone?: string;
-          };
+          kind: "once";
+          /** ISO 8601 datetime string. */
+          at: string;
+        } | {
+          kind: "cron";
+          expression: string;
+          timeZone?: string;
+        };
       };
       type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
         authority: {
-            kind: "delegated-user";
-          } | {
-            kind: "organization-automation";
-          };
+          kind: "delegated-user";
+        } | {
+          kind: "organization-automation";
+        };
         workflowScriptPath: string;
         instanceIdTemplate: string;
       };
@@ -5066,14 +5118,14 @@ describe("runtime tool reference generation", () => {
         kind: "connection" | "system";
         configured: boolean;
         config?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         missing?: string[];
         nextSteps?: string[];
         verification?: {
-            ok: boolean;
-            message: string;
-          };
+          ok: boolean;
+          message: string;
+        };
       };
       type ConnectionsSetupInput = {
         id: string;
@@ -5083,21 +5135,21 @@ describe("runtime tool reference generation", () => {
         label: string;
         overview: string;
         manualSteps: {
-            id: string;
-            title: string;
-            instructions: string;
-            expectedUserInput?: string[];
-          }[];
+          id: string;
+          title: string;
+          instructions: string;
+          expectedUserInput?: string[];
+        }[];
         fields: {
-            name: string;
-            required?: boolean;
-            secret?: boolean;
-            description?: string;
-          }[];
+          name: string;
+          required?: boolean;
+          secret?: boolean;
+          description?: string;
+        }[];
         verify?: {
-            tool: string;
-            description: string;
-          };
+          tool: string;
+          description: string;
+        };
         configureExample: string;
       };
       type ConnectionsSchemaInput = {
@@ -5107,11 +5159,11 @@ describe("runtime tool reference generation", () => {
         id: string;
         label: string;
         fields: {
-            name: string;
-            required?: boolean;
-            secret?: boolean;
-            description?: string;
-          }[];
+          name: string;
+          required?: boolean;
+          secret?: boolean;
+          description?: string;
+        }[];
       };
       type ConnectionsVerifyInput = {
         id: string;
@@ -5122,14 +5174,14 @@ describe("runtime tool reference generation", () => {
         kind: "connection" | "system";
         configured: boolean;
         config?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         missing?: string[];
         nextSteps?: string[];
         verification: {
-            ok: boolean;
-            message: string;
-          };
+          ok: boolean;
+          message: string;
+        };
       };
       type ConnectionsResetInput = {
         id: string;
@@ -5141,14 +5193,14 @@ describe("runtime tool reference generation", () => {
         kind: "connection" | "system";
         configured: boolean;
         config?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         missing?: string[];
         nextSteps?: string[];
         verification?: {
-            ok: boolean;
-            message: string;
-          };
+          ok: boolean;
+          message: string;
+        };
       };
       type ConnectionsConfigureInput = {
         id: string;
@@ -5161,14 +5213,14 @@ describe("runtime tool reference generation", () => {
         kind: "connection" | "system";
         configured: boolean;
         config?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         missing?: string[];
         nextSteps?: string[];
         verification?: {
-            ok: boolean;
-            message: string;
-          };
+          ok: boolean;
+          message: string;
+        };
       };
       ",
         "eventTypes": "// events tools
@@ -5189,38 +5241,38 @@ describe("runtime tool reference generation", () => {
         source?: string;
         subjectUserId?: string;
         payload?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         targetScope?: {
-            kind: "system";
-          } | {
-            kind: "org";
-            orgId: string;
-          } | {
-            kind: "user";
-            userId: string;
-          } | {
-            kind: "project";
-            orgId: string;
-            projectId: string;
-          };
+          kind: "system";
+        } | {
+          kind: "org";
+          orgId: string;
+        } | {
+          kind: "user";
+          userId: string;
+        } | {
+          kind: "project";
+          orgId: string;
+          projectId: string;
+        };
       };
       type EventsFireOutput = {
         accepted: boolean;
         eventId: string;
         scope: {
-            kind: "system";
-          } | {
-            kind: "org";
-            orgId: string;
-          } | {
-            kind: "user";
-            userId: string;
-          } | {
-            kind: "project";
-            orgId: string;
-            projectId: string;
-          };
+          kind: "system";
+        } | {
+          kind: "org";
+          orgId: string;
+        } | {
+          kind: "user";
+          userId: string;
+        } | {
+          kind: "project";
+          orgId: string;
+          projectId: string;
+        };
         source: string;
         eventType: string;
       };
@@ -5244,14 +5296,14 @@ describe("runtime tool reference generation", () => {
         description?: string;
         capabilityId: string;
         payloadSchema?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         actorSchema?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         subjectSchema?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         example?: unknown;
       } | null;
       type EventsCatalogCreateInput = {
@@ -5260,14 +5312,14 @@ describe("runtime tool reference generation", () => {
         label: string;
         description?: string | null;
         payloadSchema?: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         actorSchema?: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         subjectSchema?: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         example?: unknown | null;
         enabled?: boolean;
       };
@@ -5278,14 +5330,14 @@ describe("runtime tool reference generation", () => {
         label: string;
         description?: string | null;
         payloadSchema?: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         actorSchema?: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         subjectSchema?: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         example?: unknown | null;
         enabled: boolean;
         capabilityId: string;
@@ -5311,11 +5363,11 @@ describe("runtime tool reference generation", () => {
         externalId: string;
         code: string;
         actor: {
-            scope: "external";
-            source: string;
-            type: string;
-            id: string;
-          };
+          scope: "external";
+          source: string;
+          type: string;
+          id: string;
+        };
         type?: string;
         expiresAt?: string;
       };
@@ -5335,14 +5387,14 @@ describe("runtime tool reference generation", () => {
 
       type PiCreateSessionInput = {
         model?: {
-            provider: "openai" | "anthropic" | "gemini";
-            name: string;
-          };
+          provider: "openai" | "anthropic" | "gemini";
+          name: string;
+        };
         name?: string;
         systemMessage?: string;
         metadata?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";
       };
@@ -5351,8 +5403,8 @@ describe("runtime tool reference generation", () => {
         name: string | null;
         status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         metadata: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -5371,26 +5423,26 @@ describe("runtime tool reference generation", () => {
         name: string | null;
         status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         metadata: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
         updatedAt: string;
         workflow: {
-            status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-            error?: {
-                  name: string;
-                  message: string;
-                };
-            output?: unknown;
+          status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+          error?: {
+            name: string;
+            message: string;
           };
+          output?: unknown;
+        };
         agent: {
-            state: {
-                  messages: unknown[];
-                  errorMessage?: string;
-                };
+          state: {
+            messages: unknown[];
+            errorMessage?: string;
           };
+        };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";
       };
@@ -5402,8 +5454,8 @@ describe("runtime tool reference generation", () => {
         name: string | null;
         status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         metadata: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -5420,35 +5472,35 @@ describe("runtime tool reference generation", () => {
         name: string | null;
         status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         metadata: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
         updatedAt: string;
         workflow: {
-            status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-            error?: {
-                  name: string;
-                  message: string;
-                };
-            output?: unknown;
+          status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+          error?: {
+            name: string;
+            message: string;
           };
+          output?: unknown;
+        };
         agent: {
-            state: {
-                  messages: unknown[];
-                  errorMessage?: string;
-                };
+          state: {
+            messages: unknown[];
+            errorMessage?: string;
           };
+        };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";
         assistantText: string;
         commandStatus: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         stream: unknown[];
         terminalState: {
-            messages: unknown[];
-            errorMessage?: string;
-          };
+          messages: unknown[];
+          errorMessage?: string;
+        };
       };
       ",
         "storeTypes": "// store tools
@@ -5484,9 +5536,9 @@ describe("runtime tool reference generation", () => {
         description?: string | null;
         category?: string[];
         verification?: {
-            type: "json-schema";
-            schema: unknown;
-          }[];
+          type: "json-schema";
+          schema: unknown;
+        }[];
       };
       type StoreSetOutput = {
         id: string;
@@ -5589,17 +5641,17 @@ describe("runtime tool reference generation", () => {
       type WebExtractInput = {
         action: "content";
         input: {
-            url?: string;
-            html?: string;
-            [key: string]: unknown;
-          };
+          url?: string;
+          html?: string;
+          [key: string]: unknown;
+        };
       } | {
         action: "markdown";
         input: {
-            url?: string;
-            html?: string;
-            [key: string]: unknown;
-          };
+          url?: string;
+          html?: string;
+          [key: string]: unknown;
+        };
       };
       type WebExtractOutput = {
         action: "content";
@@ -5630,8 +5682,8 @@ describe("runtime tool reference generation", () => {
         path: string;
         instanceId: string;
         payload?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
       };
       type WorkflowCreateInstanceOutput = {
         instanceId: string;
@@ -5643,17 +5695,17 @@ describe("runtime tool reference generation", () => {
       };
       type WorkflowListInstancesOutput = {
         instances: ({
-            id: string;
-            details: {
-                  status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-                  error?: {
-                          name: string;
-                          message: string;
-                        };
-                  output?: unknown;
-                };
-            createdAt: string;
-          })[];
+          id: string;
+          details: {
+            status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+            error?: {
+              name: string;
+              message: string;
+            };
+            output?: unknown;
+          };
+          createdAt: string;
+        })[];
         nextCursor?: string;
         hasNextPage: boolean;
       };
@@ -5663,21 +5715,21 @@ describe("runtime tool reference generation", () => {
       type WorkflowGetInstanceOutput = {
         id: string;
         details: {
-            status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-            error?: {
-                  name: string;
-                  message: string;
-                };
-            output?: unknown;
-          };
-        meta: {
+          status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+          error?: {
             name: string;
-            path: string;
-            createdAt: string;
-            updatedAt: string;
-            startedAt: string | null;
-            completedAt: string | null;
+            message: string;
           };
+          output?: unknown;
+        };
+        meta: {
+          name: string;
+          path: string;
+          createdAt: string;
+          updatedAt: string;
+          startedAt: string | null;
+          completedAt: string | null;
+        };
       };
       type WorkflowGetHistoryInput = {
         instanceId: string;
@@ -5704,22 +5756,22 @@ describe("runtime tool reference generation", () => {
       type WorkflowRetryInstanceOutput = {
         accepted: true;
         instance: {
-            id: string;
-            details: {
-                  status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-                  error?: {
-                          name: string;
-                          message: string;
-                        };
-                  output?: unknown;
-                };
+          id: string;
+          details: {
+            status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+            error?: {
+              name: string;
+              message: string;
+            };
+            output?: unknown;
           };
+        };
         retry: {
-            stepKey: string;
-            attempts: number;
-            maxAttempts: number;
-            scheduledAt: string;
-          };
+          stepKey: string;
+          attempts: number;
+          maxAttempts: number;
+          scheduledAt: string;
+        };
       };
       ",
       }
@@ -5817,14 +5869,14 @@ describe("runtime tool reference generation", () => {
 
       type PiCreateSessionInput = {
         model?: {
-            provider: "openai" | "anthropic" | "gemini";
-            name: string;
-          };
+          provider: "openai" | "anthropic" | "gemini";
+          name: string;
+        };
         name?: string;
         systemMessage?: string;
         metadata?: {
-            [key: string]: unknown;
-          };
+          [key: string]: unknown;
+        };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";
       };
@@ -5833,8 +5885,8 @@ describe("runtime tool reference generation", () => {
         name: string | null;
         status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         metadata: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -5853,26 +5905,26 @@ describe("runtime tool reference generation", () => {
         name: string | null;
         status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         metadata: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
         updatedAt: string;
         workflow: {
-            status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-            error?: {
-                  name: string;
-                  message: string;
-                };
-            output?: unknown;
+          status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+          error?: {
+            name: string;
+            message: string;
           };
+          output?: unknown;
+        };
         agent: {
-            state: {
-                  messages: unknown[];
-                  errorMessage?: string;
-                };
+          state: {
+            messages: unknown[];
+            errorMessage?: string;
           };
+        };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";
       };
@@ -5884,8 +5936,8 @@ describe("runtime tool reference generation", () => {
         name: string | null;
         status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         metadata: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
@@ -5902,35 +5954,35 @@ describe("runtime tool reference generation", () => {
         name: string | null;
         status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         metadata: {
-            [key: string]: unknown;
-          } | null;
+          [key: string]: unknown;
+        } | null;
         /** ISO 8601 datetime string. */
         createdAt: string;
         /** ISO 8601 datetime string. */
         updatedAt: string;
         workflow: {
-            status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-            error?: {
-                  name: string;
-                  message: string;
-                };
-            output?: unknown;
+          status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+          error?: {
+            name: string;
+            message: string;
           };
+          output?: unknown;
+        };
         agent: {
-            state: {
-                  messages: unknown[];
-                  errorMessage?: string;
-                };
+          state: {
+            messages: unknown[];
+            errorMessage?: string;
           };
+        };
         tags?: string[];
         steeringMode?: "all" | "one-at-a-time";
         assistantText: string;
         commandStatus: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
         stream: unknown[];
         terminalState: {
-            messages: unknown[];
-            errorMessage?: string;
-          };
+          messages: unknown[];
+          errorMessage?: string;
+        };
       };
       ",
         "sandbox": "// sandbox tools
@@ -6013,135 +6065,8 @@ describe("runtime tool reference generation", () => {
 
       type UploadReadPreparedInput = {
         file: {
-            kind: "prepared-upload";
-            scope: {
-                  kind: "org";
-                  orgId: string;
-                } | {
-                  kind: "user";
-                  userId: string;
-                } | {
-                  kind: "project";
-                  orgId: string;
-                  projectId: string;
-                };
-            uploadId: string;
-            provider: string;
-            fileKey: string;
-            filename: string;
-            sizeBytes: number;
-            contentType: string;
-            /** ISO 8601 datetime string. */
-            expiresAt: string;
-          };
-        encoding?: "utf8" | "base64" | "bytes";
-        maxBytes?: number;
-      };
-      type UploadReadPreparedOutput = {
-        file: {
-            kind: "prepared-upload";
-            scope: {
-                  kind: "org";
-                  orgId: string;
-                } | {
-                  kind: "user";
-                  userId: string;
-                } | {
-                  kind: "project";
-                  orgId: string;
-                  projectId: string;
-                };
-            uploadId: string;
-            provider: string;
-            fileKey: string;
-            filename: string;
-            sizeBytes: number;
-            contentType: string;
-            /** ISO 8601 datetime string. */
-            expiresAt: string;
-          };
-        byteLength: number;
-        encoding: "utf8";
-        text: string;
-      } | {
-        file: {
-            kind: "prepared-upload";
-            scope: {
-                  kind: "org";
-                  orgId: string;
-                } | {
-                  kind: "user";
-                  userId: string;
-                } | {
-                  kind: "project";
-                  orgId: string;
-                  projectId: string;
-                };
-            uploadId: string;
-            provider: string;
-            fileKey: string;
-            filename: string;
-            sizeBytes: number;
-            contentType: string;
-            /** ISO 8601 datetime string. */
-            expiresAt: string;
-          };
-        byteLength: number;
-        encoding: "base64";
-        base64: string;
-      } | {
-        file: {
-            kind: "prepared-upload";
-            scope: {
-                  kind: "org";
-                  orgId: string;
-                } | {
-                  kind: "user";
-                  userId: string;
-                } | {
-                  kind: "project";
-                  orgId: string;
-                  projectId: string;
-                };
-            uploadId: string;
-            provider: string;
-            fileKey: string;
-            filename: string;
-            sizeBytes: number;
-            contentType: string;
-            /** ISO 8601 datetime string. */
-            expiresAt: string;
-          };
-        byteLength: number;
-        encoding: "bytes";
-        bytes: Uint8Array;
-      };
-      type UploadCommitPreparedInput = {
-        file: {
-            kind: "prepared-upload";
-            scope: {
-                  kind: "org";
-                  orgId: string;
-                } | {
-                  kind: "user";
-                  userId: string;
-                } | {
-                  kind: "project";
-                  orgId: string;
-                  projectId: string;
-                };
-            uploadId: string;
-            provider: string;
-            fileKey: string;
-            filename: string;
-            sizeBytes: number;
-            contentType: string;
-            /** ISO 8601 datetime string. */
-            expiresAt: string;
-          };
-      };
-      type UploadCommitPreparedOutput = {
-        scope: {
+          kind: "prepared-upload";
+          scope: {
             kind: "org";
             orgId: string;
           } | {
@@ -6152,6 +6077,133 @@ describe("runtime tool reference generation", () => {
             orgId: string;
             projectId: string;
           };
+          uploadId: string;
+          provider: string;
+          fileKey: string;
+          filename: string;
+          sizeBytes: number;
+          contentType: string;
+          /** ISO 8601 datetime string. */
+          expiresAt: string;
+        };
+        encoding?: "utf8" | "base64" | "bytes";
+        maxBytes?: number;
+      };
+      type UploadReadPreparedOutput = {
+        file: {
+          kind: "prepared-upload";
+          scope: {
+            kind: "org";
+            orgId: string;
+          } | {
+            kind: "user";
+            userId: string;
+          } | {
+            kind: "project";
+            orgId: string;
+            projectId: string;
+          };
+          uploadId: string;
+          provider: string;
+          fileKey: string;
+          filename: string;
+          sizeBytes: number;
+          contentType: string;
+          /** ISO 8601 datetime string. */
+          expiresAt: string;
+        };
+        byteLength: number;
+        encoding: "utf8";
+        text: string;
+      } | {
+        file: {
+          kind: "prepared-upload";
+          scope: {
+            kind: "org";
+            orgId: string;
+          } | {
+            kind: "user";
+            userId: string;
+          } | {
+            kind: "project";
+            orgId: string;
+            projectId: string;
+          };
+          uploadId: string;
+          provider: string;
+          fileKey: string;
+          filename: string;
+          sizeBytes: number;
+          contentType: string;
+          /** ISO 8601 datetime string. */
+          expiresAt: string;
+        };
+        byteLength: number;
+        encoding: "base64";
+        base64: string;
+      } | {
+        file: {
+          kind: "prepared-upload";
+          scope: {
+            kind: "org";
+            orgId: string;
+          } | {
+            kind: "user";
+            userId: string;
+          } | {
+            kind: "project";
+            orgId: string;
+            projectId: string;
+          };
+          uploadId: string;
+          provider: string;
+          fileKey: string;
+          filename: string;
+          sizeBytes: number;
+          contentType: string;
+          /** ISO 8601 datetime string. */
+          expiresAt: string;
+        };
+        byteLength: number;
+        encoding: "bytes";
+        bytes: Uint8Array;
+      };
+      type UploadCommitPreparedInput = {
+        file: {
+          kind: "prepared-upload";
+          scope: {
+            kind: "org";
+            orgId: string;
+          } | {
+            kind: "user";
+            userId: string;
+          } | {
+            kind: "project";
+            orgId: string;
+            projectId: string;
+          };
+          uploadId: string;
+          provider: string;
+          fileKey: string;
+          filename: string;
+          sizeBytes: number;
+          contentType: string;
+          /** ISO 8601 datetime string. */
+          expiresAt: string;
+        };
+      };
+      type UploadCommitPreparedOutput = {
+        scope: {
+          kind: "org";
+          orgId: string;
+        } | {
+          kind: "user";
+          userId: string;
+        } | {
+          kind: "project";
+          orgId: string;
+          projectId: string;
+        };
         uploadId: string;
         provider: string;
         fileKey: string;
@@ -6162,27 +6214,27 @@ describe("runtime tool reference generation", () => {
       };
       type UploadDiscardPreparedInput = {
         file: {
-            kind: "prepared-upload";
-            scope: {
-                  kind: "org";
-                  orgId: string;
-                } | {
-                  kind: "user";
-                  userId: string;
-                } | {
-                  kind: "project";
-                  orgId: string;
-                  projectId: string;
-                };
-            uploadId: string;
-            provider: string;
-            fileKey: string;
-            filename: string;
-            sizeBytes: number;
-            contentType: string;
-            /** ISO 8601 datetime string. */
-            expiresAt: string;
+          kind: "prepared-upload";
+          scope: {
+            kind: "org";
+            orgId: string;
+          } | {
+            kind: "user";
+            userId: string;
+          } | {
+            kind: "project";
+            orgId: string;
+            projectId: string;
           };
+          uploadId: string;
+          provider: string;
+          fileKey: string;
+          filename: string;
+          sizeBytes: number;
+          contentType: string;
+          /** ISO 8601 datetime string. */
+          expiresAt: string;
+        };
       };
       type UploadDiscardPreparedOutput = {
         discarded: true;

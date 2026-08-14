@@ -10,6 +10,8 @@ import {
   type StateSearchOptions as UploadStateSearchOptions,
 } from "@fragno-dev/upload/text-index";
 
+import type { AppliedFileEdit, FileEditOperation, FileEditSearchOptions } from "@fragno-dev/upload";
+
 import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import {
   createUploadFileCollection,
@@ -28,6 +30,7 @@ import {
 } from "@/files/content/static";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller, type UploadRouteCaller } from "@/fragno/upload-server";
+import type { JsonValue } from "@/lib/zod/json-value";
 
 const UPLOAD_MOUNT_POINT = "/workspace";
 const STATIC_MOUNT_POINT = "/static";
@@ -36,6 +39,26 @@ const DIRECTORY_MARKER_SUFFIX = "/.fragno/dir-marker";
 const DIRECTORY_MARKER_CONTENT_TYPE = "application/x.fragno-directory-marker";
 
 type StateSearchOptions = UploadStateSearchOptions & { regex?: boolean };
+export type StateFileEditOperation =
+  | { kind: "write"; path: string; content: string }
+  | {
+      kind: "replace";
+      path: string;
+      search: string;
+      replacement: string;
+      options?: FileEditSearchOptions;
+    }
+  | {
+      kind: "writeJson";
+      path: string;
+      value: JsonValue;
+      options?: { spaces?: number };
+    };
+export type AppliedStateFileEdit = Omit<AppliedFileEdit, "fileKey"> & { path: string };
+export type ApplyStateFileEditsResult = {
+  edits: AppliedStateFileEdit[];
+  totalChanged: number;
+};
 type StateMountSearchOptions = UploadStateSearchOptions & { cursor?: string };
 type UploadWritePrecondition = { kind: "absent" } | { kind: "revision"; revision: number };
 type StateFileSearchOptions = {
@@ -123,8 +146,9 @@ export interface BackofficeStateBackend {
   realpath(path: string): Promise<string>;
   resolvePath(base: string, path: string): string;
   glob(pattern: string): Promise<string[]>;
-  readJson(path: string): Promise<unknown>;
-  writeJson(path: string, value: unknown, options?: { spaces?: number }): Promise<void>;
+  readJson(path: string): Promise<JsonValue>;
+  writeJson(path: string, value: JsonValue, options?: { spaces?: number }): Promise<void>;
+  applyEdits(edits: StateFileEditOperation[]): Promise<ApplyStateFileEditsResult>;
   searchText(path: string, query: string, options?: StateSearchOptions): Promise<StateTextMatch[]>;
   searchFiles(
     pattern: string,
@@ -479,16 +503,63 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
       .sort();
   }
 
-  async readJson(path: string): Promise<unknown> {
-    return JSON.parse(await this.readFile(path)) as unknown;
+  async readJson(path: string): Promise<JsonValue> {
+    return JSON.parse(await this.readFile(path)) as JsonValue;
   }
 
-  async writeJson(path: string, value: unknown, options?: { spaces?: number }): Promise<void> {
+  async writeJson(path: string, value: JsonValue, options?: { spaces?: number }): Promise<void> {
     const content = JSON.stringify(value, null, options?.spaces ?? 2);
     if (content === undefined) {
       throw new TypeError("State JSON value is not serializable.");
     }
     await this.writeFile(path, content);
+  }
+
+  async applyEdits(edits: StateFileEditOperation[]): Promise<ApplyStateFileEditsResult> {
+    const uploadEdits: FileEditOperation[] = edits.map((edit) => {
+      const resolved = this.#resolveWritableUploadPath(edit.path, "applyEdits");
+      if (!resolved.relativePath) {
+        throw stateError("EISDIR", "applyEdits", resolved.absolutePath);
+      }
+      const fileKey = this.#toUploadKey(resolved.relativePath);
+      if (edit.kind === "write") {
+        return { kind: "write", fileKey, content: edit.content };
+      }
+      if (edit.kind === "replace") {
+        return {
+          kind: "replace",
+          fileKey,
+          search: edit.search,
+          replacement: edit.replacement,
+          ...(edit.options ? { options: edit.options } : {}),
+        };
+      }
+      return {
+        kind: "writeJson",
+        fileKey,
+        value: edit.value,
+        ...(edit.options ? { options: edit.options } : {}),
+      };
+    });
+    const response = await this.#upload.routes("POST", "/files/apply-edits", {
+      body: { provider: this.#upload.provider, edits: uploadEdits },
+    });
+    if (response.type === "error") {
+      throw new Error(
+        `Unable to apply file edits: ${response.error.message} (${response.error.code}, HTTP ${response.status}).`,
+      );
+    }
+    if (response.type !== "json") {
+      throw new Error(`Unable to apply file edits: Upload returned ${response.type}.`);
+    }
+    this.#invalidateUploadTree();
+    return {
+      totalChanged: response.data.totalChanged,
+      edits: response.data.edits.map(({ fileKey, ...edit }) => ({
+        ...edit,
+        path: this.#toUploadAbsolutePath(fileKey),
+      })),
+    };
   }
 
   async searchText(
