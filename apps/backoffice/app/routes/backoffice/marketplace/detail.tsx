@@ -521,22 +521,24 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
 
               {installationOrganizationId && observedInstallationWorkflowInstanceId ? (
                 <ClientOnly>
-                  <Suspense
-                    fallback={
-                      <p className="mt-4 text-xs text-[var(--bo-muted)]">Loading installer…</p>
-                    }
-                  >
-                    <MarketplaceInstallationWorkflow
-                      collectionSource={installationCollectionSource}
-                      coordinatorScope={{
-                        kind: "org",
-                        orgId: installationOrganizationId,
-                      }}
-                      ingestionWorkflowInstanceId={observedInstallationWorkflowInstanceId}
-                      requested={actionData?.ok === true}
-                      targetScope={selectedScope}
-                    />
-                  </Suspense>
+                  {() => (
+                    <Suspense
+                      fallback={
+                        <p className="mt-4 text-xs text-[var(--bo-muted)]">Loading installer…</p>
+                      }
+                    >
+                      <MarketplaceInstallationWorkflow
+                        collectionSource={installationCollectionSource}
+                        coordinatorScope={{
+                          kind: "org",
+                          orgId: installationOrganizationId,
+                        }}
+                        ingestionWorkflowInstanceId={observedInstallationWorkflowInstanceId}
+                        requested={actionData?.ok === true}
+                        targetScope={selectedScope}
+                      />
+                    </Suspense>
+                  )}
                 </ClientOnly>
               ) : null}
             </div>

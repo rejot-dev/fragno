@@ -2,7 +2,6 @@ import { use } from "react";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import {
@@ -18,29 +17,10 @@ import { WorkflowGeneratedUi } from "@/routes/backoffice/automations/script-view
 import {
   currentWorkflowWaitingEventTypes,
   type AutomationWorkflowRun,
-  type WorkflowRunStep,
 } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 import { WorkflowStepGeneratedUi } from "@/routes/backoffice/automations/script-view/workflow-step-generated-ui";
 
-type MarketplaceInstallationGeneratedUi =
-  | { kind: "output"; value: unknown }
-  | { kind: "step"; step: WorkflowRunStep };
-
-export function selectMarketplaceInstallationGeneratedUi(
-  instance: AutomationWorkflowRun,
-): MarketplaceInstallationGeneratedUi | null {
-  if (
-    instance.status === "complete" &&
-    parseBackofficeUiResult(instance.output).kind !== "ordinary"
-  ) {
-    return { kind: "output", value: instance.output };
-  }
-
-  const step = [...instance.workflowSteps]
-    .reverse()
-    .find((candidate) => parseBackofficeUiResult(candidate.result).kind !== "ordinary");
-  return step ? { kind: "step", step } : null;
-}
+import { selectMarketplaceInstallationGeneratedUi } from "./installation-workflow-presentation";
 
 export function MarketplaceInstallationWorkflow({
   collectionSource,

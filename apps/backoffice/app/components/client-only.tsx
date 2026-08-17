@@ -8,9 +8,12 @@ export function ClientOnly({
   children,
   fallback = null,
 }: {
-  children: ReactNode;
+  children: ReactNode | (() => ReactNode);
   fallback?: ReactNode;
 }) {
   const isClient = useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot);
-  return isClient ? children : fallback;
+  if (!isClient) {
+    return fallback;
+  }
+  return typeof children === "function" ? children() : children;
 }
