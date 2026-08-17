@@ -655,7 +655,8 @@ function FilesTreeNodeRow({
     !forceExpanded &&
     hasChildren &&
     isCollapsedByState &&
-    (explicitlyCollapsedPaths.has(node.path) || !isAncestorPath(node.path, selectedPath));
+    (explicitlyCollapsedPaths.has(node.path) ||
+      (!isSelected && !isAncestorPath(node.path, selectedPath)));
   const Icon = node.kind === "root" ? RootIcon : node.kind === "directory" ? Folder : FileIcon;
 
   return (

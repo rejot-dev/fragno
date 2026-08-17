@@ -31,6 +31,20 @@ const data: MarketplaceArtifactExplorerData = {
   ]),
   selectedVersion: "1.0.0",
 };
+const secondVersionData: MarketplaceArtifactExplorerData = {
+  state: "ready",
+  fileTree: createFileTree([
+    {
+      kind: "file",
+      path: "2.0.0/automations/weekly-report.workflow.js",
+      sizeBytes: workflowSource.length,
+      contentType: "text/javascript",
+      updatedAt: null,
+      metadata: null,
+    },
+  ]),
+  selectedVersion: "2.0.0",
+};
 
 afterEach(cleanup);
 
@@ -117,20 +131,6 @@ describe("Marketplace artifact lazy content", () => {
   });
 
   test("clears a fetched workflow when the artifact version changes", async () => {
-    const secondVersionData: MarketplaceArtifactExplorerData = {
-      state: "ready",
-      fileTree: createFileTree([
-        {
-          kind: "file",
-          path: "2.0.0/automations/weekly-report.workflow.js",
-          sizeBytes: workflowSource.length,
-          contentType: "text/javascript",
-          updatedAt: null,
-          metadata: null,
-        },
-      ]),
-      selectedVersion: "2.0.0",
-    };
     const router = createMemoryRouter(
       [
         {
@@ -150,6 +150,34 @@ describe("Marketplace artifact lazy content", () => {
     await screen.findByRole("tab", { name: "weekly-report.workflow.js" });
     assert(screen.queryByLabelText("Workflow graph") === null);
     screen.getByText("Select a workflow");
+  });
+
+  test("preserves the file tree scroll position when the artifact version changes", async () => {
+    const router = createMemoryRouter(
+      [
+        {
+          path: "*",
+          element: <VersionHarness first={data} second={secondVersionData} />,
+        },
+      ],
+      { initialEntries: ["/backoffice/marketplace/example?artifactTab=files"] },
+    );
+
+    render(<RouterProvider router={router} />);
+    const fileTree = screen.getByRole("navigation", {
+      name: "Marketplace artifact files",
+    }).parentElement;
+    assert(fileTree);
+    fileTree.scrollTop = 120;
+
+    fireEvent.click(screen.getByRole("button", { name: "Show version 2" }));
+
+    await screen.findByRole("link", { name: "2.0.0" });
+    const updatedFileTree = screen.getByRole("navigation", {
+      name: "Marketplace artifact files",
+    }).parentElement;
+    assert(updatedFileTree === fileTree);
+    assert(updatedFileTree.scrollTop === 120);
   });
 });
 
