@@ -219,10 +219,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       : Promise.resolve(null),
   ]);
   const selectedInstallationVersion =
-    artifactFiles.state === "ready" &&
-    detail.versions.some(({ version }) => version === artifactFiles.selectedVersion)
-      ? artifactFiles.selectedVersion
-      : detail.listing.latestVersion;
+    artifactFiles.state === "ready" ? artifactFiles.selectedVersion : detail.listing.latestVersion;
   const installationWorkflowInstanceId = installationOrganization
     ? await buildMarketplaceIngestionWorkflowInstanceId({
         targetScope: selectedScope,
@@ -329,9 +326,10 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
   const search = new URLSearchParams(location.search);
   const selectedArtifactVersion =
     artifactFiles.state === "ready" ? artifactFiles.selectedVersion : listing.latestVersion;
-  const installationVersion = versions.some(({ version }) => version === selectedArtifactVersion)
-    ? selectedArtifactVersion
-    : listing.latestVersion;
+  const installationVersion = selectedArtifactVersion;
+  const installationVersions = Array.from(
+    new Set([installationVersion, ...versions.map(({ version }) => version)]),
+  );
   const publishedVersionParam = search.get("published");
   const publishedVersion = versions.some(({ version }) => version === publishedVersionParam)
     ? publishedVersionParam
@@ -483,9 +481,9 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
                       defaultValue={installationVersion}
                       className="mt-2 min-h-11 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 font-mono text-sm text-[var(--bo-fg)] transition-[border-color,box-shadow] duration-150 ease-out outline-none focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20"
                     >
-                      {versions.map((version) => (
-                        <option key={version.version} value={version.version}>
-                          {version.version}
+                      {installationVersions.map((version) => (
+                        <option key={version} value={version}>
+                          {version}
                         </option>
                       ))}
                     </select>
