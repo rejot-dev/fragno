@@ -50,10 +50,8 @@ export type WorkflowStepEvent<TPayload = unknown> = {
   payload: Readonly<TPayload>;
   timestamp: Date;
   /**
-   * Queue an acknowledgement of this event.
-   *
-   * The acknowledgement becomes durable when the step-emission pump next flushes. Until then,
-   * and during concurrent delivery races, the event may be delivered again.
+   * Queue this event for consumption by the active step execution. Consumption commits with that
+   * execution's successful step result; interrupted, failed, and losing executions may redeliver it.
    */
   consume(): void;
 };
@@ -120,8 +118,8 @@ export type WorkflowStepTx<THooks extends HooksMap = HooksMap> = WorkflowStepCon
     mutate: (fn: (ctx: HandlerTxContext<THooks>) => void) => void;
   };
   /**
-   * Observe durable workflow events of an exact type while this step is active.
-   * Handlers may receive an event more than once until event.consume() is durably flushed.
+   * Observe durable workflow events of an exact type while this step is active. Handlers are
+   * at-least-once until the execution that called event.consume() commits the step successfully.
    */
   onEvent: (type: string, handler: WorkflowStepEventHandler) => () => void;
 };

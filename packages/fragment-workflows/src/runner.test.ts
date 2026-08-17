@@ -18,7 +18,10 @@ import { runWorkflowsTick } from "./new-runner";
 import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./runner/step-live-pump";
 import type { WorkflowStepLivePump, WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
 import { workflowsSchema } from "./schema";
-import { createWorkflowEventConsumedControlPayload } from "./step-emission-control";
+import {
+  createWorkflowEventConsumedControlPayload,
+  createWorkflowStepStartedControlPayload,
+} from "./step-emission-control";
 import {
   createWorkflowsTestHarness,
   createWorkflowsTestRuntime,
@@ -236,18 +239,144 @@ describe("Workflows Runner", () => {
     expect(observedPayloads).toEqual([[{ type: "checkpoint" }]]);
   });
 
-  test("WorkflowStepTx previousConsumedEvents reconstructs durably acknowledged events", async () => {
+  test("WorkflowStepTx previousEmissions returns one selected epoch in persisted order", async () => {
+    const observedEmissions: Array<
+      Array<{
+        actor: string;
+        executionId: string;
+        epoch: string;
+        sequence: number;
+        payload: unknown;
+      }>
+    > = [];
+
+    const CanonicalPreviousEmissionsWorkflow = defineWorkflow<
+      "canonical-previous-emissions-workflow",
+      undefined,
+      { ok: true }
+    >({ name: "canonical-previous-emissions-workflow" }, async (_event, step) => {
+      await step.do("recoverable", async (tx) => {
+        observedEmissions.push(
+          (await tx.previousEmissions()).map((emission) => ({
+            actor: emission.actor,
+            executionId: emission.executionId,
+            epoch: emission.epoch,
+            sequence: emission.sequence,
+            payload: emission.payload,
+          })),
+        );
+      });
+      return { ok: true };
+    });
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { CANONICAL_PREVIOUS_EMISSIONS: CanonicalPreviousEmissionsWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    await harness.createInstance("CANONICAL_PREVIOUS_EMISSIONS");
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read-canonical-previous-emissions-instance")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(instance).toBeTruthy();
+
+    const seedUow = harness.db
+      .createUnitOfWork("seed-canonical-previous-emissions")
+      .forSchema(workflowsSchema);
+    const createEmission = (options: {
+      executionId: string;
+      epoch: string;
+      sequence: number;
+      actor: "system" | "user";
+      payload: unknown;
+      createdAt: Date;
+    }) =>
+      seedUow.create("workflow_step_emission", {
+        instanceRef: instance!.id,
+        stepKey: "do:recoverable",
+        ...options,
+      });
+
+    createEmission({
+      executionId: "older-execution",
+      epoch: "older-epoch",
+      sequence: 0,
+      actor: "system",
+      payload: createWorkflowStepStartedControlPayload(),
+      createdAt: new Date("2026-08-17T10:00:00.000Z"),
+    });
+    createEmission({
+      executionId: "older-execution",
+      epoch: "older-epoch",
+      sequence: 1,
+      actor: "user",
+      payload: { kind: "older-entry" },
+      createdAt: new Date("2026-08-17T10:00:00.001Z"),
+    });
+    createEmission({
+      executionId: "selected-execution",
+      epoch: "selected-epoch",
+      sequence: 0,
+      actor: "system",
+      payload: createWorkflowStepStartedControlPayload(),
+      createdAt: new Date("2026-08-17T10:00:01.000Z"),
+    });
+    for (const sequence of [3, 1, 2]) {
+      createEmission({
+        executionId: "selected-execution",
+        epoch: "selected-epoch",
+        sequence,
+        actor: "user",
+        payload: { kind: "selected-entry", sequence },
+        createdAt: new Date("2026-08-17T10:00:01.001Z"),
+      });
+    }
+    const { success } = await seedUow.executeMutations();
+    assert(success);
+
+    await harness.tick(buildPayload(instance!, "create"));
+
+    expect(observedEmissions).toEqual([
+      [
+        {
+          actor: "system",
+          executionId: "selected-execution",
+          epoch: "selected-epoch",
+          sequence: 0,
+          payload: { control: "step-started" },
+        },
+        ...[1, 2, 3].map((sequence) => ({
+          actor: "user",
+          executionId: "selected-execution",
+          epoch: "selected-epoch",
+          sequence,
+          payload: { kind: "selected-entry", sequence },
+        })),
+      ],
+    ]);
+  });
+
+  test("redelivers a live-consumed event after its execution is interrupted", async () => {
     const observedEvents: unknown[] = [];
 
     const PreviousConsumedEventsWorkflow = defineWorkflow<
       "previous-consumed-events-workflow",
       undefined,
-      { ok: true }
+      { command: string }
     >({ name: "previous-consumed-events-workflow" }, async (_event, step) => {
       await step.do("recoverable", async (tx) => {
         observedEvents.push(await tx.previousConsumedEvents<{ command: string }>());
       });
-      return { ok: true };
+      const fallback = await step.waitForEvent<{ command: string }>("fallback", {
+        type: "command",
+      });
+      return { command: fallback.payload.command };
     });
 
     const harness = await createWorkflowsTestHarness({
@@ -302,6 +431,17 @@ describe("Workflows Runner", () => {
         },
       ],
     ]);
+    await expect(
+      harness.getStatus("PREVIOUS_CONSUMED_EVENTS", instance!.instanceId),
+    ).resolves.toMatchObject({ status: "complete", output: { command: "continue" } });
+    const [events] = await harness.db
+      .createUnitOfWork("read-recovered-consumed-event")
+      .forSchema(workflowsSchema)
+      .find("workflow_event", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+    expect(events).toMatchObject([
+      { id: eventId, consumedByStepKey: "waitForEvent:fallback", deliveredAt: expect.any(Date) },
+    ]);
   });
 
   test("step recovery APIs exclude emissions and consumed events from a proven losing execution", async () => {
@@ -311,13 +451,16 @@ describe("Workflows Runner", () => {
     const CanonicalRecoveryWorkflow = defineWorkflow<
       "canonical-recovery-workflow",
       undefined,
-      { ok: true }
+      { command: string }
     >({ name: "canonical-recovery-workflow" }, async (_event, step) => {
       await step.do("recoverable", async (tx) => {
         observedEmissions.push((await tx.previousEmissions()).map((emission) => emission.payload));
         observedConsumedEvents.push(await tx.previousConsumedEvents());
       });
-      return { ok: true };
+      const fallback = await step.waitForEvent<{ command: string }>("fallback", {
+        type: "command",
+      });
+      return { command: fallback.payload.command };
     });
 
     const harness = await createWorkflowsTestHarness({
@@ -420,6 +563,20 @@ describe("Workflows Runner", () => {
       new Set([recoveredStep!.committedByExecutionId]),
     );
     assert(emissions.some((emission) => emission.executionId === "losing-execution"));
+    await expect(
+      harness.getStatus("CANONICAL_RECOVERY", instance!.instanceId),
+    ).resolves.toMatchObject({
+      status: "complete",
+      output: { command: "discard" },
+    });
+    const [events] = await harness.db
+      .createUnitOfWork("read-losing-consumption-event")
+      .forSchema(workflowsSchema)
+      .find("workflow_event", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+    expect(events).toMatchObject([
+      { id: consumedEventId, consumedByStepKey: "waitForEvent:fallback" },
+    ]);
   });
 
   test("central step emission bus observes outbound events from the active in-process step", async () => {
@@ -839,7 +996,7 @@ describe("Workflows Runner", () => {
     }
   });
 
-  test("sendEvent broadcasts durable events to an active step bus", async () => {
+  test("a live-consumed event is unavailable to the next waitForEvent", async () => {
     const stepEntered = deferred();
     const releaseStep = deferred();
     const received = createAsyncQueue<unknown>();
@@ -857,6 +1014,7 @@ describe("Workflows Runner", () => {
         stepEntered.resolve();
         await releaseStep.promise;
       });
+      await step.waitForEvent("fallback", { type: "command" });
       return { ok: true };
     });
 
@@ -878,16 +1036,28 @@ describe("Workflows Runner", () => {
         .executeRetrieve()
     )[0];
     expect(instance).toBeTruthy();
+    const seedUow = harness.db
+      .createUnitOfWork("seed-prequeued-live-event")
+      .forSchema(workflowsSchema);
+    seedUow.create("workflow_event", {
+      instanceRef: instance!.id,
+      actor: "user",
+      type: "command",
+      payload: { command: "continue" },
+      deliveredAt: null,
+      consumedByStepKey: null,
+    });
+    const { success } = await seedUow.executeMutations();
+    assert(success);
 
     const tick = harness.tick(buildPayload(instance!, "create"));
     try {
       await stepEntered.promise;
-
-      await sendEventAndFlush(harness, {
-        workflowName: "step-message-inbound-workflow",
-        instanceId,
-        event: { type: "command", payload: { command: "continue" } },
-      });
+      const emissionBus = stepEmissions.get(
+        workflowStepLivePumpKey("step-message-inbound-workflow", instanceId),
+      );
+      expect(emissionBus).toBeTruthy();
+      await flushBus(harness, emissionBus!);
 
       expect(await received.next()).toEqual({ command: "continue" });
       assert(received.pendingCount() === 0);
@@ -895,6 +1065,107 @@ describe("Workflows Runner", () => {
       releaseStep.resolve();
       await tick;
     }
+
+    await expect(harness.getStatus("EMISSION_BUS", instanceId)).resolves.toMatchObject({
+      status: "waiting",
+    });
+    const [events] = await harness.db
+      .createUnitOfWork("read-live-consumed-event")
+      .forSchema(workflowsSchema)
+      .find("workflow_event", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+    expect(events).toMatchObject([
+      { consumedByStepKey: "do:interactive", deliveredAt: expect.any(Date) },
+    ]);
+  });
+
+  test("step completion waits for a racing live-event consumption", async () => {
+    const stepEntered = deferred();
+    const handlerEntered = deferred();
+    const releaseHandler = deferred();
+    const releaseStep = deferred();
+
+    const RacingConsumptionWorkflow = defineWorkflow<
+      "step-message-racing-consumption-workflow",
+      undefined,
+      { ok: true }
+    >({ name: "step-message-racing-consumption-workflow" }, async (_event, step) => {
+      await step.do("interactive", async (tx) => {
+        tx.onEvent("command", async (event) => {
+          handlerEntered.resolve();
+          await releaseHandler.promise;
+          event.consume();
+        });
+        stepEntered.resolve();
+        await releaseStep.promise;
+      });
+      await step.waitForEvent("fallback", { type: "command" });
+      return { ok: true };
+    });
+
+    const stepEmissions = createStepEmissions();
+    const harness = await createWorkflowsTestHarness({
+      workflows: { RACING_CONSUMPTION: RacingConsumptionWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      fragmentConfig: { stepEmissions },
+    });
+
+    const instanceId = await harness.createInstance("RACING_CONSUMPTION");
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read-racing-consumption-instance")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(instance).toBeTruthy();
+
+    const tick = harness.tick(buildPayload(instance!, "create"));
+    let tickSettled = false;
+    void tick.then(
+      () => {
+        tickSettled = true;
+      },
+      () => {
+        tickSettled = true;
+      },
+    );
+
+    try {
+      await stepEntered.promise;
+      const delivery = sendEventAndFlush(harness, {
+        workflowName: "step-message-racing-consumption-workflow",
+        instanceId,
+        event: { type: "command", payload: { command: "continue" } },
+      });
+      await handlerEntered.promise;
+
+      releaseStep.resolve();
+      await Promise.resolve();
+      assert(!tickSettled);
+
+      releaseHandler.resolve();
+      await delivery;
+      await tick;
+    } finally {
+      releaseHandler.resolve();
+      releaseStep.resolve();
+      await tick.catch(() => {});
+    }
+
+    await expect(harness.getStatus("RACING_CONSUMPTION", instanceId)).resolves.toMatchObject({
+      status: "waiting",
+    });
+    const [events] = await harness.db
+      .createUnitOfWork("read-racing-consumed-event")
+      .forSchema(workflowsSchema)
+      .find("workflow_event", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+    expect(events).toMatchObject([
+      { consumedByStepKey: "do:interactive", deliveredAt: expect.any(Date) },
+    ]);
   });
 
   const readStepEmissionRows = async (

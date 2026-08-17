@@ -562,6 +562,7 @@ export class RunnerStep implements WorkflowStep {
       for (const event of pendingEventConsumptions.values()) {
         this.#queueEventUpdate(event, { consumedByStepKey: identity.stepKey });
         event.consumedByStepKey = identity.stepKey;
+        this.#markEventConsumedInCurrentPassage(event.id.toString(), identity.stepKey);
       }
       this.#upsertStep(stepKey, {
         name,
@@ -1047,6 +1048,13 @@ export class RunnerStep implements WorkflowStep {
         !event.consumedByStepKey &&
         (!wakeAt || event.createdAt <= wakeAt),
     );
+  }
+
+  #markEventConsumedInCurrentPassage(eventId: string, consumedByStepKey: string): void {
+    const event = this.#state.events.find((candidate) => candidate.id.toString() === eventId);
+    if (event) {
+      event.consumedByStepKey = consumedByStepKey;
+    }
   }
 
   #queueEventUpdate(event: WorkflowEventRecord, data: WorkflowEventUpdate) {
