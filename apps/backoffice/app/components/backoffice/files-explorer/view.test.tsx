@@ -250,6 +250,18 @@ describe("FilesExplorerView", () => {
     screen.getByText("todo.txt");
   });
 
+  test("expands a directory selected by the current route", () => {
+    render(
+      <ExplorerHarness
+        source={createNestedWorkspaceSource()}
+        initialSelectedPath="/workspace/notes/"
+      />,
+    );
+
+    screen.getByRole("heading", { name: "notes" });
+    screen.getByRole("link", { name: "todo.txt" });
+  });
+
   test("keeps a selected file open when its parent folder is pressed", () => {
     const nestedSource = createNestedWorkspaceSource();
     render(

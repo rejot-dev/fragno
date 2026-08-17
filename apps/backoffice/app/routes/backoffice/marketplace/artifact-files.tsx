@@ -42,8 +42,6 @@ export function MarketplaceArtifactFiles({
   data: MarketplaceArtifactExplorerData;
   selectedContent?: MarketplaceArtifactSelectedContent | null;
 }) {
-  const location = useLocation();
-
   if (data.state !== "ready") {
     return (
       <section className="bo-panel-surface bg-[var(--bo-panel)] p-5 md:p-6">
@@ -59,13 +57,7 @@ export function MarketplaceArtifactFiles({
     );
   }
 
-  return (
-    <ReadyMarketplaceArtifactFiles
-      key={`${location.pathname}:${data.selectedVersion}`}
-      data={data}
-      selectedContent={selectedContent}
-    />
-  );
+  return <ReadyMarketplaceArtifactFiles data={data} selectedContent={selectedContent} />;
 }
 
 function ReadyMarketplaceArtifactFiles({
