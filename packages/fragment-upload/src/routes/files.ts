@@ -72,7 +72,7 @@ const preparedFileBatchEntrySchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("write"),
     uploadId: z.string().min(1),
-    precondition: fileWritePreconditionSchema,
+    precondition: fileWritePreconditionSchema.optional(),
   }),
   z.object({
     kind: z.literal("delete"),
