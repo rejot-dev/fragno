@@ -348,6 +348,7 @@ export function triggerWorkflowTerminalHook(
 ) {
   const namespace = uow.forSchema(workflowsSchema).namespace ?? workflowsSchema.name;
   uow.triggerHook(namespace, "onWorkflowTerminal", {
+    terminalTransitionId: uow.idempotencyKey,
     workflowName: instance.workflowName,
     instanceId: instance.instanceId,
     instanceRef: String(instance.id),

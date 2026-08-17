@@ -674,6 +674,7 @@ export type WorkflowRestartedHookPayload = {
 };
 
 export type WorkflowTerminalHookPayload = {
+  terminalTransitionId: string;
   workflowName: string;
   instanceId: string;
   instanceRef: string;

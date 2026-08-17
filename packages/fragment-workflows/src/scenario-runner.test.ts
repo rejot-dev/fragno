@@ -20,6 +20,7 @@ import {
   WaitForEventTimeoutError,
   type AnyTxResult,
   type InstanceStatus,
+  type WorkflowTerminalHookPayload,
 } from "./workflow";
 
 describe("Workflows Runner (Scenario DSL)", () => {
@@ -4998,8 +4999,13 @@ describe("Workflows Runner (Scenario DSL)", () => {
               instance: await ctx.state.getInstance("NESTED_FAILURE", "nested-failure-1"),
               status: await ctx.state.getStatus("NESTED_FAILURE", "nested-failure-1"),
               steps: await ctx.state.getSteps("NESTED_FAILURE", "nested-failure-1"),
+              terminalHooks: await ctx.state.internal.getHooks({
+                hookName: "onWorkflowTerminal",
+                workflowName: "scenario-management-retry-nested-workflow",
+                instanceId: "nested-failure-1",
+              }),
             }),
-            assert: ({ instance, status, steps }) => {
+            assert: ({ instance, status, steps, terminalHooks }) => {
               expect(instance).toMatchObject({ runGeneration: 1 });
               expect(status).toMatchObject({ status: "complete", output: "recovered" });
               expect(steps).toEqual(
@@ -5016,6 +5022,22 @@ describe("Workflows Runner (Scenario DSL)", () => {
                     attempts: 1,
                   }),
                 ]),
+              );
+
+              const terminalPayloads = terminalHooks.map(
+                ({ payload }) => payload as WorkflowTerminalHookPayload,
+              );
+              expect(terminalPayloads).toHaveLength(2);
+              expect(terminalPayloads).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({ runGeneration: 1, status: "errored" }),
+                  expect.objectContaining({ runGeneration: 1, status: "complete" }),
+                ]),
+              );
+              assert.equal(
+                new Set(terminalPayloads.map(({ terminalTransitionId }) => terminalTransitionId))
+                  .size,
+                2,
               );
             },
           }),

@@ -215,9 +215,11 @@ export const createAutomationsRuntime = (
               id: workflowCompletionEventId({
                 instanceRef: payload.instanceRef,
                 runGeneration: payload.runGeneration,
+                terminalTransitionId: payload.terminalTransitionId,
               }),
               type: workflowCompletedEventType(payload.runGeneration),
               payload: {
+                terminalTransitionId: payload.terminalTransitionId,
                 workflowName: payload.workflowName,
                 instanceId: payload.instanceId,
                 runGeneration: payload.runGeneration,
