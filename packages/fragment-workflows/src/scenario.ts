@@ -3043,25 +3043,42 @@ export async function runScenario<
                 }),
             );
             handle.pump.setHandlerTx(this.handlerTx.bind(this));
-            return await new Promise<WorkflowScenarioObservedEmission | undefined>((resolve) => {
-              let unsubscribe: () => void = () => {};
-              const timeout = setTimeout(() => {
-                unsubscribe();
-                void handle.close();
-                resolve(undefined);
-              }, timeoutMs);
-              timeout.unref?.();
-              unsubscribe = handle.pump.observe((message) => {
-                const observed = { workflowName, instanceId, ...message };
-                if (step.match && !step.match(observed, context)) {
-                  return;
-                }
+            let unsubscribe: () => void = () => {};
+            let timeout: ReturnType<typeof setTimeout> | undefined;
+            try {
+              return await new Promise<WorkflowScenarioObservedEmission | undefined>(
+                (resolve, reject) => {
+                  function rejectError(error: unknown): void {
+                    reject(error instanceof Error ? error : new Error(String(error)));
+                  }
+                  timeout = setTimeout(function resolveTimeout() {
+                    resolve(undefined);
+                  }, timeoutMs);
+                  timeout.unref?.();
+                  try {
+                    unsubscribe = handle.pump.observe((message) => {
+                      try {
+                        const observedMessage = { workflowName, instanceId, ...message };
+                        if (step.match && !step.match(observedMessage, context)) {
+                          return;
+                        }
+                        resolve(observedMessage);
+                      } catch (error) {
+                        rejectError(error);
+                      }
+                    });
+                  } catch (error) {
+                    rejectError(error);
+                  }
+                },
+              );
+            } finally {
+              if (timeout) {
                 clearTimeout(timeout);
-                unsubscribe();
-                void handle.close();
-                resolve(observed);
-              });
-            });
+              }
+              unsubscribe();
+              await handle.close();
+            }
           });
           const persistedAfterTimeout = matched ?? (await findPersistedMatch());
           if (!persistedAfterTimeout) {
