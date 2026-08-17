@@ -12,6 +12,7 @@ const {
   listMarketplaceIngestionsMock,
   restartMarketplaceIngestionMock,
   fetchAutomationCollectionSourceMock,
+  loadPublishedMarketplaceArtifactExplorerMock,
 } = vi.hoisted(() => ({
   getAuthMeMock: vi.fn(),
   requireBackofficeContextMock: vi.fn(),
@@ -20,6 +21,7 @@ const {
   listMarketplaceIngestionsMock: vi.fn(),
   restartMarketplaceIngestionMock: vi.fn(),
   fetchAutomationCollectionSourceMock: vi.fn(),
+  loadPublishedMarketplaceArtifactExplorerMock: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
@@ -31,6 +33,9 @@ vi.mock("@/fragno/automation/tanstack/server", () => ({
 }));
 vi.mock("@/components/client-only", () => ({
   ClientOnly: ({ children }: { children: () => never }) => children(),
+}));
+vi.mock("./artifact-files.server", () => ({
+  loadPublishedMarketplaceArtifactExplorer: loadPublishedMarketplaceArtifactExplorerMock,
 }));
 vi.mock("./installation-workflow.client", () => ({
   MarketplaceInstallationWorkflow: ({
@@ -46,6 +51,7 @@ import {
   backofficeScopeSinglePathSegment,
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
+import { buildMarketplaceIngestionWorkflowInstanceId } from "@/fragno/automation/marketplace-ingest-identity";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 
 import BackofficeMarketplaceDetail, { action, loader, shouldRevalidate } from "./detail";
@@ -90,10 +96,16 @@ const context = {
   }),
 };
 
-const runLoader = (scope: BackofficeRoutableScope = { kind: "org", orgId: "org-1" }) => {
+const runLoader = (
+  scope: BackofficeRoutableScope = { kind: "org", orgId: "org-1" },
+  artifactVersion?: string,
+) => {
   const url = new URL(
     `https://example.test/backoffice/marketplace/${backofficeContextScopeRoutePath(scope)}/marketplace/${listingRef}`,
   );
+  if (artifactVersion) {
+    url.searchParams.set("artifactVersion", artifactVersion);
+  }
   return loader({
     request: new Request(url),
     params: {
@@ -145,6 +157,7 @@ beforeEach(() => {
   listMarketplaceIngestionsMock.mockReset();
   restartMarketplaceIngestionMock.mockReset();
   fetchAutomationCollectionSourceMock.mockReset();
+  loadPublishedMarketplaceArtifactExplorerMock.mockReset();
   forOrgMock.mockClear();
   getAuthMeMock.mockResolvedValue(authenticatedUser);
   requireBackofficeContextMock.mockImplementation(async (_request, _context, scope) => ({
@@ -180,6 +193,10 @@ beforeEach(() => {
   fetchAutomationCollectionSourceMock.mockResolvedValue({
     scope: { kind: "org", orgId: "org-1" },
     adapterIdentity: "automations-test-adapter",
+  });
+  loadPublishedMarketplaceArtifactExplorerMock.mockResolvedValue({
+    state: "unavailable",
+    message: "This Marketplace listing has no published files.",
   });
   restartMarketplaceIngestionMock.mockResolvedValue({
     listingId,
@@ -266,6 +283,25 @@ describe("marketplace detail loader", () => {
     expect(forOrgMock).not.toHaveBeenCalled();
   });
 
+  test("uses a validated artifact version outside the current page for the workflow identity", async () => {
+    loadPublishedMarketplaceArtifactExplorerMock.mockResolvedValueOnce({
+      state: "ready",
+      fileTree: { entries: [] },
+      selectedVersion: "1.0.0",
+    });
+
+    const result = await runLoader({ kind: "org", orgId: "org-1" }, "1.0.0");
+
+    assert(!(result instanceof Response));
+    expect(result.installationWorkflowInstanceId).toBe(
+      await buildMarketplaceIngestionWorkflowInstanceId({
+        targetScope: { kind: "org", orgId: "org-1" },
+        listingId,
+        version: "1.0.0",
+      }),
+    );
+  });
+
   test("propagates workflow synchronization failures", async () => {
     fetchAutomationCollectionSourceMock.mockRejectedValueOnce(
       new Error("Workflow synchronization failed."),
@@ -286,12 +322,10 @@ describe("marketplace detail loader", () => {
 });
 
 describe("marketplace artifact version navigation", () => {
-  test("uses the selected artifact version as the installation release", () => {
-    const selectedMarkup = renderMarketplaceDetail("1.0.0");
-    const fallbackMarkup = renderMarketplaceDetail("3.0.0");
+  test("offers the selected artifact version when it is outside the current page", () => {
+    const markup = renderMarketplaceDetail("1.0.0");
 
-    assert(selectedMarkup.includes('<option value="1.0.0" selected="">1.0.0</option>'));
-    assert(fallbackMarkup.includes('<option value="2.0.0" selected="">2.0.0</option>'));
+    assert(markup.includes('<option value="1.0.0" selected="">1.0.0</option>'));
   });
 
   test("observes the workflow started by the submitted release", () => {
@@ -393,10 +427,7 @@ function renderMarketplaceDetail(
       publishedAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
-    versions: [
-      { version: "2.0.0", publishedAt: "2026-01-01T00:00:00.000Z" },
-      { version: "1.0.0", publishedAt: "2025-01-01T00:00:00.000Z" },
-    ],
+    versions: [{ version: "2.0.0", publishedAt: "2026-01-01T00:00:00.000Z" }],
     nextVersionCursor: undefined,
     hasNextVersionPage: false,
     manageOrganizationId: null,
