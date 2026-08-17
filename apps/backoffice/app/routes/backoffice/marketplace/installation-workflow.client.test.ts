@@ -5,10 +5,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import type { AutomationWorkflowRun } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
-import {
-  MarketplaceInstallerGeneratedUi,
-  selectMarketplaceInstallationGeneratedUi,
-} from "./installation-workflow.client";
+import { selectMarketplaceInstallationGeneratedUi } from "./installation-workflow-presentation";
+import { MarketplaceInstallerGeneratedUi } from "./installation-workflow.client";
 
 const generatedUi = (label: string) => ({
   $ui: {

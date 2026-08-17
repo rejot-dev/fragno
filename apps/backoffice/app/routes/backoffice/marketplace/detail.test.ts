@@ -30,7 +30,7 @@ vi.mock("@/fragno/automation/tanstack/server", () => ({
   fetchAutomationCollectionSource: fetchAutomationCollectionSourceMock,
 }));
 vi.mock("@/components/client-only", () => ({
-  ClientOnly: ({ children }: { children: never }) => children,
+  ClientOnly: ({ children }: { children: () => never }) => children(),
 }));
 vi.mock("./installation-workflow.client", () => ({
   MarketplaceInstallationWorkflow: ({
