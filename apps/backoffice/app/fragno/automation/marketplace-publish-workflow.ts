@@ -48,7 +48,7 @@ const MARKETPLACE_ARTIFACT_FILE_METADATA = {
 } as const;
 
 type PreparedMarketplaceArtifactWrite = PreparedFileWrite & {
-  precondition: UploadFileWritePrecondition;
+  precondition?: UploadFileWritePrecondition;
 };
 
 const inferMarketplaceArtifactContentType = (fileKey: string): string => {
@@ -87,6 +87,7 @@ const marketplacePublishWorkflowParamsSchema = z.object({
   slug: marketplaceSlugSchema,
   version: marketplaceVersionSchema,
   publishNextVersions: z.boolean().default(false),
+  forceId: z.string().optional(),
   metadata: backofficeWorkflowActorMetadataSchema,
 });
 
@@ -104,8 +105,15 @@ export type MarketplacePublishWorkflowParams = z.infer<
 export const buildMarketplacePublicationWorkflowInstanceId = (input: {
   listingId: string;
   version: string;
+  forceId?: string;
 }) =>
-  `marketplace-publish-${bytesToHex(TEXT_ENCODER.encode(`${input.listingId}\0${input.version}`))}`;
+  `marketplace-publish-${bytesToHex(
+    TEXT_ENCODER.encode(
+      input.forceId
+        ? `${input.listingId}\0${input.version}\0force\0${input.forceId}`
+        : `${input.listingId}\0${input.version}`,
+    ),
+  )}`;
 
 type MarketplacePublishWorkflowConfig = {
   ownerScope: BackofficeContextScope;
@@ -313,10 +321,12 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
                 "Marketplace batch upload published before its atomic commit.",
               );
             }
-            return {
-              ...response.data.write,
-              precondition: { kind: "absent" as const },
-            };
+            return event.payload.forceId
+              ? response.data.write
+              : {
+                  ...response.data.write,
+                  precondition: { kind: "absent" as const },
+                };
           },
         );
         preparedWrites.push(prepared);
@@ -331,7 +341,7 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
               entries: preparedWrites.map((write) => ({
                 kind: "write" as const,
                 uploadId: write.uploadId,
-                precondition: write.precondition,
+                ...(write.precondition ? { precondition: write.precondition } : {}),
               })),
             },
           });
@@ -398,11 +408,13 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
                 instanceId: buildMarketplacePublicationWorkflowInstanceId({
                   listingId: nextListingId,
                   version: nextEntry.version,
+                  forceId: event.payload.forceId,
                 }),
                 params: {
                   slug: nextEntry.slug,
                   version: nextEntry.version,
                   publishNextVersions: true,
+                  forceId: event.payload.forceId,
                   metadata: event.payload.metadata,
                 },
               },

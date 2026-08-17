@@ -10,19 +10,34 @@ const {
   getPublishedListingMock,
   getArtifactManifestMock,
   listMarketplaceIngestionsMock,
-  requestMarketplaceIngestionMock,
+  restartMarketplaceIngestionMock,
+  fetchAutomationCollectionSourceMock,
 } = vi.hoisted(() => ({
   getAuthMeMock: vi.fn(),
   requireBackofficeContextMock: vi.fn(),
   getPublishedListingMock: vi.fn(),
   getArtifactManifestMock: vi.fn(),
   listMarketplaceIngestionsMock: vi.fn(),
-  requestMarketplaceIngestionMock: vi.fn(),
+  restartMarketplaceIngestionMock: vi.fn(),
+  fetchAutomationCollectionSourceMock: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
 vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
   requireBackofficeContext: requireBackofficeContextMock,
+}));
+vi.mock("@/fragno/automation/tanstack/server", () => ({
+  fetchAutomationCollectionSource: fetchAutomationCollectionSourceMock,
+}));
+vi.mock("@/components/client-only", () => ({
+  ClientOnly: ({ children }: { children: never }) => children,
+}));
+vi.mock("./installation-workflow.client", () => ({
+  MarketplaceInstallationWorkflow: ({
+    ingestionWorkflowInstanceId,
+  }: {
+    ingestionWorkflowInstanceId: string;
+  }) => `observing:${ingestionWorkflowInstanceId}`,
 }));
 
 import {
@@ -41,6 +56,15 @@ const listingId = marketplaceListingId({
   slug: "telegram-test-command",
 });
 const listingRef = marketplaceListingRef(listingId);
+type IngestionActionDataFixture =
+  | { ok: false; message: string }
+  | {
+      ok: true;
+      action: "created" | "restarted" | "unchanged";
+      version: string;
+      workflowInstanceId: string;
+      workflowStatus: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+    };
 const authenticatedUser = {
   user: { id: "user-1", email: "ada@example.com" },
   organizations: [{ organization: { id: "org-1", name: "Ada Labs" } }],
@@ -48,7 +72,7 @@ const authenticatedUser = {
 };
 const automations = {
   listMarketplaceIngestions: listMarketplaceIngestionsMock,
-  requestMarketplaceIngestion: requestMarketplaceIngestionMock,
+  restartMarketplaceIngestion: restartMarketplaceIngestionMock,
 };
 const forOrgMock = vi.fn(() => automations);
 const marketplace = {
@@ -119,7 +143,8 @@ beforeEach(() => {
   getPublishedListingMock.mockReset();
   getArtifactManifestMock.mockReset();
   listMarketplaceIngestionsMock.mockReset();
-  requestMarketplaceIngestionMock.mockReset();
+  restartMarketplaceIngestionMock.mockReset();
+  fetchAutomationCollectionSourceMock.mockReset();
   forOrgMock.mockClear();
   getAuthMeMock.mockResolvedValue(authenticatedUser);
   requireBackofficeContextMock.mockImplementation(async (_request, _context, scope) => ({
@@ -152,11 +177,15 @@ beforeEach(() => {
   });
   getArtifactManifestMock.mockResolvedValue(null);
   listMarketplaceIngestionsMock.mockResolvedValue([]);
-  requestMarketplaceIngestionMock.mockResolvedValue({
+  fetchAutomationCollectionSourceMock.mockResolvedValue({
+    scope: { kind: "org", orgId: "org-1" },
+    adapterIdentity: "automations-test-adapter",
+  });
+  restartMarketplaceIngestionMock.mockResolvedValue({
     listingId,
     version: "1.0.0",
     workflowInstanceId: "marketplace-ingest-1",
-    state: "requested",
+    action: "created",
     workflowStatus: "active",
   });
 });
@@ -237,6 +266,14 @@ describe("marketplace detail loader", () => {
     expect(forOrgMock).not.toHaveBeenCalled();
   });
 
+  test("propagates workflow synchronization failures", async () => {
+    fetchAutomationCollectionSourceMock.mockRejectedValueOnce(
+      new Error("Workflow synchronization failed."),
+    );
+
+    await expect(runLoader()).rejects.toThrow("Workflow synchronization failed.");
+  });
+
   test("rejects an organization scope outside the authenticated memberships", async () => {
     const response = await runLoader({ kind: "org", orgId: "org-other" }).catch(
       (error: unknown) => error,
@@ -255,6 +292,19 @@ describe("marketplace artifact version navigation", () => {
 
     assert(selectedMarkup.includes('<option value="1.0.0" selected="">1.0.0</option>'));
     assert(fallbackMarkup.includes('<option value="2.0.0" selected="">2.0.0</option>'));
+  });
+
+  test("observes the workflow started by the submitted release", () => {
+    const markup = renderMarketplaceDetail("1.0.0", {
+      ok: true,
+      action: "created",
+      version: "2.0.0",
+      workflowInstanceId: "submitted-workflow-id",
+      workflowStatus: "active",
+    });
+
+    assert(markup.includes("observing:submitted-workflow-id"));
+    assert(!markup.includes("observing:loader-workflow-id"));
   });
 
   test("retargets the selected artifact path to the next version", () => {
@@ -324,7 +374,10 @@ describe("marketplace detail revalidation", () => {
   });
 });
 
-function renderMarketplaceDetail(selectedVersion: string): string {
+function renderMarketplaceDetail(
+  selectedVersion: string,
+  actionData?: IngestionActionDataFixture,
+): string {
   const loaderData = {
     listing: {
       listingId,
@@ -348,6 +401,11 @@ function renderMarketplaceDetail(selectedVersion: string): string {
     hasNextVersionPage: false,
     manageOrganizationId: null,
     installationOrganizationId: "org-1",
+    installationCollectionSource: {
+      scope: { kind: "org", orgId: "org-1" },
+      adapterIdentity: "automations-test-adapter",
+    },
+    installationWorkflowInstanceId: "loader-workflow-id",
     artifactFiles: {
       state: "ready",
       fileTree: { entries: [] },
@@ -363,24 +421,42 @@ function renderMarketplaceDetail(selectedVersion: string): string {
         }),
         children: [
           {
+            id: "marketplace-detail",
             path: "*",
             element: createElement(BackofficeMarketplaceDetail, { loaderData } as never),
           },
         ],
       },
     ],
-    { initialEntries: [`/marketplace?artifactVersion=${selectedVersion}`] },
+    {
+      initialEntries: [`/marketplace?artifactVersion=${selectedVersion}`],
+      ...(actionData
+        ? {
+            hydrationData: {
+              loaderData: {},
+              actionData: { "marketplace-detail": actionData },
+              errors: null,
+            },
+          }
+        : {}),
+    },
   );
   return renderToStaticMarkup(createElement(RouterProvider, { router }));
 }
 
 describe("marketplace ingestion action", () => {
-  test("requests ingestion into the organization selected in the route", async () => {
+  test("starts the full ingestion workflow through its owning service", async () => {
     const result = await runAction({ version: "1.0.0" });
 
-    expect(result).toMatchObject({ ok: true, result: { state: "requested" } });
+    expect(result).toEqual({
+      ok: true,
+      action: "created",
+      version: "1.0.0",
+      workflowInstanceId: "marketplace-ingest-1",
+      workflowStatus: "active",
+    });
     expect(forOrgMock).toHaveBeenCalledWith("org-1");
-    expect(requestMarketplaceIngestionMock).toHaveBeenCalledWith(
+    expect(restartMarketplaceIngestionMock).toHaveBeenCalledWith(
       {
         listingId,
         targetScope: { kind: "org", orgId: "org-1" },
@@ -391,51 +467,56 @@ describe("marketplace ingestion action", () => {
   });
 
   test("ignores forged destination fields and trusts the selected route scope", async () => {
-    const result = await runAction({
+    await runAction({
+      version: "1.0.0",
       extraFormEntries: {
         organizationId: "org-other",
         targetScope: backofficeScopeSinglePathSegment({ kind: "user", userId: "user-2" }),
       },
     });
 
-    expect(result).toMatchObject({ ok: true });
-    expect(forOrgMock).toHaveBeenCalledWith("org-1");
-    expect(requestMarketplaceIngestionMock).toHaveBeenCalledWith(
-      {
-        listingId,
+    expect(restartMarketplaceIngestionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
         targetScope: { kind: "org", orgId: "org-1" },
-        version: undefined,
-      },
-      expect.objectContaining({ propagationContext: null }),
+      }),
+      expect.anything(),
     );
   });
 
-  test("requests ingestion into the project selected in the route", async () => {
+  test("starts ingestion into the project selected in the route", async () => {
     const targetScope = { kind: "project", orgId: "org-1", projectId: "project-1" } as const;
 
-    const result = await runAction({ scope: targetScope });
+    await runAction({ scope: targetScope, version: "1.0.0" });
 
-    expect(result).toMatchObject({ ok: true });
     expect(forOrgMock).toHaveBeenCalledWith("org-1");
-    expect(requestMarketplaceIngestionMock).toHaveBeenCalledWith(
-      {
-        listingId,
-        targetScope,
-        version: undefined,
-      },
-      expect.objectContaining({ propagationContext: null }),
+    expect(restartMarketplaceIngestionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ targetScope }),
+      expect.anything(),
     );
   });
 
-  test("surfaces failed workflow results as action failures", async () => {
-    requestMarketplaceIngestionMock.mockResolvedValueOnce({
+  test("restarts the entire deterministic ingestion workflow", async () => {
+    restartMarketplaceIngestionMock.mockResolvedValueOnce({
       listingId,
       version: "1.0.0",
       workflowInstanceId: "marketplace-ingest-1",
-      state: "failed",
-      workflowStatus: "errored",
-      error: { name: "Error", message: "Workspace file conflict." },
+      action: "restarted",
+      workflowStatus: "active",
     });
+
+    const result = await runAction({ version: "1.0.0" });
+
+    expect(result).toEqual({
+      ok: true,
+      action: "restarted",
+      version: "1.0.0",
+      workflowInstanceId: "marketplace-ingest-1",
+      workflowStatus: "active",
+    });
+  });
+
+  test("surfaces owning service failures", async () => {
+    restartMarketplaceIngestionMock.mockRejectedValueOnce(new Error("Workspace file conflict."));
 
     const result = await runAction({ version: "1.0.0" });
 
@@ -449,6 +530,6 @@ describe("marketplace ingestion action", () => {
       ok: false,
       message: "You can only install into your personal workspace.",
     });
-    expect(requestMarketplaceIngestionMock).not.toHaveBeenCalled();
+    expect(restartMarketplaceIngestionMock).not.toHaveBeenCalled();
   });
 });

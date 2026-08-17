@@ -1493,8 +1493,8 @@ describe("runtime tool reference generation", () => {
         getHistory(input: WorkflowGetHistoryInput): Promise<WorkflowGetHistoryOutput>;
         /** Send an event to a waiting durable workflow instance. */
         sendEvent(input: WorkflowSendEventInput): Promise<WorkflowSendEventOutput>;
-        /** Retry a durable workflow instance step. */
-        retryInstance(input: WorkflowRetryInstanceInput): Promise<WorkflowRetryInstanceOutput>;
+        /** Retry an errored instance's failed top-level step. */
+        retryFailedStep(input: WorkflowRetryFailedStepInput): Promise<WorkflowRetryFailedStepOutput>;
       };
       declare const workflow: WorkflowCodemodeProvider;
 
@@ -1567,13 +1567,11 @@ describe("runtime tool reference generation", () => {
       type WorkflowSendEventOutput = {
         accepted: true;
       };
-      type WorkflowRetryInstanceInput = {
+      type WorkflowRetryFailedStepInput = {
         instanceId: string;
-        stepKey?: string;
         delayMs?: number;
-        reason?: string;
       };
-      type WorkflowRetryInstanceOutput = {
+      type WorkflowRetryFailedStepOutput = {
         accepted: true;
         instance: {
           id: string;
@@ -3160,7 +3158,9 @@ describe("runtime tool reference generation", () => {
         created: string[];
         skipped: string[];
       };
-      type InternalMarketplacePushInput = Record<string, unknown>;
+      type InternalMarketplacePushInput = {
+        force?: boolean;
+      };
       type InternalMarketplacePushOutput = {
         publications: ({
           listingId: string;
@@ -5673,8 +5673,8 @@ describe("runtime tool reference generation", () => {
         getHistory(input: WorkflowGetHistoryInput): Promise<WorkflowGetHistoryOutput>;
         /** Send an event to a waiting durable workflow instance. */
         sendEvent(input: WorkflowSendEventInput): Promise<WorkflowSendEventOutput>;
-        /** Retry a durable workflow instance step. */
-        retryInstance(input: WorkflowRetryInstanceInput): Promise<WorkflowRetryInstanceOutput>;
+        /** Retry an errored instance's failed top-level step. */
+        retryFailedStep(input: WorkflowRetryFailedStepInput): Promise<WorkflowRetryFailedStepOutput>;
       };
       declare const workflow: WorkflowCodemodeProvider;
 
@@ -5747,13 +5747,11 @@ describe("runtime tool reference generation", () => {
       type WorkflowSendEventOutput = {
         accepted: true;
       };
-      type WorkflowRetryInstanceInput = {
+      type WorkflowRetryFailedStepInput = {
         instanceId: string;
-        stepKey?: string;
         delayMs?: number;
-        reason?: string;
       };
-      type WorkflowRetryInstanceOutput = {
+      type WorkflowRetryFailedStepOutput = {
         accepted: true;
         instance: {
           id: string;

@@ -157,6 +157,10 @@ class UnavailableInMemoryDurableObject {
     throw new Error("Automations is not configured.");
   }
 
+  async restartMarketplaceIngestion() {
+    throw new Error("Automations is not configured.");
+  }
+
   async getMarketplaceIngestion() {
     return null;
   }

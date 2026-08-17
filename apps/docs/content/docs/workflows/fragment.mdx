@@ -210,28 +210,33 @@ fragment.
 Use the lower-level `workflowsFragmentDefinition` and `workflowsRoutesFactory` exports only when you
 need to customize the normal instantiation pipeline.
 
-## Terminal workflow callback
+## Workflow lifecycle callbacks
 
-Pass `onWorkflowTerminal` in the fragment config to react after an instance reaches `complete`,
-`errored`, or `terminated`:
+Pass `onWorkflowRestarted` and `onWorkflowTerminal` in the fragment config to maintain projections
+across multiple runs of the same public instance:
 
 ```ts
 const fragment = createWorkflowsFragment(
   {
     workflows,
     runtime: defaultFragnoRuntime,
-    onWorkflowTerminal: async ({ workflowName, instanceId, instanceRef, status }) => {
-      await updateWorkflowProjection({ workflowName, instanceId, instanceRef, status });
+    onWorkflowRestarted: async ({ instanceId, previousRunGeneration, runGeneration }) => {
+      await markWorkflowActive({ instanceId, previousRunGeneration, runGeneration });
+    },
+    onWorkflowTerminal: async ({ instanceId, runGeneration, status }) => {
+      await markWorkflowRunTerminal({ instanceId, runGeneration, status });
     },
   },
   { databaseAdapter: adapter },
 );
 ```
 
-The callback is executed by the `onWorkflowTerminal` durable hook after the terminal state is
-committed. It only receives the workflow name, public instance ID, internal instance reference, and
-terminal status. Run a durable hooks dispatcher for the callback to execute, and make the callback
-idempotent because durable hook delivery can be retried.
+A new instance starts at run generation `1`; every restart increments it. Terminal callbacks
+describe the run that became terminal, so an older terminal hook remains valid even if it is
+delivered after a restart. A failed-step retry stays in the same generation and can produce another
+terminal callback, so treat callbacks within one generation as transition notifications and read the
+instance when current state matters. Both callbacks execute through durable hooks, so run a
+dispatcher and make their effects idempotent.
 
 ## Runtime Injection
 

@@ -44,7 +44,9 @@ export type InternalRuntime = {
     projectId: string;
   }): Promise<ProjectDatabaseFileSystemConfigureOutput>;
   seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
-  pushStaticMarketplaceEntries(): Promise<MarketplaceStaticPublicationResult>;
+  pushStaticMarketplaceEntries(input?: {
+    force?: boolean;
+  }): Promise<MarketplaceStaticPublicationResult>;
 };
 
 type InternalToolContext = BackofficeToolContext<{
@@ -141,8 +143,8 @@ export const createInternalRuntime = ({
       }),
     seedStarterAutomationRoutes: async () =>
       await objects.automations.forOrg(orgId).seedStarterAutomationRoutes(),
-    pushStaticMarketplaceEntries: async () =>
-      await objects.automations.forOrg(orgId).requestStaticMarketplacePublications(),
+    pushStaticMarketplaceEntries: async (input) =>
+      await objects.automations.forOrg(orgId).requestStaticMarketplacePublications(input),
     configureProjectDatabaseFileSystem: async ({ projectId }) => {
       const uploadObject = objects.upload.forProject({ orgId, projectId });
       const config = await uploadObject.setAdminConfig(
@@ -337,19 +339,26 @@ const marketplacePushTool = defineBackofficeRuntimeTool({
   name: "marketplacePush",
   description: "Push the bundled static entries into the marketplace.",
   requiredPermissions: ["manage"],
-  inputSchema: z.object({}).optional().default({}),
+  inputSchema: z.object({ force: z.boolean().optional() }).optional().default({}),
   outputSchema: marketplaceStaticPublicationResultSchema,
-  execute: async (_input, context: InternalToolContext) =>
-    await getRuntime(context).pushStaticMarketplaceEntries(),
+  execute: async (input, context: InternalToolContext) =>
+    await getRuntime(context).pushStaticMarketplaceEntries(input),
   adapters: {
     bash: {
       command: "internal.marketplace.push",
       help: {
         summary: "internal.marketplace.push publishes the bundled static marketplace entries.",
-        options: [],
-        examples: ["internal.marketplace.push --format json"],
+        options: [
+          {
+            name: "force",
+            description: "Publish with fresh workflow IDs and overwrite existing artifact files.",
+          },
+        ],
+        examples: ["internal.marketplace.push --format json", "internal.marketplace.push --force"],
       },
-      parse: defineCliArgsParser<Record<string, never>>("internal.marketplace.push", {}),
+      parse: defineCliArgsParser<{ force?: boolean }>("internal.marketplace.push", {
+        force: { kind: "boolean" },
+      }),
       outputOptions: (_args, parsed) => readOutputOptions(parsed),
       format: formatMarketplacePushOutput,
     },

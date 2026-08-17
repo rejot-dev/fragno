@@ -92,6 +92,7 @@ describe("Workflows Fragment", () => {
     const sql = migrations.getSQL(0, workflowsSchema.version);
 
     expect(sql.length).toBeGreaterThan(0);
+    expect(sql).toContain("runGeneration");
   });
 
   test("should persist workflow records", async () => {
@@ -194,6 +195,7 @@ describe("Workflows Fragment", () => {
     expect(instance).toMatchObject({
       workflowName,
       status: "pending",
+      runGeneration: 1,
       params: { source: "tests" },
     });
     expect(instance.instanceId).toBe(instanceId);
@@ -412,7 +414,7 @@ describe("Workflows Fragment", () => {
       if (second.type === "json") {
         expect(second.data).toEqual({
           id: "route-duplicate-terminal",
-          details: { status: "complete", output: { ok: true } },
+          details: { status: "complete", runGeneration: 1, output: { ok: true } },
         });
       }
     });

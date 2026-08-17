@@ -25,7 +25,7 @@ import {
 import {
   buildMarketplaceIngestionWorkflowInstanceId,
   MARKETPLACE_INGEST_WORKFLOW_NAME,
-} from "@/fragno/automation/marketplace-ingest-workflow";
+} from "@/fragno/automation/marketplace-ingest-identity";
 import {
   createAutomationsRouteCaller,
   createWorkflowsRouteCaller,
@@ -58,6 +58,7 @@ vi.mock("cloudflare:workers", () => ({
 import { createDefaultAutomationFileSystem } from "./automations.do";
 
 const objects = {} as BackofficeObjectRegistry;
+const USER_WORKSPACE_INGESTION_TEST_VERSION = "1.2.1";
 const config: BackofficeRuntimeConfig = {
   authEmailVerification: { enabled: false },
   bindings: {
@@ -862,13 +863,17 @@ describe("Automations object scope binding", () => {
           {
             listingId,
             targetScope: { kind: "user", userId: "user-1" },
+            version: USER_WORKSPACE_INGESTION_TEST_VERSION,
           },
           {
             execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
             propagationContext: null,
           },
         ),
-      ).resolves.toMatchObject({ state: "requested", version: "1.2.1" });
+      ).resolves.toMatchObject({
+        state: "requested",
+        version: USER_WORKSPACE_INGESTION_TEST_VERSION,
+      });
       await runtime.drain();
 
       await expect(
@@ -876,7 +881,7 @@ describe("Automations object scope binding", () => {
           targetScope: { kind: "user", userId: "user-1" },
           listingId,
         }),
-      ).resolves.toMatchObject({ version: "1.2.1" });
+      ).resolves.toMatchObject({ version: USER_WORKSPACE_INGESTION_TEST_VERSION });
 
       const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
       contentUrl.searchParams.set("provider", "database");
@@ -887,7 +892,7 @@ describe("Automations object scope binding", () => {
       assert(content.ok);
       const marketplaceEntry = getStaticMarketplaceEntry({
         slug: "telegram-test-command",
-        version: "1.1.0",
+        version: USER_WORKSPACE_INGESTION_TEST_VERSION,
       });
       assert(marketplaceEntry);
       await expect(content.text()).resolves.toBe(
@@ -924,13 +929,14 @@ describe("Automations object scope binding", () => {
       const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
         targetScope: { kind: "user", userId: "user-1" },
         listingId,
-        version: "1.2.1",
+        version: USER_WORKSPACE_INGESTION_TEST_VERSION,
       });
       await expect(
         automations.requestMarketplaceIngestion(
           {
             listingId,
             targetScope: { kind: "user", userId: "user-1" },
+            version: USER_WORKSPACE_INGESTION_TEST_VERSION,
           },
           {
             execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),

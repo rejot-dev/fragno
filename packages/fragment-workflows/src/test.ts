@@ -48,7 +48,9 @@ import type {
   InstanceStatusWithOutput,
   WorkflowDuration,
   WorkflowEnqueuedHookPayload,
-  WorkflowInstanceRetryOptions,
+  WorkflowRetryFailedStepOptions,
+  WorkflowRestartOrCreateInstanceResult,
+  WorkflowRestartOrCreateOptions,
   WorkflowOutputFromEntry,
   WorkflowParamsFromEntry,
   WorkflowRegistryEntry,
@@ -192,6 +194,16 @@ export type WorkflowsTestHarness<
       options?: { id?: string; params?: unknown; remoteWorkflowName?: string },
     ): Promise<string>;
   };
+  restartOrCreateInstance: {
+    <K extends keyof TRegistry & string>(
+      workflowNameOrKey: K,
+      options: WorkflowRestartOrCreateOptions<WorkflowParamsFromEntry<TRegistry[K]>>,
+    ): Promise<WorkflowRestartOrCreateInstanceResult<WorkflowOutputFromEntry<TRegistry[K]>>>;
+    (
+      workflowNameOrKey: string,
+      options: WorkflowRestartOrCreateOptions,
+    ): Promise<WorkflowRestartOrCreateInstanceResult>;
+  };
   createBatch: {
     <K extends keyof TRegistry & string>(
       workflowNameOrKey: K,
@@ -253,16 +265,23 @@ export type WorkflowsTestHarness<
     ): Promise<InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>>>;
     (workflowNameOrKey: string, instanceId: string): Promise<InstanceStatus>;
   };
-  retryInstance: {
+  restartInstance: {
     <K extends keyof TRegistry & string>(
       workflowNameOrKey: K,
       instanceId: string,
-      options?: WorkflowInstanceRetryOptions,
+    ): Promise<InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>>>;
+    (workflowNameOrKey: string, instanceId: string): Promise<InstanceStatus>;
+  };
+  retryFailedStep: {
+    <K extends keyof TRegistry & string>(
+      workflowNameOrKey: K,
+      instanceId: string,
+      options?: WorkflowRetryFailedStepOptions,
     ): Promise<InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>>>;
     (
       workflowNameOrKey: string,
       instanceId: string,
-      options?: WorkflowInstanceRetryOptions,
+      options?: WorkflowRetryFailedStepOptions,
     ): Promise<InstanceStatus>;
   };
   terminateInstance: {
@@ -881,6 +900,15 @@ export async function createWorkflowsTestHarness<
       );
       return result.id;
     }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["createInstance"],
+    restartOrCreateInstance: (async (
+      workflowNameOrKey: string,
+      options: WorkflowRestartOrCreateOptions,
+    ) => {
+      const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
+      return await runWorkflowService<WorkflowRestartOrCreateInstanceResult>(() =>
+        getFragment().services.restartOrCreateInstance(workflowName, options),
+      );
+    }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["restartOrCreateInstance"],
     createBatch: (async (
       workflowNameOrKey: (keyof TRegistry & string) | string,
       instances: { id: string; params?: unknown }[],
@@ -939,17 +967,26 @@ export async function createWorkflowsTestHarness<
         getFragment().services.resumeInstance(workflowName, instanceId),
       );
     }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["resumeInstance"],
-    retryInstance: (async (
+    restartInstance: (async (
       workflowNameOrKey: (keyof TRegistry & string) | string,
       instanceId: string,
-      options?: WorkflowInstanceRetryOptions,
+    ) => {
+      const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
+      return await runWorkflowService<InstanceStatus>(() =>
+        getFragment().services.restartInstance(workflowName, instanceId),
+      );
+    }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["restartInstance"],
+    retryFailedStep: (async (
+      workflowNameOrKey: (keyof TRegistry & string) | string,
+      instanceId: string,
+      options?: WorkflowRetryFailedStepOptions,
     ) => {
       const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
       const result = await runWorkflowService<{ instance: { details: InstanceStatus } }>(() =>
-        getFragment().services.retryInstance(workflowName, instanceId, options),
+        getFragment().services.retryFailedStep(workflowName, instanceId, options),
       );
       return result.instance.details;
-    }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["retryInstance"],
+    }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["retryFailedStep"],
     terminateInstance: (async (
       workflowNameOrKey: (keyof TRegistry & string) | string,
       instanceId: string,

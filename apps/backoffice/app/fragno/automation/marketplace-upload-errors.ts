@@ -61,16 +61,37 @@ export const throwMarketplaceUploadRequestError = (input: {
   );
 };
 
+type MarketplaceUploadRouteError = {
+  code: string;
+  message: string;
+  issues?: ReadonlyArray<{
+    message: string;
+    path?: ReadonlyArray<PropertyKey>;
+  }>;
+};
+
+const marketplaceUploadRouteErrorMessage = (error: MarketplaceUploadRouteError) => {
+  if (!error.issues?.length) {
+    return error.message;
+  }
+
+  const issueDetails = error.issues.map((issue) => {
+    const path = issue.path?.length ? issue.path.map(String).join(".") : "request";
+    return `${path}: ${issue.message}`;
+  });
+  return `${error.message}: ${issueDetails.join("; ")}`;
+};
+
 export const throwMarketplaceUploadRouteError = (input: {
   operation: string;
   status: number;
-  error: { code: string; message: string };
+  error: MarketplaceUploadRouteError;
 }): never =>
   throwMarketplaceUploadRequestError({
     operation: input.operation,
     status: input.status,
     code: input.error.code,
-    message: input.error.message,
+    message: marketplaceUploadRouteErrorMessage(input.error),
   });
 
 export const throwUnexpectedMarketplaceUploadResponse = (input: {

@@ -51,6 +51,25 @@ export function createWorkflowsClients(fragnoConfig: FragnoPublicClientConfig = 
         });
       },
     ),
+    useRestartOrCreateInstance: builder.createMutator(
+      "POST",
+      "/:workflowName/instances/:instanceId/restart-or-create",
+      (invalidate, params) => {
+        const { workflowName, instanceId } = params.pathParams;
+        if (!workflowName || !instanceId) {
+          return;
+        }
+        invalidate("GET", "/:workflowName/instances/:instanceId", {
+          pathParams: { workflowName, instanceId },
+        });
+        invalidate("GET", "/:workflowName/instances", {
+          pathParams: { workflowName },
+        });
+        invalidate("GET", "/:workflowName/instances/:instanceId/history", {
+          pathParams: { workflowName, instanceId },
+        });
+      },
+    ),
     useCreateBatch: builder.createMutator(
       "POST",
       "/:workflowName/instances/batch",
@@ -67,9 +86,9 @@ export function createWorkflowsClients(fragnoConfig: FragnoPublicClientConfig = 
     useInstance: builder.createHook("/:workflowName/instances/:instanceId"),
     useCurrentStepEmissions: currentStepEmissions,
     useInstanceHistory: builder.createHook("/:workflowName/instances/:instanceId/history"),
-    useRetryInstance: builder.createMutator(
+    useRetryFailedStep: builder.createMutator(
       "POST",
-      "/:workflowName/instances/:instanceId/retry",
+      "/:workflowName/instances/:instanceId/retry-failed-step",
       (invalidate, params) => {
         const { workflowName, instanceId } = params.pathParams;
         if (!workflowName || !instanceId) {
@@ -105,6 +124,25 @@ export function createWorkflowsClients(fragnoConfig: FragnoPublicClientConfig = 
     useResumeInstance: builder.createMutator(
       "POST",
       "/:workflowName/instances/:instanceId/resume",
+      (invalidate, params) => {
+        const { workflowName, instanceId } = params.pathParams;
+        if (!workflowName || !instanceId) {
+          return;
+        }
+        invalidate("GET", "/:workflowName/instances/:instanceId", {
+          pathParams: { workflowName, instanceId },
+        });
+        invalidate("GET", "/:workflowName/instances", {
+          pathParams: { workflowName },
+        });
+        invalidate("GET", "/:workflowName/instances/:instanceId/history", {
+          pathParams: { workflowName, instanceId },
+        });
+      },
+    ),
+    useRestartInstance: builder.createMutator(
+      "POST",
+      "/:workflowName/instances/:instanceId/restart",
       (invalidate, params) => {
         const { workflowName, instanceId } = params.pathParams;
         if (!workflowName || !instanceId) {

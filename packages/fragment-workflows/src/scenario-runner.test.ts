@@ -1023,6 +1023,598 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
+  test("restarts a workflow instance from the beginning", async () => {
+    let runs = 0;
+    const RestartInstanceWorkflow = defineWorkflow(
+      { name: "scenario-restart-instance" },
+      async (_event, step) => {
+        const run = await step.do("prepare", () => {
+          runs += 1;
+          return runs;
+        });
+        const ready = await step.waitForEvent<{ value: number }>("ready", { type: "ready" });
+        return { run, value: ready.payload.value };
+      },
+    );
+
+    const workflows = { RESTART_INSTANCE: RestartInstanceWorkflow };
+
+    const scenario = defineScenario({
+      name: "scenario-restart-instance",
+      workflows,
+      vars() {
+        return { restartedStatus: undefined as InstanceStatus | undefined };
+      },
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
+          workflow: "RESTART_INSTANCE",
+          id: "restart-instance-1",
+        }),
+        workflow.event({
+          workflow: "RESTART_INSTANCE",
+          instanceId: "restart-instance-1",
+          event: { type: "ready", payload: { value: 1 } },
+        }),
+        workflow.restart({
+          workflow: "RESTART_INSTANCE",
+          instanceId: "restart-instance-1",
+          storeAs: "restartedStatus",
+        }),
+        workflow.read({
+          read: async (ctx) => ({
+            instance: await ctx.state.getInstance("RESTART_INSTANCE", "restart-instance-1"),
+            status: await ctx.state.getStatus("RESTART_INSTANCE", "restart-instance-1"),
+            steps: await ctx.state.getSteps("RESTART_INSTANCE", "restart-instance-1"),
+            events: await ctx.state.getEvents("RESTART_INSTANCE", "restart-instance-1"),
+          }),
+          assert: ({ instance, status, steps, events }) => {
+            expect(instance).toMatchObject({ runGeneration: 2 });
+            expect(status).toMatchObject({ status: "active" });
+            expect(steps).toEqual([]);
+            expect(events).toEqual([]);
+          },
+        }),
+        runner.runCreateUntilIdle({
+          workflow: "RESTART_INSTANCE",
+          instanceId: "restart-instance-1",
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("RESTART_INSTANCE", "restart-instance-1"),
+          assert: (status) => expect(status).toMatchObject({ status: "waiting" }),
+        }),
+        runner.eventAndRunUntilIdle({
+          workflow: "RESTART_INSTANCE",
+          instanceId: "restart-instance-1",
+          event: { type: "ready", payload: { value: 2 } },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("RESTART_INSTANCE", "restart-instance-1"),
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { run: 2, value: 2 },
+            });
+          },
+        }),
+        workflow.assert((ctx) => {
+          expect(ctx.vars.restartedStatus).toMatchObject({ status: "active" });
+          expect(runs).toBe(2);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("restart-or-create creates, preserves unmatched instances, and restarts matching instances", async () => {
+    let runs = 0;
+    const RestartOrCreateWorkflow = defineWorkflow(
+      { name: "scenario-restart-or-create" },
+      async (event, step) => {
+        return await step.do("run", () => ({
+          run: ++runs,
+          source: (event.payload as { source: string }).source,
+        }));
+      },
+    );
+    const workflows = { RESTART_OR_CREATE: RestartOrCreateWorkflow };
+
+    await runScenario(
+      defineScenario<
+        typeof workflows,
+        {
+          created?: unknown;
+          unchanged?: unknown;
+          restarted?: unknown;
+        }
+      >({
+        name: "restart-or-create-preconditions",
+        workflows,
+        steps: ({ workflow, runner }) => [
+          workflow.restartOrCreate({
+            workflow: "RESTART_OR_CREATE",
+            instanceId: "restart-or-create-1",
+            create: { params: { source: "original" } },
+            restart: { precondition: { status: { in: ["errored", "complete"] } } },
+            storeAs: "created",
+          }),
+          workflow.restartOrCreate({
+            workflow: "RESTART_OR_CREATE",
+            instanceId: "restart-or-create-1",
+            create: { params: { source: "ignored" } },
+            restart: { precondition: { status: { in: ["complete"] } } },
+            storeAs: "unchanged",
+          }),
+          runner.runCreateUntilIdle({
+            workflow: "RESTART_OR_CREATE",
+            instanceId: "restart-or-create-1",
+          }),
+          workflow.restartOrCreate({
+            workflow: "RESTART_OR_CREATE",
+            instanceId: "restart-or-create-1",
+            create: { params: { source: "also-ignored" } },
+            restart: { precondition: { status: { in: ["complete"] } } },
+            storeAs: "restarted",
+          }),
+          runner.runCreateUntilIdle({
+            workflow: "RESTART_OR_CREATE",
+            instanceId: "restart-or-create-1",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              instance: await ctx.state.getInstance("RESTART_OR_CREATE", "restart-or-create-1"),
+              status: await ctx.state.getStatus("RESTART_OR_CREATE", "restart-or-create-1"),
+            }),
+            assert: ({ instance, status }) => {
+              expect(instance).toMatchObject({
+                runGeneration: 2,
+                params: { source: "original" },
+              });
+              expect(status).toMatchObject({
+                status: "complete",
+                output: { run: 2, source: "original" },
+              });
+            },
+          }),
+          workflow.assert((ctx) => {
+            expect(ctx.vars.created).toMatchObject({ action: "created" });
+            expect(ctx.vars.unchanged).toMatchObject({
+              action: "unchanged",
+              observedStatus: "active",
+            });
+            expect(ctx.vars.restarted).toMatchObject({
+              action: "restarted",
+              previousStatus: "complete",
+            });
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("an actual old wake hook does not advance a restarted sleep early", async () => {
+    const SleepWorkflow = defineWorkflow(
+      { name: "scenario-restart-stale-sleep-hook" },
+      async (_event, step) => {
+        await step.sleep("delay", "1 s");
+        return "slept";
+      },
+    );
+    const workflows = { SLEEP: SleepWorkflow };
+
+    await runScenario(
+      defineScenario<typeof workflows, { wakeTimes?: number[] }>({
+        name: "restart-stale-sleep-hook",
+        workflows,
+        steps: ({ workflow, runner }) => [
+          runner.initializeAndRunUntilIdle({ workflow: "SLEEP", id: "sleep-1" }),
+          // Process the original create hook while leaving its future wake hook pending.
+          runner.drainHooks(),
+          workflow.read({
+            read: async () => {
+              await new Promise((resolve) => setTimeout(resolve, 300));
+            },
+          }),
+          workflow.restart({ workflow: "SLEEP", instanceId: "sleep-1" }),
+          runner.runCreateUntilIdle({ workflow: "SLEEP", instanceId: "sleep-1" }),
+          // Process the restart's immediate create hook. The old and new wake hooks remain pending.
+          runner.drainHooks(),
+          workflow.read({
+            read: async (ctx) => {
+              const hooks = await ctx.state.internal.getHooks({
+                hookName: "onWorkflowEnqueued",
+                workflowName: "scenario-restart-stale-sleep-hook",
+                instanceId: "sleep-1",
+              });
+              return hooks
+                .filter(
+                  (hook) =>
+                    hook.status === "pending" &&
+                    (hook.payload as { reason?: string }).reason === "wake" &&
+                    hook.nextRetryAt,
+                )
+                .map((hook) => hook.nextRetryAt!.getTime())
+                .sort((left, right) => left - right);
+            },
+            storeAs: "wakeTimes",
+          }),
+          workflow.assert((ctx) => {
+            expect(ctx.vars.wakeTimes).toHaveLength(2);
+            const [oldWakeAt, newWakeAt] = ctx.vars.wakeTimes ?? [];
+            assert(oldWakeAt !== undefined && newWakeAt !== undefined);
+            expect(newWakeAt - oldWakeAt).toBeGreaterThan(200);
+          }),
+          workflow.read({
+            read: async (ctx) => {
+              const oldWakeAt = ctx.vars.wakeTimes?.[0];
+              assert(oldWakeAt !== undefined);
+              await new Promise((resolve) =>
+                setTimeout(resolve, Math.max(0, oldWakeAt - Date.now() + 25)),
+              );
+            },
+          }),
+          // This processes the real durable wake hook from the original run at its original time.
+          runner.drainHooks(),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus("SLEEP", "sleep-1"),
+              steps: await ctx.state.getSteps("SLEEP", "sleep-1"),
+            }),
+            assert: ({ status, steps }, ctx) => {
+              const oldWakeAt = ctx.vars.wakeTimes?.[0];
+              assert(oldWakeAt !== undefined);
+              expect(status).toMatchObject({ status: "waiting" });
+              expect(steps).toEqual([
+                expect.objectContaining({
+                  stepKey: "sleep:delay",
+                  status: "waiting",
+                }),
+              ]);
+              expect(steps[0]?.wakeAt?.getTime()).toBeGreaterThan(oldWakeAt);
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("an old retry schedule does not advance a restarted run early", async () => {
+    const runtime = createWorkflowsTestRuntime({ startAt: 0 });
+    let runs = 0;
+    const Workflow = defineWorkflow(
+      { name: "scenario-restart-stale-retry" },
+      async (_event, step) => {
+        await step.do(
+          "retry",
+          { retries: { limit: 1, delay: "1 hour", backoff: "constant" } },
+          () => {
+            runs += 1;
+            if (runs < 3) {
+              throw new Error("RETRY_LATER");
+            }
+            return "done";
+          },
+        );
+        return "done";
+      },
+    );
+    const workflows = { WORKFLOW: Workflow };
+
+    await runScenario(
+      defineScenario({
+        name: "restart-stale-retry",
+        workflows,
+        harness: { runtime },
+        steps: ({ workflow, runner }) => [
+          runner.initializeAndRunUntilIdle({ workflow: "WORKFLOW", id: "retry-1" }),
+          runner.advanceTimeAndRunUntilIdle({
+            workflow: "WORKFLOW",
+            instanceId: "retry-1",
+            advanceBy: "30 min",
+          }),
+          workflow.restart({ workflow: "WORKFLOW", instanceId: "retry-1" }),
+          runner.runCreateUntilIdle({ workflow: "WORKFLOW", instanceId: "retry-1" }),
+          runner.advanceTimeAndRunUntilIdle({
+            workflow: "WORKFLOW",
+            instanceId: "retry-1",
+            advanceBy: "30 min",
+          }),
+          workflow.read({
+            read: (ctx) => ctx.state.getStatus("WORKFLOW", "retry-1"),
+            assert: (status) => expect(status).toMatchObject({ status: "waiting" }),
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("stale create and event ticks remain harmless after restart", async () => {
+    let runs = 0;
+    const Workflow = defineWorkflow(
+      { name: "scenario-restart-stale-ticks" },
+      async (_event, step) => {
+        const run = await step.do("run", () => ++runs);
+        await step.waitForEvent("fresh", { type: "fresh" });
+        return run;
+      },
+    );
+    const workflows = { WORKFLOW: Workflow };
+
+    await runScenario(
+      defineScenario({
+        name: "restart-stale-create-event-ticks",
+        workflows,
+        steps: ({ workflow, runner }) => [
+          workflow.create({ workflow: "WORKFLOW", id: "stale-ticks-1" }),
+          workflow.event({
+            workflow: "WORKFLOW",
+            instanceId: "stale-ticks-1",
+            event: { type: "fresh" },
+          }),
+          workflow.restart({ workflow: "WORKFLOW", instanceId: "stale-ticks-1" }),
+          runner.runUntilIdle({
+            workflow: "WORKFLOW",
+            instanceId: "stale-ticks-1",
+            reason: "event",
+          }),
+          runner.runUntilIdle({
+            workflow: "WORKFLOW",
+            instanceId: "stale-ticks-1",
+            reason: "create",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus("WORKFLOW", "stale-ticks-1"),
+              events: await ctx.state.getEvents("WORKFLOW", "stale-ticks-1"),
+            }),
+            assert: ({ status, events }) => {
+              expect(status).toMatchObject({ status: "waiting" });
+              expect(events).toEqual([]);
+            },
+          }),
+          workflow.assert(() => expect(runs).toBe(1)),
+        ],
+      }),
+    );
+  });
+
+  test("supports restart before the first tick and concurrent repeated restarts", async () => {
+    let runs = 0;
+    const Workflow = defineWorkflow(
+      { name: "scenario-restart-concurrent" },
+      async (_event, step) => await step.do("run", () => ++runs),
+    );
+    const workflows = { WORKFLOW: Workflow };
+
+    await runScenario(
+      defineScenario({
+        name: "restart-before-first-tick-concurrently",
+        workflows,
+        runners: ["first", "second"],
+        steps: ({ workflow, runners, concurrent }) => [
+          workflow.create({ workflow: "WORKFLOW", id: "concurrent-1" }),
+          concurrent({
+            first: [workflow.restart({ workflow: "WORKFLOW", instanceId: "concurrent-1" })],
+            second: [workflow.restart({ workflow: "WORKFLOW", instanceId: "concurrent-1" })],
+          }),
+          runners.first.runCreateUntilIdle({ workflow: "WORKFLOW", instanceId: "concurrent-1" }),
+          runners.second.runCreateUntilIdle({ workflow: "WORKFLOW", instanceId: "concurrent-1" }),
+          workflow.read({
+            read: async (ctx) => ({
+              instance: await ctx.state.getInstance("WORKFLOW", "concurrent-1"),
+              status: await ctx.state.getStatus("WORKFLOW", "concurrent-1"),
+            }),
+            assert: ({ instance, status }) => {
+              expect(instance).toMatchObject({ runGeneration: 3 });
+              expect(status).toMatchObject({ status: "complete", output: 1 });
+            },
+          }),
+          workflow.assert(() => expect(runs).toBe(1)),
+        ],
+      }),
+    );
+  });
+
+  test.each(["active", "waiting", "paused", "errored", "complete", "terminated"] as const)(
+    "restarts an instance from the %s lifecycle state",
+    async (state) => {
+      let shouldFail = state === "errored";
+      const Workflow = defineWorkflow(
+        { name: `scenario-restart-${state}` },
+        async (_event, step) => {
+          if (shouldFail) {
+            shouldFail = false;
+            throw new Error("FIRST_RUN_FAILED");
+          }
+          await step.waitForEvent("ready", { type: "ready" });
+          return state;
+        },
+      );
+      const workflows = { WORKFLOW: Workflow };
+
+      await runScenario(
+        defineScenario({
+          name: `restart-lifecycle-${state}`,
+          workflows,
+          steps: ({ workflow, runner }) => {
+            const setup =
+              state === "active"
+                ? [workflow.create({ workflow: "WORKFLOW", id: "lifecycle-1" })]
+                : [
+                    runner.initializeAndRunUntilIdle({ workflow: "WORKFLOW", id: "lifecycle-1" }),
+                    ...(state === "paused"
+                      ? [
+                          workflow.pause({ workflow: "WORKFLOW", instanceId: "lifecycle-1" }),
+                          runner.runUntilIdle({
+                            workflow: "WORKFLOW",
+                            instanceId: "lifecycle-1",
+                            reason: "event",
+                          }),
+                        ]
+                      : state === "complete"
+                        ? [
+                            runner.eventAndRunUntilIdle({
+                              workflow: "WORKFLOW",
+                              instanceId: "lifecycle-1",
+                              event: { type: "ready" },
+                            }),
+                          ]
+                        : state === "terminated"
+                          ? [
+                              workflow.terminate({
+                                workflow: "WORKFLOW",
+                                instanceId: "lifecycle-1",
+                              }),
+                            ]
+                          : []),
+                  ];
+            return [
+              ...setup,
+              workflow.restart({ workflow: "WORKFLOW", instanceId: "lifecycle-1" }),
+              workflow.read({
+                read: async (ctx) => ({
+                  instance: await ctx.state.getInstance("WORKFLOW", "lifecycle-1"),
+                  status: await ctx.state.getStatus("WORKFLOW", "lifecycle-1"),
+                }),
+                assert: ({ instance, status }) => {
+                  expect(instance).toMatchObject({ runGeneration: 2 });
+                  expect(status).toMatchObject({ status: "active" });
+                },
+              }),
+            ];
+          },
+        }),
+      );
+    },
+  );
+
+  test("allows a deleted event id to be reused after restart", async () => {
+    const Workflow = defineWorkflow({ name: "scenario-restart-event-id" }, async (_event, step) => {
+      const event = await step.waitForEvent<{ value: number }>("ready", { type: "ready" });
+      return event.payload.value;
+    });
+    const workflows = { WORKFLOW: Workflow };
+
+    await runScenario(
+      defineScenario({
+        name: "restart-event-id-reuse",
+        workflows,
+        steps: ({ workflow, runner }) => [
+          runner.initializeAndRunUntilIdle({ workflow: "WORKFLOW", id: "event-id-1" }),
+          workflow.event({
+            workflow: "WORKFLOW",
+            instanceId: "event-id-1",
+            event: { id: "same-event", type: "ready", payload: { value: 1 } },
+          }),
+          workflow.restart({ workflow: "WORKFLOW", instanceId: "event-id-1" }),
+          runner.runCreateUntilIdle({ workflow: "WORKFLOW", instanceId: "event-id-1" }),
+          runner.eventAndRunUntilIdle({
+            workflow: "WORKFLOW",
+            instanceId: "event-id-1",
+            event: { id: "same-event", type: "ready", payload: { value: 2 } },
+          }),
+          workflow.read({
+            read: (ctx) => ctx.state.getStatus("WORKFLOW", "event-id-1"),
+            assert: (status) => expect(status).toMatchObject({ status: "complete", output: 2 }),
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("identifies terminal and restart hooks by run generation", async () => {
+    const Workflow = defineWorkflow({ name: "scenario-restart-terminal-hook" }, async () => "done");
+    const workflows = { WORKFLOW: Workflow };
+
+    await runScenario(
+      defineScenario({
+        name: "restart-obsolete-terminal-hook",
+        workflows,
+        steps: ({ workflow, runner }) => [
+          runner.initializeAndRunUntilIdle({ workflow: "WORKFLOW", id: "terminal-1" }),
+          workflow.restart({ workflow: "WORKFLOW", instanceId: "terminal-1" }),
+          runner.runCreateUntilIdle({ workflow: "WORKFLOW", instanceId: "terminal-1" }),
+          workflow.read({
+            read: async (ctx) => ({
+              terminalHooks: await ctx.state.internal.getHooks({
+                hookName: "onWorkflowTerminal",
+                workflowName: "scenario-restart-terminal-hook",
+                instanceId: "terminal-1",
+              }),
+              restartHooks: await ctx.state.internal.getHooks({
+                hookName: "onWorkflowRestarted",
+                workflowName: "scenario-restart-terminal-hook",
+                instanceId: "terminal-1",
+              }),
+            }),
+            assert: ({ terminalHooks, restartHooks }) => {
+              expect(terminalHooks).toHaveLength(2);
+              expect(terminalHooks).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    payload: expect.objectContaining({ runGeneration: 1, status: "complete" }),
+                  }),
+                  expect.objectContaining({
+                    payload: expect.objectContaining({ runGeneration: 2, status: "complete" }),
+                  }),
+                ]),
+              );
+              expect(restartHooks).toEqual([
+                expect.objectContaining({
+                  payload: expect.objectContaining({
+                    previousRunGeneration: 1,
+                    runGeneration: 2,
+                  }),
+                }),
+              ]);
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("delivers generation-aware callbacks for restart and both completed runs", async () => {
+    const terminalRuns: Array<{ status: string; runGeneration: number }> = [];
+    const restarts: Array<{ previousRunGeneration: number; runGeneration: number }> = [];
+    const Workflow = defineWorkflow(
+      { name: "scenario-restart-terminal-callback" },
+      async () => "done",
+    );
+    const workflows = { WORKFLOW: Workflow };
+
+    await runScenario(
+      defineScenario({
+        name: "restart-terminal-callback-twice",
+        workflows,
+        harness: {
+          fragmentConfig: {
+            onWorkflowRestarted: ({ previousRunGeneration, runGeneration }) => {
+              restarts.push({ previousRunGeneration, runGeneration });
+            },
+            onWorkflowTerminal: ({ status, runGeneration }) => {
+              terminalRuns.push({ status, runGeneration });
+            },
+          },
+        },
+        steps: ({ workflow, runner }) => [
+          runner.initializeAndRunUntilIdle({ workflow: "WORKFLOW", id: "terminal-callback-1" }),
+          runner.drainHooks(),
+          workflow.restart({ workflow: "WORKFLOW", instanceId: "terminal-callback-1" }),
+          runner.runCreateUntilIdle({ workflow: "WORKFLOW", instanceId: "terminal-callback-1" }),
+          runner.drainHooks(),
+          workflow.assert(() => {
+            expect(terminalRuns).toEqual([
+              { status: "complete", runGeneration: 1 },
+              { status: "complete", runGeneration: 2 },
+            ]);
+            expect(restarts).toEqual([{ previousRunGeneration: 1, runGeneration: 2 }]);
+          }),
+        ],
+      }),
+    );
+  });
+
   test("can resume a waiting workflow after restarting the runner runtime", async () => {
     const RestartWorkflow = defineWorkflow(
       { name: "scenario-restart-runner" },
@@ -4288,7 +4880,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("management retry step reopens errored steps", async () => {
+  test("management retry reopens the failed top-level step", async () => {
     let stableRuns = 0;
     let flakyRuns = 0;
     const RetryWorkflow = defineWorkflow(
@@ -4323,18 +4915,21 @@ describe("Workflows Runner (Scenario DSL)", () => {
             assert(status?.error?.message === "MANUAL_RETRY");
           },
         }),
-        workflow.retry({
+        workflow.retryFailedStep({
           workflow: "RETRY_MANAGEMENT",
           instanceId: "retry-1",
-          stepKey: "do:flaky",
           storeAs: "retryStatus",
         }),
         runner.retryAndRunUntilIdle({ workflow: "RETRY_MANAGEMENT", instanceId: "retry-1" }),
         workflow.read({
-          read: (ctx) => ctx.state.getStatus("RETRY_MANAGEMENT", "retry-1"),
-          assert: (status) => {
+          read: async (ctx) => ({
+            instance: await ctx.state.getInstance("RETRY_MANAGEMENT", "retry-1"),
+            status: await ctx.state.getStatus("RETRY_MANAGEMENT", "retry-1"),
+          }),
+          assert: ({ instance, status }) => {
             assert(status?.status === "complete");
-            expect(status?.output).toEqual({ stable: "stable", flaky: "ok" });
+            expect(status.output).toEqual({ stable: "stable", flaky: "ok" });
+            expect(instance).toMatchObject({ runGeneration: 1 });
           },
         }),
         workflow.read({
@@ -4362,6 +4957,741 @@ describe("Workflows Runner (Scenario DSL)", () => {
     });
 
     await runScenario(scenario);
+  });
+
+  test("failed-step retry reruns a failed top-level step and its nested steps", async () => {
+    let parentRuns = 0;
+    let childRuns = 0;
+    const NestedFailureWorkflow = defineWorkflow(
+      { name: "scenario-management-retry-nested-workflow" },
+      async (_event, step) => {
+        return await step.do("parent", async () => {
+          parentRuns += 1;
+          return await step.do("child", () => {
+            childRuns += 1;
+            if (childRuns === 1) {
+              throw new Error("NESTED_CHILD_FAILED");
+            }
+            return "recovered";
+          });
+        });
+      },
+    );
+    const workflows = { NESTED_FAILURE: NestedFailureWorkflow };
+
+    await runScenario(
+      defineScenario({
+        name: "management-retry-reruns-nested-state",
+        workflows,
+        steps: ({ workflow, runner }) => [
+          runner.initializeAndRunUntilIdle({ workflow: "NESTED_FAILURE", id: "nested-failure-1" }),
+          workflow.retryFailedStep({
+            workflow: "NESTED_FAILURE",
+            instanceId: "nested-failure-1",
+          }),
+          runner.retryAndRunUntilIdle({
+            workflow: "NESTED_FAILURE",
+            instanceId: "nested-failure-1",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              instance: await ctx.state.getInstance("NESTED_FAILURE", "nested-failure-1"),
+              status: await ctx.state.getStatus("NESTED_FAILURE", "nested-failure-1"),
+              steps: await ctx.state.getSteps("NESTED_FAILURE", "nested-failure-1"),
+            }),
+            assert: ({ instance, status, steps }) => {
+              expect(instance).toMatchObject({ runGeneration: 1 });
+              expect(status).toMatchObject({ status: "complete", output: "recovered" });
+              expect(steps).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    stepKey: "do:parent",
+                    status: "completed",
+                    attempts: 2,
+                    maxAttempts: 2,
+                  }),
+                  expect.objectContaining({
+                    stepKey: "do:parent>do:child",
+                    status: "completed",
+                    attempts: 1,
+                  }),
+                ]),
+              );
+            },
+          }),
+          workflow.assert(() => {
+            expect(parentRuns).toBe(2);
+            expect(childRuns).toBe(2);
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("failed-step retry reruns completed and failed nested parallel steps", async () => {
+    let parentRuns = 0;
+    let stableRuns = 0;
+    let flakyRuns = 0;
+    const NestedParallelWorkflow = defineWorkflow(
+      { name: "scenario-management-retry-nested-parallel-workflow" },
+      async (_event, step) => {
+        return await step.do("parent", async () => {
+          parentRuns += 1;
+          const [stable, flaky] = await Promise.all([
+            step.do("stable", () => {
+              stableRuns += 1;
+              return "stable";
+            }),
+            step.do("flaky", () => {
+              flakyRuns += 1;
+              if (flakyRuns === 1) {
+                throw new Error("NESTED_PARALLEL_FAILURE");
+              }
+              return "recovered";
+            }),
+          ]);
+          return { stable, flaky };
+        });
+      },
+    );
+    const workflows = { NESTED_PARALLEL: NestedParallelWorkflow };
+
+    await runScenario(
+      defineScenario({
+        name: "management-retry-reruns-nested-parallel-state",
+        workflows,
+        steps: ({ workflow, runner }) => [
+          runner.initializeAndRunUntilIdle({
+            workflow: "NESTED_PARALLEL",
+            id: "nested-parallel-1",
+          }),
+          workflow.retryFailedStep({
+            workflow: "NESTED_PARALLEL",
+            instanceId: "nested-parallel-1",
+          }),
+          runner.retryAndRunUntilIdle({
+            workflow: "NESTED_PARALLEL",
+            instanceId: "nested-parallel-1",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus("NESTED_PARALLEL", "nested-parallel-1"),
+              steps: await ctx.state.getSteps("NESTED_PARALLEL", "nested-parallel-1"),
+            }),
+            assert: ({ status, steps }) => {
+              expect(status).toMatchObject({
+                status: "complete",
+                output: { stable: "stable", flaky: "recovered" },
+              });
+              expect(steps).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    stepKey: "do:parent",
+                    status: "completed",
+                    attempts: 2,
+                  }),
+                  expect.objectContaining({
+                    stepKey: "do:parent>do:stable",
+                    status: "completed",
+                    attempts: 1,
+                  }),
+                  expect.objectContaining({
+                    stepKey: "do:parent>do:flaky",
+                    status: "completed",
+                    attempts: 1,
+                  }),
+                ]),
+              );
+            },
+          }),
+          workflow.assert(() => {
+            expect(parentRuns).toBe(2);
+            expect(stableRuns).toBe(2);
+            expect(flakyRuns).toBe(2);
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("failed-step retry reruns multiple failed nested parallel steps", async () => {
+    let firstRuns = 0;
+    let secondRuns = 0;
+    const NestedParallelFailuresWorkflow = defineWorkflow(
+      { name: "scenario-management-retry-nested-parallel-failures-workflow" },
+      async (_event, step) => {
+        return await step.do("parent", async () => {
+          const [first, second] = await Promise.allSettled([
+            step.do("first", () => {
+              firstRuns += 1;
+              if (firstRuns === 1) {
+                throw new Error("FIRST_NESTED_FAILURE");
+              }
+              return "first";
+            }),
+            step.do("second", () => {
+              secondRuns += 1;
+              if (secondRuns === 1) {
+                throw new Error("SECOND_NESTED_FAILURE");
+              }
+              return "second";
+            }),
+          ]);
+
+          if (first.status === "rejected" || second.status === "rejected") {
+            throw new Error("NESTED_PARALLEL_STEPS_FAILED");
+          }
+          return { first: first.value, second: second.value };
+        });
+      },
+    );
+    const workflows = { NESTED_PARALLEL_FAILURES: NestedParallelFailuresWorkflow };
+
+    await runScenario(
+      defineScenario({
+        name: "management-retry-reruns-multiple-nested-parallel-failures",
+        workflows,
+        steps: ({ workflow, runner }) => [
+          runner.initializeAndRunUntilIdle({
+            workflow: "NESTED_PARALLEL_FAILURES",
+            id: "nested-parallel-failures-1",
+          }),
+          workflow.retryFailedStep({
+            workflow: "NESTED_PARALLEL_FAILURES",
+            instanceId: "nested-parallel-failures-1",
+          }),
+          runner.retryAndRunUntilIdle({
+            workflow: "NESTED_PARALLEL_FAILURES",
+            instanceId: "nested-parallel-failures-1",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus(
+                "NESTED_PARALLEL_FAILURES",
+                "nested-parallel-failures-1",
+              ),
+              steps: await ctx.state.getSteps(
+                "NESTED_PARALLEL_FAILURES",
+                "nested-parallel-failures-1",
+              ),
+            }),
+            assert: ({ status, steps }) => {
+              expect(status).toMatchObject({
+                status: "complete",
+                output: { first: "first", second: "second" },
+              });
+              expect(steps).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    stepKey: "do:parent",
+                    status: "completed",
+                    attempts: 2,
+                  }),
+                  expect.objectContaining({
+                    stepKey: "do:parent>do:first",
+                    status: "completed",
+                    attempts: 1,
+                  }),
+                  expect.objectContaining({
+                    stepKey: "do:parent>do:second",
+                    status: "completed",
+                    attempts: 1,
+                  }),
+                ]),
+              );
+            },
+          }),
+          workflow.assert(() => {
+            expect(firstRuns).toBe(2);
+            expect(secondRuns).toBe(2);
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("failed-step retry restarts a timed-out top-level event wait", async () => {
+    const RetryWaitWorkflow = defineWorkflow(
+      { name: "scenario-management-retry-wait-workflow" },
+      async (_event, step) => {
+        const approval = await step.waitForEvent<{ approved: boolean }>("approval", {
+          type: "approval",
+          timeout: "5 minutes",
+        });
+        return approval.payload;
+      },
+    );
+    const workflows = { RETRY_WAIT: RetryWaitWorkflow };
+    type ScenarioVars = { firstWakeAt?: Date; secondWakeAt?: Date };
+
+    await runScenario(
+      defineScenario<typeof workflows, ScenarioVars>({
+        name: "management-retry-restarts-event-wait",
+        workflows,
+        steps: ({ workflow, runner }) => [
+          runner.initializeAndRunUntilIdle({ workflow: "RETRY_WAIT", id: "retry-wait-1" }),
+          workflow.read({
+            read: async (ctx) =>
+              (await ctx.state.getSteps("RETRY_WAIT", "retry-wait-1"))[0]?.wakeAt,
+            storeAs: "firstWakeAt",
+          }),
+          runner.advanceTimeAndRunUntilIdle({
+            workflow: "RETRY_WAIT",
+            instanceId: "retry-wait-1",
+            setTo: (ctx) => new Date(ctx.vars.firstWakeAt!.getTime() + 1),
+          }),
+          workflow.retryFailedStep({
+            workflow: "RETRY_WAIT",
+            instanceId: "retry-wait-1",
+          }),
+          runner.retryAndRunUntilIdle({
+            workflow: "RETRY_WAIT",
+            instanceId: "retry-wait-1",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus("RETRY_WAIT", "retry-wait-1"),
+              step: (await ctx.state.getSteps("RETRY_WAIT", "retry-wait-1"))[0],
+            }),
+            assert: ({ status, step }) => {
+              expect(status).toMatchObject({ status: "waiting" });
+              expect(step).toMatchObject({
+                stepKey: "waitForEvent:approval",
+                status: "waiting",
+              });
+              expect(step?.wakeAt?.getTime()).toBeGreaterThan(new Date(0).getTime());
+            },
+          }),
+          workflow.read({
+            read: async (ctx) =>
+              (await ctx.state.getSteps("RETRY_WAIT", "retry-wait-1"))[0]?.wakeAt,
+            storeAs: "secondWakeAt",
+          }),
+          workflow.assert((ctx) => {
+            expect(ctx.vars.secondWakeAt!.getTime()).toBeGreaterThan(
+              ctx.vars.firstWakeAt!.getTime(),
+            );
+          }),
+          runner.eventAndRunUntilIdle({
+            workflow: "RETRY_WAIT",
+            instanceId: "retry-wait-1",
+            event: { type: "approval", payload: { approved: true } },
+          }),
+          workflow.read({
+            read: (ctx) => ctx.state.getStatus("RETRY_WAIT", "retry-wait-1"),
+            assert: (status) => {
+              expect(status).toMatchObject({
+                status: "complete",
+                output: { approved: true },
+              });
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("failed-step retry accepts an event that missed the previous wait deadline", async () => {
+    const RetryExpiredWaitWorkflow = defineWorkflow(
+      { name: "scenario-management-retry-expired-wait-workflow" },
+      async (_event, step) => {
+        const approval = await step.waitForEvent<{ approved: boolean }>("approval", {
+          type: "approval",
+          timeout: "5 minutes",
+        });
+        return approval.payload;
+      },
+    );
+    const workflows = { RETRY_EXPIRED_WAIT: RetryExpiredWaitWorkflow };
+    type ScenarioVars = { firstWakeAt?: Date };
+
+    await runScenario(
+      defineScenario<typeof workflows, ScenarioVars>({
+        name: "management-retry-accepts-event-after-old-deadline",
+        workflows,
+        steps: ({ workflow, runner }) => [
+          runner.initializeAndRunUntilIdle({
+            workflow: "RETRY_EXPIRED_WAIT",
+            id: "retry-expired-wait-1",
+          }),
+          workflow.read({
+            read: async (ctx) =>
+              (await ctx.state.getSteps("RETRY_EXPIRED_WAIT", "retry-expired-wait-1"))[0]?.wakeAt,
+            storeAs: "firstWakeAt",
+          }),
+          workflow.read({
+            read: (ctx) => ctx.clock.set(new Date(ctx.vars.firstWakeAt!.getTime() + 1)),
+            assert: (now) => {
+              expect(now.getTime()).toBeGreaterThan(0);
+            },
+          }),
+          workflow.read({
+            read: (ctx) =>
+              ctx.harness.sendEvent("RETRY_EXPIRED_WAIT", "retry-expired-wait-1", {
+                type: "approval",
+                payload: { approved: true },
+                createdAt: new Date(ctx.vars.firstWakeAt!.getTime() + 1),
+              }),
+            assert: (status) => {
+              expect(status).toMatchObject({ status: "waiting" });
+            },
+          }),
+          runner.tick({
+            workflow: "RETRY_EXPIRED_WAIT",
+            instanceId: "retry-expired-wait-1",
+            reason: "event",
+          }),
+          runner.tick({
+            workflow: "RETRY_EXPIRED_WAIT",
+            instanceId: "retry-expired-wait-1",
+            reason: "wake",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus("RETRY_EXPIRED_WAIT", "retry-expired-wait-1"),
+              events: await ctx.state.getEvents("RETRY_EXPIRED_WAIT", "retry-expired-wait-1"),
+            }),
+            assert: ({ status, events }) => {
+              expect(status).toMatchObject({
+                status: "errored",
+                error: { message: "WAIT_FOR_EVENT_TIMEOUT" },
+              });
+              expect(events).toEqual([expect.objectContaining({ consumedByStepKey: null })]);
+            },
+          }),
+          workflow.retryFailedStep({
+            workflow: "RETRY_EXPIRED_WAIT",
+            instanceId: "retry-expired-wait-1",
+          }),
+          runner.retryAndRunUntilIdle({
+            workflow: "RETRY_EXPIRED_WAIT",
+            instanceId: "retry-expired-wait-1",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus("RETRY_EXPIRED_WAIT", "retry-expired-wait-1"),
+              events: await ctx.state.getEvents("RETRY_EXPIRED_WAIT", "retry-expired-wait-1"),
+            }),
+            assert: ({ status, events }) => {
+              expect(status).toMatchObject({
+                status: "complete",
+                output: { approved: true },
+              });
+              expect(events).toEqual([
+                expect.objectContaining({ consumedByStepKey: "waitForEvent:approval" }),
+              ]);
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("failed-step retry makes events consumed by nested waits eligible again", async () => {
+    let completedParentAttempts = 0;
+    let eventConsumptions = 0;
+    const RetryConsumedEventWorkflow = defineWorkflow(
+      { name: "scenario-management-retry-consumed-event-workflow" },
+      async (_event, step) => {
+        return await step.do("parent", async () => {
+          const approval = await step.waitForEvent<{ approved: boolean }>("approval", {
+            type: "approval",
+            onConsume: () => {
+              eventConsumptions += 1;
+            },
+          });
+          completedParentAttempts += 1;
+          if (completedParentAttempts === 1) {
+            throw new Error("FAIL_AFTER_EVENT");
+          }
+          return approval.payload;
+        });
+      },
+    );
+    const workflows = { RETRY_CONSUMED_EVENT: RetryConsumedEventWorkflow };
+
+    await runScenario(
+      defineScenario({
+        name: "management-retry-reuses-consumed-event",
+        workflows,
+        steps: ({ workflow, runner }) => [
+          runner.initializeAndRunUntilIdle({
+            workflow: "RETRY_CONSUMED_EVENT",
+            id: "retry-consumed-event-1",
+          }),
+          runner.eventAndRunUntilIdle({
+            workflow: "RETRY_CONSUMED_EVENT",
+            instanceId: "retry-consumed-event-1",
+            event: { id: "approval-1", type: "approval", payload: { approved: true } },
+          }),
+          workflow.retryFailedStep({
+            workflow: "RETRY_CONSUMED_EVENT",
+            instanceId: "retry-consumed-event-1",
+          }),
+          runner.retryAndRunUntilIdle({
+            workflow: "RETRY_CONSUMED_EVENT",
+            instanceId: "retry-consumed-event-1",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus("RETRY_CONSUMED_EVENT", "retry-consumed-event-1"),
+              events: await ctx.state.getEvents("RETRY_CONSUMED_EVENT", "retry-consumed-event-1"),
+            }),
+            assert: ({ status, events }) => {
+              expect(status).toMatchObject({
+                status: "complete",
+                output: { approved: true },
+              });
+              expect(events).toEqual([
+                expect.objectContaining({
+                  consumedByStepKey: "do:parent>waitForEvent:approval",
+                }),
+              ]);
+            },
+          }),
+          workflow.assert(() => {
+            expect(completedParentAttempts).toBe(2);
+            expect(eventConsumptions).toBe(2);
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("failed-step retry rejects multiple failed parallel top-level steps", async () => {
+    let firstRuns = 0;
+    let secondRuns = 0;
+    const ParallelFailuresWorkflow = defineWorkflow(
+      { name: "scenario-management-retry-parallel-failures-workflow" },
+      async (_event, step) => {
+        await Promise.allSettled([
+          step.do("first", () => {
+            firstRuns += 1;
+            throw new Error("FIRST_PARALLEL_FAILURE");
+          }),
+          step.do("second", () => {
+            secondRuns += 1;
+            throw new Error("SECOND_PARALLEL_FAILURE");
+          }),
+        ]);
+        throw new Error("PARALLEL_STEPS_FAILED");
+      },
+    );
+    const workflows = { PARALLEL_FAILURES: ParallelFailuresWorkflow };
+
+    const scenario = defineScenario({
+      name: "management-retry-rejects-parallel-failures",
+      workflows,
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
+          workflow: "PARALLEL_FAILURES",
+          id: "parallel-failures-1",
+        }),
+        workflow.read({
+          read: async (ctx) => ({
+            status: await ctx.state.getStatus("PARALLEL_FAILURES", "parallel-failures-1"),
+            steps: await ctx.state.getSteps("PARALLEL_FAILURES", "parallel-failures-1"),
+          }),
+          assert: ({ status, steps }) => {
+            expect(status).toMatchObject({
+              status: "errored",
+              error: { message: "PARALLEL_STEPS_FAILED" },
+            });
+            expect(steps).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  stepKey: "do:first",
+                  parentStepKey: null,
+                  status: "errored",
+                }),
+                expect.objectContaining({
+                  stepKey: "do:second",
+                  parentStepKey: null,
+                  status: "errored",
+                }),
+              ]),
+            );
+          },
+        }),
+        workflow.retryFailedStep({
+          workflow: "PARALLEL_FAILURES",
+          instanceId: "parallel-failures-1",
+        }),
+      ],
+    });
+
+    await expect(runScenario(scenario)).rejects.toThrow("FAILED_STEP_NOT_RETRYABLE");
+    expect(firstRuns).toBe(1);
+    expect(secondRuns).toBe(1);
+  });
+
+  test("failed-step retry reruns one failed parallel top-level step and reuses its sibling", async () => {
+    let stableRuns = 0;
+    let flakyRuns = 0;
+    const ParallelSingleFailureWorkflow = defineWorkflow(
+      { name: "scenario-management-retry-one-parallel-failure-workflow" },
+      async (_event, step) => {
+        const [stable, flaky] = await Promise.allSettled([
+          step.do("stable", () => {
+            stableRuns += 1;
+            return "stable";
+          }),
+          step.do("flaky", async () => {
+            flakyRuns += 1;
+            await Promise.resolve();
+            if (flakyRuns === 1) {
+              throw new Error("ONE_PARALLEL_FAILURE");
+            }
+            return "recovered";
+          }),
+        ]);
+
+        if (flaky.status === "rejected") {
+          throw flaky.reason;
+        }
+        assert(stable.status === "fulfilled");
+        return { stable: stable.value, flaky: flaky.value };
+      },
+    );
+    const workflows = { PARALLEL_SINGLE_FAILURE: ParallelSingleFailureWorkflow };
+
+    await runScenario(
+      defineScenario({
+        name: "management-retry-one-parallel-failure",
+        workflows,
+        steps: ({ workflow, runner }) => [
+          runner.initializeAndRunUntilIdle({
+            workflow: "PARALLEL_SINGLE_FAILURE",
+            id: "parallel-single-failure-1",
+          }),
+          workflow.read({
+            read: (ctx) =>
+              ctx.state.getSteps("PARALLEL_SINGLE_FAILURE", "parallel-single-failure-1"),
+            assert: (steps) => {
+              expect(steps).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    stepKey: "do:stable",
+                    status: "completed",
+                    attempts: 1,
+                  }),
+                  expect.objectContaining({
+                    stepKey: "do:flaky",
+                    status: "errored",
+                    attempts: 1,
+                  }),
+                ]),
+              );
+            },
+          }),
+          workflow.retryFailedStep({
+            workflow: "PARALLEL_SINGLE_FAILURE",
+            instanceId: "parallel-single-failure-1",
+          }),
+          runner.retryAndRunUntilIdle({
+            workflow: "PARALLEL_SINGLE_FAILURE",
+            instanceId: "parallel-single-failure-1",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              instance: await ctx.state.getInstance(
+                "PARALLEL_SINGLE_FAILURE",
+                "parallel-single-failure-1",
+              ),
+              status: await ctx.state.getStatus(
+                "PARALLEL_SINGLE_FAILURE",
+                "parallel-single-failure-1",
+              ),
+              steps: await ctx.state.getSteps(
+                "PARALLEL_SINGLE_FAILURE",
+                "parallel-single-failure-1",
+              ),
+            }),
+            assert: ({ instance, status, steps }) => {
+              expect(instance).toMatchObject({ runGeneration: 1 });
+              expect(status).toMatchObject({
+                status: "complete",
+                output: { stable: "stable", flaky: "recovered" },
+              });
+              expect(steps).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    stepKey: "do:stable",
+                    status: "completed",
+                    attempts: 1,
+                  }),
+                  expect.objectContaining({
+                    stepKey: "do:flaky",
+                    status: "completed",
+                    attempts: 2,
+                    maxAttempts: 2,
+                  }),
+                ]),
+              );
+            },
+          }),
+          workflow.assert(() => {
+            expect(stableRuns).toBe(1);
+            expect(flakyRuns).toBe(2);
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("failed-step retry rejects a failed step followed by a completed top-level step", async () => {
+    let failedRuns = 0;
+    let laterRuns = 0;
+    const FailureBeforeLaterStepWorkflow = defineWorkflow(
+      { name: "scenario-management-retry-failure-before-later-step-workflow" },
+      async (_event, step) => {
+        try {
+          await step.do("failed", () => {
+            failedRuns += 1;
+            throw new Error("EARLIER_STEP_FAILED");
+          });
+        } catch {
+          // Continue to persist a later top-level result before the workflow becomes terminal.
+        }
+
+        await step.do("later", () => {
+          laterRuns += 1;
+          return "later";
+        });
+        throw new Error("WORKFLOW_FAILED_AFTER_LATER_STEP");
+      },
+    );
+    const workflows = { FAILURE_BEFORE_LATER: FailureBeforeLaterStepWorkflow };
+
+    const scenario = defineScenario({
+      name: "management-retry-rejects-failure-before-later-step",
+      workflows,
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
+          workflow: "FAILURE_BEFORE_LATER",
+          id: "failure-before-later-1",
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getSteps("FAILURE_BEFORE_LATER", "failure-before-later-1"),
+          assert: (steps) => {
+            expect(steps).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({ stepKey: "do:failed", status: "errored" }),
+                expect.objectContaining({ stepKey: "do:later", status: "completed" }),
+              ]),
+            );
+          },
+        }),
+        workflow.retryFailedStep({
+          workflow: "FAILURE_BEFORE_LATER",
+          instanceId: "failure-before-later-1",
+        }),
+      ],
+    });
+
+    await expect(runScenario(scenario)).rejects.toThrow("FAILED_STEP_NOT_RETRYABLE");
+    expect(failedRuns).toBe(1);
+    expect(laterRuns).toBe(1);
   });
 
   test("does not retry before nextRetryAt", async () => {

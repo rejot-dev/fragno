@@ -39,6 +39,7 @@ import type {
   InstanceStatus,
   WorkflowDuration,
   WorkflowEnqueuedHookPayload,
+  WorkflowRestartOrCreateOptions,
   WorkflowsRegistry,
 } from "./workflow";
 
@@ -511,6 +512,7 @@ export type WorkflowScenarioInstanceRow = {
   instanceId: string;
   workflowName: string;
   status: string;
+  runGeneration: number;
   createdAt: Date;
   updatedAt: Date;
   startedAt: Date | null;
@@ -687,7 +689,9 @@ export type WorkflowScenarioStep<
   | WorkflowScenarioEventAndRunUntilIdleStep<TRegistry, TVars>
   | WorkflowScenarioPauseStep<TRegistry, TVars>
   | WorkflowScenarioResumeStep<TRegistry, TVars>
-  | WorkflowScenarioRetryStep<TRegistry, TVars>
+  | WorkflowScenarioRestartInstanceStep<TRegistry, TVars>
+  | WorkflowScenarioRestartOrCreateStep<TRegistry, TVars>
+  | WorkflowScenarioRetryFailedStep<TRegistry, TVars>
   | WorkflowScenarioResumeAndRunUntilIdleStep<TRegistry, TVars>
   | WorkflowScenarioTerminateStep<TRegistry, TVars>
   | WorkflowScenarioRunCreateUntilIdleStep<TRegistry, TVars>
@@ -805,16 +809,36 @@ export type WorkflowScenarioResumeStep<
   storeAs?: (keyof TVars & string) | undefined;
 };
 
-export type WorkflowScenarioRetryStep<
+export type WorkflowScenarioRestartInstanceStep<
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
 > = {
-  type: "retry";
+  type: "restartInstance";
   workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
   instanceId: ScenarioInput<string, TRegistry, TVars>;
-  stepKey?: ScenarioInput<string, TRegistry, TVars>;
+  storeAs?: (keyof TVars & string) | undefined;
+};
+
+export type WorkflowScenarioRestartOrCreateStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+> = {
+  type: "restartOrCreate";
+  workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
+  instanceId: ScenarioInput<string, TRegistry, TVars>;
+  create: ScenarioInput<WorkflowRestartOrCreateOptions["create"], TRegistry, TVars>;
+  restart: ScenarioInput<WorkflowRestartOrCreateOptions["restart"], TRegistry, TVars>;
+  storeAs?: (keyof TVars & string) | undefined;
+};
+
+export type WorkflowScenarioRetryFailedStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+> = {
+  type: "retryFailedStep";
+  workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
+  instanceId: ScenarioInput<string, TRegistry, TVars>;
   delayMs?: ScenarioInput<number, TRegistry, TVars>;
-  reason?: ScenarioInput<string, TRegistry, TVars>;
   storeAs?: (keyof TVars & string) | undefined;
 };
 
@@ -1149,7 +1173,9 @@ const createScenarioWorkflowSteps = <
     event: raw.event,
     pause: raw.pause,
     resume: raw.resume,
-    retry: raw.retry,
+    restart: raw.restartInstance,
+    restartOrCreate: raw.restartOrCreate,
+    retryFailedStep: raw.retryFailedStep,
     terminate: raw.terminate,
     read: raw.read,
     assert: raw.assert,
@@ -1402,10 +1428,22 @@ const createRawScenarioStepBuilders = <
     type: "resume",
     ...input,
   }),
-  retry: (
-    input: StepInput<WorkflowScenarioRetryStep<TRegistry, TVars>>,
-  ): WorkflowScenarioRetryStep<TRegistry, TVars> => ({
-    type: "retry",
+  restartInstance: (
+    input: StepInput<WorkflowScenarioRestartInstanceStep<TRegistry, TVars>>,
+  ): WorkflowScenarioRestartInstanceStep<TRegistry, TVars> => ({
+    type: "restartInstance",
+    ...input,
+  }),
+  restartOrCreate: (
+    input: StepInput<WorkflowScenarioRestartOrCreateStep<TRegistry, TVars>>,
+  ): WorkflowScenarioRestartOrCreateStep<TRegistry, TVars> => ({
+    type: "restartOrCreate",
+    ...input,
+  }),
+  retryFailedStep: (
+    input: StepInput<WorkflowScenarioRetryFailedStep<TRegistry, TVars>>,
+  ): WorkflowScenarioRetryFailedStep<TRegistry, TVars> => ({
+    type: "retryFailedStep",
     ...input,
   }),
   resumeAndRunUntilIdle: (
@@ -1568,6 +1606,7 @@ type ScenarioDbWorkflowInstance = {
   instanceId: string;
   workflowName: string;
   status: string;
+  runGeneration: number;
   createdAt: Date;
   updatedAt: Date;
   startedAt: Date | null;
@@ -1616,6 +1655,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     id: { internalId?: bigint } | bigint;
     workflowName: string;
     status: string;
+    runGeneration: number;
     createdAt: Date;
     updatedAt: Date;
     startedAt: Date | null;
@@ -1630,6 +1670,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     instanceId: instance.instanceId,
     workflowName: instance.workflowName,
     status: instance.status,
+    runGeneration: instance.runGeneration,
     createdAt: instance.createdAt,
     updatedAt: instance.updatedAt,
     startedAt: instance.startedAt,
@@ -2652,22 +2693,44 @@ export async function runScenario<
           }
           break;
         }
-        case "retry": {
+        case "restartInstance": {
           const workflowName = resolver.resolveName(
             await resolveScenarioInput(step.workflow, context),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
-          const stepKey = step.stepKey
-            ? await resolveScenarioInput(step.stepKey, context)
-            : undefined;
+          const status = await context.harness.restartInstance(workflowName, instanceId);
+          if (step.storeAs) {
+            (context.vars as Record<string, unknown>)[step.storeAs] = status;
+          }
+          break;
+        }
+        case "restartOrCreate": {
+          const workflowName = resolver.resolveName(
+            await resolveScenarioInput(step.workflow, context),
+          );
+          const instanceId = await resolveScenarioInput(step.instanceId, context);
+          const create = await resolveScenarioInput(step.create, context);
+          const restart = await resolveScenarioInput(step.restart, context);
+          const result = await context.harness.restartOrCreateInstance(workflowName, {
+            id: instanceId,
+            create,
+            restart,
+          });
+          if (step.storeAs) {
+            (context.vars as Record<string, unknown>)[step.storeAs] = result;
+          }
+          break;
+        }
+        case "retryFailedStep": {
+          const workflowName = resolver.resolveName(
+            await resolveScenarioInput(step.workflow, context),
+          );
+          const instanceId = await resolveScenarioInput(step.instanceId, context);
           const delayMs = step.delayMs
             ? await resolveScenarioInput(step.delayMs, context)
             : undefined;
-          const reason = step.reason ? await resolveScenarioInput(step.reason, context) : undefined;
-          const status = await context.harness.retryInstance(workflowName, instanceId, {
-            stepKey,
+          const status = await context.harness.retryFailedStep(workflowName, instanceId, {
             delayMs,
-            reason,
           });
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = status;

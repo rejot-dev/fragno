@@ -62,6 +62,22 @@ describe("Marketplace Upload error classification", () => {
     });
   });
 
+  test("includes validation issue paths in permanent Upload failures", () => {
+    const error = captureError(() =>
+      throwMarketplaceUploadRouteError({
+        operation: "Marketplace artifact batch commit",
+        status: 400,
+        error: {
+          code: "FRAGNO_VALIDATION_ERROR",
+          message: "Validation failed",
+          issues: [{ path: ["entries", 0, "uploadId"], message: "Expected string" }],
+        },
+      }),
+    );
+
+    expect(error.message).toContain("entries.0.uploadId: Expected string");
+  });
+
   test("marks permanent typed Upload failures non-retryable", () => {
     const error = captureError(() =>
       throwMarketplaceUploadRouteError({

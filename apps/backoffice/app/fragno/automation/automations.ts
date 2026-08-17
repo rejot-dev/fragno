@@ -30,14 +30,15 @@ import {
   type PiRuntime,
 } from "@/fragno/runtime-tools/families/pi-runtime";
 
-import { defineMarketplaceIngestWorkflow } from "./marketplace-ingest-workflow";
+import { defineMarketplaceIngestWorkflow } from "./marketplace-ingest-workflow.server";
 import { defineMarketplacePublishWorkflow } from "./marketplace-publish-workflow";
 import { setAutomationRouteMutationActors } from "./route-routes";
 import { defineSandboxLifecycleWorkflow } from "./sandbox-lifecycle-workflow";
 import { SANDBOX_LIFECYCLE_WORKFLOW_NAME } from "./sandboxes-storage-runtime";
 import {
   parseWorkflowCompletionTarget,
-  WORKFLOW_COMPLETED_EVENT_TYPE,
+  workflowCompletedEventType,
+  workflowCompletionEventId,
   WORKFLOW_COMPLETION_PARAM,
 } from "./workflow-completion";
 
@@ -177,6 +178,7 @@ export const createAutomationsRuntime = (
           automationFileSystem: config.automationFileSystem,
           getAutomationFileSystem: config.getAutomationFileSystem,
           getAutomationFragment: () => automationFragment,
+          getWorkflowsFragment: (): AutomationsRuntime["workflowsFragment"] => workflowsFragment,
         }),
         SANDBOX_LIFECYCLE: defineSandboxLifecycleWorkflow({
           ownerScope: config.ownerScope,
@@ -210,11 +212,15 @@ export const createAutomationsRuntime = (
             completionTarget.workflowName,
             completionTarget.instanceId,
             {
-              id: `workflow-completed:${payload.instanceRef}`,
-              type: WORKFLOW_COMPLETED_EVENT_TYPE,
+              id: workflowCompletionEventId({
+                instanceRef: payload.instanceRef,
+                runGeneration: payload.runGeneration,
+              }),
+              type: workflowCompletedEventType(payload.runGeneration),
               payload: {
                 workflowName: payload.workflowName,
                 instanceId: payload.instanceId,
+                runGeneration: payload.runGeneration,
                 status: payload.status,
                 ...(payload.output === undefined ? {} : { output: payload.output }),
                 ...(payload.error === undefined ? {} : { error: payload.error }),
@@ -382,6 +388,53 @@ export const createAutomationsRuntime = (
       return createResponse;
     }
 
+    const restartOrCreateResponse = await ifMatchesRoute(
+      "POST",
+      "/:workflowName/instances/:instanceId/restart-or-create",
+      async ({ input, pathParams }) => {
+        const internalWorkflowResponse = rejectInternalWorkflowMutation(pathParams.workflowName);
+        if (internalWorkflowResponse) {
+          return internalWorkflowResponse;
+        }
+
+        const authorization = await authorizeWorkflowCreation(pathParams.workflowName);
+        if (authorization) {
+          return authorization;
+        }
+
+        const values = await input.valid();
+        const params =
+          values.create.params &&
+          typeof values.create.params === "object" &&
+          !Array.isArray(values.create.params)
+            ? (values.create.params as Record<string, unknown>)
+            : {};
+        const invalidParamsResponse = rejectDisallowedWorkflowParams(
+          pathParams.workflowName,
+          params,
+        );
+        if (invalidParamsResponse) {
+          return invalidParamsResponse;
+        }
+
+        requestState.setBody({
+          ...values,
+          create: {
+            ...values.create,
+            params: withTrustedWorkflowContext({
+              workflowName: pathParams.workflowName,
+              params,
+              execution: requestContext,
+            }),
+          },
+        });
+        return undefined;
+      },
+    );
+    if (restartOrCreateResponse) {
+      return restartOrCreateResponse;
+    }
+
     const batchResponse = await ifMatchesRoute(
       "POST",
       "/:workflowName/instances/batch",
@@ -457,9 +510,10 @@ export const createAutomationsRuntime = (
     }
 
     const mutationRoutes = [
-      "/:workflowName/instances/:instanceId/retry",
+      "/:workflowName/instances/:instanceId/retry-failed-step",
       "/:workflowName/instances/:instanceId/pause",
       "/:workflowName/instances/:instanceId/resume",
+      "/:workflowName/instances/:instanceId/restart",
       "/:workflowName/instances/:instanceId/terminate",
       "/:workflowName/instances/:instanceId/events",
     ] as const;

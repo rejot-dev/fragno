@@ -67,7 +67,10 @@ Read "/static/codemode/providers/workflow.d.ts" for exact inputs:
 - `workflow.getInstance({ instanceId })` reads status, output, error, and source path.
 - `workflow.getHistory({ instanceId })` exposes steps, events, and emissions for diagnosis.
 - `workflow.sendEvent({ instanceId, type, payload })` resumes a waiting instance.
-- `workflow.retryInstance({ instanceId, stepKey, delayMs, reason })` retries failed work.
+- `workflow.retryFailedStep({ instanceId, delayMs })` retries the latest failed top-level step.
 
-For a waiting instance, send the exact event `type` expected by `step.waitForEvent`. For an errored
-instance, inspect the latest failed step before retrying and use its exact `stepKey`.
+For a waiting instance, send the exact event `type` expected by `step.waitForEvent`. Failed-step
+retry requires the latest top-level step to be the only failed top-level step. Retrying a `do` step
+reruns all of its nested steps, including completed steps, so their effects and mutations must be
+repeatable. Retrying a failed event wait starts a fresh timeout window and considers pending events
+before the new deadline.

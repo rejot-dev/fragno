@@ -17,8 +17,10 @@ export const workflowsSchema = schema("workflows", (s) => {
             .addColumn("remoteWorkflowName", column("string").nullable())
             // Public instance id, scoped by workflowName.
             .addColumn("instanceId", column("string"))
-            // Current status of the instance (active/waiting/paused/complete/errored/etc).
+            // Current status of the instance: active, waiting, paused, complete, errored, or terminated.
             .addColumn("status", column("string"))
+            // Monotonic identity for each execution lifecycle of this public instance.
+            .addColumn("runGeneration", column("integer").defaultTo(1))
             // Creation time for ordering and history cursoring.
             .addColumn(
               "createdAt",

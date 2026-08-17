@@ -137,6 +137,7 @@ describe("workflows scenario DSL", () => {
                 payload: expect.objectContaining({
                   workflowName: "sleep-workflow",
                   instanceId: "terminal-hook-1",
+                  runGeneration: 1,
                   status: "complete",
                   params: { note: "alpha" },
                   output: { note: "alpha" },

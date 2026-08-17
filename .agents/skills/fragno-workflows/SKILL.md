@@ -10,8 +10,9 @@ description: >
 # Fragno Workflows
 
 Fragno Workflows are database-backed, replayable programs. Every runner tick can invoke the workflow
-function again from the beginning; completed steps return persisted results instead of rerunning
-their callbacks.
+function again from the beginning; completed steps normally return persisted results instead of
+rerunning their callbacks. A full restart discards every checkpoint, and retrying a failed top-level
+step discards and reruns all nested checkpoints beneath that step.
 
 ## Replay gate
 
@@ -20,8 +21,9 @@ Apply this gate before designing, changing, or reviewing any workflow. The
 
 A workflow change passes only when every applicable rule has been checked:
 
-- External calls use stable idempotency keys. A successful `step.do` prevents later replay, but a
-  failed or concurrent attempt can repeat before its result commits.
+- External calls use stable idempotency keys. A successful `step.do` prevents normal replay while
+  its checkpoint exists, but failed or concurrent attempts can repeat, and management restart or
+  failed-step retry can intentionally discard completed checkpoints.
 - Steps are granular retry boundaries; unrelated external systems have separate steps.
 - Failure classification is explicit: transient failures follow the retry policy, while permanent
   failures throw `NonRetryableError` and bypass further attempts.
@@ -33,8 +35,9 @@ A workflow change passes only when every applicable rule has been checked:
   character.
 - `Promise.race` and `Promise.any` decisions are persisted by an enclosing step. Losing branches are
   not cancelled and remain idempotent.
-- Instance IDs uniquely identify one invocation within a workflow name. Recreating an existing ID
-  returns the existing instance and ignores new params.
+- Instance IDs uniquely identify one invocation within a workflow name. Plain create with an
+  existing ID returns that instance and ignores new params. `restartOrCreate` restarts it only when
+  the explicit terminal-status precondition matches, while still preserving its original params.
 - Every `step.do`, `step.sleep`, `step.sleepUntil`, and `step.waitForEvent` promise is awaited,
   returned, or included in an awaited combinator.
 - Branches and loops depend only on immutable input or persisted step results. `event.timestamp`,
@@ -188,10 +191,11 @@ Treat step emissions as live output:
 - Cleanup removes completed attempt emissions asynchronously. Persist durable domain history in step
   results or application tables.
 
-The public management surface supports creating single or batched instances, status and history
-reads, current-step emission streams, events, pause, resume, retry, and termination. Batch creation
-requires IDs and accepts at most 100 entries. History contains persisted steps and events plus any
-emissions still present at read time.
+The public management surface supports creating single or batched instances, atomic
+restart-or-create with an explicit terminal-status precondition, status and history reads,
+current-step emission streams, events, pause, resume, failed-step retry, and termination. Batch
+creation requires IDs and accepts at most 100 entries. History contains persisted steps and events
+plus any emissions still present at read time.
 
 Consult [`step-events-emissions.md`](references/step-events-emissions.md) for active-step patterns
 and [`routes.md`](references/routes.md) for request shapes and route behavior.

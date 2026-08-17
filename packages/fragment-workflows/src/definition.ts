@@ -26,6 +26,8 @@ import {
   type WorkflowEventActor,
 } from "./system-events";
 import {
+  WorkflowFailedStepNotRetryableError,
+  WorkflowInstanceNotErroredError,
   WorkflowInstanceNotFoundError,
   WorkflowNotFoundError,
   WorkflowParamsInvalidError,
@@ -34,6 +36,8 @@ import {
   type WorkflowInstanceCurrentStep,
   type WorkflowInstanceMetadata,
   type WorkflowRegistryEntry,
+  type WorkflowRestartOrCreateOptions,
+  type WorkflowRestartedHookPayload,
   type WorkflowStepEmissionsCleanupHookPayload,
   type WorkflowTerminalHookPayload,
   type WorkflowsFragmentConfig,
@@ -54,6 +58,7 @@ const TERMINAL_STATUSES = new Set<InstanceStatus["status"]>(["complete", "termin
 
 type WorkflowInstanceStatusRecord = {
   status: string;
+  runGeneration: number;
   output: unknown;
   errorName: string | null;
   errorMessage: string | null;
@@ -120,12 +125,11 @@ type ListHistoryParams = {
   instanceId: string;
 };
 
-type RetryInstanceParams = {
-  stepKey?: string;
+type RetryFailedStepParams = {
   delayMs?: number;
 };
 
-type RetryInstanceResult = {
+type RetryFailedStepResult = {
   accepted: true;
   instance: InstanceDetails;
   retry: {
@@ -163,6 +167,7 @@ export function buildInstanceStatus(instance: WorkflowInstanceStatusRecord): Ins
 
   return {
     status,
+    runGeneration: instance.runGeneration,
     error,
     output: instance.output ?? undefined,
   };
@@ -172,6 +177,7 @@ function buildInstanceMetadata(instance: WorkflowInstanceRecord): WorkflowInstan
   return {
     workflowName: instance.workflowName,
     remoteWorkflowName: instance.remoteWorkflowName ?? undefined,
+    runGeneration: instance.runGeneration,
     params: instance.params ?? {},
     createdAt: instance.createdAt,
     updatedAt: instance.updatedAt,
@@ -265,12 +271,26 @@ function isTerminalStatus(status: InstanceStatus["status"]) {
   return TERMINAL_STATUSES.has(status);
 }
 
-function isRetryTaskStep(step: WorkflowStepRecord) {
-  return step.type === "do";
+function findRetryableFailedTopLevelStep(
+  steps: WorkflowStepRecord[],
+): WorkflowStepRecord | undefined {
+  const topLevelSteps = steps.filter((step) => step.parentStepKey === null);
+  const latestTopLevelStep = topLevelSteps[0];
+  const failedTopLevelSteps = topLevelSteps.filter((step) => step.status === "errored");
+
+  if (
+    latestTopLevelStep?.status !== "errored" ||
+    (latestTopLevelStep.type !== "do" && latestTopLevelStep.type !== "waitForEvent") ||
+    failedTopLevelSteps.length !== 1
+  ) {
+    return undefined;
+  }
+
+  return latestTopLevelStep;
 }
 
-function getRetryHookReason(step: WorkflowStepRecord): WorkflowEnqueuedHookPayload["reason"] {
-  return isRetryTaskStep(step) ? "retry" : "wake";
+function isStepInRetrySubtree(stepKey: string, retriedStepKey: string) {
+  return stepKey === retriedStepKey || stepKey.startsWith(`${retriedStepKey}>`);
 }
 
 export const validateWorkflowParams = async (
@@ -331,6 +351,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           stepEmissions: deps.stepEmissions,
           payload: { ...payload, timestamp },
         });
+      }),
+      onWorkflowRestarted: defineHook(async function (payload: WorkflowRestartedHookPayload) {
+        await config.onWorkflowRestarted?.(payload);
       }),
       onWorkflowTerminal: defineHook(async function (payload: WorkflowTerminalHookPayload) {
         await config.onWorkflowTerminal?.(payload);
@@ -436,6 +459,159 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               id: instanceId,
               details: buildInstanceStatus({
                 status: "active",
+                runGeneration: 1,
+                output: null,
+                errorName: null,
+                errorMessage: null,
+              }),
+            };
+          })
+          .build();
+      },
+      restartOrCreateInstance: function (
+        workflowName: string,
+        options: WorkflowRestartOrCreateOptions,
+      ) {
+        getWorkflowEntry(workflowName);
+
+        const { id: instanceId } = options;
+        const restartableStatuses = new Set(options.restart.precondition.status.in);
+        const requiredRunGeneration = options.restart.precondition.runGeneration?.equals;
+        const instanceRef = buildScopedInstanceRowId(workflowName, instanceId);
+
+        return this.serviceTx(workflowsSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("workflow_instance", (b) =>
+                b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                  eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+                ),
+              )
+              .find("workflow_step", (b) =>
+                b.whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
+                  eb("instanceRef", "=", instanceRef),
+                ),
+              )
+              .find("workflow_event", (b) =>
+                b.whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
+                  eb("instanceRef", "=", instanceRef),
+                ),
+              )
+              .find("workflow_step_emission", (b) =>
+                b.whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (eb) =>
+                  eb("instanceRef", "=", instanceRef),
+                ),
+              ),
+          )
+          .mutate(({ uow, retrieveResult: [instance, steps, events, emissions] }) => {
+            if (!instance) {
+              uow.checkAbsent("workflow_instance", "primary", { id: instanceRef });
+              const operation = validateAndNormalizeWorkflowOperation(deps.workflowsByName, {
+                type: "createInstance",
+                workflowName,
+                instanceId,
+                params: options.create.params ?? {},
+                remoteWorkflowName: options.create.remoteWorkflowName,
+              });
+              const createdInstanceRef = uow.create(
+                "workflow_instance",
+                {
+                  id: instanceRef,
+                  workflowName,
+                  remoteWorkflowName: operation.remoteWorkflowName,
+                  instanceId,
+                  status: "active",
+                  params: operation.params,
+                  startedAt: null,
+                  completedAt: null,
+                  output: null,
+                  errorName: null,
+                  errorMessage: null,
+                },
+                { retryOnUniqueConflict: () => true },
+              );
+
+              uow.triggerHook("onWorkflowEnqueued", {
+                workflowName,
+                instanceId,
+                instanceRef: String(createdInstanceRef),
+                reason: "create",
+              });
+
+              return {
+                action: "created" as const,
+                id: instanceId,
+                details: buildInstanceStatus({
+                  status: "active",
+                  runGeneration: 1,
+                  output: null,
+                  errorName: null,
+                  errorMessage: null,
+                }),
+              };
+            }
+
+            const observedStatus = instance.status as InstanceStatus["status"];
+            if (
+              !restartableStatuses.has(observedStatus) ||
+              (requiredRunGeneration !== undefined &&
+                instance.runGeneration !== requiredRunGeneration)
+            ) {
+              return {
+                action: "unchanged" as const,
+                observedStatus,
+                id: instanceId,
+                details: buildInstanceStatus(instance),
+              };
+            }
+
+            for (const step of steps) {
+              uow.delete("workflow_step", step.id);
+            }
+            for (const emission of emissions) {
+              uow.delete("workflow_step_emission", emission.id);
+            }
+            for (const event of events) {
+              uow.delete("workflow_event", event.id);
+            }
+
+            const previousStatus = observedStatus;
+            const nextRunGeneration = instance.runGeneration + 1;
+            uow.update("workflow_instance", instance.id, (b) =>
+              b
+                .set({
+                  status: "active",
+                  runGeneration: nextRunGeneration,
+                  startedAt: null,
+                  completedAt: null,
+                  output: null,
+                  errorName: null,
+                  errorMessage: null,
+                  updatedAt: b.now(),
+                })
+                .check(),
+            );
+            uow.triggerHook("onWorkflowRestarted", {
+              workflowName,
+              instanceId,
+              instanceRef: String(instance.id),
+              previousRunGeneration: instance.runGeneration,
+              runGeneration: nextRunGeneration,
+            } satisfies WorkflowRestartedHookPayload);
+            uow.triggerHook("onWorkflowEnqueued", {
+              workflowName,
+              instanceId,
+              instanceRef: String(instance.id),
+              reason: "create",
+            });
+
+            return {
+              action: "restarted" as const,
+              previousStatus,
+              id: instanceId,
+              details: buildInstanceStatus({
+                status: "active",
+                runGeneration: nextRunGeneration,
                 output: null,
                 errorName: null,
                 errorMessage: null,
@@ -516,6 +692,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 id: instance.id,
                 details: buildInstanceStatus({
                   status: "active",
+                  runGeneration: 1,
                   output: null,
                   errorName: null,
                   errorMessage: null,
@@ -771,9 +948,92 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
 
             return buildInstanceStatus({
               status: "active",
+              runGeneration: instance.runGeneration,
               output: instance.output,
               errorName: instance.errorName,
               errorMessage: instance.errorMessage,
+            });
+          })
+          .build();
+      },
+      restartInstance: function (workflowName: string, instanceId: string) {
+        getWorkflowEntry(workflowName);
+
+        const instanceRef = buildScopedInstanceRowId(workflowName, instanceId);
+        return this.serviceTx(workflowsSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("workflow_instance", (b) =>
+                b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                  eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+                ),
+              )
+              .find("workflow_step", (b) =>
+                b.whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
+                  eb("instanceRef", "=", instanceRef),
+                ),
+              )
+              .find("workflow_event", (b) =>
+                b.whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
+                  eb("instanceRef", "=", instanceRef),
+                ),
+              )
+              .find("workflow_step_emission", (b) =>
+                b.whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (eb) =>
+                  eb("instanceRef", "=", instanceRef),
+                ),
+              ),
+          )
+          .mutate(({ uow, retrieveResult: [instance, steps, events, emissions] }) => {
+            if (!instance) {
+              throw new WorkflowInstanceNotFoundError(workflowName, instanceId);
+            }
+
+            for (const step of steps) {
+              uow.delete("workflow_step", step.id);
+            }
+            for (const emission of emissions) {
+              uow.delete("workflow_step_emission", emission.id);
+            }
+            for (const event of events) {
+              uow.delete("workflow_event", event.id);
+            }
+
+            const nextRunGeneration = instance.runGeneration + 1;
+            uow.update("workflow_instance", instance.id, (b) =>
+              b
+                .set({
+                  status: "active",
+                  runGeneration: nextRunGeneration,
+                  startedAt: null,
+                  completedAt: null,
+                  output: null,
+                  errorName: null,
+                  errorMessage: null,
+                  updatedAt: b.now(),
+                })
+                .check(),
+            );
+            uow.triggerHook("onWorkflowRestarted", {
+              workflowName,
+              instanceId: instance.instanceId,
+              instanceRef: String(instance.id),
+              previousRunGeneration: instance.runGeneration,
+              runGeneration: nextRunGeneration,
+            } satisfies WorkflowRestartedHookPayload);
+            uow.triggerHook("onWorkflowEnqueued", {
+              workflowName,
+              instanceId: instance.instanceId,
+              instanceRef: String(instance.id),
+              reason: "create",
+            });
+
+            return buildInstanceStatus({
+              status: "active",
+              runGeneration: nextRunGeneration,
+              output: null,
+              errorName: null,
+              errorMessage: null,
             });
           })
           .build();
@@ -810,6 +1070,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               workflowName: instance.workflowName,
               instanceId: instance.instanceId,
               instanceRef: String(instance.id),
+              runGeneration: instance.runGeneration,
               status: "terminated",
               params: instance.params,
               ...(instance.output == null ? {} : { output: instance.output }),
@@ -824,6 +1085,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             } satisfies WorkflowTerminalHookPayload);
             return buildInstanceStatus({
               status: "terminated",
+              runGeneration: instance.runGeneration,
               output: instance.output,
               errorName: instance.errorName,
               errorMessage: instance.errorMessage,
@@ -831,10 +1093,10 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           })
           .build();
       },
-      retryInstance: function (
+      retryFailedStep: function (
         workflowName: string,
         instanceId: string,
-        options?: RetryInstanceParams,
+        options?: RetryFailedStepParams,
       ) {
         getWorkflowEntry(workflowName);
 
@@ -856,38 +1118,83 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                     eb("instanceRef", "=", instanceRef),
                   )
                   .orderByIndex("idx_workflow_step_instanceRef_createdAt", "desc"),
+              )
+              .find("workflow_event", (b) =>
+                b.whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
+                  eb("instanceRef", "=", instanceRef),
+                ),
+              )
+              .find("workflow_step_emission", (b) =>
+                b.whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (eb) =>
+                  eb("instanceRef", "=", instanceRef),
+                ),
               ),
           )
-          .mutate(({ uow, retrieveResult: [instance, steps] }): RetryInstanceResult => {
+          .mutate(({ uow, retrieveResult }): RetryFailedStepResult => {
+            const [instance, steps, events, emissions] = retrieveResult;
             if (!instance) {
               throw new WorkflowInstanceNotFoundError(workflowName, instanceId);
             }
-
-            const step = options?.stepKey
-              ? steps.find((candidate) => candidate.stepKey === options.stepKey)
-              : steps[0];
-
-            if (!step) {
-              throw new Error("STEP_NOT_FOUND");
+            if (instance.status !== "errored") {
+              throw new WorkflowInstanceNotErroredError(workflowName, instanceId);
             }
 
-            const isRetryTask = isRetryTaskStep(step);
-            const maxAttempts = isRetryTask
-              ? Math.max(step.maxAttempts, step.attempts + 1)
-              : step.maxAttempts;
-
-            uow.update("workflow_step", step.id, (b) =>
-              b
-                .set({
-                  status: "waiting",
-                  maxAttempts,
-                  result: null,
-                  nextRetryAt: isRetryTask ? scheduledAt : null,
-                  wakeAt: isRetryTask ? null : scheduledAt,
-                  updatedAt: b.now(),
-                })
-                .check(),
+            const failedStep = findRetryableFailedTopLevelStep(steps);
+            if (!failedStep) {
+              throw new WorkflowFailedStepNotRetryableError(workflowName, instanceId);
+            }
+            const retrySubtree = steps.filter((step) =>
+              isStepInRetrySubtree(step.stepKey, failedStep.stepKey),
             );
+            const descendantSteps = retrySubtree.filter(
+              (step) => step.stepKey !== failedStep.stepKey,
+            );
+            const retryStepKeys = new Set(retrySubtree.map((step) => step.stepKey));
+
+            for (const descendant of descendantSteps) {
+              uow.delete("workflow_step", descendant.id);
+            }
+            for (const emission of emissions) {
+              if (retryStepKeys.has(emission.stepKey)) {
+                uow.delete("workflow_step_emission", emission.id);
+              }
+            }
+            for (const event of events) {
+              if (
+                event.consumedByStepKey &&
+                isStepInRetrySubtree(event.consumedByStepKey, failedStep.stepKey)
+              ) {
+                uow.update("workflow_event", event.id, (b) =>
+                  b.set({ consumedByStepKey: null, deliveredAt: null }),
+                );
+              }
+            }
+
+            const maxAttempts =
+              failedStep.type === "do"
+                ? Math.max(failedStep.maxAttempts, failedStep.attempts + 1)
+                : failedStep.maxAttempts;
+
+            if (failedStep.type === "do") {
+              uow.update("workflow_step", failedStep.id, (b) =>
+                b
+                  .set({
+                    status: "waiting",
+                    maxAttempts,
+                    result: null,
+                    errorName: null,
+                    errorMessage: null,
+                    nextRetryAt: scheduledAt,
+                    wakeAt: null,
+                    updatedAt: b.now(),
+                  })
+                  .check(),
+              );
+            } else {
+              // Removing a failed wait gives replay a new timeout window and makes all pending
+              // events eligible again instead of preserving the expired wait deadline.
+              uow.delete("workflow_step", failedStep.id);
+            }
             uow.update("workflow_instance", instance.id, (b) =>
               b
                 .set({
@@ -906,7 +1213,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 workflowName,
                 instanceId: instance.instanceId,
                 instanceRef: String(instance.id),
-                reason: getRetryHookReason(step),
+                reason: "retry",
               },
               { processAt: scheduledAt },
             );
@@ -917,14 +1224,15 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 id: instance.instanceId,
                 details: buildInstanceStatus({
                   status: "waiting",
+                  runGeneration: instance.runGeneration,
                   output: null,
                   errorName: null,
                   errorMessage: null,
                 }),
               },
               retry: {
-                stepKey: step.stepKey,
-                attempts: step.attempts,
+                stepKey: failedStep.stepKey,
+                attempts: failedStep.attempts,
                 maxAttempts,
                 scheduledAt,
               },

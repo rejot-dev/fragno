@@ -23,15 +23,14 @@ dispatcher.startPolling();
 
 Call `dispatcher.stopPolling()` during application shutdown.
 
-## Terminal callback
+## Lifecycle callbacks
 
-The fragment config accepts `onWorkflowTerminal`, which runs through a durable hook after an
-instance commits a `complete`, `errored`, or `terminated` status. The dispatcher must process that
-hook before the callback runs. Make callback side effects idempotent because hook delivery can be
-retried.
+The fragment config accepts `onWorkflowRestarted` and `onWorkflowTerminal`. Both run through durable
+hooks after their state transition commits. The dispatcher must process each hook before its
+callback runs. Make callback side effects idempotent because hook delivery can be retried.
 
-See [Terminal workflow callback](/docs/workflows/fragment#terminal-workflow-callback) for the
-configuration and payload shape.
+See [Workflow lifecycle callbacks](/docs/workflows/fragment#workflow-lifecycle-callbacks) for the
+configuration and payload shapes.
 
 ## Cloudflare Durable Object dispatcher
 

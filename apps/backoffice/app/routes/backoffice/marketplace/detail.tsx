@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import {
   Form,
   Link,
@@ -15,10 +16,12 @@ import {
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
 import { BackofficeStatusLight } from "@/components/backoffice";
+import { ClientOnly } from "@/components/client-only";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import type { MarketplaceIngestionRequestResult } from "@/fragno/automation";
+import { buildMarketplaceIngestionWorkflowInstanceId } from "@/fragno/automation/marketplace-ingest-identity";
+import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
 import { marketplaceListingId, marketplaceListingSlug } from "@/fragno/marketplace/owner";
 import {
   decodeMarketplacePublishedVersionCursor,
@@ -30,6 +33,7 @@ import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/detail";
 import type { MarketplaceArtifactExplorerData } from "./artifact-files-model";
 import { loadPublishedMarketplaceArtifactExplorer } from "./artifact-files.server";
+import { MarketplaceInstallationWorkflow } from "./installation-workflow.client";
 import type { MarketplaceLayoutContext } from "./layout-context";
 import {
   buildArtifactVersionPath,
@@ -52,7 +56,10 @@ type IngestionActionData =
   | { ok: false; message: string }
   | {
       ok: true;
-      result: Exclude<MarketplaceIngestionRequestResult, { state: "failed" }>;
+      action: "created" | "restarted" | "unchanged";
+      version: string;
+      workflowInstanceId: string;
+      workflowStatus: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
     };
 
 export type MarketplaceArtifactOutletContext = {
@@ -185,7 +192,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
         )?.organization
       : null;
   const selectedTargetScopeKey = backofficeScopeSinglePathSegment(selectedScope);
-  const [artifactFiles, ingestions] = await Promise.all([
+  const [artifactFiles, ingestions, installationCollectionSource] = await Promise.all([
     loadPublishedMarketplaceArtifactExplorer({
       manifest: artifactManifest,
       objects: runtime.objects,
@@ -204,12 +211,32 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
             ),
           )
       : Promise.resolve([]),
+    installationOrganization
+      ? fetchAutomationCollectionSource(request, context, {
+          kind: "org",
+          orgId: installationOrganization.id,
+        })
+      : Promise.resolve(null),
   ]);
+  const selectedInstallationVersion =
+    artifactFiles.state === "ready" &&
+    detail.versions.some(({ version }) => version === artifactFiles.selectedVersion)
+      ? artifactFiles.selectedVersion
+      : detail.listing.latestVersion;
+  const installationWorkflowInstanceId = installationOrganization
+    ? await buildMarketplaceIngestionWorkflowInstanceId({
+        targetScope: selectedScope,
+        listingId: detail.listing.listingId,
+        version: selectedInstallationVersion,
+      })
+    : null;
 
   return {
     ...detail,
     manageOrganizationId: manageableOrganization?.organization.id ?? null,
     installationOrganizationId: installationOrganization?.id ?? null,
+    installationCollectionSource,
+    installationWorkflowInstanceId,
     artifactFiles,
     ingestions: ingestions.map((ingestion) => ({
       ...ingestion,
@@ -250,18 +277,26 @@ export async function action({ request, params, context, url }: Route.ActionArgs
       kind: "org",
       orgId: installationTarget.organizationId,
     });
-    const result = await automations.requestMarketplaceIngestion(
+    const version = String(formData.get("version") ?? "").trim();
+    if (!version) {
+      return { ok: false, message: "A Marketplace version is required." };
+    }
+
+    const result = await automations.restartMarketplaceIngestion(
       {
         listingId: listingIdResult.data,
         targetScope: installationTarget.targetScope,
-        version: String(formData.get("version") ?? "").trim() || undefined,
+        version,
       },
       { execution, propagationContext: null },
     );
-    if (result.state === "failed") {
-      return { ok: false, message: result.error.message } satisfies IngestionActionData;
-    }
-    return { ok: true, result } satisfies IngestionActionData;
+    return {
+      ok: true,
+      action: result.action,
+      version: result.version,
+      workflowInstanceId: result.workflowInstanceId,
+      workflowStatus: result.workflowStatus,
+    } satisfies IngestionActionData;
   } catch (error) {
     return {
       ok: false,
@@ -283,6 +318,8 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
     nextVersionCursor,
     hasNextVersionPage,
     installationOrganizationId,
+    installationCollectionSource,
+    installationWorkflowInstanceId,
     artifactFiles,
     ingestions,
   } = loaderData;
@@ -304,8 +341,10 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
   const installationActionLabel = hasOutdatedIngestion
     ? "Update selected scope"
     : ingestions.length
-      ? "Reinstall selected release"
+      ? "Re-run installation"
       : "Add to selected scope";
+  const observedInstallationWorkflowInstanceId =
+    actionData?.ok === true ? actionData.workflowInstanceId : installationWorkflowInstanceId;
 
   return (
     <div className="grid w-full gap-5 2xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.85fr)_minmax(20rem,0.65fr)]">
@@ -471,9 +510,34 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
                   className={`mt-4 px-3 py-2.5 text-xs leading-5 ${actionData.ok ? "bg-[var(--bo-live-bg)] text-[var(--bo-live)]" : "bg-[var(--bo-failed-bg)] text-[var(--bo-failed)]"}`}
                 >
                   {actionData.ok
-                    ? `Ingestion ${actionData.result.state} for ${marketplaceListingSlug(actionData.result.listingId)}@${actionData.result.version}. Workflow status: ${"workflowStatus" in actionData.result ? actionData.result.workflowStatus : "complete"}.`
+                    ? actionData.action === "restarted"
+                      ? `Installation workflow restarted for ${marketplaceListingSlug(listing.listingId)}@${actionData.version}.`
+                      : actionData.action === "created"
+                        ? `Installation workflow started for ${marketplaceListingSlug(listing.listingId)}@${actionData.version}.`
+                        : `Installation workflow is already ${actionData.workflowStatus}.`
                     : actionData.message}
                 </div>
+              ) : null}
+
+              {installationOrganizationId && observedInstallationWorkflowInstanceId ? (
+                <ClientOnly>
+                  <Suspense
+                    fallback={
+                      <p className="mt-4 text-xs text-[var(--bo-muted)]">Loading installer…</p>
+                    }
+                  >
+                    <MarketplaceInstallationWorkflow
+                      collectionSource={installationCollectionSource}
+                      coordinatorScope={{
+                        kind: "org",
+                        orgId: installationOrganizationId,
+                      }}
+                      ingestionWorkflowInstanceId={observedInstallationWorkflowInstanceId}
+                      requested={actionData?.ok === true}
+                      targetScope={selectedScope}
+                    />
+                  </Suspense>
+                </ClientOnly>
               ) : null}
             </div>
           </section>
