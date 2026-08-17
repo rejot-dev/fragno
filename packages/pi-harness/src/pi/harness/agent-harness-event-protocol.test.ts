@@ -43,6 +43,22 @@ import {
   type PiHarnessAssistantStreamEvent,
 } from "./assistant-stream-script";
 
+const withTimeout = async <T>(promise: Promise<T>, message: string): Promise<T> => {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), 2_000);
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+};
+
 const usage = {
   input: 10,
   output: 5,
@@ -985,8 +1001,7 @@ describe("withWorkflowAgentHarness event encoding", () => {
     const emissions: unknown[] = [];
 
     await withWorkflowAgentHarness({
-      session: restored.session,
-      storage: restored.storage,
+      restored: restored,
       harness,
       tx: { emit: (payload) => emissions.push(payload), onEvent: () => () => undefined },
       runDurableStep: () => harness.prompt("hi"),
@@ -1004,6 +1019,156 @@ describe("withWorkflowAgentHarness event encoding", () => {
         }),
       ]),
     );
+  });
+
+  it("emits a completed session entry before its matching message_end event", async () => {
+    const { restored, harness } = createHarness();
+    const emissions: unknown[] = [];
+
+    await withWorkflowAgentHarness({
+      restored: restored,
+      harness,
+      tx: { emit: (payload) => emissions.push(payload), onEvent: () => () => undefined },
+      runDurableStep: () => harness.prompt("hi"),
+    });
+
+    const decoder = new PiHarnessEventDecoder();
+    const timeline = emissions.flatMap((emission): string[] => {
+      if (typeof emission !== "object" || emission === null || !("kind" in emission)) {
+        return [];
+      }
+      if (
+        emission.kind === "harness-session-entry" &&
+        "entry" in emission &&
+        typeof emission.entry === "object" &&
+        emission.entry !== null &&
+        "type" in emission.entry &&
+        emission.entry.type === "message" &&
+        "message" in emission.entry &&
+        typeof emission.entry.message === "object" &&
+        emission.entry.message !== null &&
+        "role" in emission.entry.message
+      ) {
+        return [`session-entry:${String(emission.entry.message.role)}`];
+      }
+      if (emission.kind !== "harness-event" || !("event" in emission)) {
+        return [];
+      }
+
+      const event = decoder.decode(emission.event);
+      return event.type === "message_end" ? [`message-end:${event.message.role}`] : [];
+    });
+
+    for (const role of ["user", "assistant"] as const) {
+      const sessionEntryIndex = timeline.indexOf(`session-entry:${role}`);
+      const messageEndIndex = timeline.indexOf(`message-end:${role}`);
+      expect(sessionEntryIndex).toBeGreaterThanOrEqual(0);
+      expect(messageEndIndex).toBeGreaterThan(sessionEntryIndex);
+    }
+  });
+
+  it("emits final tool results in tool-call order when tools finish out of order", async () => {
+    const faux = fauxProvider({ api: "faux", tokensPerSecond: 0 });
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("readFirst", {}, { id: "first-call" }),
+          fauxToolCall("readSecond", {}, { id: "second-call" }),
+        ],
+        { stopReason: "toolUse", timestamp: 1 },
+      ),
+      fauxAssistantMessage(fauxText("done"), { timestamp: 2 }),
+    ]);
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const restored = restoreWorkflowBackedSession({
+      operationId: "out-of-order-tools:prompt",
+      state: createPiHarnessSessionState({
+        metadata: { id: "out-of-order-tools", createdAt: "2026-08-17T00:00:00.000Z" },
+      }),
+      previousEmissions: [],
+      models,
+    });
+    let releaseFirst!: () => void;
+    const firstCanFinish = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let markFirstStarted!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      markFirstStarted = resolve;
+    });
+    const completionOrder: string[] = [];
+    const tools: AgentTool[] = [
+      {
+        name: "readFirst",
+        label: "Read first",
+        description: "Completes after the second tool.",
+        parameters: Type.Object({}),
+        executionMode: "parallel",
+        execute: async () => {
+          markFirstStarted();
+          await withTimeout(
+            firstCanFinish,
+            "Expected readSecond to execute concurrently with readFirst.",
+          );
+          completionOrder.push("first-call");
+          return { content: [{ type: "text", text: "first" }], details: {} };
+        },
+      },
+      {
+        name: "readSecond",
+        label: "Read second",
+        description: "Completes before the first tool.",
+        parameters: Type.Object({}),
+        executionMode: "parallel",
+        execute: async () => {
+          await withTimeout(firstStarted, "Expected readFirst to start before readSecond.");
+          completionOrder.push("second-call");
+          releaseFirst();
+          return { content: [{ type: "text", text: "second" }], details: {} };
+        },
+      },
+    ];
+    const harness = new AgentHarness({
+      models,
+      model: faux.getModel(),
+      tools,
+      ...restored.options,
+    });
+    const emissions: unknown[] = [];
+
+    await withWorkflowAgentHarness({
+      restored: restored,
+      harness,
+      tx: { emit: (payload) => emissions.push(payload), onEvent: () => () => undefined },
+      runDurableStep: () => harness.prompt("read both"),
+    });
+
+    const emittedToolResultIds = emissions.flatMap((emission): string[] => {
+      if (
+        typeof emission !== "object" ||
+        emission === null ||
+        !("kind" in emission) ||
+        emission.kind !== "harness-session-entry" ||
+        !("entry" in emission) ||
+        typeof emission.entry !== "object" ||
+        emission.entry === null ||
+        !("type" in emission.entry) ||
+        emission.entry.type !== "message" ||
+        !("message" in emission.entry) ||
+        typeof emission.entry.message !== "object" ||
+        emission.entry.message === null ||
+        !("role" in emission.entry.message) ||
+        emission.entry.message.role !== "toolResult" ||
+        !("toolCallId" in emission.entry.message)
+      ) {
+        return [];
+      }
+      return [String(emission.entry.message.toolCallId)];
+    });
+
+    expect(completionOrder).toEqual(["second-call", "first-call"]);
+    expect(emittedToolResultIds).toEqual(["first-call", "second-call"]);
   });
 
   it("preserves progress when a real tool mutates and reuses its update object", async () => {
@@ -1052,8 +1217,7 @@ describe("withWorkflowAgentHarness event encoding", () => {
     const emissions: unknown[] = [];
 
     await withWorkflowAgentHarness({
-      session: restored.session,
-      storage: restored.storage,
+      restored: restored,
       harness,
       tx: { emit: (payload) => emissions.push(payload), onEvent: () => () => undefined },
       runDurableStep: () => harness.prompt("report progress"),
@@ -1084,8 +1248,7 @@ describe("withWorkflowAgentHarness event encoding", () => {
 
     try {
       await withWorkflowAgentHarness({
-        session: restored.session,
-        storage: restored.storage,
+        restored: restored,
         harness,
         tx: { emit: (payload) => emissions.push(payload), onEvent: () => () => undefined },
         runDurableStep: () => harness.prompt("hi"),

@@ -106,19 +106,8 @@ const cloneAssistantMessage = (message: AssistantMessage): AssistantMessage => (
   usage: { ...message.usage, cost: { ...message.usage.cost } },
 });
 
-const parseStreamingJson = (json: string): Record<string, unknown> => {
-  try {
-    return JSON.parse(json) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-};
-
 const createToolCallStreamFn =
-  (
-    toolCall: ToolCall,
-    options: { deltas?: string[]; waitBeforeEnd?: Promise<unknown> } = {},
-  ): StreamFn =>
+  (toolCall: ToolCall): StreamFn =>
   () => {
     const stream = createAssistantMessageEventStream();
     const finalMessage = createAssistantMessage("");
@@ -138,34 +127,19 @@ const createToolCallStreamFn =
     partialMessage.content = [partialToolCall];
     partialMessage.stopReason = "toolUse";
 
-    void (async () => {
-      stream.push({ type: "start", partial: cloneAssistantMessage(startMessage) });
-      stream.push({
-        type: "toolcall_start",
-        contentIndex: 0,
-        partial: cloneAssistantMessage(partialMessage),
-      });
-
-      for (const delta of options.deltas ?? []) {
-        partialToolCall.partialJson = `${partialToolCall.partialJson}${delta}`;
-        partialToolCall.arguments = parseStreamingJson(partialToolCall.partialJson);
-        stream.push({
-          type: "toolcall_delta",
-          contentIndex: 0,
-          delta,
-          partial: cloneAssistantMessage(partialMessage),
-        });
-      }
-
-      await options.waitBeforeEnd;
-      stream.push({
-        type: "toolcall_end",
-        contentIndex: 0,
-        toolCall,
-        partial: cloneAssistantMessage(finalMessage),
-      });
-      stream.push({ type: "done", reason: "toolUse", message: finalMessage });
-    })();
+    stream.push({ type: "start", partial: cloneAssistantMessage(startMessage) });
+    stream.push({
+      type: "toolcall_start",
+      contentIndex: 0,
+      partial: cloneAssistantMessage(partialMessage),
+    });
+    stream.push({
+      type: "toolcall_end",
+      contentIndex: 0,
+      toolCall,
+      partial: cloneAssistantMessage(finalMessage),
+    });
+    stream.push({ type: "done", reason: "toolUse", message: finalMessage });
 
     return stream;
   };

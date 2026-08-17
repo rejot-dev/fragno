@@ -67,28 +67,22 @@ const workflow = defineWorkflow(
       if (command.kind !== "prompt") continue;
 
       const result = await step.do(`command:${command.commandId}`, async (tx) => {
-        const {
-          session,
-          storage,
-          options: restoredOptions,
-        } = restoreWorkflowBackedSession({
+        const restored = restoreWorkflowBackedSession({
           operationId: `${workflow.name}:${event.instanceId}:command:${command.commandId}`,
           state,
           previousEmissions: await tx.previousEmissions(),
           models,
         });
         const harness = new AgentHarness({
-          session,
           models,
           model,
           tools: [searchTool, writeTool],
           activeToolNames: ["search"],
-          ...restoredOptions,
+          ...restored.options,
         });
 
         return await withWorkflowAgentHarness({
-          session,
-          storage,
+          restored,
           harness,
           tx,
           runDurableStep: () => harness.prompt(command.input.text),

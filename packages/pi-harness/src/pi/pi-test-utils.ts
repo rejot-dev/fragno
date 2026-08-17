@@ -665,11 +665,7 @@ const runFauxPiHarnessPrompt = async (
   });
 
   return await step.do("faux-turn", async (tx) => {
-    const {
-      session,
-      storage,
-      options: restoredOptions,
-    } = restoreWorkflowBackedSession({
+    const restored = restoreWorkflowBackedSession({
       operationId,
       state,
       previousEmissions: await tx.previousEmissions(),
@@ -680,7 +676,7 @@ const runFauxPiHarnessPrompt = async (
       model,
       models,
       tools: [...(options.tools ?? [])],
-      ...restoredOptions,
+      ...restored.options,
     });
     const stopOnTools = new Set(options.operation.stopOnTools ?? []);
     if (stopOnTools.size > 0) {
@@ -690,8 +686,7 @@ const runFauxPiHarnessPrompt = async (
     }
 
     return await withWorkflowAgentHarness({
-      session,
-      storage,
+      restored,
       harness,
       tx,
       runDurableStep: () => harness.prompt(...options.operation.args),

@@ -12,8 +12,8 @@ import type {
   PiSessionCommandStartEmission,
 } from "./session-command-protocol";
 import {
+  asPersistedPiHarnessStepResult,
   latestCompletedPiHarnessEntries,
-  mergePiSessionEntries,
   projectPiSessionEntries,
 } from "./session-entry-projection";
 import type { PiCompactCommandOutcome, PiWorkflowStatus } from "./types";
@@ -118,15 +118,70 @@ export type PiWorkflowSessionProjectionInstance = {
   status: PiWorkflowStatus;
 };
 
-export type PiWorkflowSessionProjectionBaseline = {
-  sessionEntries: readonly SessionTreeEntry[];
-  completedStepKeys: readonly string[];
-  compactOutcomesByCommandId: Readonly<Record<string, PiCompactCommandOutcome>>;
-  latestCommandCompactOutcome: PiCompactCommandOutcome | null;
+const zeroUsage = (): PiHarnessFrontendAssistantMessage["usage"] => ({
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    total: 0,
+  },
+});
+
+const interruptionTimestamp = (entry: SessionTreeEntry | undefined): number => {
+  if (!entry) {
+    return 0;
+  }
+  if (entry.type === "message") {
+    return entry.message.timestamp;
+  }
+
+  const timestamp = new Date(entry.timestamp).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
 };
 
-export type PiWorkflowSessionProjectionOptions = {
-  baseline?: PiWorkflowSessionProjectionBaseline;
+const interruptedTimelineMessages = (
+  steps: readonly PiWorkflowSessionProjectionStep[],
+  sessionEntries: readonly SessionTreeEntry[],
+): ReadonlyMap<string | null, readonly PiHarnessFrontendAgentMessage[]> => {
+  const entriesById = new Map(sessionEntries.map((entry) => [entry.id, entry]));
+  const messagesByLeafId = new Map<string | null, PiHarnessFrontendAgentMessage[]>();
+
+  for (const step of steps) {
+    if (step.status !== "completed") {
+      continue;
+    }
+    const result = asPersistedPiHarnessStepResult(step.result);
+    if (result?.outcome !== "aborted") {
+      continue;
+    }
+
+    const leafEntry = result.leafId === null ? undefined : entriesById.get(result.leafId);
+    if (
+      leafEntry?.type === "message" &&
+      leafEntry.message.role === "assistant" &&
+      leafEntry.message.stopReason === "aborted"
+    ) {
+      continue;
+    }
+
+    const messages = messagesByLeafId.get(result.leafId) ?? [];
+    messages.push({
+      role: "assistant",
+      content: [],
+      usage: zeroUsage(),
+      stopReason: "aborted",
+      timestamp: interruptionTimestamp(leafEntry),
+    });
+    messagesByLeafId.set(result.leafId, messages);
+  }
+
+  return messagesByLeafId;
 };
 
 const emptyProjectionData = (): PiWorkflowSessionProjectionData => ({
@@ -139,41 +194,13 @@ const emptyProjectionData = (): PiWorkflowSessionProjectionData => ({
   latestCommandCompactOutcome: null,
 });
 
-export const createLoadingPiWorkflowSessionProjection = ({
-  workflowName,
-  sessionId,
-  baseline,
-}: {
-  workflowName: string;
-  sessionId: string;
-  baseline?: PiWorkflowSessionProjectionBaseline;
-}): PiWorkflowSessionProjectionState => {
-  if (!baseline) {
-    return {
-      ...emptyProjectionData(),
-      status: "loading",
-      error: null,
-      readyForInput: false,
-      activity: null,
-    };
-  }
-
-  const projectedEntries = projectPiSessionEntries(baseline.sessionEntries, {
-    workflowName,
-    sessionId,
-  });
-  return {
-    ...emptyProjectionData(),
-    ...projectedEntries,
-    completedStepKeys: [...baseline.completedStepKeys],
-    compactOutcomesByCommandId: { ...baseline.compactOutcomesByCommandId },
-    latestCommandCompactOutcome: baseline.latestCommandCompactOutcome,
-    status: "loading",
-    error: null,
-    readyForInput: false,
-    activity: null,
-  };
-};
+export const createLoadingPiWorkflowSessionProjection = (): PiWorkflowSessionProjectionState => ({
+  ...emptyProjectionData(),
+  status: "loading",
+  error: null,
+  readyForInput: false,
+  activity: null,
+});
 
 export const projectPiWorkflowSession = ({
   workflowName,
@@ -181,31 +208,20 @@ export const projectPiWorkflowSession = ({
   instance,
   workflowSteps,
   workflowStepEmissions = [],
-  baseline,
 }: {
   workflowName: string;
   sessionId: string;
   instance: PiWorkflowSessionProjectionInstance | null;
   workflowSteps: readonly PiWorkflowSessionProjectionStep[];
   workflowStepEmissions?: readonly PiWorkflowSessionProjectionEmission[];
-} & PiWorkflowSessionProjectionOptions): PiWorkflowSessionProjectionState => {
+}): PiWorkflowSessionProjectionState => {
   const identity = { workflowName, sessionId };
-  const baselineCompletedStepKeys = new Set(baseline?.completedStepKeys ?? []);
-  const localCompletedSteps = workflowSteps.filter((step) => step.status === "completed");
-  const completedStepKeys = new Set([
-    ...baselineCompletedStepKeys,
-    ...localCompletedSteps.map((step) => step.stepKey),
-  ]);
-
-  const localEntries = latestCompletedPiHarnessEntries(
-    baseline
-      ? localCompletedSteps.filter((step) => !baselineCompletedStepKeys.has(step.stepKey))
-      : localCompletedSteps,
-  );
-  const sessionEntries = baseline
-    ? mergePiSessionEntries(baseline.sessionEntries, localEntries)
-    : localEntries;
-  const projectedEntries = projectPiSessionEntries(sessionEntries, identity);
+  const completedSteps = workflowSteps.filter((step) => step.status === "completed");
+  const completedStepKeys = new Set(completedSteps.map((step) => step.stepKey));
+  const sessionEntries = latestCompletedPiHarnessEntries(completedSteps);
+  const projectedEntries = projectPiSessionEntries(sessionEntries, identity, {
+    timelineMessagesAfterEntryId: interruptedTimelineMessages(completedSteps, sessionEntries),
+  });
 
   if (instance === null) {
     return {

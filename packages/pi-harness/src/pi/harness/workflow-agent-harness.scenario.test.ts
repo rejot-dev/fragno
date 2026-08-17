@@ -207,13 +207,14 @@ const toPreviousEmissions = (payloads: readonly unknown[]): WorkflowStepEmission
     createdAt: new Date("2026-07-01T12:00:00.000Z"),
   }));
 
-const createEmissionRecorder = () => {
+const createEmissionRecorder = (previousEmissions: readonly WorkflowStepEmission[] = []) => {
   const emitted: unknown[] = [];
   return {
     emitted,
     tx: {
       emit: (payload: unknown) => emitted.push(payload),
       onEvent: () => () => {},
+      previousEmissions: async () => [...previousEmissions],
     },
   };
 };
@@ -300,8 +301,7 @@ describe("workflow-backed AgentHarness state", () => {
     });
     const firstTerminalOutcome = vi.fn();
     const firstResult = await withWorkflowAgentHarness({
-      session: firstSession.session,
-      storage: firstSession.storage,
+      restored: firstSession,
       harness: firstHarness,
       tx: firstEmissions.tx,
       runDurableStep: async () => messageText(await firstHarness.prompt("hello")),
@@ -323,8 +323,7 @@ describe("workflow-backed AgentHarness state", () => {
     const runDurableStep = vi.fn(async () => messageText(await replayHarness.prompt("hello")));
     const replayTerminalOutcome = vi.fn();
     const replayResult = await withWorkflowAgentHarness({
-      session: replaySession.session,
-      storage: replaySession.storage,
+      restored: replaySession,
       harness: replayHarness,
       tx: createEmissionRecorder().tx,
       runDurableStep,
@@ -346,16 +345,13 @@ describe("workflow-backed AgentHarness state", () => {
         createdAt: "2026-07-01T12:00:00.000Z",
       },
     });
-    const {
-      session,
-      storage,
-      options: restoredOptions,
-    } = restoreWorkflowBackedSession({
+    const restored = restoreWorkflowBackedSession({
       operationId,
       state,
       previousEmissions: [],
       models: createModelsForStreamFn([mockModel, alternateModel], createTextStreamFn("unused")),
     });
+    const { options: restoredOptions } = restored;
     const harness = new AgentHarness({
       models: createModelsForStreamFn(mockModel, createErrorStreamFn("provider down")),
       model: mockModel,
@@ -366,8 +362,7 @@ describe("workflow-backed AgentHarness state", () => {
 
     await expect(
       withWorkflowAgentHarness({
-        session,
-        storage,
+        restored,
         harness,
         tx: emissions.tx,
         runDurableStep: async () => messageText(await harness.prompt("hello")),
@@ -399,16 +394,13 @@ describe("workflow-backed AgentHarness state", () => {
         createdAt: "2026-07-01T12:00:00.000Z",
       },
     });
-    const {
-      session,
-      storage,
-      options: restoredOptions,
-    } = restoreWorkflowBackedSession({
+    const restored = restoreWorkflowBackedSession({
       operationId,
       state,
       previousEmissions: [],
       models: createModelsForStreamFn([mockModel, alternateModel], createTextStreamFn("unused")),
     });
+    const { options: restoredOptions } = restored;
     const harness = new AgentHarness({
       models: createModelsForStreamFn(mockModel, createErrorStreamFn("provider down")),
       model: mockModel,
@@ -418,8 +410,7 @@ describe("workflow-backed AgentHarness state", () => {
     const terminalOutcome = vi.fn();
 
     const result = await withWorkflowAgentHarness({
-      session,
-      storage,
+      restored,
       harness,
       tx: emissions.tx,
       runDurableStep: () => harness.prompt("hello"),
@@ -427,6 +418,7 @@ describe("workflow-backed AgentHarness state", () => {
       onTerminalOutcome: terminalOutcome,
     });
 
+    assert(result.outcome === "completed");
     expect(result.value).toMatchObject({
       role: "assistant",
       stopReason: "error",
@@ -448,7 +440,7 @@ describe("workflow-backed AgentHarness state", () => {
     );
   });
 
-  test("retries a terminal assistant when its callback result was not checkpointed", async () => {
+  test("aborts a terminal assistant when its callback result was not checkpointed", async () => {
     const operationId = "terminal-recovery:prompt";
     const state = createPiHarnessSessionState({
       metadata: {
@@ -469,8 +461,7 @@ describe("workflow-backed AgentHarness state", () => {
       ...firstSession.options,
     });
     await withWorkflowAgentHarness({
-      session: firstSession.session,
-      storage: firstSession.storage,
+      restored: firstSession,
       harness: firstHarness,
       tx: firstEmissions.tx,
       runDurableStep: () => firstHarness.prompt("hello"),
@@ -498,22 +489,22 @@ describe("workflow-backed AgentHarness state", () => {
     const recoveryEmissions = createEmissionRecorder();
     const runDurableStep = vi.fn(() => recoveryHarness.prompt("hello"));
     const result = await withWorkflowAgentHarness({
-      session: recoverySession.session,
-      storage: recoverySession.storage,
+      restored: recoverySession,
       harness: recoveryHarness,
       tx: recoveryEmissions.tx,
       runDurableStep,
     });
 
-    assert(messageText(result.value) === "retried completion");
-    expect(runDurableStep).toHaveBeenCalledTimes(1);
-    expect(recoveryStream).toHaveBeenCalledTimes(1);
+    assert(result.outcome === "aborted");
+    expect(result).not.toHaveProperty("value");
+    expect(runDurableStep).not.toHaveBeenCalled();
+    expect(recoveryStream).not.toHaveBeenCalled();
     expect(recoveryEmissions.emitted).toContainEqual(
       expect.objectContaining({ kind: "harness-operation-complete", operationId }),
     );
   });
 
-  test("continues deterministic entry allocation when retrying an interrupted prompt", async () => {
+  test("checkpoints an interrupted prompt without allocating a synthetic message", async () => {
     const operationId = "interrupted-retry:prompt";
     const state = createPiHarnessSessionState({
       metadata: {
@@ -534,8 +525,7 @@ describe("workflow-backed AgentHarness state", () => {
       ...firstSession.options,
     });
     await withWorkflowAgentHarness({
-      session: firstSession.session,
-      storage: firstSession.storage,
+      restored: firstSession,
       harness: firstHarness,
       tx: firstEmissions.tx,
       runDurableStep: () => firstHarness.prompt("hello"),
@@ -556,22 +546,211 @@ describe("workflow-backed AgentHarness state", () => {
     });
     const retryEmissions = createEmissionRecorder();
     const result = await withWorkflowAgentHarness({
-      session: retrySession.session,
-      storage: retrySession.storage,
+      restored: retrySession,
       harness: retryHarness,
       tx: retryEmissions.tx,
       runDurableStep: () => retryHarness.prompt("hello"),
     });
     const entryIds = result.appendedEntries.map((entry) => entry.id);
 
-    expect(entryIds).toEqual([
-      `${operationId}:entry-0`,
-      `${operationId}:entry-1`,
-      `${operationId}:entry-2`,
-      `${operationId}:entry-3`,
+    expect(entryIds).toEqual([`${operationId}:entry-0`]);
+    assert(new Set(entryIds).size === entryIds.length);
+    assert(result.outcome === "aborted");
+    expect(result).not.toHaveProperty("value");
+    assert(!result.appendedEntries.some((entry) => entry.type === "custom"));
+  });
+
+  test("keeps the durable transcript when recovery is interrupted again", async () => {
+    const operationId = "double-interrupted-recovery:prompt";
+    const timestamp = "2026-07-01T12:00:00.000Z";
+    const userEntry: SessionTreeEntry = {
+      type: "message",
+      id: `${operationId}:entry-0`,
+      parentId: null,
+      timestamp,
+      message: { role: "user", content: "hello", timestamp: new Date(timestamp).getTime() },
+    };
+    const state = createPiHarnessSessionState({
+      metadata: { id: "double-interrupted-recovery", createdAt: timestamp },
+    });
+    const models = createModelsForStreamFn(
+      [mockModel, alternateModel],
+      createTextStreamFn("must not run"),
+    );
+    const firstInterruptedEmissions = toPreviousEmissions([
+      {
+        kind: "harness-operation-start",
+        operationId,
+        replay: { protocol: "pi-harness-operation", version: 1 },
+      },
+      { kind: "harness-session-entry", entry: userEntry },
     ]);
-    expect(new Set(entryIds).size).toBe(entryIds.length);
-    assert(messageText(result.value) === "retried response");
+    const firstRecovery = restoreWorkflowBackedSession({
+      operationId,
+      state,
+      previousEmissions: firstInterruptedEmissions,
+      models,
+    });
+    const firstRecoveryHarness = new AgentHarness({
+      models,
+      model: mockModel,
+      ...firstRecovery.options,
+    });
+    const firstRecoveryEmissions = createEmissionRecorder();
+
+    const recoveryPromise = withWorkflowAgentHarness({
+      restored: firstRecovery,
+      harness: firstRecoveryHarness,
+      tx: firstRecoveryEmissions.tx,
+      runDurableStep: async () => "must not run",
+    });
+    const interruptedRecoveryEmissions = [...firstRecoveryEmissions.emitted];
+    await recoveryPromise;
+    const secondRecovery = restoreWorkflowBackedSession({
+      operationId,
+      state,
+      previousEmissions: toPreviousEmissions(interruptedRecoveryEmissions),
+      models,
+    });
+
+    await expect(secondRecovery.storage.getEntries()).resolves.toEqual([userEntry]);
+  });
+
+  test("preserves completed tool results and aborts only missing results", async () => {
+    const operationId = "interrupted-multi-tool:prompt";
+    const timestamp = Date.now();
+    const firstAssistant = createAssistantMessage("");
+    firstAssistant.stopReason = "toolUse";
+    firstAssistant.content = [
+      {
+        type: "toolCall",
+        id: "call-first",
+        name: "read-first",
+        arguments: { path: "first" },
+      },
+    ];
+    const firstToolResult: AgentMessage = {
+      role: "toolResult",
+      toolCallId: "call-first",
+      toolName: "read-first",
+      content: [{ type: "text", text: "contents:first" }],
+      isError: false,
+      timestamp,
+    };
+    const secondAssistant = createAssistantMessage("");
+    secondAssistant.stopReason = "toolUse";
+    secondAssistant.content = [
+      { type: "toolCall", id: "call-a", name: "read-a", arguments: { path: "a" } },
+      { type: "toolCall", id: "call-b", name: "read-b", arguments: { path: "b" } },
+    ];
+    const completedToolResult: AgentMessage = {
+      role: "toolResult",
+      toolCallId: "call-a",
+      toolName: "read-a",
+      content: [{ type: "text", text: "contents:a" }],
+      isError: false,
+      timestamp,
+    };
+    const entries: SessionTreeEntry[] = [
+      {
+        type: "message",
+        id: `${operationId}:entry-0`,
+        parentId: null,
+        timestamp: new Date(timestamp).toISOString(),
+        message: { role: "user", content: "inspect both files", timestamp },
+      },
+      {
+        type: "message",
+        id: `${operationId}:entry-1`,
+        parentId: `${operationId}:entry-0`,
+        timestamp: new Date(timestamp).toISOString(),
+        message: firstAssistant,
+      },
+      {
+        type: "message",
+        id: `${operationId}:entry-2`,
+        parentId: `${operationId}:entry-1`,
+        timestamp: new Date(timestamp).toISOString(),
+        message: firstToolResult,
+      },
+      {
+        type: "message",
+        id: `${operationId}:entry-3`,
+        parentId: `${operationId}:entry-2`,
+        timestamp: new Date(timestamp).toISOString(),
+        message: secondAssistant,
+      },
+      {
+        type: "message",
+        id: `${operationId}:entry-4`,
+        parentId: `${operationId}:entry-3`,
+        timestamp: new Date(timestamp).toISOString(),
+        message: completedToolResult,
+      },
+    ];
+    const models = createModelsForStreamFn(
+      [mockModel, alternateModel],
+      createTextStreamFn("must not run"),
+    );
+    const previousEmissions = toPreviousEmissions([
+      {
+        kind: "harness-operation-start",
+        operationId,
+        replay: { protocol: "pi-harness-operation", version: 1 },
+      },
+      ...entries.map((entry) => ({ kind: "harness-session-entry", entry })),
+    ]);
+    const restored = restoreWorkflowBackedSession({
+      operationId,
+      state: createPiHarnessSessionState({
+        metadata: { id: "interrupted-multi-tool", createdAt: new Date(timestamp).toISOString() },
+      }),
+      previousEmissions,
+      models,
+    });
+    const harness = new AgentHarness({ models, model: mockModel, ...restored.options });
+    const runDurableStep = vi.fn(async () => "must not run");
+    const recoveryEmissions = createEmissionRecorder();
+
+    const result = await withWorkflowAgentHarness({
+      restored: restored,
+      harness,
+      tx: recoveryEmissions.tx,
+      runDurableStep,
+    });
+
+    expect(runDurableStep).not.toHaveBeenCalled();
+    assert(result.outcome === "aborted");
+
+    const contextMessages = (await restored.session.buildContext()).messages;
+    expect(contextMessages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "toolResult",
+      "assistant",
+      "toolResult",
+      "toolResult",
+    ]);
+    expect(contextMessages[2]).toEqual(firstToolResult);
+    expect(contextMessages[4]).toEqual(completedToolResult);
+    expect(contextMessages[5]).toMatchObject({
+      role: "toolResult",
+      toolCallId: "call-b",
+      toolName: "read-b",
+      isError: true,
+      content: [{ type: "text", text: "Tool execution interrupted before completion." }],
+    });
+    assert(!result.appendedEntries.some((entry) => entry.type === "custom"));
+    assert(!result.appendedEntries.some((entry) => entry.type === "leaf"));
+    assert(
+      !recoveryEmissions.emitted.some(
+        (emission) =>
+          typeof emission === "object" &&
+          emission !== null &&
+          "kind" in emission &&
+          emission.kind === "harness-event",
+      ),
+    );
   });
 
   test("returns synchronous AgentHarness option overrides from session entries", () => {
@@ -605,29 +784,21 @@ describe("workflow-backed AgentHarness state", () => {
         metadata: { id: "restored-selections", createdAt: timestamp },
       }),
       entries,
-      persistedEntryIds: entries.map((entry) => entry.id),
+      checkpointedEntryCount: entries.length,
     };
     const models = createModelsForStreamFn(
       [mockModel, alternateModel],
       createTextStreamFn("unused"),
     );
-    const {
-      session,
-      storage,
-      options: restoredOptions,
-    } = restoreWorkflowBackedSession({
+    const restored = restoreWorkflowBackedSession({
       operationId: "restored-selections:prompt",
       state,
       previousEmissions: [],
       models,
     });
+    const { session, options: restoredOptions } = restored;
 
-    expect(session.getStorage()).toBe(storage);
-    expect(storage.workflowMetadata).toEqual({
-      operationId: "restored-selections:prompt",
-      persistedEntryIds: new Set(entries.map((entry) => entry.id)),
-      recovery: { kind: "execute" },
-    });
+    expect(session.getStorage()).toBe(restored.storage);
 
     const tools: AgentTool[] = ["search", "write"].map((name) => ({
       name,
@@ -649,22 +820,174 @@ describe("workflow-backed AgentHarness state", () => {
     expect(harness.getActiveTools().map((tool) => tool.name)).toEqual(["search"]);
   });
 
-  test("rejects persisted entry ids that are absent from session state", () => {
+  test("rejects a checkpoint boundary outside the session entry log", () => {
     const state = createPiHarnessSessionState({
       metadata: {
-        id: "invalid-persisted-entry-session",
+        id: "invalid-checkpoint-boundary-session",
         createdAt: "2026-07-01T12:00:00.000Z",
       },
     });
 
     expect(() =>
       restoreWorkflowBackedSession({
-        operationId: "invalid-persisted-entry-session:prompt",
-        state: { ...state, persistedEntryIds: ["missing-entry"] },
+        operationId: "invalid-checkpoint-boundary-session:prompt",
+        state: { ...state, checkpointedEntryCount: 1 },
         previousEmissions: [],
         models: createModelsForStreamFn([mockModel, alternateModel], createTextStreamFn("unused")),
       }),
-    ).toThrow("WORKFLOW_AGENT_HARNESS_UNKNOWN_PERSISTED_ENTRY:missing-entry");
+    ).toThrow("WORKFLOW_AGENT_HARNESS_INVALID_CHECKPOINT_BOUNDARY:1:0");
+  });
+
+  test("rejects duplicate session entries in one replay attempt", () => {
+    const operationId = "duplicate-replay-entry:prompt";
+    const entry: SessionTreeEntry = {
+      type: "message",
+      id: `${operationId}:entry-0`,
+      parentId: null,
+      timestamp: "2026-07-01T12:00:00.000Z",
+      message: { role: "user", content: "hello", timestamp: 1 },
+    };
+
+    expect(() =>
+      restoreWorkflowBackedSession({
+        operationId,
+        state: createPiHarnessSessionState({
+          metadata: { id: "duplicate-replay-entry", createdAt: entry.timestamp },
+        }),
+        previousEmissions: toPreviousEmissions([
+          {
+            kind: "harness-operation-start",
+            operationId,
+            replay: { protocol: "pi-harness-operation", version: 1 },
+          },
+          { kind: "harness-session-entry", entry },
+          { kind: "harness-session-entry", entry },
+        ]),
+        models: createModelsForStreamFn([mockModel, alternateModel], createTextStreamFn("unused")),
+      }),
+    ).toThrow(`WORKFLOW_AGENT_HARNESS_DUPLICATE_SESSION_ENTRY:${entry.id}`);
+  });
+
+  test("rejects a replay entry whose parent appears later in the append log", () => {
+    const operationId = "forward-parent-replay-entry:prompt";
+    const timestamp = "2026-07-01T12:00:00.000Z";
+    const parentEntry: SessionTreeEntry = {
+      type: "message",
+      id: `${operationId}:entry-0`,
+      parentId: null,
+      timestamp,
+      message: { role: "user", content: "hello", timestamp: new Date(timestamp).getTime() },
+    };
+    const childEntry: SessionTreeEntry = {
+      type: "message",
+      id: `${operationId}:entry-1`,
+      parentId: parentEntry.id,
+      timestamp,
+      message: createAssistantMessage("reply"),
+    };
+
+    expect(() =>
+      restoreWorkflowBackedSession({
+        operationId,
+        state: createPiHarnessSessionState({
+          metadata: { id: "forward-parent-replay-entry", createdAt: timestamp },
+        }),
+        previousEmissions: toPreviousEmissions([
+          {
+            kind: "harness-operation-start",
+            operationId,
+            replay: { protocol: "pi-harness-operation", version: 1 },
+          },
+          { kind: "harness-session-entry", entry: childEntry },
+          { kind: "harness-session-entry", entry: parentEntry },
+        ]),
+        models: createModelsForStreamFn([mockModel, alternateModel], createTextStreamFn("unused")),
+      }),
+    ).toThrow(`WORKFLOW_AGENT_HARNESS_UNKNOWN_PARENT_ENTRY:${parentEntry.id}`);
+  });
+
+  test("rejects replay emissions from more than one attempt identity", () => {
+    const operationId = "mixed-replay-attempt:prompt";
+    const previousEmissions = toPreviousEmissions([
+      {
+        kind: "harness-operation-start",
+        operationId,
+        replay: { protocol: "pi-harness-operation", version: 1 },
+      },
+      {
+        kind: "harness-event",
+        event: {},
+      },
+    ]);
+    previousEmissions[1] = {
+      ...previousEmissions[1]!,
+      executionId: "different-execution",
+      epoch: "different-epoch",
+    };
+
+    expect(() =>
+      restoreWorkflowBackedSession({
+        operationId,
+        state: createPiHarnessSessionState({
+          metadata: {
+            id: "mixed-replay-attempt",
+            createdAt: "2026-07-01T12:00:00.000Z",
+          },
+        }),
+        previousEmissions,
+        models: createModelsForStreamFn([mockModel, alternateModel], createTextStreamFn("unused")),
+      }),
+    ).toThrow("WORKFLOW_AGENT_HARNESS_ATTEMPT_IDENTITY_MISMATCH");
+  });
+
+  test("rejects harness emissions after an operation completion", () => {
+    const operationId = "emission-after-completion:prompt";
+    const result = {
+      type: "harness-run",
+      outcome: "completed",
+      value: "done",
+      appendedEntries: [],
+      leafId: null,
+    } satisfies WorkflowAgentHarnessStepResult<string>;
+
+    expect(() =>
+      restoreWorkflowBackedSession({
+        operationId,
+        state: createPiHarnessSessionState({
+          metadata: {
+            id: "emission-after-completion",
+            createdAt: "2026-07-01T12:00:00.000Z",
+          },
+        }),
+        previousEmissions: toPreviousEmissions([
+          {
+            kind: "harness-operation-start",
+            operationId,
+            replay: { protocol: "pi-harness-operation", version: 1 },
+          },
+          { kind: "harness-operation-complete", operationId, result },
+          { kind: "harness-event", event: {} },
+        ]),
+        models: createModelsForStreamFn([mockModel, alternateModel], createTextStreamFn("unused")),
+      }),
+    ).toThrow("WORKFLOW_AGENT_HARNESS_EMISSION_AFTER_OPERATION_COMPLETE");
+  });
+
+  test("rejects a step result whose checkpoint prefix disagrees with session state", () => {
+    const state = createPiHarnessSessionState({
+      metadata: {
+        id: "invalid-checkpoint-prefix-session",
+        createdAt: "2026-07-01T12:00:00.000Z",
+      },
+      initialMessages: [{ role: "user", content: "initial", timestamp: 1 }],
+    });
+
+    expect(() =>
+      applyWorkflowAgentHarnessStepResult(state, {
+        appendedEntries: [{ ...state.entries[0]!, id: "different-entry" }],
+        leafId: "different-entry",
+      }),
+    ).toThrow("WORKFLOW_AGENT_HARNESS_CHECKPOINT_PREFIX_MISMATCH");
   });
 
   test("rejects a step result whose leaf disagrees with its entry delta", () => {
@@ -815,21 +1138,17 @@ describe("workflow-backed AgentHarness scenario", () => {
           },
         });
         const result = await step.do("ask", async (tx) => {
-          const {
-            session,
-            storage,
-            options: restoredOptions,
-          } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${restoreWorkflow.name}:${event.instanceId}:ask`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models: harnessOptions.models,
           });
+          const { options: restoredOptions } = restored;
           const harness = new AgentHarness({ ...harnessOptions, ...restoredOptions });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: () => harness.prompt("hello"),
@@ -908,7 +1227,7 @@ describe("workflow-backed AgentHarness scenario", () => {
             assert: ({ status, steps }) => {
               expect(status).toMatchObject({
                 status: "complete",
-                output: { roles: ["user", "assistant"], text: "hello stop" },
+                output: { roles: ["user"], text: "hello" },
               });
               expect(steps).toContainEqual(
                 expect.objectContaining({
@@ -980,16 +1299,13 @@ describe("workflow-backed AgentHarness scenario", () => {
         });
         const result = await step.do("prompt", async (tx) => {
           const models = createModelsForStreamFn(mockModel, streamFn);
-          const {
-            session,
-            storage,
-            options: restoredOptions,
-          } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${customControlWorkflowName}:${event.instanceId}:prompt`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models,
           });
+          const { options: restoredOptions } = restored;
           const harness = new AgentHarness({
             systemPrompt: "You are helpful.",
             model: mockModel,
@@ -998,8 +1314,7 @@ describe("workflow-backed AgentHarness scenario", () => {
           });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             observeLiveEvents: (onLiveEvent) => {
@@ -1142,21 +1457,17 @@ describe("workflow-backed AgentHarness scenario", () => {
         });
 
         const firstOperation = await step.do("first-prompt", async (tx) => {
-          const {
-            session,
-            storage,
-            options: restoredOptions,
-          } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${omittedReductionWorkflowName}:${event.instanceId}:first-prompt`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models: harnessOptions.models,
           });
+          const { options: restoredOptions } = restored;
           const harness = new AgentHarness({ ...harnessOptions, ...restoredOptions });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: () => harness.prompt("first prompt"),
@@ -1165,21 +1476,17 @@ describe("workflow-backed AgentHarness scenario", () => {
         // Deliberately omit `state = applyWorkflowAgentHarnessStepResult(state, firstOperation)`.
 
         const secondOperation = await step.do("second-prompt", async (tx) => {
-          const {
-            session,
-            storage,
-            options: restoredOptions,
-          } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${omittedReductionWorkflowName}:${event.instanceId}:second-prompt`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models: harnessOptions.models,
           });
+          const { options: restoredOptions } = restored;
           const harness = new AgentHarness({ ...harnessOptions, ...restoredOptions });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: () => harness.prompt("second prompt"),
@@ -1274,21 +1581,17 @@ describe("workflow-backed AgentHarness scenario", () => {
         });
 
         const beforeRestart = await step.do("ask", async (tx) => {
-          const {
-            session,
-            storage,
-            options: restoredOptions,
-          } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${replayWorkflow.name}:${event.instanceId}:ask`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models: harnessOptions.models,
           });
+          const { options: restoredOptions } = restored;
           const harness = new AgentHarness({ ...harnessOptions, ...restoredOptions });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: () => harness.prompt("hello before restart"),
@@ -1297,21 +1600,17 @@ describe("workflow-backed AgentHarness scenario", () => {
         state = applyWorkflowAgentHarnessStepResult(state, beforeRestart);
         await step.waitForEvent("resume", { type: "resume" });
         const afterRestart = await step.do("after-resume", async (tx) => {
-          const {
-            session,
-            storage,
-            options: restoredOptions,
-          } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${replayWorkflow.name}:${event.instanceId}:after-resume`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models: harnessOptions.models,
           });
+          const { options: restoredOptions } = restored;
           const harness = new AgentHarness({ ...harnessOptions, ...restoredOptions });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: () => harness.prompt("hello after restart"),
@@ -1322,7 +1621,7 @@ describe("workflow-backed AgentHarness scenario", () => {
         return {
           entryCount: state.entries.length,
           leafId: sessionEntriesLeafId(state.entries),
-          persistedEntryCount: state.persistedEntryIds.length,
+          checkpointedEntryCount: state.checkpointedEntryCount,
         };
       },
     );
@@ -1393,7 +1692,7 @@ describe("workflow-backed AgentHarness scenario", () => {
             assert: ({ status, steps }) => {
               assert(status.status === "complete");
               expect(streamFn).toHaveBeenCalledTimes(2);
-              expect(status.output).toMatchObject({ entryCount: 5, persistedEntryCount: 5 });
+              expect(status.output).toMatchObject({ entryCount: 5, checkpointedEntryCount: 5 });
 
               const askStep = steps.find((step) => step.stepKey === "do:ask");
               const afterResumeStep = steps.find((step) => step.stepKey === "do:after-resume");
@@ -1401,12 +1700,17 @@ describe("workflow-backed AgentHarness scenario", () => {
               expect(afterResumeStep).toMatchObject({ status: "completed", attempts: 1 });
               assert(askStep?.result);
               assert(afterResumeStep?.result);
+              const askEntries = (askStep.result as WorkflowAgentHarnessStepResult).appendedEntries;
+              const afterResumeEntries = (afterResumeStep.result as WorkflowAgentHarnessStepResult)
+                .appendedEntries;
+              expect(askEntries).toHaveLength(3);
+              expect(afterResumeEntries).toHaveLength(2);
               expect(
-                (askStep.result as WorkflowAgentHarnessStepResult).appendedEntries,
-              ).toHaveLength(3);
-              expect(
-                (afterResumeStep.result as WorkflowAgentHarnessStepResult).appendedEntries,
-              ).toHaveLength(2);
+                [...askEntries, ...afterResumeEntries].filter((entry) => entry.id === "initial-0"),
+              ).toHaveLength(1);
+              expect(afterResumeEntries).not.toContainEqual(
+                expect.objectContaining({ id: "initial-0" }),
+              );
             },
           }),
         ],
@@ -1455,16 +1759,13 @@ describe("workflow-backed AgentHarness scenario", () => {
         }
         const result = await step.do(`command:${command.commandId}`, async (tx) => {
           const models = createModelsForStreamFn(mockModel, streamFn);
-          const {
-            session,
-            storage,
-            options: restoredOptions,
-          } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${activeToolsWorkflow.name}:${event.instanceId}:command:${command.commandId}`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models,
           });
+          const { options: restoredOptions } = restored;
           const harness = new AgentHarness({
             systemPrompt: "Use only exposed tools.",
             model: mockModel,
@@ -1475,8 +1776,7 @@ describe("workflow-backed AgentHarness scenario", () => {
           });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: () => harness.prompt(command.input.text),
@@ -1605,21 +1905,17 @@ describe("workflow-backed AgentHarness scenario", () => {
         };
 
         const skillResult = await step.do("invoke-skill", async (tx) => {
-          const {
-            session,
-            storage,
-            options: restoredOptions,
-          } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${resourcesWorkflow.name}:${event.instanceId}:invoke-skill`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models: harnessOptions.models,
           });
+          const { options: restoredOptions } = restored;
           const harness = new AgentHarness({ ...harnessOptions, ...restoredOptions });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: () => harness.skill("fragno", "Apply this to pi-harness."),
@@ -1627,21 +1923,17 @@ describe("workflow-backed AgentHarness scenario", () => {
         });
         state = applyWorkflowAgentHarnessStepResult(state, skillResult);
         const templateResult = await step.do("invoke-template", async (tx) => {
-          const {
-            session,
-            storage,
-            options: restoredOptions,
-          } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${resourcesWorkflow.name}:${event.instanceId}:invoke-template`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models: harnessOptions.models,
           });
+          const { options: restoredOptions } = restored;
           const harness = new AgentHarness({ ...harnessOptions, ...restoredOptions });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: () => harness.promptFromTemplate("review", ["teal-recorder"]),
@@ -1802,24 +2094,20 @@ describe("workflow-backed AgentHarness scenario", () => {
               ? `Classify this text: ${params.text}`
               : `You must call classifySafety for this text before deciding: ${params.text}`;
           const result = await step.do(stepName, async (tx) => {
-            const {
-              session,
-              storage,
-              options: restoredOptions,
-            } = restoreWorkflowBackedSession({
+            const restored = restoreWorkflowBackedSession({
               operationId,
               state,
               previousEmissions: await tx.previousEmissions(),
               models: harnessOptions.models,
             });
+            const { options: restoredOptions } = restored;
             const harness = new AgentHarness({ ...harnessOptions, ...restoredOptions });
             harness.on("tool_result", (toolResult) =>
               toolResult.toolName === "classifySafety" ? { terminate: true } : undefined,
             );
 
             return await withWorkflowAgentHarness({
-              session,
-              storage,
+              restored,
               harness,
               tx,
               runDurableStep: () => harness.prompt(prompt),
@@ -1862,21 +2150,17 @@ describe("workflow-backed AgentHarness scenario", () => {
         const summaryStepName = "summarize-safety-action";
         const summaryOperationId = `${autonomousSafetyWorkflow.name}:${event.instanceId}:${summaryStepName}`;
         const summaryResult = await step.do(summaryStepName, async (tx) => {
-          const {
-            session,
-            storage,
-            options: restoredOptions,
-          } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: summaryOperationId,
             state,
             previousEmissions: await tx.previousEmissions(),
             models: harnessOptions.models,
           });
+          const { options: restoredOptions } = restored;
           const harness = new AgentHarness({ ...harnessOptions, ...restoredOptions });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: () =>
@@ -2147,16 +2431,13 @@ describe("workflow-backed AgentHarness scenario", () => {
           return { skipped: true };
         }
         const result = await step.do(`command:${command.commandId}`, async (tx) => {
-          const {
-            session,
-            storage,
-            options: restoredOptions,
-          } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${stopOnToolsWorkflow.name}:${event.instanceId}:command:${command.commandId}`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models: registeredHarness.models,
           });
+          const { options: restoredOptions } = restored;
           const harness = new AgentHarness({
             ...registeredHarness,
             tools: [...tools],
@@ -2167,8 +2448,7 @@ describe("workflow-backed AgentHarness scenario", () => {
           );
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: () => harness.prompt(command.input.text),
@@ -2306,12 +2586,13 @@ describe("workflow-backed AgentHarness scenario", () => {
         const models = createModelsForStreamFn(mockModel, streamFn);
 
         const compactResult = await step.do("compact", async (tx) => {
-          const { session, storage, options } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${event.instanceId}:compact`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models,
           });
+          const { options } = restored;
           const harness = new AgentHarness({ models, model: mockModel, ...options });
           mockAgentHarnessCompaction(harness, {
             summary: "Earlier turns established the durable compaction contract.",
@@ -2319,8 +2600,7 @@ describe("workflow-backed AgentHarness scenario", () => {
           });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: () => harness.compact("Keep the compaction contract."),
@@ -2329,17 +2609,17 @@ describe("workflow-backed AgentHarness scenario", () => {
         state = applyWorkflowAgentHarnessStepResult(state, compactResult);
 
         const promptResult = await step.do("prompt-after-compact", async (tx) => {
-          const { session, storage, options } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${event.instanceId}:prompt-after-compact`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models,
           });
+          const { options } = restored;
           const harness = new AgentHarness({ models, model: mockModel, ...options });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: () => harness.prompt(largeContinuation),
@@ -2348,12 +2628,13 @@ describe("workflow-backed AgentHarness scenario", () => {
         state = applyWorkflowAgentHarnessStepResult(state, promptResult);
 
         const secondCompactResult = await step.do("compact-again", async (tx) => {
-          const { session, storage, options } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${event.instanceId}:compact-again`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models,
           });
+          const { options } = restored;
           const harness = new AgentHarness({ models, model: mockModel, ...options });
           let summarizedTexts: string[] = [];
           let previousSummary: string | undefined;
@@ -2364,8 +2645,7 @@ describe("workflow-backed AgentHarness scenario", () => {
           });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: async () => ({
@@ -2376,19 +2656,20 @@ describe("workflow-backed AgentHarness scenario", () => {
           });
         });
         state = applyWorkflowAgentHarnessStepResult(state, secondCompactResult);
+        assert(secondCompactResult.outcome === "completed");
 
         const secondPromptResult = await step.do("prompt-after-second-compact", async (tx) => {
-          const { session, storage, options } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${event.instanceId}:prompt-after-second-compact`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models,
           });
+          const { options } = restored;
           const harness = new AgentHarness({ models, model: mockModel, ...options });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: () => harness.prompt("continue again"),
@@ -2396,6 +2677,8 @@ describe("workflow-backed AgentHarness scenario", () => {
         });
         state = applyWorkflowAgentHarnessStepResult(state, secondPromptResult);
 
+        assert(promptResult.outcome === "completed");
+        assert(secondPromptResult.outcome === "completed");
         const compactionEntries = state.entries.filter((entry) => entry.type === "compaction");
         const firstCompactionEntry = compactionEntries[0];
         const secondCompactionEntry = compactionEntries[1];
@@ -2485,16 +2768,13 @@ describe("workflow-backed AgentHarness scenario", () => {
 
         const promptResult = await step.do("prompt", async (tx) => {
           const models = createModelsForStreamFn(mockModel, streamFn);
-          const {
-            session,
-            storage,
-            options: restoredOptions,
-          } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: `${event.instanceId}:prompt`,
             state,
             previousEmissions: await tx.previousEmissions(),
             models,
           });
+          const { options: restoredOptions } = restored;
           const harness = new AgentHarness({
             models,
             model: mockModel,
@@ -2503,8 +2783,7 @@ describe("workflow-backed AgentHarness scenario", () => {
           });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             runDurableStep: () => harness.prompt("hello"),
@@ -2512,6 +2791,7 @@ describe("workflow-backed AgentHarness scenario", () => {
         });
 
         state = applyWorkflowAgentHarnessStepResult(state, promptResult);
+        assert(promptResult.outcome === "completed");
 
         return {
           assistantText: messageText(promptResult.value),

@@ -132,6 +132,7 @@ const measureStepResult = (
     (emission) => emission.kind === "harness-operation-complete",
   );
   assert(operationComplete?.kind === "harness-operation-complete");
+  assert(result.outcome === "completed");
 
   return {
     step,
@@ -177,8 +178,7 @@ const runPromptTrace = async (options: {
     });
     const recorder = createEmissionRecorder();
     const result = await withWorkflowAgentHarness({
-      session: restored.session,
-      storage: restored.storage,
+      restored: restored,
       harness,
       tx: recorder.tx,
       runDurableStep: () => harness.prompt(prompt),

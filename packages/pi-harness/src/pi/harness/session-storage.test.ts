@@ -271,6 +271,31 @@ describe("WorkflowBackedSessionStorage", () => {
     expect(appended.map((entry) => entry.id)).toEqual([firstId, secondId]);
   });
 
+  it("rejects a duplicate entry id without replacing the existing entry", async () => {
+    const storage = new WorkflowBackedSessionStorage({
+      metadata,
+      entryIds: entryIds("duplicate"),
+    });
+    const original: SessionTreeEntry = {
+      type: "message",
+      id: "duplicate-entry",
+      parentId: null,
+      timestamp: "2026-06-24T00:00:01.000Z",
+      message: userMessage("original"),
+    };
+
+    await storage.appendEntry(original);
+
+    await expect(
+      storage.appendEntry({
+        ...original,
+        message: userMessage("replacement"),
+      }),
+    ).rejects.toThrow("Entry duplicate-entry already exists");
+    await expect(storage.getEntries()).resolves.toEqual([original]);
+    await expect(storage.getLeafId()).resolves.toBe("duplicate-entry");
+  });
+
   it("reads entry pages using Pi session cursor semantics", async () => {
     const entries: SessionTreeEntry[] = ["first", "second", "third"].map((id, index) => ({
       type: "custom",
