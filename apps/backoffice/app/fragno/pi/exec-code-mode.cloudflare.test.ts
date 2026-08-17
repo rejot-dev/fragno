@@ -27,8 +27,8 @@ import type {
 } from "../runtime-tools/families/automations-workflow";
 import { createTrustedSystemBackofficeToolContext } from "../runtime-tools/runtime-tools";
 import { runtimeToolFamilies } from "../runtime-tools/tool-families";
-import { createPiToolRegistry } from "./pi";
 import { createPiCodemodeRuntime } from "./pi-codemode";
+import { createPiToolRegistry } from "./pi-tools";
 
 const unusedObjects = {} as BackofficeObjectRegistry;
 const testRuntimeConfig: BackofficeRuntimeConfig = {

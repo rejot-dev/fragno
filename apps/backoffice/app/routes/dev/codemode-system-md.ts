@@ -35,7 +35,7 @@ const readOrgSystemGuidance = async ({
     config: runtime.config,
   });
 
-  return await renderCodemodeSystemPrompt({ fileSystem: fs });
+  return await renderCodemodeSystemPrompt({ state: fs });
 };
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {

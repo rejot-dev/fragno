@@ -1,5 +1,4 @@
 import { renderStaticGuidance } from "@/files/content/static";
-import type { IFileSystem } from "@/files/interface";
 import {
   createMcpCodemodeReferences,
   type McpCodemodeServer,
@@ -21,9 +20,13 @@ const CODEMODE_WORKFLOW_AUTHORING_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/workflo
 const CODEMODE_PROVIDER_TYPES_DIR_PATH = `${CODEMODE_TYPES_DIR_PATH}/providers`;
 const CODEMODE_SOURCE_TYPES_DIR_PATH = `${CODEMODE_TYPES_DIR_PATH}/sources`;
 
-export const renderCodemodeSystemPrompt = async ({ fileSystem }: { fileSystem: IFileSystem }) =>
+export const renderCodemodeSystemPrompt = async ({
+  state,
+}: {
+  state: { readFile(path: string): Promise<string> };
+}) =>
   renderStaticGuidance({
-    codemodeDts: await fileSystem.readFile(CODEMODE_SYSTEM_DTS_PATH),
+    codemodeDts: await state.readFile(CODEMODE_SYSTEM_DTS_PATH),
   });
 
 const VALID_DECLARE_CONST_NAME = /^[A-Za-z_$][\w$]*$/u;

@@ -20,7 +20,6 @@ import {
   createLoadingPiWorkflowSessionProjection,
   projectPiWorkflowSession,
   type PiSessionProjectionStatus,
-  type PiWorkflowSessionProjectionBaseline,
   type PiWorkflowSessionProjectionEmission,
   type PiWorkflowSessionProjectionState,
 } from "../pi/workflow-session-projection";
@@ -59,10 +58,6 @@ type PiHarnessWorkflowInstanceProjectionRow = Omit<
 > & {
   status: PiWorkflowStatus;
   workflowSteps: NonNullable<WorkflowInstanceProjectionRow>["workflowSteps"];
-};
-
-type SessionProjectionOptions = {
-  baseline?: PiWorkflowSessionProjectionBaseline;
 };
 
 type PiWorkflowLofiEmission = {
@@ -118,7 +113,6 @@ const projectWorkflowInstanceRow = (
   rawInstance: WorkflowInstanceProjectionRow,
   workflowName: string,
   sessionId: string,
-  options: SessionProjectionOptions,
 ): PiWorkflowSessionProjectionState => {
   const instance = rawInstance as PiHarnessWorkflowInstanceProjectionRow | null;
   return projectPiWorkflowSession({
@@ -126,7 +120,6 @@ const projectWorkflowInstanceRow = (
     sessionId,
     instance,
     workflowSteps: instance?.workflowSteps ?? [],
-    baseline: options.baseline,
   });
 };
 
@@ -134,7 +127,6 @@ export const createSessionProjectionDataStore = (
   runtime: LofiRuntime,
   workflowName: string,
   sessionId: string,
-  options: SessionProjectionOptions = {},
 ): LofiQueryStore<PiWorkflowSessionProjectionState> =>
   runtime
     .store()
@@ -145,7 +137,7 @@ export const createSessionProjectionDataStore = (
       ),
     }))
     .transformRetrieve(({ instance }) =>
-      projectWorkflowInstanceRow(instance, workflowName, sessionId, options),
+      projectWorkflowInstanceRow(instance, workflowName, sessionId),
     )
     .withEphemeral(workflowsSchema, "workflow_step_emission", {
       initialState: () => createPiWorkflowLofiLiveState(),
@@ -226,13 +218,7 @@ export const createSessionProjectionDataStore = (
         };
       },
     })
-    .withInitialData(
-      createLoadingPiWorkflowSessionProjection({
-        workflowName,
-        sessionId,
-        baseline: options.baseline,
-      }),
-    );
+    .withInitialData(createLoadingPiWorkflowSessionProjection());
 
 export const readPiWorkflowLofiSessionProjection = async (
   runtime: LofiRuntime,
@@ -247,7 +233,7 @@ export const readPiWorkflowLofiSessionProjection = async (
     workflowInstanceProjectionQuery(args),
   );
 
-  const data = projectWorkflowInstanceRow(instance, args.workflowName, args.sessionId, {});
+  const data = projectWorkflowInstanceRow(instance, args.workflowName, args.sessionId);
   return {
     state: { messages: data.contextMessages },
     status: data.status,

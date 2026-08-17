@@ -12,7 +12,6 @@ import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-run
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import type { FileSearchMatch } from "@/file-collection/file-collection";
-import * as files from "@/files";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 import { UPLOAD_PROVIDER_DATABASE, type UploadAdminConfigResponse } from "@/fragno/upload";
@@ -20,17 +19,16 @@ import type { UploadFileRecord } from "@/fragno/upload/file-record";
 
 import { createTestMasterFileSystem } from "../automation/engine/test-master-file-system.test-utils";
 import { createTestStateBackend, MemoryUploadObject } from "../codemode/state-backend.test-utils";
+import { createBackofficePiSessionExecution, createPiRuntimeDefinition } from "./pi-runtime";
+import { BACKOFFICE_PI_WORKFLOW_NAME } from "./pi-shared";
+import { loadBackofficePiSkills } from "./pi-skills";
 import {
-  createBackofficePiSessionExecution,
-  createPiRuntimeDefinition,
   createPiToolFactory,
   createPiToolRegistry,
   formatSearchMatches,
   type PiRuntimeToolContext,
   type PiSessionFileSystemContext,
-} from "./pi";
-import { BACKOFFICE_PI_WORKFLOW_NAME } from "./pi-shared";
-import { loadBackofficePiSkills } from "./pi-skills";
+} from "./pi-tools";
 
 const testRuntimeConfig: BackofficeRuntimeConfig = {
   authEmailVerification: { enabled: false },
@@ -440,11 +438,13 @@ describe("Backoffice Pi execution", () => {
     });
     let receivedExecution: typeof sessionExecution | undefined;
     let receivedMetadata: Record<string, unknown> | null | undefined;
+    let contextResolutionCount = 0;
     const sessionId = "session-execution";
     const createTools = createPiToolFactory({
       sessionFileSystems: new Map([[sessionId, Promise.resolve(createTestMasterFileSystem({}))]]),
       sessionFileSystemContext: createContext(),
       runtimeToolContext: (execution, metadata) => {
+        contextResolutionCount += 1;
         receivedExecution = execution;
         receivedMetadata = metadata;
         return createMockRuntimeToolContext();
@@ -459,17 +459,13 @@ describe("Backoffice Pi execution", () => {
 
     expect(receivedExecution).toEqual(sessionExecution);
     expect(receivedMetadata).toEqual({ __backofficeBillingOrganizationId: "org-1" });
+    expect(contextResolutionCount).toBe(1);
   });
 });
 
 describe("Backoffice Pi skills", () => {
-  test("loads starter skills from the Pi filesystem", async () => {
-    const context = createContext();
-    const fs = await files.createBackofficeFileSystem({
-      ...context,
-      config: context.runtimeConfig,
-    });
-    const skills = await loadBackofficePiSkills(fs);
+  test("loads starter skills from Backoffice state", async () => {
+    const skills = await loadBackofficePiSkills(createTestStateBackend());
 
     expect(Object.keys(skills)).toEqual(
       expect.arrayContaining([
@@ -490,9 +486,95 @@ describe("Backoffice Pi skills", () => {
     expect(skills["generating-backoffice-uis"]?.body).toContain("## Result contract");
   });
 
-  test("reflects skills from the mounted virtual filesystem", async () => {
-    const fs = createTestMasterFileSystem({
-      "/workspace/skills/custom/SKILL.md": `---
+  test("falls back to static skills when workspace uploads are not configured", async () => {
+    const staticSkill = `---
+name: static-only
+description: Static fallback skill.
+---
+
+# Static fallback
+`;
+    const uploadNotConfigured = Object.assign(
+      new Error("Upload is not configured for this organisation."),
+      { name: "UploadFileListingError", code: "NOT_CONFIGURED" },
+    );
+    const state = {
+      glob: async (pattern: string) => {
+        if (pattern.startsWith("/workspace/")) {
+          throw uploadNotConfigured;
+        }
+        return ["/static/skills/static-only/SKILL.md"];
+      },
+      readFile: async () => staticSkill,
+    };
+
+    await expect(loadBackofficePiSkills(state)).resolves.toMatchObject({
+      "static-only": {
+        name: "static-only",
+        location: "/static/skills/static-only/SKILL.md",
+      },
+    });
+  });
+
+  test("skips malformed skill files while loading remaining static and workspace skills", async () => {
+    const contentsByPath: Record<string, string> = {
+      "/static/skills/static-valid/SKILL.md": `---
+name: static-valid
+description: Valid static skill.
+---
+
+# Static
+`,
+      "/workspace/skills/malformed/SKILL.md": `---
+name: malformed
+---
+
+# Missing description
+`,
+      "/workspace/skills/workspace-valid/SKILL.md": `---
+name: workspace-valid
+description: Valid workspace skill.
+---
+
+# Workspace
+`,
+    };
+    const state = {
+      glob: async (pattern: string) =>
+        pattern.startsWith("/static/")
+          ? ["/static/skills/static-valid/SKILL.md"]
+          : ["/workspace/skills/malformed/SKILL.md", "/workspace/skills/workspace-valid/SKILL.md"],
+      readFile: async (path: string) => contentsByPath[path] ?? "",
+    };
+
+    const skills = await loadBackofficePiSkills(state);
+
+    expect(Object.keys(skills).sort()).toEqual(["static-valid", "workspace-valid"]);
+  });
+
+  test("propagates workspace skill listing failures", async () => {
+    const listingFailure = Object.assign(new Error("Upload database is unavailable."), {
+      name: "UploadFileListingError",
+      code: "DATABASE_UNAVAILABLE",
+    });
+    const state = {
+      glob: async (pattern: string) => {
+        if (pattern.startsWith("/workspace/")) {
+          throw listingFailure;
+        }
+        return [];
+      },
+      readFile: async () => "",
+    };
+
+    await expect(loadBackofficePiSkills(state)).rejects.toBe(listingFailure);
+  });
+
+  test("reflects skills from mounted Backoffice state", async () => {
+    const state = createTestStateBackend();
+    await state.writeFile(
+      "/workspace/skills/custom/SKILL.md",
+      `---
 name: custom
 description: Use custom filesystem skill.
 ---
@@ -501,11 +583,11 @@ description: Use custom filesystem skill.
 
 Filesystem-defined instructions.
 `,
-    });
+    );
 
-    const skills = await loadBackofficePiSkills(fs);
+    const skills = await loadBackofficePiSkills(state);
 
-    expect(Object.keys(skills)).toEqual(["custom"]);
+    expect(Object.keys(skills)).toEqual(expect.arrayContaining(["custom"]));
     expect(skills.custom).toMatchObject({
       name: "custom",
       description: "Use custom filesystem skill.",

@@ -46,7 +46,7 @@ export function projectPiSessionCollectionRows({
   synchronized: boolean;
 }): PiWorkflowSessionProjectionState {
   if (!instance && !synchronized) {
-    return createLoadingPiWorkflowSessionProjection({ workflowName, sessionId });
+    return createLoadingPiWorkflowSessionProjection();
   }
 
   const canonicalEmissions = selectCanonicalWorkflowStepEmissions({

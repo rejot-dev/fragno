@@ -99,7 +99,7 @@ const createMeasuredSessionProjectionDataStore = (
           ),
       ),
     {
-      initialData: createLoadingPiWorkflowSessionProjection({ workflowName, sessionId }),
+      initialData: createLoadingPiWorkflowSessionProjection(),
       map: ([rawInstance]) => {
         const startedAt = performance.now();
         metrics.projectionRuns += 1;

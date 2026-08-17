@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { runInNewContext } from "node:vm";
 
 import type { WorkerCompiler } from "./dynamic-workers/compile-worker";
 import { compileInMemoryWorker } from "./dynamic-workers/compile-worker.in-memory";
@@ -31,6 +32,19 @@ type WorkerLoaderFactory = () => {
 };
 
 class InMemoryWorkerEntrypoint {}
+class InMemoryRpcTarget {}
+
+type InMemoryWorkerEvaluationContext = {
+  WorkerEntrypoint: typeof InMemoryWorkerEntrypoint;
+  RpcTarget: typeof InMemoryRpcTarget;
+  AsyncLocalStorage: typeof AsyncLocalStorage;
+  Error: ErrorConstructor;
+  setTimeout: typeof setTimeout;
+  clearTimeout: typeof clearTimeout;
+  atob: typeof atob;
+  btoa: typeof btoa;
+  Entrypoint?: new () => unknown;
+};
 
 const createInMemoryWorkerLoader = (): WorkerLoader => {
   const instances = new Map<string, unknown>();
@@ -47,24 +61,29 @@ const createInMemoryWorkerLoader = (): WorkerLoader => {
 
         const transformed = source
           .replace(
-            /^\s*import\s+\{\s*WorkerEntrypoint\s*\}\s+from\s+["']cloudflare:workers["'];\s*$/gmu,
+            /^\s*import\s+\{\s*(?:RpcTarget\s*,\s*)?WorkerEntrypoint\s*\}\s+from\s+["']cloudflare:workers["'];\s*$/gmu,
             "",
           )
           .replace(
             /^\s*import\s+\{\s*AsyncLocalStorage\s*\}\s+from\s+["']node:async_hooks["'];\s*$/gmu,
             "",
           )
-          .replace(/export default class/u, "return class");
-        // oxlint-disable-next-line typescript/no-implied-eval -- This test-only loader evaluates generated Worker modules in memory.
-        const createEntrypoint = new Function(
-          "WorkerEntrypoint",
-          "AsyncLocalStorage",
-          transformed,
-        ) as (
-          WorkerEntrypoint: typeof InMemoryWorkerEntrypoint,
-          als: typeof AsyncLocalStorage,
-        ) => new () => unknown;
-        const Entrypoint = createEntrypoint(InMemoryWorkerEntrypoint, AsyncLocalStorage);
+          .replace(/export default class/u, "Entrypoint = class");
+        const evaluationContext: InMemoryWorkerEvaluationContext = {
+          WorkerEntrypoint: InMemoryWorkerEntrypoint,
+          RpcTarget: InMemoryRpcTarget,
+          AsyncLocalStorage,
+          Error,
+          setTimeout,
+          clearTimeout,
+          atob,
+          btoa,
+        };
+        runInNewContext(transformed, evaluationContext);
+        const Entrypoint = evaluationContext.Entrypoint;
+        if (!Entrypoint) {
+          throw new Error("In-memory WorkerLoader module did not export an entrypoint.");
+        }
         entrypoint = new Entrypoint();
         instances.set(name, entrypoint);
       }

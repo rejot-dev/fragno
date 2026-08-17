@@ -24,9 +24,9 @@ import {
   createPiRuntimeDefinition,
   type CreatePiRuntimeDefinitionOptions,
   type PiFragment,
-  type PiRuntimeToolContext,
-} from "@/fragno/pi/pi";
+} from "@/fragno/pi/pi-runtime";
 import { piSessionBillingOrganizationId } from "@/fragno/pi/pi-shared";
+import type { PiRuntimeToolContext } from "@/fragno/pi/pi-tools";
 import {
   createPiFragmentRuntime,
   type PiRuntime,
@@ -188,6 +188,7 @@ export const createAutomationsRuntime = (
           createPiAutomationContext: ({ execution }) => ({
             runtime: createHostedPiRuntime(execution),
           }),
+          resolveWorkflowAgentHarnessOptions: pi.resolveWorkflowAgentHarnessOptions,
         }),
         MARKETPLACE_PUBLISH: defineMarketplacePublishWorkflow({
           ownerScope: config.ownerScope,

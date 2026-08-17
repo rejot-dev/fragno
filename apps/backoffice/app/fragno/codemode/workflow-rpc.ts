@@ -27,15 +27,11 @@ const isWorkflowSuspensionError = (
     return false;
   }
 
-  const details = error as { name?: unknown; message?: unknown };
-  return (
-    details.name === "RunnerStepSuspended" ||
-    details.name === "RemoteWorkflowSuspendedError" ||
-    details.message === "WORKFLOW_STEP_SUSPENDED"
-  );
+  const errorName = (error as { name?: unknown }).name;
+  return errorName === "RunnerStepSuspended" || errorName === "RemoteWorkflowSuspendedError";
 };
 
-const returnSuspensionOrThrow = (
+export const returnRemoteWorkflowSuspensionOrThrow = (
   error: unknown,
 ): never | ReturnType<typeof createRemoteWorkflowSuspension> => {
   if (isRemoteWorkflowSuspension(error)) {
@@ -130,7 +126,7 @@ export class WorkflowStepTarget extends RpcTarget {
         }
       });
     } catch (error) {
-      return returnSuspensionOrThrow(error) as T;
+      return returnRemoteWorkflowSuspensionOrThrow(error) as T;
     }
   }
 
@@ -142,7 +138,7 @@ export class WorkflowStepTarget extends RpcTarget {
     try {
       await this.#host.sleep(parentScope, name, duration);
     } catch (error) {
-      return returnSuspensionOrThrow(error);
+      return returnRemoteWorkflowSuspensionOrThrow(error);
     }
   }
 
@@ -154,7 +150,7 @@ export class WorkflowStepTarget extends RpcTarget {
     try {
       await this.#host.sleepUntil(parentScope, name, timestamp);
     } catch (error) {
-      return returnSuspensionOrThrow(error);
+      return returnRemoteWorkflowSuspensionOrThrow(error);
     }
   }
 
@@ -181,7 +177,7 @@ export class WorkflowStepTarget extends RpcTarget {
           : undefined,
       });
     } catch (error) {
-      return returnSuspensionOrThrow(error) as unknown as {
+      return returnRemoteWorkflowSuspensionOrThrow(error) as unknown as {
         type: string;
         payload: Readonly<T>;
         timestamp: Date;

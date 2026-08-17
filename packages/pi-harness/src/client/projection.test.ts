@@ -171,14 +171,13 @@ const settledProjection = async (
 const projectWorkflowMutations = async (
   sessionId: string,
   mutations: Parameters<typeof uowOperationsToLofiMutations>[0],
-  options?: Parameters<typeof createSessionProjectionDataStore>[3],
 ): Promise<PiWorkflowSessionProjectionState> => {
   const runtimeContext = await createRuntime(
     uowOperationsToLofiMutations(mutations, { now: new Date("2026-07-03T00:00:00.000Z") }),
   );
   return settledProjection(
     runtimeContext,
-    createSessionProjectionDataStore(runtimeContext.runtime, workflowName, sessionId, options),
+    createSessionProjectionDataStore(runtimeContext.runtime, workflowName, sessionId),
   );
 };
 
@@ -200,7 +199,6 @@ const projectManualWorkflow = async (
       createdAt?: Date;
     }[];
   } = {},
-  storeOptions?: Parameters<typeof createSessionProjectionDataStore>[3],
 ): Promise<PiWorkflowSessionProjectionState> => {
   const instanceRef = buildScopedInstanceRowId(workflowName, sessionId);
   const now = new Date(0);
@@ -277,7 +275,7 @@ const projectManualWorkflow = async (
   const runtimeContext = await createRuntime(mutations);
   return settledProjection(
     runtimeContext,
-    createSessionProjectionDataStore(runtimeContext.runtime, workflowName, sessionId, storeOptions),
+    createSessionProjectionDataStore(runtimeContext.runtime, workflowName, sessionId),
   );
 };
 
@@ -1217,53 +1215,6 @@ describe("Pi harness workflow projection", () => {
       expect(projection.contextMessages.map(messageTextContent)).toEqual(["committed"]);
     });
 
-    it("keeps the server baseline visible when local lofi is not caught up", async () => {
-      const projection = await projectWorkflowMutations("missing-initial-state", [], {
-        baseline: {
-          sessionEntries: [
-            sessionMessageEntry("server-user", "server prompt", { role: "user" }),
-            sessionMessageEntry("server-assistant", "server reply", {
-              parentId: "server-user",
-            }),
-          ],
-          completedStepKeys: [],
-          compactOutcomesByCommandId: {},
-          latestCommandCompactOutcome: null,
-        },
-      });
-
-      assert(projection.status === "not-found");
-      expect(projection.contextMessages.map(messageTextContent)).toEqual([
-        "server prompt",
-        "server reply",
-      ]);
-    });
-
-    it("keeps the server baseline visible when only the workflow instance is local", async () => {
-      const projection = await projectManualWorkflow(
-        "local-instance-only",
-        {},
-        {
-          baseline: {
-            sessionEntries: [
-              sessionMessageEntry("server-user", "server prompt", { role: "user" }),
-              sessionMessageEntry("server-assistant", "server reply", {
-                parentId: "server-user",
-              }),
-            ],
-            completedStepKeys: ["do:first-command"],
-            compactOutcomesByCommandId: {},
-            latestCommandCompactOutcome: null,
-          },
-        },
-      );
-
-      expect(projection.contextMessages.map(messageTextContent)).toEqual([
-        "server prompt",
-        "server reply",
-      ]);
-    });
-
     it("projects durable completed step messages and ignores its persisted live emissions", async () => {
       const projection = await projectFauxPrompt({
         sessionId: "completed-emissions-ignored",
@@ -1434,61 +1385,6 @@ describe("Pi harness workflow projection", () => {
       expect(completedProjection.draftAgentMessage).toBeNull();
       expect(completedProjection.activity).toBeNull();
       assert(!completedProjection.readyForInput);
-    });
-
-    it("overlays the server baseline before local incomplete step emissions", async () => {
-      const initialMessage = {
-        role: "user",
-        content: "previous turn",
-        timestamp: 1,
-      } satisfies AgentMessage;
-      const run = startFauxPiHarnessPrompt({
-        workflowName,
-        sessionId: "checkpoint-initial-overlay",
-        operation: { kind: "prompt", args: ["current turn"] },
-        responses: [
-          fauxAssistantMessageWithCheckpoints(
-            [
-              fauxEventCheckpoint("text-start", "text_start", { contentIndex: 0 }),
-              fauxText("Current."),
-            ],
-            { timestamp: 1 },
-          ),
-        ],
-      });
-      const checkpoint = await run.waitForCheckpoint("text-start");
-
-      try {
-        const projection = await projectWorkflowMutations(
-          "checkpoint-initial-overlay",
-          checkpoint.mutations,
-          {
-            baseline: {
-              sessionEntries: [
-                {
-                  type: "message",
-                  id: "initial-message",
-                  parentId: null,
-                  timestamp: new Date(0).toISOString(),
-                  message: initialMessage,
-                },
-              ],
-              completedStepKeys: ["already-completed"],
-              compactOutcomesByCommandId: {},
-              latestCommandCompactOutcome: null,
-            },
-          },
-        );
-
-        expect(projection.contextMessages.map(messageTextContent)).toEqual([
-          "previous turn",
-          "current turn",
-        ]);
-        expect(projection.draftAgentMessage).toMatchObject({ activity: "writing" });
-      } finally {
-        checkpoint.resume();
-        await run.done;
-      }
     });
 
     it("returns a not-found projection for a missing workflow instance", async () => {
@@ -1843,64 +1739,6 @@ describe("Pi harness workflow projection", () => {
       expect(projection.draftAgentMessage).toBeNull();
       assert(!projection.readyForInput);
       assert(projection.activity === "working");
-    });
-
-    it("ignores emissions already represented by the server baseline", async () => {
-      const initialMessage = {
-        role: "user",
-        content: "already committed",
-        timestamp: 1,
-      } satisfies AgentMessage;
-      const run = startFauxPiHarnessPrompt({
-        workflowName,
-        sessionId: "checkpoint-ignore-initial-step",
-        operation: { kind: "prompt", args: ["live turn"] },
-        responses: [
-          fauxAssistantMessageWithCheckpoints(
-            [
-              fauxEventCheckpoint("text-start", "text_start", { contentIndex: 0 }),
-              fauxText("Live."),
-            ],
-            { timestamp: 1 },
-          ),
-        ],
-      });
-      const checkpoint = await run.waitForCheckpoint("text-start");
-      const stepEmissionCreate = checkpoint.mutations.find(
-        (mutation) => mutation.type === "create" && mutation.table === "workflow_step_emission",
-      );
-      assert(stepEmissionCreate?.type === "create");
-      const stepKey = String((stepEmissionCreate.values as { stepKey: unknown }).stepKey);
-
-      try {
-        const projection = await projectWorkflowMutations(
-          "checkpoint-ignore-initial-step",
-          checkpoint.mutations,
-          {
-            baseline: {
-              sessionEntries: [
-                {
-                  type: "message",
-                  id: "initial-message",
-                  parentId: null,
-                  timestamp: new Date(0).toISOString(),
-                  message: initialMessage,
-                },
-              ],
-              completedStepKeys: [stepKey],
-              compactOutcomesByCommandId: {},
-              latestCommandCompactOutcome: null,
-            },
-          },
-        );
-
-        expect(projection.contextMessages.map(messageTextContent)).toEqual(["already committed"]);
-        expect(projection.draftAgentMessage).toBeNull();
-        expect(projection.activity).toBeNull();
-      } finally {
-        checkpoint.resume();
-        await run.done;
-      }
     });
 
     it("deduplicates updated completed session entries by entry id", async () => {
