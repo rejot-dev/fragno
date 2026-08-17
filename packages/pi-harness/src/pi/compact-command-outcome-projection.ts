@@ -71,6 +71,9 @@ export const projectPiCompactCommandOutcomes = (
         new Error(`Pi command step ${step.stepKey} does not contain a harness result.`),
       );
     }
+    if (result.outcome !== "completed") {
+      continue;
+    }
 
     latestCommandCompactOutcome = parseCompactCommandOutcome(result.value, identity);
     if (latestCommandCompactOutcome) {

@@ -72,6 +72,7 @@ const completedStep = (
   waitEventType: null,
   result: {
     type: "harness-run",
+    outcome: "completed",
     appendedEntries: [...entries],
     leafId: entries.at(-1)?.id ?? null,
     value,
@@ -145,6 +146,144 @@ describe("projectPiWorkflowSession", () => {
     expect(projection.draftAgentMessage).toBeNull();
     assert(projection.readyForInput);
     expect(projection.activity).toBeNull();
+  });
+
+  it("projects interrupted operations in the timeline without adding them to model context", () => {
+    const userEntry = messageEntry("user-1", "hello", { role: "user" });
+
+    const projection = projectPiWorkflowSession({
+      workflowName,
+      sessionId,
+      instance,
+      workflowSteps: [
+        {
+          stepKey: "do:interrupted",
+          type: "do",
+          status: "completed",
+          waitEventType: null,
+          result: {
+            type: "harness-run",
+            outcome: "aborted",
+            appendedEntries: [userEntry],
+            leafId: userEntry.id,
+          },
+        },
+        waitingCommandStep(),
+      ],
+      workflowStepEmissions: [],
+    });
+
+    expect(projection.contextMessages.map((message) => message.role)).toEqual(["user"]);
+    expect(projection.timelineMessages).toMatchObject([
+      { role: "user" },
+      { role: "assistant", content: [], stopReason: "aborted" },
+    ]);
+  });
+
+  it("does not duplicate an aborted assistant already recorded by Pi", () => {
+    const userEntry = messageEntry("user-1", "hello", { role: "user" });
+    const abortedAssistant = assistantMessage("");
+    abortedAssistant.stopReason = "aborted";
+    const assistantEntry = agentMessageEntry("assistant-1", abortedAssistant, userEntry.id);
+
+    const projection = projectPiWorkflowSession({
+      workflowName,
+      sessionId,
+      instance,
+      workflowSteps: [
+        {
+          stepKey: "do:aborted-by-user",
+          type: "do",
+          status: "completed",
+          waitEventType: null,
+          result: {
+            type: "harness-run",
+            outcome: "aborted",
+            appendedEntries: [userEntry, assistantEntry],
+            leafId: assistantEntry.id,
+          },
+        },
+        waitingCommandStep(),
+      ],
+      workflowStepEmissions: [],
+    });
+
+    expect(projection.timelineMessages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+    ]);
+    expect(projection.timelineMessages[1]).toMatchObject({ stopReason: "aborted" });
+  });
+
+  it("retains recovered tool progress before the projected interruption", () => {
+    const toolCallAssistant = assistantMessage("");
+    toolCallAssistant.stopReason = "toolUse";
+    toolCallAssistant.content = [
+      fauxToolCall("read-a", { path: "a" }, { id: "call-a" }),
+      fauxToolCall("read-b", { path: "b" }, { id: "call-b" }),
+    ];
+    const realToolResult: ToolResultMessage = {
+      role: "toolResult",
+      toolCallId: "call-a",
+      toolName: "read-a",
+      content: [fauxText("contents:a")],
+      isError: false,
+      timestamp: 2,
+    };
+    const interruptedToolResult: ToolResultMessage = {
+      role: "toolResult",
+      toolCallId: "call-b",
+      toolName: "read-b",
+      content: [fauxText("Tool execution interrupted before completion.")],
+      isError: true,
+      timestamp: 3,
+    };
+    const entries = [
+      agentMessageEntry("user-1", userMessage("inspect both"), null),
+      agentMessageEntry("assistant-tools", toolCallAssistant, "user-1"),
+      agentMessageEntry("result-a", realToolResult, "assistant-tools"),
+      agentMessageEntry("result-b", interruptedToolResult, "result-a"),
+    ];
+
+    const projection = projectPiWorkflowSession({
+      workflowName,
+      sessionId,
+      instance,
+      workflowSteps: [
+        {
+          stepKey: "do:interrupted-tools",
+          type: "do",
+          status: "completed",
+          waitEventType: null,
+          result: {
+            type: "harness-run",
+            outcome: "aborted",
+            appendedEntries: entries,
+            leafId: "result-b",
+          },
+        },
+        waitingCommandStep(),
+      ],
+      workflowStepEmissions: [],
+    });
+
+    expect(projection.contextMessages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "toolResult",
+      "toolResult",
+    ]);
+    expect(projection.timelineMessages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "toolResult",
+      "toolResult",
+      "assistant",
+    ]);
+    expect(projection.timelineMessages.at(-1)).toMatchObject({
+      content: [],
+      stopReason: "aborted",
+    });
   });
 
   it("projects the active command from its command-start emission", () => {
@@ -245,6 +384,38 @@ describe("projectPiWorkflowSession", () => {
     expect(projection.activity).toBeNull();
   });
 
+  it("ignores persisted compact values from aborted command results", () => {
+    const projection = projectPiWorkflowSession({
+      workflowName,
+      sessionId,
+      instance,
+      workflowSteps: [
+        {
+          stepKey: "command:compact-aborted",
+          type: "do",
+          status: "completed",
+          waitEventType: null,
+          result: {
+            type: "harness-run",
+            outcome: "aborted",
+            appendedEntries: [],
+            leafId: null,
+            value: {
+              kind: "compact",
+              commandId: "compact-aborted",
+              status: "rejected",
+            },
+          },
+        },
+        waitingCommandStep(),
+      ],
+      workflowStepEmissions: [],
+    });
+
+    expect(projection.latestCommandCompactOutcome).toBeNull();
+    expect(projection.compactOutcomesByCommandId).toEqual({});
+  });
+
   it("clears an older compaction failure after a later command completes", () => {
     const projection = projectPiWorkflowSession({
       workflowName,
@@ -314,8 +485,11 @@ describe("projectPiWorkflowSession", () => {
     ]);
   });
 
-  it("keeps every message from a completed multi-message delta after hydration", () => {
-    const initialMessages = [userMessage("previous prompt"), assistantMessage("previous reply")];
+  it("keeps every message from consecutive completed steps", () => {
+    const previousEntries = [
+      agentMessageEntry("previous-user", userMessage("previous prompt"), null),
+      agentMessageEntry("previous-assistant", assistantMessage("previous reply"), "previous-user"),
+    ];
     const toolCallMessage = fauxAssistantMessage(
       fauxToolCall("lookup", { query: "current" }, { id: "tool-call-1" }),
       { stopReason: "toolUse", timestamp: 1 },
@@ -344,16 +518,10 @@ describe("projectPiWorkflowSession", () => {
       workflowName,
       sessionId,
       instance,
-      baseline: {
-        sessionEntries: [
-          agentMessageEntry("previous-user", initialMessages[0]!, null),
-          agentMessageEntry("previous-assistant", initialMessages[1]!, "previous-user"),
-        ],
-        completedStepKeys: ["do:previous"],
-        compactOutcomesByCommandId: {},
-        latestCommandCompactOutcome: null,
-      },
-      workflowSteps: [completedStep("do:current", deltaEntries)],
+      workflowSteps: [
+        completedStep("do:previous", previousEntries),
+        completedStep("do:current", deltaEntries),
+      ],
     });
 
     expect(projection.contextMessages.map((message) => message.role)).toEqual([
@@ -366,7 +534,7 @@ describe("projectPiWorkflowSession", () => {
     ]);
   });
 
-  it("replaces hydrated context when a later step compacts the session", () => {
+  it("replaces earlier context when a later step compacts the session", () => {
     const oldUser = messageEntry("old-user", "old prompt", { role: "user" });
     const oldAssistant = messageEntry("old-assistant", "old reply", {
       parentId: "old-user",
@@ -385,13 +553,8 @@ describe("projectPiWorkflowSession", () => {
       workflowName,
       sessionId,
       instance,
-      baseline: {
-        sessionEntries: [oldUser, oldAssistant],
-        completedStepKeys: ["command:prompt-1"],
-        compactOutcomesByCommandId: {},
-        latestCommandCompactOutcome: null,
-      },
       workflowSteps: [
+        completedStep("command:prompt-1", [oldUser, oldAssistant]),
         completedStep("command:compact-2", [compaction], {
           kind: "compact",
           commandId: "compact-2",
@@ -412,7 +575,7 @@ describe("projectPiWorkflowSession", () => {
     ]);
   });
 
-  it("applies a hydrated navigation delta using entries from earlier completed steps", () => {
+  it("applies a navigation entry using entries from earlier completed steps", () => {
     const root = messageEntry("root", "Root", { role: "user" });
     const branchA = messageEntry("branch-a", "Branch A", { parentId: "root" });
     const branchB = messageEntry("branch-b", "Branch B", { parentId: "root" });
@@ -435,13 +598,8 @@ describe("projectPiWorkflowSession", () => {
       workflowName,
       sessionId,
       instance,
-      baseline: {
-        sessionEntries: [root, branchA, branchB, previousLeaf],
-        completedStepKeys: ["do:branches"],
-        compactOutcomesByCommandId: {},
-        latestCommandCompactOutcome: null,
-      },
       workflowSteps: [
+        completedStep("do:branches", [root, branchA, branchB, previousLeaf]),
         {
           stepKey: "do:navigate",
           type: "do",
@@ -892,26 +1050,12 @@ describe("projectPiWorkflowSession", () => {
     ).toThrow(PiSessionDataIntegrityError);
   });
 
-  it("preserves compact outcomes while loading from a baseline", () => {
-    const compactOutcome = {
-      kind: "compact",
-      commandId: "compact-1",
-      status: "succeeded",
-    } as const;
+  it("creates an empty loading projection before workflow data synchronizes", () => {
+    const projection = createLoadingPiWorkflowSessionProjection();
 
-    const projection = createLoadingPiWorkflowSessionProjection({
-      workflowName,
-      sessionId,
-      baseline: {
-        sessionEntries: [],
-        completedStepKeys: ["command:compact-1"],
-        compactOutcomesByCommandId: { "compact-1": compactOutcome },
-        latestCommandCompactOutcome: compactOutcome,
-      },
-    });
-
-    expect(projection.compactOutcomesByCommandId).toEqual({ "compact-1": compactOutcome });
-    expect(projection.latestCommandCompactOutcome).toEqual(compactOutcome);
+    expect(projection.contextMessages).toEqual([]);
+    expect(projection.timelineMessages).toEqual([]);
+    expect(projection.completedStepKeys).toEqual([]);
     assert(projection.status === "loading");
     assert(!projection.readyForInput);
   });

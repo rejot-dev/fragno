@@ -4,6 +4,7 @@ import {
   type SessionTreeEntry,
 } from "@earendil-works/pi-agent-core";
 
+import type { PiHarnessFrontendAgentMessage } from "./harness/agent-harness-event-protocol";
 import { PiSessionDataIntegrityError } from "./types";
 import type { PiHarnessStepResult } from "./workflows/workflow-agent-harness";
 
@@ -12,7 +13,10 @@ export type PiProjectionSessionIdentity = {
   sessionId: string;
 };
 
-export type PersistedPiHarnessStepResult = PiHarnessStepResult & { value?: unknown };
+export type PersistedPiHarnessStepResult = PiHarnessStepResult & {
+  outcome?: "completed" | "aborted";
+  value?: unknown;
+};
 
 const dataIntegrityError = (
   identity: PiProjectionSessionIdentity,
@@ -115,12 +119,20 @@ const resolveActiveSessionPath = (
 
 export type ProjectedPiSessionEntries = {
   contextMessages: AgentMessage[];
-  timelineMessages: AgentMessage[];
+  timelineMessages: PiHarnessFrontendAgentMessage[];
+};
+
+export type ProjectPiSessionEntriesOptions = {
+  timelineMessagesAfterEntryId?: ReadonlyMap<
+    string | null,
+    readonly PiHarnessFrontendAgentMessage[]
+  >;
 };
 
 export const projectPiSessionEntries = (
   entries: readonly SessionTreeEntry[],
   identity: PiProjectionSessionIdentity,
+  options: ProjectPiSessionEntriesOptions = {},
 ): ProjectedPiSessionEntries => {
   const activePath = resolveActiveSessionPath(entries, identity);
 
@@ -131,23 +143,22 @@ export const projectPiSessionEntries = (
     throw dataIntegrityError(identity, "Pi session entries cannot build a valid context.", error);
   }
 
-  const timelineMessages = activePath.flatMap((entry): AgentMessage[] => {
+  const timelineMessages: PiHarnessFrontendAgentMessage[] = [
+    ...(options.timelineMessagesAfterEntryId?.get(null) ?? []),
+  ];
+  for (const entry of activePath) {
     if (entry.type === "message") {
-      return [entry.message];
-    }
-    if (entry.type !== "compaction") {
-      return [];
-    }
-
-    return [
-      {
+      timelineMessages.push(entry.message);
+    } else if (entry.type === "compaction") {
+      timelineMessages.push({
         role: "compactionSummary",
         summary: entry.summary,
         tokensBefore: entry.tokensBefore,
         timestamp: new Date(entry.timestamp).getTime(),
-      },
-    ];
-  });
+      });
+    }
+    timelineMessages.push(...(options.timelineMessagesAfterEntryId?.get(entry.id) ?? []));
+  }
 
   return { contextMessages, timelineMessages };
 };

@@ -4,19 +4,20 @@ import type {
   WorkflowStepTx,
 } from "@fragno-dev/workflows/workflow";
 
-import type {
-  AgentHarness,
-  AgentHarnessOptions,
-  AgentHarnessTool,
-  AgentMessage,
-  CompactionPreparation,
-  PromptTemplate,
-  SessionMetadata,
-  SessionTreeEntry,
-  Skill,
-  ThinkingLevel,
+import {
+  type AgentHarness,
+  type AgentHarnessOptions,
+  type AgentHarnessTool,
+  type AgentMessage,
+  type CompactionPreparation,
+  type PromptTemplate,
+  type SessionMetadata,
+  type SessionTreeEntry,
+  type Skill,
+  type ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
 import { Session } from "@earendil-works/pi-agent-core";
+import type { ToolCall, ToolResultMessage } from "@earendil-works/pi-ai";
 
 import {
   PiHarnessEventEncoder,
@@ -28,7 +29,6 @@ import {
   nextWorkflowBackedSessionEntryIndex,
   sessionEntriesLeafId,
   WorkflowBackedSessionStorage,
-  type WorkflowBackedSessionStorageOptions,
 } from "../harness/session-storage";
 
 export type PiHarnessOperation =
@@ -70,15 +70,6 @@ export type PiHarnessEmission<TResult = PiHarnessStepResult> =
   | PiHarnessOperationStartEmission
   | PiHarnessOperationCompleteEmission<TResult>;
 
-/**
- * Phase 1 — Configure the AgentHarness runtime before defining the workflow
- *
- * The workflow adapter requires no pre-workflow setup. Define reusable models, tools, resources,
- * and other normal AgentHarness dependencies here; do not create workflow-session state yet.
- * Runtime resources are reconstructed with the AgentHarness on every workflow replay rather than
- * serialized into PiHarnessSessionStepState.
- */
-
 export type WorkflowAgentHarnessOptions<
   TContext extends object | undefined = undefined,
   TSkill extends Skill = Skill,
@@ -86,18 +77,10 @@ export type WorkflowAgentHarnessOptions<
   TTool extends AgentHarnessTool<TContext> = AgentHarnessTool<TContext>,
 > = Omit<AgentHarnessOptions<TContext, TSkill, TPromptTemplate, TTool>, "session">;
 
-/**
- * Phase 2 — Initialize session state inside the workflow callback
- *
- * Before the first durable AgentHarness step, create the base state containing stable Pi session
- * metadata, initial entries, and which entries have already crossed a durable step boundary.
- * Workflow replay recreates this base state before cached step results are reduced into it again.
- */
-
 export type PiHarnessSessionStepState = {
   metadata: SessionMetadata;
   entries: readonly SessionTreeEntry[];
-  persistedEntryIds: readonly string[];
+  checkpointedEntryCount: number;
 };
 
 export type CreatePiHarnessSessionStateOptions = {
@@ -133,188 +116,256 @@ export const createPiHarnessSessionState = (
 ): PiHarnessSessionStepState => ({
   metadata: { ...options.metadata },
   entries: createInitialMessageEntries(options.initialMessages),
-  persistedEntryIds: [],
+  checkpointedEntryCount: 0,
 });
 
 /**
- * Phase 3 — Restore the Pi Session at the start of each durable step
- *
- * Inside step.do, fold session entries emitted by prior attempts over state committed by earlier
- * steps. Completed invocations replay their checkpoint, interrupted prompt-like invocations move
- * back to the parent of their first emitted user message, and entry allocation continues after the
- * highest deterministic id already observed. The result explicitly exposes the real Session, its
- * workflow-aware storage, and AgentHarness option overrides derived from durable selections.
+ * Restore one runner-selected attempt from emissions in persisted order. Session entries are an
+ * immutable append log; repeated IDs or mixed attempt identities are corruption.
  */
 
-type AppendEntryListener = NonNullable<WorkflowBackedSessionStorageOptions["onAppendEntry"]>;
+type AppendEntryListener = (entry: SessionTreeEntry) => void | Promise<void>;
 
 type WorkflowAgentHarnessEmission = PiHarnessEmission<WorkflowAgentHarnessStepResult>;
 
 type TrustedWorkflowAgentHarnessEmission = WorkflowStepEmission<WorkflowAgentHarnessEmission>;
 
-export type WorkflowAgentHarnessRecovery =
-  | { readonly kind: "execute"; readonly leafIdBeforeInvocation?: string | null }
-  | {
-      readonly kind: "completed";
-      readonly result: WorkflowAgentHarnessStepResult;
-      readonly operationEntries: readonly SessionTreeEntry[];
-    };
+/** Starts an AgentHarness operation when the selected workflow attempt has no prior journal. */
+type ExecuteWorkflowAgentHarnessRecovery = { readonly kind: "execute" };
 
-export type WorkflowAgentHarnessStorageMetadata = {
+/** Checkpoints durable transcript progress from an interrupted workflow attempt without rerunning it. */
+type InterruptedWorkflowAgentHarnessRecovery = {
+  readonly kind: "interrupted";
+  readonly transcript: InterruptedTranscript;
+  readonly replayedEntries: readonly SessionTreeEntry[];
+};
+
+/** Replays a finished AgentHarness operation whose entries and result were emitted before the process died, but whose workflow step had not committed. */
+type CompletedWorkflowAgentHarnessRecovery = {
+  readonly kind: "completed";
+  readonly result: WorkflowAgentHarnessStepResult;
+};
+
+/** Tells withWorkflowAgentHarness whether to run, recover, or replay the operation. */
+type WorkflowAgentHarnessRecovery =
+  | ExecuteWorkflowAgentHarnessRecovery
+  | InterruptedWorkflowAgentHarnessRecovery
+  | CompletedWorkflowAgentHarnessRecovery;
+
+type WorkflowAgentHarnessStorageMetadata = {
   readonly operationId: string;
-  readonly persistedEntryIds: ReadonlySet<string>;
+  readonly operationEntryStart: number;
+  readonly checkpointEntryStart: number;
   readonly recovery: WorkflowAgentHarnessRecovery;
 };
-
-export type WorkflowAgentHarnessStorageOptions = Omit<
-  WorkflowBackedSessionStorageOptions,
-  "onAppendEntry"
-> & {
-  workflowMetadata: WorkflowAgentHarnessStorageMetadata;
-};
-
-export class WorkflowAgentHarnessStorage extends WorkflowBackedSessionStorage {
-  readonly workflowMetadata: WorkflowAgentHarnessStorageMetadata;
-  private readonly appendEntryListeners: Set<AppendEntryListener>;
-
-  constructor(options: WorkflowAgentHarnessStorageOptions) {
-    const appendEntryListeners = new Set<AppendEntryListener>();
-    super({
-      ...options,
-      onAppendEntry: async (entry) => {
-        await Promise.all(
-          [...appendEntryListeners].map((listener) => Promise.resolve(listener(entry))),
-        );
-      },
-    });
-    this.appendEntryListeners = appendEntryListeners;
-    this.workflowMetadata = {
-      ...options.workflowMetadata,
-      persistedEntryIds: new Set(options.workflowMetadata.persistedEntryIds),
-    };
-  }
-
-  subscribeToAppendedEntries(listener: AppendEntryListener): () => void {
-    this.appendEntryListeners.add(listener);
-    return () => {
-      this.appendEntryListeners.delete(listener);
-    };
-  }
-}
 
 export type RestoredWorkflowAgentHarnessOptions = Pick<AgentHarnessOptions, "session"> &
   Partial<Pick<AgentHarnessOptions, "model" | "thinkingLevel" | "activeToolNames">>;
 
-export type RestoredWorkflowBackedSession = {
+export type RestoredWorkflowBackedSession = WorkflowAgentHarnessStorageMetadata & {
   session: Session;
-  storage: WorkflowAgentHarnessStorage;
+  storage: WorkflowBackedSessionStorage;
   options: RestoredWorkflowAgentHarnessOptions;
+  subscribeToAppendedEntries: (listener: AppendEntryListener) => () => void;
 };
 
-export type RestoreWorkflowBackedSessionOptions = {
+type RestoreWorkflowBackedSessionOptions = {
   operationId: string;
   state: PiHarnessSessionStepState;
   previousEmissions: readonly WorkflowStepEmission[];
   models: AgentHarnessOptions["models"];
 };
 
-const trustedWorkflowAgentHarnessEmissions = (
-  emissions: readonly WorkflowStepEmission[],
-): readonly TrustedWorkflowAgentHarnessEmission[] =>
-  emissions as readonly TrustedWorkflowAgentHarnessEmission[];
-
-const mergeSessionEntries = (
-  committedEntries: readonly SessionTreeEntry[],
-  replayedEntries: readonly SessionTreeEntry[],
-): SessionTreeEntry[] => {
-  const entries = [...committedEntries];
-  const entryIndexes = new Map(entries.map((entry, index) => [entry.id, index]));
-
-  for (const entry of replayedEntries) {
-    const existingIndex = entryIndexes.get(entry.id);
-    if (existingIndex === undefined) {
-      entryIndexes.set(entry.id, entries.length);
-      entries.push(entry);
-    } else {
-      entries[existingIndex] = entry;
-    }
-  }
-
-  return entries;
+type HarnessAttempt = {
+  started: boolean;
+  sessionEntries: SessionTreeEntry[];
+  completion: WorkflowAgentHarnessStepResult | undefined;
 };
 
-const emittedSessionEntries = (
-  emissions: readonly TrustedWorkflowAgentHarnessEmission[],
-): SessionTreeEntry[] => {
-  const entries: SessionTreeEntry[] = [];
-  const seenEntryIds = new Set<string>();
+const harnessEmissionKinds = new Set<WorkflowAgentHarnessEmission["kind"]>([
+  "harness-operation-start",
+  "harness-session-entry",
+  "harness-event",
+  "harness-operation-complete",
+]);
 
-  for (const { payload } of emissions) {
-    if (payload.kind !== "harness-session-entry" || seenEntryIds.has(payload.entry.id)) {
+const readHarnessAttempt = (
+  emissions: readonly WorkflowStepEmission[],
+  operationId: string,
+): HarnessAttempt => {
+  let attemptIdentity: string | undefined;
+  let started = false;
+  let completion: WorkflowAgentHarnessStepResult | undefined;
+  const sessionEntries: SessionTreeEntry[] = [];
+
+  for (const emission of emissions) {
+    const kind = (emission.payload as { kind?: WorkflowAgentHarnessEmission["kind"] } | null)?.kind;
+    if (emission.actor !== "user" || !kind || !harnessEmissionKinds.has(kind)) {
       continue;
     }
-    seenEntryIds.add(payload.entry.id);
-    entries.push(payload.entry);
+
+    const identity = `${emission.executionId}\0${emission.epoch}`;
+    if (attemptIdentity !== undefined && attemptIdentity !== identity) {
+      throw new Error("WORKFLOW_AGENT_HARNESS_ATTEMPT_IDENTITY_MISMATCH");
+    }
+    attemptIdentity = identity;
+    if (completion) {
+      throw new Error("WORKFLOW_AGENT_HARNESS_EMISSION_AFTER_OPERATION_COMPLETE");
+    }
+
+    const harnessEmission = emission as TrustedWorkflowAgentHarnessEmission;
+    if (harnessEmission.payload.kind !== "harness-operation-start" && !started) {
+      throw new Error("WORKFLOW_AGENT_HARNESS_EMISSION_BEFORE_OPERATION_START");
+    }
+
+    switch (harnessEmission.payload.kind) {
+      case "harness-operation-start":
+        if (started) {
+          throw new Error("WORKFLOW_AGENT_HARNESS_DUPLICATE_OPERATION_START");
+        }
+        started = true;
+        break;
+      case "harness-session-entry":
+        sessionEntries.push(harnessEmission.payload.entry);
+        break;
+      case "harness-event":
+        break;
+      case "harness-operation-complete":
+        completion = harnessEmission.payload.result;
+        break;
+    }
+
+    if (
+      "operationId" in harnessEmission.payload &&
+      harnessEmission.payload.operationId !== operationId
+    ) {
+      throw new Error("WORKFLOW_AGENT_HARNESS_OPERATION_ID_MISMATCH");
+    }
   }
 
-  return entries;
+  return { started, sessionEntries, completion };
 };
 
-const completedInvocation = (
-  emissions: readonly TrustedWorkflowAgentHarnessEmission[],
-  operationId: string,
-):
-  | {
-      result: WorkflowAgentHarnessStepResult;
-      operationEntries: readonly SessionTreeEntry[];
+const appendUniqueSessionEntries = (
+  entries: readonly SessionTreeEntry[],
+  appendedEntries: readonly SessionTreeEntry[],
+): SessionTreeEntry[] => {
+  const entryIds = new Set(entries.map((entry) => entry.id));
+  if (entryIds.size !== entries.length) {
+    throw new Error("WORKFLOW_AGENT_HARNESS_DUPLICATE_SESSION_ENTRY");
+  }
+  for (const entry of appendedEntries) {
+    if (entryIds.has(entry.id)) {
+      throw new Error(`WORKFLOW_AGENT_HARNESS_DUPLICATE_SESSION_ENTRY:${entry.id}`);
     }
-  | undefined => {
-  for (let index = emissions.length - 1; index >= 0; index -= 1) {
-    const completion = emissions[index];
-    if (
-      completion?.payload.kind === "harness-operation-complete" &&
-      completion.payload.operationId === operationId
-    ) {
+    if (entry.parentId !== null && !entryIds.has(entry.parentId)) {
+      throw new Error(`WORKFLOW_AGENT_HARNESS_UNKNOWN_PARENT_ENTRY:${entry.parentId}`);
+    }
+    entryIds.add(entry.id);
+  }
+  return [...entries, ...appendedEntries];
+};
+
+type InterruptedTranscript = {
+  recoverableLeafId: string | null;
+  missingToolCalls: ToolCall[];
+};
+
+/** Finds the last replay-safe leaf and unfinished tool calls in an interrupted operation branch. */
+function analyzeInterruptedTranscript(
+  baseLeafId: string | null,
+  activeOperationBranch: readonly SessionTreeEntry[],
+): InterruptedTranscript {
+  let recoverableLeafId = baseLeafId;
+  let openToolCalls: ToolCall[] | undefined;
+  let completedToolCallIds = new Set<string>();
+
+  for (const entry of activeOperationBranch) {
+    if (entry.type !== "message") {
+      if (!openToolCalls) {
+        recoverableLeafId = entry.type === "leaf" ? entry.targetId : entry.id;
+      }
+      continue;
+    }
+
+    const message = entry.message;
+    if (message.role === "user") {
+      if (openToolCalls) {
+        return {
+          recoverableLeafId,
+          missingToolCalls: openToolCalls.filter(
+            (toolCall) => !completedToolCallIds.has(toolCall.id),
+          ),
+        };
+      }
+      recoverableLeafId = entry.id;
+      continue;
+    }
+
+    if (message.role === "assistant") {
+      if (openToolCalls) {
+        return {
+          recoverableLeafId,
+          missingToolCalls: openToolCalls.filter(
+            (toolCall) => !completedToolCallIds.has(toolCall.id),
+          ),
+        };
+      }
+      const toolCalls = message.content.filter(
+        (content): content is ToolCall => content.type === "toolCall",
+      );
+      if (message.stopReason !== "toolUse" || toolCalls.length === 0) {
+        return { recoverableLeafId, missingToolCalls: [] };
+      }
+      openToolCalls = toolCalls;
+      completedToolCallIds = new Set<string>();
+      recoverableLeafId = entry.id;
+      continue;
+    }
+
+    if (message.role !== "toolResult") {
       return {
-        result: completion.payload.result,
-        operationEntries: emittedSessionEntries(
-          emissions.filter((emission) => emission.epoch === completion.epoch),
-        ),
+        recoverableLeafId,
+        missingToolCalls:
+          openToolCalls?.filter((toolCall) => !completedToolCallIds.has(toolCall.id)) ?? [],
       };
     }
-  }
+    const toolCallId = message.toolCallId;
+    if (
+      !openToolCalls?.some((toolCall) => toolCall.id === toolCallId) ||
+      completedToolCallIds.has(toolCallId)
+    ) {
+      return {
+        recoverableLeafId,
+        missingToolCalls:
+          openToolCalls?.filter((toolCall) => !completedToolCallIds.has(toolCall.id)) ?? [],
+      };
+    }
 
-  return undefined;
-};
-
-const rollbackInterruptedPromptToInitialUserMessage = (options: {
-  entries: readonly SessionTreeEntry[];
-  uncommittedEntries: readonly SessionTreeEntry[];
-}): { entries: SessionTreeEntry[]; parentLeafId: string | null } => {
-  const initialUserEntry = options.uncommittedEntries.find(
-    (entry) => entry.type === "message" && entry.message.role === "user",
-  );
-  if (!initialUserEntry) {
-    throw new Error("WORKFLOW_AGENT_HARNESS_INTERRUPTED_INVOCATION_NOT_REPLAYABLE");
-  }
-
-  const initialUserIndex = options.entries.findIndex((entry) => entry.id === initialUserEntry.id);
-  if (initialUserIndex === -1) {
-    throw new Error("WORKFLOW_AGENT_HARNESS_INTERRUPTED_INVOCATION_NOT_REPLAYABLE");
+    completedToolCallIds.add(toolCallId);
+    recoverableLeafId = entry.id;
+    if (completedToolCallIds.size === openToolCalls.length) {
+      openToolCalls = undefined;
+      completedToolCallIds = new Set<string>();
+    }
   }
 
   return {
-    entries: options.entries.slice(0, initialUserIndex + 1),
-    parentLeafId: initialUserEntry.parentId,
+    recoverableLeafId,
+    missingToolCalls:
+      openToolCalls?.filter((toolCall) => !completedToolCallIds.has(toolCall.id)) ?? [],
   };
-};
+}
 
-const assertPersistedEntriesBelongToSession = (state: PiHarnessSessionStepState): void => {
-  const sessionEntryIds = new Set(state.entries.map((entry) => entry.id));
-  for (const persistedEntryId of state.persistedEntryIds) {
-    if (!sessionEntryIds.has(persistedEntryId)) {
-      throw new Error(`WORKFLOW_AGENT_HARNESS_UNKNOWN_PERSISTED_ENTRY:${persistedEntryId}`);
-    }
+const assertCheckpointBoundary = (state: PiHarnessSessionStepState): void => {
+  if (
+    !Number.isSafeInteger(state.checkpointedEntryCount) ||
+    state.checkpointedEntryCount < 0 ||
+    state.checkpointedEntryCount > state.entries.length
+  ) {
+    throw new Error(
+      `WORKFLOW_AGENT_HARNESS_INVALID_CHECKPOINT_BOUNDARY:${state.checkpointedEntryCount}:${state.entries.length}`,
+    );
   }
 };
 
@@ -366,13 +417,13 @@ const sessionEntriesToRoot = (
   return branch;
 };
 
-/** @internal */
-export const deriveAgentHarnessOptionsFromSessionEntries = (
+const deriveAgentHarnessOptionsFromSessionEntries = (
   session: Session,
   models: AgentHarnessOptions["models"],
   entries: readonly SessionTreeEntry[],
+  leafId = sessionEntriesLeafId(entries),
 ): RestoredWorkflowAgentHarnessOptions => {
-  const branchEntries = sessionEntriesToRoot(entries, sessionEntriesLeafId(entries));
+  const branchEntries = sessionEntriesToRoot(entries, leafId);
   let modelSelection: { provider: string; modelId: string } | undefined;
   let thinkingLevel: string | undefined;
   let activeToolNames: string[] | undefined;
@@ -409,42 +460,48 @@ export const deriveAgentHarnessOptionsFromSessionEntries = (
 export const restoreWorkflowBackedSession = (
   options: RestoreWorkflowBackedSessionOptions,
 ): RestoredWorkflowBackedSession => {
-  assertPersistedEntriesBelongToSession(options.state);
+  assertCheckpointBoundary(options.state);
 
-  const previousEmissions = trustedWorkflowAgentHarnessEmissions(options.previousEmissions);
-  const replayedEntries = emittedSessionEntries(previousEmissions);
-  const persistedEntryIds = new Set(options.state.persistedEntryIds);
-  const uncommittedEntries = replayedEntries.filter((entry) => !persistedEntryIds.has(entry.id));
-  const completed = completedInvocation(previousEmissions, options.operationId);
-  let storageEntries = mergeSessionEntries(options.state.entries, replayedEntries);
+  const attempt = readHarnessAttempt(options.previousEmissions, options.operationId);
+  const operationEntryStart = options.state.entries.length;
+  const checkpointEntryStart = options.state.checkpointedEntryCount;
+  const storageEntries = appendUniqueSessionEntries(options.state.entries, attempt.sessionEntries);
   let recovery: WorkflowAgentHarnessRecovery = { kind: "execute" };
 
-  if (completed) {
-    recovery = { kind: "completed", ...completed };
-  } else if (uncommittedEntries.length > 0) {
-    const interruptedPrompt = rollbackInterruptedPromptToInitialUserMessage({
-      entries: storageEntries,
-      uncommittedEntries,
-    });
-    storageEntries = interruptedPrompt.entries;
-    recovery = { kind: "execute", leafIdBeforeInvocation: interruptedPrompt.parentLeafId };
+  if (attempt.completion !== undefined) {
+    recovery = { kind: "completed", result: attempt.completion };
+  } else if (attempt.started) {
+    const operationEntryIds = new Set(attempt.sessionEntries.map((entry) => entry.id));
+    const activeOperationBranch = sessionEntriesToRoot(
+      storageEntries,
+      sessionEntriesLeafId(storageEntries),
+    ).filter((entry) => operationEntryIds.has(entry.id));
+    recovery = {
+      kind: "interrupted",
+      transcript: analyzeInterruptedTranscript(
+        sessionEntriesLeafId(options.state.entries),
+        activeOperationBranch,
+      ),
+      replayedEntries: attempt.sessionEntries,
+    };
   }
 
+  const appendEntryListeners = new Set<AppendEntryListener>();
   const entryIdPrefix = `${options.operationId}:entry`;
-  const storage = new WorkflowAgentHarnessStorage({
+  const storage = new WorkflowBackedSessionStorage({
     metadata: { ...options.state.metadata },
     entries: storageEntries,
     entryIds: createWorkflowBackedSessionEntryIdAllocator({
       prefix: entryIdPrefix,
       startIndex: nextWorkflowBackedSessionEntryIndex({
         prefix: entryIdPrefix,
-        entries: replayedEntries,
+        entries: storageEntries,
       }),
     }),
-    workflowMetadata: {
-      operationId: options.operationId,
-      persistedEntryIds,
-      recovery,
+    onAppendEntry: async (entry) => {
+      await Promise.all(
+        [...appendEntryListeners].map((listener) => Promise.resolve(listener(entry))),
+      );
     },
   });
 
@@ -453,27 +510,39 @@ export const restoreWorkflowBackedSession = (
   return {
     session,
     storage,
-    options: deriveAgentHarnessOptionsFromSessionEntries(session, options.models, storageEntries),
+    operationId: options.operationId,
+    operationEntryStart,
+    checkpointEntryStart,
+    recovery,
+    subscribeToAppendedEntries: (listener) => {
+      appendEntryListeners.add(listener);
+      return () => {
+        appendEntryListeners.delete(listener);
+      };
+    },
+    options: deriveAgentHarnessOptionsFromSessionEntries(
+      session,
+      options.models,
+      storageEntries,
+      recovery.kind === "interrupted"
+        ? recovery.transcript.recoverableLeafId
+        : sessionEntriesLeafId(storageEntries),
+    ),
   };
 };
 
 /**
- * Phase 4 — Execute or replay one AgentHarness invocation inside the durable step
- *
- * Completed checkpoints return without invoking the provider. Otherwise this phase temporarily
- * connects Session appends and AgentHarness events to tx.emit, moves interrupted prompts back to
- * their original parent leaf, and invokes the caller's direct harness method. Terminal outcomes are
- * exposed to an optional observer before failed assistants are rejected and successful callback
- * results are checkpointed. A terminal assistant without a checkpoint is retried because an
- * arbitrary callback may transform the Pi method's return value.
+ * Execute a fresh invocation, replay a completed result, or checkpoint interrupted progress as
+ * aborted. Recovery never calls runDurableStep and never re-executes provider or tool work.
  */
 
-export type WorkflowAgentHarnessStepResult<TResult = unknown> = Pick<
+type WorkflowAgentHarnessStepResultBase = Pick<
   PiHarnessStepResult,
   "type" | "appendedEntries" | "leafId"
-> & {
-  value: TResult;
-};
+>;
+
+export type WorkflowAgentHarnessStepResult<TResult = unknown> = WorkflowAgentHarnessStepResultBase &
+  ({ readonly outcome: "completed"; readonly value: TResult } | { readonly outcome: "aborted" });
 
 export type WorkflowAgentHarnessTerminalOutcome<TResult = unknown> = {
   operationId: string;
@@ -481,14 +550,12 @@ export type WorkflowAgentHarnessTerminalOutcome<TResult = unknown> = {
   result: WorkflowAgentHarnessStepResult<TResult>;
 };
 
-export type WithWorkflowAgentHarnessOptions<TResult = unknown> = {
-  session: Session;
-  storage: WorkflowAgentHarnessStorage;
-  harness: AgentHarness;
-  tx: WorkflowAgentHarnessTx;
-  /** Configure observation of workflow events delivered live while the durable step is running. */
-  observeLiveEvents?: (onLiveEvent: WorkflowAgentHarnessOnLiveEvent) => void;
-  runDurableStep: () => Promise<TResult>;
+export type WorkflowAgentHarnessOnLiveEvent = <TPayload = unknown>(
+  type: string,
+  handler: WorkflowStepEventHandler<TPayload>,
+) => void;
+
+type WorkflowAgentHarnessTerminalOptions<TResult> = {
   /** Persist terminal provider errors as completed operations instead of failing the workflow step. */
   checkpointTerminalAssistantError?: boolean;
   /** May run more than once before the enclosing workflow step commits. */
@@ -497,12 +564,16 @@ export type WithWorkflowAgentHarnessOptions<TResult = unknown> = {
   ) => Promise<void> | void;
 };
 
-export type WorkflowAgentHarnessOnLiveEvent = <TPayload = unknown>(
-  type: string,
-  handler: WorkflowStepEventHandler<TPayload>,
-) => void;
+export type WithWorkflowAgentHarnessOptions<TResult = unknown> =
+  WorkflowAgentHarnessTerminalOptions<TResult> & {
+    restored: RestoredWorkflowBackedSession;
+    harness: AgentHarness;
+    tx: WorkflowAgentHarnessExecutionTx;
+    observeLiveEvents?: (onLiveEvent: WorkflowAgentHarnessOnLiveEvent) => void;
+    runDurableStep: () => Promise<TResult>;
+  };
 
-export type WorkflowAgentHarnessTx = Pick<WorkflowStepTx, "emit" | "onEvent">;
+type WorkflowAgentHarnessExecutionTx = Pick<WorkflowStepTx, "emit" | "onEvent">;
 
 const latestAssistantMessage = (
   entries: readonly SessionTreeEntry[],
@@ -530,12 +601,30 @@ const assertTerminalAssistantSucceeded = (entries: readonly SessionTreeEntry[]):
   );
 };
 
+const createInterruptedToolResult = (toolCall: ToolCall): ToolResultMessage => ({
+  role: "toolResult",
+  toolCallId: toolCall.id,
+  toolName: toolCall.name,
+  content: [{ type: "text", text: "Tool execution interrupted before completion." }],
+  isError: true,
+  timestamp: Date.now(),
+});
+
+const appendInterruptedToolResults = (
+  session: Session,
+  toolCalls: readonly ToolCall[],
+): Promise<unknown> =>
+  toolCalls.reduce<Promise<unknown>>(
+    (previousAppend, toolCall) =>
+      previousAppend.then(() => session.appendMessage(createInterruptedToolResult(toolCall))),
+    Promise.resolve(),
+  );
+
 export const hasSummarizableCompactionHistory = (preparation: CompactionPreparation): boolean =>
   preparation.messagesToSummarize.length > 0 || preparation.turnPrefixMessages.length > 0;
 
 export const withWorkflowAgentHarness = async <TResult>({
-  session,
-  storage,
+  restored,
   harness,
   tx,
   observeLiveEvents,
@@ -543,44 +632,81 @@ export const withWorkflowAgentHarness = async <TResult>({
   checkpointTerminalAssistantError = false,
   onTerminalOutcome,
 }: WithWorkflowAgentHarnessOptions<TResult>): Promise<WorkflowAgentHarnessStepResult<TResult>> => {
-  const { operationId, persistedEntryIds, recovery } = storage.workflowMetadata;
+  const {
+    session,
+    storage,
+    operationId,
+    operationEntryStart,
+    checkpointEntryStart,
+    recovery,
+    subscribeToAppendedEntries,
+  } = restored;
 
   if (recovery.kind === "completed") {
     const result = recovery.result as WorkflowAgentHarnessStepResult<TResult>;
-    await onTerminalOutcome?.({
-      operationId,
-      operationEntries: recovery.operationEntries,
-      result,
-    });
+    const operationEntries = (await storage.getEntries()).slice(operationEntryStart);
+    await onTerminalOutcome?.({ operationId, operationEntries, result });
     if (!checkpointTerminalAssistantError) {
-      assertTerminalAssistantSucceeded(recovery.operationEntries);
+      assertTerminalAssistantSucceeded(operationEntries);
     }
     return result;
   }
 
-  const unsubscribeEntries = storage.subscribeToAppendedEntries((entry) => {
+  const unsubscribeEntries = subscribeToAppendedEntries((entry) => {
     tx.emit({ kind: "harness-session-entry", entry } satisfies WorkflowAgentHarnessEmission);
   });
-  const eventEncoder = new PiHarnessEventEncoder();
-  const unsubscribeHarness = harness.subscribe((event) => {
-    tx.emit({
-      kind: "harness-event",
-      event: eventEncoder.encode(event as PiHarnessSubscribedEvent),
-    } satisfies PiHarnessEncodedEventEmission);
-  });
-
-  try {
+  let unsubscribeHarness = () => {};
+  const emitOperationStart = () => {
     tx.emit({
       kind: "harness-operation-start",
       operationId,
       replay: { protocol: "pi-harness-operation", version: 1 },
     } satisfies WorkflowAgentHarnessEmission);
+  };
 
-    if (recovery.leafIdBeforeInvocation !== undefined) {
-      await session.moveTo(recovery.leafIdBeforeInvocation);
+  try {
+    if (recovery.kind === "interrupted") {
+      emitOperationStart();
+      // Workflows replays only the selected attempt epoch. Carry these entries forward before the
+      // first await so another interruption can restore the transcript from this epoch alone.
+      for (const entry of recovery.replayedEntries) {
+        tx.emit({ kind: "harness-session-entry", entry } satisfies WorkflowAgentHarnessEmission);
+      }
+      if ((await storage.getLeafId()) !== recovery.transcript.recoverableLeafId) {
+        await session.moveTo(recovery.transcript.recoverableLeafId);
+      }
+
+      await appendInterruptedToolResults(session, recovery.transcript.missingToolCalls);
+
+      const entries = await storage.getEntries();
+      const result = {
+        type: "harness-run",
+        outcome: "aborted",
+        appendedEntries: entries.slice(checkpointEntryStart),
+        leafId: await storage.getLeafId(),
+      } satisfies WorkflowAgentHarnessStepResult<TResult>;
+      const operationEntries = entries.slice(operationEntryStart);
+
+      await onTerminalOutcome?.({ operationId, operationEntries, result });
+
+      tx.emit({
+        kind: "harness-operation-complete",
+        operationId,
+        result,
+      } satisfies WorkflowAgentHarnessEmission);
+
+      return result;
     }
 
-    const entryIdsBeforeInvocation = new Set((await storage.getEntries()).map((entry) => entry.id));
+    const eventEncoder = new PiHarnessEventEncoder();
+    unsubscribeHarness = harness.subscribe((event) => {
+      tx.emit({
+        kind: "harness-event",
+        event: eventEncoder.encode(event as PiHarnessSubscribedEvent),
+      } satisfies PiHarnessEncodedEventEmission);
+    });
+    emitOperationStart();
+
     const activeEventHandlers = new Set<Promise<void>>();
     const eventHandlerErrors: Error[] = [];
     const unsubscribeLiveEvents: Array<() => void> = [];
@@ -654,13 +780,24 @@ export const withWorkflowAgentHarness = async <TResult>({
     }
 
     const entries = await storage.getEntries();
-    const operationEntries = entries.filter((entry) => !entryIdsBeforeInvocation.has(entry.id));
-    const result = {
-      type: "harness-run",
-      value,
-      appendedEntries: entries.filter((entry) => !persistedEntryIds.has(entry.id)),
-      leafId: await storage.getLeafId(),
-    } satisfies WorkflowAgentHarnessStepResult<TResult>;
+    const operationEntries = entries.slice(operationEntryStart);
+    const checkpointEntries = entries.slice(checkpointEntryStart);
+    const terminalAssistant = latestAssistantMessage(operationEntries);
+    const result: WorkflowAgentHarnessStepResult<TResult> =
+      terminalAssistant?.stopReason === "aborted"
+        ? {
+            type: "harness-run",
+            outcome: "aborted",
+            appendedEntries: checkpointEntries,
+            leafId: await storage.getLeafId(),
+          }
+        : {
+            type: "harness-run",
+            outcome: "completed",
+            value,
+            appendedEntries: checkpointEntries,
+            leafId: await storage.getLeafId(),
+          };
 
     await onTerminalOutcome?.({
       operationId,
@@ -685,25 +822,42 @@ export const withWorkflowAgentHarness = async <TResult>({
   }
 };
 
-/**
- * Phase 5 — Reduce the completed step result into workflow-local session state
- *
- * After step.do returns, merge its durable entry delta and persisted-entry bookkeeping into the
- * state carried by the workflow callback. The active leaf remains derived from the ordered entries,
- * so state cannot carry a conflicting duplicate leaf value. This phase performs no harness work
- * and emits no progress.
- */
+const sessionEntryPrefixMatches = (
+  prefix: readonly SessionTreeEntry[],
+  entries: readonly SessionTreeEntry[],
+): boolean => {
+  if (prefix.length > entries.length) {
+    return false;
+  }
+  for (const [index, entry] of prefix.entries()) {
+    if (JSON.stringify(entry) !== JSON.stringify(entries[index])) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/** Append one completed checkpoint suffix and verify its derived active leaf. */
 
 export const applyWorkflowAgentHarnessStepResult = (
   state: PiHarnessSessionStepState,
   result: Pick<WorkflowAgentHarnessStepResult, "appendedEntries" | "leafId">,
 ): PiHarnessSessionStepState => {
-  const entries = mergeSessionEntries(state.entries, result.appendedEntries);
-  const persistedEntryIds = new Set(state.persistedEntryIds);
-  for (const entry of result.appendedEntries) {
-    persistedEntryIds.add(entry.id);
+  assertCheckpointBoundary(state);
+
+  const uncheckpointedEntries = state.entries.slice(state.checkpointedEntryCount);
+  const checkpointPrefixMatches = sessionEntryPrefixMatches(
+    uncheckpointedEntries,
+    result.appendedEntries,
+  );
+  if (!checkpointPrefixMatches) {
+    throw new Error("WORKFLOW_AGENT_HARNESS_CHECKPOINT_PREFIX_MISMATCH");
   }
 
+  const entries = appendUniqueSessionEntries(
+    state.entries,
+    result.appendedEntries.slice(uncheckpointedEntries.length),
+  );
   const leafId = sessionEntriesLeafId(entries);
   if (leafId !== result.leafId) {
     throw new Error("WORKFLOW_AGENT_HARNESS_LEAF_MISMATCH");
@@ -712,6 +866,6 @@ export const applyWorkflowAgentHarnessStepResult = (
   return {
     metadata: { ...state.metadata },
     entries,
-    persistedEntryIds: [...persistedEntryIds],
+    checkpointedEntryCount: entries.length,
   };
 };

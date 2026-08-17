@@ -36,11 +36,7 @@ const supportWorkflow = defineWorkflow(
     });
 
     const initialResult = await step.do("initial", async (tx) => {
-      const {
-        session,
-        storage,
-        options: restoredOptions,
-      } = restoreWorkflowBackedSession({
+      const restored = restoreWorkflowBackedSession({
         operationId: `${supportWorkflow.name}:${event.instanceId}:initial`,
         state,
         previousEmissions: await tx.previousEmissions(),
@@ -51,12 +47,11 @@ const supportWorkflow = defineWorkflow(
         model,
         systemPrompt: "You are a helpful support agent.",
         tools: [searchTool],
-        ...restoredOptions,
+        ...restored.options,
       });
 
       return await withWorkflowAgentHarness({
-        session,
-        storage,
+        restored,
         harness,
         tx,
         runDurableStep: () => harness.prompt(`Help with ${event.payload.topic}`),
@@ -73,11 +68,7 @@ const supportWorkflow = defineWorkflow(
       if (command.kind !== "prompt") continue;
 
       const result = await step.do(`command:${command.commandId}`, async (tx) => {
-        const {
-          session,
-          storage,
-          options: restoredOptions,
-        } = restoreWorkflowBackedSession({
+        const restored = restoreWorkflowBackedSession({
           operationId: `${supportWorkflow.name}:${event.instanceId}:command:${command.commandId}`,
           state,
           previousEmissions: await tx.previousEmissions(),
@@ -88,12 +79,11 @@ const supportWorkflow = defineWorkflow(
           model,
           systemPrompt: "You are a helpful support agent.",
           tools: [searchTool],
-          ...restoredOptions,
+          ...restored.options,
         });
 
         return await withWorkflowAgentHarness({
-          session,
-          storage,
+          restored,
           harness,
           tx,
           runDurableStep: () => harness.prompt(command.input.text),
@@ -119,21 +109,28 @@ Create sessions by selecting the workflow and passing schema-validated input.
 
 ## Direct harness operations
 
-Inside each `step.do(...)`, restore the workflow-backed Pi session, create a real `AgentHarness`,
-and call its APIs directly. This gives the workflow full control over operation names, active tools,
-skills, prompt templates, compaction, and tree navigation.
+Inside each `step.do(...)`, restore the workflow-backed Pi session, construct a real `AgentHarness`,
+and call its APIs directly. This keeps normal Pi harness configuration and extension points under
+the workflow author's control.
 
 To stop a prompt after a particular tool result, register the normal Pi harness hook before invoking
 the prompt:
 
 ```ts
+const restored = restoreWorkflowBackedSession({
+  operationId,
+  state,
+  previousEmissions: await tx.previousEmissions(),
+  models,
+});
+const harness = new AgentHarness({ models, model, tools, ...restored.options });
+
 harness.on("tool_result", (result) =>
   result.toolName === "classify_request" ? { terminate: true } : undefined,
 );
 
 return await withWorkflowAgentHarness({
-  session,
-  storage,
+  restored,
   harness,
   tx,
   runDurableStep: () => harness.prompt(event.payload.request),

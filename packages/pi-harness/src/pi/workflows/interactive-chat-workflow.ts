@@ -126,20 +126,18 @@ export const createInteractiveChatWorkflow = (config: CreateInteractiveChatWorkf
           type: "command",
           timeout: commandTimeout,
         });
-        const command = piSessionCommandPayloadSchema.parse(commandEvent.payload);
+        const queuedCommand = piSessionCommandPayloadSchema.parse(commandEvent.payload);
 
-        // Controls can only target the live harness registered for an active invocation. The
-        // durable wait has already consumed idle controls, so they do not start a new step.
-        switch (command.kind) {
-          case "abort":
-          case "steer":
-          case "followUp":
-            continue;
-          case "prompt":
-          case "skill":
-          case "promptFromTemplate":
-          case "compact":
-            break;
+        // Controls consumed by a live harness normally never reach this durable wait. If steer or
+        // followUp does reach it, the targeted operation is no longer active, so preserve its text.
+
+        const command =
+          queuedCommand.kind === "steer" || queuedCommand.kind === "followUp"
+            ? { ...queuedCommand, kind: "prompt" as const }
+            : queuedCommand;
+
+        if (command.kind === "abort") {
+          continue;
         }
 
         const invocation = {
@@ -147,23 +145,16 @@ export const createInteractiveChatWorkflow = (config: CreateInteractiveChatWorkf
           operationId: `${workflowName}:${event.instanceId}:command:${command.commandId}`,
         };
         const committedResult = await step.do(invocation.stepName, async (tx) => {
-          // Current-attempt emissions contain session entries that may have been written before a
-          // worker restart. Restoration either replays a completed result or rolls an interrupted
-          // prompt back to its original parent before retrying it.
-          const { session, storage, options } = restoreWorkflowBackedSession({
+          const restored = restoreWorkflowBackedSession({
             operationId: invocation.operationId,
             state: sessionState,
             previousEmissions: await tx.previousEmissions(),
             models: harnessOptions.models,
           });
-          const harness = new AgentHarness({
-            ...harnessOptions,
-            ...options,
-          });
+          const harness = new AgentHarness({ ...harnessOptions, ...restored.options });
 
           return await withWorkflowAgentHarness({
-            session,
-            storage,
+            restored,
             harness,
             tx,
             observeLiveEvents: (onLiveEvent) => {
@@ -252,7 +243,7 @@ export const createInteractiveChatWorkflow = (config: CreateInteractiveChatWorkf
                 }
                 case "compact": {
                   const preparationResult = prepareCompaction(
-                    await session.getBranch(),
+                    await restored.session.getBranch(),
                     DEFAULT_COMPACTION_SETTINGS,
                   );
                   if (!preparationResult.ok) {

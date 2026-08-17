@@ -5,7 +5,12 @@ import { Type } from "typebox";
 
 import type { HandlerTxContext } from "@fragno-dev/db";
 
-import { AgentHarness, type AgentTool, type SessionTreeEntry } from "@earendil-works/pi-agent-core";
+import {
+  AgentHarness,
+  type AgentMessage,
+  type AgentTool,
+  type SessionTreeEntry,
+} from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type Api,
@@ -256,6 +261,7 @@ const runAccountingInvocation = async (options: {
   previousEmissions?: readonly WorkflowStepEmission[];
   streamFn: ReturnType<typeof createTextStreamFn>;
   tools?: readonly AgentTool[];
+  initialMessages?: readonly AgentMessage[];
   checkpointTerminalAssistantError?: boolean;
   attempt: AccountingAttempt;
 }) => {
@@ -267,6 +273,7 @@ const runAccountingInvocation = async (options: {
         id: accountingMetadata.sessionId,
         createdAt: "2026-07-01T12:00:00.000Z",
       },
+      initialMessages: options.initialMessages,
     }),
     previousEmissions: options.previousEmissions ?? [],
     models,
@@ -280,8 +287,7 @@ const runAccountingInvocation = async (options: {
   });
 
   return await withWorkflowAgentHarness({
-    session: restored.session,
-    storage: restored.storage,
+    restored,
     harness,
     tx: options.attempt.tx,
     runDurableStep: () => harness.prompt("hello"),
@@ -316,6 +322,7 @@ describe("workflow AgentHarness recovery accounting", () => {
     const hooks = secondAttempt.commit();
 
     expect(streamFn).toHaveBeenCalledTimes(1);
+    assert(replayResult.outcome === "completed");
     expect(replayResult.value).toMatchObject({
       role: "assistant",
       content: [{ type: "text", text: "completed once" }],
@@ -333,45 +340,38 @@ describe("workflow AgentHarness recovery accounting", () => {
     ]);
   });
 
-  test("uses model calls from the same epoch as the canonical completion", async () => {
-    const operationId = "canonical-completion-epoch";
-    const firstUsage = usage({ input: 100, output: 10 });
-    const secondUsage = usage({ input: 200, output: 20, cacheRead: 5 });
-    const firstAttempt = createAccountingAttempt();
-    await runAccountingInvocation({
-      operationId,
-      streamFn: createTextStreamFn("first completion", firstUsage),
-      attempt: firstAttempt,
-    });
-    const secondAttempt = createAccountingAttempt();
-    await runAccountingInvocation({
-      operationId,
-      streamFn: createTextStreamFn("second completion", secondUsage),
-      attempt: secondAttempt,
-    });
-    const combinedEmissions = [
-      ...toPreviousEmissions(firstAttempt.emitted, "first-epoch"),
-      ...toPreviousEmissions(secondAttempt.emitted, "second-epoch"),
-    ];
-    const recoveredAttempt = createAccountingAttempt();
-    const provider = vi.fn(createTextStreamFn("must not run", usage({ input: 999, output: 999 })));
+  test("excludes initial assistant usage from current-operation accounting", async () => {
+    const historicalUsage = usage({ input: 900, output: 90, cacheRead: 45 });
+    const currentUsage = usage({ input: 80, output: 20, cacheWrite: 5 });
+    const historicalAssistant = createAssistantMessage("historical response", historicalUsage);
+    historicalAssistant.timestamp = new Date("2026-07-01T11:59:00.000Z").getTime();
+    const attempt = createAccountingAttempt();
 
     const result = await runAccountingInvocation({
-      operationId,
-      streamFn: provider,
-      attempt: recoveredAttempt,
-      previousEmissions: combinedEmissions,
+      operationId: "initial-context-accounting",
+      streamFn: createTextStreamFn("current response", currentUsage),
+      initialMessages: [
+        {
+          role: "user",
+          content: "historical prompt",
+          timestamp: new Date("2026-07-01T11:58:00.000Z").getTime(),
+        },
+        historicalAssistant,
+      ],
+      attempt,
     });
-    const hooks = recoveredAttempt.commit();
+    const hooks = attempt.commit();
 
-    expect(provider).not.toHaveBeenCalled();
-    expect(result.value).toMatchObject({ content: [{ type: "text", text: "second completion" }] });
+    assert(result.outcome === "completed");
+    expect(result.appendedEntries.filter((entry) => /^initial-\d+$/.test(entry.id))).toHaveLength(
+      2,
+    );
     expect(hooks).toEqual([
       {
         name: "onOperationCompleted",
         payload: expect.objectContaining({
-          modelCalls: [expect.objectContaining({ usage: secondUsage })],
-          usage: secondUsage,
+          modelCalls: [expect.objectContaining({ usage: currentUsage })],
+          usage: currentUsage,
         }),
       },
     ]);
@@ -394,7 +394,13 @@ describe("workflow AgentHarness recovery accounting", () => {
     const hooks = recoveredAttempt.commit();
 
     expect(streamFn).toHaveBeenCalledTimes(1);
-    expect(result.value).toMatchObject({ stopReason: "aborted", usage: abortedUsage });
+    assert(result.outcome === "aborted");
+    expect(result.appendedEntries).toContainEqual(
+      expect.objectContaining({
+        type: "message",
+        message: expect.objectContaining({ stopReason: "aborted", usage: abortedUsage }),
+      }),
+    );
     expect(hooks).toEqual([
       {
         name: "onOperationCompleted",
@@ -406,10 +412,9 @@ describe("workflow AgentHarness recovery accounting", () => {
     ]);
   });
 
-  test("excludes an uncommitted aborted attempt when a later retry wins", async () => {
+  test("accounts an uncommitted aborted attempt when recovery checkpoints the abort", async () => {
     const operationId = "aborted-attempt-retry";
     const abortedUsage = usage({ input: 300, output: 3, cacheRead: 30 });
-    const successfulUsage = usage({ input: 45, output: 9, cacheRead: 6 });
     const firstAttempt = createAccountingAttempt();
     await runAccountingInvocation({
       operationId,
@@ -418,20 +423,21 @@ describe("workflow AgentHarness recovery accounting", () => {
     });
 
     const winningAttempt = createAccountingAttempt();
-    await runAccountingInvocation({
+    const result = await runAccountingInvocation({
       operationId,
-      streamFn: createTextStreamFn("retry complete", successfulUsage),
+      streamFn: createTextStreamFn("must not run", usage({ input: 1, output: 1 })),
       attempt: winningAttempt,
       previousEmissions: toPreviousEmissions(withoutOperationCompletion(firstAttempt.emitted)),
     });
     const hooks = winningAttempt.commit();
 
+    assert(result.outcome === "aborted");
     expect(hooks).toEqual([
       {
         name: "onOperationCompleted",
         payload: expect.objectContaining({
-          modelCalls: [expect.objectContaining({ stopReason: "stop", usage: successfulUsage })],
-          usage: successfulUsage,
+          modelCalls: [expect.objectContaining({ stopReason: "aborted", usage: abortedUsage })],
+          usage: abortedUsage,
         }),
       },
     ]);
@@ -507,16 +513,27 @@ describe("workflow AgentHarness recovery accounting", () => {
     ]);
   });
 
-  test("accounts only the winning call after a provider failure fails the default workflow step", async () => {
+  test("accounts a provider failure when recovery checkpoints the interruption", async () => {
     const operationId = "failed-attempt-winner";
+    const historicalUsage = usage({ input: 900, output: 90, cacheRead: 45 });
     const failedUsage = usage({ input: 500, output: 10, cacheRead: 50 });
-    const successfulUsage = usage({ input: 60, output: 15, cacheRead: 5 });
+    const historicalAssistant = createAssistantMessage("historical response", historicalUsage);
+    historicalAssistant.timestamp = new Date("2026-07-01T11:59:00.000Z").getTime();
+    const initialMessages: AgentMessage[] = [
+      {
+        role: "user",
+        content: "historical prompt",
+        timestamp: new Date("2026-07-01T11:58:00.000Z").getTime(),
+      },
+      historicalAssistant,
+    ];
     const firstAttempt = createAccountingAttempt();
 
     await expect(
       runAccountingInvocation({
         operationId,
         streamFn: createErrorStreamFn("provider down", failedUsage),
+        initialMessages,
         attempt: firstAttempt,
       }),
     ).rejects.toThrow("Pi harness agent stream failed: provider down");
@@ -527,19 +544,21 @@ describe("workflow AgentHarness recovery accounting", () => {
     const winningAttempt = createAccountingAttempt();
     const result = await runAccountingInvocation({
       operationId,
-      streamFn: createTextStreamFn("recovered", successfulUsage),
+      streamFn: createTextStreamFn("must not run", usage({ input: 1, output: 1 })),
+      initialMessages,
       attempt: winningAttempt,
       previousEmissions: toPreviousEmissions(firstAttempt.emitted),
     });
     const hooks = winningAttempt.commit();
 
-    expect(result.value).toMatchObject({ content: [{ type: "text", text: "recovered" }] });
+    expect(result).toMatchObject({ outcome: "aborted" });
+    expect(result).not.toHaveProperty("value");
     expect(hooks).toEqual([
       {
         name: "onOperationCompleted",
         payload: expect.objectContaining({
-          modelCalls: [expect.objectContaining({ stopReason: "stop", usage: successfulUsage })],
-          usage: successfulUsage,
+          modelCalls: [expect.objectContaining({ stopReason: "error", usage: failedUsage })],
+          usage: failedUsage,
         }),
       },
     ]);
@@ -557,6 +576,7 @@ describe("workflow AgentHarness recovery accounting", () => {
       attempt: firstAttempt,
       checkpointTerminalAssistantError: true,
     });
+    assert(firstResult.outcome === "completed");
     expect(firstResult.value).toMatchObject({
       stopReason: "error",
       errorMessage: "provider down",
@@ -592,7 +612,7 @@ describe("workflow AgentHarness recovery accounting", () => {
     ]);
   });
 
-  test("repeats physical tool work when retrying before a durable completion", async () => {
+  test("does not repeat physical tool work when aborting before a durable completion", async () => {
     const operationId = "tool-side-effect-replay";
     const zeroUsage = usage({ input: 0, output: 0 });
     const toolExecute = vi.fn(async () => ({
@@ -633,17 +653,14 @@ describe("workflow AgentHarness recovery accounting", () => {
       previousEmissions: toPreviousEmissions(emissionsThroughFirstToolResult(firstAttempt.emitted)),
     });
 
-    expect(streamFn).toHaveBeenCalledTimes(4);
-    expect(toolExecute).toHaveBeenCalledTimes(2);
-    expect(result.value).toMatchObject({
-      role: "assistant",
-      content: [{ type: "text", text: "charged complete" }],
-    });
+    expect(streamFn).toHaveBeenCalledTimes(2);
+    expect(toolExecute).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ outcome: "aborted" });
+    expect(result).not.toHaveProperty("value");
     expect(activeMessageRoles(result.appendedEntries, result.leafId)).toEqual([
       "user",
       "assistant",
       "toolResult",
-      "assistant",
     ]);
   });
 });

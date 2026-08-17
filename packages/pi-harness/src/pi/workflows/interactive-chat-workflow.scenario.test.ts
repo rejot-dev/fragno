@@ -194,14 +194,6 @@ const matchesSteerQueue = (
   expectedTexts: readonly string[],
 ): boolean => matchesControlQueue(emission, "steer", expectedTexts);
 
-const matchesToolExecutionStart = (
-  emission: WorkflowScenarioObservedEmission,
-  toolName: string,
-): boolean => {
-  const event = harnessEventFromEmission(emission);
-  return event?.type === "tool_execution_start" && event.toolName === toolName;
-};
-
 const createAbortableStreamFn =
   (onAbort: () => void): StreamFn =>
   (_model, _context, options) => {
@@ -2158,88 +2150,113 @@ describe("Interactive chat workflow scenarios", () => {
     );
   });
 
-  const runSteeringRecoveryScenario = async (
-    restartAfter: "queued" | "steering-message",
-  ): Promise<void> => {
-    const originalFirstResponse = createCompletionGate();
-    const interruptedSecondResponse = createCompletionGate();
-    const recoveryFirstResponse = createCompletionGate();
-    const recoveryFirstRequestIndex = restartAfter === "queued" ? 1 : 2;
-    const observedModelContexts: Array<Array<{ role: Message["role"]; text: string }>> = [];
-    let providerCallIndex = 0;
-    const interactiveChatWorkflow = createInteractiveChatWorkflow({
-      name: `interactive-chat-steer-recovery-${restartAfter}`,
-      options: {
-        systemPrompt: "You are helpful.",
-        model: mockModel,
-        models: createModelsForStreamFn(mockModel, (_model, context) => {
-          observedModelContexts.push(
-            context.messages.map((message) => ({
-              role: message.role,
-              text: modelMessageText(message),
-            })),
-          );
-          const requestIndex = providerCallIndex;
-          providerCallIndex += 1;
-
-          if (requestIndex === 0) {
+  test.each(["queued", "steering-message"] as const)(
+    "falls back to a prompt when steering is interrupted from the %s boundary",
+    async (restartAfter) => {
+      const initialResponse = createCompletionGate();
+      const steeredResponse = createCompletionGate();
+      let providerCallCount = 0;
+      const interactiveChatWorkflow = createInteractiveChatWorkflow({
+        name: `interactive-chat-steer-abort-${restartAfter}`,
+        options: {
+          systemPrompt: "You are helpful.",
+          model: mockModel,
+          models: createModelsForStreamFn(mockModel, (_model, context) => {
+            const callIndex = providerCallCount;
+            providerCallCount += 1;
             return createGatedTextStreamFn(
-              "discarded initial response",
-              originalFirstResponse.promise,
+              callIndex === 0 ? "initial response" : "steered response",
+              callIndex === 0 ? initialResponse.promise : steeredResponse.promise,
             )(_model, context);
-          }
-          if (restartAfter === "steering-message" && requestIndex === 1) {
-            return createGatedTextStreamFn(
-              "discarded steered response",
-              interruptedSecondResponse.promise,
-            )(_model, context);
-          }
-          if (requestIndex === recoveryFirstRequestIndex) {
-            return createGatedTextStreamFn(
-              "recovered initial response",
-              recoveryFirstResponse.promise,
-            )(_model, context);
-          }
-          if (requestIndex === recoveryFirstRequestIndex + 1) {
-            return createTextStreamFn("recovered steered response")();
-          }
-
-          throw new Error(`UNEXPECTED_PROVIDER_CALL:${requestIndex}`);
-        }),
-      },
-    });
-    const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
-
-    await runScenario(
-      defineScenario({
-        name: `pi-harness-interactive-chat-steer-recovery-${restartAfter}`,
-        workflows: createPiWorkflows({ workflows: config.workflows }),
-        vars: () => ({
-          sessionId: undefined as string | undefined,
-          firstQueueUpdate: undefined as WorkflowScenarioObservedEmission | undefined,
-        }),
-        harness: {
-          configureFragments: (harness) => ({
-            pi: instantiate(piHarnessDefinition)
-              .withConfig(config)
-              .withRoutes([piRoutesFactory])
-              .withServices({ workflows: harness.fragment.services }),
           }),
         },
-        clients: ({ clientConfig }) => ({
-          observer: createPiFragmentClients(clientConfig("pi", { runner: "observer" })),
-        }),
-        runners: ["agent", "recovery", "observer"],
-        steps: ({ workflow, runners, concurrent, clients }) => {
-          const stepsBeforeRestart =
-            restartAfter === "queued"
-              ? []
-              : [
-                  workflow.read({
-                    read: async () => {
-                      originalFirstResponse.release();
+      });
+      const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
+
+      await runScenario(
+        defineScenario({
+          name: `pi-harness-interactive-chat-steer-abort-${restartAfter}`,
+          workflows: createPiWorkflows({ workflows: config.workflows }),
+          vars: () => ({ sessionId: undefined as string | undefined }),
+          harness: {
+            configureFragments: (harness) => ({
+              pi: instantiate(piHarnessDefinition)
+                .withConfig(config)
+                .withRoutes([piRoutesFactory])
+                .withServices({ workflows: harness.fragment.services }),
+            }),
+          },
+          clients: ({ clientConfig }) => ({
+            observer: createPiFragmentClients(clientConfig("pi", { runner: "observer" })),
+          }),
+          runners: ["agent", "recovery", "observer"],
+          steps: ({ workflow, runners, concurrent, clients }) => {
+            const advanceToSteeringMessage =
+              restartAfter === "steering-message"
+                ? [
+                    workflow.read({
+                      read: async () => {
+                        initialResponse.release();
+                      },
+                    }),
+                    runners.observer.waitForEmission({
+                      workflow: interactiveChatWorkflow.name,
+                      instanceId: (ctx) => ctx.vars.sessionId!,
+                      match: (emission) =>
+                        matchesHarnessMessage(
+                          emission,
+                          "message_start",
+                          "assistant",
+                          "steered response",
+                        ),
+                    }),
+                  ]
+                : [];
+
+            return [
+              workflow.read({
+                read: async () => {
+                  const session = await clients.observer.useCreateSession.mutateQuery({
+                    path: { workflowName: interactiveChatWorkflow.name },
+                    body: { name: "Steer Abort Session", input: { profileName: "default" } },
+                  });
+                  assert(session && !Array.isArray(session), "expected session response");
+                  return session.id;
+                },
+                storeAs: "sessionId",
+              }),
+              runners.agent.runUntilIdle({
+                workflow: interactiveChatWorkflow.name,
+                instanceId: (ctx) => ctx.vars.sessionId!,
+                reason: "create",
+              }),
+              workflow.read({
+                read: async (ctx) =>
+                  clients.observer.useCommandSession.mutateQuery({
+                    path: {
+                      workflowName: interactiveChatWorkflow.name,
+                      sessionId: ctx.vars.sessionId!,
                     },
+                    body: { kind: "prompt", input: { text: "write the migration" } },
                   }),
+              }),
+              concurrent({
+                agent: [
+                  runners.agent.tick({
+                    workflow: interactiveChatWorkflow.name,
+                    instanceId: (ctx) => ctx.vars.sessionId!,
+                    reason: "event",
+                  }),
+                ],
+                recovery: [
+                  runners.recovery.waitForControl({ key: "recover-steering-as-aborted" }),
+                  runners.recovery.tick({
+                    workflow: interactiveChatWorkflow.name,
+                    instanceId: (ctx) => ctx.vars.sessionId!,
+                    reason: "create",
+                  }),
+                ],
+                observer: [
                   runners.observer.waitForEmission({
                     workflow: interactiveChatWorkflow.name,
                     instanceId: (ctx) => ctx.vars.sessionId!,
@@ -2248,414 +2265,70 @@ describe("Interactive chat workflow scenarios", () => {
                         emission,
                         "message_start",
                         "assistant",
-                        "discarded steered response",
+                        "initial response",
                       ),
                   }),
-                ];
-
-          return [
-            workflow.read({
-              read: async () => {
-                const session = await clients.observer.useCreateSession.mutateQuery({
-                  path: { workflowName: interactiveChatWorkflow.name },
-                  body: { name: "Steer Recovery Session", input: { profileName: "default" } },
-                });
-                assert(session && !Array.isArray(session), "expected session response");
-                return session.id;
-              },
-              storeAs: "sessionId",
-            }),
-            runners.agent.runUntilIdle({
-              workflow: interactiveChatWorkflow.name,
-              instanceId: (ctx) => ctx.vars.sessionId!,
-              reason: "create",
-            }),
-            workflow.read({
-              read: async (ctx) =>
-                clients.observer.useCommandSession.mutateQuery({
-                  path: {
-                    workflowName: interactiveChatWorkflow.name,
-                    sessionId: ctx.vars.sessionId!,
-                  },
-                  body: { kind: "prompt", input: { text: "write the migration" } },
-                }),
-            }),
-            concurrent({
-              agent: [
-                runners.agent.tick({
-                  workflow: interactiveChatWorkflow.name,
-                  instanceId: (ctx) => ctx.vars.sessionId!,
-                  reason: "event",
-                }),
-              ],
-              recovery: [
-                runners.recovery.waitForControl({ key: "recover-steering" }),
-                runners.recovery.tick({
-                  workflow: interactiveChatWorkflow.name,
-                  instanceId: (ctx) => ctx.vars.sessionId!,
-                  reason: "create",
-                }),
-              ],
-              observer: [
-                runners.observer.waitForEmission({
-                  workflow: interactiveChatWorkflow.name,
-                  instanceId: (ctx) => ctx.vars.sessionId!,
-                  match: (emission) =>
-                    matchesHarnessMessage(
-                      emission,
-                      "message_start",
-                      "assistant",
-                      "discarded initial response",
-                    ),
-                }),
-                workflow.read({
-                  read: async (ctx) =>
-                    clients.observer.useCommandSession.mutateQuery({
-                      path: {
-                        workflowName: interactiveChatWorkflow.name,
-                        sessionId: ctx.vars.sessionId!,
-                      },
-                      body: { kind: "steer", input: { text: "preserve the tests" } },
-                    }),
-                }),
-                runners.observer.waitForEmission({
-                  workflow: interactiveChatWorkflow.name,
-                  instanceId: (ctx) => ctx.vars.sessionId!,
-                  match: (emission) => matchesSteerQueue(emission, ["preserve the tests"]),
-                  storeAs: "firstQueueUpdate",
-                }),
-                ...stepsBeforeRestart,
-                runners.observer.restart(),
-                runners.observer.resolveControl({ key: "recover-steering" }),
-                runners.observer.waitForEmission({
-                  workflow: interactiveChatWorkflow.name,
-                  instanceId: (ctx) => ctx.vars.sessionId!,
-                  match: (emission) =>
-                    matchesHarnessMessage(
-                      emission,
-                      "message_start",
-                      "assistant",
-                      "recovered initial response",
-                    ),
-                }),
-                workflow.read({
-                  read: async () => {
-                    originalFirstResponse.release();
-                    interruptedSecondResponse.release();
-                  },
-                }),
-                runners.observer.waitForEmission({
-                  workflow: interactiveChatWorkflow.name,
-                  instanceId: (ctx) => ctx.vars.sessionId!,
-                  match: (emission, ctx) =>
-                    emission.id !== ctx.vars.firstQueueUpdate?.id &&
-                    matchesSteerQueue(emission, ["preserve the tests"]),
-                }),
-                workflow.read({
-                  read: async () => {
-                    recoveryFirstResponse.release();
-                  },
-                }),
-              ],
-            }),
-            workflow.read({
-              read: async (ctx) => ({
-                detail: await clients.observer.useSessionDetail.query({
-                  path: {
-                    workflowName: interactiveChatWorkflow.name,
-                    sessionId: ctx.vars.sessionId!,
-                  },
-                }),
-                history: await ctx.state.getHistory(
-                  interactiveChatWorkflow.name,
-                  ctx.vars.sessionId!,
-                ),
-              }),
-              assert: ({ detail, history }) => {
-                assert(detail && !Array.isArray(detail), "expected session detail response");
-                expect(providerCallIndex).toBeGreaterThanOrEqual(3);
-                assert(
-                  observedModelContexts.some((context) =>
-                    context.some(
-                      (message) => message.role === "user" && message.text === "preserve the tests",
-                    ),
-                  ),
-                );
-                expect(detail.agent.state.messages.map((message) => message.role)).toEqual([
-                  "user",
-                  "assistant",
-                  "user",
-                  "assistant",
-                ]);
-                assert(agentMessageText(detail.agent.state.messages[0]!) === "write the migration");
-                expect(["discarded initial response", "recovered initial response"]).toContain(
-                  agentMessageText(detail.agent.state.messages[1]!),
-                );
-                assert(agentMessageText(detail.agent.state.messages[2]!) === "preserve the tests");
-                expect(["discarded steered response", "recovered steered response"]).toContain(
-                  agentMessageText(detail.agent.state.messages[3]!),
-                );
-                assert(
-                  history.emissions.some(
-                    (emission) =>
+                  workflow.read({
+                    read: async (ctx) =>
+                      clients.observer.useCommandSession.mutateQuery({
+                        path: {
+                          workflowName: interactiveChatWorkflow.name,
+                          sessionId: ctx.vars.sessionId!,
+                        },
+                        body: { kind: "steer", input: { text: "preserve the tests" } },
+                      }),
+                  }),
+                  runners.observer.waitForEmission({
+                    workflow: interactiveChatWorkflow.name,
+                    instanceId: (ctx) => ctx.vars.sessionId!,
+                    match: (emission) => matchesSteerQueue(emission, ["preserve the tests"]),
+                  }),
+                  ...advanceToSteeringMessage,
+                  runners.observer.restart(),
+                  runners.observer.resolveControl({ key: "recover-steering-as-aborted" }),
+                  runners.observer.waitForEmission({
+                    workflow: interactiveChatWorkflow.name,
+                    instanceId: (ctx) => ctx.vars.sessionId!,
+                    match: (emission) =>
                       typeof emission.payload === "object" &&
                       emission.payload !== null &&
                       "kind" in emission.payload &&
                       emission.payload.kind === "harness-operation-complete",
-                  ),
-                );
-                const canonicalEmissions = selectCanonicalWorkflowStepEmissions({
-                  steps: history.steps,
-                  emissions: history.emissions,
-                });
-                expect(history.emissions.length).toBeGreaterThan(canonicalEmissions.length);
-              },
-            }),
-          ];
-        },
-      }),
-    );
-  };
-
-  test("recovers steering after steering is queued", async () => {
-    await runSteeringRecoveryScenario("queued");
-  });
-
-  test("recovers steering after the steering message is emitted", async () => {
-    await runSteeringRecoveryScenario("steering-message");
-  });
-
-  test("preserves multiple steering messages in order without duplication across restart", async () => {
-    const interruptedFirstResponse = createCompletionGate();
-    const recoveryFirstResponse = createCompletionGate();
-    const observedModelContexts: Array<Array<{ role: Message["role"]; text: string }>> = [];
-    let providerCallIndex = 0;
-    const interactiveChatWorkflow = createInteractiveChatWorkflow({
-      name: "interactive-chat-multiple-steer-recovery",
-      options: {
-        systemPrompt: "You are helpful.",
-        model: mockModel,
-        models: createModelsForStreamFn(mockModel, (_model, context) => {
-          const messages = context.messages.map((message) => ({
-            role: message.role,
-            text: modelMessageText(message),
-          }));
-          observedModelContexts.push(messages);
-          const requestIndex = providerCallIndex;
-          providerCallIndex += 1;
-          const steeringMessages = messages.filter(
-            (message) =>
-              message.role === "user" &&
-              (message.text === "first correction" || message.text === "second correction"),
-          );
-
-          if (steeringMessages.length === 0) {
-            return createGatedTextStreamFn(
-              requestIndex === 0 ? "discarded initial response" : "recovered initial response",
-              requestIndex === 0 ? interruptedFirstResponse.promise : recoveryFirstResponse.promise,
-            )(_model, context);
-          }
-
-          return createTextStreamFn(
-            steeringMessages.at(-1)?.text === "second correction"
-              ? "response after second correction"
-              : "response after first correction",
-          )();
-        }),
-      },
-    });
-    const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
-
-    await runScenario(
-      defineScenario({
-        name: "pi-harness-interactive-chat-multiple-steer-recovery",
-        workflows: createPiWorkflows({ workflows: config.workflows }),
-        vars: () => ({
-          sessionId: undefined as string | undefined,
-          queuedBothSteers: undefined as WorkflowScenarioObservedEmission | undefined,
-        }),
-        harness: {
-          configureFragments: (harness) => ({
-            pi: instantiate(piHarnessDefinition)
-              .withConfig(config)
-              .withRoutes([piRoutesFactory])
-              .withServices({ workflows: harness.fragment.services }),
-          }),
-        },
-        clients: ({ clientConfig }) => ({
-          observer: createPiFragmentClients(clientConfig("pi", { runner: "observer" })),
-        }),
-        runners: ["agent", "recovery", "observer"],
-        steps: ({ workflow, runners, concurrent, clients }) => [
-          workflow.read({
-            read: async () => {
-              const session = await clients.observer.useCreateSession.mutateQuery({
-                path: { workflowName: interactiveChatWorkflow.name },
-                body: { name: "Multiple Steer Recovery", input: { profileName: "default" } },
-              });
-              assert(session && !Array.isArray(session), "expected session response");
-              return session.id;
-            },
-            storeAs: "sessionId",
-          }),
-          runners.agent.runUntilIdle({
-            workflow: interactiveChatWorkflow.name,
-            instanceId: (ctx) => ctx.vars.sessionId!,
-            reason: "create",
-          }),
-          workflow.read({
-            read: async (ctx) =>
-              clients.observer.useCommandSession.mutateQuery({
-                path: {
-                  workflowName: interactiveChatWorkflow.name,
-                  sessionId: ctx.vars.sessionId!,
-                },
-                body: { kind: "prompt", input: { text: "draft the implementation" } },
-              }),
-          }),
-          concurrent({
-            agent: [
-              runners.agent.tick({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                reason: "event",
-              }),
-            ],
-            recovery: [
-              runners.recovery.waitForControl({ key: "recover-multiple-steering" }),
-              runners.recovery.tick({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                reason: "create",
-              }),
-            ],
-            observer: [
-              runners.observer.waitForEmission({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                match: (emission) =>
-                  matchesHarnessMessage(
-                    emission,
-                    "message_start",
-                    "assistant",
-                    "discarded initial response",
-                  ),
+                  }),
+                  workflow.read({
+                    read: async () => {
+                      initialResponse.release();
+                      steeredResponse.release();
+                    },
+                  }),
+                ],
               }),
               workflow.read({
                 read: async (ctx) =>
-                  clients.observer.useCommandSession.mutateQuery({
+                  clients.observer.useSessionDetail.query({
                     path: {
                       workflowName: interactiveChatWorkflow.name,
                       sessionId: ctx.vars.sessionId!,
                     },
-                    body: { kind: "steer", input: { text: "first correction" } },
                   }),
-              }),
-              runners.observer.waitForEmission({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                match: (emission) => matchesSteerQueue(emission, ["first correction"]),
-              }),
-              workflow.read({
-                read: async (ctx) =>
-                  clients.observer.useCommandSession.mutateQuery({
-                    path: {
-                      workflowName: interactiveChatWorkflow.name,
-                      sessionId: ctx.vars.sessionId!,
-                    },
-                    body: { kind: "steer", input: { text: "second correction" } },
-                  }),
-              }),
-              runners.observer.waitForEmission({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                match: (emission) =>
-                  matchesSteerQueue(emission, ["first correction", "second correction"]),
-                storeAs: "queuedBothSteers",
-              }),
-              runners.observer.restart(),
-              runners.observer.resolveControl({ key: "recover-multiple-steering" }),
-              runners.observer.waitForEmission({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                match: (emission) =>
-                  matchesHarnessMessage(
-                    emission,
-                    "message_start",
-                    "assistant",
-                    "recovered initial response",
-                  ),
-              }),
-              workflow.read({
-                read: async () => {
-                  interruptedFirstResponse.release();
+                assert: (detail) => {
+                  assert(detail && !Array.isArray(detail), "expected session detail response");
+                  expect(providerCallCount).toBe(3);
+                  expect(
+                    detail.agent.state.messages
+                      .filter((message) => message.role === "user")
+                      .map(agentMessageText),
+                  ).toEqual(["write the migration", "preserve the tests"]);
                 },
               }),
-              runners.observer.waitForEmission({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                match: (emission, ctx) =>
-                  emission.id !== ctx.vars.queuedBothSteers?.id &&
-                  matchesSteerQueue(emission, ["first correction", "second correction"]),
-              }),
-              workflow.read({
-                read: async () => {
-                  recoveryFirstResponse.release();
-                },
-              }),
-            ],
-          }),
-          workflow.read({
-            read: async (ctx) =>
-              clients.observer.useSessionDetail.query({
-                path: {
-                  workflowName: interactiveChatWorkflow.name,
-                  sessionId: ctx.vars.sessionId!,
-                },
-              }),
-            assert: (detail) => {
-              assert(detail && !Array.isArray(detail), "expected session detail response");
-              expect(detail.agent.state.messages.map((message) => message.role)).toEqual([
-                "user",
-                "assistant",
-                "user",
-                "assistant",
-                "user",
-                "assistant",
-              ]);
-              expect(
-                detail.agent.state.messages.flatMap((message) =>
-                  message.role === "user" ? [agentMessageText(message)] : [],
-                ),
-              ).toEqual(["draft the implementation", "first correction", "second correction"]);
-              assert(
-                agentMessageText(detail.agent.state.messages[3]!) ===
-                  "response after first correction",
-              );
-              assert(
-                agentMessageText(detail.agent.state.messages[5]!) ===
-                  "response after second correction",
-              );
-              expect(
-                observedModelContexts
-                  .at(-1)
-                  ?.filter(
-                    (message) =>
-                      message.role === "user" &&
-                      (message.text === "first correction" || message.text === "second correction"),
-                  ),
-              ).toEqual([
-                { role: "user", text: "first correction" },
-                { role: "user", text: "second correction" },
-              ]);
-            },
-          }),
-        ],
-      }),
-    );
-  });
+            ];
+          },
+        }),
+      );
+    },
+  );
 
-  test("does not start a model turn for idle abort, steer, or followUp commands", async () => {
+  test("ignores idle abort and promotes idle steer and followUp commands to prompts", async () => {
     const observedPrompts: string[] = [];
     const interactiveChatWorkflow = createInteractiveChatWorkflow({
       name: "interactive-chat-idle-steer",
@@ -2706,24 +2379,44 @@ describe("Interactive chat workflow scenarios", () => {
             reason: "create",
           }),
           workflow.read({
-            read: async (ctx) => {
-              const path = {
-                workflowName: interactiveChatWorkflow.name,
-                sessionId: ctx.vars.sessionId!,
-              };
-              await clients.user.useCommandSession.mutateQuery({
-                path,
+            read: async (ctx) =>
+              clients.user.useCommandSession.mutateQuery({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
                 body: { kind: "abort", reason: "nothing is running" },
-              });
-              await clients.user.useCommandSession.mutateQuery({
-                path,
+              }),
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "event",
+          }),
+          workflow.read({
+            read: async (ctx) =>
+              clients.user.useCommandSession.mutateQuery({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
                 body: { kind: "steer", input: { text: "idle correction" } },
-              });
-              return await clients.user.useCommandSession.mutateQuery({
-                path,
+              }),
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "event",
+          }),
+          workflow.read({
+            read: async (ctx) =>
+              clients.user.useCommandSession.mutateQuery({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
                 body: { kind: "followUp", input: { text: "idle follow-up" } },
-              });
-            },
+              }),
           }),
           runners.agent.runUntilIdle({
             workflow: interactiveChatWorkflow.name,
@@ -2755,265 +2448,24 @@ describe("Interactive chat workflow scenarios", () => {
               }),
             assert: (detail) => {
               assert(detail && !Array.isArray(detail), "expected session detail response");
-              expect(observedPrompts).toEqual(["actual prompt"]);
-              expect(detail.agent.state.messages.map((message) => message.role)).toEqual([
-                "user",
-                "assistant",
+              expect(observedPrompts).toEqual([
+                "idle correction",
+                "idle follow-up",
+                "actual prompt",
               ]);
-              assert(agentMessageText(detail.agent.state.messages[0]!) === "actual prompt");
-            },
-          }),
-        ],
-      }),
-    );
-  });
-
-  test("recovers steering after a terminal assistant emission before the operation checkpoint", async () => {
-    const originalFirstResponse = createCompletionGate();
-    const recoveryFirstResponse = createCompletionGate();
-    const interruptedToolExecution = createCompletionGate();
-    const recoveryToolExecution = createCompletionGate();
-    let providerCallIndex = 0;
-    let toolExecutionIndex = 0;
-    const finishTool = definePiTool({
-      name: "finish-steered-turn",
-      label: "Finish steered turn",
-      description: "Finish the steered turn after a controlled durability boundary.",
-      parameters: Type.Object({}),
-      async execute() {
-        const executionIndex = toolExecutionIndex;
-        toolExecutionIndex += 1;
-        await (executionIndex === 0
-          ? interruptedToolExecution.promise
-          : recoveryToolExecution.promise);
-        return {
-          content: [{ type: "text" as const, text: `finished:${executionIndex}` }],
-          details: { executionIndex },
-          terminate: true,
-        };
-      },
-    });
-    const interactiveChatWorkflow = createInteractiveChatWorkflow({
-      name: "interactive-chat-steer-terminal-recovery",
-      options: {
-        systemPrompt: "You are helpful.",
-        model: mockModel,
-        tools: [finishTool],
-        models: createModelsForStreamFn(mockModel, (_model, context, options) => {
-          const requestIndex = providerCallIndex;
-          providerCallIndex += 1;
-          const hasSteering = context.messages.some(
-            (message) => message.role === "user" && modelMessageText(message) === "finish now",
-          );
-          if (hasSteering) {
-            return createToolCallStreamFn({
-              type: "toolCall",
-              id: `finish-call-${requestIndex}`,
-              name: "finish-steered-turn",
-              arguments: {},
-            })(_model, context, options);
-          }
-          return createGatedTextStreamFn(
-            requestIndex === 0 ? "discarded initial response" : "recovered initial response",
-            requestIndex === 0 ? originalFirstResponse.promise : recoveryFirstResponse.promise,
-          )(_model, context);
-        }),
-      },
-    });
-    const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
-
-    await runScenario(
-      defineScenario({
-        name: "pi-harness-interactive-chat-steer-terminal-recovery",
-        workflows: createPiWorkflows({ workflows: config.workflows }),
-        vars: () => ({
-          sessionId: undefined as string | undefined,
-          firstQueueUpdate: undefined as WorkflowScenarioObservedEmission | undefined,
-          firstToolExecution: undefined as WorkflowScenarioObservedEmission | undefined,
-        }),
-        harness: {
-          configureFragments: (harness) => ({
-            pi: instantiate(piHarnessDefinition)
-              .withConfig(config)
-              .withRoutes([piRoutesFactory])
-              .withServices({ workflows: harness.fragment.services }),
-          }),
-        },
-        clients: ({ clientConfig }) => ({
-          observer: createPiFragmentClients(clientConfig("pi", { runner: "observer" })),
-        }),
-        runners: ["agent", "recovery", "observer"],
-        steps: ({ workflow, runners, concurrent, clients }) => [
-          workflow.read({
-            read: async () => {
-              const session = await clients.observer.useCreateSession.mutateQuery({
-                path: { workflowName: interactiveChatWorkflow.name },
-                body: { name: "Steer Terminal Recovery", input: { profileName: "default" } },
-              });
-              assert(session && !Array.isArray(session), "expected session response");
-              return session.id;
-            },
-            storeAs: "sessionId",
-          }),
-          runners.agent.runUntilIdle({
-            workflow: interactiveChatWorkflow.name,
-            instanceId: (ctx) => ctx.vars.sessionId!,
-            reason: "create",
-          }),
-          workflow.read({
-            read: async (ctx) =>
-              clients.observer.useCommandSession.mutateQuery({
-                path: {
-                  workflowName: interactiveChatWorkflow.name,
-                  sessionId: ctx.vars.sessionId!,
-                },
-                body: { kind: "prompt", input: { text: "prepare the change" } },
-              }),
-          }),
-          concurrent({
-            agent: [
-              runners.agent.tick({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                reason: "event",
-              }),
-            ],
-            recovery: [
-              runners.recovery.waitForControl({ key: "recover-terminal-steering" }),
-              runners.recovery.tick({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                reason: "create",
-              }),
-            ],
-            observer: [
-              runners.observer.waitForEmission({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                match: (emission) =>
-                  matchesHarnessMessage(
-                    emission,
-                    "message_start",
-                    "assistant",
-                    "discarded initial response",
-                  ),
-              }),
-              workflow.read({
-                read: async (ctx) =>
-                  clients.observer.useCommandSession.mutateQuery({
-                    path: {
-                      workflowName: interactiveChatWorkflow.name,
-                      sessionId: ctx.vars.sessionId!,
-                    },
-                    body: { kind: "steer", input: { text: "finish now" } },
-                  }),
-              }),
-              runners.observer.waitForEmission({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                match: (emission) => matchesSteerQueue(emission, ["finish now"]),
-                storeAs: "firstQueueUpdate",
-              }),
-              workflow.read({
-                read: async () => {
-                  originalFirstResponse.release();
-                },
-              }),
-              runners.observer.waitForEmission({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                match: (emission) => {
-                  const event = harnessEventFromEmission(emission);
-                  return (
-                    event?.type === "message_end" &&
-                    event.message.role === "assistant" &&
-                    event.message.stopReason === "toolUse"
-                  );
-                },
-              }),
-              runners.observer.waitForEmission({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                match: (emission) => matchesToolExecutionStart(emission, "finish-steered-turn"),
-                storeAs: "firstToolExecution",
-              }),
-              runners.observer.restart(),
-              runners.observer.resolveControl({ key: "recover-terminal-steering" }),
-              runners.observer.waitForEmission({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                match: (emission) =>
-                  matchesHarnessMessage(
-                    emission,
-                    "message_start",
-                    "assistant",
-                    "recovered initial response",
-                  ),
-              }),
-              workflow.read({
-                read: async () => {
-                  interruptedToolExecution.release();
-                },
-              }),
-              runners.observer.waitForEmission({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                match: (emission, ctx) =>
-                  emission.id !== ctx.vars.firstQueueUpdate?.id &&
-                  matchesSteerQueue(emission, ["finish now"]),
-              }),
-              workflow.read({
-                read: async () => {
-                  recoveryFirstResponse.release();
-                },
-              }),
-              runners.observer.waitForEmission({
-                workflow: interactiveChatWorkflow.name,
-                instanceId: (ctx) => ctx.vars.sessionId!,
-                match: (emission, ctx) =>
-                  emission.id !== ctx.vars.firstToolExecution?.id &&
-                  matchesToolExecutionStart(emission, "finish-steered-turn"),
-              }),
-              workflow.read({
-                read: async () => {
-                  recoveryToolExecution.release();
-                },
-              }),
-            ],
-          }),
-          workflow.read({
-            read: async (ctx) =>
-              clients.observer.useSessionDetail.query({
-                path: {
-                  workflowName: interactiveChatWorkflow.name,
-                  sessionId: ctx.vars.sessionId!,
-                },
-              }),
-            assert: (detail) => {
-              assert(detail && !Array.isArray(detail), "expected session detail response");
-              expect(providerCallIndex).toBeGreaterThanOrEqual(3);
-              expect(toolExecutionIndex).toBeGreaterThanOrEqual(1);
               expect(detail.agent.state.messages.map((message) => message.role)).toEqual([
                 "user",
                 "assistant",
                 "user",
                 "assistant",
-                "toolResult",
+                "user",
+                "assistant",
               ]);
               expect(
-                detail.agent.state.messages.filter(
-                  (message) =>
-                    message.role === "user" && agentMessageText(message) === "finish now",
-                ),
-              ).toHaveLength(1);
-              expect(detail.agent.state.messages[3]).toMatchObject({
-                role: "assistant",
-                stopReason: "toolUse",
-              });
-              expect(detail.agent.state.messages[4]).toMatchObject({
-                role: "toolResult",
-                toolName: "finish-steered-turn",
-              });
+                detail.agent.state.messages
+                  .filter((message) => message.role === "user")
+                  .map(agentMessageText),
+              ).toEqual(["idle correction", "idle follow-up", "actual prompt"]);
             },
           }),
         ],
@@ -3720,14 +3172,11 @@ describe("Interactive chat workflow scenarios", () => {
                 runners.observer.waitForEmission({
                   workflow: interactiveChatWorkflow.name,
                   instanceId: (ctx) => ctx.vars.sessionId!,
-                  match: (emission, ctx) => {
-                    const event = harnessEventFromEmission(emission);
-                    return (
-                      emission.id !== ctx.vars.firstUserMessage?.id &&
-                      event?.type === "message_start" &&
-                      event.message.role === "user"
-                    );
-                  },
+                  match: (emission) =>
+                    typeof emission.payload === "object" &&
+                    emission.payload !== null &&
+                    "kind" in emission.payload &&
+                    emission.payload.kind === "harness-operation-complete",
                 }),
                 workflow.read({
                   read: async () => {
@@ -3752,15 +3201,9 @@ describe("Interactive chat workflow scenarios", () => {
               }),
               assert: ({ detail, history }) => {
                 assert(detail && !Array.isArray(detail), "expected session detail response");
-                expect(providerCallIndex).toBeGreaterThanOrEqual(2);
+                expect(providerCallIndex).toBe(1);
                 assert(new Set(observedPrompts).size === 1);
-                expect(detail.agent.state.messages.map((message) => message.role)).toEqual([
-                  "user",
-                  "assistant",
-                ]);
-                expect(
-                  detail.agent.state.messages.filter((message) => message.role === "user"),
-                ).toHaveLength(1);
+                expect(detail.agent.state.messages).toMatchObject([{ role: "user" }]);
                 const canonicalEmissions = selectCanonicalWorkflowStepEmissions({
                   steps: history.steps,
                   emissions: history.emissions,
@@ -3775,6 +3218,215 @@ describe("Interactive chat workflow scenarios", () => {
                       emission.payload.kind === "harness-operation-complete",
                   ),
                 ).toHaveLength(1);
+              },
+            }),
+          ],
+        }),
+      );
+    },
+  );
+
+  test.each(["prompt", "steer", "followUp"] as const)(
+    "checkpoints an interrupted tool loop before executing the waking %s command",
+    async (wakingCommandKind) => {
+      const interruptedContinuation = createCompletionGate();
+      const observedModelContexts: Array<Array<{ role: Message["role"]; text: string }>> = [];
+      let toolExecutionCount = 0;
+      let continuationCount = 0;
+      const readFileTool = definePiTool({
+        name: "read-file",
+        label: "Read file",
+        description: "Read one file during a long-running task.",
+        parameters: Type.Object({ path: Type.String() }),
+        async execute(_toolCallId, input) {
+          toolExecutionCount += 1;
+          return {
+            content: [{ type: "text" as const, text: `contents:${input.path}` }],
+            details: { path: input.path },
+          };
+        },
+      });
+      const interactiveChatWorkflow = {
+        ...createInteractiveChatWorkflow({
+          name: `interactive-chat-interrupted-tool-loop-${wakingCommandKind}`,
+          options: {
+            systemPrompt: "You are helpful.",
+            model: mockModel,
+            tools: [readFileTool],
+            models: createModelsForStreamFn(mockModel, (_model, context, options) => {
+              const messages = context.messages.map((message) => ({
+                role: message.role,
+                text: modelMessageText(message),
+              }));
+              observedModelContexts.push(messages);
+              const latestMessage = context.messages.at(-1);
+
+              if (
+                latestMessage?.role === "user" &&
+                modelMessageText(latestMessage) === "inspect the repository"
+              ) {
+                return createToolCallStreamFn({
+                  type: "toolCall",
+                  id: `read-file-${toolExecutionCount + 1}`,
+                  name: "read-file",
+                  arguments: { path: "src/index.ts" },
+                })(_model, context, options);
+              }
+
+              if (latestMessage?.role === "toolResult") {
+                continuationCount += 1;
+                return createGatedTextStreamFn(
+                  continuationCount === 1 ? "interrupted response" : "recovered response",
+                  continuationCount === 1 ? interruptedContinuation.promise : Promise.resolve(),
+                )(_model, context, options);
+              }
+
+              if (
+                latestMessage?.role === "user" &&
+                modelMessageText(latestMessage) === "now inspect the tests"
+              ) {
+                return createTextStreamFn("tests inspected")();
+              }
+
+              throw new Error("UNEXPECTED_MODEL_CONTEXT");
+            }),
+          },
+        }),
+        checkpoint: "step" as const,
+      };
+      const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
+
+      await runScenario(
+        defineScenario({
+          name: `pi-harness-interactive-chat-interrupted-tool-loop-${wakingCommandKind}`,
+          workflows: createPiWorkflows({ workflows: config.workflows }),
+          vars: () => ({ sessionId: undefined as string | undefined }),
+          harness: {
+            configureFragments: (harness) => ({
+              pi: instantiate(piHarnessDefinition)
+                .withConfig(config)
+                .withRoutes([piRoutesFactory])
+                .withServices({ workflows: harness.fragment.services }),
+            }),
+          },
+          clients: ({ clientConfig }) => ({
+            observer: createPiFragmentClients(clientConfig("pi", { runner: "observer" })),
+          }),
+          runners: ["agent", "recovery", "observer"],
+          steps: ({ workflow, runners, concurrent, clients }) => [
+            workflow.read({
+              read: async () => {
+                const session = await clients.observer.useCreateSession.mutateQuery({
+                  path: { workflowName: interactiveChatWorkflow.name },
+                  body: { name: "Interrupted Tool Loop", input: { profileName: "default" } },
+                });
+                assert(session && !Array.isArray(session), "expected session response");
+                return session.id;
+              },
+              storeAs: "sessionId",
+            }),
+            runners.agent.runUntilIdle({
+              workflow: interactiveChatWorkflow.name,
+              instanceId: (ctx) => ctx.vars.sessionId!,
+              reason: "create",
+            }),
+            workflow.read({
+              read: async (ctx) =>
+                clients.observer.useCommandSession.mutateQuery({
+                  path: {
+                    workflowName: interactiveChatWorkflow.name,
+                    sessionId: ctx.vars.sessionId!,
+                  },
+                  body: { kind: "prompt", input: { text: "inspect the repository" } },
+                }),
+            }),
+            runners.agent.tick({
+              workflow: interactiveChatWorkflow.name,
+              instanceId: (ctx) => ctx.vars.sessionId!,
+              reason: "event",
+            }),
+            concurrent({
+              agent: [
+                runners.agent.tick({
+                  workflow: interactiveChatWorkflow.name,
+                  instanceId: (ctx) => ctx.vars.sessionId!,
+                  reason: "wake",
+                }),
+              ],
+              recovery: [
+                runners.recovery.waitForControl({ key: "recover-interrupted-tool-loop" }),
+                runners.recovery.tick({
+                  workflow: interactiveChatWorkflow.name,
+                  instanceId: (ctx) => ctx.vars.sessionId!,
+                  reason: "event",
+                }),
+                runners.recovery.resolveControl({ key: "interrupted-tool-loop-recovered" }),
+              ],
+              observer: [
+                runners.observer.waitForEmission({
+                  workflow: interactiveChatWorkflow.name,
+                  instanceId: (ctx) => ctx.vars.sessionId!,
+                  match: (emission) => {
+                    const event = harnessEventFromEmission(emission);
+                    return event?.type === "message_end" && event.message.role === "toolResult";
+                  },
+                }),
+                workflow.read({
+                  read: async (ctx) =>
+                    clients.observer.useCommandSession.mutateQuery({
+                      path: {
+                        workflowName: interactiveChatWorkflow.name,
+                        sessionId: ctx.vars.sessionId!,
+                      },
+                      body: {
+                        kind: wakingCommandKind,
+                        input: { text: "now inspect the tests" },
+                      },
+                    }),
+                }),
+                runners.observer.resolveControl({ key: "recover-interrupted-tool-loop" }),
+                runners.observer.waitForControl({ key: "interrupted-tool-loop-recovered" }),
+                workflow.read({
+                  read: async () => {
+                    interruptedContinuation.release();
+                  },
+                }),
+              ],
+            }),
+            workflow.read({
+              read: async (ctx) => ({
+                observedModelContexts,
+                toolExecutionCount,
+                continuationCount,
+                detail: await clients.observer.useSessionDetail.query({
+                  path: {
+                    workflowName: interactiveChatWorkflow.name,
+                    sessionId: ctx.vars.sessionId!,
+                  },
+                }),
+              }),
+              assert: ({
+                observedModelContexts,
+                toolExecutionCount,
+                continuationCount,
+                detail,
+              }) => {
+                expect(observedModelContexts[2]).toEqual([
+                  { role: "user", text: "inspect the repository" },
+                  { role: "assistant", text: "" },
+                  { role: "toolResult", text: "contents:src/index.ts" },
+                  { role: "user", text: "now inspect the tests" },
+                ]);
+                expect(toolExecutionCount).toBe(1);
+                expect(continuationCount).toBe(1);
+                assert(detail && !Array.isArray(detail), "expected session detail response");
+                expect(detail.agent.state.messages).toMatchObject([
+                  { role: "user" },
+                  { role: "assistant", stopReason: "toolUse" },
+                  { role: "toolResult" },
+                  { role: "user" },
+                  { role: "assistant", stopReason: "stop" },
+                ]);
               },
             }),
           ],
@@ -3882,12 +3534,10 @@ describe("Interactive chat workflow scenarios", () => {
                 workflow: interactiveChatWorkflow.name,
                 instanceId: (ctx) => ctx.vars.sessionId!,
                 match: (emission) =>
-                  matchesHarnessMessage(
-                    emission,
-                    "message_start",
-                    "assistant",
-                    "recovered response",
-                  ),
+                  typeof emission.payload === "object" &&
+                  emission.payload !== null &&
+                  "kind" in emission.payload &&
+                  emission.payload.kind === "harness-operation-complete",
               }),
               workflow.read({
                 read: async () => {
@@ -3912,18 +3562,9 @@ describe("Interactive chat workflow scenarios", () => {
             }),
             assert: ({ detail, history }) => {
               assert(detail && !Array.isArray(detail), "expected session detail response");
-              expect(providerCallCount).toBeGreaterThanOrEqual(2);
-              expect(detail.agent.state.messages.map((message) => message.role)).toEqual([
-                "user",
-                "assistant",
-              ]);
-              expect(
-                detail.agent.state.messages.filter((message) => message.role === "user"),
-              ).toHaveLength(1);
+              expect(providerCallCount).toBe(1);
+              expect(detail.agent.state.messages).toMatchObject([{ role: "user" }]);
               assert(agentMessageText(detail.agent.state.messages[0]!) === "hello after restart");
-              expect(["interrupted response", "recovered response"]).toContain(
-                agentMessageText(detail.agent.state.messages[1]!),
-              );
               const canonicalEmissions = selectCanonicalWorkflowStepEmissions({
                 steps: history.steps,
                 emissions: history.emissions,
