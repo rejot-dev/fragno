@@ -14,6 +14,7 @@ const workflowCompletionTargetSchema = z.object({
 export type WorkflowCompletionTarget = z.infer<typeof workflowCompletionTargetSchema>;
 
 export type WorkflowCompletedEventPayload = {
+  terminalTransitionId: string;
   workflowName: string;
   instanceId: string;
   runGeneration: number;
@@ -22,8 +23,12 @@ export type WorkflowCompletedEventPayload = {
   error?: { name: string; message: string };
 };
 
-export const workflowCompletionEventId = (input: { instanceRef: string; runGeneration: number }) =>
-  `workflow-completed:${input.instanceRef}:${input.runGeneration}`;
+export const workflowCompletionEventId = (input: {
+  instanceRef: string;
+  runGeneration: number;
+  terminalTransitionId: string;
+}) =>
+  `workflow-completed:${input.instanceRef}:${input.runGeneration}:${input.terminalTransitionId}`;
 
 export const withWorkflowCompletionTarget = <TParams extends Record<string, unknown>>(
   params: TParams,

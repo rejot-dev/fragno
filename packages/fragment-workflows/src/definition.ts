@@ -1067,6 +1067,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 .check(),
             );
             uow.triggerHook("onWorkflowTerminal", {
+              terminalTransitionId: uow.idempotencyKey,
               workflowName: instance.workflowName,
               instanceId: instance.instanceId,
               instanceRef: String(instance.id),

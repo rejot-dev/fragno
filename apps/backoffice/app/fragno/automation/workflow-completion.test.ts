@@ -9,16 +9,24 @@ import {
 } from "./workflow-completion";
 
 describe("workflow completion events", () => {
-  test("identifies each workflow run generation independently", () => {
+  test("identifies every terminal transition within a workflow run", () => {
     assert.equal(workflowCompletedEventType(1), "workflow.completed:1");
     assert.equal(workflowCompletedEventType(2), "workflow.completed:2");
     assert.equal(
-      workflowCompletionEventId({ instanceRef: "child-ref", runGeneration: 1 }),
-      "workflow-completed:child-ref:1",
+      workflowCompletionEventId({
+        instanceRef: "child-ref",
+        runGeneration: 1,
+        terminalTransitionId: "transition-1",
+      }),
+      "workflow-completed:child-ref:1:transition-1",
     );
     assert.equal(
-      workflowCompletionEventId({ instanceRef: "child-ref", runGeneration: 2 }),
-      "workflow-completed:child-ref:2",
+      workflowCompletionEventId({
+        instanceRef: "child-ref",
+        runGeneration: 1,
+        terminalTransitionId: "transition-2",
+      }),
+      "workflow-completed:child-ref:1:transition-2",
     );
   });
 });
