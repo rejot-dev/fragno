@@ -1,14 +1,20 @@
 import type { PiSkillDefinition, PiSkillRegistry } from "@fragno-dev/pi-harness/skills";
 
-import type { MasterFileSystem } from "@/files";
-import { FileSystemError } from "@/files/fs-errors";
+import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import { parseFrontmatter } from "@/lib/frontmatter";
 
 type SkillFrontmatter = { name: string; description: string } & Record<string, unknown>;
+type PiSkillState = Pick<BackofficeStateBackend, "glob" | "readFile">;
 
-const joinSkillPath = (root: string, name: string) => `${root.replace(/\/+$/, "")}/${name}`;
+const isUploadNotConfiguredError = (
+  error: unknown,
+): error is Error & { name: "UploadFileListingError"; code: "NOT_CONFIGURED" } =>
+  error instanceof Error &&
+  error.name === "UploadFileListingError" &&
+  "code" in error &&
+  error.code === "NOT_CONFIGURED";
 
-const parseFilesystemSkill = (path: string, content: string): PiSkillDefinition => {
+const parseStateSkill = (path: string, content: string): PiSkillDefinition => {
   const parsed = parseFrontmatter<SkillFrontmatter>(content);
   if (!parsed.ok) {
     throw parsed.error;
@@ -32,43 +38,27 @@ const parseFilesystemSkill = (path: string, content: string): PiSkillDefinition 
   };
 };
 
-export const loadBackofficePiSkills = async (
-  fs: MasterFileSystem,
-  options: { root?: string; roots?: readonly string[] } = {},
-): Promise<PiSkillRegistry> => {
-  const roots =
-    options.roots ?? (options.root ? [options.root] : ["/static/skills", "/workspace/skills"]);
-  const skills: PiSkillRegistry = {};
-
-  for (const root of roots) {
-    let entries;
-    try {
-      entries = await fs.readdirWithFileTypes(root);
-    } catch (error) {
-      if (error instanceof FileSystemError && error.code === "ENOENT") {
-        continue;
-      }
-
+export const loadBackofficePiSkills = async (state: PiSkillState): Promise<PiSkillRegistry> => {
+  const staticPaths = await state.glob("/static/skills/**/SKILL.md");
+  let workspacePaths: string[];
+  try {
+    workspacePaths = await state.glob("/workspace/skills/**/SKILL.md");
+  } catch (error) {
+    if (!isUploadNotConfiguredError(error)) {
       throw error;
     }
+    workspacePaths = [];
+  }
 
-    for (const entry of entries) {
-      if (!entry.isDirectory) {
-        continue;
-      }
-      const directory = joinSkillPath(root, entry.name);
-      const location = `${directory}/SKILL.md`;
-      try {
-        const content = await fs.readFile(location, { encoding: "utf-8" });
-        const skill = parseFilesystemSkill(location, content);
-        skills[skill.name] = skill;
-      } catch (error) {
-        if (error instanceof FileSystemError && error.code === "ENOENT") {
-          continue;
-        }
-
-        throw error;
-      }
+  const paths = [...staticPaths, ...workspacePaths];
+  const contents = await Promise.all(paths.map((path) => state.readFile(path)));
+  const skills: PiSkillRegistry = {};
+  for (const [index, path] of paths.entries()) {
+    try {
+      const skill = parseStateSkill(path, contents[index]);
+      skills[skill.name] = skill;
+    } catch {
+      continue;
     }
   }
 

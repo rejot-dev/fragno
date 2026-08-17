@@ -86,6 +86,40 @@ type WorkflowStepTx = WorkflowStepConsumeTx & {
   ): () => void;
 };
 
+type WorkflowAgentTool<TInput = unknown, TResult = unknown> = {
+  name: string;
+  description: string;
+  /** JSON Schema describing the arguments the model must provide. */
+  parameters: Record<string, unknown>;
+  /** Prompt-local execution. Keep this replay-safe because the enclosing prompt step can retry. */
+  execute(toolCallId: string, input: TInput): Promise<TResult> | TResult;
+};
+
+declare function defineTool<TInput = unknown, TResult = unknown>(
+  definition: WorkflowAgentTool<TInput, TResult>,
+): WorkflowAgentTool<TInput, TResult>;
+
+type WorkflowAgentPromptInput<TTools extends readonly WorkflowAgentTool[] = readonly []> = {
+  text: string;
+  images?: Array<{ type: "image"; data: string; mimeType: string }>;
+  /** The complete tool set available to this prompt. Workflow agents inherit no Pi tools. */
+  tools?: TTools;
+};
+
+type WorkflowAgentToolResult<TResult = unknown> = {
+  toolCallId: string;
+  toolName: string;
+  arguments: unknown;
+  result: TResult;
+};
+
+type WorkflowAgentPromptResult<TResult = unknown> = {
+  text: string;
+  stopReason: string;
+  leafId: string | null;
+  toolResults: WorkflowAgentToolResult<TResult>[];
+};
+
 type WorkflowStep = {
   /** Run replay-safe work as a durable workflow step. */
   do<T>(name: string, callback: (tx: WorkflowStepTx) => Promise<T> | T): Promise<T>;
@@ -107,6 +141,16 @@ type WorkflowStep = {
       ) => Promise<void> | void;
     },
   ): Promise<{ type: string; payload: Readonly<TPayload>; timestamp: Date }>;
+  agent: {
+    /**
+     * Prompt the workflow's durable Pi session using only the tools supplied for this prompt.
+     * Await each prompt before starting another prompt against the same session.
+     */
+    prompt<TTools extends readonly WorkflowAgentTool[]>(
+      name: string,
+      input: WorkflowAgentPromptInput<TTools>,
+    ): Promise<WorkflowAgentPromptResult<Awaited<ReturnType<TTools[number]["execute"]>>>>;
+  };
 };
 
 type CodemodeWorkflowDefinitionOptions = {

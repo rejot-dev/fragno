@@ -86,6 +86,170 @@ describe("codemode workflow execution", () => {
     });
   });
 
+  test("prompts a host workflow agent through durable remote steps", async () => {
+    const providerCalls: string[] = [];
+    const Workflow = defineRemoteWorkflow(
+      { name: "codemode-workflow-agent", checkpoint: "step" },
+      async (event, remote) =>
+        await runBackofficeCodemodeWorkflow({
+          code: `async (_event, step) => {
+            const analysis = await step.agent.prompt("analyze", { text: "Analyze this event." });
+            const response = await step.agent.prompt("respond", {
+              text: "Respond using: " + analysis.text,
+            });
+            return { analysis: analysis.text, response: response.text };
+          }`,
+          event,
+          remote,
+          env,
+          ...createSystemWorkflowOptions(),
+          workflowAgent: {
+            prompt: async (parentScope, name, input) =>
+              await remote.do(parentScope, `fake pi prompt: ${name}`, undefined, async () => {
+                providerCalls.push(input.text);
+                return {
+                  text: `${name}:${input.text}`,
+                  stopReason: "stop",
+                  leafId: `${name}-leaf`,
+                  toolResults: [],
+                };
+              }),
+          },
+        }).then((result) => {
+          if (result.error) {
+            throw new Error(result.error);
+          }
+          return result.result;
+        }),
+    );
+    const harness = await createHarness({ WORKFLOW: Workflow });
+
+    const instanceId = await harness.createInstance("WORKFLOW", {
+      id: "codemode-workflow-agent-1",
+      remoteWorkflowName: "codemode-workflow-agent-body",
+    });
+    await harness.runUntilIdle({
+      workflowName: "codemode-workflow-agent",
+      instanceId,
+      reason: "create",
+    });
+
+    await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+      status: "complete",
+      output: {
+        analysis: "analyze:Analyze this event.",
+        response: "respond:Respond using: analyze:Analyze this event.",
+      },
+    });
+    expect(providerCalls).toEqual([
+      "Analyze this event.",
+      "Respond using: analyze:Analyze this event.",
+    ]);
+    expect((await harness.getHistory("WORKFLOW", instanceId)).steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stepKey: "do:fake pi prompt: analyze",
+          status: "completed",
+        }),
+        expect.objectContaining({
+          stepKey: "do:fake pi prompt: respond",
+          status: "completed",
+        }),
+      ]),
+    );
+  });
+
+  test("executes only tools defined by the codemode workflow", async () => {
+    const Workflow = defineRemoteWorkflow(
+      { name: "codemode-workflow-agent-tool", checkpoint: "step" },
+      async (event, remote) =>
+        await runBackofficeCodemodeWorkflow({
+          code: `async (_event, step) => {
+            const classify = defineTool({
+              name: "classify",
+              description: "Return a structured classification.",
+              parameters: {
+                type: "object",
+                additionalProperties: false,
+                required: ["classification", "confidence"],
+                properties: {
+                  classification: { enum: ["harmful", "not harmful", "uncertain"] },
+                  confidence: { enum: ["low", "medium", "high"] },
+                },
+              },
+              execute: async (_toolCallId, input) => input,
+            });
+            const response = await step.agent.prompt("classify", {
+              text: "Classify the submitted text.",
+              tools: [classify],
+            });
+            return response.toolResults[0].result;
+          }`,
+          event,
+          remote,
+          env,
+          ...createSystemWorkflowOptions(),
+          workflowAgent: {
+            prompt: async (_parentScope, _name, input, toolExecutor) => {
+              expect(input.tools).toEqual([
+                expect.objectContaining({
+                  id: "tool-0",
+                  name: "classify",
+                  description: "Return a structured classification.",
+                }),
+              ]);
+              if (!toolExecutor || !input.tools?.[0]) {
+                throw new Error("EXPECTED_WORKFLOW_AGENT_TOOL");
+              }
+              const arguments_ = {
+                classification: "harmful",
+                confidence: "high",
+              };
+              const result = await toolExecutor.execute(
+                input.tools[0].id,
+                "classify-call-1",
+                arguments_,
+              );
+              return {
+                text: "",
+                stopReason: "stop",
+                leafId: "classify-leaf",
+                toolResults: [
+                  {
+                    toolCallId: "classify-call-1",
+                    toolName: "classify",
+                    arguments: arguments_,
+                    result,
+                  },
+                ],
+              };
+            },
+          },
+        }).then((result) => {
+          if (result.error) {
+            throw new Error(result.error);
+          }
+          return result.result;
+        }),
+    );
+    const harness = await createHarness({ WORKFLOW: Workflow });
+
+    const instanceId = await harness.createInstance("WORKFLOW", {
+      id: "codemode-workflow-agent-tool-1",
+      remoteWorkflowName: "codemode-workflow-agent-tool-body",
+    });
+    await harness.runUntilIdle({
+      workflowName: "codemode-workflow-agent-tool",
+      instanceId,
+      reason: "create",
+    });
+
+    await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+      status: "complete",
+      output: { classification: "harmful", confidence: "high" },
+    });
+  });
+
   test("runs a workflow end-to-end in a dynamic worker with real runner steps", async () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-complete" },
@@ -180,8 +344,16 @@ describe("codemode workflow execution", () => {
     const history = await harness.getHistory("WORKFLOW", instanceId);
     expect(history.steps).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ stepKey: "do:compute", status: "completed", result: 42 }),
-        expect.objectContaining({ stepKey: "do:double", status: "completed", result: 84 }),
+        expect.objectContaining({
+          stepKey: "do:compute",
+          status: "completed",
+          result: 42,
+        }),
+        expect.objectContaining({
+          stepKey: "do:double",
+          status: "completed",
+          result: 84,
+        }),
       ]),
     );
   });
@@ -232,7 +404,9 @@ describe("codemode workflow execution", () => {
           remote,
           env,
           families: runtimeToolFamilies,
-          toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+          toolContext: createTrustedSystemBackofficeToolContext({
+            runtimes: {},
+          }),
         });
         if (result.error) {
           throw new Error(result.error);
@@ -318,8 +492,14 @@ describe("codemode workflow execution", () => {
     history = await harness.getHistory("WORKFLOW", instanceId);
     expect(history.steps).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ stepKey: "sleep:pause", status: "completed" }),
-        expect.objectContaining({ stepKey: "do:after-sleep", status: "completed" }),
+        expect.objectContaining({
+          stepKey: "sleep:pause",
+          status: "completed",
+        }),
+        expect.objectContaining({
+          stepKey: "do:after-sleep",
+          status: "completed",
+        }),
       ]),
     );
   });
@@ -402,7 +582,9 @@ describe("codemode workflow execution", () => {
               tools: [doubleTool],
             }),
           ],
-          toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+          toolContext: createTrustedSystemBackofficeToolContext({
+            runtimes: {},
+          }),
         },
       ),
     );
@@ -468,11 +650,21 @@ describe("codemode workflow execution", () => {
     });
     let history = await harness.getHistory("WORKFLOW", instanceId);
     expect(history.steps).toEqual([
-      expect.objectContaining({ stepKey: "do:before", status: "completed", result: 1 }),
-      expect.objectContaining({ stepKey: "waitForEvent:continue", status: "waiting" }),
+      expect.objectContaining({
+        stepKey: "do:before",
+        status: "completed",
+        result: 1,
+      }),
+      expect.objectContaining({
+        stepKey: "waitForEvent:continue",
+        status: "waiting",
+      }),
     ]);
 
-    await harness.sendEvent("WORKFLOW", instanceId, { type: "continue", payload: {} });
+    await harness.sendEvent("WORKFLOW", instanceId, {
+      type: "continue",
+      payload: {},
+    });
     await harness.runUntilIdle({
       workflowName: "codemode-e2e-volatile-worker",
       instanceId,
@@ -486,9 +678,20 @@ describe("codemode workflow execution", () => {
     history = await harness.getHistory("WORKFLOW", instanceId);
     expect(history.steps).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ stepKey: "do:before", status: "completed", result: 1 }),
-        expect.objectContaining({ stepKey: "waitForEvent:continue", status: "completed" }),
-        expect.objectContaining({ stepKey: "do:after", status: "completed", result: 1 }),
+        expect.objectContaining({
+          stepKey: "do:before",
+          status: "completed",
+          result: 1,
+        }),
+        expect.objectContaining({
+          stepKey: "waitForEvent:continue",
+          status: "completed",
+        }),
+        expect.objectContaining({
+          stepKey: "do:after",
+          status: "completed",
+          result: 1,
+        }),
       ]),
     );
   });
@@ -584,7 +787,10 @@ describe("codemode workflow execution", () => {
         createSystemWorkflowOptions(),
       ),
     );
-    const harness = await createHarness({ WORKFLOW: Workflow, CHILD: ChildWorkflow });
+    const harness = await createHarness({
+      WORKFLOW: Workflow,
+      CHILD: ChildWorkflow,
+    });
 
     const instanceId = await harness.createInstance("WORKFLOW", {
       id: "codemode-e2e-create-child-1",
@@ -694,8 +900,16 @@ describe("codemode workflow execution", () => {
     const history = await harness.getHistory("WORKFLOW", instanceId);
     expect(history.steps).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ stepKey: "do:all alpha", status: "completed", result: "A" }),
-        expect.objectContaining({ stepKey: "do:all beta", status: "completed", result: "B" }),
+        expect.objectContaining({
+          stepKey: "do:all alpha",
+          status: "completed",
+          result: "A",
+        }),
+        expect.objectContaining({
+          stepKey: "do:all beta",
+          status: "completed",
+          result: "B",
+        }),
         expect.objectContaining({
           stepKey: "do:Promise race",
           status: "completed",
@@ -738,7 +952,10 @@ describe("codemode workflow execution", () => {
           status: "completed",
           result: "fast",
         }),
-        expect.objectContaining({ stepKey: "do:Promise allSettled", status: "completed" }),
+        expect.objectContaining({
+          stepKey: "do:Promise allSettled",
+          status: "completed",
+        }),
         expect.objectContaining({
           stepKey: "do:Promise allSettled>do:settled ok",
           status: "completed",
@@ -766,7 +983,9 @@ describe("codemode workflow execution", () => {
         env,
         {
           families: runtimeToolFamilies,
-          toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+          toolContext: createTrustedSystemBackofficeToolContext({
+            runtimes: {},
+          }),
         },
       ),
     );
@@ -791,7 +1010,10 @@ describe("codemode workflow execution", () => {
       expect.objectContaining({
         stepKey: "do:mutate",
         status: "errored",
-        error: { message: "REMOTE_WORKFLOW_TX_MUTATE_UNSUPPORTED", name: "Error" },
+        error: {
+          message: "REMOTE_WORKFLOW_TX_MUTATE_UNSUPPORTED",
+          name: "Error",
+        },
       }),
     ]);
   });

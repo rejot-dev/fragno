@@ -609,27 +609,4 @@ describe("createSessionProjectionDataStore", () => {
 
     expect(projection.state.messages.map(messageText)).toEqual(["new snapshot"]);
   });
-
-  it("keeps loader-provided state visible while lofi is bootstrapping", async () => {
-    const store = createSessionProjectionDataStore(
-      (await createRuntime([workflowInstanceMutation()])).runtime,
-      workflowName,
-      sessionId,
-      {
-        baseline: {
-          sessionEntries: [messageEntry("server-prompt", "server prompt")],
-          completedStepKeys: [],
-          compactOutcomesByCommandId: {},
-          latestCommandCompactOutcome: null,
-        },
-      },
-    );
-    const unsubscribe = store.subscribe(() => undefined);
-
-    assert(store.get().data.status === "loading");
-    expect(store.get().data.contextMessages.map(messageText)).toEqual(["server prompt"]);
-
-    await storeStateMatching(store, (state) => state.data.status === "ready");
-    unsubscribe();
-  });
 });

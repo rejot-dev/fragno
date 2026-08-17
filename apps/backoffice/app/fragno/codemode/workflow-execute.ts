@@ -23,6 +23,7 @@ import {
   normalizeBackofficeCodemodeCode,
   type BackofficeCodemodeEnv,
 } from "./execute";
+import { CodemodeWorkflowAgentTarget, type CodemodeWorkflowAgent } from "./workflow-agent-rpc";
 import { WorkflowStepTarget } from "./workflow-rpc";
 
 export type BackofficeCodemodeWorkflowResult<TOutput = unknown> = {
@@ -52,6 +53,7 @@ type WorkflowWorkerEntrypoint<TParams, TOutput> = {
   run(
     event: CodemodeWorkflowEvent<TParams>,
     stepTarget: WorkflowStepTarget,
+    agentTarget: CodemodeWorkflowAgentTarget | null,
     dispatchers: Record<string, unknown>,
   ): Promise<WorkflowWorkerResult<TOutput>>;
 };
@@ -71,6 +73,7 @@ export type BackofficeCodemodeWorkflowOptions = {
    */
   globalOutbound?: Fetcher | null;
   dependencies?: NpmDependencyMap;
+  workflowAgent?: CodemodeWorkflowAgent;
 };
 
 const createRemoteWorkflowWorkerCode = ({
@@ -82,7 +85,7 @@ const createRemoteWorkflowWorkerCode = ({
 }) => {
   const executableCode = normalizeBackofficeCodemodeCode(code);
   return `
-import { WorkerEntrypoint } from "cloudflare:workers";
+import { RpcTarget, WorkerEntrypoint } from "cloudflare:workers";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 ${CODEMODE_SANDBOX_CODEC_SOURCE}
@@ -135,7 +138,24 @@ const createUnsupportedTxMethod = (name) => () => {
   throw new Error(name);
 };
 
-const createRemoteWorkflowStep = (stepTarget) => {
+const defineTool = (definition) => definition;
+
+class WorkflowAgentToolTarget extends RpcTarget {
+  constructor(tools) {
+    super();
+    this.tools = new Map(tools.map((tool, index) => [\`tool-\${index}\`, tool]));
+  }
+
+  async execute(toolId, toolCallId, input) {
+    const tool = this.tools.get(toolId);
+    if (!tool || typeof tool.execute !== "function") {
+      throw new Error("WORKFLOW_AGENT_TOOL_NOT_FOUND");
+    }
+    return await tool.execute(toolCallId, input);
+  }
+}
+
+const createRemoteWorkflowStep = (stepTarget, agentTarget) => {
   const scopeStorage = new AsyncLocalStorage();
 
   const wrapTx = (txTarget) => {
@@ -222,13 +242,41 @@ const createRemoteWorkflowStep = (stepTarget) => {
       }
       return unwrapRemoteStepResult(await stepTarget.waitForEvent(parentScope, name, remoteOptions));
     },
+    agent: {
+      prompt: async (name, input) => {
+        if (!agentTarget) {
+          throw new Error("WORKFLOW_AGENT_UNAVAILABLE");
+        }
+        const tools = input.tools ?? [];
+        const toolDefinitions = tools.map((tool, index) => ({
+          id: \`tool-\${index}\`,
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        }));
+        const toolTarget = tools.length > 0 ? new WorkflowAgentToolTarget(tools) : null;
+        const parentScope = scopeStorage.getStore() ?? null;
+        return unwrapRemoteStepResult(
+          await agentTarget.prompt(
+            parentScope,
+            name,
+            {
+              text: input.text,
+              images: input.images,
+              tools: toolDefinitions,
+            },
+            toolTarget,
+          ),
+        );
+      },
+    },
   };
 
   return step;
 };
 
 export default class RemoteWorkflowEntrypoint extends WorkerEntrypoint {
-  async run(event, stepTarget, dispatchers = {}) {
+  async run(event, stepTarget, agentTarget, dispatchers = {}) {
     __dispatchers = dispatchers;
     if (
       typeof workflowProgram !== "function" &&
@@ -237,7 +285,7 @@ export default class RemoteWorkflowEntrypoint extends WorkerEntrypoint {
       throw new Error("REMOTE_WORKFLOW_CODE_MUST_EVALUATE_TO_FUNCTION");
     }
     try {
-      const step = createRemoteWorkflowStep(stepTarget);
+      const step = createRemoteWorkflowStep(stepTarget, agentTarget);
       const isWorkflowDefinition = __isFragnoCodemodeWorkflowDefinition(workflowProgram);
       const definitionOrResult = isWorkflowDefinition || workflowProgram.length >= 2
         ? workflowProgram
@@ -272,6 +320,7 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
   toolContext,
   globalOutbound,
   dependencies,
+  workflowAgent,
 }: {
   code: string;
   event: CodemodeWorkflowEvent<TParams>;
@@ -279,6 +328,7 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
   env: BackofficeCodemodeEnv;
 } & BackofficeCodemodeWorkflowOptions): Promise<TOutput> => {
   const stepTarget = new WorkflowStepTarget(remote);
+  const agentTarget = workflowAgent ? new CodemodeWorkflowAgentTarget(workflowAgent) : null;
   const executor = new DynamicWorkerExecutor({
     loader: env.LOADER,
     // Durable workflow sandboxes are sealed unless the trusted caller supplies an explicit
@@ -315,7 +365,7 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
     WorkflowWorkerResult<TOutput>
   >({
     bundle: compiled.bundle,
-    rpcTargets: { dispatchers, stepTarget },
+    rpcTargets: { agentTarget, dispatchers, stepTarget },
     run: async (entrypoint, rpcTargets) =>
       await entrypoint.run(
         {
@@ -323,6 +373,7 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
           id: event.id ?? event.instanceId,
         },
         rpcTargets.stepTarget as WorkflowStepTarget,
+        rpcTargets.agentTarget as CodemodeWorkflowAgentTarget | null,
         rpcTargets.dispatchers as Record<string, unknown>,
       ),
   });
@@ -341,7 +392,9 @@ export const runBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput =
   } & BackofficeCodemodeWorkflowOptions,
 ): Promise<BackofficeCodemodeWorkflowResult<TOutput>> => {
   try {
-    return { result: await executeBackofficeCodemodeWorkflow<TParams, TOutput>(input) };
+    return {
+      result: await executeBackofficeCodemodeWorkflow<TParams, TOutput>(input),
+    };
   } catch (error) {
     if (isRemoteWorkflowSuspendedError(error)) {
       throw error;

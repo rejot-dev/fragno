@@ -1047,9 +1047,16 @@ const searchStateContent = (
       break;
     }
     const startOffset = match.index;
-    const lineIndex = findTextLineIndex(lineStarts, startOffset);
-    const contextBefore = Math.max(0, options.contextBefore ?? 0);
-    const contextAfter = Math.max(0, options.contextAfter ?? 0);
+    const matchedLineIndex = findTextLineIndex(lineStarts, startOffset);
+    const lineIndex = typeof matchedLineIndex === "number" ? matchedLineIndex : 0;
+    const contextBefore = Math.max(
+      0,
+      typeof options.contextBefore === "number" ? options.contextBefore : 0,
+    );
+    const contextAfter = Math.max(
+      0,
+      typeof options.contextAfter === "number" ? options.contextAfter : 0,
+    );
     matches.push({
       path,
       line: lineIndex + 1,

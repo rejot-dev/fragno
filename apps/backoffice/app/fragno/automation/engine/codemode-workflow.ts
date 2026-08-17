@@ -6,6 +6,7 @@ import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
+import type { BackofficeWorkflowAgentHarnessOptionsResolver } from "@/fragno/pi/pi-runtime";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
@@ -18,6 +19,7 @@ import {
   codemodeWorkflowParamsSchema,
   type CodemodeWorkflowParams,
 } from "./codemode-invocation";
+import { createCodemodeWorkflowAgent } from "./codemode-workflow-agent";
 import { type AutomationPiBashContext, type AutomationRuntimeHostContext } from "./runtime";
 
 export type CodemodeWorkflowConfig = AutomationFileSystemConfig & {
@@ -28,6 +30,7 @@ export type CodemodeWorkflowConfig = AutomationFileSystemConfig & {
     execution: BackofficeExecutionContext;
     idempotencyKey: string;
   }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
+  resolveWorkflowAgentHarnessOptions?: BackofficeWorkflowAgentHarnessOptionsResolver;
 };
 
 const runtimeWithCapabilityGrants = ({
@@ -191,6 +194,22 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
         }),
         import("./codemode"),
       ]);
+      const resolveWorkflowAgentHarnessOptions = config.resolveWorkflowAgentHarnessOptions;
+      const workflowAgent = resolveWorkflowAgentHarnessOptions
+        ? createCodemodeWorkflowAgent({
+            workflowName: params.program.workflowName,
+            workflowInstanceId: event.instanceId,
+            createdAt: event.timestamp,
+            actor: execution.actors,
+            metadata: { filename: params.program.filename },
+            remote,
+            resolveHarnessOptions: async () =>
+              await resolveWorkflowAgentHarnessOptions({
+                sessionId: event.instanceId,
+                execution,
+              }),
+          })
+        : undefined;
       const result = await executeWorkflowCodemodeAutomation({
         script: params.program.code,
         dependencies: params.program.dependencies,
@@ -203,6 +222,7 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
           payload: automationEvent.payload,
         },
         remote,
+        workflowAgent,
       });
 
       if (result.exitCode !== 0) {

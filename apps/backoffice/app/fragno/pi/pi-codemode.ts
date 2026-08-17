@@ -1,5 +1,5 @@
 import { runBackofficeCodemode, type BackofficeCodemodeEnv } from "../codemode/execute";
-import type { PiCodemodeRuntime } from "./pi";
+import type { PiCodemodeRuntime } from "./pi-tools";
 
 export const createPiCodemodeRuntime = (env: BackofficeCodemodeEnv): PiCodemodeRuntime => ({
   execute: (input) => runBackofficeCodemode({ ...input, env }),

@@ -2,7 +2,7 @@ import { describe, expect, it, assert } from "vitest";
 
 import Ajv from "ajv";
 
-import { execCodeModeParametersSchema } from "@/fragno/pi/pi";
+import { execCodeModeParametersSchema } from "@/fragno/pi/pi-tools";
 
 describe("Pi tool TypeBox schemas", () => {
   it("rejects empty codemode programs", () => {

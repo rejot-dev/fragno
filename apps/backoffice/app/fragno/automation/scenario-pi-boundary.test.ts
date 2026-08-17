@@ -10,9 +10,9 @@ import {
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { automationActorsSchema } from "@/fragno/automation/actors";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
-import { createPiToolFactory, type PiSessionFileSystemContext } from "@/fragno/pi/pi";
 import { createPiCodemodeRuntime } from "@/fragno/pi/pi-codemode";
 import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
+import { createPiToolFactory, type PiSessionFileSystemContext } from "@/fragno/pi/pi-tools";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
