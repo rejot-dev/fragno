@@ -34,7 +34,7 @@ export type PreparedFileBatchEntry =
   | {
       kind: "write";
       uploadId: string;
-      precondition: UploadFileWritePrecondition;
+      precondition?: UploadFileWritePrecondition;
     }
   | {
       kind: "delete";
