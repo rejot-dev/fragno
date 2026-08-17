@@ -152,6 +152,7 @@ export interface WorkflowStep<THooks extends HooksMap = HooksMap> {
 /** Serialized instance status returned to API consumers. */
 export type InstanceStatusWithOutput<TOutput = unknown> = {
   status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+  runGeneration: number;
   error?: { name: string; message: string };
   output?: TOutput;
 };
@@ -179,6 +180,7 @@ export type WorkflowInstanceCurrentStep = {
 export type WorkflowInstanceMetadata = {
   workflowName: string;
   remoteWorkflowName?: string;
+  runGeneration: number;
   params: unknown;
   createdAt: Date;
   updatedAt: Date;
@@ -187,11 +189,64 @@ export type WorkflowInstanceMetadata = {
   currentStep?: WorkflowInstanceCurrentStep;
 };
 
-export type WorkflowInstanceRetryOptions = {
-  stepKey?: string;
+export type WorkflowRetryFailedStepOptions = {
   delayMs?: number;
-  reason?: string;
 };
+
+export type WorkflowInstanceStatus = InstanceStatus["status"];
+
+export type WorkflowRestartPrecondition = {
+  status: {
+    in: readonly [WorkflowInstanceStatus, ...WorkflowInstanceStatus[]];
+  };
+  runGeneration?: {
+    equals: number;
+  };
+};
+
+export type WorkflowRestartOrCreateOptions<TParams = unknown> = {
+  id: string;
+  /** Values used only when no instance with this ID exists. */
+  create: {
+    params?: TParams;
+    remoteWorkflowName?: string;
+  };
+  restart: {
+    precondition: WorkflowRestartPrecondition;
+  };
+};
+
+export type WorkflowRestartOrCreateInstanceResult<TOutput = unknown> =
+  | {
+      action: "created";
+      id: string;
+      details: InstanceStatusWithOutput<TOutput>;
+    }
+  | {
+      action: "restarted";
+      previousStatus: WorkflowInstanceStatus;
+      id: string;
+      details: InstanceStatusWithOutput<TOutput>;
+    }
+  | {
+      action: "unchanged";
+      observedStatus: InstanceStatus["status"];
+      id: string;
+      details: InstanceStatusWithOutput<TOutput>;
+    };
+
+export type WorkflowRestartOrCreateResult<TOutput = unknown> =
+  | { action: "created"; instance: WorkflowInstance<TOutput> }
+  | {
+      action: "restarted";
+      previousStatus: WorkflowInstanceStatus;
+      instance: WorkflowInstance<TOutput>;
+    }
+  | {
+      action: "unchanged";
+      observedStatus: InstanceStatus["status"];
+      instance: WorkflowInstance<TOutput>;
+    };
 
 /** Handle for a workflow instance returned by the management API. */
 export interface WorkflowInstance<TOutput = unknown> {
@@ -199,7 +254,8 @@ export interface WorkflowInstance<TOutput = unknown> {
   status(): Promise<InstanceStatusWithOutput<TOutput>>;
   pause(): Promise<void>;
   resume(): Promise<void>;
-  retry(options?: WorkflowInstanceRetryOptions): Promise<void>;
+  restart(): Promise<void>;
+  retryFailedStep(options?: WorkflowRetryFailedStepOptions): Promise<void>;
   terminate(): Promise<void>;
   sendEvent(options: { type: string; payload?: unknown }): Promise<void>;
 }
@@ -220,6 +276,9 @@ export interface WorkflowInstanceCreateOptionsWithId<
 /** Management API for a named workflow. */
 export interface Workflow<TParams = unknown, TOutput = unknown> {
   create(options?: WorkflowInstanceCreateOptions<TParams>): Promise<WorkflowInstance<TOutput>>;
+  restartOrCreate(
+    options: WorkflowRestartOrCreateOptions<TParams>,
+  ): Promise<WorkflowRestartOrCreateResult<TOutput>>;
   createBatch(
     batch: WorkflowInstanceCreateOptionsWithId<TParams>[],
   ): Promise<WorkflowInstance<TOutput>[]>;
@@ -549,6 +608,32 @@ export class WorkflowInstanceNotFoundError extends Error {
   }
 }
 
+/** A management retry was requested for an instance that is not errored. */
+export class WorkflowInstanceNotErroredError extends Error {
+  readonly code = "INSTANCE_NOT_ERRORED";
+
+  constructor(
+    readonly workflowName: string,
+    readonly instanceId: string,
+  ) {
+    super("INSTANCE_NOT_ERRORED");
+    this.name = "WorkflowInstanceNotErroredError";
+  }
+}
+
+/** The errored instance does not have one retryable failed top-level step. */
+export class WorkflowFailedStepNotRetryableError extends Error {
+  readonly code = "FAILED_STEP_NOT_RETRYABLE";
+
+  constructor(
+    readonly workflowName: string,
+    readonly instanceId: string,
+  ) {
+    super("FAILED_STEP_NOT_RETRYABLE");
+    this.name = "WorkflowFailedStepNotRetryableError";
+  }
+}
+
 /** Error type that bypasses automatic retries. */
 export class NonRetryableError extends Error {
   constructor(message: string, name?: string) {
@@ -580,10 +665,19 @@ export type WorkflowStepEmissionsCleanupHookPayload = {
   epoch: string;
 };
 
+export type WorkflowRestartedHookPayload = {
+  workflowName: string;
+  instanceId: string;
+  instanceRef: string;
+  previousRunGeneration: number;
+  runGeneration: number;
+};
+
 export type WorkflowTerminalHookPayload = {
   workflowName: string;
   instanceId: string;
   instanceRef: string;
+  runGeneration: number;
   status: "complete" | "errored" | "terminated";
   params: unknown;
   output?: unknown;
@@ -595,6 +689,7 @@ export type WorkflowTerminalHookPayload = {
 
 export type WorkflowsHooks = {
   onWorkflowEnqueued: (payload: WorkflowEnqueuedHookPayload) => void | Promise<void>;
+  onWorkflowRestarted: (payload: WorkflowRestartedHookPayload) => void | Promise<void>;
   onWorkflowTerminal: (payload: WorkflowTerminalHookPayload) => void | Promise<void>;
   onWorkflowStepEmissionsCleanup: (
     payload: WorkflowStepEmissionsCleanupHookPayload,
@@ -607,12 +702,13 @@ export interface WorkflowsDispatcher {
 }
 
 /** Actions available on workflow instances. */
-export type WorkflowManagementAction = "pause" | "resume" | "terminate";
+export type WorkflowManagementAction = "pause" | "resume" | "restart" | "terminate";
 
 /** Configuration for the workflows fragment. */
 export interface WorkflowsFragmentConfig<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> {
   workflows?: TRegistry;
   dispatcher?: WorkflowsDispatcher;
+  onWorkflowRestarted?: (payload: WorkflowRestartedHookPayload) => void | Promise<void>;
   onWorkflowTerminal?: (payload: WorkflowTerminalHookPayload) => void | Promise<void>;
   /**
    * Disable built-in durable hook ticking (useful for tests that drive ticks manually).

@@ -29,6 +29,21 @@ const createInstanceSchema = z.object({
   remoteWorkflowName: identifierSchema.optional(),
 });
 
+const restartOrCreateSchema = z.object({
+  create: z.object({
+    params: z.unknown().optional(),
+    remoteWorkflowName: identifierSchema.optional(),
+  }),
+  restart: z.object({
+    precondition: z.object({
+      status: z.object({
+        in: z.array(instanceStatusSchema).min(1),
+      }),
+      runGeneration: z.object({ equals: z.number().int().positive() }).optional(),
+    }),
+  }),
+});
+
 const createBatchSchema = z.object({
   remoteWorkflowName: identifierSchema.optional(),
   instances: z
@@ -47,19 +62,18 @@ const sendEventSchema = z.object({
   payload: z.unknown().optional(),
 });
 
-const retryInstanceSchema = z.object({
-  stepKey: z.string().min(1).max(512).optional(),
+const retryFailedStepSchema = z.object({
   delayMs: z
     .number()
     .int()
     .min(0)
     .max(30 * 24 * 60 * 60 * 1000)
     .optional(),
-  reason: z.string().min(1).max(512).optional(),
 });
 
 const instanceStatusOutputSchema = z.object({
   status: instanceStatusSchema,
+  runGeneration: z.number().int().positive(),
   error: z
     .object({
       name: z.string(),
@@ -68,6 +82,26 @@ const instanceStatusOutputSchema = z.object({
     .optional(),
   output: z.unknown().optional(),
 });
+
+const restartOrCreateOutputSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("created"),
+    id: z.string(),
+    details: instanceStatusOutputSchema,
+  }),
+  z.object({
+    action: z.literal("restarted"),
+    previousStatus: instanceStatusSchema,
+    id: z.string(),
+    details: instanceStatusOutputSchema,
+  }),
+  z.object({
+    action: z.literal("unchanged"),
+    observedStatus: instanceStatusSchema,
+    id: z.string(),
+    details: instanceStatusOutputSchema,
+  }),
+]);
 
 const currentStepOutputSchema = z.object({
   stepKey: z.string(),
@@ -93,6 +127,7 @@ const currentStepOutputSchema = z.object({
 const instanceMetaOutputSchema = z.object({
   workflowName: z.string(),
   remoteWorkflowName: z.string().optional(),
+  runGeneration: z.number(),
   params: z.unknown(),
   createdAt: z.date(),
   updatedAt: z.date(),
@@ -153,7 +188,7 @@ const historyOutputSchema = z.object({
   emissions: z.array(historyEmissionSchema),
 });
 
-const retryInstanceOutputSchema = z.object({
+const retryFailedStepOutputSchema = z.object({
   accepted: z.literal(true),
   instance: z.object({
     id: z.string(),
@@ -215,6 +250,20 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
   }),
   defineRoute({
     method: "POST",
+    path: "/:workflowName/instances/:instanceId/restart-or-create",
+    inputSchema: restartOrCreateSchema,
+    outputSchema: restartOrCreateOutputSchema,
+    errorCodes: [
+      "WORKFLOW_NOT_FOUND",
+      "INVALID_INSTANCE_ID",
+      "WORKFLOW_PARAMS_INVALID",
+      "WORKFLOW_REMOTE_HOST_INVALID",
+      "WORKFLOW_REMOTE_NAME_REQUIRED",
+    ],
+    handler: stubHandler,
+  }),
+  defineRoute({
+    method: "POST",
     path: "/:workflowName/instances/batch",
     inputSchema: createBatchSchema,
     outputSchema: z.object({
@@ -262,14 +311,15 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
   }),
   defineRoute({
     method: "POST",
-    path: "/:workflowName/instances/:instanceId/retry",
-    inputSchema: retryInstanceSchema,
-    outputSchema: retryInstanceOutputSchema,
+    path: "/:workflowName/instances/:instanceId/retry-failed-step",
+    inputSchema: retryFailedStepSchema,
+    outputSchema: retryFailedStepOutputSchema,
     errorCodes: [
       "WORKFLOW_NOT_FOUND",
       "INVALID_INSTANCE_ID",
       "INSTANCE_NOT_FOUND",
-      "STEP_NOT_FOUND",
+      "INSTANCE_NOT_ERRORED",
+      "FAILED_STEP_NOT_RETRYABLE",
     ],
     handler: stubHandler,
   }),
@@ -295,6 +345,13 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
       "INSTANCE_NOT_FOUND",
       "INSTANCE_TERMINAL",
     ],
+    handler: stubHandler,
+  }),
+  defineRoute({
+    method: "POST",
+    path: "/:workflowName/instances/:instanceId/restart",
+    outputSchema: z.object({ ok: z.literal(true) }),
+    errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
     handler: stubHandler,
   }),
   defineRoute({

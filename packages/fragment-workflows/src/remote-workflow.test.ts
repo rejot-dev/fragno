@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, test } from "vitest";
+import { assert, describe, expect, expectTypeOf, test } from "vitest";
 
 import { Worker, threadId } from "node:worker_threads";
 
@@ -647,6 +647,45 @@ describe("remote workflow step host", () => {
         remoteWorkflowName: "dynamic-batch-body",
       }),
     ).resolves.toHaveLength(2);
+  });
+
+  test("restart preserves the remote workflow name", async () => {
+    const RemoteWorkflow = defineRemoteWorkflow(
+      { name: "restart-remote-host" },
+      async () => "done",
+    );
+    const harness = await createWorkflowsTestHarness({
+      workflows: { REMOTE: RemoteWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    try {
+      await harness.createInstance("REMOTE", {
+        id: "restart-remote-1",
+        remoteWorkflowName: "dynamic-restart-body",
+      });
+      await harness.restartInstance("REMOTE", "restart-remote-1");
+
+      const response = await harness.fragment.callRoute(
+        "GET",
+        "/:workflowName/instances/:instanceId",
+        {
+          pathParams: {
+            workflowName: "restart-remote-host",
+            instanceId: "restart-remote-1",
+          },
+        },
+      );
+      assert(response.type === "json");
+      expect(response.data).toMatchObject({
+        details: { status: "active" },
+        meta: { remoteWorkflowName: "dynamic-restart-body", runGeneration: 2 },
+      });
+    } finally {
+      await harness.test.cleanup();
+    }
   });
 
   test("still requires the registered workflow name when creating a remote instance", async () => {

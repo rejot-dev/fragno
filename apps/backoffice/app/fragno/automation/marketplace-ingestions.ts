@@ -5,10 +5,7 @@ import {
   backofficeProjectScopeSchema,
   backofficeUserScopeSchema,
 } from "@/backoffice-runtime/context-schema";
-import {
-  backofficeScopeSinglePathSegment,
-  type BackofficeRoutableScope,
-} from "@/backoffice-runtime/scope-codec";
+import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import {
   marketplaceListingIdSchema,
   marketplaceVersionSchema,
@@ -17,6 +14,7 @@ import {
 
 import { backofficeWorkflowActorMetadataSchema } from "./actors";
 import type { AutomationHookServiceContext } from "./internal-hooks";
+import { marketplaceIngestionTargetScopeKey } from "./marketplace-ingest-identity";
 import { automationFragmentSchema } from "./schema";
 
 const marketplaceIngestionTargetScopeSchema = z.discriminatedUnion("kind", [
@@ -24,9 +22,6 @@ const marketplaceIngestionTargetScopeSchema = z.discriminatedUnion("kind", [
   backofficeProjectScopeSchema,
   backofficeUserScopeSchema,
 ]);
-
-export const marketplaceIngestionTargetScopeKey = (scope: BackofficeRoutableScope): string =>
-  backofficeScopeSinglePathSegment(scope);
 
 const marketplaceIngestionId = (input: {
   targetScope: BackofficeRoutableScope;
@@ -185,6 +180,11 @@ export type MarketplaceIngestionRequestResult = MarketplaceIngestionRequestIdent
         error: { name: string; message: string };
       }
   );
+
+export type MarketplaceIngestionRestartResult = MarketplaceIngestionRequestIdentity & {
+  action: "created" | "restarted" | "unchanged";
+  workflowStatus: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+};
 
 const serializeMarketplaceIngestion = (row: {
   id: { valueOf(): string };

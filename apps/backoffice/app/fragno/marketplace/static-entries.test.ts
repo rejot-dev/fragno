@@ -56,7 +56,8 @@ describe("static Marketplace entries", () => {
               "README.md": "# Telegram test command
 
       This Marketplace item installs a durable workflow that responds to the \`/test\` Telegram command
-      after a three-second delay.
+      after a three-second delay. Version 1.3.0 adds an installation interface for choosing the reply and
+      stores that message in the selected automation scope.
       ",
             },
             "slug": "telegram-test-command",
@@ -90,6 +91,10 @@ describe("static Marketplace entries", () => {
               },
               {
                 "files": {
+                  ".marketplace/install.workflow.js": "defineWorkflow({ name: "install-telegram-test-command" }, async () => {
+        throw new Error("Intentional Telegram test command installer failure.");
+      });
+      ",
                   "automations/telegram-test-command.workflow.js": "defineWorkflow({ name: "telegram-test-command" }, async (event, step) => {
         const automationEvent = event;
         const text = automationEvent.payload.text;
@@ -204,6 +209,179 @@ describe("static Marketplace entries", () => {
                 },
                 "version": "1.2.1",
               },
+              {
+                "files": {
+                  ".marketplace/install.workflow.js": "/// <reference path="/static/codemode/workflow-authoring.d.ts" />
+
+      defineWorkflow(
+        { name: "install-telegram-test-command" },
+        async (/** @type {WorkflowEvent<any>} */ event, step) => {
+          const workflowScriptPath =
+            event.payload.installedFiles["automations/telegram-test-command.workflow.js"];
+          if (!workflowScriptPath) {
+            throw new Error("Telegram test command workflow was not installed.");
+          }
+
+          const existingMessage = await step.do("load current test message", async () => {
+            // @ts-expect-error -- store is injected into the workflow runtime.
+            const storedMessage = await store.get({
+              key: "marketplace/telegram-test-command/message",
+            });
+            return storedMessage?.value ?? "Telegram integration verified after a 3 second delay.";
+          });
+
+          await step.do("request test message", async () => ({
+            $ui: {
+              version: 1,
+              state: { response: { message: existingMessage } },
+              spec: {
+                root: "form",
+                elements: {
+                  form: {
+                    type: "Stack",
+                    props: { gap: "md" },
+                    children: ["heading", "description", "message", "submit"],
+                  },
+                  heading: {
+                    type: "Heading",
+                    props: { text: "Configure the Telegram test reply", level: 3 },
+                    children: [],
+                  },
+                  description: {
+                    type: "Text",
+                    props: {
+                      text: "Choose the message that Telegram should send after receiving /test.",
+                      tone: "muted",
+                    },
+                    children: [],
+                  },
+                  message: {
+                    type: "TextArea",
+                    props: {
+                      label: "Test message",
+                      value: { $bindState: "/response/message" },
+                      description: "This message is stored in the selected automation scope.",
+                      required: true,
+                      rows: 4,
+                    },
+                    children: [],
+                  },
+                  submit: {
+                    type: "WorkflowEventButton",
+                    props: {
+                      label: "Save test message",
+                      eventType: "telegram-test-command.message-configured",
+                      payload: { $state: "/response" },
+                      variant: "primary",
+                    },
+                    children: [],
+                  },
+                },
+              },
+            },
+          }));
+
+          const configuration = await step.waitForEvent("wait for test message", {
+            type: "telegram-test-command.message-configured",
+          });
+          const configuredMessage = /** @type {{message?: unknown}} */ (configuration.payload).message;
+          if (typeof configuredMessage !== "string" || !configuredMessage.trim()) {
+            throw new Error("Telegram test message must be a non-empty string.");
+          }
+
+          await step.do("store test message", async () => {
+            // @ts-expect-error -- store is injected into the workflow runtime.
+            return await store.set({
+              key: "marketplace/telegram-test-command/message",
+              value: configuredMessage.trim(),
+              description: "Reply sent by the Marketplace-managed Telegram /test command.",
+              category: ["marketplace", "telegram", "configuration"],
+            });
+          });
+
+          await step.do("ensure Telegram /test route", async () => {
+            const desired = {
+              id: "telegram-test-command",
+              name: "Telegram /test command",
+              trigger: {
+                kind: "event",
+                source: "telegram",
+                eventType: "message.received",
+                matcher: { path: "$.payload.text", op: "eq", value: "/test" },
+              },
+              priority: 110,
+              action: {
+                kind: "start_workflow",
+                authority: { kind: "organization-automation" },
+                workflowScriptPath,
+                instanceIdTemplate: "telegram-test-\${event.id}",
+              },
+              managedBy: {
+                kind: "marketplace",
+                listingId: event.payload.listingId,
+                resourceKey: "telegram-test-command-route",
+                version: event.payload.version,
+              },
+            };
+            // @ts-expect-error -- router is injected into the workflow runtime.
+            const existing = await router.get({ id: desired.id });
+            if (!existing) {
+              // @ts-expect-error -- router is injected into the workflow runtime.
+              return await router.create({ ...desired, enabled: true });
+            }
+
+            const managedBy = existing.metadata?.managedBy;
+            const ownedByThisInstallation =
+              managedBy?.kind === "marketplace" &&
+              managedBy.listingId === event.payload.listingId &&
+              managedBy.resourceKey === desired.managedBy.resourceKey;
+            if (!ownedByThisInstallation) {
+              throw new Error(
+                "Automation route 'telegram-test-command' already exists and is not managed by this Marketplace installation.",
+              );
+            }
+
+            // @ts-expect-error -- router is injected into the workflow runtime.
+            return await router.update({
+              ...desired,
+              enabled: existing.enabled,
+            });
+          });
+        },
+      );
+      ",
+                  "automations/telegram-test-command.workflow.js": "defineWorkflow({ name: "telegram-test-command" }, async (event, step) => {
+        const automationEvent = event;
+        const text = automationEvent.payload.text;
+        const chatId = automationEvent.payload.chatId;
+
+        if (text !== "/test") {
+          return { skipped: true, reason: "not-test-command" };
+        }
+
+        await step.sleep("wait 3 seconds", "3 seconds");
+
+        const configuredMessage = await step.do("load configured test reply", async () => {
+          const storedMessage = await store.get({
+            key: "marketplace/telegram-test-command/message",
+          });
+          return storedMessage?.value ?? "Telegram integration verified after a 3 second delay.";
+        });
+
+        await step.do("send delayed test reply", async () => {
+          await telegram.sendMessage({
+            chatId,
+            text: configuredMessage,
+            parseMode: "Markdown",
+          });
+        });
+
+        return { sent: true };
+      });
+      ",
+                },
+                "version": "1.3.0",
+              },
             ],
           },
         ],
@@ -254,7 +432,8 @@ describe("static Marketplace entries", () => {
               "README.md": "# Telegram test command
 
       This Marketplace item installs a durable workflow that responds to the \`/test\` Telegram command
-      after a three-second delay.
+      after a three-second delay. Version 1.3.0 adds an installation interface for choosing the reply and
+      stores that message in the selected automation scope.
       ",
             },
             "slug": "telegram-test-command",
@@ -262,6 +441,10 @@ describe("static Marketplace entries", () => {
           },
           {
             "files": {
+              ".marketplace/install.workflow.js": "defineWorkflow({ name: "install-telegram-test-command" }, async () => {
+        throw new Error("Intentional Telegram test command installer failure.");
+      });
+      ",
               "automations/telegram-test-command.workflow.js": "defineWorkflow({ name: "telegram-test-command" }, async (event, step) => {
         const automationEvent = event;
         const text = automationEvent.payload.text;
@@ -306,7 +489,8 @@ describe("static Marketplace entries", () => {
               "README.md": "# Telegram test command
 
       This Marketplace item installs a durable workflow that responds to the \`/test\` Telegram command
-      after a three-second delay.
+      after a three-second delay. Version 1.3.0 adds an installation interface for choosing the reply and
+      stores that message in the selected automation scope.
       ",
             },
             "slug": "telegram-test-command",
@@ -420,11 +604,211 @@ describe("static Marketplace entries", () => {
               "README.md": "# Telegram test command
 
       This Marketplace item installs a durable workflow that responds to the \`/test\` Telegram command
-      after a three-second delay.
+      after a three-second delay. Version 1.3.0 adds an installation interface for choosing the reply and
+      stores that message in the selected automation scope.
       ",
             },
             "slug": "telegram-test-command",
             "version": "1.2.1",
+          },
+          {
+            "files": {
+              ".marketplace/install.workflow.js": "/// <reference path="/static/codemode/workflow-authoring.d.ts" />
+
+      defineWorkflow(
+        { name: "install-telegram-test-command" },
+        async (/** @type {WorkflowEvent<any>} */ event, step) => {
+          const workflowScriptPath =
+            event.payload.installedFiles["automations/telegram-test-command.workflow.js"];
+          if (!workflowScriptPath) {
+            throw new Error("Telegram test command workflow was not installed.");
+          }
+
+          const existingMessage = await step.do("load current test message", async () => {
+            // @ts-expect-error -- store is injected into the workflow runtime.
+            const storedMessage = await store.get({
+              key: "marketplace/telegram-test-command/message",
+            });
+            return storedMessage?.value ?? "Telegram integration verified after a 3 second delay.";
+          });
+
+          await step.do("request test message", async () => ({
+            $ui: {
+              version: 1,
+              state: { response: { message: existingMessage } },
+              spec: {
+                root: "form",
+                elements: {
+                  form: {
+                    type: "Stack",
+                    props: { gap: "md" },
+                    children: ["heading", "description", "message", "submit"],
+                  },
+                  heading: {
+                    type: "Heading",
+                    props: { text: "Configure the Telegram test reply", level: 3 },
+                    children: [],
+                  },
+                  description: {
+                    type: "Text",
+                    props: {
+                      text: "Choose the message that Telegram should send after receiving /test.",
+                      tone: "muted",
+                    },
+                    children: [],
+                  },
+                  message: {
+                    type: "TextArea",
+                    props: {
+                      label: "Test message",
+                      value: { $bindState: "/response/message" },
+                      description: "This message is stored in the selected automation scope.",
+                      required: true,
+                      rows: 4,
+                    },
+                    children: [],
+                  },
+                  submit: {
+                    type: "WorkflowEventButton",
+                    props: {
+                      label: "Save test message",
+                      eventType: "telegram-test-command.message-configured",
+                      payload: { $state: "/response" },
+                      variant: "primary",
+                    },
+                    children: [],
+                  },
+                },
+              },
+            },
+          }));
+
+          const configuration = await step.waitForEvent("wait for test message", {
+            type: "telegram-test-command.message-configured",
+          });
+          const configuredMessage = /** @type {{message?: unknown}} */ (configuration.payload).message;
+          if (typeof configuredMessage !== "string" || !configuredMessage.trim()) {
+            throw new Error("Telegram test message must be a non-empty string.");
+          }
+
+          await step.do("store test message", async () => {
+            // @ts-expect-error -- store is injected into the workflow runtime.
+            return await store.set({
+              key: "marketplace/telegram-test-command/message",
+              value: configuredMessage.trim(),
+              description: "Reply sent by the Marketplace-managed Telegram /test command.",
+              category: ["marketplace", "telegram", "configuration"],
+            });
+          });
+
+          await step.do("ensure Telegram /test route", async () => {
+            const desired = {
+              id: "telegram-test-command",
+              name: "Telegram /test command",
+              trigger: {
+                kind: "event",
+                source: "telegram",
+                eventType: "message.received",
+                matcher: { path: "$.payload.text", op: "eq", value: "/test" },
+              },
+              priority: 110,
+              action: {
+                kind: "start_workflow",
+                authority: { kind: "organization-automation" },
+                workflowScriptPath,
+                instanceIdTemplate: "telegram-test-\${event.id}",
+              },
+              managedBy: {
+                kind: "marketplace",
+                listingId: event.payload.listingId,
+                resourceKey: "telegram-test-command-route",
+                version: event.payload.version,
+              },
+            };
+            // @ts-expect-error -- router is injected into the workflow runtime.
+            const existing = await router.get({ id: desired.id });
+            if (!existing) {
+              // @ts-expect-error -- router is injected into the workflow runtime.
+              return await router.create({ ...desired, enabled: true });
+            }
+
+            const managedBy = existing.metadata?.managedBy;
+            const ownedByThisInstallation =
+              managedBy?.kind === "marketplace" &&
+              managedBy.listingId === event.payload.listingId &&
+              managedBy.resourceKey === desired.managedBy.resourceKey;
+            if (!ownedByThisInstallation) {
+              throw new Error(
+                "Automation route 'telegram-test-command' already exists and is not managed by this Marketplace installation.",
+              );
+            }
+
+            // @ts-expect-error -- router is injected into the workflow runtime.
+            return await router.update({
+              ...desired,
+              enabled: existing.enabled,
+            });
+          });
+        },
+      );
+      ",
+              "automations/telegram-test-command.workflow.js": "defineWorkflow({ name: "telegram-test-command" }, async (event, step) => {
+        const automationEvent = event;
+        const text = automationEvent.payload.text;
+        const chatId = automationEvent.payload.chatId;
+
+        if (text !== "/test") {
+          return { skipped: true, reason: "not-test-command" };
+        }
+
+        await step.sleep("wait 3 seconds", "3 seconds");
+
+        const configuredMessage = await step.do("load configured test reply", async () => {
+          const storedMessage = await store.get({
+            key: "marketplace/telegram-test-command/message",
+          });
+          return storedMessage?.value ?? "Telegram integration verified after a 3 second delay.";
+        });
+
+        await step.do("send delayed test reply", async () => {
+          await telegram.sendMessage({
+            chatId,
+            text: configuredMessage,
+            parseMode: "Markdown",
+          });
+        });
+
+        return { sent: true };
+      });
+      ",
+            },
+            "metadata": {
+              "category": "communication",
+              "description": "A small durable workflow for verifying that Telegram events, workflow sleeps, and delayed replies are configured correctly.",
+              "name": "Telegram test command",
+              "summary": "Send a delayed Telegram reply when a chat receives the /test command.",
+              "tags": [
+                "telegram",
+                "testing",
+                "workflow",
+              ],
+            },
+            "owner": {
+              "publisherName": "Fragno",
+              "scope": {
+                "kind": "system",
+              },
+            },
+            "rootFiles": {
+              "README.md": "# Telegram test command
+
+      This Marketplace item installs a durable workflow that responds to the \`/test\` Telegram command
+      after a three-second delay. Version 1.3.0 adds an installation interface for choosing the reply and
+      stores that message in the selected automation scope.
+      ",
+            },
+            "slug": "telegram-test-command",
+            "version": "1.3.0",
           },
         ],
       }
@@ -559,7 +943,8 @@ describe("static Marketplace entries", () => {
             "README.md": "# Telegram test command
 
       This Marketplace item installs a durable workflow that responds to the \`/test\` Telegram command
-      after a three-second delay.
+      after a three-second delay. Version 1.3.0 adds an installation interface for choosing the reply and
+      stores that message in the selected automation scope.
       ",
           },
           "slug": "telegram-test-command",
@@ -611,7 +996,8 @@ describe("static Marketplace entries", () => {
             "README.md": "# Telegram test command
 
       This Marketplace item installs a durable workflow that responds to the \`/test\` Telegram command
-      after a three-second delay.
+      after a three-second delay. Version 1.3.0 adds an installation interface for choosing the reply and
+      stores that message in the selected automation scope.
       ",
           },
           "slug": "telegram-test-command",
@@ -620,6 +1006,10 @@ describe("static Marketplace entries", () => {
         "missing": null,
         "next": {
           "files": {
+            ".marketplace/install.workflow.js": "defineWorkflow({ name: "install-telegram-test-command" }, async () => {
+        throw new Error("Intentional Telegram test command installer failure.");
+      });
+      ",
             "automations/telegram-test-command.workflow.js": "defineWorkflow({ name: "telegram-test-command" }, async (event, step) => {
         const automationEvent = event;
         const text = automationEvent.payload.text;
@@ -664,7 +1054,8 @@ describe("static Marketplace entries", () => {
             "README.md": "# Telegram test command
 
       This Marketplace item installs a durable workflow that responds to the \`/test\` Telegram command
-      after a three-second delay.
+      after a three-second delay. Version 1.3.0 adds an installation interface for choosing the reply and
+      stores that message in the selected automation scope.
       ",
           },
           "slug": "telegram-test-command",

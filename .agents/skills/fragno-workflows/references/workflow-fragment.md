@@ -198,28 +198,31 @@ fragment.
 Use the lower-level `workflowsFragmentDefinition` and `workflowsRoutesFactory` exports only when you
 need to customize the normal instantiation pipeline.
 
-## Terminal workflow callback
+## Workflow lifecycle callbacks
 
-Pass `onWorkflowTerminal` in the fragment config to react after an instance reaches `complete`,
-`errored`, or `terminated`:
+Pass `onWorkflowRestarted` and `onWorkflowTerminal` in the fragment config to observe instance
+lifecycle transitions:
 
 ```ts
 const fragment = createWorkflowsFragment(
   {
     workflows,
     runtime: defaultFragnoRuntime,
-    onWorkflowTerminal: async ({ workflowName, instanceId, instanceRef, status }) => {
-      await updateWorkflowProjection({ workflowName, instanceId, instanceRef, status });
+    onWorkflowRestarted: async ({ instanceId, previousRunGeneration, runGeneration }) => {
+      await markWorkflowActive({ instanceId, previousRunGeneration, runGeneration });
+    },
+    onWorkflowTerminal: async ({ instanceId, runGeneration, status }) => {
+      await recordWorkflowTerminalState({ instanceId, runGeneration, status });
     },
   },
   { databaseAdapter: adapter },
 );
 ```
 
-The callback is executed by the `onWorkflowTerminal` durable hook after the terminal state is
-committed. It only receives the workflow name, public instance ID, internal instance reference, and
-terminal status. Run a durable hooks dispatcher for the callback to execute, and make the callback
-idempotent because durable hook delivery can be retried.
+A full restart increments `runGeneration`; failed-step retry leaves it unchanged. Terminal callbacks
+within one generation are transition notifications rather than an ordered current-state projection.
+Read the instance when current state matters. Run a durable hooks dispatcher for both callbacks, and
+make their effects idempotent because delivery can be retried.
 
 ## Runtime Injection
 

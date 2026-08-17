@@ -60,6 +60,7 @@ export type {
   MarketplaceIngestionRecord,
   MarketplaceIngestionRequestInput,
   MarketplaceIngestionRequestResult,
+  MarketplaceIngestionRestartResult,
 } from "./marketplace-ingestions";
 export type {
   AutomationEventDefinition,

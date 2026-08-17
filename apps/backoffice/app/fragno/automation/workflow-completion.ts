@@ -1,6 +1,9 @@
 import { z } from "zod";
 
 export const WORKFLOW_COMPLETED_EVENT_TYPE = "workflow.completed";
+
+export const workflowCompletedEventType = (runGeneration: number) =>
+  `${WORKFLOW_COMPLETED_EVENT_TYPE}:${runGeneration}`;
 export const WORKFLOW_COMPLETION_PARAM = "__workflowCompletion";
 
 const workflowCompletionTargetSchema = z.object({
@@ -13,10 +16,14 @@ export type WorkflowCompletionTarget = z.infer<typeof workflowCompletionTargetSc
 export type WorkflowCompletedEventPayload = {
   workflowName: string;
   instanceId: string;
+  runGeneration: number;
   status: "complete" | "errored" | "terminated";
   output?: unknown;
   error?: { name: string; message: string };
 };
+
+export const workflowCompletionEventId = (input: { instanceRef: string; runGeneration: number }) =>
+  `workflow-completed:${input.instanceRef}:${input.runGeneration}`;
 
 export const withWorkflowCompletionTarget = <TParams extends Record<string, unknown>>(
   params: TParams,

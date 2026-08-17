@@ -1,11 +1,18 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
-import { defineWorkflow, NonRetryableError } from "@fragno-dev/workflows/workflow";
+import {
+  defineWorkflow,
+  NonRetryableError,
+  WorkflowInstanceNotFoundError,
+} from "@fragno-dev/workflows/workflow";
 import { z } from "zod";
+
+import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
   type BackofficeContextScope,
+  type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import type { UploadObject } from "@/backoffice-runtime/object-registry";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
@@ -38,10 +45,15 @@ import { appendAutomationDelegate } from "./authority";
 import type { AutomationFileSystemConfig } from "./catalog";
 import {
   CODEMODE_CAPABILITY_ACTOR,
+  CODEMODE_WORKFLOW,
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
 } from "./engine/codemode-invocation";
 import type { createAutomationFragment } from "./index";
+import {
+  MARKETPLACE_INGEST_WORKFLOW_NAME,
+  marketplaceInstallationWorkflowInstanceId,
+} from "./marketplace-ingest-identity";
 import {
   marketplaceFileContentsMatch,
   MarketplaceWorkspaceFileConflictError,
@@ -55,7 +67,6 @@ import {
   MarketplaceIngestionArtifactUnavailableError,
   MarketplaceIngestionStateConflictError,
   MarketplaceIngestionTargetAccessError,
-  marketplaceIngestionTargetScopeKey,
   marketplaceIngestionWorkflowInputSchema,
   resolveMarketplaceIngestionArtifactVersion,
 } from "./marketplace-ingestions";
@@ -65,12 +76,11 @@ import {
   throwUnexpectedMarketplaceUploadResponse,
 } from "./marketplace-upload-errors";
 import {
-  WORKFLOW_COMPLETED_EVENT_TYPE,
+  workflowCompletedEventType,
   type WorkflowCompletedEventPayload,
   withWorkflowCompletionTarget,
 } from "./workflow-completion";
 
-export const MARKETPLACE_INGEST_WORKFLOW_NAME = "marketplace-ingest";
 const MARKETPLACE_ARTIFACT_LIST_PAGE_SIZE = 500;
 const MARKETPLACE_ARTIFACT_MAX_LIST_PAGES = 5;
 const TEXT_ENCODER = new TextEncoder();
@@ -189,22 +199,17 @@ const assertMarketplaceSourceBytesMatch = async (
   }
 };
 
-export const buildMarketplaceIngestionWorkflowInstanceId = async (input: {
-  targetScope: BackofficeRoutableScope;
-  listingId: string;
-  version: string;
-}) =>
-  `marketplace-ingest-${await sha256Hex(
-    TEXT_ENCODER.encode(
-      `${marketplaceIngestionTargetScopeKey(input.targetScope)}\0${marketplaceListingIdSchema.parse(input.listingId)}\0${marketplaceVersionSchema.parse(input.version)}`,
-    ),
-  )}`;
+type MarketplaceWorkflowsFragment = Pick<
+  ReturnType<typeof createWorkflowsFragment<BackofficeExecutionContext>>,
+  "callServices" | "services"
+>;
 
 type MarketplaceIngestWorkflowConfig = AutomationFileSystemConfig & {
   ownerScope: BackofficeContextScope;
   env?: CloudflareEnv;
   runtime?: BackofficeRuntimeServices;
   getAutomationFragment: () => ReturnType<typeof createAutomationFragment> | undefined;
+  getWorkflowsFragment: () => MarketplaceWorkflowsFragment | undefined;
 };
 
 type MarketplaceInstallationWorkflowInput = {
@@ -697,7 +702,9 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
           installedFiles: marketplaceInstalledFiles(sourceFiles),
           previousInstalledFiles: marketplaceInstalledFiles(previousSourceFiles),
         };
-        const installationWorkflowInstanceId = `${event.instanceId}:installation`;
+        const installationWorkflowInstanceId = marketplaceInstallationWorkflowInstanceId(
+          event.instanceId,
+        );
         const installationBaseExecution = createBackofficeServiceExecution({
           scope: input.targetScope,
           service: {
@@ -705,10 +712,37 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
             id: `automation:${installationWorkflowInstanceId}`,
           },
         });
+        const observedInstallationRunGeneration = await step.do(
+          "observe marketplace installation workflow",
+          async () => {
+            const workflowsFragment = config.getWorkflowsFragment();
+            if (!workflowsFragment) {
+              throw new Error("Marketplace ingestion requires the local Workflows fragment.");
+            }
+            try {
+              const metadata = await workflowsFragment.callServices(() =>
+                workflowsFragment.services.getInstanceMetadata(
+                  CODEMODE_WORKFLOW,
+                  installationWorkflowInstanceId,
+                ),
+              );
+              return metadata.runGeneration;
+            } catch (error) {
+              if (error instanceof WorkflowInstanceNotFoundError) {
+                return 0;
+              }
+              throw error;
+            }
+          },
+        );
         const installationWorkflowInput = await step.do(
           "start marketplace installation workflow",
           MARKETPLACE_EXTERNAL_STEP_RETRIES,
-          async (tx) => {
+          async () => {
+            const workflowsFragment = config.getWorkflowsFragment();
+            if (!workflowsFragment) {
+              throw new Error("Marketplace ingestion requires the local Workflows fragment.");
+            }
             const code = TEXT_DECODER.decode(
               await requestMarketplaceArtifactBytes(sourceObject, installationWorkflowFile.fileKey),
             );
@@ -740,37 +774,46 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
                   permissions: [
                     BACKOFFICE_PERMISSION.router.modify,
                     BACKOFFICE_PERMISSION.router.read,
+                    BACKOFFICE_PERMISSION.store.modify,
+                    BACKOFFICE_PERMISSION.store.read,
                   ],
                 },
               ],
             });
-
-            tx.workflowServiceCalls(() => [
-              {
-                type: "createInstance",
-                workflowName: workflowInput.workflowName,
-                remoteWorkflowName: workflowInput.remoteWorkflowName,
-                instanceId: workflowInput.instanceId,
-                params: withWorkflowCompletionTarget(workflowInput.params, {
-                  workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
-                  instanceId: event.instanceId,
-                }),
-              },
-            ]);
+            const result = await workflowsFragment.callServices(() =>
+              workflowsFragment.services.restartOrCreateInstance(workflowInput.workflowName, {
+                id: workflowInput.instanceId,
+                create: {
+                  remoteWorkflowName: workflowInput.remoteWorkflowName,
+                  params: withWorkflowCompletionTarget(workflowInput.params, {
+                    workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+                    instanceId: event.instanceId,
+                  }),
+                },
+                restart: {
+                  precondition: {
+                    status: { in: ["complete", "errored", "terminated"] },
+                    runGeneration: { equals: observedInstallationRunGeneration },
+                  },
+                },
+              }),
+            );
             return {
               workflowName: workflowInput.workflowName,
               instanceId: workflowInput.instanceId,
+              runGeneration: result.details.runGeneration,
             };
           },
         );
 
         const completion = await step.waitForEvent<WorkflowCompletedEventPayload>(
           "wait for marketplace installation workflow",
-          { type: WORKFLOW_COMPLETED_EVENT_TYPE },
+          { type: workflowCompletedEventType(installationWorkflowInput.runGeneration) },
         );
         if (
           completion.payload.workflowName !== installationWorkflowInput.workflowName ||
-          completion.payload.instanceId !== installationWorkflowInstanceId
+          completion.payload.instanceId !== installationWorkflowInstanceId ||
+          completion.payload.runGeneration !== installationWorkflowInput.runGeneration
         ) {
           throw new NonRetryableError("Received an unexpected workflow completion event.");
         }

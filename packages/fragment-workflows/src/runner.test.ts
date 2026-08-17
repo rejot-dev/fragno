@@ -1474,10 +1474,10 @@ describe("Workflows Runner", () => {
 
     const retryResponse = await harness.fragment.callRoute(
       "POST",
-      "/:workflowName/instances/:instanceId/retry",
+      "/:workflowName/instances/:instanceId/retry-failed-step",
       {
         pathParams: { workflowName: "manual-retry-workflow", instanceId },
-        body: { stepKey: "do:flaky" },
+        body: {},
       },
     );
     if (retryResponse.type !== "json") {
@@ -1514,6 +1514,249 @@ describe("Workflows Runner", () => {
         }),
       ]),
     );
+  });
+
+  test("restart route reruns from the beginning after deleting pre-restart events", async () => {
+    let prepareRuns = 0;
+    const RestartWorkflow = defineWorkflow({ name: "restart-workflow" }, async (_event, step) => {
+      const run = await step.do("prepare", () => {
+        prepareRuns += 1;
+        return prepareRuns;
+      });
+      const approval = await step.waitForEvent<{ approved: boolean }>("approval", {
+        type: "approval",
+      });
+      return { run, approved: approval.payload.approved };
+    });
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { RESTART: RestartWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    try {
+      const instanceId = await harness.createInstance("RESTART", { id: "restart-1" });
+      await harness.runUntilIdle({
+        workflowName: "restart-workflow",
+        instanceId,
+        reason: "create",
+      });
+      expect(prepareRuns).toBe(1);
+
+      await harness.sendEvent("RESTART", instanceId, {
+        type: "approval",
+        payload: { approved: true },
+      });
+
+      const restartResponse = await harness.fragment.callRoute(
+        "POST",
+        "/:workflowName/instances/:instanceId/restart",
+        {
+          pathParams: { workflowName: "restart-workflow", instanceId },
+        },
+      );
+      if (restartResponse.type !== "json") {
+        throw new Error(`Expected restart route to return json, got ${restartResponse.type}`);
+      }
+      expect(restartResponse.data).toEqual({ ok: true });
+      await expect(harness.getStatus("RESTART", instanceId)).resolves.toMatchObject({
+        status: "active",
+      });
+
+      const restartedHistory = await harness.getHistory("RESTART", instanceId);
+      expect(restartedHistory.steps).toEqual([]);
+      expect(restartedHistory.events).toEqual([]);
+
+      await harness.runUntilIdle({
+        workflowName: "restart-workflow",
+        instanceId,
+        reason: "create",
+      });
+      expect(prepareRuns).toBe(2);
+      await expect(harness.getStatus("RESTART", instanceId)).resolves.toMatchObject({
+        status: "waiting",
+      });
+
+      await harness.sendEvent("RESTART", instanceId, {
+        type: "approval",
+        payload: { approved: true },
+      });
+      await harness.runUntilIdle({
+        workflowName: "restart-workflow",
+        instanceId,
+        reason: "event",
+      });
+
+      await expect(harness.getStatus("RESTART", instanceId)).resolves.toMatchObject({
+        status: "complete",
+        output: { run: 2, approved: true },
+      });
+    } finally {
+      await harness.test.cleanup();
+    }
+  });
+
+  test("restart-or-create route applies its status precondition atomically", async () => {
+    const RestartOrCreateWorkflow = defineWorkflow(
+      {
+        name: "restart-or-create-route-workflow",
+        schema: z.object({ source: z.string() }),
+      },
+      async (event, step) =>
+        await step.do("complete", () => ({
+          source: (event.payload as { source: string }).source,
+        })),
+    );
+    const harness = await createWorkflowsTestHarness({
+      workflows: { RESTART_OR_CREATE: RestartOrCreateWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const callRestartOrCreate = (createSource: unknown, runGeneration?: number) =>
+      harness.fragment.callRoute("POST", "/:workflowName/instances/:instanceId/restart-or-create", {
+        pathParams: {
+          workflowName: "restart-or-create-route-workflow",
+          instanceId: "restart-or-create-route-1",
+        },
+        body: {
+          create: { params: { source: createSource } },
+          restart: {
+            precondition: {
+              status: { in: ["complete"] },
+              ...(runGeneration === undefined ? {} : { runGeneration: { equals: runGeneration } }),
+            },
+          },
+        },
+      });
+
+    try {
+      const createdResponse = await callRestartOrCreate("original");
+      expect(createdResponse).toMatchObject({
+        type: "json",
+        data: { action: "created", details: { status: "active" } },
+      });
+
+      const unchangedResponse = await callRestartOrCreate({ ignored: "invalid create params" });
+      expect(unchangedResponse).toMatchObject({
+        type: "json",
+        data: {
+          action: "unchanged",
+          observedStatus: "active",
+          details: { status: "active" },
+        },
+      });
+
+      await harness.runUntilIdle({
+        workflowName: "restart-or-create-route-workflow",
+        instanceId: "restart-or-create-route-1",
+        reason: "create",
+      });
+
+      const staleGenerationResponse = await callRestartOrCreate(
+        { ignored: "invalid create params" },
+        2,
+      );
+      expect(staleGenerationResponse).toMatchObject({
+        type: "json",
+        data: {
+          action: "unchanged",
+          observedStatus: "complete",
+          details: { status: "complete", runGeneration: 1 },
+        },
+      });
+
+      const restartedResponse = await callRestartOrCreate({ ignored: "invalid create params" }, 1);
+      expect(restartedResponse).toMatchObject({
+        type: "json",
+        data: {
+          action: "restarted",
+          previousStatus: "complete",
+          details: { status: "active", runGeneration: 2 },
+        },
+      });
+
+      const [instance] = (
+        await harness.db
+          .createUnitOfWork("read-restart-or-create-route-instance")
+          .forSchema(workflowsSchema)
+          .find("workflow_instance", (b) => b.whereIndex("primary"))
+          .executeRetrieve()
+      )[0];
+      expect(instance).toMatchObject({
+        params: { source: "original" },
+        runGeneration: 2,
+      });
+    } finally {
+      await harness.test.cleanup();
+    }
+  });
+
+  test("restart fences an in-flight tick before starting the new run", async () => {
+    let runs = 0;
+    const firstRunStarted = Promise.withResolvers<void>();
+    const releaseFirstRun = Promise.withResolvers<void>();
+    const RestartDuringExecutionWorkflow = defineWorkflow(
+      { name: "restart-during-execution-workflow" },
+      async (_event, step) => {
+        return await step.do("work", async () => {
+          runs += 1;
+          if (runs === 1) {
+            firstRunStarted.resolve();
+            await releaseFirstRun.promise;
+          }
+          return { run: runs };
+        });
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { RESTART_DURING: RestartDuringExecutionWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    try {
+      const instanceId = await harness.createInstance("RESTART_DURING", {
+        id: "restart-during-1",
+      });
+      const [instance] = (
+        await harness.db
+          .createUnitOfWork("read-restart-during-instance")
+          .forSchema(workflowsSchema)
+          .find("workflow_instance", (b) => b.whereIndex("primary"))
+          .executeRetrieve()
+      )[0];
+      expect(instance).toBeTruthy();
+
+      const staleTick = harness.tick(buildPayload(instance!, "create"));
+      await firstRunStarted.promise;
+
+      await harness.restartInstance("RESTART_DURING", instanceId);
+      releaseFirstRun.resolve();
+
+      await expect(staleTick).resolves.toBe(1);
+      expect(runs).toBe(2);
+      await expect(harness.getStatus("RESTART_DURING", instanceId)).resolves.toMatchObject({
+        status: "complete",
+        output: { run: 2 },
+      });
+      expect((await harness.getHistory("RESTART_DURING", instanceId)).steps).toEqual([
+        expect.objectContaining({
+          stepKey: "do:work",
+          status: "completed",
+          attempts: 1,
+          result: { run: 2 },
+        }),
+      ]);
+    } finally {
+      releaseFirstRun.resolve();
+      await harness.test.cleanup();
+    }
   });
 
   test("pausing during an in-flight tick pauses on the next tick", async () => {

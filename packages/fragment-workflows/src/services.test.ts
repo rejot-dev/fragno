@@ -58,6 +58,71 @@ describe("Workflows Fragment Services", () => {
         .execute();
     }) as Promise<T>;
 
+  const createErroredRetryFixture = async (
+    instanceId: string,
+    steps: Array<{
+      stepKey: string;
+      parentStepKey: string | null;
+      type?: "do" | "waitForEvent";
+      status?: "completed" | "errored";
+      createdAt?: Date;
+    }>,
+  ) => {
+    const instanceRef = await (async () => {
+      const uow = db.createUnitOfWork("create-errored-retry-fixture").forSchema(workflowsSchema);
+      uow.create("workflow_instance", {
+        id: buildScopedInstanceRowId("demo-workflow", instanceId),
+        instanceId,
+        workflowName: "demo-workflow",
+        status: "errored",
+        params: {},
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        completedAt: new Date("2026-01-01T00:00:01.000Z"),
+        output: null,
+        errorName: "Error",
+        errorMessage: "boom",
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create errored retry fixture instance");
+      }
+      const id = uow.getCreatedIds()[0];
+      if (!id) {
+        throw new Error("Missing errored retry fixture instance id");
+      }
+      return id;
+    })();
+
+    const uow = db
+      .createUnitOfWork("create-errored-retry-fixture-steps")
+      .forSchema(workflowsSchema);
+    for (const step of steps) {
+      uow.create("workflow_step", {
+        instanceRef,
+        stepKey: step.stepKey,
+        parentStepKey: step.parentStepKey,
+        committedByExecutionId: "fixture-execution",
+        name: step.stepKey,
+        type: step.type ?? "do",
+        status: step.status ?? "errored",
+        attempts: 1,
+        maxAttempts: 1,
+        timeoutMs: null,
+        nextRetryAt: null,
+        wakeAt: null,
+        waitEventType: null,
+        result: null,
+        errorName: "Error",
+        errorMessage: "boom",
+        createdAt: step.createdAt,
+      });
+    }
+    const { success } = await uow.executeMutations();
+    if (!success) {
+      throw new Error("Failed to create errored retry fixture steps");
+    }
+  };
+
   beforeEach(async () => {
     await drainDurableHooks(fragment);
     await testContext.resetDatabase();
@@ -468,7 +533,313 @@ describe("Workflows Fragment Services", () => {
     await drainDurableHooks(fragment);
   });
 
-  test("retryInstance should reopen an errored do step and enqueue retry", async () => {
+  test("restartInstance should clear all execution state and events", async () => {
+    const instanceRef = await (async () => {
+      const uow = db.createUnitOfWork("create-restart-instance").forSchema(workflowsSchema);
+      uow.create("workflow_instance", {
+        id: buildScopedInstanceRowId("demo-workflow", "restart-1"),
+        instanceId: "restart-1",
+        workflowName: "demo-workflow",
+        status: "complete",
+        params: { source: "restart-test" },
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        completedAt: new Date("2026-01-01T00:00:01.000Z"),
+        output: { old: true },
+        errorName: "OldError",
+        errorMessage: "old failure",
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create restart instance");
+      }
+      const id = uow.getCreatedIds()[0];
+      if (!id) {
+        throw new Error("Missing restart instance id");
+      }
+      return id;
+    })();
+
+    await (async () => {
+      const uow = db.createUnitOfWork("create-restart-state").forSchema(workflowsSchema);
+      uow.create("workflow_step", {
+        instanceRef,
+        stepKey: "do:old",
+        committedByExecutionId: "old-execution",
+        name: "old",
+        type: "do",
+        status: "completed",
+        attempts: 1,
+        maxAttempts: 1,
+        timeoutMs: null,
+        nextRetryAt: null,
+        wakeAt: null,
+        waitEventType: null,
+        result: { old: true },
+        errorName: null,
+        errorMessage: null,
+      });
+      uow.create("workflow_event", {
+        instanceRef,
+        actor: "user",
+        type: "approval",
+        payload: { approved: true },
+        deliveredAt: null,
+        consumedByStepKey: null,
+      });
+      uow.create("workflow_event", {
+        instanceRef,
+        actor: "user",
+        type: "already-consumed",
+        payload: { value: 1 },
+        deliveredAt: new Date("2026-01-01T00:00:00.500Z"),
+        consumedByStepKey: "do:old",
+      });
+      uow.create("workflow_step_emission", {
+        instanceRef,
+        stepKey: "do:old",
+        executionId: "old-execution",
+        epoch: "old-epoch",
+        sequence: 0,
+        actor: "user",
+        payload: { progress: 1 },
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create restart state");
+      }
+    })();
+
+    const status = await runService<{ status: string }>(() =>
+      fragment.services.restartInstance("demo-workflow", "restart-1"),
+    );
+    expect(status).toMatchObject({ status: "active" });
+
+    const [instances, steps, events, emissions] = await db
+      .createUnitOfWork("read-restarted-state")
+      .forSchema(workflowsSchema)
+      .find("workflow_instance", (b) => b.whereIndex("primary"))
+      .find("workflow_step", (b) => b.whereIndex("primary"))
+      .find("workflow_event", (b) => b.whereIndex("primary"))
+      .find("workflow_step_emission", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+
+    expect(instances[0]).toMatchObject({
+      status: "active",
+      runGeneration: 2,
+      params: { source: "restart-test" },
+      startedAt: null,
+      completedAt: null,
+      output: null,
+      errorName: null,
+      errorMessage: null,
+    });
+    expect(steps).toEqual([]);
+    expect(emissions).toEqual([]);
+    expect(events).toEqual([]);
+  });
+
+  test("restartOrCreateInstance should create a missing instance with create params", async () => {
+    const result = await runService<{
+      action: string;
+      id: string;
+      details: { status: string };
+    }>(() =>
+      fragment.services.restartOrCreateInstance("demo-workflow", {
+        id: "restart-or-create-missing",
+        create: { params: { source: "create-branch" } },
+        restart: { precondition: { status: { in: ["errored", "complete"] } } },
+      }),
+    );
+
+    expect(result).toMatchObject({
+      action: "created",
+      id: "restart-or-create-missing",
+      details: { status: "active", runGeneration: 1 },
+    });
+
+    const [[instance]] = await db
+      .createUnitOfWork("read-restart-or-create-created")
+      .forSchema(workflowsSchema)
+      .find("workflow_instance", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+    expect(instance).toMatchObject({
+      instanceId: "restart-or-create-missing",
+      params: { source: "create-branch" },
+      runGeneration: 1,
+    });
+  });
+
+  test("restartOrCreateInstance should leave an existing instance unchanged when its status does not match", async () => {
+    await runService(() =>
+      fragment.services.createInstance("demo-workflow", {
+        id: "restart-or-create-active",
+        params: { source: "original" },
+      }),
+    );
+
+    const result = await runService<{
+      action: string;
+      observedStatus: string;
+      details: { status: string };
+    }>(() =>
+      fragment.services.restartOrCreateInstance("demo-workflow", {
+        id: "restart-or-create-active",
+        create: { params: { source: "ignored" } },
+        restart: { precondition: { status: { in: ["errored", "complete"] } } },
+      }),
+    );
+
+    expect(result).toMatchObject({
+      action: "unchanged",
+      observedStatus: "active",
+      details: { status: "active", runGeneration: 1 },
+    });
+
+    const [[instance]] = await db
+      .createUnitOfWork("read-restart-or-create-unchanged")
+      .forSchema(workflowsSchema)
+      .find("workflow_instance", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+    expect(instance).toMatchObject({
+      params: { source: "original" },
+      runGeneration: 1,
+    });
+  });
+
+  test("restartOrCreateInstance should leave a matching status unchanged when runGeneration does not match", async () => {
+    const instanceRef = buildScopedInstanceRowId(
+      "demo-workflow",
+      "restart-or-create-stale-generation",
+    );
+    const uow = db.createUnitOfWork("create-stale-generation-instance").forSchema(workflowsSchema);
+    uow.create("workflow_instance", {
+      id: instanceRef,
+      instanceId: "restart-or-create-stale-generation",
+      workflowName: "demo-workflow",
+      status: "complete",
+      runGeneration: 2,
+      params: { source: "original" },
+      startedAt: new Date("2026-01-01T00:00:00.000Z"),
+      completedAt: new Date("2026-01-01T00:00:01.000Z"),
+      output: { old: true },
+      errorName: null,
+      errorMessage: null,
+    });
+    const mutationResult = await uow.executeMutations();
+    assert(mutationResult.success);
+
+    const result = await runService<{
+      action: string;
+      observedStatus: string;
+      details: { status: string; runGeneration: number };
+    }>(() =>
+      fragment.services.restartOrCreateInstance("demo-workflow", {
+        id: "restart-or-create-stale-generation",
+        create: { params: { source: "ignored" } },
+        restart: {
+          precondition: {
+            status: { in: ["complete"] },
+            runGeneration: { equals: 1 },
+          },
+        },
+      }),
+    );
+
+    expect(result).toMatchObject({
+      action: "unchanged",
+      observedStatus: "complete",
+      details: { status: "complete", runGeneration: 2 },
+    });
+  });
+
+  test.each(["active", "waiting", "paused", "errored", "complete", "terminated"] as const)(
+    "restartOrCreateInstance should restart an existing %s instance and preserve its params",
+    async (status) => {
+      const instanceId = `restart-or-create-${status}`;
+      const instanceRef = buildScopedInstanceRowId("demo-workflow", instanceId);
+      const uow = db
+        .createUnitOfWork("create-restart-or-create-existing")
+        .forSchema(workflowsSchema);
+      uow.create("workflow_instance", {
+        id: instanceRef,
+        instanceId,
+        workflowName: "demo-workflow",
+        status,
+        params: { source: "original" },
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        completedAt: new Date("2026-01-01T00:00:01.000Z"),
+        output: { old: true },
+        errorName: status === "errored" ? "Error" : null,
+        errorMessage: status === "errored" ? "boom" : null,
+      });
+      uow.create("workflow_step", {
+        instanceRef,
+        stepKey: "do:old",
+        committedByExecutionId: "old-execution",
+        name: "old",
+        type: "do",
+        status: "completed",
+        attempts: 1,
+        maxAttempts: 1,
+        timeoutMs: null,
+        nextRetryAt: null,
+        wakeAt: null,
+        waitEventType: null,
+        result: { old: true },
+        errorName: null,
+        errorMessage: null,
+      });
+      const mutationResult = await uow.executeMutations();
+      assert(mutationResult.success);
+
+      const result = await runService<{
+        action: string;
+        previousStatus: string;
+        details: { status: string };
+      }>(() =>
+        fragment.services.restartOrCreateInstance("demo-workflow", {
+          id: instanceId,
+          create: { params: { source: "ignored" } },
+          restart: {
+            precondition: {
+              status: { in: [status] },
+              runGeneration: { equals: 1 },
+            },
+          },
+        }),
+      );
+
+      expect(result).toMatchObject({
+        action: "restarted",
+        previousStatus: status,
+        details: { status: "active", runGeneration: 2 },
+      });
+
+      const [[instance], steps] = await db
+        .createUnitOfWork("read-restart-or-create-restarted")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .find("workflow_step", (b) => b.whereIndex("primary"))
+        .executeRetrieve();
+      expect(instance).toMatchObject({
+        status: "active",
+        params: { source: "original" },
+        runGeneration: 2,
+        output: null,
+        errorName: null,
+        errorMessage: null,
+      });
+      expect(steps).toEqual([]);
+    },
+  );
+
+  test("restartInstance should reject missing instances", async () => {
+    await expect(
+      runService(() => fragment.services.restartInstance("demo-workflow", "missing")),
+    ).rejects.toThrow("INSTANCE_NOT_FOUND");
+  });
+
+  test("retryFailedStep should reopen the only errored top-level do step", async () => {
     const instanceRef = await (async () => {
       const uow = db.createUnitOfWork("create-retry-instance").forSchema(workflowsSchema);
       uow.create("workflow_instance", {
@@ -524,8 +895,7 @@ describe("Workflows Fragment Services", () => {
       instance: { id: string; details: { status: string } };
       retry: { stepKey: string; attempts: number; maxAttempts: number; scheduledAt: Date };
     }>(() =>
-      fragment.services.retryInstance("demo-workflow", "retry-1", {
-        stepKey: "do:flaky",
+      fragment.services.retryFailedStep("demo-workflow", "retry-1", {
         delayMs: 1_000,
       }),
     );
@@ -546,6 +916,7 @@ describe("Workflows Fragment Services", () => {
     )[0];
     expect(instance).toMatchObject({
       status: "waiting",
+      runGeneration: 1,
       output: null,
       errorName: null,
       errorMessage: null,
@@ -570,20 +941,20 @@ describe("Workflows Fragment Services", () => {
     expect(step.nextRetryAt).toBeInstanceOf(Date);
   });
 
-  test("retryInstance should accept non-do steps", async () => {
+  test("retryFailedStep should restart a failed waitForEvent with fresh state", async () => {
     const instanceRef = await (async () => {
       const uow = db.createUnitOfWork("create-wait-retry-instance").forSchema(workflowsSchema);
       uow.create("workflow_instance", {
         id: buildScopedInstanceRowId("demo-workflow", "retry-wait"),
         instanceId: "retry-wait",
         workflowName: "demo-workflow",
-        status: "waiting",
+        status: "errored",
         params: {},
         startedAt: null,
-        completedAt: null,
+        completedAt: new Date("2026-01-01T00:00:01.000Z"),
         output: null,
-        errorName: null,
-        errorMessage: null,
+        errorName: "WaitForEventTimeoutError",
+        errorMessage: "WAIT_FOR_EVENT_TIMEOUT",
       });
       const { success } = await uow.executeMutations();
       if (!success) {
@@ -604,7 +975,7 @@ describe("Workflows Fragment Services", () => {
         committedByExecutionId: "fixture-execution",
         name: "approval",
         type: "waitForEvent",
-        status: "waiting",
+        status: "errored",
         attempts: 0,
         maxAttempts: 1,
         timeoutMs: null,
@@ -612,8 +983,17 @@ describe("Workflows Fragment Services", () => {
         wakeAt: null,
         waitEventType: "approval",
         result: null,
-        errorName: null,
-        errorMessage: null,
+        errorName: "WaitForEventTimeoutError",
+        errorMessage: "WAIT_FOR_EVENT_TIMEOUT",
+      });
+      uow.create("workflow_step_emission", {
+        instanceRef,
+        stepKey: "waitForEvent:approval",
+        executionId: "fixture-execution",
+        epoch: "fixture-epoch",
+        sequence: 1,
+        actor: "user",
+        payload: { state: "waiting" },
       });
       const { success } = await uow.executeMutations();
       if (!success) {
@@ -625,17 +1005,176 @@ describe("Workflows Fragment Services", () => {
       accepted: true;
       instance: { id: string; details: { status: string } };
       retry: { stepKey: string; attempts: number; maxAttempts: number; scheduledAt: Date };
-    }>(() =>
-      fragment.services.retryInstance("demo-workflow", "retry-wait", {
-        stepKey: "waitForEvent:approval",
-      }),
-    );
+    }>(() => fragment.services.retryFailedStep("demo-workflow", "retry-wait"));
 
     expect(result).toMatchObject({
       accepted: true,
       instance: { id: "retry-wait", details: { status: "waiting" } },
       retry: { stepKey: "waitForEvent:approval", attempts: 0, maxAttempts: 1 },
     });
+
+    const [steps, emissions] = await db
+      .createUnitOfWork("read-restarted-wait-step")
+      .forSchema(workflowsSchema)
+      .find("workflow_step", (b) => b.whereIndex("primary"))
+      .find("workflow_step_emission", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+    expect(steps).toEqual([]);
+    expect(emissions).toEqual([]);
+  });
+
+  test("retryFailedStep should reject an instance that is not errored", async () => {
+    const created = await runService<{ id: string }>(() =>
+      fragment.services.createInstance("demo-workflow", { id: "retry-active" }),
+    );
+
+    await expect(
+      runService(() => fragment.services.retryFailedStep("demo-workflow", created.id)),
+    ).rejects.toThrow("INSTANCE_NOT_ERRORED");
+  });
+
+  test("retryFailedStep should discard nested state and emissions and release events", async () => {
+    await createErroredRetryFixture("retry-nested", [
+      {
+        stepKey: "do:earlier",
+        parentStepKey: null,
+        status: "completed",
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      {
+        stepKey: "do:parent",
+        parentStepKey: null,
+        createdAt: new Date("2026-01-01T00:00:01.000Z"),
+      },
+      {
+        stepKey: "do:parent>do:completed-child",
+        parentStepKey: "do:parent",
+        status: "completed",
+      },
+      { stepKey: "do:parent>do:failed-child", parentStepKey: "do:parent" },
+    ]);
+
+    const [instance] = (
+      await db
+        .createUnitOfWork("read-nested-retry-instance")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    const retryStateUow = db
+      .createUnitOfWork("create-nested-retry-state")
+      .forSchema(workflowsSchema);
+    retryStateUow.create("workflow_event", {
+      instanceRef: instance.id,
+      actor: "user",
+      type: "approval",
+      payload: { approved: true },
+      deliveredAt: new Date("2026-01-01T00:00:00.500Z"),
+      consumedByStepKey: "do:parent>do:completed-child",
+    });
+    const emissionStepKeys = [
+      "do:earlier",
+      "do:parent",
+      "do:parent>do:completed-child",
+      "do:parent>do:failed-child",
+    ];
+    for (const [sequence, stepKey] of emissionStepKeys.entries()) {
+      retryStateUow.create("workflow_step_emission", {
+        instanceRef: instance.id,
+        stepKey,
+        executionId: "fixture-execution",
+        epoch: `fixture-epoch-${sequence}`,
+        sequence,
+        actor: "user",
+        payload: { stepKey },
+      });
+    }
+    assert((await retryStateUow.executeMutations()).success);
+
+    await runService(() => fragment.services.retryFailedStep("demo-workflow", "retry-nested"));
+
+    const [steps, events, emissions] = await Promise.all([
+      db
+        .createUnitOfWork("read-nested-retry-steps")
+        .forSchema(workflowsSchema)
+        .find("workflow_step", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+        .then(([rows]) => rows),
+      db
+        .createUnitOfWork("read-nested-retry-events")
+        .forSchema(workflowsSchema)
+        .find("workflow_event", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+        .then(([rows]) => rows),
+      db
+        .createUnitOfWork("read-nested-retry-emissions")
+        .forSchema(workflowsSchema)
+        .find("workflow_step_emission", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+        .then(([rows]) => rows),
+    ]);
+
+    expect(steps).toHaveLength(2);
+    expect(steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stepKey: "do:earlier",
+          status: "completed",
+        }),
+        expect.objectContaining({
+          stepKey: "do:parent",
+          status: "waiting",
+          attempts: 1,
+          maxAttempts: 2,
+        }),
+      ]),
+    );
+    expect(events).toEqual([
+      expect.objectContaining({
+        consumedByStepKey: null,
+        deliveredAt: null,
+      }),
+    ]);
+    expect(emissions).toEqual([
+      expect.objectContaining({
+        stepKey: "do:earlier",
+        payload: { stepKey: "do:earlier" },
+      }),
+    ]);
+  });
+
+  test.each([
+    {
+      name: "multiple failed top-level steps",
+      instanceId: "retry-multiple",
+      steps: [
+        { stepKey: "do:first", parentStepKey: null },
+        { stepKey: "do:second", parentStepKey: null },
+      ],
+    },
+    {
+      name: "a failed step before a later completed top-level step",
+      instanceId: "retry-not-latest",
+      steps: [
+        {
+          stepKey: "do:failed",
+          parentStepKey: null,
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        },
+        {
+          stepKey: "do:later",
+          parentStepKey: null,
+          status: "completed" as const,
+          createdAt: new Date("2026-01-01T00:00:01.000Z"),
+        },
+      ],
+    },
+  ])("retryFailedStep should reject $name", async ({ instanceId, steps }) => {
+    await createErroredRetryFixture(instanceId, steps);
+
+    await expect(
+      runService(() => fragment.services.retryFailedStep("demo-workflow", instanceId)),
+    ).rejects.toThrow("FAILED_STEP_NOT_RETRYABLE");
   });
 
   test("sendEvent should buffer and wake waiting instance", async () => {
@@ -1111,6 +1650,7 @@ describe("Workflows Fragment Services", () => {
 
     expect(meta).toMatchObject({
       workflowName: "demo-workflow",
+      runGeneration: 1,
       params: { source: "meta-test" },
       completedAt: null,
     });

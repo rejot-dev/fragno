@@ -351,6 +351,7 @@ export function triggerWorkflowTerminalHook(
     workflowName: instance.workflowName,
     instanceId: instance.instanceId,
     instanceRef: String(instance.id),
+    runGeneration: instance.runGeneration,
     params: instance.params,
     ...terminal,
   } satisfies WorkflowTerminalHookPayload);

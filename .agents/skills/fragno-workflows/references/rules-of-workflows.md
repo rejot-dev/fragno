@@ -5,9 +5,11 @@
 > Fragno's API, database-backed runner, and tested replay behavior.
 
 A workflow may run from the beginning many times. Each runner tick invokes the workflow callback
-again, while completed steps return their persisted results without rerunning their callbacks.
-Sleeps, event waits, retries, process restarts, and concurrent ticks can all create another passage
-through the workflow function.
+again, while completed steps normally return their persisted results without rerunning their
+callbacks. A full restart discards every checkpoint. Retrying a failed top-level step discards and
+reruns all nested checkpoints beneath that step, including completed ones. Sleeps, event waits,
+retries, process restarts, and concurrent ticks can all create another passage through the workflow
+function.
 
 These rules keep those passages deterministic and make step attempts safe to repeat.
 
@@ -49,7 +51,8 @@ remote service can accept the request and lose the response.
 
 For Fragno database work, prefer `tx.mutate`, mutate-only `tx.serviceCalls`, or
 `tx.workflowServiceCalls`. Those operations are buffered and commit atomically with the successful
-step boundary. They are not applied when a completed step is replayed.
+step boundary. They are not applied during normal replay of a completed step. A full restart or a
+failed-step retry that discards the step's checkpoint can run and commit them again.
 
 ## Keep steps granular
 

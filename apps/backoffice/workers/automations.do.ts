@@ -48,6 +48,7 @@ import type {
   MarketplaceIngestionRecord,
   MarketplaceIngestionRequestInput,
   MarketplaceIngestionRequestResult,
+  MarketplaceIngestionRestartResult,
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,
   SandboxProvider,
@@ -69,7 +70,7 @@ import {
 import {
   buildMarketplaceIngestionWorkflowInstanceId,
   MARKETPLACE_INGEST_WORKFLOW_NAME,
-} from "@/fragno/automation/marketplace-ingest-workflow";
+} from "@/fragno/automation/marketplace-ingest-identity";
 import {
   assertMarketplaceIngestionTargetAccessible,
   assertMarketplaceIngestionTargetBelongsToOrganization,
@@ -541,7 +542,9 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     );
   }
 
-  async requestStaticMarketplacePublications(): Promise<MarketplaceStaticPublicationResult> {
+  async requestStaticMarketplacePublications(input?: {
+    force?: boolean;
+  }): Promise<MarketplaceStaticPublicationResult> {
     const scope = this.#requireScope();
     if (scope.kind !== "org") {
       throw new Error(
@@ -550,6 +553,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     }
 
     await this.#ensureConfigured({ scope });
+    const forceId = input?.force ? crypto.randomUUID() : undefined;
     const staticEntries = listStaticMarketplaceEntries();
     const entries = staticEntries
       .map((entry) => ({
@@ -570,7 +574,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
 
     const publicationGroups = await Promise.all(
       Array.from(entriesByListingId.values(), (listingEntries) =>
-        this.#requestStaticMarketplaceListingPublications(listingEntries),
+        this.#requestStaticMarketplaceListingPublications(listingEntries, forceId),
       ),
     );
     const results = new Map<string, MarketplaceStaticPublicationEntryResult>();
@@ -586,6 +590,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
         const workflowInstanceId = buildMarketplacePublicationWorkflowInstanceId({
           listingId,
           version,
+          forceId,
         });
         const result = results.get(workflowInstanceId);
         if (!result) {
@@ -598,13 +603,14 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
 
   async #requestStaticMarketplaceListingPublications(
     requests: readonly StaticMarketplacePublicationRequest[],
+    forceId?: string,
   ): Promise<MarketplaceStaticPublicationEntryResult[]> {
     const [request, ...remainingRequests] = requests;
     if (!request) {
       return [];
     }
 
-    const result = await this.#requestStaticMarketplaceEntryPublication(request.entry);
+    const result = await this.#requestStaticMarketplaceEntryPublication(request.entry, forceId);
     if (result.state !== "published") {
       return [
         result,
@@ -615,6 +621,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
           workflowInstanceId: buildMarketplacePublicationWorkflowInstanceId({
             listingId,
             version: entry.version,
+            forceId,
           }),
           state: "queued" as const,
           blockedByVersion: request.entry.version,
@@ -624,18 +631,20 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
 
     return [
       result,
-      ...(await this.#requestStaticMarketplaceListingPublications(remainingRequests)),
+      ...(await this.#requestStaticMarketplaceListingPublications(remainingRequests, forceId)),
     ];
   }
 
   async #requestStaticMarketplaceEntryPublication(
     entry: Pick<MarketplaceStaticArtifactEntry, "owner" | "slug" | "version">,
+    forceId?: string,
   ): Promise<MarketplaceStaticPublicationEntryResult> {
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
     const listingId = marketplaceListingId({ ownerScope: entry.owner.scope, slug: entry.slug });
     const workflowInstanceId = buildMarketplacePublicationWorkflowInstanceId({
       listingId,
       version: entry.version,
+      forceId,
     });
     const marketplace = this.#runtimeServices.objects.marketplace.singleton();
     const manifest = await marketplace.getArtifactManifest({ listingId });
@@ -645,7 +654,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
 
     const published = manifest?.versions.includes(entry.version) ?? false;
 
-    if (published) {
+    if (published && !forceId) {
       return {
         listingId,
         slug: entry.slug,
@@ -663,6 +672,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
             slug: entry.slug,
             version: entry.version,
             publishNextVersions: true,
+            forceId,
             metadata: {
               [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: createAutomationsObjectExecution(
                 this.#requireScope(),
@@ -840,6 +850,52 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
         name: "MarketplaceIngestionIncomplete",
         message: `Marketplace ingestion workflow ${workflowInstanceId} completed without recording ${resolvedArtifact.manifest.slug}@${version}.`,
       },
+    };
+  }
+
+  async restartMarketplaceIngestion(
+    rawInput: MarketplaceIngestionRequestInput,
+    context: BackofficeActionRpcContext,
+  ): Promise<MarketplaceIngestionRestartResult> {
+    const requested = await this.requestMarketplaceIngestion(rawInput, context);
+    if (requested.state === "requested") {
+      return {
+        listingId: requested.listingId,
+        version: requested.version,
+        workflowInstanceId: requested.workflowInstanceId,
+        action: "created",
+        workflowStatus: requested.workflowStatus,
+      };
+    }
+
+    const input = marketplaceIngestionRequestInputSchema.parse(rawInput);
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    const result = await runtime.workflowsFragment.callServices(() =>
+      runtime.workflowsFragment.services.restartOrCreateInstance(MARKETPLACE_INGEST_WORKFLOW_NAME, {
+        id: requested.workflowInstanceId,
+        create: {
+          params: {
+            ...input,
+            version: requested.version,
+            metadata: {
+              [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: context.execution.actors,
+            },
+          },
+        },
+        restart: {
+          precondition: {
+            status: { in: ["complete", "errored", "terminated"] },
+          },
+        },
+      }),
+    );
+
+    return {
+      listingId: requested.listingId,
+      version: requested.version,
+      workflowInstanceId: requested.workflowInstanceId,
+      action: result.action,
+      workflowStatus: result.details.status,
     };
   }
 

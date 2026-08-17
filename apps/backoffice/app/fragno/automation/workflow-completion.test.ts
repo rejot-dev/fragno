@@ -1,10 +1,27 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import {
   parseWorkflowCompletionTarget,
   withWorkflowCompletionTarget,
+  workflowCompletedEventType,
+  workflowCompletionEventId,
   WORKFLOW_COMPLETION_PARAM,
 } from "./workflow-completion";
+
+describe("workflow completion events", () => {
+  test("identifies each workflow run generation independently", () => {
+    assert.equal(workflowCompletedEventType(1), "workflow.completed:1");
+    assert.equal(workflowCompletedEventType(2), "workflow.completed:2");
+    assert.equal(
+      workflowCompletionEventId({ instanceRef: "child-ref", runGeneration: 1 }),
+      "workflow-completed:child-ref:1",
+    );
+    assert.equal(
+      workflowCompletionEventId({ instanceRef: "child-ref", runGeneration: 2 }),
+      "workflow-completed:child-ref:2",
+    );
+  });
+});
 
 describe("workflow completion targets", () => {
   test("returns null when completion routing is absent", () => {

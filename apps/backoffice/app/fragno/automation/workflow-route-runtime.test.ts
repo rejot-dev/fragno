@@ -20,7 +20,7 @@ describe("createRouteBackedAutomationWorkflowRuntime", () => {
     const object = createObject((request) => {
       const url = new URL(request.url);
       paths.push(url.pathname);
-      if (url.pathname.endsWith("/retry")) {
+      if (url.pathname.endsWith("/retry-failed-step")) {
         return jsonResponse({
           accepted: true,
           instance: { id: "run-1", details: { status: "waiting" } },
@@ -44,7 +44,7 @@ describe("createRouteBackedAutomationWorkflowRuntime", () => {
     const forgedHost = { workflowName: "internal-secret-host" };
 
     await runtime.listInstances(forgedHost as never);
-    await runtime.retryInstance({
+    await runtime.retryFailedStep({
       ...forgedHost,
       instanceId: "run-1",
     } as never);
@@ -57,7 +57,7 @@ describe("createRouteBackedAutomationWorkflowRuntime", () => {
 
     expect(paths).toEqual([
       `/api/workflows/${CODEMODE_WORKFLOW}/instances`,
-      `/api/workflows/${CODEMODE_WORKFLOW}/instances/run-1/retry`,
+      `/api/workflows/${CODEMODE_WORKFLOW}/instances/run-1/retry-failed-step`,
       `/api/workflows/${CODEMODE_WORKFLOW}/instances/run-1/events`,
       `/api/workflows/${CODEMODE_WORKFLOW}/instances/run-1/history`,
     ]);

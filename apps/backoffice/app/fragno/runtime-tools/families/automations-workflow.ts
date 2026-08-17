@@ -29,11 +29,9 @@ export type WorkflowGetStatusArgs = {
   instanceId: string;
 };
 
-export type WorkflowRetryInstanceArgs = {
+export type WorkflowRetryFailedStepArgs = {
   instanceId: string;
-  stepKey?: string;
   delayMs?: number;
-  reason?: string;
 };
 
 export type WorkflowSendEventArgs = {
@@ -79,7 +77,7 @@ export type WorkflowInstanceDetails = {
   };
 };
 
-export type WorkflowRetryInstanceResult = {
+export type WorkflowRetryFailedStepResult = {
   accepted: true;
   instance: {
     id: string;
@@ -116,7 +114,7 @@ export type InternalWorkflowListInstancesArgs = WorkflowListInstancesArgs & {
   remoteWorkflowName?: string;
 };
 
-export type InternalWorkflowRetryInstanceArgs = WorkflowRetryInstanceArgs & {
+export type InternalWorkflowRetryFailedStepArgs = WorkflowRetryFailedStepArgs & {
   workflowName: string;
 };
 
@@ -139,9 +137,9 @@ export type InternalAutomationWorkflowRuntime = {
     details: WorkflowInstanceStatus;
     meta: Record<string, unknown>;
   }>;
-  retryInternalInstance: (
-    input: InternalWorkflowRetryInstanceArgs,
-  ) => Promise<WorkflowRetryInstanceResult>;
+  retryFailedInternalStep: (
+    input: InternalWorkflowRetryFailedStepArgs,
+  ) => Promise<WorkflowRetryFailedStepResult>;
   getInternalHistory: (input: InternalWorkflowInstanceArgs) => Promise<WorkflowHistory>;
 };
 
@@ -150,7 +148,7 @@ export type AutomationWorkflowRuntime = {
   createInstance: (input: WorkflowCreateInstanceArgs) => Promise<WorkflowCreateInstanceResult>;
   listInstances: (input: WorkflowListInstancesArgs) => Promise<WorkflowListInstancesResult>;
   getInstance: (input: WorkflowGetInstanceArgs) => Promise<WorkflowInstanceDetails>;
-  retryInstance: (input: WorkflowRetryInstanceArgs) => Promise<WorkflowRetryInstanceResult>;
+  retryFailedStep: (input: WorkflowRetryFailedStepArgs) => Promise<WorkflowRetryFailedStepResult>;
   sendEvent: (input: WorkflowSendEventArgs) => Promise<WorkflowSendEventResult>;
   getHistory: (input: WorkflowGetInstanceArgs) => Promise<WorkflowHistory>;
 };
@@ -194,7 +192,7 @@ const workflowInstanceDetailsSchema = z.object({
   }),
 });
 
-const workflowRetryInstanceResultSchema = z.object({
+const workflowRetryFailedStepResultSchema = z.object({
   accepted: z.literal(true),
   instance: z.object({
     id: z.string().trim().min(1),
@@ -279,13 +277,11 @@ const parseWorkflowInstanceSendEventArgs = defineCliArgsParser<WorkflowSendEvent
   },
 );
 
-const parseWorkflowRetryInstanceArgs = defineCliArgsParser<WorkflowRetryInstanceArgs>(
-  "workflow.instances.retry",
+const parseWorkflowRetryFailedStepArgs = defineCliArgsParser<WorkflowRetryFailedStepArgs>(
+  "workflow.instances.retry-failed-step",
   {
     instanceId: { required: true },
-    stepKey: {},
     delayMs: { kind: "nonNegativeInteger" },
-    reason: {},
   },
 );
 
@@ -401,28 +397,29 @@ const workflowInstanceSendEventTool = defineAutomationWorkflowTool({
   },
 });
 
-const workflowInstanceRetryTool = defineAutomationWorkflowTool({
-  id: "workflow.instances.retry",
+const workflowRetryFailedStepTool = defineAutomationWorkflowTool({
+  id: "workflow.instances.retry-failed-step",
   namespace: "workflow",
-  name: "retryInstance",
-  description: "Retry a durable workflow instance from a selected step.",
+  name: "retryFailedStep",
+  description: "Retry the failed top-level step of an errored durable workflow instance.",
   requiredPermissions: ["modify"],
   inputSchema: z.strictObject({
     instanceId: z.string().trim().min(1),
-    stepKey: z.string().trim().min(1).optional(),
     delayMs: z.number().int().nonnegative().optional(),
-    reason: z.string().trim().min(1).optional(),
   }),
-  outputSchema: workflowRetryInstanceResultSchema,
+  outputSchema: workflowRetryFailedStepResultSchema,
   execute: async (input, context) => {
-    return await getAutomationWorkflowRuntime(context.runtimes.workflow).retryInstance(input);
+    return await getAutomationWorkflowRuntime(context.runtimes.workflow).retryFailedStep(input);
   },
-  reference: { codemode: { description: "Retry a durable workflow instance step." } },
+  reference: {
+    codemode: { description: "Retry an errored instance's failed top-level step." },
+  },
   adapters: {
     bash: {
-      command: "workflow.instances.retry",
+      command: "workflow.instances.retry-failed-step",
       help: {
-        summary: "workflow.instances.retry retries a durable workflow instance step.",
+        summary:
+          "workflow.instances.retry-failed-step retries an errored instance's failed top-level step.",
         options: [
           {
             name: "instance-id",
@@ -432,29 +429,15 @@ const workflowInstanceRetryTool = defineAutomationWorkflowTool({
             description: "Workflow instance id.",
           },
           {
-            name: "step-key",
-            valueRequired: true,
-            valueName: "key",
-            description: "Optional step key to retry; defaults to the latest step.",
-          },
-          {
             name: "delay-ms",
             valueRequired: true,
             valueName: "ms",
             description: "Optional delay before retry processing in milliseconds.",
           },
-          {
-            name: "reason",
-            valueRequired: true,
-            valueName: "text",
-            description: "Optional human-readable retry reason.",
-          },
         ],
-        examples: [
-          "workflow.instances.retry --instance-id run-1 --step-key do:flaky --format json",
-        ],
+        examples: ["workflow.instances.retry-failed-step --instance-id run-1 --format json"],
       },
-      parse: parseWorkflowRetryInstanceArgs,
+      parse: parseWorkflowRetryFailedStepArgs,
       format: (result, options) =>
         options.format === "json"
           ? { data: result }
@@ -598,7 +581,7 @@ export const automationWorkflowRuntimeTools = [
   workflowGetInstanceTool,
   workflowHistoryTool,
   workflowInstanceSendEventTool,
-  workflowInstanceRetryTool,
+  workflowRetryFailedStepTool,
 ] as const;
 
 export const automationWorkflowToolFamily = defineBackofficeRuntimeToolFamily({

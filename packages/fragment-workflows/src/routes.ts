@@ -12,7 +12,13 @@ import { buildScopedInstanceRowId } from "./instance-ref";
 import { workflowsSchema } from "./schema";
 import { streamWorkflowStepEmissions } from "./stream-step-emissions";
 import type { WorkflowEventActor } from "./system-events";
-import type { InstanceStatus, WorkflowsRegistry } from "./workflow";
+import {
+  WorkflowFailedStepNotRetryableError,
+  WorkflowInstanceNotErroredError,
+  type InstanceStatus,
+  type WorkflowInstanceStatus,
+  type WorkflowsRegistry,
+} from "./workflow";
 
 const identifierSchema = z
   .string()
@@ -48,6 +54,21 @@ const createInstanceSchema = z.object({
   remoteWorkflowName: identifierSchema.optional(),
 });
 
+const restartOrCreateSchema = z.object({
+  create: z.object({
+    params: z.unknown().optional(),
+    remoteWorkflowName: identifierSchema.optional(),
+  }),
+  restart: z.object({
+    precondition: z.object({
+      status: z.object({
+        in: z.array(instanceStatusSchema).min(1),
+      }),
+      runGeneration: z.object({ equals: z.number().int().positive() }).optional(),
+    }),
+  }),
+});
+
 const createBatchSchema = z.object({
   remoteWorkflowName: identifierSchema.optional(),
   instances: z
@@ -66,19 +87,18 @@ const sendEventSchema = z.object({
   payload: z.unknown().optional(),
 });
 
-const retryInstanceSchema = z.object({
-  stepKey: z.string().min(1).max(512).optional(),
+const retryFailedStepSchema = z.object({
   delayMs: z
     .number()
     .int()
     .min(0)
     .max(30 * 24 * 60 * 60 * 1000)
     .optional(),
-  reason: z.string().min(1).max(512).optional(),
 });
 
 const instanceStatusOutputSchema = z.object({
   status: instanceStatusSchema,
+  runGeneration: z.number().int().positive(),
   error: z
     .object({
       name: z.string(),
@@ -87,6 +107,26 @@ const instanceStatusOutputSchema = z.object({
     .optional(),
   output: z.unknown().optional(),
 });
+
+const restartOrCreateOutputSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("created"),
+    id: z.string(),
+    details: instanceStatusOutputSchema,
+  }),
+  z.object({
+    action: z.literal("restarted"),
+    previousStatus: instanceStatusSchema,
+    id: z.string(),
+    details: instanceStatusOutputSchema,
+  }),
+  z.object({
+    action: z.literal("unchanged"),
+    observedStatus: instanceStatusSchema,
+    id: z.string(),
+    details: instanceStatusOutputSchema,
+  }),
+]);
 
 const currentStepOutputSchema = z.object({
   stepKey: z.string(),
@@ -112,6 +152,7 @@ const currentStepOutputSchema = z.object({
 const instanceMetaOutputSchema = z.object({
   workflowName: z.string(),
   remoteWorkflowName: z.string().optional(),
+  runGeneration: z.number(),
   params: z.unknown(),
   createdAt: z.date(),
   updatedAt: z.date(),
@@ -166,7 +207,7 @@ const historyEmissionSchema = z.object({
   createdAt: z.date(),
 });
 
-const retryInstanceOutputSchema = z.object({
+const retryFailedStepOutputSchema = z.object({
   accepted: z.literal(true),
   instance: z.object({
     id: z.string(),
@@ -281,8 +322,18 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         );
       }
 
-      if (err.message === "STEP_NOT_FOUND") {
-        return error({ message: "Step not found", code: "STEP_NOT_FOUND" as Code }, 404);
+      if (err instanceof WorkflowInstanceNotErroredError) {
+        return error({ message: "Instance is not errored", code: err.code as Code }, 409);
+      }
+
+      if (err instanceof WorkflowFailedStepNotRetryableError) {
+        return error(
+          {
+            message: "The failed top-level step cannot be retried",
+            code: err.code as Code,
+          },
+          409,
+        );
       }
 
       if (isUniqueConstraintError(err)) {
@@ -484,6 +535,86 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       }),
       defineRoute({
         method: "POST",
+        path: "/:workflowName/instances/:instanceId/restart-or-create",
+        inputSchema: restartOrCreateSchema,
+        outputSchema: restartOrCreateOutputSchema,
+        errorCodes: [
+          "WORKFLOW_NOT_FOUND",
+          "INVALID_INSTANCE_ID",
+          "WORKFLOW_PARAMS_INVALID",
+          "WORKFLOW_REMOTE_HOST_INVALID",
+          "WORKFLOW_REMOTE_NAME_REQUIRED",
+        ],
+        handler: async function (context, { json, error }) {
+          const { pathParams, input } = context;
+          const errorResponder = error as ErrorResponder;
+          const workflowName = pathParams.workflowName;
+          const instanceId = pathParams.instanceId;
+          const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
+          if (idError) {
+            return idError;
+          }
+
+          try {
+            const payload = await input.valid();
+            const create = {
+              params: payload.create.params,
+              remoteWorkflowName: payload.create.remoteWorkflowName,
+            };
+            const statuses = payload.restart.precondition.status.in as [
+              WorkflowInstanceStatus,
+              ...WorkflowInstanceStatus[],
+            ];
+            const result = await this.handlerTx()
+              .retrieve(({ forSchema }) =>
+                forSchema(workflowsSchema).findFirst("workflow_instance", (b) =>
+                  b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                    eb.and(
+                      eb("workflowName", "=", workflowName),
+                      eb("instanceId", "=", instanceId),
+                    ),
+                  ),
+                ),
+              )
+              .afterRetrieve(async (_uow, [existingInstance]) => {
+                if (!existingInstance) {
+                  create.params = await validateWorkflowParams(
+                    new Map(
+                      Object.values(config.workflows ?? {}).map((workflow) => [
+                        workflow.name,
+                        workflow,
+                      ]),
+                    ),
+                    workflowName,
+                    create.params,
+                  );
+                }
+              })
+              .withServiceCalls(() => [
+                services.restartOrCreateInstance(workflowName, {
+                  id: instanceId,
+                  create,
+                  restart: {
+                    precondition: {
+                      status: { in: statuses },
+                      ...(payload.restart.precondition.runGeneration
+                        ? { runGeneration: payload.restart.precondition.runGeneration }
+                        : {}),
+                    },
+                  },
+                }),
+              ])
+              .transform(({ serviceResult: [restartOrCreateResult] }) => restartOrCreateResult)
+              .execute();
+
+            return json(result);
+          } catch (err) {
+            return handleServiceError(err, errorResponder);
+          }
+        },
+      }),
+      defineRoute({
+        method: "POST",
         path: "/:workflowName/instances/batch",
         inputSchema: createBatchSchema,
         outputSchema: z.object({
@@ -604,12 +735,14 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                     : undefined;
                 const details = {
                   status,
+                  runGeneration: instance.runGeneration,
                   error,
                   output: instance.output ?? undefined,
                 };
                 const meta = {
                   workflowName: instance.workflowName,
                   remoteWorkflowName: instance.remoteWorkflowName ?? undefined,
+                  runGeneration: instance.runGeneration,
                   params: instance.params ?? {},
                   createdAt: instance.createdAt,
                   updatedAt: instance.updatedAt,
@@ -780,14 +913,15 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       }),
       defineRoute({
         method: "POST",
-        path: "/:workflowName/instances/:instanceId/retry",
-        inputSchema: retryInstanceSchema,
-        outputSchema: retryInstanceOutputSchema,
+        path: "/:workflowName/instances/:instanceId/retry-failed-step",
+        inputSchema: retryFailedStepSchema,
+        outputSchema: retryFailedStepOutputSchema,
         errorCodes: [
           "WORKFLOW_NOT_FOUND",
           "INVALID_INSTANCE_ID",
           "INSTANCE_NOT_FOUND",
-          "STEP_NOT_FOUND",
+          "INSTANCE_NOT_ERRORED",
+          "FAILED_STEP_NOT_RETRYABLE",
         ],
         handler: async function (context, { json, error }) {
           const { pathParams, input } = context;
@@ -804,8 +938,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           try {
             const result = await this.handlerTx()
               .withServiceCalls(() => [
-                services.retryInstance(workflowName, instanceId, {
-                  stepKey: payload.stepKey,
+                services.retryFailedStep(workflowName, instanceId, {
                   delayMs: payload.delayMs,
                 }),
               ])
@@ -872,6 +1005,32 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           try {
             await this.handlerTx()
               .withServiceCalls(() => [services.resumeInstance(workflowName, instanceId)])
+              .execute();
+            return json({ ok: true });
+          } catch (err) {
+            return handleServiceError(err, errorResponder);
+          }
+        },
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/:workflowName/instances/:instanceId/restart",
+        outputSchema: z.object({ ok: z.literal(true) }),
+        errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
+        handler: async function (context, { json, error }) {
+          const { pathParams } = context;
+          const errorResponder = error as ErrorResponder;
+          const workflowName = pathParams.workflowName;
+
+          const instanceId = pathParams.instanceId;
+          const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
+          if (idError) {
+            return idError;
+          }
+
+          try {
+            await this.handlerTx()
+              .withServiceCalls(() => [services.restartInstance(workflowName, instanceId)])
               .execute();
             return json({ ok: true });
           } catch (err) {

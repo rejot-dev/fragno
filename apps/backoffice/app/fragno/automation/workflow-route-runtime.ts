@@ -165,23 +165,23 @@ export const createRouteBackedAutomationWorkflowRuntime = ({
     throw backendError(response);
   };
 
-  const retryInternalInstance = async ({
+  const retryFailedInternalStep = async ({
     workflowName,
     instanceId,
-    stepKey,
     delayMs,
-    reason,
   }: {
     workflowName: string;
     instanceId: string;
-    stepKey?: string;
     delayMs?: number;
-    reason?: string;
   }) => {
-    const response = await callRoute("POST", "/:workflowName/instances/:instanceId/retry", {
-      pathParams: { workflowName, instanceId },
-      body: { stepKey, delayMs, reason },
-    });
+    const response = await callRoute(
+      "POST",
+      "/:workflowName/instances/:instanceId/retry-failed-step",
+      {
+        pathParams: { workflowName, instanceId },
+        body: { delayMs },
+      },
+    );
 
     if (response.type === "json") {
       return response.data;
@@ -219,7 +219,7 @@ export const createRouteBackedAutomationWorkflowRuntime = ({
     },
     listInternalInstances,
     getInternalInstance,
-    retryInternalInstance,
+    retryFailedInternalStep,
     getInternalHistory,
     createInstance: async (input) => {
       if (!prepareSavedWorkflowInstance) {
@@ -250,8 +250,8 @@ export const createRouteBackedAutomationWorkflowRuntime = ({
       };
       return details;
     },
-    retryInstance: async (input) =>
-      await retryInternalInstance({ ...input, workflowName: CODEMODE_WORKFLOW }),
+    retryFailedStep: async (input) =>
+      await retryFailedInternalStep({ ...input, workflowName: CODEMODE_WORKFLOW }),
     sendEvent: async (input) =>
       await sendInternalEvent({ ...input, workflowName: CODEMODE_WORKFLOW }),
     getHistory: async (input) =>

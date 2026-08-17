@@ -25,7 +25,8 @@ stored, browsed, and installed into a target scope.
 - `apps/backoffice/app/fragno/marketplace/artifacts.ts` — artifact paths and file preparation.
 - `apps/backoffice/app/fragno/marketplace/static-entries.ts` — product-owned listings.
 - `apps/backoffice/app/fragno/automation/marketplace-publish-workflow.ts` — publication workflow.
-- `apps/backoffice/app/fragno/automation/marketplace-ingest-workflow.ts` — installation workflow.
+- `apps/backoffice/app/fragno/automation/marketplace-ingest-workflow.server.ts` — installation
+  workflow.
 - `apps/backoffice/app/fragno/automation/marketplace-ingestion-files.ts` — installed file handling.
 - `apps/backoffice/app/routes/backoffice/marketplace/` — marketplace UI and actions.
 - `apps/backoffice/content/marketplace/` — built-in marketplace content and examples.

@@ -26,7 +26,7 @@ Use the test harness when a test needs precise imperative control or low-level a
 Use the Scenario DSL when the test describes a longer observable flow:
 
 - Create an instance, deliver events, advance time, and assert the final state.
-- Exercise pause, resume, retry, and termination behavior.
+- Exercise pause, resume, failed-step retry, and termination behavior.
 - Restart the runner between actions to verify replay behavior.
 - Configure additional fragments, typed clients, reactive stores, hooks, or concurrent runners.
 
@@ -97,7 +97,7 @@ test("completes after approval", async () => {
 
 The harness also exposes:
 
-- `createBatch`, `pauseInstance`, `resumeInstance`, `retryInstance`, and `terminateInstance`
+- `createBatch`, `pauseInstance`, `resumeInstance`, `retryFailedStep`, and `terminateInstance`
 - `getStatus` and `getHistory`
 - `fragment`, `services`, `db`, `deps`, and `callRoute`
 - `tick` and `runUntilIdle`
@@ -311,9 +311,9 @@ await runScenario(
 );
 ```
 
-The DSL also provides `workflow.retry` and `workflow.terminate`. Use separate tests for meaningful
-lifecycle paths instead of combining management actions when a terminal state changes what later
-actions are allowed to do.
+The DSL also provides `workflow.retryFailedStep` and `workflow.terminate`. Use separate tests for
+meaningful lifecycle paths instead of combining management actions when a terminal state changes
+what later actions are allowed to do.
 
 ## Customize the test environment
 

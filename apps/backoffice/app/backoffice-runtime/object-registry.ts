@@ -29,6 +29,7 @@ import type {
   MarketplaceIngestionRecord,
   MarketplaceIngestionRequestInput,
   MarketplaceIngestionRequestResult,
+  MarketplaceIngestionRestartResult,
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,
   SandboxProvider,
@@ -215,11 +216,17 @@ export type AutomationsObject = FetchObject &
       context?: BackofficeRpcContext,
     ): Promise<AutomationIngestResult>;
     seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
-    requestStaticMarketplacePublications(): Promise<MarketplaceStaticPublicationResult>;
+    requestStaticMarketplacePublications(input?: {
+      force?: boolean;
+    }): Promise<MarketplaceStaticPublicationResult>;
     requestMarketplaceIngestion(
       input: MarketplaceIngestionRequestInput,
       context: BackofficeActionRpcContext,
     ): Promise<MarketplaceIngestionRequestResult>;
+    restartMarketplaceIngestion(
+      input: MarketplaceIngestionRequestInput,
+      context: BackofficeActionRpcContext,
+    ): Promise<MarketplaceIngestionRestartResult>;
     getMarketplaceIngestion(
       input: MarketplaceIngestionLookupInput,
     ): Promise<MarketplaceIngestionRecord | null>;

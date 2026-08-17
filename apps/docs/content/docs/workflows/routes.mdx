@@ -66,7 +66,10 @@ workflow defines a schema, invalid params return `WORKFLOW_PARAMS_INVALID`.
 
 `GET /:workflowName/instances/:instanceId`
 
-Returns the instance ID, status details, workflow params, timestamps, and the current step summary.
+Returns the instance ID, status details, workflow params, timestamps, current run generation, and
+the current step summary. Every status details object includes `runGeneration`, including create,
+list, management, and restart-or-create responses. New instances start at generation `1`; each full
+restart increments it.
 
 ### Get current-step emissions
 
@@ -94,24 +97,62 @@ System management events are not included in the returned `events` array. Comple
 attempts are removed asynchronously by a durable cleanup hook, so `emissions` is not a permanent
 audit archive.
 
-### Pause / resume / retry / terminate
+### Restart or create
+
+`POST /:workflowName/instances/:instanceId/restart-or-create`
+
+Atomically creates a missing instance or restarts an existing instance only when its persisted
+status matches the explicit precondition:
+
+```json
+{
+  "create": {
+    "params": { "orderId": "order-123" }
+  },
+  "restart": {
+    "precondition": {
+      "status": { "in": ["errored", "complete"] },
+      "runGeneration": { "equals": 3 }
+    }
+  }
+}
+```
+
+The status list must contain at least one instance status: `"active"`, `"waiting"`, `"paused"`,
+`"complete"`, `"errored"`, or `"terminated"`. The optional `runGeneration.equals` condition is
+combined with the status condition using AND, preventing a stale caller from restarting a newer run.
+The response action is `"created"`, `"restarted"`, or `"unchanged"`. `create.params` and
+`create.remoteWorkflowName` apply only when the instance is missing. An existing instance keeps its
+original params and remote workflow name, even when the precondition matches and it restarts.
+
+### Pause / resume / restart / retry failed step / terminate
 
 `POST /:workflowName/instances/:instanceId/pause`
 
 `POST /:workflowName/instances/:instanceId/resume`
 
-`POST /:workflowName/instances/:instanceId/retry`
+`POST /:workflowName/instances/:instanceId/restart`
+
+`POST /:workflowName/instances/:instanceId/retry-failed-step`
 
 `POST /:workflowName/instances/:instanceId/terminate`
 
-The retry route accepts an optional body:
+Restart deletes the previous run's steps, events, and step emissions, clears its result, increments
+the run generation, and executes the workflow again from the beginning with the original params.
+
+The failed-step retry route accepts an optional body:
 
 ```json
-{ "stepKey": "optional-step-key", "delayMs": 0, "reason": "optional-reason" }
+{ "delayMs": 0 }
 ```
 
-`stepKey` defaults to the latest persisted step. `delayMs` is limited to 30 days. `reason` is
-accepted by the request schema but is currently ignored.
+It accepts an errored instance when its latest top-level step is the only failed top-level step.
+Earlier completed top-level steps remain cached. Retrying a `do` step grants it one additional
+attempt, discards all nested step state beneath it, and reruns completed and failed nested steps.
+Events consumed by that subtree become pending again. Retrying a failed `waitForEvent` starts a
+fresh wait and timeout window, so pending events created before the new deadline are eligible.
+Nested step callbacks, external effects, event-consumption handlers, and buffered mutations can
+therefore run again. The run generation is unchanged, and `delayMs` is limited to 30 days.
 
 ### Send an event
 

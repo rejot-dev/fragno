@@ -35,11 +35,11 @@ const createWorkflowRuntime = (
       completedAt: null,
     },
   }),
-  retryInstance: async ({ instanceId, stepKey }) => ({
+  retryFailedStep: async ({ instanceId }) => ({
     accepted: true,
     instance: { id: instanceId, details: { status: "waiting" } },
     retry: {
-      stepKey: stepKey ?? "do:latest",
+      stepKey: "do:latest",
       attempts: 1,
       maxAttempts: 2,
       scheduledAt: "2026-08-11T00:00:00.000Z",
@@ -72,7 +72,7 @@ describe("automation runtime tools", () => {
       "workflow.instances.get",
       "workflow.instances.history",
       "workflow.instances.send-event",
-      "workflow.instances.retry",
+      "workflow.instances.retry-failed-step",
     ]);
     expect(hooksRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
       "hooks.list",
@@ -372,19 +372,19 @@ describe("automation runtime tools", () => {
     );
   });
 
-  test("workflow retry tool parses input and calls the runtime", async () => {
+  test("workflow failed-step retry tool parses input and calls the runtime", async () => {
     const retryTool = automationWorkflowRuntimeTools[5];
-    assert(retryTool.id === "workflow.instances.retry");
+    assert(retryTool.id === "workflow.instances.retry-failed-step");
 
     const calls: unknown[] = [];
     const runtime = createWorkflowRuntime({
-      retryInstance: async (input) => {
+      retryFailedStep: async (input) => {
         calls.push(input);
         return {
           accepted: true,
           instance: { id: input.instanceId, details: { status: "waiting" } },
           retry: {
-            stepKey: input.stepKey ?? "do:latest",
+            stepKey: "do:latest",
             attempts: 1,
             maxAttempts: 2,
             scheduledAt: "2026-01-01T00:00:00.000Z",
@@ -394,16 +394,7 @@ describe("automation runtime tools", () => {
     });
 
     const input = retryTool.inputSchema.parse(
-      retryTool.adapters!.bash!.parse([
-        "--instance-id",
-        "run-1",
-        "--step-key",
-        "do:flaky",
-        "--delay-ms",
-        "250",
-        "--reason",
-        "manual retry",
-      ]),
+      retryTool.adapters!.bash!.parse(["--instance-id", "run-1", "--delay-ms", "250"]),
     );
 
     await expect(
@@ -415,7 +406,7 @@ describe("automation runtime tools", () => {
       accepted: true,
       instance: { id: "run-1", details: { status: "waiting" } },
       retry: {
-        stepKey: "do:flaky",
+        stepKey: "do:latest",
         attempts: 1,
         maxAttempts: 2,
         scheduledAt: "2026-01-01T00:00:00.000Z",
@@ -424,9 +415,7 @@ describe("automation runtime tools", () => {
     expect(calls).toEqual([
       {
         instanceId: "run-1",
-        stepKey: "do:flaky",
         delayMs: 250,
-        reason: "manual retry",
       },
     ]);
   });

@@ -189,7 +189,7 @@ describe("createWorkflowsTestHarness", () => {
 
     const startMs = testClock.now().getTime();
     const retryId = await harness.createInstance("retryDelay");
-    const [retryInstance] = (
+    const [retryDelayInstance] = (
       await harness.db
         .createUnitOfWork("read")
         .forSchema(workflowsSchema)
@@ -200,10 +200,10 @@ describe("createWorkflowsTestHarness", () => {
         )
         .executeRetrieve()
     )[0];
-    if (!retryInstance) {
+    if (!retryDelayInstance) {
       throw new Error("Missing retry instance");
     }
-    await harness.runUntilIdle(buildPayload(retryInstance, "create"));
+    await harness.runUntilIdle(buildPayload(retryDelayInstance, "create"));
 
     const nowMs = testClock.now().getTime();
     expect(nowMs - startMs).toBe(5 * 60_000);

@@ -101,7 +101,7 @@ test("completes after approval", async () => {
 
 The harness also exposes:
 
-- `createBatch`, `pauseInstance`, `resumeInstance`, `retryInstance`, and `terminateInstance`
+- `createBatch`, `pauseInstance`, `resumeInstance`, `retryFailedStep`, and `terminateInstance`
 - `getStatus` and `getHistory`
 - `fragment`, `services`, `db`, `deps`, and `callRoute`
 - `tick` and `runUntilIdle`
@@ -315,9 +315,9 @@ await runScenario(
 );
 ```
 
-The DSL also provides `workflow.retry` and `workflow.terminate`. Use separate tests for meaningful
-lifecycle paths instead of combining management actions when a terminal state changes what later
-actions are allowed to do.
+The DSL also provides `workflow.retryFailedStep` and `workflow.terminate`. Use separate tests for
+meaningful lifecycle paths instead of combining management actions when a terminal state changes
+what later actions are allowed to do.
 
 ## Customize the test environment
 
