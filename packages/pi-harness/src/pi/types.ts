@@ -93,7 +93,7 @@ export const projectPiSessionFromWorkflowInstance = (instance: {
   };
 };
 
-export type PiOperationCompletedHookPayload = {
+export type PiOperationDetails = {
   actor: unknown;
   workflowName: string;
   sessionId: string;
@@ -101,6 +101,9 @@ export type PiOperationCompletedHookPayload = {
   stepName: string;
   operationId: string;
   operation: PiHarnessOperation["kind"];
+};
+
+export type PiOperationCompletedHookPayload = PiOperationDetails & {
   /**
    * Model calls exposed by Pi as assistant messages during this operation.
    *

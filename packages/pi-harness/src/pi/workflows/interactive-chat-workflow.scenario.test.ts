@@ -6,6 +6,7 @@ import {
   type WorkflowScenarioObservedEmission,
 } from "@fragno-dev/workflows/scenario";
 import { selectCanonicalWorkflowStepEmissions } from "@fragno-dev/workflows/step-emission-control";
+import { NonRetryableError } from "@fragno-dev/workflows/workflow";
 import { Type } from "typebox";
 
 import { instantiate } from "@fragno-dev/core";
@@ -35,7 +36,11 @@ import type { PiHarnessFrontendAgentMessage } from "../harness/agent-harness-eve
 import { createModelsForStreamFn } from "../harness/test-models";
 import { createPiHarnessScenarioEventDecoder } from "../pi-test-utils";
 import { definePiTool } from "../tools";
-import { MAX_PI_COMMAND_IMAGE_DATA_LENGTH, type PiFragmentConfig } from "../types";
+import {
+  MAX_PI_COMMAND_IMAGE_DATA_LENGTH,
+  type PiFragmentConfig,
+  type PiOperationDetails,
+} from "../types";
 import { createInteractiveChatWorkflow } from "./interactive-chat-workflow";
 
 const mockModel: Model<Api> = {
@@ -4190,9 +4195,11 @@ describe("Interactive chat workflow scenarios", () => {
         total: 0.00061,
       },
     };
+    const beforeOperation = vi.fn((_input: PiOperationDetails) => undefined);
     const onOperationCompleted = vi.fn();
     const interactiveChatWorkflow = createInteractiveChatWorkflow({
       name: "interactive-chat-route-integration",
+      beforeOperation,
       options: {
         systemPrompt: "You are helpful.",
         model: mockModel,
@@ -4303,12 +4310,27 @@ describe("Interactive chat workflow scenarios", () => {
                 "user",
                 "assistant",
               ]);
+              expect(beforeOperation).toHaveBeenCalledTimes(1);
+              const successfulOperation = beforeOperation.mock.calls[0]?.[0];
+              assert(successfulOperation, "expected successful operation details");
+              expect(successfulOperation).toMatchObject({
+                actor,
+                workflowName: interactiveChatWorkflow.name,
+                sessionId: detail.id,
+                metadata: { runtime: "default" },
+                stepName: expect.stringMatching(/^command:/),
+                operationId: expect.stringContaining(detail.id),
+                operation: "prompt",
+              });
               expect(onOperationCompleted).toHaveBeenCalledTimes(1);
               expect(onOperationCompleted).toHaveBeenLastCalledWith(
                 expect.objectContaining({
                   actor,
                   workflowName: interactiveChatWorkflow.name,
+                  sessionId: successfulOperation.sessionId,
                   metadata: { runtime: "default" },
+                  stepName: successfulOperation.stepName,
+                  operationId: successfulOperation.operationId,
                   operation: "prompt",
                   modelCalls: [expect.objectContaining({ stopReason: "stop" })],
                 }),
@@ -4350,12 +4372,27 @@ describe("Interactive chat workflow scenarios", () => {
                 stopReason: "error",
                 errorMessage: "provider failed",
               });
+              expect(beforeOperation).toHaveBeenCalledTimes(2);
+              const failedOperation = beforeOperation.mock.calls[1]?.[0];
+              assert(failedOperation, "expected failed operation details");
+              expect(failedOperation).toMatchObject({
+                actor,
+                workflowName: interactiveChatWorkflow.name,
+                sessionId: detail.id,
+                metadata: { runtime: "default" },
+                stepName: expect.stringMatching(/^command:/),
+                operationId: expect.stringContaining(detail.id),
+                operation: "prompt",
+              });
               expect(onOperationCompleted).toHaveBeenCalledTimes(2);
               expect(onOperationCompleted).toHaveBeenLastCalledWith(
                 expect.objectContaining({
                   actor,
                   workflowName: interactiveChatWorkflow.name,
+                  sessionId: failedOperation.sessionId,
                   metadata: { runtime: "default" },
+                  stepName: failedOperation.stepName,
+                  operationId: failedOperation.operationId,
                   operation: "prompt",
                   modelCalls: [
                     expect.objectContaining({ stopReason: "error", usage: failedUsage }),
@@ -4363,6 +4400,120 @@ describe("Interactive chat workflow scenarios", () => {
                   usage: failedUsage,
                 }),
                 expect.any(Object),
+              );
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("rejects an operation before provider invocation and completion hooks", async () => {
+    const streamFn = vi.fn(createTextStreamFn("unexpected response"));
+    const beforeOperation = vi.fn((_input: PiOperationDetails) => {
+      throw new NonRetryableError("BEFORE_OPERATION_REJECTED");
+    });
+    const onOperationCompleted = vi.fn();
+    const interactiveChatWorkflow = createInteractiveChatWorkflow({
+      name: "interactive-chat-before-operation-rejection",
+      beforeOperation,
+      options: {
+        model: mockModel,
+        models: createModelsForStreamFn(mockModel, streamFn),
+      },
+    });
+    const config: PiFragmentConfig = {
+      workflows: [interactiveChatWorkflow],
+      onOperationCompleted,
+    };
+
+    await runScenario(
+      defineScenario({
+        name: "pi-harness-interactive-chat-before-operation-rejection",
+        workflows: createPiWorkflows({ workflows: config.workflows }),
+        vars: () => ({ sessionId: undefined as string | undefined }),
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piHarnessDefinition)
+              .withConfig(config)
+              .withRoutes([piRoutesFactory])
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        clients: ({ clientConfig }) => ({
+          user: createPiFragmentClients(clientConfig("pi", { runner: "user" })),
+        }),
+        runners: ["agent", "user"],
+        steps: ({ workflow, runners, clients }) => [
+          workflow.read({
+            read: async () => {
+              const session = await clients.user.useCreateSession.mutateQuery({
+                path: { workflowName: interactiveChatWorkflow.name },
+                body: { name: "Rejected operation", input: {} },
+              });
+              assert(session && !Array.isArray(session), "expected session response");
+              return session.id;
+            },
+            storeAs: "sessionId",
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "create",
+          }),
+          workflow.read({
+            read: async (ctx) =>
+              clients.user.useCommandSession.mutateQuery({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+                body: { kind: "prompt", input: { text: "reject this operation" } },
+              }),
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "event",
+          }),
+          runners.agent.drainHooks(),
+          workflow.read({
+            read: async (ctx) => ({
+              sessionId: ctx.vars.sessionId!,
+              status: await ctx.state.getStatus(interactiveChatWorkflow.name, ctx.vars.sessionId!),
+              history: await ctx.state.getHistory(
+                interactiveChatWorkflow.name,
+                ctx.vars.sessionId!,
+              ),
+            }),
+            assert: ({ sessionId, status, history }) => {
+              expect(status).toMatchObject({
+                status: "errored",
+                error: {
+                  name: "NonRetryableError",
+                  message: "BEFORE_OPERATION_REJECTED",
+                },
+              });
+              expect(beforeOperation).toHaveBeenCalledTimes(1);
+              expect(beforeOperation).toHaveBeenLastCalledWith({
+                actor: null,
+                workflowName: interactiveChatWorkflow.name,
+                sessionId,
+                metadata: null,
+                stepName: expect.stringMatching(/^command:/),
+                operationId: expect.stringContaining(sessionId),
+                operation: "prompt",
+              });
+              expect(streamFn).not.toHaveBeenCalled();
+              expect(onOperationCompleted).not.toHaveBeenCalled();
+              assert(
+                !history.emissions.some(
+                  (emission) =>
+                    typeof emission.payload === "object" &&
+                    emission.payload !== null &&
+                    "kind" in emission.payload &&
+                    emission.payload.kind === "pi-session-command-start",
+                ),
               );
             },
           }),
