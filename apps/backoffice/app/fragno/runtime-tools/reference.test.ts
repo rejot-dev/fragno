@@ -212,6 +212,7 @@ describe("runtime tool reference generation", () => {
           outputType: "PiCreateSessionOutput",
           bashCommand: "pi.session.create",
           bashOptions: [
+            "billing-organization-id",
             "model-json",
             "name",
             "system-message",
@@ -2486,6 +2487,7 @@ describe("runtime tool reference generation", () => {
       declare const pi: PiCodemodeProvider;
 
       type PiCreateSessionInput = {
+        billingOrganizationId?: string;
         model?: {
           provider: "openai" | "anthropic" | "gemini";
           name: string;
@@ -5386,6 +5388,7 @@ describe("runtime tool reference generation", () => {
       declare const pi: PiCodemodeProvider;
 
       type PiCreateSessionInput = {
+        billingOrganizationId?: string;
         model?: {
           provider: "openai" | "anthropic" | "gemini";
           name: string;
@@ -5866,6 +5869,7 @@ describe("runtime tool reference generation", () => {
       declare const pi: PiCodemodeProvider;
 
       type PiCreateSessionInput = {
+        billingOrganizationId?: string;
         model?: {
           provider: "openai" | "anthropic" | "gemini";
           name: string;

@@ -3,6 +3,7 @@ import {
   type DurableHooksDispatcherDurableObjectHandler,
 } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
+import type { PiSessionMetadata } from "@fragno-dev/pi-harness/types";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
@@ -25,6 +26,7 @@ import {
   type PiFragment,
   type PiRuntimeToolContext,
 } from "@/fragno/pi/pi";
+import { piSessionBillingOrganizationId } from "@/fragno/pi/pi-shared";
 import {
   createPiFragmentRuntime,
   type PiRuntime,
@@ -129,10 +131,15 @@ export const createAutomationsRuntime = (
   > & {
     kernel: BackofficeKernel;
     pi: Omit<CreatePiRuntimeDefinitionOptions, "scope" | "kernel" | "runtimeToolContext"> & {
-      createRuntime?(execution: BackofficeExecutionContext, fragment: PiFragment): PiRuntime;
+      createRuntime?(
+        execution: BackofficeExecutionContext,
+        fragment: PiFragment,
+        inheritedBillingOrganizationId?: string,
+      ): PiRuntime;
       createRuntimeToolContext(
         execution: BackofficeExecutionContext,
         pi: PiRuntime,
+        metadata: PiSessionMetadata | null,
       ): PiRuntimeToolContext;
     };
   },
@@ -142,20 +149,35 @@ export const createAutomationsRuntime = (
   });
   let automationFragment: AutomationFragmentWithExecutionContext | undefined;
   let piFragment: PiFragment | undefined;
-  const createHostedPiRuntime = (execution: BackofficeExecutionContext): PiRuntime => {
+  const createHostedPiRuntime = (
+    execution: BackofficeExecutionContext,
+    parentSessionMetadata: PiSessionMetadata | null = null,
+  ): PiRuntime => {
     if (!piFragment) {
       throw new Error("Pi fragment is not ready.");
     }
+
+    const inheritedBillingOrganizationId =
+      piSessionBillingOrganizationId(parentSessionMetadata) ?? undefined;
+
     return config.pi.createRuntime
-      ? config.pi.createRuntime(execution, piFragment)
-      : createPiFragmentRuntime({ fragment: piFragment, execution });
+      ? config.pi.createRuntime(execution, piFragment, inheritedBillingOrganizationId)
+      : createPiFragmentRuntime({
+          fragment: piFragment,
+          execution,
+          inheritedBillingOrganizationId,
+        });
   };
   const pi = createPiRuntimeDefinition({
     ...config.pi,
     scope: config.ownerScope,
     kernel: config.kernel,
-    runtimeToolContext: (execution) => {
-      return config.pi.createRuntimeToolContext(execution, createHostedPiRuntime(execution));
+    runtimeToolContext: (execution, metadata) => {
+      return config.pi.createRuntimeToolContext(
+        execution,
+        createHostedPiRuntime(execution, metadata),
+        metadata,
+      );
     },
   });
   const workflowsFragment = createWorkflowsFragment<BackofficeExecutionContext>(

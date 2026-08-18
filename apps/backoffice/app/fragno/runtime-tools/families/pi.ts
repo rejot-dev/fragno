@@ -65,6 +65,7 @@ const sessionDetailBaseOutputSchema = sessionBaseOutputSchema.extend({
 });
 
 const sessionCreateInputSchema = z.object({
+  billingOrganizationId: z.string().trim().min(1).optional(),
   model: z
     .object({
       provider: z.enum(["openai", "anthropic", "gemini"]),
@@ -130,6 +131,7 @@ const normalizeSteeringMode = (
 };
 
 const parseSessionCreate = defineCliArgsParser<PiSessionCreateArgs>("pi.session.create", {
+  billingOrganizationId: { option: "billing-organization-id" },
   model: { kind: "json", option: "model-json" },
   name: {},
   systemMessage: {},
@@ -181,6 +183,13 @@ const sessionCreateTool = defineBackofficeRuntimeTool({
       help: {
         summary: "pi.session.create creates a new Pi session via the existing Pi session route.",
         options: [
+          {
+            name: "billing-organization-id",
+            valueRequired: true,
+            valueName: "organization-id",
+            description:
+              "Organization billed for a user-scoped session; inherited from the current Pi session when available",
+          },
           {
             name: "model-json",
             valueRequired: true,

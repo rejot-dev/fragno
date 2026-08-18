@@ -16,6 +16,7 @@ import type { RegisteredAutomationsRuntime } from "../bash-host";
 import { EMPTY_BASH_HOST_CONTEXT } from "../bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "./automations-routing";
 import {
+  createPiFragmentRuntime,
   createPiRouteRuntime,
   type PiRuntime,
   type PiSessionCreateArgs,
@@ -888,6 +889,7 @@ describe("createPiRouteRuntime", () => {
     });
 
     const created = await runtime.createSession({
+      billingOrganizationId: "org-billing",
       model: { provider: "openai", name: "gpt-5-mini" },
       name: "route-session",
       metadata: { team: "beta" },
@@ -952,6 +954,7 @@ describe("createPiRouteRuntime", () => {
         body: {
           name: "route-session",
           metadata: {
+            __backofficeBillingOrganizationId: "org-billing",
             model: { provider: "openai", name: "gpt-5-mini" },
             team: "beta",
           },
@@ -979,6 +982,55 @@ describe("createPiRouteRuntime", () => {
         body: {
           kind: "prompt",
           input: { text: "route turn" },
+        },
+      },
+    ]);
+  });
+
+  it("protects billing ownership inherited from the parent Pi session", async () => {
+    const requests: unknown[] = [];
+    const fragment = {
+      callRoute: async (_method: string, _path: string, input: unknown) => {
+        requests.push(input);
+        return {
+          type: "json" as const,
+          status: 200,
+          data: {
+            id: "child-session",
+            name: null,
+            metadata: null,
+            workflowName: "interactive-chat-workflow",
+            createdAt: now,
+            updatedAt: now,
+          },
+        };
+      },
+    } as unknown as Parameters<typeof createPiFragmentRuntime>[0]["fragment"];
+    const scope = { kind: "user", userId: "user-1" } as const;
+    const runtime = createPiFragmentRuntime({
+      fragment,
+      execution: createPiTestExecution(scope),
+      inheritedBillingOrganizationId: "org-parent",
+    });
+
+    await runtime.createSession({
+      billingOrganizationId: "org-requested",
+      metadata: {
+        __backofficeBillingOrganizationId: "org-metadata",
+        purpose: "delegated-task",
+      },
+    });
+
+    expect(requests).toEqual([
+      {
+        pathParams: { workflowName: "interactive-chat-workflow" },
+        body: {
+          name: undefined,
+          metadata: {
+            __backofficeBillingOrganizationId: "org-parent",
+            purpose: "delegated-task",
+          },
+          input: { systemPrompt: undefined },
         },
       },
     ]);

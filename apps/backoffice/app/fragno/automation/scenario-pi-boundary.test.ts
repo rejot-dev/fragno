@@ -242,7 +242,7 @@ describe("scenario Pi boundary", () => {
             userId: "attacker",
             roles: ["member"],
           }),
-          given.pi.configured({ orgId: "org-1" }),
+          given.pi.configured({ scope: { kind: "org", orgId: "org-1" } }),
         ],
         steps: ({ then }) => [
           then.assert("caller-authored actors are overwritten", async (ctx) => {
@@ -326,11 +326,12 @@ describe("scenario Pi boundary", () => {
             ownerUserId: "user-1",
             ownerRoles: ["owner"],
           }),
-          given.pi.configured({ orgId: "org-1" }),
+          given.pi.configured({ scope: { kind: "org", orgId: "org-1" } }),
         ],
         steps: ({ when, then, runner }) => [
           when.pi.createSession({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
+            userId: "user-1",
             captureSessionIdAs: "sessionId",
           }),
           then.assert("the Pi codemode tool schedules the durable workflow", async (ctx) => {
@@ -437,7 +438,7 @@ describe("scenario Pi boundary", () => {
             ownerUserId: "user-1",
             ownerRoles: ["owner"],
           }),
-          given.pi.configured({ orgId: "org-1" }),
+          given.pi.configured({ scope: { kind: "org", orgId: "org-1" } }),
         ],
         steps: ({ when, then }) => [
           then.assert("configure the database-backed workspace", async (ctx) => {
@@ -446,7 +447,8 @@ describe("scenario Pi boundary", () => {
               .setAdminConfig({ provider: "database" }, "org-1");
           }),
           when.pi.createSession({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
+            userId: "user-1",
             captureSessionIdAs: "sessionId",
           }),
           then.assert(
@@ -527,7 +529,7 @@ describe("scenario Pi boundary", () => {
             ownerRoles: ["owner"],
           }),
           given.auth.member({ orgId: "org-1", userId: "member", roles: ["member"] }),
-          given.pi.configured({ orgId: "org-1" }),
+          given.pi.configured({ scope: { kind: "org", orgId: "org-1" } }),
         ],
         steps: ({ when, then }) => [
           then.assert("configure the database-backed workspace", async (ctx) => {
@@ -612,7 +614,7 @@ describe("scenario Pi boundary", () => {
             ownerUserId: "creator",
             ownerRoles: ["owner"],
           }),
-          given.pi.configured({ orgId: "org-1" }),
+          given.pi.configured({ scope: { kind: "org", orgId: "org-1" } }),
         ],
         steps: ({ when, then }) => [
           then.assert("capture a durable actor envelope from the running session", async (ctx) => {

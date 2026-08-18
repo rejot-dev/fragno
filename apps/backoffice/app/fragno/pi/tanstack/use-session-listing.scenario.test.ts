@@ -44,16 +44,18 @@ describe("usePiSessionListing", () => {
         }),
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-          given.pi.configured({ orgId: "org-1" }),
+          given.pi.configured({ scope: { kind: "org", orgId: "org-1" } }),
         ],
         steps: ({ then, when }) => [
           when.pi.createSession({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
+            userId: "user-1",
             name: "First session",
             captureSessionIdAs: "firstSessionId",
           }),
           when.pi.createSession({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
+            userId: "user-1",
             name: "Second session",
             captureSessionIdAs: "secondSessionId",
           }),
@@ -71,7 +73,8 @@ describe("usePiSessionListing", () => {
             );
           }),
           when.pi.createSession({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
+            userId: "user-1",
             name: "Third session",
             captureSessionIdAs: "thirdSessionId",
           }),

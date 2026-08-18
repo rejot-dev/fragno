@@ -81,10 +81,7 @@ import {
   buildMarketplacePublicationWorkflowInstanceId,
   MARKETPLACE_PUBLISH_WORKFLOW_NAME,
 } from "@/fragno/automation/marketplace-publish-workflow";
-import {
-  createPiOperationBillingEvent,
-  PiOperationBillingEventValidationError,
-} from "@/fragno/billing/pi";
+import { recordPiOperationBilling } from "@/fragno/billing/pi";
 import type { DurableHookQueueOptions, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import type { MarketplaceStaticArtifactEntry } from "@/fragno/marketplace/artifacts";
 import type {
@@ -480,30 +477,22 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
           pi: { runtime: pi },
         }),
       onOperationCompleted: async (
-        payload: Parameters<typeof createPiOperationBillingEvent>[0]["payload"],
+        payload: Parameters<NonNullable<PiFragmentConfig["onOperationCompleted"]>>[0],
         context: Parameters<NonNullable<PiFragmentConfig["onOperationCompleted"]>>[1],
       ) => {
-        let event: ReturnType<typeof createPiOperationBillingEvent>;
-        try {
-          event = createPiOperationBillingEvent({
-            scope,
-            payload,
-            hookId: context.hookId.toString(),
-            idempotencyKey: context.idempotencyKey,
-          });
-        } catch (error) {
-          if (error instanceof PiOperationBillingEventValidationError) {
-            return;
-          }
-          throw error;
-        }
-
-        if (scope.kind === "org" || scope.kind === "project") {
-          await this.#runtimeServices.objects.billing.forOrg(scope.orgId).recordEvent(event, {
-            propagationContext: context.capturePropagationContext(),
-          });
-        }
-        // System and user Automations objects have no authoritative organization billing owner.
+        await recordPiOperationBilling({
+          scope,
+          payload,
+          hookId: context.hookId.toString(),
+          idempotencyKey: context.idempotencyKey,
+          recordEvent: async (billingOrganizationId, event) => {
+            await this.#runtimeServices.objects.billing
+              .forOrg(billingOrganizationId)
+              .recordEvent(event, {
+                propagationContext: context.capturePropagationContext(),
+              });
+          },
+        });
       },
     };
   }

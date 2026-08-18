@@ -1,9 +1,11 @@
 import { redirect } from "react-router";
 
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import {
   BACKOFFICE_PI_WORKFLOW_NAME,
+  PI_BILLING_ORGANIZATION_ID_METADATA_KEY,
   findPiModelOption,
   resolvePiModelThinkingLevel,
 } from "@/fragno/pi/pi-shared";
@@ -27,12 +29,19 @@ export async function createSessionAction({ request, params, context }: Route.Ac
   };
   const modelOption = getValue("modelOption");
   const prompt = getValue("prompt");
+  const billingOrganizationId =
+    scope.kind === "user"
+      ? ((await getAuthMe(request, context))?.activeOrganization?.organization.id ?? null)
+      : null;
 
   if (!prompt) {
     return actionError("Write a message to start the session.");
   }
   if (!modelOption) {
     return actionError("Model selection is required.");
+  }
+  if (scope.kind === "user" && !billingOrganizationId) {
+    return actionError("Select an active organization before starting a personal session.");
   }
 
   const [providerRaw, ...modelParts] = modelOption.split("::");
@@ -63,6 +72,9 @@ export async function createSessionAction({ request, params, context }: Route.Ac
     workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
     metadata: {
       model: { provider: modelSelection.provider, name: modelSelection.name },
+      ...(billingOrganizationId
+        ? { [PI_BILLING_ORGANIZATION_ID_METADATA_KEY]: billingOrganizationId }
+        : {}),
     },
     input: {
       thinkingLevel: resolvePiModelThinkingLevel(modelSelection.provider),

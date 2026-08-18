@@ -1,5 +1,7 @@
 import { describe, expect, test, assert } from "vitest";
 
+import { NonRetryableError } from "@fragno-dev/workflows/workflow";
+
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { InMemoryAdapter } from "@fragno-dev/db";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
@@ -7,6 +9,7 @@ import { createWorkflowsFragment } from "@fragno-dev/workflows";
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import type { FileSearchMatch } from "@/file-collection/file-collection";
 import * as files from "@/files";
@@ -18,6 +21,7 @@ import type { UploadFileRecord } from "@/fragno/upload/file-record";
 import { createTestMasterFileSystem } from "../automation/engine/test-master-file-system.test-utils";
 import { createTestStateBackend, MemoryUploadObject } from "../codemode/state-backend.test-utils";
 import {
+  createBackofficePiSessionExecution,
   createPiRuntimeDefinition,
   createPiToolFactory,
   createPiToolRegistry,
@@ -141,6 +145,100 @@ const createMockRuntimeToolContext = (): PiRuntimeToolContext => ({
 });
 
 describe("Backoffice Pi fragment", () => {
+  test("authorizes billing organizations for immediate and deferred user sessions", async () => {
+    const baseContext = createContext();
+    const scope = { kind: "user" as const, userId: "test-user" };
+    const execution = createBackofficeUserExecution({
+      scope,
+      userId: scope.userId,
+      verifiedAccessToken: {
+        role: "user",
+        organizationIds: ["org-1"],
+        expiresAt: new Date("2099-01-01T00:00:00.000Z"),
+      },
+    });
+    const kernel = new BackofficeKernel({
+      authorityResolver: {
+        async resolvePrincipalPermissions({ execution: currentExecution }) {
+          if (
+            currentExecution.scope.kind === "user" ||
+            (currentExecution.scope.kind === "org" && currentExecution.scope.orgId === "org-1")
+          ) {
+            return [BACKOFFICE_PERMISSION.pi.modify];
+          }
+          return [];
+        },
+        async resolveActorCapabilityGrants() {
+          return [];
+        },
+      },
+      kernelObserver: noopBackofficeKernelObserver,
+    });
+    const context = { ...baseContext, scope, execution, kernel };
+    const adapter = new InMemoryAdapter({ idSeed: "pi-user-billing-test" });
+    const definition = createPiRuntimeDefinition({
+      scope,
+      kernel: context.kernel,
+      apiKeys: { openai: "test-key" },
+      sessionFileSystems: new Map(),
+      sessionFileSystemContext: context,
+      runtimeToolContext: createMockRuntimeToolContext(),
+      codemode: {
+        execute: async () => {
+          throw new Error("codemode not available in test");
+        },
+      },
+    });
+    const workflowsFragment = createWorkflowsFragment(
+      { workflows: definition.workflows, runtime: defaultFragnoRuntime },
+      { databaseAdapter: adapter },
+    );
+    const piFragment = definition.createFragment({
+      databaseAdapter: adapter,
+      workflows: workflowsFragment.services,
+    });
+    const createRequest = (billingOrganizationId?: string) =>
+      new Request(`http://test.local/api/pi/workflows/${BACKOFFICE_PI_WORKFLOW_NAME}/sessions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          metadata: {
+            model: { provider: "openai", name: "gpt-5.6-luna" },
+            ...(billingOrganizationId
+              ? { __backofficeBillingOrganizationId: billingOrganizationId }
+              : {}),
+          },
+          input: {},
+        }),
+      });
+
+    const missingResponse = await piFragment.handler(createRequest(), {
+      requestContext: execution,
+    });
+    assert(missingResponse.status === 400);
+
+    const unavailableResponse = await piFragment.handler(createRequest("org-2"), {
+      requestContext: execution,
+    });
+    assert(unavailableResponse.status === 403);
+
+    const response = await piFragment.handler(createRequest("org-1"), {
+      requestContext: execution,
+    });
+    assert(response.ok);
+    await expect(response.json()).resolves.toMatchObject({
+      metadata: { __backofficeBillingOrganizationId: "org-1" },
+    });
+
+    const deferredResponse = await piFragment.handler(createRequest("org-1"), {
+      requestContext: createBackofficeUserExecution({
+        scope,
+        userId: scope.userId,
+      }),
+    });
+    assert(deferredResponse.ok);
+  });
+
   test("rejects unknown model names before creating the session", async () => {
     const context = createContext();
     const adapter = new InMemoryAdapter({ idSeed: "pi-invalid-model-test" });
@@ -322,25 +420,45 @@ describe("Backoffice Pi search output", () => {
 });
 
 describe("Backoffice Pi execution", () => {
+  test("treats invalid session actor metadata as non-retryable", () => {
+    try {
+      createBackofficePiSessionExecution({ kind: "user", userId: "user-1" }, null);
+      assert.fail("expected invalid actor metadata to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(NonRetryableError);
+      expect(error).toMatchObject({
+        name: "PiSessionActorMetadataInvalidError",
+        message: "PI_SESSION_ACTOR_METADATA_INVALID",
+      });
+    }
+  });
+
   test("builds runtime tools from the session creator execution", async () => {
     const sessionExecution = createBackofficeUserExecution({
       scope: { kind: "org", orgId: "acme-org" },
       userId: "session-creator",
     });
     let receivedExecution: typeof sessionExecution | undefined;
+    let receivedMetadata: Record<string, unknown> | null | undefined;
     const sessionId = "session-execution";
     const createTools = createPiToolFactory({
       sessionFileSystems: new Map([[sessionId, Promise.resolve(createTestMasterFileSystem({}))]]),
       sessionFileSystemContext: createContext(),
-      runtimeToolContext: (execution) => {
+      runtimeToolContext: (execution, metadata) => {
         receivedExecution = execution;
+        receivedMetadata = metadata;
         return createMockRuntimeToolContext();
       },
     });
 
-    await createTools({ sessionId, execution: sessionExecution });
+    await createTools({
+      sessionId,
+      execution: sessionExecution,
+      metadata: { __backofficeBillingOrganizationId: "org-1" },
+    });
 
     expect(receivedExecution).toEqual(sessionExecution);
+    expect(receivedMetadata).toEqual({ __backofficeBillingOrganizationId: "org-1" });
   });
 });
 

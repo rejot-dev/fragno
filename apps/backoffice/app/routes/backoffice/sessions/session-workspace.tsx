@@ -149,6 +149,7 @@ function PiSessionsWorkspaceView({
     <NewSessionComposer
       availableModelOptions={availableModelOptions}
       basePath={basePath}
+      billingOrganization={layoutContext.billingOrganization}
       createError={createError}
       creating={creating}
       draftPrompt={draftPrompt}

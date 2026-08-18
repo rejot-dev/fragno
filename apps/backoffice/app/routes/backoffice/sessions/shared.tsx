@@ -9,6 +9,7 @@ import { getRouteErrorDebugDetails, getRouteErrorMessage } from "../route-errors
 
 export type PiLayoutContext = {
   scope: BackofficeContextScope;
+  billingOrganization?: { id: string; name: string } | null;
   persistenceSource: AutomationCollectionSource | null;
   persistenceError: string | null;
   runtimeState: PiRuntimeState | null;

@@ -2,7 +2,12 @@ import { assert, describe, expect, test } from "vitest";
 
 import type { PiOperationCompletedHookPayload } from "@fragno-dev/pi-harness/types";
 
-import { createPiOperationBillingEvent, PiOperationBillingEventValidationError } from "./pi";
+import {
+  createPiOperationBillingEvent,
+  PiOperationBillingEventValidationError,
+  PiOperationBillingOwnerMissingError,
+  resolvePiOperationBillingOrganizationId,
+} from "./pi";
 
 const payload: PiOperationCompletedHookPayload = {
   actor: { userId: "user-1" },
@@ -52,6 +57,28 @@ const payload: PiOperationCompletedHookPayload = {
 };
 
 describe("createPiOperationBillingEvent", () => {
+  test("resolves the organization that owns scoped usage", () => {
+    assert(
+      resolvePiOperationBillingOrganizationId({ kind: "org", orgId: "org-1" }, null) === "org-1",
+    );
+    assert(
+      resolvePiOperationBillingOrganizationId(
+        { kind: "project", orgId: "org-1", projectId: "project-1" },
+        null,
+      ) === "org-1",
+    );
+    assert(
+      resolvePiOperationBillingOrganizationId(
+        { kind: "user", userId: "user-1" },
+        { __backofficeBillingOrganizationId: "org-2" },
+      ) === "org-2",
+    );
+    expect(() =>
+      resolvePiOperationBillingOrganizationId({ kind: "user", userId: "user-1" }, null),
+    ).toThrow(PiOperationBillingOwnerMissingError);
+    expect(resolvePiOperationBillingOrganizationId({ kind: "system" }, null)).toBeNull();
+  });
+
   test("rejects operations without model calls", () => {
     expect(() =>
       createPiOperationBillingEvent({

@@ -188,7 +188,7 @@ export async function createPiSession(
   scope: BackofficeContextScope,
   payload: {
     workflowName?: string;
-    metadata: { model: PiModel };
+    metadata: { model: PiModel } & Record<string, unknown>;
     input: {
       systemPrompt?: string;
       thinkingLevel?: PiThinkingLevel;
