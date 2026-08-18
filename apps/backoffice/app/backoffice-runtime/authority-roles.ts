@@ -145,7 +145,6 @@ export const resolveBackofficeUserAuthorityRole = (
   }>,
   scope: BackofficeContextScope,
 ): BackofficeUserAuthorityRole | null => {
-  // A system administrator may administer shared scopes, but not another user's private scope.
   if (scope.kind === "user") {
     if (scope.userId !== authority.userId) {
       return null;
@@ -154,15 +153,15 @@ export const resolveBackofficeUserAuthorityRole = (
     return authority.role === "admin" ? "system-administrator" : "user-owner";
   }
 
-  if (authority.role === "admin") {
-    return "system-administrator";
+  if (scope.kind === "system") {
+    return authority.role === "admin" ? "system-administrator" : null;
   }
 
-  if (scope.kind === "system") {
+  if (!authority.organizationIds.includes(scope.orgId)) {
     return null;
   }
 
-  return authority.organizationIds.includes(scope.orgId) ? "organization-member" : null;
+  return authority.role === "admin" ? "system-administrator" : "organization-member";
 };
 
 export const resolveBackofficeInternalServiceAuthorityRole = ({

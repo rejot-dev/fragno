@@ -237,6 +237,11 @@ describe("scenario Pi boundary", () => {
             ownerUserId: "owner",
             ownerRoles: ["owner"],
           }),
+          given.auth.member({
+            orgId: "org-1",
+            userId: "attacker",
+            roles: ["member"],
+          }),
           given.pi.configured({ orgId: "org-1" }),
         ],
         steps: ({ then }) => [
