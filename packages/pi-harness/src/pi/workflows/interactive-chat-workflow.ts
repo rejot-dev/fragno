@@ -19,6 +19,7 @@ import type { PiSessionCommandStartEmission } from "../session-command-protocol"
 import {
   PI_SESSION_COMMAND_STEP_PREFIX,
   type PiCompactCommandOutcome,
+  type PiOperationDetails,
   type PiSessionMetadata,
 } from "../types";
 import {
@@ -76,6 +77,11 @@ const logInteractiveChatAssistantError = (
 export type CreateInteractiveChatWorkflowOptions = {
   name?: string;
   commandTimeout?: WorkflowDuration;
+  /**
+   * Runs inside each durable command attempt before Pi invokes a model. Throw to reject the
+   * operation; retries may call this again until the command step commits.
+   */
+  beforeOperation?: (input: PiOperationDetails) => Promise<void> | void;
   options:
     | WorkflowAgentHarnessOptions
     | ((
@@ -192,6 +198,16 @@ export const createInteractiveChatWorkflow = (config: CreateInteractiveChatWorkf
             },
             checkpointTerminalAssistantError: true,
             runDurableStep: async () => {
+              await config.beforeOperation?.({
+                actor: params.actor ?? null,
+                workflowName,
+                sessionId: event.instanceId,
+                metadata: params.metadata ?? null,
+                stepName: invocation.stepName,
+                operationId: invocation.operationId,
+                operation: command.kind,
+              });
+
               tx.emit({
                 kind: "pi-session-command-start",
                 command: { commandId: command.commandId, kind: command.kind },
