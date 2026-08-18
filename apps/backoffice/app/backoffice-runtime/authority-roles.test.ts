@@ -153,9 +153,19 @@ describe("Backoffice authority role grants", () => {
       "system-administrator",
     ],
     [
-      { userId: "admin-1", role: "admin" as const, organizationIds: [] },
+      { userId: "admin-1", role: "admin" as const, organizationIds: ["org-1"] },
       { kind: "org" as const, orgId: "org-1" },
       "system-administrator",
+    ],
+    [
+      { userId: "admin-1", role: "admin" as const, organizationIds: [] },
+      { kind: "org" as const, orgId: "org-1" },
+      null,
+    ],
+    [
+      { userId: "admin-1", role: "admin" as const, organizationIds: ["org-1"] },
+      { kind: "project" as const, orgId: "org-2", projectId: "project-1" },
+      null,
     ],
     [
       { userId: "admin-1", role: "admin" as const, organizationIds: [] },
