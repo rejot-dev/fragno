@@ -127,6 +127,80 @@ describe("billing fragment", async () => {
     expect(august.trackers.map((tracker) => tracker.quantity)).toEqual(["25000", "100"]);
   });
 
+  test("builds an organization statement across scoped trackers without writing rollups", async () => {
+    const statementOrgScope = { kind: "org" as const, orgId: "org-statement" };
+    const statementEvents: BillingEventInput[] = [
+      usageEvent({
+        id: "statement-org-event",
+        scope: statementOrgScope,
+        occurredAt: "2026-09-01T10:00:00.000Z",
+        measurements: [
+          { meter: "ai.tokens.total", unit: "token", quantity: 10 },
+          { meter: "ai.cost.total", unit: "nano-usd", quantity: 100 },
+        ],
+      }),
+      usageEvent({
+        id: "statement-project-event",
+        scope: { kind: "project", orgId: "org-statement", projectId: "project-1" },
+        occurredAt: "2026-09-01T11:00:00.000Z",
+        measurements: [
+          { meter: "ai.tokens.total", unit: "token", quantity: 20 },
+          { meter: "ai.cost.total", unit: "nano-usd", quantity: 200 },
+        ],
+      }),
+      usageEvent({
+        id: "statement-user-event",
+        scope: { kind: "user", userId: "user-1" },
+        occurredAt: "2026-09-01T12:00:00.000Z",
+        measurements: [
+          { meter: "ai.tokens.total", unit: "token", quantity: 30 },
+          { meter: "ai.cost.total", unit: "nano-usd", quantity: 300 },
+        ],
+      }),
+    ];
+
+    for (const statementEvent of statementEvents) {
+      await callServices(() => billing.services.recordEvent(statementEvent));
+    }
+
+    await expect(
+      callServices(() => billing.services.getStatement({ period: "2026-09" })),
+    ).resolves.toMatchObject({
+      period: "2026-09",
+      trackers: [
+        {
+          meter: "ai.cost.total",
+          unit: "nano-usd",
+          quantity: "600",
+          eventCount: "3",
+          firstOccurredAt: "2026-09-01T10:00:00.000Z",
+          lastOccurredAt: "2026-09-01T12:00:00.000Z",
+          updatedAt: expect.any(String),
+        },
+        {
+          meter: "ai.tokens.total",
+          unit: "token",
+          quantity: "60",
+          eventCount: "3",
+          firstOccurredAt: "2026-09-01T10:00:00.000Z",
+          lastOccurredAt: "2026-09-01T12:00:00.000Z",
+          updatedAt: expect.any(String),
+        },
+      ],
+    });
+
+    await expect(
+      callServices(() =>
+        billing.services.getTrackers({ scope: statementOrgScope, period: "2026-09" }),
+      ),
+    ).resolves.toMatchObject({
+      trackers: [
+        expect.objectContaining({ meter: "ai.cost.total", quantity: "100", eventCount: "1" }),
+        expect.objectContaining({ meter: "ai.tokens.total", quantity: "10", eventCount: "1" }),
+      ],
+    });
+  });
+
   test("paginates trackers in ascending meter order", async () => {
     const paginationScope = { kind: "org" as const, orgId: "org-pagination" };
     await callServices(() =>

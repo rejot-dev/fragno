@@ -6,15 +6,19 @@ import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/sc
 import {
   billingEventInputSchema,
   billingPeriodSchema,
+  billingStatementInputSchema,
   billingTrackerPageInputSchema,
   type BillingEventInput,
   type BillingRecordEventResult,
+  type BillingStatement,
+  type BillingStatementInput,
+  type BillingStatementTracker,
   type BillingTracker,
   type BillingTrackerPage,
   type BillingTrackerPageInput,
 } from "./contracts";
 import { BILLING_TRACKER_INDEX_NAME, decodeBillingTrackerCursor } from "./pagination";
-import { billingFragmentSchema } from "./schema";
+import { BILLING_STATEMENT_TRACKER_INDEX_NAME, billingFragmentSchema } from "./schema";
 
 const billingPeriodForDate = (date: Date) => date.toISOString().slice(0, 7);
 
@@ -61,7 +65,7 @@ const assertIdempotentEventMatches = (
   }
 };
 
-const normalizeTracker = (tracker: {
+type StoredBillingTracker = {
   scope: BillingTracker["scope"];
   period: string;
   meter: string;
@@ -71,7 +75,9 @@ const normalizeTracker = (tracker: {
   firstOccurredAt: unknown;
   lastOccurredAt: unknown;
   updatedAt: unknown;
-}): BillingTracker => ({
+};
+
+const normalizeTracker = (tracker: StoredBillingTracker): BillingTracker => ({
   scope: tracker.scope,
   period: tracker.period,
   meter: tracker.meter,
@@ -82,6 +88,69 @@ const normalizeTracker = (tracker: {
   lastOccurredAt: timestampToIsoString(tracker.lastOccurredAt),
   updatedAt: timestampToIsoString(tracker.updatedAt),
 });
+
+const aggregateStatementTrackers = (
+  trackers: StoredBillingTracker[],
+): BillingStatementTracker[] => {
+  const aggregates = new Map<
+    string,
+    {
+      meter: string;
+      unit: string;
+      quantity: bigint;
+      eventCount: bigint;
+      firstOccurredAt: string;
+      lastOccurredAt: string;
+      updatedAt: string;
+    }
+  >();
+
+  for (const tracker of trackers) {
+    const firstOccurredAt = timestampToIsoString(tracker.firstOccurredAt);
+    const lastOccurredAt = timestampToIsoString(tracker.lastOccurredAt);
+    const updatedAt = timestampToIsoString(tracker.updatedAt);
+    const aggregate = aggregates.get(tracker.meter);
+
+    if (!aggregate) {
+      aggregates.set(tracker.meter, {
+        meter: tracker.meter,
+        unit: tracker.unit,
+        quantity: tracker.quantity,
+        eventCount: tracker.eventCount,
+        firstOccurredAt,
+        lastOccurredAt,
+        updatedAt,
+      });
+      continue;
+    }
+
+    if (aggregate.unit !== tracker.unit) {
+      throw new Error(
+        `BILLING_STATEMENT_METER_UNIT_CONFLICT:${tracker.meter}:${aggregate.unit}:${tracker.unit}`,
+      );
+    }
+
+    aggregate.quantity += tracker.quantity;
+    aggregate.eventCount += tracker.eventCount;
+    if (firstOccurredAt < aggregate.firstOccurredAt) {
+      aggregate.firstOccurredAt = firstOccurredAt;
+    }
+    if (lastOccurredAt > aggregate.lastOccurredAt) {
+      aggregate.lastOccurredAt = lastOccurredAt;
+    }
+    if (updatedAt > aggregate.updatedAt) {
+      aggregate.updatedAt = updatedAt;
+    }
+  }
+
+  return [...aggregates.values()]
+    .sort((left, right) => left.meter.localeCompare(right.meter))
+    .map((tracker) => ({
+      ...tracker,
+      quantity: tracker.quantity.toString(),
+      eventCount: tracker.eventCount.toString(),
+    }));
+};
 
 export const billingFragmentDefinition = defineFragment("billing")
   .extend(withDatabase(billingFragmentSchema))
@@ -177,6 +246,29 @@ export const billingFragmentDefinition = defineFragment("billing")
 
             return { accepted: true, eventId: input.id } satisfies BillingRecordEventResult;
           })
+          .build();
+      },
+
+      getStatement: function (rawInput: BillingStatementInput) {
+        const input = billingStatementInputSchema.parse(rawInput);
+
+        return this.serviceTx(billingFragmentSchema)
+          .retrieve((uow) =>
+            uow.find("billing_tracker", (b) =>
+              b
+                .whereIndex(BILLING_STATEMENT_TRACKER_INDEX_NAME, (eb) =>
+                  eb("period", "=", input.period),
+                )
+                .orderByIndex(BILLING_STATEMENT_TRACKER_INDEX_NAME, "asc"),
+            ),
+          )
+          .transformRetrieve(
+            ([trackers]) =>
+              ({
+                period: input.period,
+                trackers: aggregateStatementTrackers(trackers),
+              }) satisfies BillingStatement,
+          )
           .build();
       },
 

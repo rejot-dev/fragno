@@ -12,6 +12,9 @@ export type {
   BillingEventInput,
   BillingMeasurementInput,
   BillingRecordEventResult,
+  BillingStatement,
+  BillingStatementInput,
+  BillingStatementTracker,
   BillingTracker,
   BillingTrackerPage,
   BillingTrackerPageInput,
@@ -21,5 +24,6 @@ export {
   BILLING_TRACKER_MAX_PAGE_SIZE,
   billingEventInputSchema,
   billingPeriodSchema,
+  billingStatementInputSchema,
   billingTrackerPageInputSchema,
 } from "./contracts";

@@ -88,3 +88,16 @@ export type BillingTrackerPage = {
   hasNextPage: boolean;
   summaryTracker: BillingTracker | null;
 };
+
+export const billingStatementInputSchema = z.object({
+  period: billingPeriodSchema,
+});
+
+export type BillingStatementInput = z.infer<typeof billingStatementInputSchema>;
+
+export type BillingStatementTracker = Omit<BillingTracker, "scope" | "period">;
+
+export type BillingStatement = {
+  period: string;
+  trackers: BillingStatementTracker[];
+};

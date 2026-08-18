@@ -18,6 +18,8 @@ import type {
   BillingEventInput,
   BillingFragment,
   BillingRecordEventResult,
+  BillingStatement,
+  BillingStatementInput,
   BillingTrackerPage,
   BillingTrackerPageInput,
 } from "@/fragno/billing";
@@ -117,6 +119,12 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
     return await fragment.callServices(() => fragment.services.recordEvent(input), context);
   }
 
+  async getStatement(input: BillingStatementInput): Promise<BillingStatement> {
+    this.#requireOwnerScope();
+    const fragment = this.#getFragment();
+    return await fragment.callServices(() => fragment.services.getStatement(input));
+  }
+
   async getTrackers(input: BillingTrackerPageInput): Promise<BillingTrackerPage> {
     await this.#assertScopeAllowed(input.scope, "billing.read-trackers");
     const fragment = this.#getFragment();
@@ -152,6 +160,10 @@ export class Billing extends DurableObject<CloudflareEnv> implements BillingObje
 
   async recordEvent(input: BillingEventInput): Promise<BillingRecordEventResult> {
     return await this.#object.recordEvent(input);
+  }
+
+  async getStatement(input: BillingStatementInput): Promise<BillingStatement> {
+    return await this.#object.getStatement(input);
   }
 
   async getTrackers(input: BillingTrackerPageInput): Promise<BillingTrackerPage> {
