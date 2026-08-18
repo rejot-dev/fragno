@@ -1,6 +1,7 @@
 import { Outlet } from "react-router";
 
 import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 
 import { automationScopeFromRouteParams } from "../automations/scope";
@@ -13,6 +14,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const scope = automationScopeFromRouteParams(params);
   const execution = await requireBackofficeContext(request, context, scope);
 
+  const billingOrganization =
+    scope.kind === "user"
+      ? ((await getAuthMe(request, context))?.activeOrganization?.organization ?? null)
+      : undefined;
   const { runtimeState, runtimeError } = await fetchPiRuntimeState(context, scope);
   let persistenceSource: PiLayoutContext["persistenceSource"] = null;
   let persistenceError: string | null = null;
@@ -29,6 +34,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   return {
     scope,
     scopeLabel: backofficeContextScopeLabel(execution.scope),
+    billingOrganization,
     persistenceSource,
     persistenceError,
     runtimeState,
@@ -45,8 +51,15 @@ export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
 }
 
 export default function BackofficeScopedPiLayout({ loaderData, matches }: Route.ComponentProps) {
-  const { scope, scopeLabel, persistenceSource, persistenceError, runtimeState, runtimeError } =
-    loaderData;
+  const {
+    scope,
+    scopeLabel,
+    billingOrganization,
+    persistenceSource,
+    persistenceError,
+    runtimeState,
+    runtimeError,
+  } = loaderData;
 
   const currentPath = matches[matches.length - 1]?.pathname ?? "";
   const isSessions = isPiSessionsPath(scope, currentPath);
@@ -64,6 +77,7 @@ export default function BackofficeScopedPiLayout({ loaderData, matches }: Route.
         <Outlet
           context={{
             scope,
+            billingOrganization,
             persistenceSource,
             persistenceError,
             runtimeState,

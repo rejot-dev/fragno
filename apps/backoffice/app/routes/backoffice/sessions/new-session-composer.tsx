@@ -14,6 +14,7 @@ const INITIAL_HISTORY_COUNT = 2;
 type NewSessionComposerProps = {
   availableModelOptions: PiModelOption[];
   basePath: string;
+  billingOrganization?: { id: string; name: string } | null;
   createError: string | null;
   creating: boolean;
   draftPrompt: string;
@@ -28,6 +29,7 @@ type NewSessionComposerProps = {
 export function NewSessionComposer({
   availableModelOptions,
   basePath,
+  billingOrganization,
   createError,
   creating,
   draftPrompt,
@@ -41,6 +43,11 @@ export function NewSessionComposer({
   const [historyOpen, setHistoryOpen] = useState(true);
   const [showAllHistory, setShowAllHistory] = useState(false);
   const visibleSessions = showAllHistory ? sessions : sessions.slice(0, INITIAL_HISTORY_COUNT);
+  const submissionDisabled =
+    creating ||
+    !draftPrompt.trim() ||
+    availableModelOptions.length === 0 ||
+    billingOrganization === null;
 
   return (
     <div className="backoffice-scroll h-full overflow-y-auto">
@@ -78,7 +85,7 @@ export function NewSessionComposer({
                     event.key !== "Enter" ||
                     event.shiftKey ||
                     event.nativeEvent.isComposing ||
-                    creating
+                    submissionDisabled
                   ) {
                     return;
                   }
@@ -103,11 +110,16 @@ export function NewSessionComposer({
                 value={selectedModelOption}
                 onValueChange={onModelChange}
               />
+              {billingOrganization !== undefined ? (
+                <p className="text-xs text-[var(--bo-muted)] sm:col-start-1 sm:row-start-2">
+                  Billing organization: {billingOrganization?.name ?? "No active organization"}
+                </p>
+              ) : null}
 
               <button
                 type="submit"
-                disabled={creating || !draftPrompt.trim() || availableModelOptions.length === 0}
-                className={`min-h-11 bg-[var(--bo-btn-bg)] px-6 text-xs font-semibold text-[var(--bo-btn-fg)] transition-[background-color,scale] duration-150 ease-out hover:bg-[var(--bo-btn-bg-hover)] disabled:cursor-not-allowed disabled:opacity-35 ${tapScale}`}
+                className={`min-h-11 bg-[var(--bo-btn-bg)] px-6 text-xs font-semibold text-[var(--bo-btn-fg)] transition-[background-color,scale] duration-150 ease-out hover:bg-[var(--bo-btn-bg-hover)] disabled:cursor-not-allowed disabled:opacity-35 sm:col-start-2 sm:row-start-1 sm:self-end ${tapScale}`}
+                disabled={submissionDisabled}
               >
                 {creating ? "Sending…" : "Send"}
               </button>

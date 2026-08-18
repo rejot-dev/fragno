@@ -71,6 +71,8 @@ export const PI_SUPPORTED_MODELS: PiModelOption[] = [
 
 export const PI_TOOL_IDS = ["execCodeMode", "read", "search"] as const;
 export type PiToolId = (typeof PI_TOOL_IDS)[number];
+
+export const PI_BILLING_ORGANIZATION_ID_METADATA_KEY = "__backofficeBillingOrganizationId";
 export const PI_SYSTEM_PROMPT = STATIC_FILE_CONTENT["SYSTEM.md"];
 export const PI_THINKING_LEVEL: PiThinkingLevel = "low";
 
@@ -90,6 +92,13 @@ export const piSessionModel = (
     return null;
   }
   return { provider, name };
+};
+
+export const piSessionBillingOrganizationId = (
+  metadata: Record<string, unknown> | null | undefined,
+): string | null => {
+  const organizationId = metadata?.[PI_BILLING_ORGANIZATION_ID_METADATA_KEY];
+  return typeof organizationId === "string" && organizationId.trim() ? organizationId.trim() : null;
 };
 
 export const findPiModelOption = (provider: PiModelProvider, name: string) => {

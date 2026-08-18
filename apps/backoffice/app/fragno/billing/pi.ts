@@ -2,6 +2,7 @@ import type { PiOperationCompletedHookPayload } from "@fragno-dev/pi-harness/typ
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import { piSessionBillingOrganizationId } from "@/fragno/pi/pi-shared";
 
 import type { BillingEventInput, BillingMeasurementInput } from "./contracts";
 
@@ -11,6 +12,13 @@ export class PiOperationBillingEventValidationError extends Error {
   constructor() {
     super("Pi operation billing events require at least one model call.");
     this.name = "PiOperationBillingEventValidationError";
+  }
+}
+
+export class PiOperationBillingOwnerMissingError extends Error {
+  constructor(readonly userId: string) {
+    super(`PI_SESSION_BILLING_OWNER_MISSING:${userId}`);
+    this.name = "PiOperationBillingOwnerMissingError";
   }
 }
 
@@ -28,6 +36,28 @@ const piUsageMeasurements = (
   { meter: "ai.cost.cache-write", unit: "nano-usd", quantity: toNanoUsd(usage.cost.cacheWrite) },
   { meter: "ai.cost.total", unit: "nano-usd", quantity: toNanoUsd(usage.cost.total) },
 ];
+
+export const resolvePiOperationBillingOrganizationId = (
+  scope: BackofficeContextScope,
+  metadata: Record<string, unknown> | null | undefined,
+): string | null => {
+  switch (scope.kind) {
+    case "org":
+    case "project":
+      return scope.orgId;
+    case "user": {
+      const organizationId = piSessionBillingOrganizationId(metadata);
+      if (!organizationId) {
+        throw new PiOperationBillingOwnerMissingError(scope.userId);
+      }
+      return organizationId;
+    }
+    case "system":
+      return null;
+  }
+
+  throw new Error("Unsupported Backoffice context scope kind.");
+};
 
 export const createPiOperationBillingEvent = (input: {
   scope: BackofficeContextScope;
@@ -62,4 +92,33 @@ export const createPiOperationBillingEvent = (input: {
       modelCalls: input.payload.modelCalls,
     },
   };
+};
+
+export const recordPiOperationBilling = async (input: {
+  scope: BackofficeContextScope;
+  payload: PiOperationCompletedHookPayload;
+  hookId: string;
+  idempotencyKey: string;
+  recordEvent: (organizationId: string, event: BillingEventInput) => Promise<void>;
+}): Promise<{ recorded: boolean; billingOrganizationId: string | null }> => {
+  let event: BillingEventInput;
+  try {
+    event = createPiOperationBillingEvent(input);
+  } catch (error) {
+    if (error instanceof PiOperationBillingEventValidationError) {
+      return { recorded: false, billingOrganizationId: null };
+    }
+    throw error;
+  }
+
+  const billingOrganizationId = resolvePiOperationBillingOrganizationId(
+    input.scope,
+    input.payload.metadata,
+  );
+  if (!billingOrganizationId) {
+    return { recorded: false, billingOrganizationId: null };
+  }
+
+  await input.recordEvent(billingOrganizationId, event);
+  return { recorded: true, billingOrganizationId };
 };

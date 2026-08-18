@@ -1,8 +1,12 @@
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { createPiHarness, createPiWorkflows } from "@fragno-dev/pi-harness/factory";
-import type { PiFragmentConfig } from "@fragno-dev/pi-harness/types";
+import type { PiFragmentConfig, PiSessionMetadata } from "@fragno-dev/pi-harness/types";
 import { createInteractiveChatWorkflow } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
-import type { WorkflowRegistryEntry, WorkflowsRegistry } from "@fragno-dev/workflows/workflow";
+import {
+  NonRetryableError,
+  type WorkflowRegistryEntry,
+  type WorkflowsRegistry,
+} from "@fragno-dev/workflows/workflow";
 import { Type, type TSchema } from "typebox";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
@@ -59,7 +63,9 @@ import {
 } from "../runtime-tools/tool-families";
 import {
   BACKOFFICE_PI_WORKFLOW_NAME,
+  piSessionBillingOrganizationId,
   piSessionModel,
+  PI_BILLING_ORGANIZATION_ID_METADATA_KEY,
   PI_SUPPORTED_MODELS,
   PI_PROVIDER_TO_MODEL_PROVIDER,
   PI_SYSTEM_PROMPT,
@@ -618,11 +624,15 @@ const getSessionFs = async (
 type BackofficePiToolFactory = (input: {
   sessionId: string;
   execution: BackofficeExecutionContext;
+  metadata?: PiSessionMetadata | null;
 }) => Promise<Partial<Record<PiToolId, AgentTool>>>;
 
 type PiRuntimeToolContextSource =
   | PiRuntimeToolContext
-  | ((execution: BackofficeExecutionContext) => PiRuntimeToolContext);
+  | ((
+      execution: BackofficeExecutionContext,
+      metadata: PiSessionMetadata | null,
+    ) => PiRuntimeToolContext);
 
 type CreatePiToolFactoryOptions = {
   sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
@@ -634,15 +644,20 @@ type CreatePiToolFactoryOptions = {
 const resolvePiRuntimeToolContext = (
   source: PiRuntimeToolContextSource | undefined,
   execution: BackofficeExecutionContext,
-) => (typeof source === "function" ? source(execution) : source);
+  metadata: PiSessionMetadata | null,
+) => (typeof source === "function" ? source(execution, metadata) : source);
 
 export const createPiToolFactory =
   ({
     codemode,
     runtimeToolContext: runtimeToolContextSource,
   }: CreatePiToolFactoryOptions): BackofficePiToolFactory =>
-  async ({ sessionId, execution }) => {
-    const runtimeToolContext = resolvePiRuntimeToolContext(runtimeToolContextSource, execution);
+  async ({ sessionId, execution, metadata = null }) => {
+    const runtimeToolContext = resolvePiRuntimeToolContext(
+      runtimeToolContextSource,
+      execution,
+      metadata,
+    );
     if (!runtimeToolContext?.stateBackend) {
       throw new Error("Pi tools require a state backend.");
     }
@@ -663,6 +678,7 @@ export const createPiToolRegistry = (options: CreatePiToolFactoryOptions) => {
         await createTools({
           sessionId: context.session.id,
           execution: options.sessionFileSystemContext.execution,
+          metadata: null,
         })
       )[toolId];
       if (!tool) {
@@ -781,14 +797,71 @@ const validateBackofficePiModel = (models: Models, selection: PiModel): string |
   return model ? null : `Model ${selection.provider}/${selection.name} not found.`;
 };
 
+class PiSessionBillingOwnerMissingError extends NonRetryableError {
+  constructor(readonly userId: string) {
+    super(`User-scoped Pi session ${userId} has no billing organization.`);
+    this.name = "PiSessionBillingOwnerMissingError";
+  }
+}
+
+class PiSessionBillingOrganizationAccessDeniedError extends NonRetryableError {
+  constructor(readonly organizationId: string) {
+    super(`Pi session billing organization ${organizationId} is no longer available.`);
+    this.name = "PiSessionBillingOrganizationAccessDeniedError";
+  }
+}
+
+const authorizePiBillingOrganization = async ({
+  kernel,
+  execution,
+  organizationId,
+  resource,
+}: {
+  kernel: BackofficeKernel;
+  execution: BackofficeExecutionContext;
+  organizationId: string;
+  resource: Record<string, unknown>;
+}): Promise<void> => {
+  await kernel.assertAuthorized({
+    execution: {
+      ...execution,
+      scope: { kind: "org", orgId: organizationId },
+    },
+    operation: BACKOFFICE_PERMISSION.pi.modify,
+    resource,
+  });
+};
+
+class PiSessionActorMetadataInvalidError extends NonRetryableError {
+  constructor() {
+    super("PI_SESSION_ACTOR_METADATA_INVALID", "PiSessionActorMetadataInvalidError");
+  }
+}
+
+export const createBackofficePiSessionExecution = (
+  scope: BackofficeContextScope,
+  metadata: PiSessionMetadata | null,
+): BackofficeExecutionContext => {
+  const actors = automationActorsSchema.safeParse(
+    metadata?.[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
+  );
+  if (!actors.success) {
+    throw new PiSessionActorMetadataInvalidError();
+  }
+
+  return { scope, actors: actors.data };
+};
+
 const createBackofficeInteractiveChatWorkflow = ({
   config,
+  kernel,
   models,
   createTools,
   skills,
   resolveSystemPrompt,
 }: {
   config: { scope: BackofficeContextScope };
+  kernel: BackofficeKernel;
   models: Models;
   createTools: BackofficePiToolFactory;
   skills: BackofficePiSkillResolver;
@@ -797,6 +870,35 @@ const createBackofficeInteractiveChatWorkflow = ({
   ...createInteractiveChatWorkflow({
     name: BACKOFFICE_PI_WORKFLOW_NAME,
     commandTimeout: "1 hour",
+    beforeOperation: async (input) => {
+      if (config.scope.kind !== "user") {
+        return;
+      }
+
+      const billingOrganizationId = piSessionBillingOrganizationId(input.metadata);
+      if (!billingOrganizationId) {
+        throw new PiSessionBillingOwnerMissingError(config.scope.userId);
+      }
+
+      try {
+        await authorizePiBillingOrganization({
+          kernel,
+          execution: createBackofficePiSessionExecution(config.scope, input.metadata),
+          organizationId: billingOrganizationId,
+          resource: {
+            kind: "pi-session-operation-billing",
+            workflowName: input.workflowName,
+            sessionId: input.sessionId,
+            operationId: input.operationId,
+          },
+        });
+      } catch (error) {
+        if (error instanceof BackofficeForbiddenError && error.reason !== "authority-unavailable") {
+          throw new PiSessionBillingOrganizationAccessDeniedError(billingOrganizationId);
+        }
+        throw error;
+      }
+    },
     options: async (event) => {
       const selectedModel = piSessionModel(event.payload.metadata);
       if (!selectedModel) {
@@ -812,16 +914,12 @@ const createBackofficeInteractiveChatWorkflow = ({
         throw new Error(`API key for provider ${model.provider} is not configured.`);
       }
 
-      const actors = automationActorsSchema.parse(
-        event.payload.metadata?.[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
-      );
-      const execution: BackofficeExecutionContext = {
-        scope: config.scope,
-        actors,
-      };
+      const metadata = event.payload.metadata ?? null;
+      const execution = createBackofficePiSessionExecution(config.scope, metadata);
       const sessionTools = await createTools({
         sessionId: event.instanceId,
         execution,
+        metadata,
       });
       const activeTools = PI_TOOL_IDS.map((toolId) => {
         const tool = sessionTools[toolId];
@@ -856,6 +954,7 @@ const createBackofficeInteractiveChatWorkflow = ({
 
 const buildPiRuntime = (
   config: { scope: BackofficeContextScope },
+  kernel: BackofficeKernel,
   apiKeys: PiApiKeys,
   createTools: BackofficePiToolFactory,
   skills: BackofficePiSkillResolver,
@@ -868,6 +967,7 @@ const buildPiRuntime = (
   const workflows = [
     createBackofficeInteractiveChatWorkflow({
       config,
+      kernel,
       models,
       createTools,
       skills,
@@ -918,6 +1018,7 @@ export const createPiRuntimeDefinition = (
   });
   const pi = buildPiRuntime(
     { scope: options.scope },
+    options.kernel,
     options.apiKeys,
     createTools,
     skills,
@@ -945,8 +1046,9 @@ export const createPiRuntimeDefinition = (
       const authorize = async (
         operation: typeof BACKOFFICE_PERMISSION.pi.read | typeof BACKOFFICE_PERMISSION.pi.modify,
         resource: Record<string, unknown>,
+        execution = requestContext,
       ) => {
-        if (!requestContext) {
+        if (!execution) {
           return error(
             {
               message: "Pi session routes require trusted action context.",
@@ -958,7 +1060,7 @@ export const createPiRuntimeDefinition = (
 
         try {
           await options.kernel.assertAuthorized({
-            execution: requestContext,
+            execution,
             operation,
             resource,
           });
@@ -1009,11 +1111,46 @@ export const createPiRuntimeDefinition = (
             return authorizationResponse;
           }
 
+          const billingOrganizationId = piSessionBillingOrganizationId(values.metadata);
+          if (requestContext.scope.kind === "user") {
+            if (!billingOrganizationId) {
+              return error(
+                {
+                  message: "User-scoped Pi sessions require a billing organization.",
+                  code: "WORKFLOW_PARAMS_INVALID",
+                },
+                400,
+              );
+            }
+            const billingAuthorizationResponse = await authorize(
+              BACKOFFICE_PERMISSION.pi.modify,
+              {
+                kind: "pi-session-billing-organization",
+                workflowName: pathParams.workflowName,
+                organizationId: billingOrganizationId,
+              },
+              {
+                ...requestContext,
+                scope: { kind: "org", orgId: billingOrganizationId },
+              },
+            );
+            if (billingAuthorizationResponse) {
+              return billingAuthorizationResponse;
+            }
+          }
+
+          const {
+            [PI_BILLING_ORGANIZATION_ID_METADATA_KEY]: _requestedBillingOrganizationId,
+            ...sessionMetadata
+          } = values.metadata ?? {};
           requestState.setBody({
             ...values,
             metadata: {
-              ...values.metadata,
+              ...sessionMetadata,
               model,
+              ...(requestContext.scope.kind === "user" && billingOrganizationId
+                ? { [PI_BILLING_ORGANIZATION_ID_METADATA_KEY]: billingOrganizationId }
+                : {}),
               [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: automationActorsSchema.parse(
                 requestContext.actors,
               ),

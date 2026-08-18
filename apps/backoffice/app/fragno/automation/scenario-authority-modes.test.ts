@@ -223,7 +223,7 @@ describe("automation route authority modes", () => {
             name: "Ada Labs",
             ownerUserId: "owner-1",
           }),
-          given.pi.configured({ orgId: "org-1" }),
+          given.pi.configured({ scope: { kind: "org", orgId: "org-1" } }),
           given.direct.file({
             orgId: "org-1",
             path: "/workspace/automations/authority-mode-pi-session.workflow.js",

@@ -8,13 +8,18 @@ import type {
 } from "@/backoffice-runtime/context";
 import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
-import { BACKOFFICE_PI_WORKFLOW_NAME, type PiModel } from "@/fragno/pi/pi-shared";
+import {
+  BACKOFFICE_PI_WORKFLOW_NAME,
+  PI_BILLING_ORGANIZATION_ID_METADATA_KEY,
+  type PiModel,
+} from "@/fragno/pi/pi-shared";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-errors";
 
 type PiFragment = ReturnType<typeof createPiHarness<BackofficeExecutionContext>>;
 
 export type PiSessionCreateArgs = {
+  billingOrganizationId?: string;
   model?: PiModel;
   name?: string;
   systemMessage?: string;
@@ -102,13 +107,29 @@ const createPiRouteCaller = ({
 
 type PiRouteCaller = PiFragment["callRoute"];
 
-const createPiRuntime = (callRoute: PiRouteCaller): PiRuntime => ({
+const createPiRuntime = (
+  callRoute: PiRouteCaller,
+  options: { inheritedBillingOrganizationId?: string } = {},
+): PiRuntime => ({
   createSession: async (args) => {
     const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
       pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME },
       body: {
         name: args.name,
-        metadata: { ...args.metadata, ...(args.model ? { model: args.model } : {}) },
+        metadata: {
+          ...args.metadata,
+          ...(args.billingOrganizationId
+            ? {
+                [PI_BILLING_ORGANIZATION_ID_METADATA_KEY]: args.billingOrganizationId,
+              }
+            : {}),
+          ...(options.inheritedBillingOrganizationId
+            ? {
+                [PI_BILLING_ORGANIZATION_ID_METADATA_KEY]: options.inheritedBillingOrganizationId,
+              }
+            : {}),
+          ...(args.model ? { model: args.model } : {}),
+        },
         input: {
           systemPrompt: args.systemMessage,
         },
@@ -240,9 +261,11 @@ export const createPiRouteRuntime = ({
 export const createPiFragmentRuntime = ({
   fragment,
   execution,
+  inheritedBillingOrganizationId,
 }: {
   fragment: PiFragment;
   execution: BackofficeExecutionContext;
+  inheritedBillingOrganizationId?: string;
 }): PiRuntime => {
   const callRoute: PiRouteCaller = (method, path, inputOptions) =>
     fragment.callRoute(method, path, inputOptions, {
@@ -250,5 +273,5 @@ export const createPiFragmentRuntime = ({
       propagationContext: null,
     });
 
-  return createPiRuntime(callRoute);
+  return createPiRuntime(callRoute, { inheritedBillingOrganizationId });
 };
