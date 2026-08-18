@@ -6,6 +6,8 @@ import type { BillingMeasurementInput } from "./contracts";
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
+export const BILLING_STATEMENT_TRACKER_INDEX_NAME = "idx_billing_tracker_period_meter_scopeKey";
+
 export const billingFragmentSchema = schema("billing", (s) =>
   s
     .addTable("billing_event", (t) =>
@@ -80,6 +82,7 @@ export const billingFragmentSchema = schema("billing", (s) =>
         )
         .createIndex("idx_billing_tracker_scope_period_meter", ["scopeKey", "period", "meter"], {
           unique: true,
-        }),
+        })
+        .createIndex(BILLING_STATEMENT_TRACKER_INDEX_NAME, ["period", "meter", "scopeKey"]),
     ),
 );

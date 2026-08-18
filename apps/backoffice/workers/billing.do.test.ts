@@ -73,6 +73,13 @@ describe("Billing Durable Object", () => {
         scope: userScope,
       }),
     );
+    await billing.recordEvent(
+      event({
+        id: "pi:org-1:project-1:hook-1",
+        scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+        measurements: [{ meter: "ai.tokens.total", unit: "token", quantity: 40 }],
+      }),
+    );
 
     await expect(
       billing.getTrackers({ scope: userScope, period: "2026-07" }),
@@ -85,6 +92,16 @@ describe("Billing Durable Object", () => {
         }),
       ],
       hasNextPage: false,
+    });
+    await expect(billing.getStatement({ period: "2026-07" })).resolves.toMatchObject({
+      period: "2026-07",
+      trackers: [
+        expect.objectContaining({
+          meter: "ai.tokens.total",
+          quantity: "140",
+          eventCount: "2",
+        }),
+      ],
     });
   });
 

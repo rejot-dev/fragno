@@ -47,6 +47,8 @@ import type {
 import type {
   BillingEventInput,
   BillingRecordEventResult,
+  BillingStatement,
+  BillingStatementInput,
   BillingTrackerPage,
   BillingTrackerPageInput,
 } from "@/fragno/billing";
@@ -163,6 +165,7 @@ export type BillingObject = FetchObject &
       input: BillingEventInput,
       context?: BackofficeRpcContext,
     ): Promise<BillingRecordEventResult>;
+    getStatement(input: BillingStatementInput): Promise<BillingStatement>;
     getTrackers(input: BillingTrackerPageInput): Promise<BillingTrackerPage>;
   };
 
