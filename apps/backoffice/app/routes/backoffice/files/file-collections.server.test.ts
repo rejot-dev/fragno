@@ -17,7 +17,7 @@ describe("Files overview roots", () => {
   test.each([
     { kind: "user" as const, userId: "user-1" },
     { kind: "project" as const, orgId: "org-1", projectId: "project-1" },
-  ])("shows only workspace files in $kind scope", (scope) => {
-    expect(filesOverviewRootPathsForScope(scope)).toEqual(["/workspace"]);
+  ])("shows static and workspace files in $kind scope", (scope) => {
+    expect(filesOverviewRootPathsForScope(scope)).toEqual(["/static", "/workspace"]);
   });
 });

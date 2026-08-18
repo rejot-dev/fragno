@@ -1,7 +1,7 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
-import { emptyStaticFileArtifacts, type StaticFileArtifactsResolver } from "@/files/types";
+import type { StaticFileArtifactsResolver } from "@/files/types";
 import {
   backofficeCapabilities,
   type BackofficeCapabilityId,
@@ -104,8 +104,11 @@ export const createCodemodeStaticArtifactsResolver = ({
   origin?: string;
   families?: readonly BackofficeRuntimeToolFamily[];
 }): StaticFileArtifactsResolver => {
-  if (execution.scope.kind !== "org" && execution.scope.kind !== "project") {
-    return emptyStaticFileArtifacts;
+  if (execution.scope.kind === "user" || execution.scope.kind === "system") {
+    return async () =>
+      codemodeTypeFilesToStaticArtifacts(
+        createCodemodeTypeFiles({ families: families ?? runtimeToolFamilies }),
+      );
   }
 
   const orgId = execution.scope.orgId;
