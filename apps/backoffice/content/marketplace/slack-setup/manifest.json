@@ -1,0 +1,15 @@
+{
+  "owner": {
+    "scope": { "kind": "system" },
+    "publisherName": "Fragno"
+  },
+  "slug": "slack-setup",
+  "metadata": {
+    "name": "Slack setup",
+    "summary": "Connect Slack for outbound messages and verified inbound app mentions.",
+    "description": "Installs an agent skill that guides Backoffice through Slack bot-token authentication, message sending, Events API URL verification, request-signature validation, and inbound event checks.",
+    "category": "communication",
+    "tags": ["slack", "api", "webhooks", "communication"]
+  },
+  "versions": ["1.0.0"]
+}

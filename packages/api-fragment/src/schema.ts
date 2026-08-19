@@ -2,6 +2,7 @@ import { column, idColumn, referenceColumn, schema, type Column } from "@fragno-
 
 import type { WebhookDeliveryIdentity } from "./api-types";
 import type { WebhookAuthConfig } from "./webhooks/auth";
+import type { WebhookVerificationConfig } from "./webhooks/verification";
 
 type JsonColumn<T> = Column<"json", T, T>;
 
@@ -57,6 +58,7 @@ export const apiSchema = schema("api-fragment", (s) => {
         .addColumn("name", column("string"))
         .addColumn("status", column("string"))
         .addColumn("authConfig", jsonColumn<WebhookAuthConfig>())
+        .addColumn("verification", jsonColumn<WebhookVerificationConfig>())
         .addColumn("deliveryIdentity", jsonColumn<WebhookDeliveryIdentity>())
         .addColumn(
           "createdAt",

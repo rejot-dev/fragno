@@ -39,7 +39,8 @@ export const webhookAuthConfigSchema = z.discriminatedUnion("type", [
     signedPayload: z.discriminatedUnion("type", [
       z.object({ type: z.literal("rawBody") }),
       z.object({
-        type: z.literal("timestampBody"),
+        type: z.literal("timestampedBody"),
+        prefix: z.string(),
         timestampHeader: requestValueNameSchema,
         delimiter: z.string(),
         toleranceSeconds: z.number().int().positive(),
@@ -345,7 +346,7 @@ async function buildSignedPayload(
   return {
     ok: true,
     payload: concatBytes(
-      utf8Bytes(`${timestamp}${config.signedPayload.delimiter}`),
+      utf8Bytes(`${config.signedPayload.prefix}${timestamp}${config.signedPayload.delimiter}`),
       await context.rawBodyBytes(),
     ),
   };

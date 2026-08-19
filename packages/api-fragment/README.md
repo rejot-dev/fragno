@@ -67,6 +67,13 @@ Requests:
 
 - `POST /connections/:slug/request` - execute an HTTP request against the configured `baseUrl`.
 
+Webhook endpoints:
+
+- `PUT /webhooks/endpoints/:endpointId` - create or replace an endpoint.
+- `GET /webhooks/endpoints/:endpointId/events` - answer configured GET verification challenges.
+- `POST /webhooks/endpoints/:endpointId/events` - answer configured POST verification challenges or
+  accept a delivery.
+
 The request route only accepts relative paths. Caller-provided `Authorization` headers are ignored
 and replaced with stored connection auth.
 
@@ -147,6 +154,57 @@ const response = await api.request.mutate(
 
 Response bodies are parsed as JSON when the upstream response has a JSON content type. Other
 responses are returned as text. Binary responses are out of scope for the MVP.
+
+## Webhook verification challenges
+
+Webhook verification runs after endpoint authentication and before delivery ID extraction. A matched
+challenge returns synchronously and does not trigger `onWebhookReceived`.
+
+```ts
+await api.createWebhookEndpoint.mutate(
+  {
+    name: "Slack",
+    status: "active",
+    verification: {
+      type: "challenge",
+      method: "POST",
+      when: {
+        type: "equals",
+        source: { type: "jsonBodyPath", path: ["type"] },
+        value: "url_verification",
+      },
+      response: {
+        type: "echoText",
+        source: { type: "jsonBodyPath", path: ["challenge"] },
+      },
+    },
+    deliveryIdentity: { type: "jsonBodyPath", path: ["event_id"] },
+    auth: {
+      type: "hmac",
+      secret: "signing-secret",
+      algorithm: "sha256",
+      signature: {
+        location: "header",
+        name: "x-slack-signature",
+        encoding: "hex",
+        prefix: "v0=",
+      },
+      signedPayload: {
+        type: "timestampedBody",
+        prefix: "v0:",
+        timestampHeader: "x-slack-request-timestamp",
+        delimiter: ":",
+        toleranceSeconds: 300,
+      },
+    },
+  },
+  { pathParams: { endpointId: "slack" } },
+);
+```
+
+Request value sources can read a header, query parameter, or JSON body path. Challenge predicates
+can require that a value is present or equals a configured string. `echoText` responds with the
+selected value as `text/plain`.
 
 ## Hooks
 

@@ -1773,6 +1773,7 @@ const createScenarioTanStack = (runtime: InMemoryBackofficeRuntime): BackofficeS
 };
 
 const hookFragmentBindings: Record<string, BackofficeObjectBindingName> = {
+  api: "API",
   auth: "AUTH",
   automations: "AUTOMATIONS",
   github: "GITHUB",

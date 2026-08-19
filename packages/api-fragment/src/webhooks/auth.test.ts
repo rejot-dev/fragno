@@ -226,10 +226,10 @@ describe("webhook auth", () => {
     ).resolves.toEqual({ ok: true });
   });
 
-  it("verifies timestamped HMAC payloads and rejects replayed timestamps", async () => {
+  it("verifies prefixed timestamped HMAC payloads and rejects replayed timestamps", async () => {
     const body = "body";
     const timestamp = "1700000000";
-    const signedPayload = utf8Bytes(`${timestamp}.${body}`);
+    const signedPayload = utf8Bytes(`v0:${timestamp}:${body}`);
     const signature = bytesToHex(
       await signHmacBytes({ algorithm: "sha256", secret: "secret", payload: signedPayload }),
     );
@@ -243,9 +243,10 @@ describe("webhook auth", () => {
         encoding: "hex",
       },
       signedPayload: {
-        type: "timestampBody",
+        type: "timestampedBody",
+        prefix: "v0:",
         timestampHeader: "x-timestamp",
-        delimiter: ".",
+        delimiter: ":",
         toleranceSeconds: 300,
       },
     } satisfies WebhookAuthConfig;
