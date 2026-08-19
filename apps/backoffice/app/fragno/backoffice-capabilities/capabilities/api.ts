@@ -6,8 +6,6 @@ import type {
   BackofficeConfigurableConnectionCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import { createApiCapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/api-files";
-import { createApiWebhooksCapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/api-webhooks-files";
 
 import type { ApiAdminConfigResponse } from "../../../../workers/api.do";
 
@@ -107,12 +105,7 @@ const toApiStatus = (response: ApiAdminConfigResponse): ConnectionStatus => {
 export const apiCapability: BackofficeConfigurableConnectionCapability = {
   ...capability,
   runtimeToolNamespaces: ["api"],
-  get files() {
-    return {
-      ...createApiCapabilityFiles(),
-      ...createApiWebhooksCapabilityFiles(),
-    };
-  },
+  skillPaths: ["skills/api-connection/SKILL.md", "skills/api-webhooks/SKILL.md"],
   connection: {
     configurable: true,
     configureInputSchema: apiConfigureInputSchema,

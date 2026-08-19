@@ -1,21 +1,17 @@
 import systemGuidanceTemplate from "../../../content/static/SYSTEM.md?raw";
 import { createStaticFileCollection } from "../../file-collection/create-static-file-collection";
 import type { FileCollection } from "../../file-collection/file-collection";
-import { BACKOFFICE_CAPABILITY_FILE_CONTENT } from "./backoffice-capability-files";
 import { STATIC_DOC_CONTENT } from "./docs";
 import { GENERAL_SKILL_CONTENT } from "./skills";
 import { STATIC_AUTOMATION_CONTENT } from "./static-automations";
 
 export const renderStaticGuidance = ({ codemodeDts }: { codemodeDts: string }) =>
-  STATIC_GUIDANCE_MD.replace("__BACKOFFICE_CODEMODE_DTS__", codemodeDts.trimEnd());
-
-const STATIC_GUIDANCE_MD = systemGuidanceTemplate;
+  systemGuidanceTemplate.replace("__BACKOFFICE_CODEMODE_DTS__", codemodeDts.trimEnd());
 
 export const STATIC_FILE_CONTENT = {
-  "SYSTEM.md": STATIC_GUIDANCE_MD,
+  "SYSTEM.md": systemGuidanceTemplate,
   ...STATIC_DOC_CONTENT,
   ...STATIC_AUTOMATION_CONTENT,
-  ...BACKOFFICE_CAPABILITY_FILE_CONTENT,
   ...GENERAL_SKILL_CONTENT,
 } satisfies Record<string, string | Uint8Array>;
 

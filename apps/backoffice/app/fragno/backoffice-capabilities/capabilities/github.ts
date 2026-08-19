@@ -93,6 +93,7 @@ export const githubCapability: BackofficeCapability = {
   label: "GitHub",
   kind: "connection",
   runtimeToolNamespaces: [],
+  skillPaths: [],
   connection: {
     configurable: false,
     getStatus: async ({ config }) => ({

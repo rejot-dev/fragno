@@ -20,8 +20,7 @@ they participate in events, API calls, authentication, and codemode.
 
 - `apps/backoffice/app/fragno/backoffice-capabilities/backoffice-capabilities.ts` — connection
   catalog.
-- `apps/backoffice/app/fragno/backoffice-capabilities/capability-skill-files.ts` — generated skill
-  files.
+- `apps/backoffice/content/static/skills/` — built-in integration skills.
 - `apps/backoffice/app/routes/backoffice/automations/integrations.tsx` — scoped integration
   overview.
 - `apps/backoffice/app/routes/backoffice/connections/` — integration-specific configuration and

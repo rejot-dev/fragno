@@ -30,6 +30,7 @@ export const sandboxCapability: BackofficeCapability = {
   label: "Sandbox",
   kind: "connection",
   runtimeToolNamespaces: ["sandbox"],
+  skillPaths: [],
   connection: {
     configurable: false,
     getStatus: async ({ config }) => ({

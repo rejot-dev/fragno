@@ -5,8 +5,6 @@ import type {
   BackofficeCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import { createReson8CapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/reson8-files";
-
 const apiKeyValueSchema = z
   .string()
   .trim()
@@ -55,9 +53,7 @@ const toReson8Status = (response: Reson8AdminConfigResponse): ConnectionStatus =
 export const reson8Capability: BackofficeCapability = {
   ...capability,
   runtimeToolNamespaces: ["reson8"],
-  get files() {
-    return createReson8CapabilityFiles();
-  },
+  skillPaths: ["skills/reson8-connection/SKILL.md"],
   connection: {
     configurable: true,
     configureInputSchema: reson8ConfigureInputSchema,

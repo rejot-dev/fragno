@@ -288,7 +288,7 @@ describe("generating Backoffice UIs skill", () => {
     expect(uploadSkill).toContain("/static/codemode/providers/upload.d.ts");
     expect(uploadSkill).toContain("upload.readPrepared");
     expect(uploadSkill).toContain('encoding: "bytes"');
-    expect(uploadSkill).toContain("pass those bytes directly to binary consumers");
+    expect(uploadSkill).toMatch(/pass those\s+bytes directly to binary consumers/u);
     expect(uploadSkill).toContain("not raw bytes");
     expect(uploadSkill).toContain("upload.commitPrepared");
     expect(uploadSkill).toContain("upload.discardPrepared");

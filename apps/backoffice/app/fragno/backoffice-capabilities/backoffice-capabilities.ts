@@ -135,7 +135,7 @@ type BackofficeCapabilityBase = {
   id: BackofficeCapabilityId;
   label: string;
   runtimeToolNamespaces?: readonly string[];
-  files?: Readonly<Record<string, string>>;
+  skillPaths: readonly string[];
   hooks?: readonly BackofficeHookScope[];
   externalEntities?: readonly AutomationExternalEntityDefinition[];
   automationEvents?: readonly BackofficeAutomationEventDescriptor[];

@@ -44,6 +44,7 @@ export const authCapability: BackofficeCapability = {
   label: "Auth",
   kind: "system",
   runtimeToolNamespaces: [],
+  skillPaths: [],
   hooks: [
     {
       id: "auth",

@@ -4,7 +4,6 @@ import type {
   BackofficeConfigurableConnectionCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import { createMcpCapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/mcp-files";
 
 import type { McpAdminConfigResponse } from "../../../../workers/mcp.do";
 
@@ -66,9 +65,7 @@ const toMcpStatus = (response: McpAdminConfigResponse): ConnectionStatus => {
 export const mcpCapability: BackofficeConfigurableConnectionCapability = {
   ...capability,
   runtimeToolNamespaces: ["mcp"],
-  get files() {
-    return createMcpCapabilityFiles();
-  },
+  skillPaths: ["skills/mcp-connection/SKILL.md"],
   connection: {
     configurable: true,
     objectBinding: "MCP",

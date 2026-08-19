@@ -25,19 +25,12 @@ const readSkillName = (skill: string) => {
 describe("Backoffice capability static skills", () => {
   test("capability skills are spec-shaped static skills", () => {
     for (const capability of backofficeCapabilities) {
-      const skillPaths = Object.keys(capability.files ?? {}).filter(
-        (path) => path.startsWith("skills/") && path.endsWith("/SKILL.md"),
-      );
-
-      expect(skillPaths).toHaveLength(Object.keys(capability.files ?? {}).length);
-
-      for (const skillPath of skillPaths) {
+      for (const skillPath of capability.skillPaths) {
         const skill = readStaticText(skillPath);
         const skillName = readSkillName(skill);
 
         expect(skillName).toMatch(skillNamePattern);
         expect(skillPath).toBe(`skills/${skillName}/SKILL.md`);
-        expect(capability.files?.[skillPath]).toBe(skill);
         expect(skill).toContain("description:");
         expect(skill).toContain("#");
         expect(STATIC_CONTENT[`skills/${skillName}/references/configuration.md`]).toBeUndefined();
@@ -50,7 +43,7 @@ describe("Backoffice capability static skills", () => {
   test("some capabilities intentionally rely on general system guidance instead of specific skills", () => {
     const capabilityIdsWithoutSkills = new Set(
       backofficeCapabilities
-        .filter((capability) => !capability.files)
+        .filter((capability) => capability.skillPaths.length === 0)
         .map((capability) => capability.id),
     );
 

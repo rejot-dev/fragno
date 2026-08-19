@@ -26,6 +26,7 @@ const toPiStatus = (state: PiRuntimeState): ConnectionStatus => ({
 export const piCapability: BackofficeCapability = {
   ...capability,
   runtimeToolNamespaces: ["pi"],
+  skillPaths: [],
   connection: {
     objectBinding: "AUTOMATIONS",
     configurable: false,

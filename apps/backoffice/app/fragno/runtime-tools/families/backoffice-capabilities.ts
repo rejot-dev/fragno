@@ -1000,10 +1000,8 @@ export const createBackofficeCapabilitiesRuntime = ({
         throw new Error(`Unknown configurable connection: ${id}`);
       }
       assertConnectionAvailable(id, capability);
-      const skillPath = Object.keys(capability.files ?? {}).find(
-        (path) => path.startsWith("skills/") && path.endsWith("/SKILL.md"),
-      );
-      const hasSkill = Boolean(skillPath);
+      const skillPath = capability.skillPaths[0];
+      const hasSkill = skillPath !== undefined;
       return {
         id: capability.id,
         label: capability.label,

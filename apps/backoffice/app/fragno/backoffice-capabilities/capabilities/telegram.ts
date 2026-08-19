@@ -7,7 +7,6 @@ import type {
   BackofficeConfigurableConnectionCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import { createTelegramCapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/telegram-files";
 
 import type { TelegramAdminConfigResponse } from "../../../../workers/telegram.do";
 
@@ -110,9 +109,7 @@ const toTelegramStatus = (response: TelegramAdminConfigResponse): ConnectionStat
 export const telegramCapability: BackofficeConfigurableConnectionCapability = {
   ...capability,
   runtimeToolNamespaces: ["telegram"],
-  get files() {
-    return createTelegramCapabilityFiles();
-  },
+  skillPaths: ["skills/telegram-connection/SKILL.md"],
   externalEntities: [telegramAutomationExternalEntities.chat],
   connection: {
     configurable: true,

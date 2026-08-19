@@ -5,8 +5,6 @@ import type {
   BackofficeCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import { createResendCapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/resend-files";
-
 const optionalTrimmedString = z
   .string()
   .trim()
@@ -74,9 +72,7 @@ const toResendStatus = (response: ResendAdminConfigResponse): ConnectionStatus =
 export const resendCapability: BackofficeCapability = {
   ...capability,
   runtimeToolNamespaces: ["resend"],
-  get files() {
-    return createResendCapabilityFiles();
-  },
+  skillPaths: ["skills/resend-connection/SKILL.md"],
   connection: {
     configurable: true,
     configureInputSchema: resendConfigureInputSchema,

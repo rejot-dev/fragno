@@ -5,8 +5,6 @@ import type {
   BackofficeCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import { createUploadCapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/upload-files";
-
 const uploadProviderSchema = z.enum(["database", "r2", "r2-binding"]);
 
 export const uploadConfigureInputSchema = z.looseObject({
@@ -57,9 +55,7 @@ const toUploadStatus = (response: UploadAdminConfigResponse): ConnectionStatus =
 export const uploadCapability: BackofficeCapability = {
   ...capability,
   runtimeToolNamespaces: ["upload"],
-  get files() {
-    return createUploadCapabilityFiles();
-  },
+  skillPaths: ["skills/upload-connection/SKILL.md", "skills/using-prepared-uploads/SKILL.md"],
   connection: {
     configurable: true,
     configureInputSchema: uploadConfigureInputSchema,

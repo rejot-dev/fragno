@@ -27,6 +27,7 @@ export const automationsCapability: BackofficeCapability = {
   label: "Automations",
   kind: "system",
   runtimeToolNamespaces: ["store", "router", "workflow", "hooks", "events"],
+  skillPaths: [],
   hooks: [
     {
       id: "automations",
