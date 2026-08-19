@@ -1,116 +1,85 @@
 # Fragno
 
-This is the monorepo for Fragno, a meta framework that allows the user to built full-stack
-libraries.
+Fragno is a pre-1.0 meta-framework and end-to-end toolchain for users and agents building full-stack
+libraries called **Fragments**. A Fragment can span frontend hooks, backend routes, and database
+models.
 
-We're building an end-to-end toolchain for users and agents to build libraries that span the
-frontend, backend, and database layers.
+Pre 1.0 means FULL BREAKING CHANGES, even in the data layer. We want to find
+the optional API for our users. We're dogfooding everything in `apps/backoffice`.
 
-## Current status
+## Users
 
-The project is PRE 1.0. That means FULL BREAKING CHANGES, even in the data layer. We're hardcore
-dogfooding the meta framework, as well as full-stack libraries built on top of it with the goal to
-perfect the API surface.
+- **You** are the agent building Fragno; **we** are the human contributors directing and reviewing
+  the work.
+- **Authors** build Fragments. Give them guardrails because they may not inspect generated or
+  agent-written code.
+- **Integrators** mount Fragments in applications. Assume they rely on public APIs, types, defaults,
+  and documentation without reading implementation code.
 
-### Glossary
+## Coding style
 
-- _you_: the agent reading this document, building Fragno
-- _me/we/us_: the humans contributing to Fragno, or the full-stack libraries in this repo. The party
-  talking to you as we build.
-- _developers/users/authors_: our users. The developers using Fragno to build and ship full-stack
-  libraries. We assume that they won't read much of the code produced whilst using Fragno, so we
-  must provide them with proper guardrails.
-- _end-users/integrators_: the users of our users, integrating full-stack libraries into their
-  full-stack apps. These are still programmers (or vibe coders) and they do not read code at all.
+- Functional core, imperative shell.
+- Apply YAGNI.
+- Make illegal states unrepresentable.
+- No optional fields.
+- Validate or cast the data at the edges, NEVER inside domain logic. We TRUST our data.
+- Name domain operations.
+- Single source of truth.
+- Colocate tests with their source.
+- Comments explain why, not what. Add comments for surprising behavior.
+- Extract functions only when they own independent behavior; keep
+  local behavior local.
+- No barrel files.
+- Top-level functions are defined with the `function` keyword. A file should have as few exports as possible. Prefer not testing over exporting.
 
-- _Fragments_: a full-stack library ("Frag" from "Fragno").
+Establish trust at boundaries: validate untrusted data, cast authoritative data, and keep
+uninterpreted data opaque. Strengthen the source instead of compensating in every consumer.
 
-## Philosophy
+Use canonical definitions and direct imports.
 
-These foundations are built by me and you, all your code in the core components are carefully
-reviewed, as well as in some of the more critical full-stack libraries.
+## Product principles
 
-We believe that users, and certainly end-users do NOT always write optional code. Specifically when
-it comes to distributed systems, or around databases. Atomic transactions, round-trips, exactly once
-execution. These are things that (end-)users do not think about enough. It's our goal to help users
-and end-users do the right thing.
+- **Scenario Testing** Test through real SQLite operations, routes, client-store updates, and final-state
+  assertions. We test through "scenarios", specifically built test DSLs that allow us to test real
+  user flows. Real end-to-end, but within a process.
+- **Boil the ocean.** Consider unusually ambitious foundational solutions when they produce the
+  right primitive.
+- **Primitive-first.** Build reusable primitives, not application conveniences.
 
-This also means we need to restrict the user: no interactive transactions, no arbitrary joins, a
-single database round-trip per HTTP endpoint, support ONLY cursor-based pagination. Limitations make
-programs great: faster and more fault tolerant.
+## Fragno's constraints:
 
-This means designing libraries around these limitations. Data models have to be designed around the
-fact that we use optimistic concurrency control, do not have arbitrary joins, and every HTTP
-endpoint can only have a single round-trip for retrieval, and a single round-trip for mutation.
+We restrict authors so they can only do the right thing:
 
-### Full-stack <> End-to-end
-
-When we say full-stack, we really mean it. This means end-to-end type safety, and also end-to-end
-testing. Libraries built with Fragno can define tests that use a real SQLite database, so actual SQL
-operations are tested. Actual routes are being called, and even client-side reactive stores are
-being updated and can also be asserted inside of these tests.
-
-### Boil the ocean
-
-This project is ambitious. Handling all layers of the stack is not easy.
-
-When planning, do not be afraid to suggest seemingly insane solutions. For example, rewriting
-esbuild to work entirely in JS without file system access. Seems insane, but it's absolutely doable
-with modern tools.
-
-### Only build the primitives
-
-We should avoid feature creep, and assume our users can use their agents to build whatever they
-need. This may seem to counter "boil the ocean", but it does not. We're focused on the primitives.
-
-Primitives are NOT basic. This is why we built Fragno Workflows, a durable execution primitive.
-
-Since Fragno is the first, and only, way of building full-stack libraries, primitives have shifted.
-A "GitHub App Fragment" could never have been a primitive, every applications has to integrate this
-manually into every layer. But now we are able to ship this as a primitive.
-
-### Obvious solutions
-
-We should avoid being clever and doing things because they seem smart. We want everything we build
-to be so obvious it feels kind of stupid.
-
-When one of us prompts you, never hesitate to push back and suggest ways we could make things more
-obvious. Note that "simple" and "obvious" are not always aligned, sometimes the "obvious" solution
-is more complex.
-
-"Obvious" solutions are the defaults that agents would assume are the case.
+- No interactive transactions.
+- No arbitrary joins.
+- At most one retrieval round trip and one mutation round trip per HTTP endpoint.
+- Cursor-based pagination only.
+- Two-phase optimistic concurrency control.
 
 ## Architecture
 
-Fragno's documentation is part of this repository, you may read it, but generally it makes more
-sense to read the underlying code.
+Code is the source of truth for current APIs and capabilities.
 
-The `@fragno-dev/core` package contains the frontend and backend glue. This allows libraries to
-define HTTP routes and create reactive data stores (using Nanostores). It also contains adapters for
-integration with React, Vue, Node.js, and various full-stack frameworks like Next and Nuxt.
+- `@fragno-dev/core`: frontend/backend glue, HTTP routes, Nanostores-based stores, and React, Vue,
+  Node.js, Next, and Nuxt adapters.
+- `@fragno-dev/unplugin-fragno`: automatic client/server code splitting.
+- `@fragno-dev/db`: optional data layer with schemas, constrained queries, migrations, two-phase
+  OCC, and durable hooks. ORM adapters include Kysely, Drizzle, and Prisma; database adapters
+  include SQLite, Postgres/PGLite, and MySQL.
 
-Automatic client/server code splitting happens in `@fragno-dev/unplugin-fragno`.
+## Fragment integration
 
-### Data layer
+Authors define routes, client hooks, schemas, and queries. Integrators mount the routes, migrate the
+Fragment schema, and consume the hooks.
 
-`@fragno-dev/db` is a key piece of this repository, but optional to the Fragment authors. Features:
+## Backoffice
 
-- Schema definition
-- Limited ORM for queries
-- ORM adapters: Kysely, Drizzle, Prisma
-- Database Adapters: SQLite, Postgres/PGLite, MySQL
-- Transactions: two-phase OCC transactions
-- Migrations
-- Durable Hooks (outbox pattern): Trigger durable hooks when database operations are performed,
-  allowing the user to take action after a successful commit.
+Backoffice is the working name for the AI-native automation application in `apps/backoffice`. It is
+a product combining all best aspects of Fragno. Backoffice tests whether Fragno's separate
+primitives form one coherent system. Backoffice is our dogfooding proving ground for sessions, files, integrations, permissions,
+workflows, generated interfaces, synchronization, and operations.
 
-## How end-users integrate Fragments
-
-- Authors define routes, client hooks, database schema, and queries.
-- End-users mount routes into their application, migrate their database with the Fragment's schema,
-  and use the hooks on the frontend
-
-## Developing
+## Development
 
 We use Turborepo + PNPM. `pnpm exec turbo build types:check test --output-logs=errors-only`
 
@@ -129,3 +98,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Other rules
 
 - If you see changes unrelated to your work, prefer to keep them.
+- If I ask a question, answer it instead of implementing.
+
+## References
+
+- **Models, schemas, transactions, public APIs, test seams, or non-obvious behavior:** read
+  [`.agents/skills/self-documenting-code/SKILL.md`](.agents/skills/self-documenting-code/SKILL.md)
+  and its relevant references.
