@@ -3,8 +3,8 @@ import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
+import { createApiFragmentClients } from "./client/client";
 import { apiFragmentDefinition } from "./definition";
-import { createApiFragmentClients } from "./index";
 import { apiRoutesFactory } from "./routes";
 import { apiSchema } from "./schema";
 

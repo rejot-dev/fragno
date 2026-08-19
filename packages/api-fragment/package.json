@@ -20,13 +20,14 @@
     "dist"
   ],
   "type": "module",
-  "main": "./dist/node/index.js",
-  "module": "./dist/node/index.js",
-  "types": "./dist/node/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./dist/node/index.d.ts",
-      "default": "./dist/node/index.js"
+    "./server": {
+      "types": "./dist/node/server.d.ts",
+      "default": "./dist/node/server.js"
+    },
+    "./client": {
+      "types": "./dist/browser/client/client.d.ts",
+      "default": "./dist/browser/client/client.js"
     },
     "./definition": {
       "types": "./dist/node/definition.d.ts",

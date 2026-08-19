@@ -13,7 +13,7 @@ executing authenticated requests through server-side routes.
 ## Server setup
 
 ```ts
-import { createApiFragment } from "@fragno-dev/api-fragment";
+import { createApiFragment } from "@fragno-dev/api-fragment/server";
 
 const api = createApiFragment(
   {

@@ -5,7 +5,7 @@ export default defineConfig([
   {
     ignoreWatch: ["./dist"],
     entry: [
-      "./src/index.ts",
+      "./src/client/client.ts",
       "./src/client/react.ts",
       "./src/client/svelte.ts",
       "./src/client/solid.ts",
@@ -15,7 +15,7 @@ export default defineConfig([
     dts: true,
     failOnWarn: true,
     platform: "browser",
-    outDir: "./dist/browser",
+    outDir: "./dist/browser/client",
     plugins: [unpluginFragno({ platform: "browser" })],
     deps: {
       alwaysBundle: [/^@fragno-dev\/core\//],
@@ -31,7 +31,7 @@ export default defineConfig([
   {
     ignoreWatch: ["./dist"],
     entry: [
-      "./src/index.ts",
+      "./src/server.ts",
       "./src/definition.ts",
       "./src/routes.ts",
       "./src/schema.ts",
