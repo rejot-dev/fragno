@@ -37,6 +37,7 @@ export default defineConfig([
       "./src/schema.ts",
       "./src/api-types.ts",
       "./src/webhooks/auth.ts",
+      "./src/webhooks/verification.ts",
     ],
     dts: true,
     failOnWarn: true,

@@ -7,7 +7,7 @@ export const createApiWebhooksCapabilityFiles = () =>
     description:
       "Configure inbound webhooks received by Backoffice API endpoints. Use when the user wants to receive provider webhooks, asks for a webhook/callback endpoint URL, gives a webhook secret or sample payload, configures webhook authentication/signatures, or wires webhook.received events into automations.",
     overview:
-      "Use this skill for scope-aware inbound HTTP webhook endpoints, provider delivery IDs, webhook authentication, public webhook URLs, and webhook-triggered automations.",
+      "Use this skill for scope-aware inbound HTTP webhook endpoints, provider delivery IDs, authentication, endpoint verification challenges, public webhook URLs, and webhook-triggered automations.",
     configuration: `# API webhook configuration
 
 Configuration fields:
@@ -24,6 +24,7 @@ const draft = await api.createWebhookEndpoint({
   endpointId: "example-provider",
   name: "Example Provider",
   status: "draft",
+  verification: { type: "none" },
   deliveryIdentity: { type: "jsonBodyPath", path: ["webhookId"] },
   auth: { type: "none" },
 });
@@ -35,7 +36,8 @@ Draft endpoints reserve a stable URL and reject deliveries with "not configured 
 
 2. Collect the remaining inputs before activating the draft endpoint:
    - webhook auth type: \`none\`, \`bearer\`, \`apiKey\`, \`basic\`, or \`hmac\`. Typical case is HMAC.
-   - if auth is \`hmac\`: algorithm, signature header/query name, signature encoding, optional prefix, and whether the provider signs the raw body or a timestamped body;
+   - if auth is \`hmac\`: algorithm, signature header/query name, signature encoding, optional signature prefix, and whether the provider signs the raw body or a prefixed timestamped body;
+   - whether the provider verifies the endpoint with a synchronous challenge, including the HTTP method, match field, and echoed field;
    - example JSON payload;
    - relevant delivery/signature headers.
 3. If any auth, signature, payload, header, or delivery identity detail is unknown, keep the endpoint in \`draft\` and ask the user for the missing details. Do not activate the endpoint yet.
@@ -46,6 +48,7 @@ Draft endpoints reserve a stable URL and reject deliveries with "not configured 
 const webhook = await api.updateWebhookEndpoint({
   endpointId: "example-provider",
   status: "active",
+  verification: { type: "none" },
   deliveryIdentity: { type: "jsonBodyPath", path: ["webhookId"] },
   auth: {
     type: "hmac",
@@ -93,7 +96,8 @@ HMAC decision guide:
 - \`signature.name\`: ask for the exact header or query parameter name.
 - \`signature.encoding\`: ask whether the signature value is \`hex\`, \`base64\`, or \`base64url\`.
 - \`signature.prefix\`: include this only when the provider prefixes the signature value, for example \`sha256=\` or \`v1=\`.
-- \`signedPayload\`: use \`rawBody\` only when the provider signs the raw request body. Use \`timestampBody\` when the provider signs a timestamp joined with the body.
+- \`signedPayload\`: use \`rawBody\` only when the provider signs the raw request body. Use \`timestampedBody\` when the provider signs a prefix, timestamp, delimiter, and raw body. Ask for the exact \`prefix\`, \`timestampHeader\`, and \`delimiter\`; use an empty prefix only when the provider signs the timestamp first.
+- \`verification\`: use \`{ type: "none" }\` for ordinary delivery-only endpoints. Use a \`challenge\` verification when the provider sends a synchronous value that the endpoint must echo before normal deliveries begin. Configure its HTTP method, a \`present\` or \`equals\` predicate, and the header, query value, or JSON body path to echo.
 
 Basic setup example:
 
@@ -102,6 +106,7 @@ const webhook = await api.createWebhookEndpoint({
   endpointId: "example-provider",
   name: "Example Provider",
   status: "active",
+  verification: { type: "none" },
   deliveryIdentity: { type: "jsonBodyPath", path: ["webhookId"] },
   auth: { type: "none" },
 });
@@ -116,6 +121,7 @@ const webhook = await api.createWebhookEndpoint({
   endpointId: "example-provider",
   name: "Example Provider",
   status: "active",
+  verification: { type: "none" },
   deliveryIdentity: { type: "jsonBodyPath", path: ["webhookId"] },
   auth: {
     type: "hmac",
@@ -127,6 +133,50 @@ const webhook = await api.createWebhookEndpoint({
       encoding: "hex",
     },
     signedPayload: { type: "rawBody" },
+  },
+});
+
+return webhook.publicUrl;
+\`\`\`
+
+Slack-style signed challenge example:
+
+\`\`\`js
+const webhook = await api.createWebhookEndpoint({
+  endpointId: "slack",
+  name: "Slack",
+  status: "active",
+  verification: {
+    type: "challenge",
+    method: "POST",
+    when: {
+      type: "equals",
+      source: { type: "jsonBodyPath", path: ["type"] },
+      value: "url_verification",
+    },
+    response: {
+      type: "echoText",
+      source: { type: "jsonBodyPath", path: ["challenge"] },
+    },
+  },
+  deliveryIdentity: { type: "jsonBodyPath", path: ["event_id"] },
+  auth: {
+    type: "hmac",
+    secret: "signing-secret",
+    algorithm: "sha256",
+    signature: {
+      location: "header",
+      name: "x-slack-signature",
+      encoding: "hex",
+      prefix: "v0=",
+    },
+    signedPayload: {
+      type: "timestampedBody",
+      prefix: "v0:",
+      timestampHeader: "x-slack-request-timestamp",
+      delimiter: ":",
+      toleranceSeconds: 300,
+    },
   },
 });
 
@@ -173,6 +223,7 @@ const draft = await api.createWebhookEndpoint({
   endpointId: "example-provider",
   name: "Example Provider",
   status: "draft",
+  verification: { type: "none" },
   deliveryIdentity: { type: "jsonBodyPath", path: ["webhookId"] },
   auth: { type: "none" },
 });
@@ -180,6 +231,7 @@ const draft = await api.createWebhookEndpoint({
 const webhook = await api.updateWebhookEndpoint({
   endpointId: draft.id,
   status: "active",
+  verification: { type: "none" },
   deliveryIdentity: { type: "jsonBodyPath", path: ["webhookId"] },
   auth: { type: "none" },
 });

@@ -14,7 +14,7 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 import type { Route } from "./+types/api";
 
 const isPublicWebhookReceiveRequest = (request: Request, _scope: unknown, suffix: string) => {
-  if (request.method !== "POST") {
+  if (request.method !== "GET" && request.method !== "POST") {
     return false;
   }
   if (!suffix.startsWith("/webhooks/endpoints/")) {

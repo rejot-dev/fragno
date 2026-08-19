@@ -48,7 +48,13 @@ async function createNoneWebhookEndpoint(
     "/webhooks/endpoints/:endpointId",
     {
       pathParams: { endpointId },
-      body: { name: endpointId, status: "active", deliveryIdentity, auth: { type: "none" } },
+      body: {
+        name: endpointId,
+        status: "active",
+        verification: { type: "none" },
+        deliveryIdentity,
+        auth: { type: "none" },
+      },
     },
   );
   assert(response.type === "json");
@@ -136,6 +142,155 @@ describe("webhook receiving", () => {
     await setup.test.cleanup();
   });
 
+  test("authenticates and answers Slack-style URL verification before requiring a delivery ID", async () => {
+    const setup = await buildApiTest();
+    const fragment = setup.fragments.api.fragment;
+    const signingSecret = "slack-signing-secret";
+
+    await fragment.callRoute("PUT", "/webhooks/endpoints/:endpointId", {
+      pathParams: { endpointId: "slack" },
+      body: {
+        name: "Slack",
+        status: "active",
+        verification: {
+          type: "challenge",
+          method: "POST",
+          when: {
+            type: "equals",
+            source: { type: "jsonBodyPath", path: ["type"] },
+            value: "url_verification",
+          },
+          response: {
+            type: "echoText",
+            source: { type: "jsonBodyPath", path: ["challenge"] },
+          },
+        },
+        deliveryIdentity: { type: "jsonBodyPath", path: ["event_id"] },
+        auth: {
+          type: "hmac",
+          secret: signingSecret,
+          algorithm: "sha256",
+          signature: {
+            location: "header",
+            name: "x-slack-signature",
+            encoding: "hex",
+            prefix: "v0=",
+          },
+          signedPayload: {
+            type: "timestampedBody",
+            prefix: "v0:",
+            timestampHeader: "x-slack-request-timestamp",
+            delimiter: ":",
+            toleranceSeconds: 300,
+          },
+        },
+      },
+    });
+
+    async function signedSlackRequest(body: string) {
+      const timestamp = `${Math.floor(Date.now() / 1000)}`;
+      const signature = bytesToHex(
+        await signHmacBytes({
+          algorithm: "sha256",
+          secret: signingSecret,
+          payload: utf8Bytes(`v0:${timestamp}:${body}`),
+        }),
+      );
+      return webhookRequest("slack", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-slack-request-timestamp": timestamp,
+          "x-slack-signature": `v0=${signature}`,
+        },
+        body,
+      });
+    }
+
+    const challenge = "slack-challenge";
+    const challengeBody = JSON.stringify({ type: "url_verification", challenge });
+    const rejectedVerification = await fragment.handler(
+      webhookRequest("slack", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-slack-request-timestamp": `${Math.floor(Date.now() / 1000)}`,
+          "x-slack-signature": "v0=deadbeef",
+        },
+        body: challengeBody,
+      }),
+    );
+    assert(rejectedVerification.status === 401);
+
+    const verificationResponse = await fragment.handler(await signedSlackRequest(challengeBody));
+    assert(verificationResponse.status === 200);
+    assert(verificationResponse.headers.get("content-type") === "text/plain; charset=utf-8");
+    expect(verificationResponse.headers.get("content-length")).toBe(`${challenge.length}`);
+    await expect(verificationResponse.text()).resolves.toBe(challenge);
+
+    await drainDurableHooks(fragment);
+    expect(onWebhookReceived).not.toHaveBeenCalled();
+
+    const deliveryResponse = await fragment.handler(
+      await signedSlackRequest(JSON.stringify({ type: "event_callback", event_id: "Ev123" })),
+    );
+    assert(deliveryResponse.status === 202);
+
+    await drainDurableHooks(fragment);
+    expect(onWebhookReceived).toHaveBeenCalledOnce();
+    expect(onWebhookReceived).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpointId: "slack",
+        deliveryId: "Ev123",
+        body: { type: "event_callback", event_id: "Ev123" },
+      }),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
+    );
+
+    await setup.test.cleanup();
+  });
+
+  test("answers GET query-string verification challenges without creating deliveries", async () => {
+    const setup = await buildApiTest();
+    const fragment = setup.fragments.api.fragment;
+
+    await fragment.callRoute("PUT", "/webhooks/endpoints/:endpointId", {
+      pathParams: { endpointId: "query-challenge" },
+      body: {
+        name: "Query challenge",
+        status: "active",
+        verification: {
+          type: "challenge",
+          method: "GET",
+          when: {
+            type: "present",
+            source: { type: "query", name: "validationToken" },
+          },
+          response: {
+            type: "echoText",
+            source: { type: "query", name: "validationToken" },
+          },
+        },
+        deliveryIdentity: { type: "jsonBodyPath", path: ["id"] },
+        auth: { type: "none" },
+      },
+    });
+
+    const response = await fragment.handler(
+      webhookRequest("query-challenge", {
+        method: "GET",
+        query: "?validationToken=opaque%20challenge",
+      }),
+    );
+    assert(response.status === 200);
+    await expect(response.text()).resolves.toBe("opaque challenge");
+
+    await drainDurableHooks(fragment);
+    expect(onWebhookReceived).not.toHaveBeenCalled();
+
+    await setup.test.cleanup();
+  });
+
   test("receives HMAC authenticated webhooks using a JSON body path delivery ID", async () => {
     const setup = await buildApiTest();
     const fragment = setup.fragments.api.fragment;
@@ -149,6 +304,7 @@ describe("webhook receiving", () => {
       body: {
         name: "Signed",
         status: "active",
+        verification: { type: "none" },
         deliveryIdentity: { type: "jsonBodyPath", path: ["event", "id"] },
         auth: {
           type: "hmac",
@@ -198,6 +354,7 @@ describe("webhook receiving", () => {
       body: {
         name: "Bearer",
         status: "active",
+        verification: { type: "none" },
         deliveryIdentity: { type: "header", name: "x-event-id" },
         auth: { type: "bearer", token: "expected-token" },
       },
@@ -228,6 +385,7 @@ describe("webhook receiving", () => {
       body: {
         name: "Disabled",
         status: "disabled",
+        verification: { type: "none" },
         deliveryIdentity: { type: "header", name: "x-event-id" },
         auth: { type: "none" },
       },

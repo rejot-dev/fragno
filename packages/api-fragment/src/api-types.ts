@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { webhookAuthConfigSchema } from "./webhooks/auth";
+import { webhookVerificationConfigSchema } from "./webhooks/verification";
 
 export interface ApiFragmentConfig {
   /** Public URL where this fragment is mounted; used to build OAuth redirects. */
@@ -117,7 +118,8 @@ export const webhookEndpointAuthInputSchema = z.discriminatedUnion("type", [
     signedPayload: z.discriminatedUnion("type", [
       z.object({ type: z.literal("rawBody") }),
       z.object({
-        type: z.literal("timestampBody"),
+        type: z.literal("timestampedBody"),
+        prefix: z.string(),
         timestampHeader: webhookRequestValueNameSchema,
         delimiter: z.string(),
         toleranceSeconds: z.number().int().positive(),
@@ -133,6 +135,7 @@ export const webhookEndpointOutputSchema = z.object({
   name: z.string(),
   status: webhookEndpointStatusSchema,
   authConfig: webhookAuthConfigSchema,
+  verification: webhookVerificationConfigSchema,
   deliveryIdentity: webhookDeliveryIdentitySchema,
   secretRefs: z.array(z.string()),
   createdAt: z.union([z.string(), z.date()]).optional(),
@@ -142,6 +145,7 @@ export const webhookEndpointOutputSchema = z.object({
 export const createWebhookEndpointInputSchema = z.object({
   name: z.string().min(1),
   status: webhookEndpointStatusSchema.default("active"),
+  verification: webhookVerificationConfigSchema,
   deliveryIdentity: webhookDeliveryIdentitySchema,
   auth: webhookEndpointAuthInputSchema,
 });
@@ -149,6 +153,7 @@ export const createWebhookEndpointInputSchema = z.object({
 export const updateWebhookEndpointInputSchema = z.object({
   name: z.string().min(1).optional(),
   status: webhookEndpointStatusSchema.optional(),
+  verification: webhookVerificationConfigSchema.optional(),
   deliveryIdentity: webhookDeliveryIdentitySchema.optional(),
   auth: webhookEndpointAuthInputSchema.optional(),
 });

@@ -3,8 +3,8 @@ import { assert, describe, expect, test } from "vitest";
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
+import { createApiFragmentClients } from "../client/client";
 import { apiFragmentDefinition } from "../definition";
-import { createApiFragmentClients } from "../index";
 import { apiRoutesFactory } from "../routes";
 import { apiSchema } from "../schema";
 
@@ -57,6 +57,7 @@ describe("webhook endpoint management", () => {
       body: {
         name: "Stripe",
         status: "active",
+        verification: { type: "none" },
         deliveryIdentity: { type: "header", name: "stripe-event-id" },
         auth: {
           type: "hmac",
@@ -69,7 +70,8 @@ describe("webhook endpoint management", () => {
             prefix: "v1=",
           },
           signedPayload: {
-            type: "timestampBody",
+            type: "timestampedBody",
+            prefix: "",
             timestampHeader: "stripe-timestamp",
             delimiter: ".",
             toleranceSeconds: 300,
@@ -85,6 +87,7 @@ describe("webhook endpoint management", () => {
       status: "active",
       secretRefs: ["secret"],
       authConfig: expect.objectContaining({ type: "hmac", secretRef: "secret" }),
+      verification: { type: "none" },
       deliveryIdentity: { type: "header", name: "stripe-event-id" },
     });
     expect(JSON.stringify(created.data)).not.toContain("whsec_secret");
@@ -156,6 +159,7 @@ describe("webhook endpoint management", () => {
       body: {
         name: "Before Patch",
         status: "active",
+        verification: { type: "none" },
         deliveryIdentity: { type: "header", name: "x-event-id" },
         auth: { type: "bearer", token: "before-token" },
       },
@@ -213,6 +217,7 @@ describe("webhook endpoint management", () => {
       body: {
         name: "Before",
         status: "active",
+        verification: { type: "none" },
         deliveryIdentity: { type: "jsonBodyPath", path: ["event", "id"] },
         auth: { type: "bearer", token: "kept-token" },
       },
@@ -286,6 +291,7 @@ describe("webhook endpoint management", () => {
     const body = {
       name: "Idempotent",
       status: "active",
+      verification: { type: "none" },
       deliveryIdentity: { type: "header", name: "x-event-id" },
       auth: { type: "bearer", token: "first-token" },
     } as const;
@@ -310,6 +316,7 @@ describe("webhook endpoint management", () => {
       body: {
         name: "Replaced",
         status: "disabled",
+        verification: { type: "none" },
         deliveryIdentity: { type: "jsonBodyPath", path: ["id"] },
         auth: { type: "basic", username: "ada", password: "lovelace" },
       },

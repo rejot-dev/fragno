@@ -61,6 +61,10 @@
       "types": "./dist/node/webhooks/auth.d.ts",
       "default": "./dist/node/webhooks/auth.js"
     },
+    "./webhooks/verification": {
+      "types": "./dist/node/webhooks/verification.d.ts",
+      "default": "./dist/node/webhooks/verification.js"
+    },
     "./dist/node/api-types.js": {
       "types": "./dist/node/api-types.d.ts",
       "default": "./dist/node/api-types.js"

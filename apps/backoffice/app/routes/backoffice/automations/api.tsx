@@ -1,3 +1,7 @@
+import {
+  webhookVerificationConfigSchema,
+  type WebhookVerificationConfig,
+} from "@fragno-dev/api-fragment/webhooks/verification";
 import { createRouteCaller, type RouteCallerForFragment } from "@fragno-dev/core/api";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -63,7 +67,8 @@ type WebhookAuthConfig =
       signedPayload:
         | { type: "rawBody" }
         | {
-            type: "timestampBody";
+            type: "timestampedBody";
+            prefix: string;
             timestampHeader: string;
             delimiter: string;
             toleranceSeconds: number;
@@ -75,6 +80,7 @@ type ApiWebhookEndpointSummary = {
   name: string;
   status: "draft" | "active" | "disabled";
   authConfig: WebhookAuthConfig;
+  verification: WebhookVerificationConfig;
   deliveryIdentity: WebhookDeliveryIdentity;
   secretRefs: string[];
   createdAt?: string | Date;
@@ -110,7 +116,7 @@ type ApiConfigurationLoaderData = {
 type ConnectionAuthMode = "none" | "bearer" | "oauth" | "client_credentials";
 type WebhookAuthMode = "none" | "bearer" | "apiKey" | "basic" | "hmac";
 type DeliveryIdentityMode = "header" | "query" | "jsonBodyPath";
-type SignedPayloadMode = "rawBody" | "timestampBody";
+type SignedPayloadMode = "rawBody" | "timestampedBody";
 type HmacAlgorithm = "sha1" | "sha256" | "sha512";
 type HmacEncoding = "hex" | "base64" | "base64url";
 
@@ -434,6 +440,11 @@ const readWebhookDeliveryIdentity = (formData: FormData): WebhookDeliveryIdentit
   return { type: deliveryMode, name: getFormString(formData, "deliveryName") || "x-delivery-id" };
 };
 
+const readWebhookVerification = (formData: FormData): WebhookVerificationConfig => {
+  const value = getFormString(formData, "webhookVerification");
+  return value ? webhookVerificationConfigSchema.parse(JSON.parse(value)) : { type: "none" };
+};
+
 const readWebhookAuth = (formData: FormData) => {
   const authMode = (getFormString(formData, "webhookAuthMode") || "none") as WebhookAuthMode;
   if (authMode === "bearer") {
@@ -476,9 +487,10 @@ const readWebhookAuth = (formData: FormData) => {
           : {}),
       },
       signedPayload:
-        signedPayloadMode === "timestampBody"
+        signedPayloadMode === "timestampedBody"
           ? {
-              type: "timestampBody" as const,
+              type: "timestampedBody" as const,
+              prefix: getFormString(formData, "timestampPrefix"),
               timestampHeader: getFormString(formData, "timestampHeader"),
               delimiter: getFormString(formData, "timestampDelimiter") || ".",
               toleranceSeconds: Number(getFormString(formData, "toleranceSeconds") || "300"),
@@ -643,6 +655,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
         body: {
           name: getFormString(formData, "name"),
           status: readWebhookStatus(getFormString(formData, "status")),
+          verification: readWebhookVerification(formData),
           deliveryIdentity: readWebhookDeliveryIdentity(formData),
           auth: readWebhookAuth(formData),
         },
@@ -1183,6 +1196,11 @@ function WebhookConfigureForm({
         <input type="hidden" name="webhookAuthMode" value={authMode} />
         <input type="hidden" name="deliveryMode" value={deliveryMode} />
         <input type="hidden" name="signedPayloadMode" value={signedPayloadMode} />
+        <input
+          type="hidden"
+          name="webhookVerification"
+          value={JSON.stringify(endpoint?.verification ?? { type: "none" })}
+        />
         <input type="hidden" name="endpointId" value={endpointId} />
         <div className="grid gap-4 md:grid-cols-2">
           <FormField label="Display name">
@@ -1462,26 +1480,39 @@ function WebhookConfigureForm({
                 <p className="text-xs text-[var(--bo-muted)]">
                   {signedPayloadMode === "rawBody"
                     ? "Raw body signs exactly the bytes sent by the provider."
-                    : "Timestamp + body signs the timestamp, a delimiter, and the raw request body to reduce replay risk."}
+                    : "Timestamp + body signs a prefix, the timestamp, a delimiter, and the raw request body to reduce replay risk."}
                 </p>
                 <SegmentedControl
                   value={signedPayloadMode}
                   onChange={setSignedPayloadMode}
                   options={[
                     { value: "rawBody", label: "Raw body" },
-                    { value: "timestampBody", label: "Timestamp + body" },
+                    { value: "timestampedBody", label: "Timestamp + body" },
                   ]}
                 />
               </div>
-              {signedPayloadMode === "timestampBody" ? (
-                <div className="grid gap-4 md:grid-cols-3">
+              {signedPayloadMode === "timestampedBody" ? (
+                <div className="grid gap-4 md:grid-cols-4">
+                  <FormField label="Signed payload prefix" hint="Placed before the timestamp.">
+                    <input
+                      name="timestampPrefix"
+                      defaultValue={
+                        endpoint?.authConfig.type === "hmac" &&
+                        endpoint.authConfig.signedPayload.type === "timestampedBody"
+                          ? endpoint.authConfig.signedPayload.prefix
+                          : ""
+                      }
+                      placeholder="v0:"
+                      className={inputClass}
+                    />
+                  </FormField>
                   <FormField label="Timestamp header" hint="Header containing provider time.">
                     <input
                       name="timestampHeader"
                       required
                       defaultValue={
                         endpoint?.authConfig.type === "hmac" &&
-                        endpoint.authConfig.signedPayload.type === "timestampBody"
+                        endpoint.authConfig.signedPayload.type === "timestampedBody"
                           ? endpoint.authConfig.signedPayload.timestampHeader
                           : undefined
                       }
@@ -1494,7 +1525,7 @@ function WebhookConfigureForm({
                       name="timestampDelimiter"
                       defaultValue={
                         endpoint?.authConfig.type === "hmac" &&
-                        endpoint.authConfig.signedPayload.type === "timestampBody"
+                        endpoint.authConfig.signedPayload.type === "timestampedBody"
                           ? endpoint.authConfig.signedPayload.delimiter
                           : "."
                       }
@@ -1508,7 +1539,7 @@ function WebhookConfigureForm({
                       min="1"
                       defaultValue={
                         endpoint?.authConfig.type === "hmac" &&
-                        endpoint.authConfig.signedPayload.type === "timestampBody"
+                        endpoint.authConfig.signedPayload.type === "timestampedBody"
                           ? endpoint.authConfig.signedPayload.toleranceSeconds
                           : 300
                       }

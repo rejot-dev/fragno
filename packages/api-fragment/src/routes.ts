@@ -16,7 +16,7 @@ import {
   type WebhookEndpoint,
   type WebhookEndpointAuthInput,
 } from "./api-types";
-import { sha256Base64Url } from "./crypto";
+import { sha256Base64Url, utf8Bytes } from "./crypto";
 import { apiFragmentDefinition } from "./definition";
 import { apiSchema } from "./schema";
 import { assertAllowedBaseUrl, storedAuthPayloadSchema } from "./services";
@@ -26,10 +26,15 @@ import {
   verifyWebhookAuth,
   type WebhookAuthConfig,
 } from "./webhooks/auth";
+import {
+  createWebhookRequestValues,
+  evaluateWebhookVerification,
+  type WebhookRequestValues,
+  type WebhookVerificationConfig,
+} from "./webhooks/verification";
 
 const connectionsOutputSchema = z.object({ connections: z.array(apiConnectionOutputSchema) });
 const webhookEndpointsOutputSchema = z.object({ endpoints: z.array(webhookEndpointOutputSchema) });
-const webhookReceivedOutputSchema = z.object({ accepted: z.boolean() });
 const authStatusSchema = z.object({
   authenticated: z.boolean(),
   mode: z.string(),
@@ -167,52 +172,40 @@ function recordFromHeaders(
   return result;
 }
 
-type WebhookJsonBodyResult =
-  | { ok: true; body: Record<string, unknown> }
-  | { ok: false; reason: "invalid_json" | "invalid_value" };
-
 type WebhookDeliveryIdentityResult =
   | { ok: true; deliveryId: string }
   | { ok: false; reason: "missing" | "invalid_value" };
 
-function parseWebhookJsonBody(rawBody: string | undefined): WebhookJsonBodyResult {
-  let value: unknown;
-  try {
-    value = JSON.parse(rawBody ?? "");
-  } catch {
-    return { ok: false, reason: "invalid_json" };
-  }
-  if (!isJsonObject(value)) {
-    return { ok: false, reason: "invalid_value" };
-  }
-  return { ok: true, body: value };
-}
+type WebhookRequestFailure = {
+  ok: false;
+  code:
+    | "WEBHOOK_ENDPOINT_NOT_FOUND"
+    | "WEBHOOK_ENDPOINT_DISABLED"
+    | "WEBHOOK_ENDPOINT_DRAFT"
+    | "WEBHOOK_AUTH_FAILED"
+    | "WEBHOOK_VERIFICATION_RESPONSE_INVALID"
+    | "WEBHOOK_BODY_INVALID"
+    | "WEBHOOK_DELIVERY_ID_MISSING"
+    | "WEBHOOK_DELIVERY_ID_INVALID";
+};
+
+type WebhookReceiveResult =
+  | WebhookRequestFailure
+  | { ok: true; type: "verification"; body: string }
+  | { ok: true; type: "delivery" };
 
 function extractWebhookDeliveryId(input: {
   identity: WebhookDeliveryIdentity;
-  headers: Headers;
-  query: URLSearchParams;
-  body: Record<string, unknown>;
+  requestValues: WebhookRequestValues;
 }): WebhookDeliveryIdentityResult {
-  if (input.identity.type === "header") {
-    return normalizeWebhookDeliveryId(input.headers.get(input.identity.name));
+  const value = input.requestValues.read(input.identity);
+  if (!value.ok) {
+    return {
+      ok: false,
+      reason: value.reason === "missing" ? "missing" : "invalid_value",
+    };
   }
-  if (input.identity.type === "query") {
-    return normalizeWebhookDeliveryId(input.query.get(input.identity.name));
-  }
-
-  let value: unknown = input.body;
-  for (const segment of input.identity.path) {
-    if (!isJsonObject(value) || !(segment in value)) {
-      return { ok: false, reason: "missing" };
-    }
-    value = value[segment];
-  }
-  return normalizeWebhookDeliveryId(value);
-}
-
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return normalizeWebhookDeliveryId(value.value);
 }
 
 function normalizeWebhookDeliveryId(value: unknown): WebhookDeliveryIdentityResult {
@@ -232,11 +225,24 @@ async function webhookHookId(endpointId: string, deliveryId: string) {
   return `webhook_${await sha256Base64Url(`${endpointId}\0${deliveryId}`)}`;
 }
 
+function webhookVerificationResponse(body: string) {
+  const bytes = utf8Bytes(body);
+  return new Response(bytes, {
+    status: 200,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "content-length": `${bytes.byteLength}`,
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
 function publicWebhookEndpoint(endpoint: {
   id: { toString(): string } | string;
   name: string;
   status: string;
   authConfig: WebhookAuthConfig;
+  verification: WebhookVerificationConfig;
   deliveryIdentity: WebhookDeliveryIdentity;
   createdAt?: Date;
   updatedAt?: Date;
@@ -246,6 +252,7 @@ function publicWebhookEndpoint(endpoint: {
     name: endpoint.name,
     status: parseWebhookEndpointStatus(endpoint.status),
     authConfig: endpoint.authConfig,
+    verification: endpoint.verification,
     deliveryIdentity: endpoint.deliveryIdentity,
     secretRefs: [...getWebhookAuthSecretRefs(endpoint.authConfig)],
     createdAt: endpoint.createdAt,
@@ -284,6 +291,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                     name: body.name,
                     status: body.status,
                     authConfig: authStorage.authConfig,
+                    verification: body.verification,
                     deliveryIdentity: body.deliveryIdentity,
                     updatedAt: b.now(),
                   })
@@ -295,6 +303,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                 name: body.name,
                 status: body.status,
                 authConfig: authStorage.authConfig,
+                verification: body.verification,
                 deliveryIdentity: body.deliveryIdentity,
               });
             }
@@ -331,6 +340,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                 name: body.name,
                 status: body.status,
                 authConfig: authStorage.authConfig,
+                verification: body.verification,
                 deliveryIdentity: body.deliveryIdentity,
                 createdAt: existing?.createdAt,
               },
@@ -380,6 +390,102 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
     }),
 
     defineRoute({
+      method: "GET",
+      path: "/webhooks/endpoints/:endpointId/events",
+      errorCodes: [
+        "WEBHOOK_ENDPOINT_NOT_FOUND",
+        "WEBHOOK_ENDPOINT_DISABLED",
+        "WEBHOOK_ENDPOINT_DRAFT",
+        "WEBHOOK_AUTH_FAILED",
+        "WEBHOOK_VERIFICATION_NOT_MATCHED",
+        "WEBHOOK_VERIFICATION_RESPONSE_INVALID",
+      ],
+      handler: async function ({ pathParams, headers, query, rawBody, request }, { error }) {
+        const result = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(apiSchema)
+              .findFirst("webhookEndpoint", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", pathParams.endpointId)),
+              )
+              .find("webhookSecret", (b) =>
+                b.whereIndex("idx_webhook_secret_endpoint_ref", (eb) =>
+                  eb("endpointId", "=", pathParams.endpointId),
+                ),
+              ),
+          )
+          .transformRetrieve(async ([endpoint, secrets]) => {
+            if (!endpoint) {
+              return { ok: false as const, code: "WEBHOOK_ENDPOINT_NOT_FOUND" as const };
+            }
+            if (endpoint.status === "draft") {
+              return { ok: false as const, code: "WEBHOOK_ENDPOINT_DRAFT" as const };
+            }
+            if (endpoint.status !== "active") {
+              return { ok: false as const, code: "WEBHOOK_ENDPOINT_DISABLED" as const };
+            }
+            if (!request) {
+              throw new Error("Webhook receive route requires a web-standard Request");
+            }
+
+            const secretValues = new Map(secrets.map((secret) => [secret.ref, secret.payload]));
+            const auth = await verifyWebhookAuth({
+              config: endpoint.authConfig,
+              request,
+              secrets: { get: async (ref) => secretValues.get(ref) },
+            });
+            if (!auth.ok) {
+              return { ok: false as const, code: "WEBHOOK_AUTH_FAILED" as const };
+            }
+
+            const verification = evaluateWebhookVerification({
+              config: endpoint.verification,
+              method: "GET",
+              requestValues: createWebhookRequestValues({ headers, query, rawBody }),
+            });
+            if (verification.type === "not_verification") {
+              return { ok: false as const, code: "WEBHOOK_VERIFICATION_NOT_MATCHED" as const };
+            }
+            if (verification.type === "invalid_response") {
+              return {
+                ok: false as const,
+                code: "WEBHOOK_VERIFICATION_RESPONSE_INVALID" as const,
+              };
+            }
+            return { ok: true as const, body: verification.body };
+          })
+          .mutate(({ retrieveResult }) => retrieveResult)
+          .execute();
+
+        if (!result.ok) {
+          if (result.code === "WEBHOOK_ENDPOINT_NOT_FOUND") {
+            return error({ code: result.code, message: "Webhook endpoint not found" }, 404);
+          }
+          if (result.code === "WEBHOOK_ENDPOINT_DISABLED") {
+            return error({ code: result.code, message: "Webhook endpoint is disabled" }, 409);
+          }
+          if (result.code === "WEBHOOK_ENDPOINT_DRAFT") {
+            return error(
+              { code: result.code, message: "Webhook endpoint is not configured yet" },
+              409,
+            );
+          }
+          if (result.code === "WEBHOOK_AUTH_FAILED") {
+            return error({ code: result.code, message: "Webhook authentication failed" }, 401);
+          }
+          if (result.code === "WEBHOOK_VERIFICATION_RESPONSE_INVALID") {
+            return error({ code: result.code, message: "Webhook challenge is invalid" }, 400);
+          }
+          return error(
+            { code: result.code, message: "Webhook verification request not found" },
+            404,
+          );
+        }
+
+        return webhookVerificationResponse(result.body);
+      },
+    }),
+
+    defineRoute({
       method: "POST",
       path: "/webhooks/endpoints/:endpointId/events",
       errorCodes: [
@@ -387,28 +493,13 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
         "WEBHOOK_ENDPOINT_DISABLED",
         "WEBHOOK_ENDPOINT_DRAFT",
         "WEBHOOK_AUTH_FAILED",
+        "WEBHOOK_VERIFICATION_RESPONSE_INVALID",
         "WEBHOOK_BODY_INVALID",
         "WEBHOOK_DELIVERY_ID_MISSING",
         "WEBHOOK_DELIVERY_ID_INVALID",
       ],
-      outputSchema: webhookReceivedOutputSchema,
       handler: async function ({ pathParams, headers, query, rawBody, request }, { json, error }) {
-        let result:
-          | {
-              ok: true;
-            }
-          | {
-              ok: false;
-              code:
-                | "WEBHOOK_ENDPOINT_NOT_FOUND"
-                | "WEBHOOK_ENDPOINT_DISABLED"
-                | "WEBHOOK_ENDPOINT_DRAFT"
-                | "WEBHOOK_AUTH_FAILED"
-                | "WEBHOOK_BODY_INVALID"
-                | "WEBHOOK_DELIVERY_ID_MISSING"
-                | "WEBHOOK_DELIVERY_ID_INVALID";
-              reason?: string;
-            };
+        let result: WebhookReceiveResult;
         try {
           result = await this.handlerTx()
             .retrieve(({ forSchema }) =>
@@ -432,36 +523,49 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
               if (endpoint.status !== "active") {
                 return { ok: false as const, code: "WEBHOOK_ENDPOINT_DISABLED" as const };
               }
-
-              const authConfig = endpoint.authConfig;
-              const secretValues = new Map(secrets.map((secret) => [secret.ref, secret.payload]));
               if (!request) {
                 throw new Error("Webhook receive route requires a web-standard Request");
               }
+
+              const authConfig = endpoint.authConfig;
+              const secretValues = new Map(secrets.map((secret) => [secret.ref, secret.payload]));
               const auth = await verifyWebhookAuth({
                 config: authConfig,
                 request,
                 secrets: { get: async (ref) => secretValues.get(ref) },
               });
               if (!auth.ok) {
+                return { ok: false as const, code: "WEBHOOK_AUTH_FAILED" as const };
+              }
+
+              const requestValues = createWebhookRequestValues({ headers, query, rawBody });
+              const verification = evaluateWebhookVerification({
+                config: endpoint.verification,
+                method: "POST",
+                requestValues,
+              });
+              if (verification.type === "invalid_response") {
                 return {
                   ok: false as const,
-                  code: "WEBHOOK_AUTH_FAILED" as const,
-                  reason: auth.reason,
+                  code: "WEBHOOK_VERIFICATION_RESPONSE_INVALID" as const,
+                };
+              }
+              if (verification.type === "response") {
+                return {
+                  ok: true as const,
+                  type: "verification" as const,
+                  body: verification.body,
                 };
               }
 
-              const body = parseWebhookJsonBody(rawBody);
+              const body = requestValues.jsonBody();
               if (!body.ok) {
                 return { ok: false as const, code: "WEBHOOK_BODY_INVALID" as const };
               }
 
-              const deliveryIdentity = endpoint.deliveryIdentity;
               const deliveryId = extractWebhookDeliveryId({
-                identity: deliveryIdentity,
-                headers,
-                query,
-                body: body.body,
+                identity: endpoint.deliveryIdentity,
+                requestValues,
               });
               if (!deliveryId.ok) {
                 return {
@@ -475,6 +579,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
 
               return {
                 ok: true as const,
+                type: "delivery" as const,
                 authConfig,
                 deliveryId: deliveryId.deliveryId,
                 hookId: await webhookHookId(pathParams.endpointId, deliveryId.deliveryId),
@@ -482,7 +587,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
               };
             })
             .mutate(({ forSchema, retrieveResult }) => {
-              if (!retrieveResult.ok) {
+              if (!retrieveResult.ok || retrieveResult.type === "verification") {
                 return retrieveResult;
               }
 
@@ -514,7 +619,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                 },
                 { id: retrieveResult.hookId },
               );
-              return { ok: true as const };
+              return { ok: true as const, type: "delivery" as const };
             })
             .execute();
         } catch (err) {
@@ -537,6 +642,9 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
               409,
             );
           }
+          if (result.code === "WEBHOOK_VERIFICATION_RESPONSE_INVALID") {
+            return error({ code: result.code, message: "Webhook challenge is invalid" }, 400);
+          }
           if (result.code === "WEBHOOK_BODY_INVALID") {
             return error({ code: result.code, message: "Webhook body must be a JSON object" }, 400);
           }
@@ -549,6 +657,9 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
           return error({ code: result.code, message: "Webhook authentication failed" }, 401);
         }
 
+        if (result.type === "verification") {
+          return webhookVerificationResponse(result.body);
+        }
         return json({ accepted: true }, 202);
       },
     }),
@@ -580,12 +691,14 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
             }
             const uow = forSchema(apiSchema);
             const authConfig = authStorage?.authConfig ?? endpoint.authConfig;
+            const verification = body.verification ?? endpoint.verification;
             const deliveryIdentity = body.deliveryIdentity ?? endpoint.deliveryIdentity;
             const next = {
               id: endpoint.id,
               name: body.name ?? endpoint.name,
               status: body.status ?? endpoint.status,
               authConfig,
+              verification,
               deliveryIdentity,
               createdAt: endpoint.createdAt,
             };
@@ -595,6 +708,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                   name: next.name,
                   status: next.status,
                   authConfig,
+                  verification,
                   deliveryIdentity,
                   updatedAt: b.now(),
                 })

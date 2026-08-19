@@ -1953,10 +1953,56 @@ describe("runtime tool reference generation", () => {
             signedPayload: {
               type: "rawBody";
             } | {
-              type: "timestampBody";
+              type: "timestampedBody";
+              prefix: string;
               timestampHeader: string;
               delimiter: string;
               toleranceSeconds: number;
+            };
+          };
+          verification: {
+            type: "none";
+          } | {
+            type: "challenge";
+            method: "GET" | "POST";
+            when: {
+              type: "present";
+              source: {
+                type: "header";
+                name: string;
+              } | {
+                type: "query";
+                name: string;
+              } | {
+                type: "jsonBodyPath";
+                path: string[];
+              };
+            } | {
+              type: "equals";
+              source: {
+                type: "header";
+                name: string;
+              } | {
+                type: "query";
+                name: string;
+              } | {
+                type: "jsonBodyPath";
+                path: string[];
+              };
+              value: string;
+            };
+            response: {
+              type: "echoText";
+              source: {
+                type: "header";
+                name: string;
+              } | {
+                type: "query";
+                name: string;
+              } | {
+                type: "jsonBodyPath";
+                path: string[];
+              };
             };
           };
           deliveryIdentity: {
@@ -2009,10 +2055,56 @@ describe("runtime tool reference generation", () => {
           signedPayload: {
             type: "rawBody";
           } | {
-            type: "timestampBody";
+            type: "timestampedBody";
+            prefix: string;
             timestampHeader: string;
             delimiter: string;
             toleranceSeconds: number;
+          };
+        };
+        verification: {
+          type: "none";
+        } | {
+          type: "challenge";
+          method: "GET" | "POST";
+          when: {
+            type: "present";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
+          } | {
+            type: "equals";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
+            value: string;
+          };
+          response: {
+            type: "echoText";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
           };
         };
         deliveryIdentity: {
@@ -2033,6 +2125,51 @@ describe("runtime tool reference generation", () => {
       type ApiCreateWebhookEndpointInput = {
         name: string;
         status?: "draft" | "active" | "disabled";
+        verification: {
+          type: "none";
+        } | {
+          type: "challenge";
+          method: "GET" | "POST";
+          when: {
+            type: "present";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
+          } | {
+            type: "equals";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
+            value: string;
+          };
+          response: {
+            type: "echoText";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
+          };
+        };
         deliveryIdentity: {
           type: "header";
           name: string;
@@ -2070,7 +2207,8 @@ describe("runtime tool reference generation", () => {
           signedPayload: {
             type: "rawBody";
           } | {
-            type: "timestampBody";
+            type: "timestampedBody";
+            prefix: string;
             timestampHeader: string;
             delimiter: string;
             toleranceSeconds: number;
@@ -2109,10 +2247,56 @@ describe("runtime tool reference generation", () => {
           signedPayload: {
             type: "rawBody";
           } | {
-            type: "timestampBody";
+            type: "timestampedBody";
+            prefix: string;
             timestampHeader: string;
             delimiter: string;
             toleranceSeconds: number;
+          };
+        };
+        verification: {
+          type: "none";
+        } | {
+          type: "challenge";
+          method: "GET" | "POST";
+          when: {
+            type: "present";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
+          } | {
+            type: "equals";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
+            value: string;
+          };
+          response: {
+            type: "echoText";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
           };
         };
         deliveryIdentity: {
@@ -2133,6 +2317,51 @@ describe("runtime tool reference generation", () => {
       type ApiUpdateWebhookEndpointInput = {
         name?: string;
         status?: "draft" | "active" | "disabled";
+        verification?: {
+          type: "none";
+        } | {
+          type: "challenge";
+          method: "GET" | "POST";
+          when: {
+            type: "present";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
+          } | {
+            type: "equals";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
+            value: string;
+          };
+          response: {
+            type: "echoText";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
+          };
+        };
         deliveryIdentity?: {
           type: "header";
           name: string;
@@ -2170,7 +2399,8 @@ describe("runtime tool reference generation", () => {
           signedPayload: {
             type: "rawBody";
           } | {
-            type: "timestampBody";
+            type: "timestampedBody";
+            prefix: string;
             timestampHeader: string;
             delimiter: string;
             toleranceSeconds: number;
@@ -2209,10 +2439,56 @@ describe("runtime tool reference generation", () => {
           signedPayload: {
             type: "rawBody";
           } | {
-            type: "timestampBody";
+            type: "timestampedBody";
+            prefix: string;
             timestampHeader: string;
             delimiter: string;
             toleranceSeconds: number;
+          };
+        };
+        verification: {
+          type: "none";
+        } | {
+          type: "challenge";
+          method: "GET" | "POST";
+          when: {
+            type: "present";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
+          } | {
+            type: "equals";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
+            value: string;
+          };
+          response: {
+            type: "echoText";
+            source: {
+              type: "header";
+              name: string;
+            } | {
+              type: "query";
+              name: string;
+            } | {
+              type: "jsonBodyPath";
+              path: string[];
+            };
           };
         };
         deliveryIdentity: {
