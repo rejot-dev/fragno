@@ -1,6 +1,5 @@
 import type { ApiFragmentConfig } from "@fragno-dev/api-fragment/definition";
-
-import { createApiFragment } from "@fragno-dev/api-fragment";
+import { createApiFragment } from "@fragno-dev/api-fragment/server";
 
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 

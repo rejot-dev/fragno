@@ -1,26 +1,12 @@
 import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
-import { instantiate } from "@fragno-dev/core";
-import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import { apiFragmentDefinition } from "../definition";
+import { apiRoutesFactory } from "../routes";
 
-import { apiFragmentDefinition, type ApiFragmentConfig } from "./definition";
-import { apiRoutesFactory } from "./routes";
-
-const routes = [apiRoutesFactory] as const;
-
-export function createApiFragment(
-  config: ApiFragmentConfig,
-  fragnoConfig: FragnoPublicConfigWithDatabase,
-) {
-  return instantiate(apiFragmentDefinition)
-    .withConfig(config)
-    .withRoutes(routes)
-    .withOptions(fragnoConfig)
-    .build();
-}
+const apiRoutes = [apiRoutesFactory] as const;
 
 export function createApiFragmentClients(fragnoConfig: FragnoPublicClientConfig = {}) {
-  const builder = createClientBuilder(apiFragmentDefinition, fragnoConfig, routes);
+  const builder = createClientBuilder(apiFragmentDefinition, fragnoConfig, apiRoutes);
 
   return {
     useConnections: builder.createHook("/connections"),
@@ -39,19 +25,3 @@ export function createApiFragmentClients(fragnoConfig: FragnoPublicClientConfig 
     deleteWebhookEndpoint: builder.createMutator("DELETE", "/webhooks/endpoints/:endpointId"),
   };
 }
-
-export { apiFragmentDefinition } from "./definition";
-export { apiRoutesFactory } from "./routes";
-export { apiSchema } from "./schema";
-export type { ApiFragmentConfig, WebhookReceivedPayload } from "./definition";
-export type {
-  ApiConnection,
-  ApiConnectionInput,
-  ApiRequestInput,
-  AuthConfig,
-  UpdateWebhookEndpointInput,
-  WebhookDeliveryIdentity,
-  WebhookEndpoint,
-  WebhookEndpointAuthInput,
-  WebhookEndpointInput,
-} from "./api-types";
