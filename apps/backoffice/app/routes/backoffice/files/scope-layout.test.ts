@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const { getAuthMeMock, lookupAutomationProjectMock } = vi.hoisted(() => ({
-  getAuthMeMock: vi.fn(),
+const { findBackofficeMeMock, lookupAutomationProjectMock } = vi.hoisted(() => ({
+  findBackofficeMeMock: vi.fn(),
   lookupAutomationProjectMock: vi.fn(),
 }));
 
-vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
+vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
 vi.mock("../automations/data.server", () => ({
   lookupAutomationProject: lookupAutomationProjectMock,
 }));
@@ -14,12 +14,12 @@ import { loader } from "./scope-layout";
 
 describe("Files scope layout without an organisation", () => {
   beforeEach(() => {
-    getAuthMeMock.mockReset();
+    findBackofficeMeMock.mockReset();
     lookupAutomationProjectMock.mockReset();
   });
 
   test("opens the personal workspace without loading projects", async () => {
-    getAuthMeMock.mockResolvedValue(authMe({ role: "member" }));
+    findBackofficeMeMock.mockResolvedValue(authMe({ role: "member" }));
 
     const result = await loader(
       loaderArgs("https://example.com/backoffice/files/user/user-1", {
@@ -37,7 +37,7 @@ describe("Files scope layout without an organisation", () => {
   });
 
   test("opens system files for an admin without loading projects", async () => {
-    getAuthMeMock.mockResolvedValue(authMe({ role: "admin" }));
+    findBackofficeMeMock.mockResolvedValue(authMe({ role: "admin" }));
 
     const result = await loader(
       loaderArgs("https://example.com/backoffice/files/system/system", {

@@ -21,24 +21,30 @@ type ActionNotice = {
 type UsersDirectoryState = {
   search: string;
   users: SystemUser[];
-  nextCursor: string | null;
-  requestedCursor: string | undefined;
-  hasNextPage: boolean;
+  page: number;
+  total: number;
+  totalPages: number;
   initialized: boolean;
 };
 
 type UsersDirectoryAction =
-  | { type: "resultsReceived"; users: SystemUser[]; cursor?: string; hasNextPage: boolean }
+  | {
+      type: "resultsReceived";
+      users: SystemUser[];
+      page: number;
+      total: number;
+      totalPages: number;
+    }
   | { type: "searchChanged"; search: string }
-  | { type: "nextPageRequested"; cursor: string }
+  | { type: "pageRequested"; page: number }
   | { type: "userRoleUpdated"; userId: string; role: GlobalRole };
 
 const INITIAL_USERS_DIRECTORY_STATE: UsersDirectoryState = {
   search: "",
   users: [],
-  nextCursor: null,
-  requestedCursor: undefined,
-  hasNextPage: false,
+  page: 1,
+  total: 0,
+  totalPages: 1,
   initialized: false,
 };
 
@@ -50,20 +56,16 @@ const usersDirectoryReducer = (
     case "resultsReceived":
       return {
         ...state,
-        users:
-          state.requestedCursor === undefined
-            ? action.users
-            : Array.from(
-                new Map([...state.users, ...action.users].map((user) => [user.id, user])).values(),
-              ),
-        nextCursor: action.cursor ?? null,
-        hasNextPage: action.hasNextPage,
+        users: action.users,
+        page: action.page,
+        total: action.total,
+        totalPages: action.totalPages,
         initialized: true,
       };
     case "searchChanged":
       return { ...INITIAL_USERS_DIRECTORY_STATE, search: action.search };
-    case "nextPageRequested":
-      return { ...state, requestedCursor: action.cursor };
+    case "pageRequested":
+      return { ...state, page: action.page };
     case "userRoleUpdated":
       return {
         ...state,
@@ -95,19 +97,17 @@ export default function BackofficeInternalUsers() {
     usersDirectoryReducer,
     INITIAL_USERS_DIRECTORY_STATE,
   );
-  const { search, users, nextCursor, requestedCursor, hasNextPage, initialized } = directory;
+  const { search, users, page, total, totalPages, initialized } = directory;
 
-  const { data, loading, error, refetch } = authClient.useUsers({
+  const { data, loading, error } = authClient.useUsers({
     query: {
       search: search || undefined,
       sortBy: "createdAt",
       sortOrder: "desc",
       pageSize: String(USERS_PAGE_SIZE),
-      cursor: requestedCursor,
+      page: String(page),
     },
   });
-  const loadingMore = requestedCursor !== undefined && loading;
-  const loadMoreError = requestedCursor !== undefined && error ? getErrorMessage(error) : null;
 
   useEffect(() => {
     if (!data) {
@@ -117,31 +117,19 @@ export default function BackofficeInternalUsers() {
     dispatchDirectory({
       type: "resultsReceived",
       users: data.users,
-      cursor: data.cursor,
-      hasNextPage: data.hasNextPage,
+      page: data.page,
+      total: data.total,
+      totalPages: data.totalPages,
     });
-  }, [data, requestedCursor]);
+  }, [data]);
 
   const runSearch = () => {
     const nextSearch = searchInput.trim();
-    if (loadingMore || nextSearch === search) {
+    if (loading || nextSearch === search) {
       return;
     }
 
     dispatchDirectory({ type: "searchChanged", search: nextSearch });
-  };
-
-  const loadMoreUsers = () => {
-    if (!nextCursor || loading) {
-      return;
-    }
-
-    if (requestedCursor === nextCursor) {
-      refetch();
-      return;
-    }
-
-    dispatchDirectory({ type: "nextPageRequested", cursor: nextCursor });
   };
 
   const updateUser = (userId: string, role: GlobalRole) => {
@@ -170,7 +158,7 @@ export default function BackofficeInternalUsers() {
               Global directory
             </p>
             <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
-              {users.length} {users.length === 1 ? "account" : "accounts"} loaded
+              {total} {total === 1 ? "account" : "accounts"}
             </h2>
           </div>
 
@@ -193,7 +181,7 @@ export default function BackofficeInternalUsers() {
             />
             <button
               type="submit"
-              disabled={loadingMore}
+              disabled={loading}
               className="bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase shadow-[inset_0_0_0_1px_var(--bo-accent)] hover:shadow-[inset_0_0_0_1px_var(--bo-accent-strong)] disabled:opacity-60"
             >
               Search
@@ -206,7 +194,7 @@ export default function BackofficeInternalUsers() {
             <span>Results for “{search}”</span>
             <button
               type="button"
-              disabled={loadingMore}
+              disabled={loading}
               onClick={() => {
                 setSearchInput("");
                 dispatchDirectory({ type: "searchChanged", search: "" });
@@ -262,23 +250,40 @@ export default function BackofficeInternalUsers() {
             </div>
           )}
 
-          {loadMoreError ? (
+          {error && users.length > 0 ? (
             <p role="alert" className="mt-3 text-xs text-red-600">
-              {loadMoreError}
+              {getErrorMessage(error)}
             </p>
           ) : null}
 
-          {hasNextPage ? (
-            <button
-              type="button"
-              disabled={loadingMore}
-              onClick={loadMoreUsers}
-              className="mt-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
-            >
-              {loadingMore ? "Loading…" : "Load more users"}
-            </button>
-          ) : initialized && users.length > 0 ? (
-            <p className="mt-3 text-xs text-[var(--bo-muted-2)]">All matching users are loaded.</p>
+          {initialized && users.length > 0 ? (
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <p className="text-xs text-[var(--bo-muted-2)]">
+                Page {page} of {totalPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={loading || page === 1}
+                  onClick={() => {
+                    dispatchDirectory({ type: "pageRequested", page: page - 1 });
+                  }}
+                  className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  disabled={loading || page >= totalPages}
+                  onClick={() => {
+                    dispatchDirectory({ type: "pageRequested", page: page + 1 });
+                  }}
+                  className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           ) : null}
         </div>
       </section>

@@ -9,7 +9,7 @@ import {
 } from "./authority-roles";
 import {
   backofficeContextScopesEqual,
-  backofficeVerifiedAccessTokenAuthoritySchema,
+  backofficeVerifiedRequestAuthoritySchema,
   type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "./context";
@@ -289,7 +289,7 @@ export class BackofficeKernel {
     const parsedScope = backofficeContextScopeSchema.safeParse(execution.scope);
     const parsedActors = automationActorsSchema.safeParse(execution.actors);
     const parsedUserAuthority = execution.userAuthority
-      ? backofficeVerifiedAccessTokenAuthoritySchema.safeParse(execution.userAuthority)
+      ? backofficeVerifiedRequestAuthoritySchema.safeParse(execution.userAuthority)
       : { success: true as const, data: undefined };
     if (!parsedScope.success || !parsedActors.success || !parsedUserAuthority.success) {
       throw new BackofficeForbiddenError(

@@ -1,13 +1,13 @@
 import { Link, redirect, useOutletContext, type LoaderFunctionArgs } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
 import { formatUploadTimestamp } from "./formatting";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return redirect("/backoffice/login");
   }

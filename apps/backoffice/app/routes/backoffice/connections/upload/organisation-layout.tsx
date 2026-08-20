@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet, redirect, useLoaderData, useMatches, type LoaderFunctionArgs } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { UploadAdminConfigResponse } from "@/fragno/upload";
 import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
@@ -17,7 +17,7 @@ export async function loader({ request, params, context, url }: LoaderFunctionAr
     throw new Response("Not Found", { status: 404 });
   }
 
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(new URL("/backoffice/login", request.url), 302);
   }

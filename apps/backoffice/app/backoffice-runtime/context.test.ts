@@ -37,18 +37,18 @@ describe("Backoffice execution context", () => {
       createBackofficeUserExecution({
         scope: { kind: "org", orgId: "org-1" },
         userId: "user-1",
-        verifiedAccessToken: {
+        verifiedRequestAuthority: {
           role: "admin",
-          organizationIds: ["org-1", "org-2"],
+          organizationId: "org-1",
           expiresAt,
         },
       }),
     ).toMatchObject({
       userAuthority: {
-        kind: "verified-access-token",
+        kind: "verified-request-authority",
         userId: "user-1",
         role: "admin",
-        organizationIds: ["org-1", "org-2"],
+        organizationId: "org-1",
         expiresAtEpochMs: expiresAt.getTime(),
       },
     });

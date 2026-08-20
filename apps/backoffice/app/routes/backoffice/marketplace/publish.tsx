@@ -1,7 +1,7 @@
 import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
 
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   MARKETPLACE_CATEGORIES,
   marketplaceCreateDraftListingInputSchema,
@@ -17,7 +17,7 @@ import { marketplaceScopeTabPath } from "./scope";
 type PublishActionData = { ok: false; message: string };
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
@@ -46,7 +46,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context, url }: Route.ActionArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }

@@ -13,6 +13,7 @@ import {
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import { createTelegramAutomationFileResponse } from "@/backoffice-runtime/telegram-file-response";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import type { AutomationEventSubject } from "@/fragno/automation/contracts";
 import { telegramConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/telegram";
@@ -459,7 +460,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
         throw new Error(`Telegram file download failed with status ${response.status}.`);
       }
 
-      return response;
+      return createTelegramAutomationFileResponse(response, metadata);
     } catch (error) {
       if (error && typeof error === "object" && "name" in error && error.name === "AbortError") {
         throw new Error("Telegram API request timed out while downloading file bytes.");

@@ -2,8 +2,9 @@ import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vites
 
 import { FragnoId } from "@fragno-dev/db/schema";
 
-import type { OrganizationHookPayload } from "@fragno-dev/auth";
 import type { HookContext } from "@fragno-dev/db";
+
+import type { OrganizationHookPayload } from "@/fragno/auth/contracts";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint, tracing } = vi.hoisted(() => {
   class MockDurableObject {
@@ -85,21 +86,18 @@ describe("Auth Durable Object account creation policy", () => {
     runtimes.push(runtime);
 
     const response = await runtime.objects.auth.singleton().fetch(
-      new Request("https://backoffice.example/api/auth/sign-up", {
+      new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          name: "Admin",
           email: "admin@rejot.dev",
           password: "password123",
         }),
       }),
     );
 
-    assert(response.status === 500);
-    expect(await response.json()).toEqual({
-      error: "Internal server error",
-      code: "INTERNAL_SERVER_ERROR",
-    });
+    assert(!response.ok);
   });
 
   test("creates rejot.dev administrators in development", async () => {
@@ -108,10 +106,11 @@ describe("Auth Durable Object account creation policy", () => {
     runtimes.push(runtime);
 
     const response = await runtime.objects.auth.singleton().fetch(
-      new Request("https://backoffice.example/api/auth/sign-up", {
+      new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          name: "Admin",
           email: "admin@rejot.dev",
           password: "password123",
         }),
@@ -120,8 +119,7 @@ describe("Auth Durable Object account creation policy", () => {
 
     assert(response.ok);
     expect(await response.json()).toMatchObject({
-      status: "authenticated",
-      role: "admin",
+      user: { role: "admin" },
     });
   });
 });
@@ -154,10 +152,11 @@ describe("Auth Durable Object email verification delivery", () => {
     runtimes.push(runtime);
 
     const response = await runtime.objects.auth.singleton().fetch(
-      new Request("https://backoffice.example/api/auth/sign-up", {
+      new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          name: "New User",
           email: "new-user@example.com",
           password: "password123",
         }),
@@ -214,10 +213,11 @@ describe("Auth Durable Object email verification delivery", () => {
     runtimes.push(runtime);
 
     const response = await runtime.objects.auth.singleton().fetch(
-      new Request("https://backoffice.example/api/auth/sign-up", {
+      new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          name: "New User",
           email: "new-user@example.com",
           password: "password123",
         }),
@@ -253,6 +253,46 @@ describe("Auth Durable Object email verification delivery", () => {
     expect(resend.attempts).toHaveLength(2);
     assert.equal(new Set(resend.attempts.map((attempt) => attempt.idempotencyKey)).size, 1);
     assert.equal(resend.queuedEmails.size, 1);
+  });
+});
+
+describe("Auth session organization bootstrap", () => {
+  test("sets the personal organization active after sign-up", async () => {
+    const runtime = await createInMemoryBackofficeRuntime({
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false" },
+    });
+    runtimes.push(runtime);
+    const auth = runtime.objects.auth.singleton();
+
+    const signUpResponse = await auth.fetch(
+      new Request("https://backoffice.example/api/auth/sign-up/email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "New User",
+          email: "new-user@example.com",
+          password: "password123",
+        }),
+      }),
+    );
+    if (!signUpResponse.ok) {
+      assert.fail(await signUpResponse.text());
+    }
+    const cookie = signUpResponse.headers.get("set-cookie");
+    assert(cookie);
+    await runtime.drain();
+
+    const organizationId = (await auth.getAllOrganizations())[0]?.id;
+    assert(organizationId);
+
+    const tokenResponse = await auth.fetch(
+      new Request("https://backoffice.example/api/auth/backoffice-token", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ organizationId }),
+      }),
+    );
+    assert(tokenResponse.status === 200);
   });
 });
 

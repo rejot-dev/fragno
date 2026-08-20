@@ -1,8 +1,13 @@
 import { Form, Link } from "react-router";
 
 import { FormContainer } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth/auth-server";
-import { billingPeriodSchema, type BillingStatementTracker } from "@/fragno/billing";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import {
+  BILLING_TRACKER_DEFAULT_PAGE_SIZE,
+  billingPeriodSchema,
+  type BillingTracker,
+} from "@/fragno/billing";
+import { decodeBillingTrackerCursor } from "@/fragno/billing/pagination";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/organisation-billing";
@@ -10,6 +15,27 @@ import { buildBackofficeLoginPath } from "./auth-navigation";
 import { throwOrganisationNotFound } from "./route-errors";
 
 const TOTAL_COST_METER = "ai.cost.total";
+
+const BILLING_PERIOD_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+const BILLING_INTEGER_FORMATTER = new Intl.NumberFormat("en-US");
+const BILLING_USD_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 6,
+});
+const BILLING_TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "UTC",
+  timeZoneName: "short",
+});
 
 const currentUtcPeriod = () => new Date().toISOString().slice(0, 7);
 
@@ -22,44 +48,33 @@ const shiftPeriod = (period: string, months: number) => {
 };
 
 const formatPeriod = (period: string) =>
-  new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${period}-01T00:00:00.000Z`));
+  BILLING_PERIOD_FORMATTER.format(new Date(`${period}-01T00:00:00.000Z`));
 
 const formatInteger = (quantity: string | undefined) =>
-  new Intl.NumberFormat("en-US").format(BigInt(quantity ?? "0"));
+  BILLING_INTEGER_FORMATTER.format(BigInt(quantity ?? "0"));
 
 const formatUsd = (quantity: string | undefined) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 6,
-  }).format(Number(BigInt(quantity ?? "0")) / 1_000_000_000);
+  BILLING_USD_FORMATTER.format(Number(BigInt(quantity ?? "0")) / 1_000_000_000);
 
-const formatTrackerQuantity = (tracker: BillingStatementTracker) =>
+const formatTrackerQuantity = (tracker: BillingTracker) =>
   tracker.unit === "nano-usd" ? formatUsd(tracker.quantity) : formatInteger(tracker.quantity);
 
-const formatTimestamp = (value: string) =>
-  new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "UTC",
-    timeZoneName: "short",
-  }).format(new Date(value));
+const formatTimestamp = (value: string) => BILLING_TIMESTAMP_FORMATTER.format(new Date(value));
 
-const billingPagePath = (period: string) => `?${new URLSearchParams({ period }).toString()}`;
+const billingPagePath = (period: string, cursor?: string) => {
+  const search = new URLSearchParams({ period });
+  if (cursor) {
+    search.set("cursor", cursor);
+  }
+  return `?${search.toString()}`;
+};
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
@@ -81,8 +96,31 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Invalid billing period.", { status: 400 });
   }
   const period = periodResult.data;
+  const requestedCursor = search.get("cursor");
+  const cursor = requestedCursor === null ? undefined : requestedCursor.trim();
+  const scope = { kind: "org" as const, orgId: params.orgId };
+
+  if (requestedCursor !== null && !cursor) {
+    throw new Response("Invalid billing page cursor.", { status: 400 });
+  }
+  if (cursor) {
+    try {
+      decodeBillingTrackerCursor({ encodedCursor: cursor, scope, period });
+    } catch {
+      throw new Response("Invalid billing page cursor.", { status: 400 });
+    }
+  }
+
   const billing = context.get(BackofficeWorkerContext).runtime.objects.billing.forOrg(params.orgId);
-  return await billing.getStatement({ period });
+  const page = await billing.getTrackers({
+    scope,
+    period,
+    pageSize: BILLING_TRACKER_DEFAULT_PAGE_SIZE,
+    cursor,
+    summaryMeter: TOTAL_COST_METER,
+  });
+
+  return { period, cursor: cursor ?? null, ...page };
 }
 
 export function meta() {
@@ -90,8 +128,8 @@ export function meta() {
 }
 
 export default function BackofficeOrganisationBilling({ loaderData }: Route.ComponentProps) {
-  const { period, trackers } = loaderData;
-  const totalCost = trackers.find((tracker) => tracker.meter === TOTAL_COST_METER)?.quantity;
+  const { period, cursor, trackers, nextCursor, hasNextPage, summaryTracker } = loaderData;
+  const totalCost = summaryTracker?.quantity;
   const previousPeriod = shiftPeriod(period, -1);
   const nextPeriod = shiftPeriod(period, 1);
   const currentPeriod = currentUtcPeriod();
@@ -140,7 +178,7 @@ export default function BackofficeOrganisationBilling({ loaderData }: Route.Comp
       <FormContainer
         eyebrow="Recorded measurements"
         title="Statement ledger"
-        description="Monthly totals across organisation, project, and user usage, ordered by meter."
+        description="Monthly counters maintained by this organisation's Billing object, ordered by meter."
       >
         {trackers.length === 0 ? (
           <div className="border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] px-5 py-8 text-center">
@@ -202,6 +240,15 @@ export default function BackofficeOrganisationBilling({ loaderData }: Route.Comp
             </table>
           </div>
         )}
+
+        {cursor || hasNextPage ? (
+          <div className="mt-4 flex justify-end gap-2">
+            {cursor ? <PageLink to={billingPagePath(period)} label="First page" /> : null}
+            {hasNextPage && nextCursor ? (
+              <PageLink to={billingPagePath(period, nextCursor)} label="Next page →" />
+            ) : null}
+          </div>
+        ) : null}
       </FormContainer>
     </div>
   );

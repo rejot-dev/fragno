@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 
 const {
-  getAuthMeMock,
+  findBackofficeMeMock,
   requireBackofficeContextMock,
   getPublishedListingMock,
   getArtifactManifestMock,
@@ -14,7 +14,7 @@ const {
   fetchAutomationCollectionSourceMock,
   loadPublishedMarketplaceArtifactExplorerMock,
 } = vi.hoisted(() => ({
-  getAuthMeMock: vi.fn(),
+  findBackofficeMeMock: vi.fn(),
   requireBackofficeContextMock: vi.fn(),
   getPublishedListingMock: vi.fn(),
   getArtifactManifestMock: vi.fn(),
@@ -24,7 +24,7 @@ const {
   loadPublishedMarketplaceArtifactExplorerMock: vi.fn(),
 }));
 
-vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
+vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
 vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
   requireBackofficeContext: requireBackofficeContextMock,
 }));
@@ -150,7 +150,7 @@ const runAction = (input: {
 };
 
 beforeEach(() => {
-  getAuthMeMock.mockReset();
+  findBackofficeMeMock.mockReset();
   requireBackofficeContextMock.mockReset();
   getPublishedListingMock.mockReset();
   getArtifactManifestMock.mockReset();
@@ -159,7 +159,7 @@ beforeEach(() => {
   fetchAutomationCollectionSourceMock.mockReset();
   loadPublishedMarketplaceArtifactExplorerMock.mockReset();
   forOrgMock.mockClear();
-  getAuthMeMock.mockResolvedValue(authenticatedUser);
+  findBackofficeMeMock.mockResolvedValue(authenticatedUser);
   requireBackofficeContextMock.mockImplementation(async (_request, _context, scope) => ({
     scope,
     actors: {
@@ -209,7 +209,7 @@ beforeEach(() => {
 
 describe("marketplace detail loader", () => {
   test("uses the organization selected in the route as the installation location", async () => {
-    getAuthMeMock.mockResolvedValueOnce({
+    findBackofficeMeMock.mockResolvedValueOnce({
       ...authenticatedUser,
       organizations: [
         authenticatedUser.organizations[0],
@@ -270,7 +270,7 @@ describe("marketplace detail loader", () => {
   });
 
   test("disables personal-scope installation when the user has no organization", async () => {
-    getAuthMeMock.mockResolvedValueOnce({
+    findBackofficeMeMock.mockResolvedValueOnce({
       ...authenticatedUser,
       organizations: [],
       activeOrganization: null,

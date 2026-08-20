@@ -1,7 +1,7 @@
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 
 import { FormContainer } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   getGitHubDurableObject,
   getGitHubWebhookRouterDurableObject,
@@ -69,7 +69,7 @@ export async function loader({
   const githubError = requestUrl.searchParams.get("error")?.trim() ?? "";
   const githubErrorDescription = requestUrl.searchParams.get("error_description")?.trim() ?? "";
 
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return redirect(buildBackofficeLoginPath(`${requestUrl.pathname}${requestUrl.search}`));
   }
@@ -159,7 +159,7 @@ export async function action({
   const installationId = getStringValue(formData, "installationId");
   const returnTo = getStringValue(formData, "returnTo");
 
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return { ok: false, message: "You must be signed in before restoring an installation." };
   }

@@ -5,13 +5,8 @@ import { FormContainer, FormField } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
 
 import type { OrganisationLayoutContext } from "./organisation-layout";
-import {
-  Notice,
-  type ActionNotice,
-  formatDate,
-  formatRoles,
-  getErrorMessage,
-} from "./organisation-shared";
+import { Notice } from "./organisation-shared";
+import { type ActionNotice, formatDate, formatRoles, getErrorMessage } from "./organisation-utils";
 
 export function meta() {
   return [{ title: "Organisation Overview" }];

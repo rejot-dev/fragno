@@ -79,10 +79,10 @@ describe("createBackofficeAuthorityResolver", () => {
     const identities = new MemoryIdentityDirectory();
     const resolver = createBackofficeAuthorityResolver(identities, { now: () => 1_000 });
     const accessTokenAuthority = {
-      kind: "verified-access-token" as const,
+      kind: "verified-request-authority" as const,
       userId: principal.id,
       role: "admin" as const,
-      organizationIds: ["org-1"],
+      organizationId: "org-1",
       expiresAtEpochMs: 2_000,
     };
 
@@ -131,10 +131,10 @@ describe("createBackofficeAuthorityResolver", () => {
         execution: {
           ...organizationExecution,
           userAuthority: {
-            kind: "verified-access-token",
+            kind: "verified-request-authority",
             userId: principal.id,
             role: "user",
-            organizationIds: ["org-1"],
+            organizationId: "org-1",
             expiresAtEpochMs: 2_000,
           },
         },

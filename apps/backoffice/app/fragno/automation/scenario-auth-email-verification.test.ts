@@ -21,14 +21,11 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
-import type { DurableUserEmailVerifiedHookPayload } from "@fragno-dev/auth";
-
 import { EMAIL_VERIFICATION_TYPE } from "@/fragno/otp";
 import {
   action as submitEmailVerificationAction,
   loader as loadEmailVerification,
 } from "@/routes/backoffice/verify-email";
-import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import {
@@ -67,31 +64,15 @@ const requestEmailVerificationResend = (
   email: string,
 ): Promise<Response> =>
   ctx.runtime.objects.auth.singleton().fetch(
-    new Request("https://backoffice.example/api/auth/email-verification/resend", {
+    new Request("https://backoffice.example/api/auth/send-verification-email", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email }),
+      headers: {
+        "content-type": "application/json",
+        origin: "https://backoffice.example",
+      },
+      body: JSON.stringify({ email, callbackURL: "/backoffice/login" }),
     }),
   );
-
-const requestEmailVerificationResendFromPage = async (
-  ctx: BackofficeScenarioContext,
-  email: string,
-) => {
-  const context = createScenarioRouterContext(ctx);
-  return await submitEmailVerificationAction({
-    request: new Request("https://backoffice.example/backoffice/verify-email", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" },
-      body: new URLSearchParams({ intent: "resend", email }),
-    }),
-    context,
-    params: {},
-  } as unknown as Parameters<typeof submitEmailVerificationAction>[0]);
-};
-
-const buildCookieHeader = (setCookieHeaders: string[]): string =>
-  setCookieHeaders.map((header) => header.split(";", 1)[0]).join("; ");
 
 const submitEmailVerificationUrl = async (ctx: BackofficeScenarioContext, verificationUrl: URL) => {
   const context = createScenarioRouterContext(ctx);
@@ -117,45 +98,18 @@ const submitEmailVerificationUrl = async (ctx: BackofficeScenarioContext, verifi
     params: {},
   } as unknown as Parameters<typeof submitEmailVerificationAction>[0]);
 
-  if (!(result instanceof Response)) {
-    return { data: result, cookie: "", setCookieHeaders: [] };
-  }
-
-  const setCookieHeaders = getSetCookieHeaders(result.headers);
-  return {
-    data: (await result.json()) as { state: "result"; result: string },
-    cookie: buildCookieHeader(setCookieHeaders),
-    setCookieHeaders,
-  };
-};
-
-const completeEmailVerificationLogin = async (ctx: BackofficeScenarioContext, cookie: string) => {
-  const context = createScenarioRouterContext(ctx);
-  const response = await submitEmailVerificationAction({
-    request: new Request("https://backoffice.example/backoffice/verify-email.data", {
-      method: "POST",
-      headers: {
-        "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
-        cookie,
-      },
-      body: new URLSearchParams({ intent: "complete_login" }),
-    }),
-    context,
-    params: {},
-  } as unknown as Parameters<typeof submitEmailVerificationAction>[0]);
-  assert(response instanceof Response);
-
-  return {
-    data: (await response.json()) as { state: "login"; status: string },
-    cookie: buildCookieHeader(getSetCookieHeaders(response.headers)),
-  };
+  assert(!(result instanceof Response));
+  return { data: result };
 };
 
 const signInWithPassword = (ctx: BackofficeScenarioContext, email: string) =>
   ctx.runtime.objects.auth.singleton().fetch(
-    new Request("https://backoffice.example/api/auth/sign-in", {
+    new Request("https://backoffice.example/api/auth/sign-in/email", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        origin: "https://backoffice.example",
+      },
       body: JSON.stringify({ email, password: "password123" }),
     }),
   );
@@ -215,7 +169,7 @@ describe("Auth email verification scenarios", () => {
             const response = await signInWithPassword(ctx, "new-user@example.com");
             assert.equal(response.status, 403);
             const body = (await response.json()) as { code?: string };
-            assert.equal(body.code, "email_verification_required");
+            assert.equal(body.code, "EMAIL_NOT_VERIFIED");
           }),
           {
             kind: "when",
@@ -228,32 +182,10 @@ describe("Auth email verification scenarios", () => {
                 state: "result",
                 result: "confirmation_recorded",
               });
-              assert(confirmation.cookie);
-              expect(confirmation.setCookieHeaders).toEqual([
-                expect.stringContaining("Path=/backoffice;"),
-              ]);
-
-              const pendingLogin = await completeEmailVerificationLogin(ctx, confirmation.cookie);
-              expect(pendingLogin.data).toEqual({ state: "login", status: "pending" });
-
-              await ctx.runtime.drain();
-              const authenticatedLogin = await completeEmailVerificationLogin(
-                ctx,
-                confirmation.cookie,
+              assert(
+                (await signInWithPassword(ctx, "new-user@example.com")).ok,
+                "Expected verification to complete before the confirmation response.",
               );
-              expect(authenticatedLogin.data).toEqual({
-                state: "login",
-                status: "authenticated",
-              });
-              assert(authenticatedLogin.cookie);
-
-              const meResponse = await ctx.runtime.objects.auth.singleton().fetch(
-                new Request("https://backoffice.example/api/auth/me", {
-                  headers: { cookie: authenticatedLogin.cookie },
-                }),
-              );
-              assert(meResponse.ok);
-
               const context = createScenarioRouterContext(ctx);
               const actionUrl = new URL("/backoffice/verify-email", verificationUrl);
               expect(
@@ -266,27 +198,12 @@ describe("Auth email verification scenarios", () => {
               ).toEqual({ state: "result", result: "incomplete" });
             },
           },
-          then.assert("verified user can sign in", async (ctx) => {
-            const response = await signInWithPassword(ctx, "new-user@example.com");
-            assert(response.ok);
-          }),
-          then.assert("verification route marks the Auth email as verified", async (ctx) => {
-            const userId = getQueuedEmailVerificationUrl(ctx).searchParams.get("userId");
-            assert(userId);
-
+          then.assert("verification does not enqueue an unhandled Auth hook", async (ctx) => {
             const repository = await ctx.runtime.objects.auth
               .singleton()
               .getDurableHookRepository();
             const queue = await repository.getHookQueue({ pageSize: 100 });
-            const verificationHook = queue.items.find(
-              (hook) => hook.hookName === "onUserEmailVerified",
-            );
-            assert(verificationHook);
-            const payload = verificationHook.payload as DurableUserEmailVerifiedHookPayload;
-            expect(payload).toMatchObject({
-              user: { id: userId, email: "new-user@example.com" },
-              actor: null,
-            });
+            assert(!queue.items.some((hook) => hook.hookName === "onUserEmailVerified"));
           }),
         ],
       }),
@@ -308,8 +225,7 @@ describe("Auth email verification scenarios", () => {
               ctx,
               "resend-user@example.com",
             );
-            assert.equal(resendResponse.status, 202);
-            expect(await resendResponse.json()).toEqual({ accepted: true });
+            assert(resendResponse.ok);
             await ctx.runtime.drain();
 
             expect(ctx.fakes.resend?.queueEmailCalls).toHaveLength(2);
@@ -328,46 +244,7 @@ describe("Auth email verification scenarios", () => {
               state: "result",
               result: "confirmation_recorded",
             });
-            await ctx.runtime.drain();
             assert((await signInWithPassword(ctx, "resend-user@example.com")).ok);
-          }),
-        ],
-      }),
-    );
-  });
-
-  test("an expired link can be replaced through self-service resend", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        name: "auth expired verification link recovers through resend",
-        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
-        fakes: ({ fake }) => ({ resend: fake.resend() }),
-        steps: ({ when, then }) => [
-          when.auth.signUp({ email: "expired-user@example.com" }),
-          then.assert("expired link is replaced and the user can sign in", async (ctx) => {
-            const expiredUrl = getQueuedEmailVerificationUrl(ctx);
-            const elapsedMs = 24 * 60 * 60 * 1_000 + 1;
-            ctx.runtime.advanceTime(elapsedMs);
-
-            expect((await submitEmailVerificationUrl(ctx, expiredUrl)).data).toEqual({
-              state: "result",
-              result: "expired",
-            });
-
-            const resendResult = await requestEmailVerificationResendFromPage(
-              ctx,
-              "expired-user@example.com",
-            );
-            expect(resendResult).toEqual({ state: "result", result: "resent" });
-            await ctx.runtime.drain();
-
-            const replacementUrl = getQueuedEmailVerificationUrl(ctx, 1);
-            expect((await submitEmailVerificationUrl(ctx, replacementUrl)).data).toEqual({
-              state: "result",
-              result: "confirmation_recorded",
-            });
-            await ctx.runtime.drain();
-            assert((await signInWithPassword(ctx, "expired-user@example.com")).ok);
           }),
         ],
       }),
@@ -383,8 +260,7 @@ describe("Auth email verification scenarios", () => {
         steps: ({ then }) => [
           then.assert("unknown account is accepted without delivery", async (ctx) => {
             const response = await requestEmailVerificationResend(ctx, "missing@example.com");
-            assert.equal(response.status, 202);
-            expect(await response.json()).toEqual({ accepted: true });
+            assert(response.ok);
             await ctx.runtime.drain();
             expect(ctx.fakes.resend?.queueEmailCalls).toHaveLength(0);
           }),

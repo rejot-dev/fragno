@@ -1,6 +1,6 @@
 import { Link, useOutletContext } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   MARKETPLACE_LATEST_VERSIONS_MAX_IDS,
   type MarketplaceLatestPublishedVersions,
@@ -18,7 +18,7 @@ export function meta() {
 }
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),

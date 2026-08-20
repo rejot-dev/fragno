@@ -2,7 +2,6 @@ import {
   CompiledQuery,
   Kysely,
   SqliteAdapter,
-  SqliteIntrospector,
   SqliteQueryCompiler,
   type DatabaseConnection,
   type DatabaseIntrospector,
@@ -104,8 +103,116 @@ export class DurableObjectDialect implements Dialect {
     return new SqliteQueryCompiler();
   }
 
-  createIntrospector(db: Kysely<unknown>): DatabaseIntrospector {
-    return new SqliteIntrospector(db);
+  createIntrospector(_db: Kysely<unknown>): DatabaseIntrospector {
+    return new DurableObjectIntrospector(this.#config);
+  }
+}
+
+type SqliteObjectMetadata = {
+  name: string;
+  sql: string | null;
+  type: string;
+};
+
+type SqliteColumnMetadata = {
+  tableName: string;
+  cid: number;
+  name: string;
+  type: string;
+  notnull: number;
+  defaultValue: SqlStorageValue;
+  primaryKeyPosition: number;
+};
+
+function findAutoIncrementColumn(
+  createSql: string | null,
+  columns: readonly SqliteColumnMetadata[],
+): string | null {
+  const declaredAutoIncrementColumn = createSql
+    ?.split(/[(),]/u)
+    .find((definition) => definition.toLowerCase().includes("autoincrement"))
+    ?.trimStart()
+    .split(/\s+/u)[0]
+    ?.replace(/["`]/gu, "");
+  if (declaredAutoIncrementColumn) {
+    return declaredAutoIncrementColumn;
+  }
+
+  const primaryKeyColumns = columns.filter((column) => column.primaryKeyPosition > 0);
+  return primaryKeyColumns.length === 1 && primaryKeyColumns[0]?.type.toLowerCase() === "integer"
+    ? primaryKeyColumns[0].name
+    : null;
+}
+
+class DurableObjectIntrospector implements DatabaseIntrospector {
+  readonly #config: DODialectConfig;
+
+  constructor(config: DODialectConfig) {
+    this.#config = config;
+  }
+
+  async getSchemas() {
+    return [];
+  }
+
+  async getTables(options: { withInternalKyselyTables?: boolean } = {}) {
+    const tables = this.#config.ctx.storage.sql
+      .exec<SqliteObjectMetadata>(
+        `SELECT name, sql, type
+         FROM sqlite_master
+         WHERE type IN ('table', 'view')
+           AND name NOT LIKE 'sqlite_%'
+         ORDER BY name`,
+      )
+      .toArray()
+      .filter(
+        ({ name }) =>
+          options.withInternalKyselyTables ||
+          (name !== "kysely_migration" && name !== "kysely_migration_lock"),
+      );
+    const columns = this.#config.ctx.storage.sql
+      .exec<SqliteColumnMetadata>(
+        `SELECT objects.name AS tableName,
+                columns.cid,
+                columns.name,
+                columns.type,
+                columns."notnull" AS "notnull",
+                columns.dflt_value AS defaultValue,
+                columns.pk AS primaryKeyPosition
+         FROM sqlite_master AS objects,
+              pragma_table_info(objects.name) AS columns
+         WHERE objects.type IN ('table', 'view')
+           AND objects.name NOT LIKE 'sqlite_%'
+         ORDER BY objects.name, columns.cid`,
+      )
+      .toArray();
+    const columnsByTable = new Map<string, SqliteColumnMetadata[]>();
+    for (const column of columns) {
+      const tableColumns = columnsByTable.get(column.tableName) ?? [];
+      tableColumns.push(column);
+      columnsByTable.set(column.tableName, tableColumns);
+    }
+
+    return tables.map(({ name, sql: createSql, type }) => {
+      const tableColumns = columnsByTable.get(name) ?? [];
+      const autoIncrementColumn = findAutoIncrementColumn(createSql, tableColumns);
+      return {
+        name,
+        isView: type === "view",
+        columns: tableColumns.map((column) => ({
+          name: column.name,
+          dataType: column.type,
+          isNullable: !column.notnull,
+          isAutoIncrementing: column.name === autoIncrementColumn,
+          hasDefaultValue: column.defaultValue !== null,
+          comment: undefined,
+        })),
+      };
+    });
+  }
+
+  async getMetadata(options?: { withInternalKyselyTables?: boolean }) {
+    return { tables: await this.getTables(options) };
   }
 }
 
@@ -157,10 +264,14 @@ class DOConnection implements DatabaseConnection {
   }
 
   async executeQuery<O>(compiledQuery: CompiledQuery): Promise<QueryResult<O>> {
-    const cursor = this.#config.ctx.storage.sql.exec(
-      compiledQuery.sql,
-      ...compiledQuery.parameters,
-    );
+    let cursor: SqlStorageCursor<Record<string, SqlStorageValue>>;
+    try {
+      cursor = this.#config.ctx.storage.sql.exec(compiledQuery.sql, ...compiledQuery.parameters);
+    } catch (error) {
+      throw new Error(`Durable Object SQLite rejected query: ${compiledQuery.sql}`, {
+        cause: error,
+      });
+    }
 
     const rows = cursor.toArray() as O[];
     const numAffectedRows = cursor.rowsWritten > 0 ? BigInt(cursor.rowsWritten) : undefined;

@@ -1,7 +1,7 @@
 import { Outlet } from "react-router";
 
 import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { requireBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 
 import { automationScopeFromRouteParams } from "../automations/scope";
@@ -16,7 +16,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   const billingOrganization =
     scope.kind === "user"
-      ? ((await getAuthMe(request, context))?.activeOrganization?.organization ?? null)
+      ? ((await requireBackofficeMe(request, context)).activeOrganization?.organization ?? null)
       : undefined;
   const { runtimeState, runtimeError } = await fetchPiRuntimeState(context, scope);
   let persistenceSource: PiLayoutContext["persistenceSource"] = null;

@@ -1,11 +1,11 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { getAuthMeMock, createDraftListingMock } = vi.hoisted(() => ({
-  getAuthMeMock: vi.fn(),
+const { findBackofficeMeMock, createDraftListingMock } = vi.hoisted(() => ({
+  findBackofficeMeMock: vi.fn(),
   createDraftListingMock: vi.fn(),
 }));
 
-vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
+vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
 
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 
@@ -52,9 +52,9 @@ const publishRequest = (organizationId = "org-1") => {
 };
 
 beforeEach(() => {
-  getAuthMeMock.mockReset();
+  findBackofficeMeMock.mockReset();
   createDraftListingMock.mockReset();
-  getAuthMeMock.mockResolvedValue(authenticatedUser);
+  findBackofficeMeMock.mockResolvedValue(authenticatedUser);
   createDraftListingMock.mockResolvedValue({
     ok: true,
     value: {

@@ -1,10 +1,10 @@
 import type { Dispatch, SetStateAction } from "react";
 
-import type { AuthMeData } from "@/fragno/auth/auth-client";
+import type { BackofficeMeData } from "@/fragno/auth/auth-client";
 import type { UploadAdminConfigResponse } from "@/fragno/upload";
 import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
 
-type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
+type BackofficeOrganisation = BackofficeMeData["organizations"][number]["organization"];
 
 export type UploadLayoutContext = {
   orgId: string;

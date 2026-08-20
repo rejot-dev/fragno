@@ -1,7 +1,7 @@
 import { Form, Link, redirect, useActionData, useLocation, useNavigation } from "react-router";
 
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   MARKETPLACE_CATEGORIES,
   marketplaceAddDraftVersionInputSchema,
@@ -37,7 +37,7 @@ const versionDateFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
@@ -92,7 +92,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }

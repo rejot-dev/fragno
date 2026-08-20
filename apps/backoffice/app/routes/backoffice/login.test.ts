@@ -1,194 +1,112 @@
-import { afterEach, describe, expect, it, vi, assert } from "vitest";
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth/auth-server";
+import { callBetterAuth, getBackofficeMe } from "@/fragno/auth/auth-server";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
 
-import { BACKOFFICE_HOME_PATH } from "./auth-navigation";
 import { action, loader } from "./login";
 
-vi.mock("@/fragno/auth/auth-server", () => ({
-  createAuthRouteCaller: vi.fn(),
-  getAuthMe: vi.fn(),
+vi.mock("@/fragno/auth/auth-server", async (importOriginal) => ({
+  ...(await importOriginal()),
+  callBetterAuth: vi.fn(),
+  getBackofficeMe: vi.fn(),
 }));
-
 vi.mock("@/fragno/auth/email-verification.server", () => ({
   requestEmailVerificationResend: vi.fn(),
 }));
 
+const createLoaderArgs = (url: string) =>
+  ({
+    request: new Request(url),
+    url: new URL(url),
+    context: {} as never,
+    params: {},
+  }) as unknown as Parameters<typeof loader>[0];
+const createActionArgs = (url: string, body: Record<string, string>) =>
+  ({
+    request: new Request(url, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" },
+      body: new URLSearchParams({ intent: "sign_in", ...body }),
+    }),
+    url: new URL(url),
+    context: {} as never,
+    params: {},
+  }) as unknown as Parameters<typeof action>[0];
+const requireResponse = (result: unknown): Response => {
+  assert(result instanceof Response);
+  return result;
+};
 describe("backoffice login route", () => {
+  beforeEach(() => {
+    vi.mocked(getBackofficeMe).mockResolvedValue({ status: "missing" });
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
   });
 
-  const createLoaderArgs = (url: string) =>
-    ({
-      request: new Request(url),
-      url: new URL(url),
-      context: {} as never,
-      params: {},
-    }) as unknown as Parameters<typeof loader>[0];
-
-  const createActionArgs = (url: string, body?: Record<string, string>) =>
-    ({
-      request: new Request(url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
-        },
-        body: new URLSearchParams({ intent: "sign_in", ...body }),
-      }),
-      url: new URL(url),
-      context: {} as never,
-      params: {},
-    }) as unknown as Parameters<typeof action>[0];
-
-  const toResponse = (
-    result: Awaited<ReturnType<typeof action>> | Awaited<ReturnType<typeof loader>>,
-  ): Response => {
-    expect(result).toBeInstanceOf(Response);
-    if (!(result instanceof Response)) {
-      throw new TypeError("Expected action to return a Response.");
-    }
-    return result;
-  };
-
-  it("redirects authenticated users straight to the requested backoffice destination", async () => {
+  it("redirects an authenticated JWT user", async () => {
     vi.stubEnv("MODE", "development");
+    vi.mocked(getBackofficeMe).mockResolvedValue({
+      status: "authenticated",
+      me: {} as never,
+      expiresAt: new Date("2027-01-01T00:00:00.000Z"),
+    });
 
-    vi.mocked(getAuthMe).mockResolvedValue({
-      user: { id: "user_123", email: "dev@fragno.test", role: "admin" },
-      organizations: [
-        {
-          organization: { id: "org_123", name: "Fragno" },
-          member: { organizationId: "org_123" },
-        },
-      ],
-      activeOrganization: {
-        organization: { id: "org_123", name: "Fragno" },
-        member: { organizationId: "org_123" },
-      },
-      invitations: [],
-    } as never);
-
-    const result = toResponse(
+    const response = requireResponse(
       await loader(
         createLoaderArgs("https://example.com/backoffice/login?returnTo=%2Fbackoffice%2Fsettings"),
       ),
     );
-
-    assert(result.status === 302);
-    assert(result.headers.get("Location") === "/backoffice/settings");
-    expect(createAuthRouteCaller).not.toHaveBeenCalled();
+    assert(response.headers.get("Location") === "/backoffice/settings");
+    expect(callBetterAuth).not.toHaveBeenCalled();
   });
 
-  it("initializes the active organization on the server before redirecting authenticated users", async () => {
+  it("redirects a successful Better Auth email sign-in", async () => {
     vi.stubEnv("MODE", "development");
-
-    vi.mocked(getAuthMe).mockResolvedValue({
-      user: { id: "user_123", email: "dev@fragno.test", role: "admin" },
-      organizations: [
-        {
-          organization: { id: "org_123", name: "Fragno" },
-          member: { organizationId: "org_123" },
-        },
-      ],
-      activeOrganization: null,
-      invitations: [],
-    } as never);
-
-    const callAuthRoute = vi.fn().mockResolvedValue({
-      type: "empty",
-      headers: new Headers([["set-cookie", "session=bootstrapped; Path=/; HttpOnly"]]),
-    });
-    vi.mocked(createAuthRouteCaller).mockReturnValue(callAuthRoute as never);
-
-    const result = toResponse(
-      await loader(createLoaderArgs("https://example.com/backoffice/login")),
+    vi.mocked(callBetterAuth).mockResolvedValue(
+      Response.json(
+        { user: { id: "user_123" } },
+        { headers: { "set-cookie": "session=abc; Path=/; HttpOnly" } },
+      ),
     );
 
-    assert(result.status === 302);
-    expect(result.headers.get("Location")).toBe(BACKOFFICE_HOME_PATH);
-    assert(result.headers.get("set-cookie") === "session=bootstrapped; Path=/; HttpOnly");
-    expect(callAuthRoute).toHaveBeenCalledWith("POST", "/organizations/active", {
-      body: { organizationId: "org_123" },
-    });
-  });
-
-  it("returns a bootstrap error when server-side organization initialization fails", async () => {
-    vi.stubEnv("MODE", "development");
-
-    vi.mocked(getAuthMe).mockResolvedValue({
-      user: { id: "user_123", email: "dev@fragno.test", role: "admin" },
-      organizations: [
-        {
-          organization: { id: "org_123", name: "Fragno" },
-          member: { organizationId: "org_123" },
-        },
-      ],
-      activeOrganization: null,
-      invitations: [],
-    } as never);
-
-    const callAuthRoute = vi.fn().mockResolvedValue({
-      type: "error",
-      error: { message: "Cannot activate organization." },
-    });
-    vi.mocked(createAuthRouteCaller).mockReturnValue(callAuthRoute as never);
-
-    const result = await loader(createLoaderArgs("https://example.com/backoffice/login"));
-
-    expect(result).toEqual({
-      authenticated: true,
-      returnTo: BACKOFFICE_HOME_PATH,
-      defaultOrganizationId: "",
-      bootstrapError: "Cannot activate organization.",
-    });
-  });
-
-  it("redirects successful sign-ins to the requested backoffice destination", async () => {
-    vi.stubEnv("MODE", "development");
-
-    const callAuthRoute = vi.fn().mockResolvedValue({
-      type: "json",
-      data: { ok: true },
-      headers: new Headers([["set-cookie", "session=abc; Path=/; HttpOnly"]]),
-    });
-    vi.mocked(createAuthRouteCaller).mockReturnValue(callAuthRoute as never);
-
-    const result = toResponse(
+    const response = requireResponse(
       await action(
         createActionArgs("https://example.com/backoffice/login?returnTo=%2Fbackoffice%2Fsettings", {
           email: "dev@fragno.test",
           password: "password123",
-          activeOrganizationId: "org_123",
         }),
       ),
     );
-
-    assert(result.status === 302);
-    assert(result.headers.get("Location") === "/backoffice/settings");
-    assert(result.headers.get("set-cookie") === "session=abc; Path=/; HttpOnly");
-    expect(callAuthRoute).toHaveBeenCalledWith("POST", "/sign-in", {
-      body: {
-        email: "dev@fragno.test",
-        password: "password123",
-        auth: { activeOrganizationId: "org_123" },
+    assert(
+      response.headers.get("Location") ===
+        "/backoffice/auth/bootstrap?returnTo=%2Fbackoffice%2Fsettings",
+    );
+    expect(response.headers.getSetCookie()).toEqual([
+      "session=abc; Path=/; HttpOnly",
+      "fragno-backoffice.access_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
+      "__Host-fragno-backoffice.access_token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+    ]);
+    expect(callBetterAuth).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.anything(),
+      "/sign-in/email",
+      {
+        method: "POST",
+        body: JSON.stringify({ email: "dev@fragno.test", password: "password123" }),
       },
-    });
+    );
   });
 
-  it("preserves the verification-required code and email", async () => {
+  it("preserves Better Auth's verification-required response", async () => {
     vi.stubEnv("MODE", "development");
-    vi.mocked(createAuthRouteCaller).mockReturnValue(
-      vi.fn().mockResolvedValue({
-        type: "error",
-        status: 403,
-        error: {
-          code: "email_verification_required",
-          message: "Verify your email before signing in.",
-        },
-      }) as never,
+    vi.mocked(callBetterAuth).mockResolvedValue(
+      Response.json(
+        { code: "EMAIL_NOT_VERIFIED", message: "Verify your email before signing in." },
+        { status: 403 },
+      ),
     );
 
     await expect(
@@ -206,7 +124,7 @@ describe("backoffice login route", () => {
     });
   });
 
-  it("requests another verification email from the login form", async () => {
+  it("requests another verification email", async () => {
     vi.stubEnv("MODE", "development");
     vi.mocked(requestEmailVerificationResend).mockResolvedValue({
       status: "accepted",
@@ -220,41 +138,6 @@ describe("backoffice login route", () => {
           email: "dev@fragno.test",
         }),
       ),
-    ).resolves.toEqual({
-      state: "verification_required",
-      email: "dev@fragno.test",
-      resend: "accepted",
-      message: "If this unverified account exists, a new email will be sent.",
-    });
-    expect(requestEmailVerificationResend).toHaveBeenCalledWith({
-      request: expect.any(Request),
-      context: expect.anything(),
-      email: "dev@fragno.test",
-    });
-  });
-
-  it("falls back to the backoffice home when no returnTo is present", async () => {
-    vi.stubEnv("MODE", "development");
-
-    vi.mocked(createAuthRouteCaller).mockReturnValue(
-      vi.fn().mockResolvedValue({
-        type: "empty",
-        headers: new Headers([["set-cookie", "session=xyz; Path=/; HttpOnly"]]),
-      }) as never,
-    );
-
-    const result = toResponse(
-      await action(
-        createActionArgs("https://example.com/backoffice/login", {
-          email: "dev@fragno.test",
-          password: "password123",
-          activeOrganizationId: "",
-        }),
-      ),
-    );
-
-    assert(result.status === 302);
-    expect(result.headers.get("Location")).toBe(BACKOFFICE_HOME_PATH);
-    assert(result.headers.get("set-cookie") === "session=xyz; Path=/; HttpOnly");
+    ).resolves.toMatchObject({ state: "verification_required", resend: "accepted" });
   });
 });

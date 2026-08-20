@@ -4,7 +4,12 @@ import {
   BACKOFFICE_HOME_PATH,
   BACKOFFICE_LOGIN_PATH,
   buildBackofficeLoginPath,
+  buildBackofficeOrganizationSwitchPath,
+  buildBackofficeSessionEntryPath,
+  buildBackofficeSignUpPath,
+  readBackofficeOrganizationSwitchId,
   readBackofficeReturnTo,
+  retargetBackofficeOrganizationReturnTo,
   sanitizeBackofficeReturnTo,
 } from "./auth-navigation";
 
@@ -59,6 +64,47 @@ describe("backoffice auth navigation helpers", () => {
       ),
     ).toBe(BACKOFFICE_LOGIN_PATH);
     expect(buildBackofficeLoginPath("/backoffice/login?x=1")).toBe(BACKOFFICE_LOGIN_PATH);
+  });
+
+  test("preserves invitation return paths when moving from login to sign-up", () => {
+    const returnTo =
+      "/backoffice/invitations/AYFpGE1yoCO3H2epFjXSVOdk2tjn4UNt?token=AYFpGE1yoCO3H2epFjXSVOdk2tjn4UNt";
+    const signUpPath = buildBackofficeSignUpPath(returnTo);
+
+    assert(readBackofficeReturnTo(signUpPath) === returnTo);
+  });
+
+  test("builds session-aware entry paths under the Better Auth cookie path", () => {
+    assert(buildBackofficeSessionEntryPath() === "/api/auth/backoffice-entry");
+    assert(
+      buildBackofficeSessionEntryPath("/backoffice/settings?tab=members") ===
+        "/api/auth/backoffice-entry?returnTo=%2Fbackoffice%2Fsettings%3Ftab%3Dmembers",
+    );
+  });
+
+  test("builds organization switch paths with an explicit destination", () => {
+    const switchPath = buildBackofficeOrganizationSwitchPath(
+      "org-2",
+      "/backoffice/automations/org/org-2/dashboard",
+    );
+    expect(switchPath).toBe(
+      "/backoffice/auth/bootstrap?organizationId=org-2&returnTo=%2Fbackoffice%2Fautomations%2Forg%2Forg-2%2Fdashboard",
+    );
+    assert(readBackofficeOrganizationSwitchId(switchPath) === "org-2");
+  });
+
+  test("retargets an organization-scoped destination after changing identity", () => {
+    assert(
+      retargetBackofficeOrganizationReturnTo(
+        "/backoffice/automations/org/org-stale/dashboard?scriptView=code",
+        "org-current",
+      ) === "/backoffice/automations/org/org-current/dashboard?scriptView=code",
+    );
+  });
+
+  test("preserves unscoped invitation destinations after changing identity", () => {
+    const invitation = "/backoffice/invitations/invite-1?token=secret";
+    expect(retargetBackofficeOrganizationReturnTo(invitation, "org-current")).toBe(invitation);
   });
 
   test("reads the returnTo value with the same sanitization", () => {

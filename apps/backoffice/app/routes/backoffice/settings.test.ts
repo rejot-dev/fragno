@@ -2,29 +2,27 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
-const { requireAuthPrincipalMock } = vi.hoisted(() => ({
-  requireAuthPrincipalMock: vi.fn(),
+const { requireBackofficePrincipalMock } = vi.hoisted(() => ({
+  requireBackofficePrincipalMock: vi.fn(),
 }));
 
-vi.mock("@/fragno/auth/access-token.server", () => ({
-  requireAuthPrincipal: requireAuthPrincipalMock,
+vi.mock("@/fragno/auth/request-auth.server", () => ({
+  requireBackofficePrincipal: requireBackofficePrincipalMock,
 }));
 
 import { loader } from "./settings";
 
 beforeEach(() => {
-  requireAuthPrincipalMock.mockReset();
-  requireAuthPrincipalMock.mockResolvedValue({
+  requireBackofficePrincipalMock.mockReset();
+  requireBackofficePrincipalMock.mockResolvedValue({
     user: {
       id: "user-1",
       role: "user",
     },
     auth: {
-      credentialKind: "jwt",
+      transport: "cookie",
       expiresAt: new Date("2027-01-01T00:00:00.000Z"),
-      sessionContext: {
-        organizationIds: ["org-1"],
-      },
+      organization: { id: "org-1", roles: ["member"] },
     },
   });
 });
@@ -80,10 +78,10 @@ describe("Backoffice settings authority inspection", () => {
       execution: expect.objectContaining({
         scope: { kind: "org", orgId: "org-1" },
         userAuthority: {
-          kind: "verified-access-token",
+          kind: "verified-request-authority",
           userId: "user-1",
           role: "user",
-          organizationIds: ["org-1"],
+          organizationId: "org-1",
           expiresAtEpochMs: Date.parse("2027-01-01T00:00:00.000Z"),
         },
       }),
@@ -91,12 +89,12 @@ describe("Backoffice settings authority inspection", () => {
   });
 
   test("includes the global system scope for administrators", async () => {
-    requireAuthPrincipalMock.mockResolvedValue({
+    requireBackofficePrincipalMock.mockResolvedValue({
       user: { id: "admin-1", role: "admin" },
       auth: {
-        credentialKind: "jwt",
+        transport: "cookie",
         expiresAt: new Date("2027-01-01T00:00:00.000Z"),
-        sessionContext: { organizationIds: [] },
+        organization: null,
       },
     });
     const resolvePrincipalPermissions = vi.fn(async () => [BACKOFFICE_PERMISSION.internal.manage]);
@@ -112,23 +110,5 @@ describe("Backoffice settings authority inspection", () => {
       { kind: "system" },
       { kind: "user", userId: "admin-1" },
     ]);
-  });
-
-  test("requires verified JWT authority", async () => {
-    requireAuthPrincipalMock.mockResolvedValue({
-      user: { id: "user-1", role: "user" },
-      auth: {
-        credentialKind: "session",
-        expiresAt: null,
-        sessionContext: { organizationIds: [] },
-      },
-    });
-
-    await expect(
-      loader({
-        request: new Request("https://backoffice.example/backoffice/settings"),
-        context: { get: vi.fn() },
-      } as never),
-    ).rejects.toMatchObject({ status: 401 });
   });
 });

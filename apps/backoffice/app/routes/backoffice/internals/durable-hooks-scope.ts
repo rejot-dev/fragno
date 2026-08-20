@@ -5,7 +5,7 @@ import type {
 } from "@/backoffice-runtime/object-registry";
 import { isBackofficeObjectScopeAllowed } from "@/backoffice-runtime/object-registry";
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
-import type { AuthMeData } from "@/fragno/auth/auth-client";
+import type { BackofficeMeData } from "@/fragno/auth/auth-client";
 
 export const DURABLE_HOOK_OBJECT_DEFINITIONS = [
   { id: "api", binding: "API", label: "API" },
@@ -81,11 +81,11 @@ export type DurableHooksObjectOption = {
 };
 
 type Organisation = Pick<
-  AuthMeData["organizations"][number]["organization"],
+  BackofficeMeData["organizations"][number]["organization"],
   "id" | "name" | "slug"
 >;
 
-type User = Pick<AuthMeData["user"], "id" | "email">;
+type User = Pick<BackofficeMeData["user"], "id" | "email">;
 
 const SINGLETON_SCOPE: BackofficeContextScope = { kind: "system" };
 

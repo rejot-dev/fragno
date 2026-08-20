@@ -5,12 +5,15 @@ import {
   backofficeContextScopeFromSinglePathSegment,
   backofficeContextScopeSinglePathSegment,
 } from "@/backoffice-runtime/scope-codec";
-import type { AuthMeData } from "@/fragno/auth/auth-client";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import type { BackofficeMeData } from "@/fragno/auth/auth-client";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
+import type { AutomationProjectRecord } from "../automations/data";
 import {
   automationScopeBasePath,
   automationScopeFromRouteParams,
+  createAutomationScopeOptions,
+  type AutomationScopeOption,
   type AutomationUiScope,
 } from "../automations/scope";
 import { throwOrganisationNotFound } from "../route-errors";
@@ -19,6 +22,8 @@ export type IntegrationRouteParams = {
   scopeKind?: string;
   scopeId?: string;
 };
+
+export type IntegrationScopeSwitchOption = AutomationScopeOption;
 
 export type ScopedIntegrationContext = {
   scope: BackofficeContextScope;
@@ -31,10 +36,10 @@ export type ScopedIntegrationContext = {
 };
 
 export type AuthenticatedScopedIntegrationContext = ScopedIntegrationContext & {
-  me: AuthMeData;
+  me: BackofficeMeData;
 };
 
-export const scopeLabel = (scope: BackofficeContextScope, me: AuthMeData): string => {
+export const scopeLabel = (scope: BackofficeContextScope, me: BackofficeMeData): string => {
   switch (scope.kind) {
     case "system":
       return "System";
@@ -53,7 +58,7 @@ export const scopeLabel = (scope: BackofficeContextScope, me: AuthMeData): strin
 
 export const scopeToAutomationUiScope = (
   scope: BackofficeContextScope,
-  me: AuthMeData,
+  me: BackofficeMeData,
 ): AutomationUiScope => {
   switch (scope.kind) {
     case "system":
@@ -80,11 +85,40 @@ export const integrationBasePath = (scope: AutomationUiScope, integration: strin
 export const organizationIdFromScope = (scope: BackofficeContextScope): string | null =>
   scope.kind === "org" || scope.kind === "project" ? scope.orgId : null;
 
-export const createOrganisationScopeOptions = (organizations: AuthMeData["organizations"]) =>
+export const createOrganisationScopeOptions = (organizations: BackofficeMeData["organizations"]) =>
   organizations.map(({ organization }) => ({
     id: organization.id,
     label: organization.name ?? organization.id,
   }));
+
+export const createIntegrationScopeSwitchOptions = ({
+  me,
+  projects,
+  projectOrgId,
+  integration,
+  allowedScopes,
+}: {
+  me: BackofficeMeData;
+  projects: AutomationProjectRecord[];
+  projectOrgId: string;
+  integration: string;
+  allowedScopes?: readonly BackofficeContextScope["kind"][];
+}): IntegrationScopeSwitchOption[] => {
+  const scopeOptions = createAutomationScopeOptions({
+    organisations: me.organizations.map((entry) => entry.organization),
+    projects,
+    user: me.user,
+    currentTab: "integrations",
+    projectOrgId,
+  });
+
+  const allowedScopeKinds = allowedScopes ? new Set(allowedScopes) : null;
+  return scopeOptions.flatMap((option) =>
+    !allowedScopeKinds || allowedScopeKinds.has(option.kind)
+      ? [{ ...option, to: `${option.to}/${integration}` }]
+      : [],
+  );
+};
 
 export const resolveIntegrationContext = ({
   params,
@@ -93,7 +127,7 @@ export const resolveIntegrationContext = ({
   allowedScopes,
 }: {
   params: IntegrationRouteParams;
-  me: AuthMeData;
+  me: BackofficeMeData;
   integration: string;
   allowedScopes?: readonly BackofficeContextScope["kind"][];
 }): ScopedIntegrationContext => {
@@ -146,7 +180,7 @@ export const resolveAuthenticatedIntegrationContext = async ({
   integration: string;
   allowedScopes?: readonly BackofficeContextScope["kind"][];
 }): Promise<AuthenticatedScopedIntegrationContext> => {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     throw new Response("Not Found", { status: 404 });
   }

@@ -4,12 +4,12 @@ import type {
 } from "@fragno-dev/pi-harness/types";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
-import type { UserAuthorityFacts } from "@fragno-dev/auth";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
 
 import {
   backofficeContextScopesEqual,
+  createBackofficeServiceExecution,
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
   type BackofficeContextScope,
@@ -41,6 +41,7 @@ import {
   backofficeContextScopeFromSinglePathSegment,
   backofficeContextScopeRoutePath,
 } from "@/backoffice-runtime/scope-codec";
+import { createTelegramAutomationFileResponse } from "@/backoffice-runtime/telegram-file-response";
 import {
   createBackofficeFileSystem,
   STATIC_FILE_CONTENT,
@@ -48,6 +49,7 @@ import {
   WORKSPACE_STARTER_CONTENT,
 } from "@/files";
 import type { MasterFileSystem } from "@/files";
+import type { UserAuthorityFacts } from "@/fragno/auth/contracts";
 import { automationFragmentSchema } from "@/fragno/automation/schema";
 import {
   createAutomationCollections,
@@ -496,11 +498,6 @@ type ResendQueuedEmailInput = {
   idempotencyKey?: string | RegExp;
 };
 
-type AuthSignUpInput = {
-  email: string;
-  password?: string;
-};
-
 type StoreEntryInput = {
   orgId: string;
   key: string;
@@ -656,6 +653,36 @@ type WorkflowEventInput = {
 type ScenarioValue<TVars extends ScenarioVars, TValue> =
   | TValue
   | ((ctx: BackofficeScenarioContext<TVars>) => Promise<TValue> | TValue);
+
+type AuthSignUpInput = {
+  email: string;
+  password?: string;
+  captureSessionCookieAs?: string;
+};
+type AuthCreateOrganizationInput<TVars extends ScenarioVars> = {
+  cookie: ScenarioValue<TVars, string>;
+  name: string;
+  slug: string;
+  captureOrganizationIdAs?: string;
+};
+type AuthOrganizationSessionInput<TVars extends ScenarioVars> = {
+  cookie: ScenarioValue<TVars, string>;
+  organizationId: ScenarioValue<TVars, string>;
+};
+type AuthInviteMemberInput<TVars extends ScenarioVars> = AuthOrganizationSessionInput<TVars> & {
+  email: string;
+  role?: "member" | "admin" | "owner";
+  captureInvitationIdAs?: string;
+};
+type AuthAcceptInvitationInput<TVars extends ScenarioVars> = {
+  cookie: ScenarioValue<TVars, string>;
+  invitationId: ScenarioValue<TVars, string>;
+};
+type AuthSessionInput<TVars extends ScenarioVars> = {
+  cookie: ScenarioValue<TVars, string>;
+};
+type AuthPersonalOrganizationAssertionInput<TVars extends ScenarioVars> =
+  AuthSessionInput<TVars> & { captureOrganizationIdAs?: string };
 
 type WorkflowCreateInstanceInput<TVars extends ScenarioVars = ScenarioVars> = {
   orgId: string;
@@ -818,6 +845,10 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
   when: {
     auth: {
       signUp(input: AuthSignUpInput): BackofficeScenarioStep;
+      createOrganization(input: AuthCreateOrganizationInput<TVars>): BackofficeScenarioStep;
+      inviteMember(input: AuthInviteMemberInput<TVars>): BackofficeScenarioStep;
+      acceptInvitation(input: AuthAcceptInvitationInput<TVars>): BackofficeScenarioStep;
+      signOut(input: AuthSessionInput<TVars>): BackofficeScenarioStep;
       organizationCreated(input: OrganizationCreatedInput): BackofficeScenarioStep;
       setUserRole(input: AuthUserRoleInput): BackofficeScenarioStep;
       setUserStatus(input: AuthUserStatusInput): BackofficeScenarioStep;
@@ -871,6 +902,11 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
       authority(input: AuthAuthorityAssertionInput): BackofficeScenarioStep;
       member(input: AuthMemberAssertionInput): BackofficeScenarioStep;
       permissions(input: AuthPermissionsAssertionInput): BackofficeScenarioStep;
+      personalOrganization(
+        input: AuthPersonalOrganizationAssertionInput<TVars>,
+      ): BackofficeScenarioStep;
+      sessionHasOrganization(input: AuthOrganizationSessionInput<TVars>): BackofficeScenarioStep;
+      signedOut(input: AuthSessionInput<TVars>): BackofficeScenarioStep;
     };
     automation: {
       event(input: AutomationEventAssertionInput): BackofficeScenarioStep;
@@ -1656,7 +1692,14 @@ const getWorkflow = (
       scope.kind === "system"
         ? ctx.runtime.objects.automations.singleton()
         : ctx.runtime.objects.automations.forOrg(scope.orgId),
-    execution: execution ?? createBackofficeSystemExecution(scope),
+    execution:
+      execution ??
+      (scope.kind === "system"
+        ? createBackofficeSystemExecution(scope)
+        : createBackofficeServiceExecution({
+            scope,
+            service: { type: "automation", id: "scenario" },
+          })),
   });
 };
 
@@ -2198,12 +2241,40 @@ const assertPartialMatch = (actual: unknown, expected: unknown, path = "value") 
 };
 
 const resolveScenarioValue = async <TVars extends ScenarioVars, TValue>(
-  ctx: BackofficeScenarioContext<TVars>,
+  ctx: BackofficeScenarioContext,
   value: ScenarioValue<TVars, TValue>,
 ): Promise<TValue> =>
   typeof value === "function"
-    ? await (value as (ctx: BackofficeScenarioContext<TVars>) => Promise<TValue> | TValue)(ctx)
+    ? await (value as (ctx: BackofficeScenarioContext) => Promise<TValue> | TValue)(ctx)
     : value;
+
+const scenarioAuthRequest = (
+  ctx: BackofficeScenarioContext,
+  path: string,
+  input: { cookie?: string; body?: unknown } = {},
+) =>
+  ctx.runtime.objects.auth.singleton().fetch(
+    new Request(`https://backoffice.example/api/auth${path}`, {
+      method: input.body === undefined ? "GET" : "POST",
+      headers: {
+        origin: "https://backoffice.example",
+        ...(input.cookie ? { cookie: input.cookie } : {}),
+        ...(input.body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      body: input.body === undefined ? undefined : JSON.stringify(input.body),
+    }),
+  );
+
+const scenarioAuthCookie = (response: Response): string => {
+  const setCookie = response.headers.get("set-cookie");
+  if (!setCookie) {
+    return "";
+  }
+  return setCookie
+    .split(/,(?=\s*[^;,=]+=[^;,]+)/u)
+    .map((header) => header.trim().split(";", 1)[0])
+    .join("; ");
+};
 
 const scenarioIdString = (id: unknown): string =>
   typeof id === "object" && id && "externalId" in id ? String(id.externalId) : String(id);
@@ -2308,6 +2379,12 @@ const buildStepBuilders = <
           async (ctx) => {
             ctx.rememberOrg(input.id);
             const ownerUserId = input.ownerUserId ?? "user-1";
+            await setUpScenarioAuthUser(ctx.runtime, {
+              id: ownerUserId,
+              email: `${ownerUserId}@scenario.test`,
+              role: "user",
+              status: "active",
+            });
             await setUpScenarioAuthOrganization(ctx.runtime, {
               id: input.id,
               name: input.name,
@@ -2592,18 +2669,101 @@ const buildStepBuilders = <
     auth: {
       signUp: (input) =>
         createStep("when", "auth.signUp", `sign up ${input.email}`, async (ctx) => {
-          const response = await ctx.runtime.objects.auth.singleton().fetch(
-            new Request("https://backoffice.example/api/auth/sign-up", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({
-                email: input.email,
-                password: input.password ?? "password123",
-              }),
-            }),
-          );
+          const response = await scenarioAuthRequest(ctx, "/sign-up/email", {
+            body: {
+              name: input.email.split("@", 1)[0] || input.email,
+              email: input.email,
+              password: input.password ?? "password123",
+            },
+          });
           if (!response.ok) {
             throw new Error(`Auth sign-up failed (${response.status}): ${await response.text()}`);
+          }
+          if (input.captureSessionCookieAs) {
+            const cookie = scenarioAuthCookie(response);
+            if (!cookie) {
+              throw new Error(`Auth sign-up for ${input.email} did not issue a session cookie.`);
+            }
+            ctx.vars[input.captureSessionCookieAs] = cookie;
+          }
+        }),
+      createOrganization: (input) =>
+        createStep(
+          "when",
+          "auth.createOrganization",
+          `create auth organization ${input.slug}`,
+          async (ctx) => {
+            const response = await scenarioAuthRequest(ctx, "/organization/create", {
+              cookie: await resolveScenarioValue(ctx, input.cookie),
+              body: { name: input.name, slug: input.slug },
+            });
+            if (!response.ok) {
+              throw new Error(
+                `Auth organization creation failed (${response.status}): ${await response.text()}`,
+              );
+            }
+            if (input.captureOrganizationIdAs) {
+              const organization = (await response.json()) as { id?: unknown };
+              if (typeof organization.id !== "string") {
+                throw new Error("Auth organization creation returned no organization id.");
+              }
+              ctx.vars[input.captureOrganizationIdAs] = organization.id;
+            }
+          },
+        ),
+      inviteMember: (input) =>
+        createStep(
+          "when",
+          "auth.inviteMember",
+          `invite ${input.email} to auth organization`,
+          async (ctx) => {
+            const response = await scenarioAuthRequest(ctx, "/organization/invite-member", {
+              cookie: await resolveScenarioValue(ctx, input.cookie),
+              body: {
+                organizationId: await resolveScenarioValue(ctx, input.organizationId),
+                email: input.email,
+                role: input.role ?? "member",
+              },
+            });
+            if (!response.ok) {
+              throw new Error(
+                `Auth member invitation failed (${response.status}): ${await response.text()}`,
+              );
+            }
+            if (input.captureInvitationIdAs) {
+              const invitation = (await response.json()) as { id?: unknown };
+              if (typeof invitation.id !== "string") {
+                throw new Error("Auth member invitation returned no invitation id.");
+              }
+              ctx.vars[input.captureInvitationIdAs] = invitation.id;
+            }
+          },
+        ),
+      acceptInvitation: (input) =>
+        createStep(
+          "when",
+          "auth.acceptInvitation",
+          "accept auth organization invitation",
+          async (ctx) => {
+            const response = await scenarioAuthRequest(ctx, "/organization/accept-invitation", {
+              cookie: await resolveScenarioValue(ctx, input.cookie),
+              body: { invitationId: await resolveScenarioValue(ctx, input.invitationId) },
+            });
+            if (!response.ok) {
+              throw new Error(
+                `Accepting Auth invitation failed (${response.status}): ${await response.text()}`,
+              );
+            }
+          },
+        ),
+      signOut: (input) =>
+        createStep("when", "auth.signOut", "sign out auth session", async (ctx) => {
+          const response = await scenarioAuthRequest(ctx, "/sign-out", {
+            cookie: await resolveScenarioValue(ctx, input.cookie),
+            body: {},
+          });
+          if (!response.ok) {
+            throw new Error(`Auth sign-out failed (${response.status}): ${await response.text()}`);
           }
         }),
       organizationCreated: (input) =>
@@ -3083,6 +3243,54 @@ const buildStepBuilders = <
             }
           },
         ),
+      personalOrganization: (input) =>
+        createStep(
+          "then",
+          "auth.personalOrganization",
+          "assert personal auth organization",
+          async (ctx) => {
+            const response = await scenarioAuthRequest(ctx, "/backoffice-token", {
+              cookie: await resolveScenarioValue(ctx, input.cookie),
+              body: {},
+            });
+            if (!response.ok) {
+              throw new Error(`Backoffice token exchange failed (${response.status}).`);
+            }
+            const result = (await response.json()) as { organizationId?: unknown };
+            const organizationId = result.organizationId;
+            if (typeof organizationId !== "string") {
+              throw new Error("Personal Auth organization returned no id.");
+            }
+            if (input.captureOrganizationIdAs) {
+              ctx.vars[input.captureOrganizationIdAs] = organizationId;
+            }
+          },
+        ),
+      sessionHasOrganization: (input) =>
+        createStep(
+          "then",
+          "auth.sessionHasOrganization",
+          "assert auth session organization membership",
+          async (ctx) => {
+            const organizationId = await resolveScenarioValue(ctx, input.organizationId);
+            const response = await scenarioAuthRequest(ctx, "/backoffice-token", {
+              cookie: await resolveScenarioValue(ctx, input.cookie),
+              body: { organizationId },
+            });
+            if (!response.ok) {
+              throw new Error(`Expected Backoffice token access to ${organizationId}.`);
+            }
+          },
+        ),
+      signedOut: (input) =>
+        createStep("then", "auth.signedOut", "assert auth session is signed out", async (ctx) => {
+          const response = await scenarioAuthRequest(ctx, "/get-session", {
+            cookie: await resolveScenarioValue(ctx, input.cookie),
+          });
+          if (!response.ok || (await response.json()) !== null) {
+            throw new Error("Expected the Auth session to be signed out.");
+          }
+        }),
     },
     automation: {
       event: (input) =>
@@ -4152,9 +4360,12 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
         async downloadAutomationFile(input: { fileId: string }): Promise<Response> {
           fakeTelegram.downloadFileCalls.push({ fileId: input.fileId });
           const file = fakeTelegramFile(fakeTelegram, input.fileId);
-          return new Response(file.bytes.slice(), {
-            headers: file.contentType ? { "content-type": file.contentType } : undefined,
-          });
+          return createTelegramAutomationFileResponse(
+            new Response(file.bytes.slice(), {
+              headers: file.contentType ? { "content-type": file.contentType } : undefined,
+            }),
+            file,
+          );
         }
       })({
         state,

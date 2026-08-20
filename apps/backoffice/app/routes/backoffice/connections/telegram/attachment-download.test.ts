@@ -1,17 +1,19 @@
 import { beforeEach, describe, expect, it, vi, assert } from "vitest";
 
-const { getAuthMeMock, getTelegramDurableObjectMock } = vi.hoisted(() => ({
-  getAuthMeMock: vi.fn(),
+const { findBackofficeMeMock, getTelegramDurableObjectMock } = vi.hoisted(() => ({
+  findBackofficeMeMock: vi.fn(),
   getTelegramDurableObjectMock: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/auth-server", () => ({
-  getAuthMe: getAuthMeMock,
+  findBackofficeMe: findBackofficeMeMock,
 }));
 
 vi.mock("@/worker-runtime/durable-objects", () => ({
   getTelegramDurableObject: getTelegramDurableObjectMock,
 }));
+
+import { createTelegramAutomationFileResponse } from "@/backoffice-runtime/telegram-file-response";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import {
@@ -23,12 +25,12 @@ import {
 
 describe("telegram attachment download route", () => {
   beforeEach(() => {
-    getAuthMeMock.mockReset();
+    findBackofficeMeMock.mockReset();
     getTelegramDurableObjectMock.mockReset();
   });
 
   it("redirects anonymous users to login", async () => {
-    getAuthMeMock.mockResolvedValue(null);
+    findBackofficeMeMock.mockResolvedValue(null);
 
     const response = await loader(
       createLoaderArgs(
@@ -44,15 +46,16 @@ describe("telegram attachment download route", () => {
   });
 
   it("downloads Telegram attachment bytes with a file-path-derived filename", async () => {
-    getAuthMeMock.mockResolvedValue(createAuthMe());
+    findBackofficeMeMock.mockResolvedValue(createAuthMe());
     getTelegramDurableObjectMock.mockReturnValue({
-      getAutomationFile: vi.fn(async () => ({
-        fileId: "file-1",
-        fileUniqueId: "unique-1",
-        filePath: "voice/message-1.ogg",
-        fileSize: 4,
-      })),
-      downloadAutomationFile: vi.fn(async () => new Response(new Uint8Array([0, 255, 1, 2]))),
+      downloadAutomationFile: vi.fn(async () =>
+        createTelegramAutomationFileResponse(new Response(new Uint8Array([0, 255, 1, 2])), {
+          fileId: "file-1",
+          fileUniqueId: "unique-1",
+          filePath: "voice/message-1.ogg",
+          fileSize: 4,
+        }),
+      ),
     });
 
     const response = await loader(
@@ -71,15 +74,16 @@ describe("telegram attachment download route", () => {
   });
 
   it("prefers the original filename from the backoffice attachment when available", async () => {
-    getAuthMeMock.mockResolvedValue(createAuthMe());
+    findBackofficeMeMock.mockResolvedValue(createAuthMe());
     getTelegramDurableObjectMock.mockReturnValue({
-      getAutomationFile: vi.fn(async () => ({
-        fileId: "file-1",
-        fileUniqueId: "unique-1",
-        filePath: "documents/file_123",
-        fileSize: 3,
-      })),
-      downloadAutomationFile: vi.fn(async () => new Response(new Uint8Array([7, 8, 9]))),
+      downloadAutomationFile: vi.fn(async () =>
+        createTelegramAutomationFileResponse(new Response(new Uint8Array([7, 8, 9])), {
+          fileId: "file-1",
+          fileUniqueId: "unique-1",
+          filePath: "documents/file_123",
+          fileSize: 3,
+        }),
+      ),
     });
 
     const response = await loader(
@@ -96,15 +100,16 @@ describe("telegram attachment download route", () => {
   });
 
   it("falls back to the attachment kind when Telegram metadata lacks a file path", async () => {
-    getAuthMeMock.mockResolvedValue(createAuthMe());
+    findBackofficeMeMock.mockResolvedValue(createAuthMe());
     getTelegramDurableObjectMock.mockReturnValue({
-      getAutomationFile: vi.fn(async () => ({
-        fileId: "file/with spaces",
-        fileUniqueId: "unique-1",
-        filePath: undefined,
-        fileSize: 3,
-      })),
-      downloadAutomationFile: vi.fn(async () => new Response(new Uint8Array([1, 2, 3]))),
+      downloadAutomationFile: vi.fn(async () =>
+        createTelegramAutomationFileResponse(new Response(new Uint8Array([1, 2, 3])), {
+          fileId: "file/with spaces",
+          fileUniqueId: "unique-1",
+          filePath: undefined,
+          fileSize: 3,
+        }),
+      ),
     });
 
     const response = await loader(
@@ -121,15 +126,16 @@ describe("telegram attachment download route", () => {
   });
 
   it("serves inline disposition when requested for previews", async () => {
-    getAuthMeMock.mockResolvedValue(createAuthMe());
+    findBackofficeMeMock.mockResolvedValue(createAuthMe());
     getTelegramDurableObjectMock.mockReturnValue({
-      getAutomationFile: vi.fn(async () => ({
-        fileId: "file-1",
-        fileUniqueId: "unique-1",
-        filePath: "photos/thumb.jpg",
-        fileSize: 4,
-      })),
-      downloadAutomationFile: vi.fn(async () => new Response(new Uint8Array([1, 2, 3, 4]))),
+      downloadAutomationFile: vi.fn(async () =>
+        createTelegramAutomationFileResponse(new Response(new Uint8Array([1, 2, 3, 4])), {
+          fileId: "file-1",
+          fileUniqueId: "unique-1",
+          filePath: "photos/thumb.jpg",
+          fileSize: 4,
+        }),
+      ),
     });
 
     const response = await loader(
@@ -144,7 +150,7 @@ describe("telegram attachment download route", () => {
   });
 
   it("returns 404 for users outside the organisation", async () => {
-    getAuthMeMock.mockResolvedValue({
+    findBackofficeMeMock.mockResolvedValue({
       ...createAuthMe(),
       organizations: [],
     });

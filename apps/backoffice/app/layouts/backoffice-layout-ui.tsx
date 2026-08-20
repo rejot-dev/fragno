@@ -13,10 +13,17 @@ export default function BackofficeLayout({
   children?: ReactNode;
   loaderData: Route.ComponentProps["loaderData"];
 }) {
-  const { me, currentScope, automationCollectionSource, projectCollectionSource } = loaderData;
+  const {
+    me,
+    accessTokenExpiresAt,
+    currentScope,
+    automationCollectionSource,
+    projectCollectionSource,
+  } = loaderData;
   return (
     <BackofficeShell
       me={me}
+      accessTokenExpiresAt={accessTokenExpiresAt}
       currentContext={{ scope: currentScope, automationCollectionSource, projectCollectionSource }}
       isLoading={false}
     >
@@ -42,7 +49,7 @@ export function ErrorBoundary() {
     import.meta.env.MODE === "development" ? getRouteErrorDebugDetails(error) : null;
 
   return (
-    <BackofficeShell me={null} currentContext={null} isLoading={false}>
+    <BackofficeShell me={null} accessTokenExpiresAt={null} currentContext={null} isLoading={false}>
       <div className="space-y-4">
         <BackofficePageHeader
           breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Error" }]}

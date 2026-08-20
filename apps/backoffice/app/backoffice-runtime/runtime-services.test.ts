@@ -1,6 +1,4 @@
-import { assert, describe, expect, it, vi } from "vitest";
-
-import { z } from "zod";
+import { describe, expect, it, vi } from "vitest";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class MockDurableObject {},
@@ -20,19 +18,6 @@ import {
   createCloudflareBackofficeRuntimeServices,
   parseAuthEmailVerificationRuntimeConfig,
 } from "./runtime-services";
-
-const authoritySignUpResponseSchema = z.object({
-  status: z.literal("authenticated"),
-  userId: z.string(),
-  auth: z.object({
-    token: z.string(),
-    activeOrganizationId: z.string().nullable(),
-  }),
-});
-
-const addedOrganizationMemberResponseSchema = z.object({
-  member: z.object({ id: z.string() }),
-});
 
 describe("Backoffice authority runtime wiring", () => {
   it("does not let an observer authorize when the Cloudflare authority source is unavailable", async () => {
@@ -86,37 +71,34 @@ describe("Backoffice authority runtime wiring", () => {
 
     try {
       const auth = runtime.objects.auth.singleton();
-      const signUp = async (email: string) => {
-        const response = await auth.fetch(
-          new Request("https://backoffice.example/api/auth/sign-up", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ email, password: "password123" }),
-          }),
-        );
-        if (!response.ok) {
-          throw new Error(await response.text());
-        }
-        return authoritySignUpResponseSchema.parse(await response.json());
-      };
-
-      const owner = await signUp("authority-owner@example.com");
-      const member = await signUp("authority-member@example.com");
-      assert(owner.auth.activeOrganizationId);
-      const organizationId = owner.auth.activeOrganizationId;
-      const authorization = `Bearer ${owner.auth.token}`;
-
-      const addResponse = await auth.fetch(
-        new Request(`https://backoffice.example/api/auth/organizations/${organizationId}/members`, {
-          method: "POST",
-          headers: { authorization, "content-type": "application/json" },
-          body: JSON.stringify({ userId: member.userId, roles: ["member"] }),
-        }),
-      );
-      if (!addResponse.ok) {
-        throw new Error(await addResponse.text());
-      }
-      const added = addedOrganizationMemberResponseSchema.parse(await addResponse.json());
+      const organizationId = "authority-org";
+      const memberUserId = "authority-member";
+      await auth.applyScenarioFixture({
+        users: [
+          {
+            id: "authority-owner",
+            email: "authority-owner@example.com",
+            role: "user",
+            status: "active",
+          },
+          {
+            id: memberUserId,
+            email: "authority-member@example.com",
+            role: "user",
+            status: "active",
+          },
+        ],
+        organizations: [
+          {
+            id: organizationId,
+            name: "Authority Org",
+            slug: "authority-org",
+            ownerUserId: "authority-owner",
+            ownerRoles: ["owner"],
+          },
+        ],
+        members: [{ organizationId, userId: memberUserId, roles: ["member"] }],
+      });
 
       const kernel = new BackofficeKernel(runtime.services);
       const execution = {
@@ -132,7 +114,7 @@ describe("Backoffice authority runtime wiring", () => {
           principal: {
             scope: "internal" as const,
             type: "user",
-            id: member.userId,
+            id: memberUserId,
             role: "principal" as const,
           },
           delegation: [],
@@ -147,15 +129,9 @@ describe("Backoffice authority runtime wiring", () => {
         }),
       ).resolves.toBe("sent");
 
-      const removeResponse = await auth.fetch(
-        new Request(
-          `https://backoffice.example/api/auth/organizations/${organizationId}/members/${added.member.id}`,
-          { method: "DELETE", headers: { authorization } },
-        ),
-      );
-      if (!removeResponse.ok) {
-        throw new Error(await removeResponse.text());
-      }
+      await auth.applyScenarioFixture({
+        removedMembers: [{ organizationId, userId: memberUserId }],
+      });
 
       const executeAfterRevocation = vi.fn(async () => "sent");
       await expect(

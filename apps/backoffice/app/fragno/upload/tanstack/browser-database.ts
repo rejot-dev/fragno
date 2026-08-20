@@ -7,6 +7,7 @@ import {
   backofficeContextScopeRoutePath,
   backofficeScopeSinglePathSegment,
 } from "@/backoffice-runtime/scope-codec";
+import { backofficeFetch } from "@/fragno/auth/browser-auth.client";
 import {
   createBrowserCollectionDatabaseLoader,
   createCollectionResourceRegistry,
@@ -39,7 +40,7 @@ export const getUploadBrowserDatabase = createBrowserCollectionDatabaseLoader({
         const resource = (async () => {
           const coordinator = await createFragnoOutboxCoordinator({
             baseUrl: description.baseUrl,
-            fetch: (input, init) => globalThis.fetch(input, init),
+            fetch: backofficeFetch,
             schemas: [uploadSchema] as const,
           });
           const collections = createUploadCollections(coordinator);

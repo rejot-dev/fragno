@@ -527,6 +527,7 @@ export const workflow_instance_workflows = sqliteTable("workflow_instance_workfl
   remoteWorkflowName: text("remoteWorkflowName"),
   instanceId: text("instanceId").notNull(),
   status: text("status").notNull(),
+  runGeneration: integer("runGeneration").notNull().default(1),
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   startedAt: integer("startedAt", { mode: "timestamp" }),

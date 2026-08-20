@@ -1,4 +1,5 @@
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { readTelegramAutomationFileResponse } from "@/backoffice-runtime/telegram-file-response";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
@@ -19,7 +20,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   }
 
   const returnTo = `${requestUrl.pathname}${requestUrl.search}`;
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(new URL(buildBackofficeLoginPath(returnTo), request.url), 302);
   }
@@ -28,8 +29,8 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   const telegramDo = context
     .get(BackofficeWorkerContext)
     .runtime.objects.telegram.for(integration.scope);
-  const metadata = await telegramDo.getAutomationFile({ fileId });
   const downloadResponse = await telegramDo.downloadAutomationFile({ fileId });
+  const metadata = readTelegramAutomationFileResponse(downloadResponse);
   const filename = buildDownloadFilename(
     requestedFilename,
     metadata.filePath,
@@ -38,7 +39,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   );
   const contentLength =
     downloadResponse.headers.get("content-length") ??
-    (metadata.fileSize != null ? String(metadata.fileSize) : null);
+    (metadata.fileSize !== null ? String(metadata.fileSize) : null);
 
   return new Response(downloadResponse.body, {
     status: 200,

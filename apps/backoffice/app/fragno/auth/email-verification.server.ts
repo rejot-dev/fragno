@@ -1,29 +1,24 @@
 import type { RouterContextProvider } from "react-router";
 
-import { createAuthRouteCaller } from "./auth-server";
+import { callBetterAuth } from "./auth-server";
 
 export type EmailVerificationResendResult =
-  | {
-      status: "accepted";
-      email: string;
-    }
-  | {
-      status: "failed";
-      message: string;
-    };
+  | { status: "accepted"; email: string }
+  | { status: "error"; message: string };
 
 export const requestEmailVerificationResend = async (input: {
   request: Request;
   context: Readonly<RouterContextProvider>;
   email: string;
 }): Promise<EmailVerificationResendResult> => {
-  const response = await createAuthRouteCaller(input.request, input.context)(
-    "POST",
-    "/email-verification/resend",
-    { body: { email: input.email } },
-  );
-
-  return response.type === "error"
-    ? { status: "failed", message: "We could not request another verification email." }
-    : { status: "accepted", email: input.email };
+  const email = input.email.trim().toLowerCase();
+  const response = await callBetterAuth(input.request, input.context, "/send-verification-email", {
+    method: "POST",
+    body: JSON.stringify({ email, callbackURL: "/backoffice/login" }),
+  });
+  if (!response.ok) {
+    const error = (await response.json().catch(() => null)) as { message?: string } | null;
+    return { status: "error", message: error?.message || "Unable to request verification." };
+  }
+  return { status: "accepted", email };
 };

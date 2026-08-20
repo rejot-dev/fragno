@@ -34,10 +34,11 @@ describe("DriverConfig.normalizeError", () => {
       "UNIQUE constraint failed: workflow_step_workflows.instanceRef, workflow_step_workflows.stepKey",
       { code: "SQLITE_CONSTRAINT_UNIQUE" },
     );
-    const queryError = new Error(
+    const durableObjectError = new Error(
       'Durable Object SQLite rejected query: insert into "workflow_step_workflows" (...) values (...)',
       { cause: sqliteError },
     );
+    const queryError = new Error("Failed to execute query", { cause: durableObjectError });
 
     const normalized = config.normalizeError(queryError);
 

@@ -1,13 +1,27 @@
 import "../../backoffice.css";
 
-import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
+import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import { z } from "zod";
 
 import { FormContainer, FormField } from "@/components/backoffice";
-import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth/auth-server";
+import {
+  callBetterAuth,
+  createBackofficeIdentityChangeHeaders,
+  getBackofficeMe,
+} from "@/fragno/auth/auth-server";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
 
 import type { Route } from "./+types/sign-up";
+import {
+  buildBackofficeAuthBootstrapPath,
+  buildBackofficeLoginPath,
+  buildBackofficeSignUpPath,
+  readBackofficeReturnTo,
+} from "./auth-navigation";
+
+type BackofficeSignUpLoaderData = {
+  returnTo: string;
+};
 
 type BackofficeSignUpActionData =
   | {
@@ -33,17 +47,27 @@ const signUpActionInputSchema = z.discriminatedUnion("intent", [
   }),
 ]);
 
-export async function loader({ request, context }: Route.LoaderArgs) {
-  const me = await getAuthMe(request, context);
-  if (me?.user) {
-    return Response.redirect(new URL("/backoffice", request.url), 302);
+export async function loader({ request, context, url }: Route.LoaderArgs) {
+  if (import.meta.env.MODE !== "development") {
+    throw new Response("Not Found", { status: 404 });
   }
 
-  return null;
+  const returnTo = readBackofficeReturnTo(url);
+  const me = await getBackofficeMe(request, context);
+  if (me.status === "authenticated") {
+    return redirect(returnTo);
+  }
+
+  return { returnTo } satisfies BackofficeSignUpLoaderData;
 }
 
-export async function action({ request, context }: Route.ActionArgs) {
+export async function action({ request, context, url }: Route.ActionArgs) {
+  if (import.meta.env.MODE !== "development") {
+    throw new Response("Not Found", { status: 404 });
+  }
+
   const formData = await request.formData();
+  const returnTo = readBackofficeReturnTo(url);
   const input = signUpActionInputSchema.safeParse(Object.fromEntries(formData));
   if (!input.success) {
     return {
@@ -75,33 +99,32 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   try {
-    const response = await createAuthRouteCaller(request, context)("POST", "/sign-up", {
-      body: { email: input.data.email, password: input.data.password },
+    const response = await callBetterAuth(request, context, "/sign-up/email", {
+      method: "POST",
+      body: JSON.stringify({
+        name: input.data.email.split("@", 1)[0] || input.data.email,
+        email: input.data.email,
+        password: input.data.password,
+        callbackURL: buildBackofficeLoginPath(returnTo),
+      }),
     });
-
-    if (response.type === "error") {
+    if (!response.ok) {
+      const error = (await response.json().catch(() => null)) as { message?: string } | null;
       return {
         state: "error",
-        message: response.error.message || "Unable to create an account.",
+        message: error?.message || "Unable to create an account.",
       } satisfies BackofficeSignUpActionData;
     }
-
-    if (response.type !== "json") {
-      return {
-        state: "error",
-        message: "Unable to create an account.",
-      } satisfies BackofficeSignUpActionData;
+    if (response.headers.has("set-cookie")) {
+      return redirect(buildBackofficeAuthBootstrapPath(returnTo), {
+        headers: createBackofficeIdentityChangeHeaders(response),
+      });
     }
-
-    if (response.data.status === "email_verification_required") {
-      return {
-        state: "verification_required",
-        email: response.data.email,
-        resend: "available",
-      } satisfies BackofficeSignUpActionData;
-    }
-
-    return redirect("/backoffice", { headers: response.headers });
+    return {
+      state: "verification_required",
+      email: input.data.email,
+      resend: "available",
+    } satisfies BackofficeSignUpActionData;
   } catch (error) {
     return {
       state: "error",
@@ -118,6 +141,7 @@ export function meta() {
 }
 
 export default function BackofficeSignUp() {
+  const { returnTo } = useLoaderData<BackofficeSignUpLoaderData>();
   const actionData = useActionData<BackofficeSignUpActionData>();
   const navigation = useNavigation();
   const verificationRequired = actionData?.state === "verification_required" ? actionData : null;
@@ -145,7 +169,7 @@ export default function BackofficeSignUp() {
           </p>
           <div className="flex flex-wrap gap-2">
             <Link
-              to="/backoffice/login"
+              to={buildBackofficeLoginPath(returnTo)}
               className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
             >
               Back to sign in
@@ -180,7 +204,7 @@ export default function BackofficeSignUp() {
                     If this unverified account exists, a new email will be sent.
                   </p>
                 ) : null}
-                <Form method="post">
+                <Form method="post" action={buildBackofficeSignUpPath(returnTo)}>
                   <input type="hidden" name="intent" value="resend" />
                   <input type="hidden" name="email" value={verificationRequired.email} />
                   <button
@@ -192,14 +216,18 @@ export default function BackofficeSignUp() {
                   </button>
                 </Form>
                 <Link
-                  to="/backoffice/login"
+                  to={buildBackofficeLoginPath(returnTo)}
                   className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                 >
                   Continue to sign in
                 </Link>
               </div>
             ) : (
-              <Form method="post" className="space-y-3">
+              <Form
+                method="post"
+                action={buildBackofficeSignUpPath(returnTo)}
+                className="space-y-3"
+              >
                 <FormField label="Work email" hint="Use the email tied to your team access.">
                   <input
                     type="email"
@@ -250,7 +278,7 @@ export default function BackofficeSignUp() {
                   <span className="text-xs text-[var(--bo-muted-2)]">
                     Already registered?{" "}
                     <Link
-                      to="/backoffice/login"
+                      to={buildBackofficeLoginPath(returnTo)}
                       className="font-semibold tracking-[0.22em] text-[var(--bo-accent)] uppercase transition-colors hover:text-[var(--bo-accent-strong)]"
                     >
                       Sign in

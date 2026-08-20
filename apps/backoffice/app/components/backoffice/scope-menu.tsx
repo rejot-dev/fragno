@@ -4,7 +4,8 @@ import { Fragment } from "react";
 import { Link, useLocation } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import type { AuthMeData } from "@/fragno/auth/auth-client";
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
+import { buildBackofficeOrganizationSwitchPath } from "@/routes/backoffice/auth-navigation";
 
 import { scopeSwitchPath } from "./scope-switch-path";
 
@@ -68,7 +69,7 @@ const triggerKindLabel = (kind: BackofficeContextScope["kind"]) => {
   throw new Error("Unsupported Backoffice scope kind.");
 };
 
-const currentScopeLabel = (scope: BackofficeContextScope, me: AuthMeData) => {
+const currentScopeLabel = (scope: BackofficeContextScope, me: BackofficeMeData) => {
   switch (scope.kind) {
     case "system":
       return "System";
@@ -90,7 +91,7 @@ export function BackofficeScopeMenu({
   me,
   currentScope,
 }: {
-  me: AuthMeData | null;
+  me: BackofficeMeData | null;
   currentScope: BackofficeContextScope | null;
 }) {
   const location = useLocation();
@@ -173,6 +174,19 @@ export function BackofficeScopeMenu({
                     </Menu.GroupLabel>
                     {groupOptions.map((option) => {
                       const isCurrent = option.id === selectedId;
+                      const destination = scopeSwitchPath(location.pathname, option.scope);
+                      const destinationOrganizationId =
+                        option.scope.kind === "org" || option.scope.kind === "project"
+                          ? option.scope.orgId
+                          : null;
+                      const switchPath =
+                        destinationOrganizationId &&
+                        destinationOrganizationId !== me.activeOrganizationId
+                          ? buildBackofficeOrganizationSwitchPath(
+                              destinationOrganizationId,
+                              destination,
+                            )
+                          : destination;
                       const className = isCurrent
                         ? "grid min-h-11 cursor-default gap-1 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-2.5 py-2 text-left text-[var(--bo-accent-fg)] outline-none"
                         : "grid min-h-11 gap-1 border border-transparent px-2.5 py-2 text-left text-[var(--bo-muted)] outline-none transition-[background-color,border-color,color] duration-150 ease-out data-[highlighted]:border-[color:var(--bo-border-strong)] data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)]";
@@ -201,12 +215,7 @@ export function BackofficeScopeMenu({
                       ) : (
                         <Menu.Item
                           key={option.id}
-                          render={
-                            <Link
-                              to={scopeSwitchPath(location.pathname, option.scope)}
-                              preventScrollReset
-                            />
-                          }
+                          render={<Link to={switchPath} preventScrollReset />}
                           className={className}
                         >
                           {content}

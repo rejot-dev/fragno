@@ -149,9 +149,9 @@ describe("Backoffice Pi fragment", () => {
     const execution = createBackofficeUserExecution({
       scope,
       userId: scope.userId,
-      verifiedAccessToken: {
+      verifiedRequestAuthority: {
         role: "user",
-        organizationIds: ["org-1"],
+        organizationId: "org-1",
         expiresAt: new Date("2099-01-01T00:00:00.000Z"),
       },
     });

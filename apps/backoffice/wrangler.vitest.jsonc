@@ -4,6 +4,10 @@
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "main": "./workers/vitest-env.ts",
+  "vars": {
+    "AUTH_ACCESS_TOKEN_SECRET": "backoffice-vitest-auth-secret-at-least-32-characters",
+    "AUTH_EMAIL_VERIFICATION_ENABLED": "false",
+  },
   "worker_loaders": [
     {
       "binding": "LOADER",
@@ -19,12 +23,20 @@
         "name": "WORKFLOWS_HARNESS",
         "class_name": "WorkflowsHarnessDurableObject",
       },
+      {
+        "name": "AUTH_SQL_HARNESS",
+        "class_name": "AuthSqlHarnessDurableObject",
+      },
     ],
   },
   "migrations": [
     {
       "tag": "v1",
       "new_sqlite_classes": ["OutboxHarnessDurableObject", "WorkflowsHarnessDurableObject"],
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["AuthSqlHarnessDurableObject"],
     },
   ],
 }

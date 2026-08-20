@@ -1,7 +1,6 @@
 import { z } from "zod";
 
-import type { Role } from "@fragno-dev/auth";
-
+import type { Role } from "@/fragno/auth/contracts";
 import { AUTOMATION_SYSTEM_INITIATOR, type AutomationActors } from "@/fragno/automation/actors";
 
 import type { BackofficeInternalServiceAuthorityRole } from "./authority-roles";
@@ -47,21 +46,21 @@ export const backofficeContextScopesEqual = (
   throw new Error("Unsupported Backoffice context scope kind.");
 };
 
-/** Short-lived user authority established by verifying a Backoffice access token. */
-export type BackofficeVerifiedAccessTokenAuthority = Readonly<{
-  kind: "verified-access-token";
+/** Short-lived user authority established by authenticating a Backoffice JWT request. */
+export type BackofficeVerifiedRequestAuthority = Readonly<{
+  kind: "verified-request-authority";
   userId: string;
   role: Role;
-  organizationIds: readonly string[];
+  organizationId: string | null;
   expiresAtEpochMs: number;
 }>;
 
-export const backofficeVerifiedAccessTokenAuthoritySchema: z.ZodType<BackofficeVerifiedAccessTokenAuthority> =
+export const backofficeVerifiedRequestAuthoritySchema: z.ZodType<BackofficeVerifiedRequestAuthority> =
   z.strictObject({
-    kind: z.literal("verified-access-token"),
+    kind: z.literal("verified-request-authority"),
     userId: z.string().trim().min(1),
     role: z.enum(["user", "admin"]),
-    organizationIds: z.array(z.string().trim().min(1)),
+    organizationId: z.string().trim().min(1).nullable(),
     expiresAtEpochMs: z.number().int().positive(),
   });
 
@@ -72,7 +71,7 @@ export type BackofficeExecutionContext = {
    * Verified request authority, kept separate from actor provenance and never persisted in events.
    * Deferred executions omit it and resolve current authority from Auth instead.
    */
-  userAuthority?: BackofficeVerifiedAccessTokenAuthority;
+  userAuthority?: BackofficeVerifiedRequestAuthority;
 };
 
 export const BACKOFFICE_SYSTEM_ACTORS = {
@@ -92,13 +91,13 @@ const BACKOFFICE_INTERACTIVE_INITIATOR = {
 export const createBackofficeUserExecution = ({
   scope,
   userId,
-  verifiedAccessToken,
+  verifiedRequestAuthority,
 }: {
   scope: BackofficeContextScope;
   userId: string;
-  verifiedAccessToken?: Readonly<{
+  verifiedRequestAuthority?: Readonly<{
     role: Role;
-    organizationIds: readonly string[];
+    organizationId: string | null;
     expiresAt: Date;
   }>;
 }): BackofficeExecutionContext => ({
@@ -113,14 +112,14 @@ export const createBackofficeUserExecution = ({
     },
     delegation: [],
   },
-  ...(verifiedAccessToken
+  ...(verifiedRequestAuthority
     ? {
         userAuthority: {
-          kind: "verified-access-token" as const,
+          kind: "verified-request-authority" as const,
           userId,
-          role: verifiedAccessToken.role,
-          organizationIds: [...verifiedAccessToken.organizationIds],
-          expiresAtEpochMs: verifiedAccessToken.expiresAt.getTime(),
+          role: verifiedRequestAuthority.role,
+          organizationId: verifiedRequestAuthority.organizationId,
+          expiresAtEpochMs: verifiedRequestAuthority.expiresAt.getTime(),
         },
       }
     : {}),

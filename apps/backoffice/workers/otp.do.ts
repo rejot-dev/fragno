@@ -151,25 +151,37 @@ const confirmIdentityClaimInputSchema = z.object({
   subjectUserId: z.string().trim().min(1),
 });
 
+const verifyEmailFromConfirmedOtp = async (
+  runtime: BackofficeRuntimeServices,
+  input: { otpId: string; userId: string; email: string; verifiedAt: Date },
+): Promise<boolean> => {
+  const result = await runtime.objects.auth.singleton().verifyUserEmail({
+    userId: input.userId,
+    expectedEmail: input.email,
+    verifiedAt: input.verifiedAt,
+  });
+
+  if (!result.ok) {
+    console.warn("Ignoring email verification OTP that no longer matches an Auth user", {
+      otpId: input.otpId,
+      userId: input.userId,
+      code: result.code,
+    });
+  }
+  return result.ok;
+};
+
 export const handleEmailVerificationConfirmed = async (
   runtime: BackofficeRuntimeServices,
   payload: OtpConfirmedHookPayload,
 ) => {
   const verification = emailVerificationPayloadSchema.parse(payload.payload);
-
-  const result = await runtime.objects.auth.singleton().verifyUserEmail({
+  await verifyEmailFromConfirmedOtp(runtime, {
+    otpId: payload.id,
     userId: payload.externalId,
-    expectedEmail: verification.email,
-    verifiedAt: payload.confirmedAt,
+    email: verification.email,
+    verifiedAt: new Date(),
   });
-
-  if (!result.ok) {
-    console.warn("Ignoring email verification OTP that no longer matches an Auth user", {
-      otpId: payload.id,
-      userId: payload.externalId,
-      code: result.code,
-    });
-  }
 };
 
 export const handleIdentityClaimConfirmed = async (
@@ -377,6 +389,26 @@ export class InMemoryOtpObject implements OtpObject {
         status: "rejected",
         reason: confirmation.error === "OTP_EXPIRED" ? "expired" : "invalid",
       };
+    }
+
+    // Idempotent issuance by request ID returns the persisted confirmed OTP. Recover the trusted
+    // email from that record instead of accepting an email address from the confirmation request.
+    const confirmedOtp = await fragment.callServices(() =>
+      fragment.services.otp.issueOtp({
+        externalId: userId,
+        type: EMAIL_VERIFICATION_TYPE,
+        requestId: confirmation.requestId,
+      }),
+    );
+    const verification = emailVerificationPayloadSchema.parse(confirmedOtp.payload);
+    const verified = await verifyEmailFromConfirmedOtp(this.#runtime, {
+      otpId: confirmation.requestId,
+      userId,
+      email: verification.email,
+      verifiedAt: new Date(),
+    });
+    if (!verified) {
+      return { status: "rejected", reason: "invalid" };
     }
 
     return confirmation.status === "confirmation_recorded"

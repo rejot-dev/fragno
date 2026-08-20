@@ -4,6 +4,7 @@ export default [
   index("routes/landing/index.tsx"),
 
   route("backoffice/login", "routes/backoffice/login.tsx"),
+  route("backoffice/auth/bootstrap", "routes/backoffice/auth-bootstrap.tsx"),
   route("backoffice/sign-up", "routes/backoffice/sign-up.tsx"),
   route("backoffice/verify-email", "routes/backoffice/verify-email.tsx"),
   layout("layouts/backoffice-layout.tsx", [
@@ -287,6 +288,7 @@ export default [
 
   ...prefix("api", [
     route("auth/*", "routes/api/auth.ts"),
+    route("backoffice/me", "routes/api/backoffice-me.ts"),
     route("cloudflare/*", "routes/api/cloudflare.ts"),
     route("resend/:scopeSegment/*", "routes/api/resend.ts"),
     route("reson8/:orgId/*", "routes/api/reson8.ts"),

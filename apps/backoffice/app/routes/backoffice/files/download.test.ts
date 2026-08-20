@@ -2,13 +2,13 @@ import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
 
-const { getAuthMeMock, createFilesOverviewCollectionsMock } = vi.hoisted(() => ({
-  getAuthMeMock: vi.fn(),
+const { findBackofficeMeMock, createFilesOverviewCollectionsMock } = vi.hoisted(() => ({
+  findBackofficeMeMock: vi.fn(),
   createFilesOverviewCollectionsMock: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/auth-server", () => ({
-  getAuthMe: getAuthMeMock,
+  findBackofficeMe: findBackofficeMeMock,
 }));
 
 vi.mock("./file-collections.server", () => ({
@@ -22,9 +22,9 @@ const DOWNLOAD_PATH = "/backoffice/files/org/org_123/download";
 
 describe("backoffice files download route", () => {
   beforeEach(() => {
-    getAuthMeMock.mockReset();
+    findBackofficeMeMock.mockReset();
     createFilesOverviewCollectionsMock.mockReset();
-    getAuthMeMock.mockResolvedValue(createAuthMe());
+    findBackofficeMeMock.mockResolvedValue(createAuthMe());
     createFilesOverviewCollectionsMock.mockResolvedValue([
       {
         rootPath: "/static",
@@ -38,7 +38,7 @@ describe("backoffice files download route", () => {
   });
 
   test("redirects anonymous users to login", async () => {
-    getAuthMeMock.mockResolvedValue(null);
+    findBackofficeMeMock.mockResolvedValue(null);
     const returnTo = `${DOWNLOAD_PATH}?path=%2Fstatic%2FSYSTEM.md`;
     const response = toResponse(await loader(createLoaderArgs(`https://example.com${returnTo}`)));
 
@@ -77,7 +77,7 @@ describe("backoffice files download route", () => {
   });
 
   test("rejects organizations unavailable to the current user", async () => {
-    getAuthMeMock.mockResolvedValue({ ...createAuthMe(), organizations: [] });
+    findBackofficeMeMock.mockResolvedValue({ ...createAuthMe(), organizations: [] });
 
     await expect(
       loader(createLoaderArgs(`https://example.com${DOWNLOAD_PATH}?path=%2Fstatic%2FSYSTEM.md`)),

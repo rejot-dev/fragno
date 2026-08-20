@@ -256,19 +256,25 @@ export class CloudflareDurableObjectsDriverConfig extends DriverConfig {
 
   override normalizeError(error: unknown): Error {
     const normalizedError = normalizeSqliteError(error);
-    if (normalizedError !== error || !(error instanceof Error) || error.cause === undefined) {
+    if (normalizedError !== error) {
       return normalizedError;
     }
 
-    const normalizedCause = normalizeSqliteError(error.cause);
-    if (normalizedCause instanceof DatabaseConstraintError) {
-      return new DatabaseConstraintError({
-        kind: normalizedCause.kind,
-        table: normalizedCause.table,
-        constraint: normalizedCause.constraint,
-        columns: normalizedCause.columns,
-        cause: error,
-      });
+    const visited = new Set<unknown>();
+    let current: unknown = error;
+    while (current && typeof current === "object" && !visited.has(current)) {
+      visited.add(current);
+      const normalizedCause = normalizeSqliteError(current);
+      if (normalizedCause instanceof DatabaseConstraintError) {
+        return new DatabaseConstraintError({
+          kind: normalizedCause.kind,
+          table: normalizedCause.table,
+          constraint: normalizedCause.constraint,
+          columns: normalizedCause.columns,
+          cause: error,
+        });
+      }
+      current = "cause" in current ? current.cause : undefined;
     }
 
     return normalizedError;

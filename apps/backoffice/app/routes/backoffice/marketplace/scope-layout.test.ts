@@ -1,11 +1,11 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { getAuthMeMock, lookupAutomationProjectMock } = vi.hoisted(() => ({
-  getAuthMeMock: vi.fn(),
+const { findBackofficeMeMock, lookupAutomationProjectMock } = vi.hoisted(() => ({
+  findBackofficeMeMock: vi.fn(),
   lookupAutomationProjectMock: vi.fn(),
 }));
 
-vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
+vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
 vi.mock("../automations/data.server", () => ({
   lookupAutomationProject: lookupAutomationProjectMock,
 }));
@@ -15,13 +15,13 @@ import { loader } from "./scope-layout";
 const requestUrl = "https://example.test/backoffice/marketplace/user/user-1/marketplace";
 
 beforeEach(() => {
-  getAuthMeMock.mockReset();
+  findBackofficeMeMock.mockReset();
   lookupAutomationProjectMock.mockReset();
 });
 
 describe("personal Marketplace scope", () => {
   test("loads without an organization or Automations project database", async () => {
-    getAuthMeMock.mockResolvedValue({
+    findBackofficeMeMock.mockResolvedValue({
       user: { id: "user-1", email: "ada@example.com" },
       organizations: [],
       activeOrganization: null,
@@ -47,7 +47,7 @@ describe("personal Marketplace scope", () => {
 describe("organisation Marketplace scope", () => {
   test("resolves the organisation without fetching Automations projects", async () => {
     const orgUrl = new URL("https://example.test/backoffice/marketplace/org/org-1/marketplace");
-    getAuthMeMock.mockResolvedValue({
+    findBackofficeMeMock.mockResolvedValue({
       user: { id: "user-1", email: "ada@example.com" },
       organizations: [{ organization: { id: "org-1", name: "Ada Labs" } }],
       activeOrganization: { organization: { id: "org-1", name: "Ada Labs" } },

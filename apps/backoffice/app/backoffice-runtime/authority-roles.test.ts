@@ -36,7 +36,6 @@ const automationRuntimePermissions = [
 
 const automationAuthoringPermissions = [
   BACKOFFICE_PERMISSION.capabilities.read,
-  BACKOFFICE_PERMISSION.workflow.executeCode,
   BACKOFFICE_PERMISSION.events.emit,
   BACKOFFICE_PERMISSION.events.manage,
   BACKOFFICE_PERMISSION.events.read,
@@ -100,10 +99,9 @@ describe("Backoffice authority role grants", () => {
   test("organization members can use organization-scoped automation authoring tools", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["organization-member"]).toEqual([
       BACKOFFICE_PERMISSION.capabilities.read,
-      BACKOFFICE_PERMISSION.workflow.executeCode,
       BACKOFFICE_PERMISSION.connections.manage,
       BACKOFFICE_PERMISSION.connections.read,
-      ...automationAuthoringPermissions.slice(2),
+      ...automationAuthoringPermissions.slice(1),
     ]);
   });
 
@@ -148,62 +146,52 @@ describe("Backoffice authority role grants", () => {
 
   test.each([
     [
-      { userId: "admin-1", role: "admin" as const, organizationIds: [] },
+      { userId: "admin-1", role: "admin" as const, organizationId: null },
       { kind: "system" as const },
       "system-administrator",
     ],
     [
-      { userId: "admin-1", role: "admin" as const, organizationIds: ["org-1"] },
-      { kind: "org" as const, orgId: "org-1" },
-      "system-administrator",
-    ],
-    [
-      { userId: "admin-1", role: "admin" as const, organizationIds: [] },
+      { userId: "admin-1", role: "admin" as const, organizationId: null },
       { kind: "org" as const, orgId: "org-1" },
       null,
     ],
     [
-      { userId: "admin-1", role: "admin" as const, organizationIds: ["org-1"] },
-      { kind: "project" as const, orgId: "org-2", projectId: "project-1" },
-      null,
-    ],
-    [
-      { userId: "admin-1", role: "admin" as const, organizationIds: [] },
+      { userId: "admin-1", role: "admin" as const, organizationId: null },
       { kind: "user" as const, userId: "admin-1" },
       "system-administrator",
     ],
     [
-      { userId: "admin-1", role: "admin" as const, organizationIds: [] },
+      { userId: "admin-1", role: "admin" as const, organizationId: null },
       { kind: "user" as const, userId: "user-1" },
       null,
     ],
     [
-      { userId: "user-1", role: "user" as const, organizationIds: [] },
+      { userId: "user-1", role: "user" as const, organizationId: null },
       { kind: "system" as const },
       null,
     ],
     [
-      { userId: "user-1", role: "user" as const, organizationIds: [] },
+      { userId: "user-1", role: "user" as const, organizationId: null },
       { kind: "user" as const, userId: "user-1" },
       "user-owner",
     ],
     [
-      { userId: "user-1", role: "user" as const, organizationIds: [] },
+      { userId: "user-1", role: "user" as const, organizationId: null },
       { kind: "user" as const, userId: "user-2" },
       null,
     ],
     [
-      { userId: "user-1", role: "user" as const, organizationIds: ["org-1"] },
+      { userId: "user-1", role: "user" as const, organizationId: "org-1" },
       { kind: "org" as const, orgId: "org-1" },
       "organization-member",
     ],
     [
-      { userId: "user-1", role: "user" as const, organizationIds: ["org-1"] },
+      { userId: "user-1", role: "user" as const, organizationId: "org-1" },
       { kind: "project" as const, orgId: "org-1", projectId: "project-1" },
       "organization-member",
     ],
     [
-      { userId: "user-1", role: "user" as const, organizationIds: [] },
+      { userId: "user-1", role: "user" as const, organizationId: null },
       { kind: "org" as const, orgId: "org-1" },
       null,
     ],
