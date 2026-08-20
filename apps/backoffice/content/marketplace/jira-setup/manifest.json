@@ -1,0 +1,15 @@
+{
+  "owner": {
+    "scope": { "kind": "system" },
+    "publisherName": "Fragno"
+  },
+  "slug": "jira-setup",
+  "metadata": {
+    "name": "Jira setup",
+    "summary": "Connect Jira Cloud and manage issues through its REST API.",
+    "description": "Installs an agent skill that guides Backoffice through Jira Cloud API-token authentication, connection verification, project and issue-type discovery, and common issue operations.",
+    "category": "productivity",
+    "tags": ["jira", "atlassian", "api", "project-management"]
+  },
+  "versions": ["1.0.0"]
+}
