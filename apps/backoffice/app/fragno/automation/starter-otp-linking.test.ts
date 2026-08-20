@@ -48,7 +48,9 @@ const telegramMessageEvent = ({
     eventType: "message.received",
     occurredAt: "2026-01-01T00:00:00.000Z",
     payload: {
+      messageId: id,
       chatId,
+      fromUserId: null,
       text,
     },
     actors: {

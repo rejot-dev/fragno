@@ -34,6 +34,7 @@ const createAutomation = async ({
 
   return createAutomationFragment(
     {
+      builtInEventDefinitions: [],
       ownerScope: { kind: "org", orgId: "org_123" },
       automationFileSystem,
     },

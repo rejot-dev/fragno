@@ -27,6 +27,7 @@ const createAutomation = (idSeed: string) => {
 
   const automation = createAutomationFragment(
     {
+      builtInEventDefinitions: [],
       ownerScope: { kind: "org", orgId: "org_123" },
     },
     {

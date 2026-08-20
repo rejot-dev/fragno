@@ -46,6 +46,7 @@ const createAutomation = async (
 
   return createAutomationFragment(
     {
+      builtInEventDefinitions: [],
       ownerScope,
       automationFileSystem,
       runtime: options.runtime,

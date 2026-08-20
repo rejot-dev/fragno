@@ -58,6 +58,7 @@ const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent 
 const createAutomationFragmentForEventRuntimeTest = (idSeed: string) =>
   createAutomationFragment(
     {
+      builtInEventDefinitions: [],
       ownerScope: { kind: "org", orgId: "org-1" },
     },
     {

@@ -69,10 +69,23 @@ export type AutomationForwardEventAction = {
   idTemplate?: string;
 };
 
+export type AutomationEventPayloadProjection = {
+  kind: "projection";
+  fields: Record<string, string>;
+};
+
+export type AutomationReclassifyEventAction = {
+  kind: "reclassify_event";
+  source: string;
+  eventType: string;
+  payload: AutomationEventPayloadProjection;
+};
+
 export type AutomationRouteAction =
   | AutomationStartWorkflowAction
   | AutomationSendWorkflowEventAction
-  | AutomationForwardEventAction;
+  | AutomationForwardEventAction
+  | AutomationReclassifyEventAction;
 
 type AutomationRouteEventTrigger = {
   kind: "event";
@@ -87,6 +100,27 @@ type AutomationRouteScheduleTrigger = {
 };
 
 export type AutomationRouteTrigger = AutomationRouteEventTrigger | AutomationRouteScheduleTrigger;
+
+/** Rejects a reclassification route whose derived event would activate the same route again. */
+export function assertAutomationRouteDoesNotReclassifyItself({
+  routeId,
+  trigger,
+  action,
+}: {
+  routeId: string;
+  trigger: AutomationRouteTrigger;
+  action: AutomationRouteAction;
+}): void {
+  if (trigger.kind !== "event" || action.kind !== "reclassify_event") {
+    return;
+  }
+
+  const sourceMatches = trigger.source === "*" || trigger.source === action.source;
+  const eventTypeMatches = trigger.eventType === "*" || trigger.eventType === action.eventType;
+  if (sourceMatches && eventTypeMatches) {
+    throw new Error(`Automation route ${routeId} cannot reclassify an event to its own trigger.`);
+  }
+}
 
 export type AutomationRouteManagedBy = {
   kind: "marketplace";
@@ -184,6 +218,22 @@ const readAutomationEventPath = (event: AutomationEvent, path: string): EventPat
 
   return current;
 };
+
+/** Builds a new top-level payload from explicitly named event paths. */
+export function projectAutomationEventPayload(
+  event: AutomationEvent,
+  projection: AutomationEventPayloadProjection,
+): Record<string, EventPathValue> {
+  return Object.fromEntries(
+    Object.entries(projection.fields).map(([field, path]) => {
+      const value = readAutomationEventPath(event, path);
+      if (value === undefined) {
+        throw new Error(`Automation event payload projection field ${field} resolved no value.`);
+      }
+      return [field, value];
+    }),
+  );
+}
 
 const automationActorMatches = (
   actor: AutomationActor,

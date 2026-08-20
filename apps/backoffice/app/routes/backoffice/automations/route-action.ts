@@ -65,6 +65,8 @@ export const automationRouteActionDetailRows = (
       const eventId = action.idTemplate ?? missingForwardEventId;
       return eventId ? [{ label: labels.eventId, value: eventId }] : [];
     }
+    case "reclassify_event":
+      return [{ label: labels.event, value: `${action.source}:${action.eventType}` }];
   }
 
   throw new Error("Unsupported automation route action kind.");
@@ -78,6 +80,8 @@ export const automationRouteActionLabel = (route: AutomationRouteDefinition) => 
       return "Send workflow event";
     case "forward_event":
       return "Forward event";
+    case "reclassify_event":
+      return "Reclassify event";
   }
 
   throw new Error("Unsupported automation route action kind.");

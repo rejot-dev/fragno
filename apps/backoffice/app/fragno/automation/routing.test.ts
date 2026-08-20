@@ -1,7 +1,92 @@
 import { assert, describe, test } from "vitest";
 
 import type { AutomationEvent } from "./contracts";
-import { evaluateAutomationEventMatcher } from "./routing";
+import {
+  assertAutomationRouteDoesNotReclassifyItself,
+  evaluateAutomationEventMatcher,
+  projectAutomationEventPayload,
+} from "./routing";
+
+describe("automation event reclassification", () => {
+  test("rejects exact and wildcard triggers that consume their own output", () => {
+    for (const trigger of [
+      { kind: "event", source: "github", eventType: "issues.opened", matcher: null },
+      { kind: "event", source: "*", eventType: "issues.opened", matcher: null },
+      { kind: "event", source: "github", eventType: "*", matcher: null },
+    ] as const) {
+      assert.throws(
+        () =>
+          assertAutomationRouteDoesNotReclassifyItself({
+            routeId: "github-loop",
+            trigger,
+            action: {
+              kind: "reclassify_event",
+              source: "github",
+              eventType: "issues.opened",
+              payload: { kind: "projection", fields: { issue: "$.payload.issue" } },
+            },
+          }),
+        /cannot reclassify an event to its own trigger/,
+      );
+    }
+  });
+
+  test("accepts reclassification to a distinct event identity", () => {
+    assert.doesNotThrow(() =>
+      assertAutomationRouteDoesNotReclassifyItself({
+        routeId: "github-issues-opened",
+        trigger: { kind: "event", source: "github", eventType: "webhook.received", matcher: null },
+        action: {
+          kind: "reclassify_event",
+          source: "github",
+          eventType: "issues.opened",
+          payload: { kind: "projection", fields: { issue: "$.payload.issue" } },
+        },
+      }),
+    );
+  });
+  test("projects named payload fields from event paths", () => {
+    const projected = projectAutomationEventPayload(
+      {
+        id: "event-1",
+        scope: { kind: "org", orgId: "org-1" },
+        source: "github",
+        eventType: "webhook.received",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        payload: { pullRequest: { number: 42 }, ignored: true },
+        actors: {
+          initiator: { scope: "internal", type: "system", id: "github", role: "initiator" },
+          principal: null,
+          delegation: [],
+        },
+        subject: { orgId: "org-1" },
+      },
+      {
+        kind: "projection",
+        fields: {
+          pullRequest: "$.payload.pullRequest",
+          orgId: "$.subject.orgId",
+        },
+      },
+    );
+
+    assert.deepEqual(projected, {
+      pullRequest: { number: 42 },
+      orgId: "org-1",
+    });
+  });
+
+  test("rejects projection fields whose paths do not resolve", () => {
+    assert.throws(
+      () =>
+        projectAutomationEventPayload(event, {
+          kind: "projection",
+          fields: { issue: "$.payload.issue" },
+        }),
+      /projection field issue resolved no value/,
+    );
+  });
+});
 
 const event = {
   id: "event-1",

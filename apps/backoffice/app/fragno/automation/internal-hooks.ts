@@ -1,11 +1,12 @@
 import type { DatabaseServiceContext, TypedUnitOfWork } from "@fragno-dev/db";
 
-import type { AutomationEvent } from "./contracts";
+import type { AutomationEvent, AutomationEventIdentity } from "./contracts";
 import type { AutomationRouteDefinition } from "./routing";
 import { automationFragmentSchema } from "./schema";
 
 export type AutomationEventIngestionPayload = {
   event: AutomationEvent;
+  reclassificationChain: readonly AutomationEventIdentity[];
   route?: AutomationRouteDefinition;
 };
 

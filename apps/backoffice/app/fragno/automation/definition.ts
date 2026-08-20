@@ -21,7 +21,11 @@ import {
   STARTER_AUTOMATION_ROUTES,
   SYSTEM_STARTER_AUTOMATION_ROUTES,
 } from "./content/starter-routing";
-import type { AutomationEvent } from "./contracts";
+import {
+  getAutomationEventIdentity,
+  type AutomationEvent,
+  type AutomationEventIdentity,
+} from "./contracts";
 import {
   CODEMODE_WORKFLOW,
   createCodemodeWorkflowInstanceInput,
@@ -31,6 +35,7 @@ import { type AutomationPiBashContext } from "./engine/runtime";
 import {
   buildAutomationEventDefinitionId,
   validateAutomationEventPayload,
+  type AutomationEventDefinition,
 } from "./event-definitions";
 import { createAutomationEventDefinitionServices } from "./event-definitions-storage-runtime";
 import { createAutomationEventServices } from "./events-storage-runtime";
@@ -42,10 +47,12 @@ import { dispatchAutomationRouteSchedule } from "./route-scheduling-runtime";
 import {
   buildWorkflowEventPayload,
   evaluateAutomationEventMatcher,
+  projectAutomationEventPayload,
   renderAutomationRawTemplateValue,
   renderAutomationScopeTemplate,
   renderAutomationTemplateValue,
   type AutomationForwardEventAction,
+  type AutomationReclassifyEventAction,
   type AutomationRouteDefinition,
   type AutomationSendWorkflowEventAction,
   type AutomationStartWorkflowAction,
@@ -76,6 +83,10 @@ export type AutomationWorkflowsService = Pick<
 };
 
 export interface AutomationFragmentConfig extends AutomationFileSystemConfig {
+  builtInEventDefinitions: readonly Pick<
+    AutomationEventDefinition,
+    "source" | "eventType" | "enabled" | "payloadSchema"
+  >[];
   env?: CloudflareEnv;
   runtime?: BackofficeRuntimeServices;
   ownerScope: BackofficeContextScope;
@@ -96,6 +107,7 @@ const buildIngestResult = (event: AutomationEvent): AutomationIngestResult => ({
 });
 
 type IngestAutomationEventOptions = {
+  reclassificationChain?: readonly AutomationEventIdentity[];
   /**
    * A route already selected for this event. This bypasses normal event-trigger matching and
    * snapshots the route across the durable hook boundary, so an accepted scheduled run executes
@@ -107,7 +119,10 @@ type IngestAutomationEventOptions = {
 const ingestAutomationEvent = (
   uow: AutomationHookUnitOfWork,
   event: AutomationEvent,
-  { route }: IngestAutomationEventOptions = {},
+  {
+    reclassificationChain = [getAutomationEventIdentity(event)],
+    route,
+  }: IngestAutomationEventOptions = {},
 ) => {
   const now = uow.now();
   const actors = automationActorsSchema.parse(event.actors);
@@ -131,7 +146,7 @@ const ingestAutomationEvent = (
 
   uow.triggerHook(
     "internalIngestEvent",
-    { event: validatedEvent, route },
+    { event: validatedEvent, reclassificationChain, route },
     { id: validatedEvent.id },
   );
 };
@@ -260,6 +275,47 @@ const handleForwardEventRouteAction = async ({
   await targetAutomations.ingestEvent(forwardedEvent);
 };
 
+const MAX_AUTOMATION_EVENT_RECLASSIFICATION_CHAIN_LENGTH = 32;
+
+function appendAutomationEventReclassificationIdentity(
+  chain: readonly AutomationEventIdentity[],
+  target: AutomationEventIdentity,
+): readonly AutomationEventIdentity[] {
+  if (
+    chain.some(
+      (identity) => identity.source === target.source && identity.eventType === target.eventType,
+    )
+  ) {
+    throw new Error(
+      `AUTOMATION_EVENT_RECLASSIFICATION_CYCLE: ${target.source}/${target.eventType}`,
+    );
+  }
+  if (chain.length >= MAX_AUTOMATION_EVENT_RECLASSIFICATION_CHAIN_LENGTH) {
+    throw new Error(
+      `AUTOMATION_EVENT_RECLASSIFICATION_CHAIN_LIMIT: maximum length ${MAX_AUTOMATION_EVENT_RECLASSIFICATION_CHAIN_LENGTH}`,
+    );
+  }
+  return [...chain, target];
+}
+
+function buildReclassifiedAutomationEvent({
+  action,
+  event,
+  routeId,
+}: {
+  action: AutomationReclassifyEventAction;
+  event: AutomationEvent;
+  routeId: string;
+}): AutomationEvent {
+  return {
+    ...event,
+    id: `reclassified:${routeId}:${event.id}`,
+    source: action.source,
+    eventType: action.eventType,
+    payload: projectAutomationEventPayload(event, action.payload),
+  };
+}
+
 const handleSendWorkflowEventRouteAction = async ({
   action,
   event,
@@ -311,7 +367,127 @@ const handleSendWorkflowEventRouteAction = async ({
 export const automationFragmentDefinition = defineFragment<AutomationFragmentConfig>("automations")
   .extend(withDatabase(automationFragmentSchema))
   .usesService<"workflows", AutomationWorkflowsService>("workflows")
-  .provideHooks(({ defineHook, serviceDeps, config }) => {
+  .providesBaseService(({ defineService, config, serviceDeps }) => {
+    const builtInEventDefinitionsById = new Map(
+      config.builtInEventDefinitions.map((definition) => [
+        buildAutomationEventDefinitionId(definition.source, definition.eventType),
+        definition,
+      ]),
+    );
+    const storeServices = createAutomationStoreServices(defineService);
+    const projectServices = createAutomationProjectServices(defineService, {
+      ownerScope: config.ownerScope,
+    });
+    const sandboxServices = createAutomationSandboxServices(defineService, {
+      workflows: serviceDeps.workflows,
+      ownerScope: config.ownerScope,
+      sandboxProviders: config.sandboxProviders,
+      ingestEvent: ingestAutomationEvent,
+    });
+    const routeServices = createAutomationRouteServices(defineService);
+    const eventServices = createAutomationEventServices(defineService);
+    const eventDefinitionServices = createAutomationEventDefinitionServices(defineService);
+    const marketplaceIngestionServices =
+      createAutomationMarketplaceIngestionServices(defineService);
+    const externalIdentityBindingServices = createExternalIdentityBindingServices(defineService);
+
+    return defineService({
+      ...storeServices,
+      ...projectServices,
+      ...sandboxServices,
+      ...routeServices,
+      ...eventServices,
+      ...eventDefinitionServices,
+      ...marketplaceIngestionServices,
+      ...externalIdentityBindingServices,
+      seedStarterAutomationRoutes: function () {
+        return this.serviceTx(automationFragmentSchema)
+          .retrieve((uow) => uow.find("automation_route", (b) => b.whereIndex("primary")))
+          .mutate(
+            ({ uow, retrieveResult: [existingRoutes] }): StarterAutomationRoutesSeedResult => {
+              const existingIds = new Set(existingRoutes.map((route) => route.id.externalId));
+              const created: string[] = [];
+              const skipped: string[] = [];
+
+              for (const route of config.ownerScope.kind === "system"
+                ? SYSTEM_STARTER_AUTOMATION_ROUTES
+                : STARTER_AUTOMATION_ROUTES) {
+                if (existingIds.has(route.id)) {
+                  skipped.push(route.id);
+                  continue;
+                }
+
+                uow.create("automation_route", {
+                  id: route.id,
+                  name: route.name,
+                  enabled: route.enabled,
+                  priority: route.priority,
+                  trigger: route.trigger,
+                  action: route.action,
+                  description: route.description ?? null,
+                  metadata: null,
+                  createdAt: uow.now(),
+                  updatedAt: uow.now(),
+                });
+                if (route.trigger.kind === "schedule") {
+                  uow.create("automation_route_schedule_state", {
+                    id: route.id,
+                    initializationAt: route.enabled ? uow.now() : null,
+                    nextOccurrenceAt: null,
+                  });
+                  if (route.enabled) {
+                    uow.triggerHook(
+                      "internalDispatchRouteSchedule",
+                      { kind: "initialize", routeId: route.id },
+                      { processAt: uow.now() },
+                    );
+                  }
+                }
+                created.push(route.id);
+              }
+
+              return { created, skipped };
+            },
+          )
+          .build();
+      },
+      ingestEvent: function (
+        event: AutomationEvent,
+        reclassificationChain: readonly AutomationEventIdentity[] = [
+          getAutomationEventIdentity(event),
+        ],
+      ) {
+        return this.serviceTx(automationFragmentSchema, { name: "automations.ingestEvent" })
+          .retrieve((uow) =>
+            uow
+              .findFirst("automation_event_definition", (b) =>
+                b.whereIndex("primary", (eb) =>
+                  eb("id", "=", buildAutomationEventDefinitionId(event.source, event.eventType)),
+                ),
+              )
+              .findFirst("automation_event", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", event.id)),
+              ),
+          )
+          .mutate(({ uow, retrieveResult: [storedDefinition, existingEvent] }) => {
+            if (existingEvent) {
+              return;
+            }
+            const definition =
+              builtInEventDefinitionsById.get(
+                buildAutomationEventDefinitionId(event.source, event.eventType),
+              ) ?? storedDefinition;
+            validateAutomationEventPayload({ event, definition });
+            ingestAutomationEvent(uow as AutomationHookUnitOfWork, event, {
+              reclassificationChain,
+            });
+          })
+          .transform(() => buildIngestResult(event))
+          .build();
+      },
+    });
+  })
+  .provideHooks(({ defineHook, services, serviceDeps, config }) => {
     return {
       internalDispatchRouteSchedule: defineHook(async function (payload) {
         await dispatchAutomationRouteSchedule({
@@ -390,6 +566,24 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                   runtime: config.runtime,
                 });
                 break;
+
+              case "reclassify_event": {
+                const reclassifiedEvent = buildReclassifiedAutomationEvent({
+                  action,
+                  event,
+                  routeId: route.id,
+                });
+                const reclassificationChain = appendAutomationEventReclassificationIdentity(
+                  payload.reclassificationChain,
+                  getAutomationEventIdentity(reclassifiedEvent),
+                );
+                await this.handlerTx()
+                  .withServiceCalls(
+                    () => [services.ingestEvent(reclassifiedEvent, reclassificationChain)] as const,
+                  )
+                  .execute();
+                break;
+              }
             }
           }),
         );
@@ -416,108 +610,5 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
         }
       }),
     };
-  })
-  .providesBaseService(({ defineService, config, serviceDeps }) => {
-    const storeServices = createAutomationStoreServices(defineService);
-    const projectServices = createAutomationProjectServices(defineService, {
-      ownerScope: config.ownerScope,
-    });
-    const sandboxServices = createAutomationSandboxServices(defineService, {
-      workflows: serviceDeps.workflows,
-      ownerScope: config.ownerScope,
-      sandboxProviders: config.sandboxProviders,
-      ingestEvent: ingestAutomationEvent,
-    });
-    const routeServices = createAutomationRouteServices(defineService);
-    const eventServices = createAutomationEventServices(defineService);
-    const eventDefinitionServices = createAutomationEventDefinitionServices(defineService);
-    const marketplaceIngestionServices =
-      createAutomationMarketplaceIngestionServices(defineService);
-    const externalIdentityBindingServices = createExternalIdentityBindingServices(defineService);
-
-    return defineService({
-      ...storeServices,
-      ...projectServices,
-      ...sandboxServices,
-      ...routeServices,
-      ...eventServices,
-      ...eventDefinitionServices,
-      ...marketplaceIngestionServices,
-      ...externalIdentityBindingServices,
-      seedStarterAutomationRoutes: function () {
-        return this.serviceTx(automationFragmentSchema)
-          .retrieve((uow) => uow.find("automation_route", (b) => b.whereIndex("primary")))
-          .mutate(
-            ({ uow, retrieveResult: [existingRoutes] }): StarterAutomationRoutesSeedResult => {
-              const existingIds = new Set(existingRoutes.map((route) => route.id.externalId));
-              const created: string[] = [];
-              const skipped: string[] = [];
-
-              for (const route of config.ownerScope.kind === "system"
-                ? SYSTEM_STARTER_AUTOMATION_ROUTES
-                : STARTER_AUTOMATION_ROUTES) {
-                if (existingIds.has(route.id)) {
-                  skipped.push(route.id);
-                  continue;
-                }
-
-                uow.create("automation_route", {
-                  id: route.id,
-                  name: route.name,
-                  enabled: route.enabled,
-                  priority: route.priority,
-                  trigger: route.trigger,
-                  action: route.action,
-                  description: route.description ?? null,
-                  metadata: null,
-                  createdAt: uow.now(),
-                  updatedAt: uow.now(),
-                });
-                if (route.trigger.kind === "schedule") {
-                  uow.create("automation_route_schedule_state", {
-                    id: route.id,
-                    initializationAt: route.enabled ? uow.now() : null,
-                    nextOccurrenceAt: null,
-                  });
-                  if (route.enabled) {
-                    uow.triggerHook(
-                      "internalDispatchRouteSchedule",
-                      { kind: "initialize", routeId: route.id },
-                      { processAt: uow.now() },
-                    );
-                  }
-                }
-                created.push(route.id);
-              }
-
-              return { created, skipped };
-            },
-          )
-          .build();
-      },
-      ingestEvent: function (event: AutomationEvent) {
-        return this.serviceTx(automationFragmentSchema, { name: "automations.ingestEvent" })
-          .retrieve((uow) =>
-            uow
-              .findFirst("automation_event_definition", (b) =>
-                b.whereIndex("primary", (eb) =>
-                  eb("id", "=", buildAutomationEventDefinitionId(event.source, event.eventType)),
-                ),
-              )
-              .findFirst("automation_event", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", event.id)),
-              ),
-          )
-          .mutate(({ uow, retrieveResult: [definition, existingEvent] }) => {
-            if (existingEvent) {
-              return;
-            }
-            validateAutomationEventPayload({ event, definition });
-            ingestAutomationEvent(uow, event);
-          })
-          .transform(() => buildIngestResult(event))
-          .build();
-      },
-    });
   })
   .build();

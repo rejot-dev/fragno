@@ -1300,7 +1300,7 @@ describe("runtime tool reference generation", () => {
           timeZone: string;
         };
       };
-      type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction;
+      type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction | AutomationReclassifyEventAction;
       type AutomationRouteManagedBy = {
         kind: "marketplace";
         listingId: string;
@@ -1379,6 +1379,12 @@ describe("runtime tool reference generation", () => {
         targetScope: AutomationRouteScopeTemplate;
         idTemplate?: string;
       };
+      type AutomationReclassifyEventAction = {
+        kind: "reclassify_event";
+        source: string;
+        eventType: string;
+        payload: AutomationEventPayloadProjection;
+      };
       type AutomationWorkflowEventTarget = AutomationWorkflowEventInstanceIdTarget | AutomationWorkflowEventStoredInstanceIdTarget;
       type AutomationRouteScopeTemplate = {
         kind: "system";
@@ -1392,6 +1398,12 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "user";
         userIdTemplate: string;
+      };
+      type AutomationEventPayloadProjection = {
+        kind: "projection";
+        fields: {
+          [key: string]: string;
+        };
       };
       type AutomationWorkflowEventInstanceIdTarget = {
         kind: "instance_id";
@@ -1418,7 +1430,7 @@ describe("runtime tool reference generation", () => {
           timeZone?: string;
         };
       };
-      type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
+      type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput | AutomationReclassifyEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
         authority: {
@@ -1439,6 +1451,12 @@ describe("runtime tool reference generation", () => {
         kind: "forward_event";
         targetScope: AutomationRouteScopeTemplate;
         idTemplate?: string;
+      };
+      type AutomationReclassifyEventActionInput = {
+        kind: "reclassify_event";
+        source: string;
+        eventType: string;
+        payload: AutomationEventPayloadProjection;
       };
       type RouterListInput = Record<string, unknown>;
       type RouterListOutput = AutomationRoute[];
@@ -4099,7 +4117,7 @@ describe("runtime tool reference generation", () => {
           timeZone: string;
         };
       };
-      type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction;
+      type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction | AutomationReclassifyEventAction;
       type AutomationRouteManagedBy = {
         kind: "marketplace";
         listingId: string;
@@ -4178,6 +4196,12 @@ describe("runtime tool reference generation", () => {
         targetScope: AutomationRouteScopeTemplate;
         idTemplate?: string;
       };
+      type AutomationReclassifyEventAction = {
+        kind: "reclassify_event";
+        source: string;
+        eventType: string;
+        payload: AutomationEventPayloadProjection;
+      };
       type AutomationWorkflowEventTarget = AutomationWorkflowEventInstanceIdTarget | AutomationWorkflowEventStoredInstanceIdTarget;
       type AutomationRouteScopeTemplate = {
         kind: "system";
@@ -4191,6 +4215,12 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "user";
         userIdTemplate: string;
+      };
+      type AutomationEventPayloadProjection = {
+        kind: "projection";
+        fields: {
+          [key: string]: string;
+        };
       };
       type AutomationWorkflowEventInstanceIdTarget = {
         kind: "instance_id";
@@ -4217,7 +4247,7 @@ describe("runtime tool reference generation", () => {
           timeZone?: string;
         };
       };
-      type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
+      type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput | AutomationReclassifyEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
         authority: {
@@ -4238,6 +4268,12 @@ describe("runtime tool reference generation", () => {
         kind: "forward_event";
         targetScope: AutomationRouteScopeTemplate;
         idTemplate?: string;
+      };
+      type AutomationReclassifyEventActionInput = {
+        kind: "reclassify_event";
+        source: string;
+        eventType: string;
+        payload: AutomationEventPayloadProjection;
       };
       type RouterListInput = Record<string, unknown>;
       type RouterListOutput = AutomationRoute[];
@@ -4450,7 +4486,7 @@ describe("runtime tool reference generation", () => {
           timeZone: string;
         };
       };
-      type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction;
+      type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction | AutomationReclassifyEventAction;
       type AutomationRouteManagedBy = {
         kind: "marketplace";
         listingId: string;
@@ -4529,6 +4565,12 @@ describe("runtime tool reference generation", () => {
         targetScope: AutomationRouteScopeTemplate;
         idTemplate?: string;
       };
+      type AutomationReclassifyEventAction = {
+        kind: "reclassify_event";
+        source: string;
+        eventType: string;
+        payload: AutomationEventPayloadProjection;
+      };
       type AutomationWorkflowEventTarget = AutomationWorkflowEventInstanceIdTarget | AutomationWorkflowEventStoredInstanceIdTarget;
       type AutomationRouteScopeTemplate = {
         kind: "system";
@@ -4542,6 +4584,12 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "user";
         userIdTemplate: string;
+      };
+      type AutomationEventPayloadProjection = {
+        kind: "projection";
+        fields: {
+          [key: string]: string;
+        };
       };
       type AutomationWorkflowEventInstanceIdTarget = {
         kind: "instance_id";
@@ -4568,7 +4616,7 @@ describe("runtime tool reference generation", () => {
           timeZone?: string;
         };
       };
-      type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
+      type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput | AutomationReclassifyEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
         authority: {
@@ -4589,6 +4637,12 @@ describe("runtime tool reference generation", () => {
         kind: "forward_event";
         targetScope: AutomationRouteScopeTemplate;
         idTemplate?: string;
+      };
+      type AutomationReclassifyEventActionInput = {
+        kind: "reclassify_event";
+        source: string;
+        eventType: string;
+        payload: AutomationEventPayloadProjection;
       };
       type RouterListInput = Record<string, unknown>;
       type RouterListOutput = AutomationRoute[];
@@ -4653,9 +4707,9 @@ describe("runtime tool reference generation", () => {
       types,
     }).toMatchInlineSnapshot(`
       {
-        "createInputIndex": 7197,
-        "listOutputIndex": 7066,
-        "matcherIndex": 3918,
+        "createInputIndex": 7698,
+        "listOutputIndex": 7567,
+        "matcherIndex": 3952,
         "types": "// ── Backoffice domain tool providers ───────────────────────────────────
 
       // router tools
@@ -4803,7 +4857,7 @@ describe("runtime tool reference generation", () => {
           timeZone: string;
         };
       };
-      type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction;
+      type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction | AutomationReclassifyEventAction;
       type AutomationRouteManagedBy = {
         kind: "marketplace";
         listingId: string;
@@ -4882,6 +4936,12 @@ describe("runtime tool reference generation", () => {
         targetScope: AutomationRouteScopeTemplate;
         idTemplate?: string;
       };
+      type AutomationReclassifyEventAction = {
+        kind: "reclassify_event";
+        source: string;
+        eventType: string;
+        payload: AutomationEventPayloadProjection;
+      };
       type AutomationWorkflowEventTarget = AutomationWorkflowEventInstanceIdTarget | AutomationWorkflowEventStoredInstanceIdTarget;
       type AutomationRouteScopeTemplate = {
         kind: "system";
@@ -4895,6 +4955,12 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "user";
         userIdTemplate: string;
+      };
+      type AutomationEventPayloadProjection = {
+        kind: "projection";
+        fields: {
+          [key: string]: string;
+        };
       };
       type AutomationWorkflowEventInstanceIdTarget = {
         kind: "instance_id";
@@ -4921,7 +4987,7 @@ describe("runtime tool reference generation", () => {
           timeZone?: string;
         };
       };
-      type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
+      type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput | AutomationReclassifyEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
         authority: {
@@ -4942,6 +5008,12 @@ describe("runtime tool reference generation", () => {
         kind: "forward_event";
         targetScope: AutomationRouteScopeTemplate;
         idTemplate?: string;
+      };
+      type AutomationReclassifyEventActionInput = {
+        kind: "reclassify_event";
+        source: string;
+        eventType: string;
+        payload: AutomationEventPayloadProjection;
       };
       type RouterListInput = Record<string, unknown>;
       type RouterListOutput = AutomationRoute[];
@@ -4999,7 +5071,7 @@ describe("runtime tool reference generation", () => {
         /** Project contexts are reserved until the project model exists. */
         project(projectId: string): BackofficeCodemodeScopedProviders;
       };",
-        "updateInputIndex": 7498,
+        "updateInputIndex": 7999,
       }
     `);
   });
@@ -5158,7 +5230,7 @@ describe("runtime tool reference generation", () => {
           timeZone: string;
         };
       };
-      type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction;
+      type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction | AutomationReclassifyEventAction;
       type AutomationRouteManagedBy = {
         kind: "marketplace";
         listingId: string;
@@ -5237,6 +5309,12 @@ describe("runtime tool reference generation", () => {
         targetScope: AutomationRouteScopeTemplate;
         idTemplate?: string;
       };
+      type AutomationReclassifyEventAction = {
+        kind: "reclassify_event";
+        source: string;
+        eventType: string;
+        payload: AutomationEventPayloadProjection;
+      };
       type AutomationWorkflowEventTarget = AutomationWorkflowEventInstanceIdTarget | AutomationWorkflowEventStoredInstanceIdTarget;
       type AutomationRouteScopeTemplate = {
         kind: "system";
@@ -5250,6 +5328,12 @@ describe("runtime tool reference generation", () => {
       } | {
         kind: "user";
         userIdTemplate: string;
+      };
+      type AutomationEventPayloadProjection = {
+        kind: "projection";
+        fields: {
+          [key: string]: string;
+        };
       };
       type AutomationWorkflowEventInstanceIdTarget = {
         kind: "instance_id";
@@ -5276,7 +5360,7 @@ describe("runtime tool reference generation", () => {
           timeZone?: string;
         };
       };
-      type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;
+      type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput | AutomationReclassifyEventActionInput;
       type AutomationStartWorkflowActionInput = {
         kind: "start_workflow";
         authority: {
@@ -5297,6 +5381,12 @@ describe("runtime tool reference generation", () => {
         kind: "forward_event";
         targetScope: AutomationRouteScopeTemplate;
         idTemplate?: string;
+      };
+      type AutomationReclassifyEventActionInput = {
+        kind: "reclassify_event";
+        source: string;
+        eventType: string;
+        payload: AutomationEventPayloadProjection;
       };
       type RouterListInput = Record<string, unknown>;
       type RouterListOutput = AutomationRoute[];

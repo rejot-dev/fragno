@@ -22,6 +22,8 @@ export const automationRouteWorkflowIdentity = (
       return null;
     case "forward_event":
       return null;
+    case "reclassify_event":
+      return null;
   }
 
   throw new Error("Unsupported automation route action kind.");
@@ -55,6 +57,9 @@ export const automationRouteWorkflowName = (route: AutomationRouteDefinition) =>
     return null;
   }
   if (action.kind === "send_workflow_event") {
+    return null;
+  }
+  if (action.kind === "reclassify_event") {
     return null;
   }
 

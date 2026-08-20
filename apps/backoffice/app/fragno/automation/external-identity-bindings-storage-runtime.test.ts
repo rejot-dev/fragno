@@ -32,7 +32,7 @@ const createAutomation = (idSeed: string) => {
     },
   );
   const automation = createAutomationFragment(
-    { ownerScope: { kind: "org", orgId: "org-1" } },
+    { builtInEventDefinitions: [], ownerScope: { kind: "org", orgId: "org-1" } },
     {
       databaseAdapter,
       dbRoundtripGuard: true,

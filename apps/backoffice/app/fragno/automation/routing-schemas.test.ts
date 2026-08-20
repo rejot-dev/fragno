@@ -178,6 +178,46 @@ describe("automation routing schemas", () => {
     ).toThrow();
   });
 
+  test("accepts reclassify_event actions with an explicit event identity", () => {
+    expect(
+      automationRouteActionSchema.parse({
+        kind: "reclassify_event",
+        source: "github",
+        eventType: "issues.opened",
+        payload: {
+          kind: "projection",
+          fields: { issue: "$.payload.issue" },
+        },
+      }),
+    ).toEqual({
+      kind: "reclassify_event",
+      source: "github",
+      eventType: "issues.opened",
+      payload: {
+        kind: "projection",
+        fields: { issue: "$.payload.issue" },
+      },
+    });
+
+    expect(() =>
+      automationRouteActionSchema.parse({
+        kind: "reclassify_event",
+        source: "github",
+        eventType: "",
+        payload: { kind: "projection", fields: { issue: "$.payload.issue" } },
+      }),
+    ).toThrow();
+
+    expect(() =>
+      automationRouteActionSchema.parse({
+        kind: "reclassify_event",
+        source: "github",
+        eventType: "issues.opened",
+        payload: { kind: "projection", fields: { issue: "payload.issue" } },
+      }),
+    ).toThrow(/Projection paths must start with/);
+  });
+
   test("send_workflow_event actions target an instance id directly or through the store", () => {
     expect(
       automationRouteActionSchema.parse({

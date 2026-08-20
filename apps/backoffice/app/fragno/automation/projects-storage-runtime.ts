@@ -101,7 +101,14 @@ const triggerProjectEvent = ({
     },
   };
 
-  uow.triggerHook("internalIngestEvent", { event }, { id: event.id });
+  uow.triggerHook(
+    "internalIngestEvent",
+    {
+      event,
+      reclassificationChain: [{ source: event.source, eventType: event.eventType }],
+    },
+    { id: event.id },
+  );
 };
 
 export const createAutomationProjectServices = (

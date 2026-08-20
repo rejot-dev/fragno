@@ -15,6 +15,11 @@ export type { AutomationEventTypeForSource, AutomationSource };
 
 export type AutomationEventPayload = Record<string, unknown>;
 
+export type AutomationEventIdentity = {
+  source: string;
+  eventType: string;
+};
+
 export type AutomationEntityDefinition<
   TScope extends "internal" | "external" = "internal" | "external",
   TType extends string = string,
@@ -48,6 +53,12 @@ export type AutomationEvent = {
   actors: AutomationActors;
   subject?: AutomationEventSubject | null;
 };
+
+export function getAutomationEventIdentity(
+  event: Pick<AutomationEvent, "source" | "eventType">,
+): AutomationEventIdentity {
+  return { source: event.source, eventType: event.eventType };
+}
 
 export type AutomationKnownEvent<S extends AutomationSource = AutomationSource> = Omit<
   AutomationEvent,

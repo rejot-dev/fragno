@@ -1,5 +1,6 @@
 import { assert, describe, expect, test } from "vitest";
 
+import { getDurableHooksService } from "@fragno-dev/db/durable-hooks";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
@@ -40,6 +41,35 @@ const event: AutomationEvent = {
   subject: { orgId: "org_123" },
 };
 
+function reclassificationRoute({
+  id,
+  source,
+  eventType,
+  targetSource,
+  targetEventType,
+}: {
+  id: string;
+  source: string;
+  eventType: string;
+  targetSource: string;
+  targetEventType: string;
+}): AutomationRouteDefinition {
+  return {
+    id,
+    name: id,
+    enabled: true,
+    priority: 1,
+    trigger: { kind: "event", source, eventType, matcher: null },
+    action: {
+      kind: "reclassify_event",
+      source: targetSource,
+      eventType: targetEventType,
+      payload: { kind: "projection", fields: { value: "$.payload.value" } },
+    },
+    nextOccurrenceAt: null,
+  };
+}
+
 const workflowDefinition = defineRemoteWorkflow({ name: CODEMODE_WORKFLOW }, async () => ({
   ok: true,
 }));
@@ -62,6 +92,7 @@ describe("automation route action idempotency", () => {
     );
     const automations = createAutomationFragment(
       {
+        builtInEventDefinitions: [],
         ownerScope: { kind: "org", orgId: "org_123" },
         automationFileSystem: createTestMasterFileSystem({
           "/workspace/automations/idempotent.workflow.js":
@@ -94,8 +125,24 @@ describe("automation route action idempotency", () => {
       await this.handlerTx()
         .mutate(({ forSchema }) => {
           const uow = forSchema(automationFragmentSchema);
-          uow.triggerHook("internalIngestEvent", { event, route }, { id: "start-replay-1" });
-          uow.triggerHook("internalIngestEvent", { event, route }, { id: "start-replay-2" });
+          uow.triggerHook(
+            "internalIngestEvent",
+            {
+              event,
+              reclassificationChain: [{ source: event.source, eventType: event.eventType }],
+              route,
+            },
+            { id: "start-replay-1" },
+          );
+          uow.triggerHook(
+            "internalIngestEvent",
+            {
+              event,
+              reclassificationChain: [{ source: event.source, eventType: event.eventType }],
+              route,
+            },
+            { id: "start-replay-2" },
+          );
         })
         .execute();
     });
@@ -126,6 +173,7 @@ describe("automation route action idempotency", () => {
     );
     const automations = createAutomationFragment(
       {
+        builtInEventDefinitions: [],
         ownerScope: { kind: "org", orgId: "org_123" },
         automationFileSystem: createTestMasterFileSystem({}),
       },
@@ -155,8 +203,24 @@ describe("automation route action idempotency", () => {
       await this.handlerTx()
         .mutate(({ forSchema }) => {
           const uow = forSchema(automationFragmentSchema);
-          uow.triggerHook("internalIngestEvent", { event, route }, { id: "send-replay-1" });
-          uow.triggerHook("internalIngestEvent", { event, route }, { id: "send-replay-2" });
+          uow.triggerHook(
+            "internalIngestEvent",
+            {
+              event,
+              reclassificationChain: [{ source: event.source, eventType: event.eventType }],
+              route,
+            },
+            { id: "send-replay-1" },
+          );
+          uow.triggerHook(
+            "internalIngestEvent",
+            {
+              event,
+              reclassificationChain: [{ source: event.source, eventType: event.eventType }],
+              route,
+            },
+            { id: "send-replay-2" },
+          );
         })
         .execute();
     });
@@ -175,9 +239,330 @@ describe("automation route action idempotency", () => {
     assert(events[0]?.id.toString() === "idempotent-send:route-event-1");
   });
 
+  test("replaying reclassify_event persists one derived automation event", async () => {
+    const source = createAutomationFragment(
+      {
+        builtInEventDefinitions: [
+          {
+            source: "github",
+            eventType: "issues.opened",
+            enabled: true,
+            payloadSchema: {
+              type: "object",
+              properties: { value: { type: "string" } },
+              required: ["value"],
+              additionalProperties: false,
+            },
+          },
+        ],
+        ownerScope: { kind: "org", orgId: "org_123" },
+        automationFileSystem: createTestMasterFileSystem({}),
+      },
+      {
+        databaseAdapter: new InMemoryAdapter({ idSeed: "route-reclassify-source" }),
+        dbRoundtripGuard: true,
+        outbox: { enabled: true },
+      },
+      { workflows: noOpWorkflows },
+    );
+    const route: AutomationRouteDefinition = {
+      id: "github-issues-opened",
+      name: "GitHub issues opened",
+      enabled: true,
+      priority: 1,
+      trigger: { kind: "event", source: "github", eventType: "webhook.received", matcher: null },
+      action: {
+        kind: "reclassify_event",
+        source: "github",
+        eventType: "issues.opened",
+        payload: { kind: "projection", fields: { value: "$.payload.value" } },
+      },
+      nextOccurrenceAt: null,
+    };
+
+    await source.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(automationFragmentSchema);
+          uow.triggerHook(
+            "internalIngestEvent",
+            {
+              event,
+              reclassificationChain: [{ source: event.source, eventType: event.eventType }],
+              route,
+            },
+            { id: "reclassify-replay-1" },
+          );
+          uow.triggerHook(
+            "internalIngestEvent",
+            {
+              event,
+              reclassificationChain: [{ source: event.source, eventType: event.eventType }],
+              route,
+            },
+            { id: "reclassify-replay-2" },
+          );
+        })
+        .execute();
+    });
+    await drainDurableHooks(source);
+
+    const response = await source.callRoute("GET", "/events");
+    assert(response.type === "json");
+    expect(response.data.events).toHaveLength(1);
+    expect(response.data.events[0]).toMatchObject({
+      id: "reclassified:github-issues-opened:route-event-1",
+      scope: event.scope,
+      source: "github",
+      eventType: "issues.opened",
+      payload: { value: "ready" },
+      actors: event.actors,
+      subject: event.subject,
+    });
+  });
+
+  test("rejects events that violate a built-in event definition", async () => {
+    const automations = createAutomationFragment(
+      {
+        builtInEventDefinitions: [
+          {
+            source: "github",
+            eventType: "push",
+            enabled: true,
+            payloadSchema: {
+              type: "object",
+              properties: { ref: { type: "string" } },
+              required: ["ref"],
+              additionalProperties: false,
+            },
+          },
+        ],
+        ownerScope: { kind: "org", orgId: "org_123" },
+        automationFileSystem: createTestMasterFileSystem({}),
+      },
+      {
+        databaseAdapter: new InMemoryAdapter({ idSeed: "built-in-event-validation" }),
+        dbRoundtripGuard: true,
+        outbox: { enabled: true },
+      },
+      { workflows: noOpWorkflows },
+    );
+
+    await expect(
+      automations.callServices(() =>
+        automations.services.ingestEvent({
+          ...event,
+          source: "github",
+          eventType: "push",
+          payload: { nonsense: true },
+        }),
+      ),
+    ).rejects.toThrow(/github\/push payload failed schema validation/);
+  });
+
+  test("rejects a direct reclassification cycle at execution", async () => {
+    const automations = createAutomationFragment(
+      {
+        builtInEventDefinitions: [],
+        ownerScope: { kind: "org", orgId: "org_123" },
+        automationFileSystem: createTestMasterFileSystem({}),
+      },
+      {
+        databaseAdapter: new InMemoryAdapter({ idSeed: "direct-reclassification-cycle" }),
+        dbRoundtripGuard: true,
+        outbox: { enabled: true },
+      },
+      { workflows: noOpWorkflows },
+    );
+    const route = reclassificationRoute({
+      id: "custom-ready-loop",
+      source: "custom",
+      eventType: "ready",
+      targetSource: "custom",
+      targetEventType: "ready",
+    });
+
+    await automations.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          forSchema(automationFragmentSchema).triggerHook(
+            "internalIngestEvent",
+            {
+              event,
+              reclassificationChain: [{ source: event.source, eventType: event.eventType }],
+              route,
+            },
+            { id: "direct-cycle" },
+          );
+        })
+        .execute();
+    });
+
+    await drainDurableHooks(automations);
+
+    const { hookService, namespace } = getDurableHooksService(automations);
+    const hooks = await automations.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(() => [hookService.getHooksByNamespacePage(namespace)] as const)
+        .transform(({ serviceResult: [result] }) => result.items)
+        .execute();
+    });
+    expect(hooks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          error: "AUTOMATION_EVENT_RECLASSIFICATION_CYCLE: custom/ready",
+        }),
+      ]),
+    );
+  });
+
+  test("rejects a multi-route reclassification cycle", async () => {
+    const automations = createAutomationFragment(
+      {
+        builtInEventDefinitions: [],
+        ownerScope: { kind: "org", orgId: "org_123" },
+        automationFileSystem: createTestMasterFileSystem({}),
+      },
+      {
+        databaseAdapter: new InMemoryAdapter({ idSeed: "multi-reclassification-cycle" }),
+        dbRoundtripGuard: true,
+        outbox: { enabled: true },
+      },
+      { workflows: noOpWorkflows },
+    );
+    const firstRoute = reclassificationRoute({
+      id: "custom-ready-to-next",
+      source: "custom",
+      eventType: "ready",
+      targetSource: "custom",
+      targetEventType: "next",
+    });
+    const secondRoute = reclassificationRoute({
+      id: "custom-next-to-ready",
+      source: "custom",
+      eventType: "next",
+      targetSource: "custom",
+      targetEventType: "ready",
+    });
+
+    await automations.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(automationFragmentSchema);
+          uow.create("automation_route", {
+            id: secondRoute.id,
+            name: secondRoute.name,
+            enabled: secondRoute.enabled,
+            priority: secondRoute.priority,
+            trigger: secondRoute.trigger,
+            action: secondRoute.action,
+            description: null,
+            metadata: null,
+            createdAt: uow.now(),
+            updatedAt: uow.now(),
+          });
+          uow.triggerHook(
+            "internalIngestEvent",
+            {
+              event,
+              reclassificationChain: [{ source: event.source, eventType: event.eventType }],
+              route: firstRoute,
+            },
+            { id: "multi-cycle" },
+          );
+        })
+        .execute();
+    });
+
+    await drainDurableHooks(automations);
+
+    const { hookService, namespace } = getDurableHooksService(automations);
+    const hooks = await automations.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(() => [hookService.getHooksByNamespacePage(namespace)] as const)
+        .transform(({ serviceResult: [result] }) => result.items)
+        .execute();
+    });
+    expect(hooks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          error: "AUTOMATION_EVENT_RECLASSIFICATION_CYCLE: custom/ready",
+        }),
+      ]),
+    );
+  });
+
+  test("allows a reclassification chain with distinct event identities", async () => {
+    const automations = createAutomationFragment(
+      {
+        builtInEventDefinitions: [],
+        ownerScope: { kind: "org", orgId: "org_123" },
+        automationFileSystem: createTestMasterFileSystem({}),
+      },
+      {
+        databaseAdapter: new InMemoryAdapter({ idSeed: "valid-reclassification-chain" }),
+        dbRoundtripGuard: true,
+        outbox: { enabled: true },
+      },
+      { workflows: noOpWorkflows },
+    );
+    const firstRoute = reclassificationRoute({
+      id: "custom-ready-to-next",
+      source: "custom",
+      eventType: "ready",
+      targetSource: "custom",
+      targetEventType: "next",
+    });
+    const secondRoute = reclassificationRoute({
+      id: "custom-next-to-complete",
+      source: "custom",
+      eventType: "next",
+      targetSource: "custom",
+      targetEventType: "complete",
+    });
+
+    await automations.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          const uow = forSchema(automationFragmentSchema);
+          uow.create("automation_route", {
+            id: secondRoute.id,
+            name: secondRoute.name,
+            enabled: secondRoute.enabled,
+            priority: secondRoute.priority,
+            trigger: secondRoute.trigger,
+            action: secondRoute.action,
+            description: null,
+            metadata: null,
+            createdAt: uow.now(),
+            updatedAt: uow.now(),
+          });
+          uow.triggerHook(
+            "internalIngestEvent",
+            {
+              event,
+              reclassificationChain: [{ source: event.source, eventType: event.eventType }],
+              route: firstRoute,
+            },
+            { id: "valid-chain" },
+          );
+        })
+        .execute();
+    });
+    await drainDurableHooks(automations);
+
+    const response = await automations.callRoute("GET", "/events");
+    assert(response.type === "json");
+    expect(response.data.events.map((storedEvent) => storedEvent.eventType).sort()).toEqual([
+      "complete",
+      "next",
+    ]);
+  });
+
   test("replaying forward_event persists one target automation event", async () => {
     const target = createAutomationFragment(
       {
+        builtInEventDefinitions: [],
         ownerScope: { kind: "org", orgId: "org_456" },
         automationFileSystem: createTestMasterFileSystem({}),
       },
@@ -201,6 +586,7 @@ describe("automation route action idempotency", () => {
     } as unknown as BackofficeRuntimeServices;
     const source = createAutomationFragment(
       {
+        builtInEventDefinitions: [],
         ownerScope: { kind: "system" },
         automationFileSystem: createTestMasterFileSystem({}),
         runtime,
@@ -230,8 +616,24 @@ describe("automation route action idempotency", () => {
       await this.handlerTx()
         .mutate(({ forSchema }) => {
           const uow = forSchema(automationFragmentSchema);
-          uow.triggerHook("internalIngestEvent", { event, route }, { id: "forward-replay-1" });
-          uow.triggerHook("internalIngestEvent", { event, route }, { id: "forward-replay-2" });
+          uow.triggerHook(
+            "internalIngestEvent",
+            {
+              event,
+              reclassificationChain: [{ source: event.source, eventType: event.eventType }],
+              route,
+            },
+            { id: "forward-replay-1" },
+          );
+          uow.triggerHook(
+            "internalIngestEvent",
+            {
+              event,
+              reclassificationChain: [{ source: event.source, eventType: event.eventType }],
+              route,
+            },
+            { id: "forward-replay-2" },
+          );
         })
         .execute();
     });

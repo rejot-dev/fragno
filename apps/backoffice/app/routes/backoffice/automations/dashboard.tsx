@@ -223,6 +223,9 @@ const routeDestinationLabel = (route: DashboardRoute) => {
       ? `Workflow · ${route.action.target.template}`
       : `Workflow from store · ${route.action.target.keyTemplate}`;
   }
+  if (route.action.kind === "reclassify_event") {
+    return `${route.action.source}:${route.action.eventType}`;
+  }
 
   switch (route.action.targetScope.kind) {
     case "system":
@@ -246,6 +249,8 @@ const routeActionLabel = (route: DashboardRoute) => {
       return `Send ${route.action.eventType}`;
     case "forward_event":
       return "Forward event";
+    case "reclassify_event":
+      return `Emit ${route.action.source}:${route.action.eventType}`;
   }
 
   throw new Error("Unsupported automation route action kind.");
@@ -471,6 +476,13 @@ const routeActionAppearance = (kind: DashboardRoute["action"]["kind"]) => {
         iconClassName: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
         labelClassName: "text-violet-700 dark:text-violet-300",
         selectedClassName: "ring-2 ring-violet-600/30 dark:ring-violet-300/25",
+      };
+    case "reclassify_event":
+      return {
+        icon: <GitBranch className="h-3.5 w-3.5" strokeWidth={1.8} />,
+        iconClassName: "bg-lime-500/10 text-lime-700 dark:text-lime-300",
+        labelClassName: "text-lime-700 dark:text-lime-300",
+        selectedClassName: "ring-2 ring-lime-600/30 dark:ring-lime-300/25",
       };
   }
 

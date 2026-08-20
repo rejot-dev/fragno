@@ -20,6 +20,7 @@ import { createAutomationFragment, type AutomationFragmentConfig } from "@/fragn
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { defineCodemodeWorkflow } from "@/fragno/automation/engine/codemode-workflow";
+import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import {
   createPiRuntimeDefinition,
   type CreatePiRuntimeDefinitionOptions,
@@ -570,6 +571,12 @@ export const createAutomationsRuntime = (
 
   automationFragment = createAutomationFragment<BackofficeExecutionContext>(
     {
+      builtInEventDefinitions: listAutomationEventDescriptors().map((definition) => ({
+        source: definition.source,
+        eventType: definition.eventType,
+        enabled: true,
+        payloadSchema: definition.payloadSchema,
+      })),
       env: config.env,
       runtime: config.runtime,
       createPiAutomationContext: async ({ execution }) => ({

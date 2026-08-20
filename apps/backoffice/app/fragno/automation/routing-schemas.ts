@@ -6,8 +6,10 @@ import { isAutomationActorProvenancePath } from "./routing";
 import type {
   AutomationActorMatcher,
   AutomationEventMatcher,
+  AutomationEventPayloadProjection,
   AutomationRouteDefinition,
   AutomationForwardEventAction,
+  AutomationReclassifyEventAction,
   AutomationRouteManagedBy,
   AutomationRouteTrigger,
   AutomationRouteAction,
@@ -166,11 +168,41 @@ const automationForwardEventActionSchema = z
     codemodeInputId: "AutomationForwardEventActionInput",
   }) satisfies z.ZodType<AutomationForwardEventAction>;
 
+const automationEventPayloadProjectionSchema = z
+  .strictObject({
+    kind: z.literal("projection"),
+    fields: z.record(
+      z.string().trim().min(1),
+      z
+        .string()
+        .trim()
+        .refine((path) => path === "$" || path.startsWith("$."), {
+          message: "Projection paths must start with $.",
+        }),
+    ),
+  })
+  .meta({
+    id: "AutomationEventPayloadProjection",
+  }) satisfies z.ZodType<AutomationEventPayloadProjection>;
+
+const automationReclassifyEventActionSchema = z
+  .strictObject({
+    kind: z.literal("reclassify_event"),
+    source: z.string().trim().min(1),
+    eventType: z.string().trim().min(1),
+    payload: automationEventPayloadProjectionSchema,
+  })
+  .meta({
+    id: "AutomationReclassifyEventAction",
+    codemodeInputId: "AutomationReclassifyEventActionInput",
+  }) satisfies z.ZodType<AutomationReclassifyEventAction>;
+
 export const automationRouteActionSchema = z
   .discriminatedUnion("kind", [
     automationStartWorkflowActionSchema,
     automationSendWorkflowEventActionSchema,
     automationForwardEventActionSchema,
+    automationReclassifyEventActionSchema,
   ])
   .meta({
     id: "AutomationRouteAction",

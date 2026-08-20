@@ -119,7 +119,10 @@ const createLifecycleWorkflows = ({
 const automationScenarioHarness = {
   configureFragments: ((harness) => ({
     automations: instantiate(automationFragmentDefinition)
-      .withConfig({ ownerScope: { kind: "org", orgId: "org_123" } })
+      .withConfig({
+        builtInEventDefinitions: [],
+        ownerScope: { kind: "org", orgId: "org_123" },
+      })
       .withServices({ workflows: harness.fragment.services }),
   })) satisfies NonNullable<
     WorkflowScenarioHarnessOptions<
@@ -1044,6 +1047,7 @@ describe("sandbox lifecycle workflow", () => {
           configureFragments: ((harness) => ({
             automations: instantiate(automationFragmentDefinition)
               .withConfig({
+                builtInEventDefinitions: [],
                 ownerScope: { kind: "org", orgId: "org_123" },
                 sandboxProviders: { [CLOUDFLARE_SANDBOX_PROVIDER]: provider },
               })
@@ -1130,6 +1134,7 @@ describe("sandbox lifecycle workflow", () => {
           configureFragments: ((harness) => ({
             automations: instantiate(automationFragmentDefinition)
               .withConfig({
+                builtInEventDefinitions: [],
                 ownerScope: { kind: "org", orgId: "org_123" },
                 sandboxProviders: { [CLOUDFLARE_SANDBOX_PROVIDER]: provider },
               })

@@ -9,6 +9,7 @@ import {
   automationScheduleCadencesEqual,
   validateAutomationScheduleCadence,
 } from "./route-triggers";
+import { assertAutomationRouteDoesNotReclassifyItself } from "./routing";
 import {
   automationRouteCreateInputSchema,
   automationRouteUpdateInputSchema,
@@ -95,6 +96,11 @@ export const createAutomationRouteServices = (
       if (route.trigger.kind === "schedule") {
         validateAutomationScheduleCadence(route.trigger.cadence);
       }
+      assertAutomationRouteDoesNotReclassifyItself({
+        routeId: route.id,
+        trigger: route.trigger,
+        action: route.action,
+      });
 
       return this.serviceTx(automationFragmentSchema)
         .mutate(({ uow }) => {
@@ -186,6 +192,11 @@ export const createAutomationRouteServices = (
                 ? (patch.managedBy ?? null)
                 : (current.metadata?.managedBy ?? null),
           };
+          assertAutomationRouteDoesNotReclassifyItself({
+            routeId: merged.id,
+            trigger: merged.trigger,
+            action: merged.action,
+          });
           if (
             authoredRouteEqual(
               { ...current, managedBy: current.metadata?.managedBy ?? null },
