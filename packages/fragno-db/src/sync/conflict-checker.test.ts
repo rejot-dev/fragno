@@ -5,7 +5,7 @@ import { SqliteDialect } from "kysely";
 
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { buildFindOptions } from "../query/find-options";
-import { getTableRelations, schema, column, idColumn, referenceColumn } from "../schema/create";
+import { schema, column, idColumn, referenceColumn } from "../schema/create";
 import { sql } from "../sql-driver/sql";
 import { SqlDriverAdapter } from "../sql-driver/sql-driver-adapter";
 import { checkConflicts } from "./conflict-checker";
@@ -126,54 +126,6 @@ describe("checkConflicts", () => {
         readKeys: [{ schema: "", table: "users", externalId: "u1" }],
         writeKeys: [],
         readScopes: [],
-      },
-      { driver, driverConfig: new BetterSQLite3DriverConfig() },
-    );
-
-    assert(hasConflict);
-  });
-
-  test("detects conflicts from read scopes with joins", async () => {
-    await driver.executeQuery(
-      sql`INSERT INTO users (id, name, _internalId, _version)
-          VALUES (${"u1"}, ${"Ava"}, 1, 0);`.compile(dialect),
-    );
-
-    await driver.executeQuery(
-      sql`INSERT INTO posts (id, title, userId, _internalId, _version)
-          VALUES (${"p1"}, ${"Hello"}, 1, 10, 0);`.compile(dialect),
-    );
-
-    await insertMutation({
-      id: "m2",
-      schema: "",
-      table: "users",
-      externalId: "u1",
-    });
-
-    const options = buildFindOptions(testSchema.tables.posts, {
-      where: (eb) => eb("title", "=", "Hello"),
-    });
-
-    const userRelation = getTableRelations(testSchema.tables.posts)["user"];
-    if (!options || !userRelation) {
-      throw new Error("Expected join options to compile.");
-    }
-
-    const hasConflict = await checkConflicts(
-      {
-        baseVersionstamp,
-        readKeys: [],
-        writeKeys: [],
-        readScopes: [
-          {
-            schema: "",
-            table: testSchema.tables.posts,
-            indexName: "primary",
-            condition: options.where,
-            joins: [{ relation: userRelation, options: buildFindOptions(userRelation.table, {})! }],
-          },
-        ],
       },
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
     );
@@ -358,7 +310,6 @@ describe("checkConflicts", () => {
             table: testSchema.tables.posts,
             indexName: "primary",
             condition: options.where,
-            joins: options.join,
           },
         ],
       },
@@ -403,14 +354,12 @@ describe("checkConflicts", () => {
             table: testSchema.tables.posts,
             indexName: "primary",
             condition: noMatch.where,
-            joins: noMatch.join,
           },
           {
             schema: "",
             table: testSchema.tables.posts,
             indexName: "primary",
             condition: match.where,
-            joins: match.join,
           },
         ],
       },

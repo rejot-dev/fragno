@@ -1,11 +1,10 @@
 import { describe, expectTypeOf, it } from "vitest";
 
-import { column, FragnoId, idColumn, referenceColumn, schema } from "../schema/create";
+import { column, FragnoId, idColumn, schema } from "../schema/create";
 import type { ConditionBuilder } from "./condition-builder";
 import type {
   FindFirstOptions,
   FindManyOptions,
-  JoinBuilder,
   OrderBy,
   SelectClause,
   TableToInsertValues,
@@ -157,31 +156,6 @@ describe("query type tests", () => {
           viewCount: number;
         }[]
       >();
-    });
-  });
-
-  describe("join", () => {
-    const userSchema = schema("user", (s) => {
-      return s
-        .addTable("users", (t) => {
-          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
-        })
-        .addTable("posts", (t) => {
-          return t
-            .addColumn("id", idColumn())
-            .addColumn("title", column("string"))
-            .addColumn("userId", referenceColumn({ table: "users" }));
-        })
-        .addTable("tags", (t) => {
-          return t.addColumn("id", idColumn()).addColumn("name", column("string"));
-        });
-    });
-
-    it("removes relation-key join builder typing", () => {
-      const _table = userSchema.tables.posts;
-      type Builder1 = JoinBuilder<typeof _table>;
-
-      expectTypeOf<Builder1>().toEqualTypeOf<never>();
     });
   });
 

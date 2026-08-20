@@ -1,7 +1,6 @@
 import type { Condition } from "../query/condition-builder";
 import { buildCondition } from "../query/condition-builder";
 import type { CursorResult } from "../query/cursor";
-import type { CompiledJoin } from "../query/find-options";
 import type { AnySelectClause } from "../query/mod";
 import type { MutationOperation } from "../query/unit-of-work/mutation-recorder";
 import type {
@@ -23,7 +22,6 @@ export type ReadScope = {
   table: AnyTable;
   indexName: string;
   condition?: Condition;
-  joins?: CompiledJoin[];
 };
 
 const isCursorResult = (value: unknown): value is CursorResult<unknown> => {
@@ -53,46 +51,18 @@ const getExternalId = (value: unknown): string | undefined => {
   return undefined;
 };
 
-const collectKeysFromRecord = (
+const collectKeyFromRecord = (
   record: unknown,
   table: AnyTable,
-  joins: CompiledJoin[] | undefined,
   schemaName: string,
   output: ReadKey[],
 ): void => {
   if (!record || typeof record !== "object") {
     return;
   }
-
-  const idKey = table.getIdColumn().name;
-  const externalId = getExternalId((record as Record<string, unknown>)[idKey]);
+  const externalId = getExternalId((record as Record<string, unknown>)[table.getIdColumn().name]);
   if (externalId !== undefined) {
     output.push({ schema: schemaName, table: table.name, externalId });
-  }
-
-  if (!joins || joins.length === 0) {
-    return;
-  }
-
-  for (const join of joins) {
-    const { relation, options } = join;
-    if (options === false) {
-      continue;
-    }
-
-    const relationValue = (record as Record<string, unknown>)[relation.name];
-    if (relationValue === null || relationValue === undefined) {
-      continue;
-    }
-
-    if (Array.isArray(relationValue)) {
-      for (const item of relationValue) {
-        collectKeysFromRecord(item, relation.table, options.join, schemaName, output);
-      }
-      continue;
-    }
-
-    collectKeysFromRecord(relationValue, relation.table, options.join, schemaName, output);
   }
 };
 
@@ -171,47 +141,11 @@ const stripKeysFromQueryTreeRecord = (
   }
 };
 
-const stripKeysFromRecord = (
-  record: unknown,
-  table: AnyTable,
-  joins: CompiledJoin[] | undefined,
-  stripId: boolean,
-): void => {
-  if (!record || typeof record !== "object") {
+const stripKeyFromRecord = (record: unknown, table: AnyTable, stripId: boolean): void => {
+  if (!record || typeof record !== "object" || !stripId) {
     return;
   }
-
-  if (stripId) {
-    const idKey = table.getIdColumn().name;
-    delete (record as Record<string, unknown>)[idKey];
-  }
-
-  if (!joins || joins.length === 0) {
-    return;
-  }
-
-  for (const join of joins) {
-    const { relation, options } = join;
-    if (options === false) {
-      continue;
-    }
-
-    const relationValue = (record as Record<string, unknown>)[relation.name];
-    if (relationValue === null || relationValue === undefined) {
-      continue;
-    }
-
-    const stripRelationId = shouldStripId(options.select, relation.table);
-
-    if (Array.isArray(relationValue)) {
-      for (const item of relationValue) {
-        stripKeysFromRecord(item, relation.table, options.join, stripRelationId);
-      }
-      continue;
-    }
-
-    stripKeysFromRecord(relationValue, relation.table, options.join, stripRelationId);
-  }
+  delete (record as Record<string, unknown>)[table.getIdColumn().name];
 };
 
 export const collectReadScopes = (
@@ -256,7 +190,6 @@ export const collectReadScopes = (
         table: op.table,
         indexName: op.indexName,
         condition: condition === true ? undefined : condition,
-        joins: op.options.joins,
       });
     }
   }
@@ -291,7 +224,7 @@ export const collectReadKeys = (
       if (op.options.queryTree) {
         collectKeysFromQueryTreeRecord(record, op.options.queryTree, schemaName, keys);
       } else {
-        collectKeysFromRecord(record, op.table, op.options.joins, schemaName, keys);
+        collectKeyFromRecord(record, op.table, schemaName, keys);
       }
     }
   }
@@ -350,7 +283,7 @@ export const stripReadTrackingResults = (
         if (op.options.queryTree) {
           stripKeysFromQueryTreeRecord(record, op.options.queryTree, stripId);
         } else {
-          stripKeysFromRecord(record, op.table, op.options.joins, stripId);
+          stripKeyFromRecord(record, op.table, stripId);
         }
       }
       continue;
@@ -361,7 +294,7 @@ export const stripReadTrackingResults = (
         if (op.options.queryTree) {
           stripKeysFromQueryTreeRecord(record, op.options.queryTree, stripId);
         } else {
-          stripKeysFromRecord(record, op.table, op.options.joins, stripId);
+          stripKeyFromRecord(record, op.table, stripId);
         }
       }
       continue;
@@ -370,7 +303,7 @@ export const stripReadTrackingResults = (
     if (op.options.queryTree) {
       stripKeysFromQueryTreeRecord(result, op.options.queryTree, stripId);
     } else {
-      stripKeysFromRecord(result, op.table, op.options.joins, stripId);
+      stripKeyFromRecord(result, op.table, stripId);
     }
   }
 };
