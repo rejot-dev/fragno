@@ -61,6 +61,7 @@ export {
 export { withDatabase } from "./with-database";
 
 export { decodeCursor, type CursorData } from "./query/cursor";
+export type { QueryPolicyController } from "./query/query-policy";
 
 export {
   createUnitOfWork,
@@ -147,7 +148,8 @@ export type {
 export type AnyFragnoInstantiatedDatabaseFragment = FragnoInstantiatedFragment<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any,
-  ImplicitDatabaseDependencies,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ImplicitDatabaseDependencies<any>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

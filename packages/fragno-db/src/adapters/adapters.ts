@@ -1,6 +1,7 @@
 import type { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 
 import type { SqlNamingStrategy } from "../naming/sql-naming";
+import type { QueryPolicySet } from "../query/query-policy";
 import type { IUnitOfWork, TypedUnitOfWork } from "../query/unit-of-work/unit-of-work";
 import type { AnySchema } from "../schema/create";
 import type { SQLProvider } from "../shared/providers";
@@ -16,6 +17,7 @@ export const fragnoDatabaseAdapterVersionFakeSymbol = "$fragno-database-adapter-
  */
 export type DatabaseContextStorage = {
   uow: IUnitOfWork;
+  queryPolicies?: QueryPolicySet;
   activeHandlerTxDepth?: number;
 };
 

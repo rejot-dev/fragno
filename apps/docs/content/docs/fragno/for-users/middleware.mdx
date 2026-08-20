@@ -77,6 +77,32 @@ await fragment.handler(request, {
 Request context is separate from `propagationContext`, which carries telemetry-only W3C tracing
 metadata.
 
+## Restricting database reads
+
+Middleware for a database Fragment can add request-scoped predicates through
+`deps.queryPolicies.addRead()`. Fragno automatically applies these predicates to direct reads,
+counts, cursor queries, and matching tables inside joins. Using the authenticated request context
+from the previous section:
+
+```typescript title="lib/documents-fragment-server.ts"
+const documents = createDocumentsFragment({}, { databaseAdapter }).withMiddleware(
+  ({ requestContext }, { deps, error }) => {
+    if (!requestContext) {
+      return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
+    }
+
+    deps.queryPolicies.addRead("documents", (eb) => eb("ownerId", "=", requestContext.userId));
+  },
+);
+```
+
+The `ownerId` column must have a compatible index before the policy can use it. Unindexed policy
+predicates are rejected by TypeScript and validated again at runtime.
+
+Query policies affect reads only and are not fail closed: if middleware adds no policy, reads remain
+unrestricted. See [Query Policies](/docs/fragno/for-users/database-fragments/query-policies) for
+composition rules, coverage, and security boundaries.
+
 ## Route-specific Usage
 
 `ifMatchesRoute` can be used to execute middleware only for specific routes. It has full type safety

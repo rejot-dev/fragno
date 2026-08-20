@@ -11,6 +11,7 @@ import { Cursor, getCursorMetadata } from "../cursor";
 import type { DbInterval, DbIntervalInput, DbNow } from "../db-now";
 import type { CompiledJoin } from "../find-options";
 import type { SelectClause, TableToInsertValues, SelectResult } from "../mod";
+import { applyReadQueryPolicies, type QueryPolicySet } from "../query-policy";
 import type { CheckAbsentIndexName, CheckAbsentIndexValues } from "./check-absent";
 import {
   DeleteBuilder,
@@ -779,6 +780,9 @@ export interface IUnitOfWork {
   // Reset for retry support. Passing options updates transaction-scoped diagnostics metadata.
   reset(options?: { name?: string }): void;
 
+  /** @internal Attach the request-scoped query policies used when recording reads. */
+  setQueryPolicies(queryPolicies: QueryPolicySet | undefined): void;
+
   // Schema-specific view (for cross-schema operations)
   // The optional hooks parameter is for type inference only - pass your hooks map
   // to get proper typing for triggerHook. The value is not used at runtime.
@@ -1144,6 +1148,8 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   // Hook triggers
   #triggeredHooks: TriggeredHook[] = [];
 
+  #queryPolicies?: QueryPolicySet;
+
   constructor(
     compiler: UOWCompiler<unknown>,
     executor: UOWExecutor<unknown, TRawInput>,
@@ -1279,6 +1285,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     child.#retrievalError = this.#retrievalError;
     child.#mutationError = this.#mutationError;
     child.#triggeredHooks = this.#triggeredHooks;
+    child.#queryPolicies = this.#queryPolicies;
 
     this.#coordinator.addChild(child);
 
@@ -1307,6 +1314,10 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
    */
   signalReadyForMutation(): void {
     this.#coordinator.signalReadyForMutation();
+  }
+
+  setQueryPolicies(queryPolicies: QueryPolicySet | undefined): void {
+    this.#queryPolicies = queryPolicies;
   }
 
   /**
@@ -1627,7 +1638,8 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
         `Cannot add retrieval operation in state ${this.state}. Must be in building-retrieval state.`,
       );
     }
-    this.#retrievalOps.push(op);
+    const operation = this.#queryPolicies ? applyReadQueryPolicies(op, this.#queryPolicies) : op;
+    this.#retrievalOps.push(operation);
     return this.#retrievalOps.length - 1;
   }
 
@@ -1898,6 +1910,10 @@ export class TypedUnitOfWork<
 
   reset(options?: { name?: string }): void {
     this.#uow.reset(options);
+  }
+
+  setQueryPolicies(queryPolicies: QueryPolicySet | undefined): void {
+    this.#uow.setQueryPolicies(queryPolicies);
   }
 
   forSchema<TOtherSchema extends AnySchema, TOtherHooks extends HooksMap = {}>(

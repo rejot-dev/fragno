@@ -1,0 +1,112 @@
+---
+title: Query Policies
+description: Restrict a database Fragment's reads from request middleware
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+Query policies let application middleware add request-scoped predicates to a database Fragment's
+reads. Use them to restrict rows by facts established during authentication, such as an organization
+ID, workspace ID, or user ID.
+
+The Fragment's routes and services do not need to pass the predicate to every query. Fragno adds it
+automatically before compiling the query for the database adapter.
+
+## Add a read policy in middleware
+
+Access `deps.queryPolicies` from the middleware output context and call `addRead()` before the route
+handler runs:
+
+```typescript title="lib/documents-fragment-server.ts"
+type AuthenticatedRequestContext = {
+  userId: string;
+  organizationId: string;
+};
+
+const documents = createDocumentsFragment({}, { databaseAdapter })
+  .withRequestContext<AuthenticatedRequestContext>()
+  .withMiddleware(({ requestContext }, { deps, error }) => {
+    if (!requestContext) {
+      return error({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401);
+    }
+
+    deps.queryPolicies.addRead("documents", (eb) =>
+      eb("organizationId", "=", requestContext.organizationId),
+    );
+  });
+```
+
+`organizationId` must have a compatible index in the Fragment's schema before the policy can use it.
+`addRead()` is type-safe for the Fragment's schema: TypeScript checks the table name and rejects
+unindexed columns, and Fragno performs the same index validation at runtime.
+
+Do not return a response after adding the policy. Returning `undefined` lets the request continue to
+the route handler.
+
+## How predicates compose
+
+Query policies only add restrictions. Fragno combines the query's existing predicate and every
+policy registered for the same table with logical `AND`:
+
+```text
+query predicate AND first policy AND second policy
+```
+
+For example, these policies limit documents to one organization and one owner:
+
+```typescript
+deps.queryPolicies.addRead("documents", (eb) =>
+  eb("organizationId", "=", requestContext.organizationId),
+);
+deps.queryPolicies.addRead("documents", (eb) => eb("ownerId", "=", requestContext.userId));
+```
+
+Middleware cannot replace or remove a policy that it already added during the request.
+
+## Reads covered by a policy
+
+A read policy applies whenever the matching table appears in a Fragno DB retrieval, including:
+
+- `find()` and `findFirst()`
+- `selectCount()`
+- `findWithCursor()`
+- nested `joinOne()` and `joinMany()` query-tree nodes
+- reads composed through services or nested handler transactions
+
+For example, a policy on `documents` filters both a direct document query and `documents` loaded as
+children of an `organizations` query. It does not filter the parent organizations unless middleware
+also adds a policy for the `organizations` table.
+
+Fragno applies policies to the logical query before adapter compilation. SQL adapters and the
+in-memory adapter therefore enforce the same predicates.
+
+## Request and Fragment scope
+
+Fragno creates a new policy set for every request. Policies do not leak between requests.
+
+Each policy is also scoped to the Fragment's schema and database namespace. An unrelated Fragment
+with a table that has the same name does not receive the policy.
+
+Policies affect only reads performed through Fragno DB. They do not affect SQL issued directly
+through Kysely, Drizzle, Prisma, or another database client.
+
+## Security boundaries
+
+<Callout title="Query policies are not fail closed" type="warn">
+  A request with no registered policy remains unrestricted. Authenticate the request and reject it
+  in middleware before allowing the route handler to run. Do not assume that the Fragment requires
+  middleware to install a policy.
+</Callout>
+
+Query policies currently protect reads only. They do not add conditions to creates, updates, or
+deletes. Treat mutation authorization as a separate responsibility of the Fragment or application.
+
+The condition callback may return `true`, which adds no restriction. A callback that returns `false`
+throws an error; reject the request in middleware instead.
+
+## Next steps
+
+- Learn how to pass authenticated application data through
+  [request context](/docs/fragno/for-users/middleware#application-request-context).
+- Review the Fragment author's
+  [querying API](/docs/fragno/for-library-authors/database-integration/querying).

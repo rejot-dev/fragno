@@ -54,6 +54,10 @@ type OnIndexCapable = {
   onIndex(indexName: string, condition?: (eb: unknown) => unknown): unknown;
 };
 
+type AnyIndexOrderBuilder<TBuilder> = {
+  orderByIndex(indexName: string, direction: "asc" | "desc"): TBuilder;
+};
+
 type InferJoinOneBuilder<THostBuilder> = THostBuilder extends {
   joinOne(alias: string, table: string, builderFn: (builder: infer TBuilder) => unknown): unknown;
 }
@@ -89,7 +93,10 @@ const joinAuthor = <THostBuilder extends JoinOneHost>(
 
 const joinPosts = <THostBuilder extends JoinManyHost>(
   builder: THostBuilder,
-  configure?: (posts: InferJoinManyBuilder<THostBuilder>) => unknown,
+  configure?: (
+    posts: InferJoinManyBuilder<THostBuilder> &
+      AnyIndexOrderBuilder<InferJoinManyBuilder<THostBuilder>>,
+  ) => unknown,
 ) =>
   (
     builder.joinMany as (
@@ -105,12 +112,20 @@ const joinPosts = <THostBuilder extends JoinManyHost>(
         return conditionBuilder("authorId", "=", conditionBuilder.parent("id"));
       },
     );
-    return configure ? configure(posts) : posts;
+    return configure
+      ? configure(
+          posts as InferJoinManyBuilder<THostBuilder> &
+            AnyIndexOrderBuilder<InferJoinManyBuilder<THostBuilder>>,
+        )
+      : posts;
   });
 
 const joinComments = <THostBuilder extends JoinManyHost>(
   builder: THostBuilder,
-  configure?: (comments: InferJoinManyBuilder<THostBuilder>) => unknown,
+  configure?: (
+    comments: InferJoinManyBuilder<THostBuilder> &
+      AnyIndexOrderBuilder<InferJoinManyBuilder<THostBuilder>>,
+  ) => unknown,
 ) =>
   (
     builder.joinMany as (
@@ -126,7 +141,12 @@ const joinComments = <THostBuilder extends JoinManyHost>(
         return conditionBuilder("postId", "=", conditionBuilder.parent("id"));
       },
     );
-    return configure ? configure(comments) : comments;
+    return configure
+      ? configure(
+          comments as InferJoinManyBuilder<THostBuilder> &
+            AnyIndexOrderBuilder<InferJoinManyBuilder<THostBuilder>>,
+        )
+      : comments;
   });
 
 const joinMember = <THostBuilder extends JoinOneHost>(

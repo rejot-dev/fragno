@@ -61,7 +61,7 @@ async function buildOutboxContext() {
     .withOptions({ databaseAdapter: adapter, outbox: { enabled: true } })
     .build();
 
-  const deps = fragment.$internal.deps as ImplicitDatabaseDependencies;
+  const deps = fragment.$internal.deps as ImplicitDatabaseDependencies<typeof appSchema>;
   const createUnitOfWork = (name?: string) =>
     deps.databaseAdapter.createUnitOfWork(appSchema, deps.namespace, name);
 

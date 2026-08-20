@@ -52,6 +52,7 @@ function createMockAdapter(): DatabaseAdapter {
     executeMutations: vi.fn(),
     registerSchema: vi.fn(),
     reset: vi.fn(),
+    setQueryPolicies: vi.fn(),
   });
 
   return {
@@ -969,7 +970,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expectTypeOf(deps).toExtend<
         {
           customDep: string;
-        } & ImplicitDatabaseDependencies
+        } & ImplicitDatabaseDependencies<typeof testSchema>
       >();
 
       assert(deps.customDep === "test");

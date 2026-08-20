@@ -37,6 +37,11 @@ import {
   createDurableHooksRunner,
 } from "./hooks/hooks";
 import {
+  createQueryPolicyController,
+  QueryPolicySet,
+  type QueryPolicyController,
+} from "./query/query-policy";
+import {
   createServiceTxBuilder,
   createHandlerTxBuilder,
   ServiceTxBuilder,
@@ -164,7 +169,7 @@ export type DbRoundtripGuardConfig = {
  * Implicit dependencies that database fragments get automatically.
  * These are injected without requiring explicit configuration.
  */
-export type ImplicitDatabaseDependencies = {
+export type ImplicitDatabaseDependencies<TSchema extends AnySchema = AnySchema> = {
   /**
    * Database adapter instance.
    */
@@ -181,6 +186,8 @@ export type ImplicitDatabaseDependencies = {
    * Create a new Unit of Work for database operations.
    */
   createUnitOfWork: () => IUnitOfWork;
+  /** Add request-scoped predicates to reads performed against this fragment's schema. */
+  queryPolicies: QueryPolicyController<TSchema>;
 };
 
 /**
@@ -283,10 +290,43 @@ type DatabaseFragmentContextInternal<TSchema extends AnySchema> = DatabaseFragme
   createBaseUnitOfWork: (name?: string) => IUnitOfWork;
 };
 
-/**
- * Create database context from options.
- * This extracts the database adapter and creates the ORM instance.
- */
+function createRequestUnitOfWork<TSchema extends AnySchema>(
+  dbContext: DatabaseFragmentContextInternal<TSchema>,
+): TypedUnitOfWork<TSchema> {
+  const uow = dbContext.createUnitOfWork();
+  const requestStorage = dbContext.databaseAdapter.contextStorage;
+  if (requestStorage.hasStore()) {
+    uow.setQueryPolicies(requestStorage.getStore().queryPolicies);
+  }
+  return uow;
+}
+
+function requireRequestQueryPolicies(
+  databaseAdapter: DatabaseAdapter<any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+): QueryPolicySet {
+  const requestStorage = databaseAdapter.contextStorage;
+  if (!requestStorage.hasStore()) {
+    throw new Error("Query policies can only be added within a database request context.");
+  }
+
+  const policies = requestStorage.getStore().queryPolicies;
+  if (!policies) {
+    throw new Error("Query policies can only be added within a database request context.");
+  }
+  return policies;
+}
+
+function createRequestQueryPolicyController<TSchema extends AnySchema>(
+  schema: TSchema,
+  namespace: string | null,
+  databaseAdapter: DatabaseAdapter<any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+): QueryPolicyController<TSchema> {
+  return createQueryPolicyController(schema, namespace, () =>
+    requireRequestQueryPolicies(databaseAdapter),
+  );
+}
+
+/** Create a schema-bound database context from fragment options. */
 function createDatabaseContext<TSchema extends AnySchema>(
   options: FragnoPublicConfigWithDatabase,
   schema: TSchema,
@@ -752,6 +792,7 @@ function isRouteRequest(storage: DatabaseContextStorage): boolean {
  */
 export type DatabaseRequestStorage = {
   uow: IUnitOfWork;
+  queryPolicies?: QueryPolicySet;
   activeHandlerTxDepth?: number;
 };
 
@@ -832,7 +873,7 @@ export class DatabaseFragmentDefinitionBuilder<
   ): DatabaseFragmentDefinitionBuilder<
     TSchema,
     TConfig,
-    TNewDeps & ImplicitDatabaseDependencies,
+    TNewDeps & ImplicitDatabaseDependencies<TSchema>,
     {},
     {},
     TServiceDependencies,
@@ -855,12 +896,16 @@ export class DatabaseFragmentDefinitionBuilder<
       });
 
       // Create implicit dependencies
-      const createUow = () => dbContext.createUnitOfWork();
-      const implicitDeps: ImplicitDatabaseDependencies = {
+      const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
         schema: this.#schema,
         namespace,
-        createUnitOfWork: createUow,
+        createUnitOfWork: () => createRequestUnitOfWork(dbContext),
+        queryPolicies: createRequestQueryPolicyController(
+          this.#schema,
+          namespace,
+          dbContext.databaseAdapter,
+        ),
       };
 
       return {
@@ -1268,11 +1313,16 @@ export class DatabaseFragmentDefinitionBuilder<
         }
       }
 
-      const implicitDeps: ImplicitDatabaseDependencies = {
+      const implicitDeps: ImplicitDatabaseDependencies<TSchema> = {
         databaseAdapter: dbContext.databaseAdapter,
         schema: this.#schema,
         namespace,
-        createUnitOfWork: () => dbContext.createUnitOfWork(),
+        createUnitOfWork: () => createRequestUnitOfWork(dbContext),
+        queryPolicies: createRequestQueryPolicyController(
+          this.#schema,
+          namespace,
+          dbContext.databaseAdapter,
+        ),
       };
 
       return {
@@ -1295,9 +1345,11 @@ export class DatabaseFragmentDefinitionBuilder<
         // Create database context - needed here to create the UOW
         const dbContextForStorage = createDatabaseContext(options, this.#schema);
 
+        const queryPolicies = new QueryPolicySet();
         const uow = dbContextForStorage.createBaseUnitOfWork();
+        uow.setQueryPolicies(queryPolicies);
 
-        return { uow };
+        return { uow, queryPolicies };
       },
     );
 
@@ -1640,6 +1692,7 @@ export class DatabaseFragmentDefinitionBuilder<
                     internalFragment.$internal.deps.namespace,
                   );
                 }
+                nestedUow.setQueryPolicies(txStorage.queryPolicies);
                 txStorage.uow = nestedUow;
                 return nestedUow;
               }
