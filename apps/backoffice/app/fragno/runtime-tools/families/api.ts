@@ -1,4 +1,6 @@
 import {
+  apiRequestInputSchema as apiFragmentRequestInputSchema,
+  apiRequestOutputSchema as apiFragmentRequestOutputSchema,
   createWebhookEndpointInputSchema as apiFragmentCreateWebhookEndpointInputSchema,
   updateWebhookEndpointInputSchema as apiFragmentUpdateWebhookEndpointInputSchema,
   webhookEndpointOutputSchema,
@@ -22,6 +24,11 @@ import type { ApiRuntime } from "./api-runtime";
 const authSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("none") }),
   z.object({ type: z.literal("bearer"), token: z.string().trim().min(1) }),
+  z.object({
+    type: z.literal("basic"),
+    username: z.string().trim().min(1),
+    password: z.string().min(1),
+  }),
   z.object({
     type: z.literal("oauth"),
     authorizationEndpoint: z.url(),
@@ -79,22 +86,14 @@ const oauthStartInputSchema = z.object({
   extraAuthorizationParams: z.record(z.string(), z.string()).optional(),
 });
 const oauthStartOutputSchema = z.object({ authorizationUrl: z.url(), state: z.string() });
-const requestInputSchema = z.object({
+const requestInputSchema = apiFragmentRequestInputSchema.extend({
   slug: z.string().trim().min(1),
-  method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
-  path: z.string().trim().min(1),
-  query: z.record(z.string(), z.string()).optional(),
-  headers: z.record(z.string(), z.string()).optional(),
+});
+const requestCliInputSchema = requestInputSchema.omit({ body: true }).extend({
   json: z.unknown().optional(),
-  body: z.string().optional(),
-  timeoutMs: z.number().int().positive().max(120_000).optional(),
+  text: z.string().optional(),
 });
-const requestOutputSchema = z.object({
-  status: z.number().int(),
-  statusText: z.string(),
-  headers: z.record(z.string(), z.string()),
-  body: z.unknown().nullable(),
-});
+const requestOutputSchema = apiFragmentRequestOutputSchema;
 
 const webhookEndpointSchema = webhookEndpointOutputSchema.extend({
   publicUrl: z.url().nullable(),
@@ -196,8 +195,25 @@ const renderConnections = (result: ApiListConnectionsOutput) =>
     : "No API connections configured.";
 
 const renderRequest = (result: ApiRequestOutput) => {
-  const body = typeof result.body === "string" ? result.body : JSON.stringify(result.body, null, 2);
-  return [`${result.status} ${result.statusText}`, body].filter(Boolean).join("\n");
+  if (!result.ok && !result.response) {
+    return `${result.error.code}: ${result.error.message}`;
+  }
+
+  const response = result.response;
+  if (!response) {
+    return "API request failed without an error response.";
+  }
+
+  const body =
+    response.body.type === "json"
+      ? JSON.stringify(response.body.value, null, 2)
+      : response.body.type === "text"
+        ? response.body.value
+        : "";
+  const status = `${response.status} ${response.statusText}`;
+  return [result.ok ? status : `${status}\n${result.error.code}: ${result.error.message}`, body]
+    .filter(Boolean)
+    .join("\n");
 };
 
 const renderWebhookEndpointRows = (endpoints: readonly ApiWebhookEndpoint[]) =>
@@ -217,14 +233,17 @@ const parseScopes = (value: string | undefined) =>
     .map((scope) => scope.trim())
     .filter(Boolean);
 
-const readCliString = (parsed: ParsedCliTokens, name: string) => {
+const readCliRawString = (parsed: ParsedCliTokens, name: string) => {
   const value = parsed.options.get(name);
   const lastValue = Array.isArray(value) ? value.at(-1) : value;
   if (typeof lastValue === "boolean") {
     throw new Error(`--${name} requires a value`);
   }
-  return lastValue?.trim() || undefined;
+  return lastValue;
 };
+
+const readCliString = (parsed: ParsedCliTokens, name: string) =>
+  readCliRawString(parsed, name)?.trim() || undefined;
 
 const parseConnectionCreate = defineCliArgsParser<z.input<typeof createConnectionInputSchema>>(
   "api.connections.create",
@@ -242,6 +261,13 @@ const parseConnectionCreate = defineCliArgsParser<z.input<typeof createConnectio
         }
         if (mode === "bearer") {
           return { type: "bearer", token: readCliString(parsed, "token") ?? "" };
+        }
+        if (mode === "basic") {
+          return {
+            type: "basic",
+            username: readCliString(parsed, "username") ?? "",
+            password: readCliRawString(parsed, "password") ?? "",
+          };
         }
         if (mode === "oauth") {
           return {
@@ -269,7 +295,7 @@ const parseConnectionCreate = defineCliArgsParser<z.input<typeof createConnectio
               .parse(tokenEndpointAuthMethod ?? "client_secret_basic"),
           };
         }
-        throw new Error("--auth must be one of: none, bearer, oauth, client_credentials");
+        throw new Error("--auth must be one of: none, bearer, basic, oauth, client_credentials");
       },
     },
   },
@@ -289,16 +315,34 @@ const parseOAuthStart = defineCliArgsParser<z.input<typeof oauthStartInputSchema
     extraAuthorizationParams: { option: "extra-authorization-params-json", kind: "json" },
   },
 );
-const parseRequest = defineCliArgsParser<z.input<typeof requestInputSchema>>("api.request", {
-  slug: { required: true, option: "connection" },
-  method: { required: true },
-  path: { required: true },
-  query: { option: "query-json", kind: "json" },
-  headers: { option: "headers-json", kind: "json" },
-  json: { option: "json", kind: "json" },
-  body: { option: "body" },
-  timeoutMs: { option: "timeout-ms", kind: "integer" },
-});
+const parseRequestCliInput = defineCliArgsParser<z.input<typeof requestCliInputSchema>>(
+  "api.request",
+  {
+    slug: { required: true, option: "connection" },
+    method: { required: true },
+    path: { required: true },
+    query: { option: "query-json", kind: "json" },
+    headers: { option: "headers-json", kind: "json" },
+    json: { option: "json", kind: "json" },
+    text: { option: "body" },
+    timeoutMs: { option: "timeout-ms", kind: "integer" },
+  },
+);
+function parseRequest(args: string[]): z.input<typeof requestInputSchema> {
+  const { json, text, ...input } = parseRequestCliInput(args);
+  if (json !== undefined && text !== undefined) {
+    throw new Error("api.request accepts either --json or --body, not both");
+  }
+  return {
+    ...input,
+    body:
+      json !== undefined
+        ? { type: "json", value: json }
+        : text !== undefined
+          ? { type: "text", value: text }
+          : { type: "empty" },
+  };
+}
 const parseEndpoint = defineCliArgsParser<{ endpointId: string }>("api.webhooks.endpoint", {
   endpointId: { required: true, option: "endpoint" },
 });
@@ -397,9 +441,21 @@ export const apiRuntimeTools = [
               name: "auth",
               valueRequired: true,
               valueName: "mode",
-              description: "none|bearer|oauth|client_credentials",
+              description: "none|bearer|basic|oauth|client_credentials",
             },
             { name: "token", valueRequired: true, valueName: "token", description: "Bearer token" },
+            {
+              name: "username",
+              valueRequired: true,
+              valueName: "username",
+              description: "Basic auth username",
+            },
+            {
+              name: "password",
+              valueRequired: true,
+              valueName: "password",
+              description: "Basic auth password",
+            },
             {
               name: "authorization-endpoint",
               valueRequired: true,
@@ -445,6 +501,7 @@ export const apiRuntimeTools = [
           ],
           examples: [
             "api.connections.create --slug stripe --base-url https://api.stripe.com --auth bearer --token $TOKEN",
+            "api.connections.create --slug jira --base-url https://example.atlassian.net --auth basic --username user@example.com --password $API_TOKEN",
             "api.connections.create --slug billing --base-url https://billing.example.com --auth client_credentials --token-endpoint https://auth.example.com/token --client-id $CLIENT_ID --client-secret $CLIENT_SECRET",
           ],
         },

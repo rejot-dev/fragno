@@ -300,7 +300,7 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
             const response = await performApiRequest({
               config,
               baseUrl: connection.baseUrl,
-              token: resolved.token,
+              authorization: resolved.authorization,
               request: input.request,
             });
             return {
@@ -372,7 +372,7 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
               connection,
               secrets,
               authChanges: resolved.authChanges,
-              tokenPresent: Boolean(resolved.token),
+              tokenPresent: Boolean(resolved.authorization),
             };
           })
           .mutate(({ uow, retrieveResult }) => {

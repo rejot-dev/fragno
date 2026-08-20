@@ -1854,6 +1854,10 @@ describe("runtime tool reference generation", () => {
           type: "bearer";
           token: string;
         } | {
+          type: "basic";
+          username: string;
+          password: string;
+        } | {
           type: "oauth";
           authorizationEndpoint: string;
           tokenEndpoint: string;
@@ -2513,7 +2517,6 @@ describe("runtime tool reference generation", () => {
         ok: true;
       };
       type ApiRequestInput = {
-        slug: string;
         method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
         path: string;
         query?: {
@@ -2522,17 +2525,61 @@ describe("runtime tool reference generation", () => {
         headers?: {
           [key: string]: string;
         };
-        json?: unknown;
-        body?: string;
+        body: {
+          type: "empty";
+        } | {
+          type: "json";
+          value: unknown;
+        } | {
+          type: "text";
+          value: string;
+        };
         timeoutMs?: number;
+        slug: string;
       };
       type ApiRequestOutput = {
-        status: number;
-        statusText: string;
-        headers: {
-          [key: string]: string;
+        ok: true;
+        response: {
+          status: number;
+          statusText: string;
+          headers: {
+            [key: string]: string;
+          };
+          body: {
+            type: "json";
+            value: unknown;
+          } | {
+            type: "text";
+            value: string;
+          } | {
+            type: "empty";
+            value: null;
+          };
         };
-        body: unknown | null;
+        error: null;
+      } | {
+        ok: false;
+        response: {
+          status: number;
+          statusText: string;
+          headers: {
+            [key: string]: string;
+          };
+          body: {
+            type: "json";
+            value: unknown;
+          } | {
+            type: "text";
+            value: string;
+          } | {
+            type: "empty";
+            value: null;
+          };
+        } | null;
+        error: {
+          code: "HTTP_ERROR" | "REQUEST_ERROR" | "RESPONSE_DECODING_ERROR" | "CONNECTION_NOT_FOUND" | "CONNECTION_DISABLED";
+          message: string;
+        };
       };
 
       // mcp tools

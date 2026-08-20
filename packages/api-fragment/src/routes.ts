@@ -6,6 +6,7 @@ import { isUniqueConstraintError } from "@fragno-dev/db";
 import {
   apiConnectionOutputSchema,
   apiRequestInputSchema,
+  apiRequestOutputSchema,
   createApiConnectionInputSchema,
   createWebhookEndpointInputSchema,
   oauthStartInputSchema,
@@ -43,13 +44,6 @@ const authStatusSchema = z.object({
 });
 const oauthStartOutputSchema = z.object({ authorizationUrl: z.string(), state: z.string() });
 const oauthCallbackOutputSchema = z.object({ authenticated: z.boolean(), mode: z.string() });
-const requestOutputSchema = z.object({
-  status: z.number(),
-  statusText: z.string(),
-  headers: z.record(z.string(), z.string()),
-  body: z.unknown(),
-});
-
 const logApiRouteError = (message: string, err: unknown) => {
   const detail = err instanceof Error ? err.message : String(err);
   console.error(message, detail, err);
@@ -960,7 +954,11 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
         }
         const auth = secret ? storedAuthPayloadSchema.parse(JSON.parse(secret.payload)) : undefined;
         const tokenPresent = Boolean(
-          auth?.type === "bearer" ? auth.token : auth?.tokens?.accessToken,
+          auth?.type === "bearer"
+            ? auth.token
+            : auth?.type === "basic"
+              ? auth.username && auth.password
+              : auth?.tokens?.accessToken,
         );
         return json({
           authenticated: connection.authMode === "none" || tokenPresent,
@@ -1193,37 +1191,35 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
       method: "POST",
       path: "/connections/:slug/request",
       inputSchema: apiRequestInputSchema,
-      outputSchema: requestOutputSchema,
-      errorCodes: ["CONNECTION_NOT_FOUND", "CONNECTION_DISABLED", "API_REQUEST_ERROR"],
-      handler: async function ({ input, pathParams }, { json, error }) {
+      outputSchema: apiRequestOutputSchema,
+      handler: async function ({ input, pathParams }, { json }) {
         const request = await input.valid();
-        try {
-          const [result] = await this.handlerTx()
-            .withServiceCalls(
-              () =>
-                [services.executeApiRequest({ connectionId: pathParams.slug, request })] as const,
-            )
-            .execute();
-          if (!result.found) {
-            if (result.reason === "connection_disabled") {
-              return error(
-                { code: "CONNECTION_DISABLED", message: "API connection is disabled" },
-                403,
-              );
-            }
-            return error(
-              { code: "CONNECTION_NOT_FOUND", message: "API connection not found" },
-              404,
-            );
+        const [result] = await this.handlerTx()
+          .withServiceCalls(
+            () => [services.executeApiRequest({ connectionId: pathParams.slug, request })] as const,
+          )
+          .execute();
+        if (!result.found) {
+          if (result.reason === "connection_disabled") {
+            return json({
+              ok: false,
+              response: null,
+              error: {
+                code: "CONNECTION_DISABLED",
+                message: "API connection is disabled",
+              },
+            });
           }
-          return json(result.response);
-        } catch (err) {
-          logApiRouteError("API request failed", err);
-          return error(
-            { code: "API_REQUEST_ERROR", message: "An API request error occurred" },
-            502,
-          );
+          return json({
+            ok: false,
+            response: null,
+            error: {
+              code: "CONNECTION_NOT_FOUND",
+              message: "API connection not found",
+            },
+          });
         }
+        return json(result.response);
       },
     }),
   ],

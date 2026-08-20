@@ -63,6 +63,14 @@ function buildFetchRecorder() {
       return new Response("{not valid json", { headers: { "content-type": "application/json" } });
     }
 
+    if (url === "https://api.test/large-error") {
+      return new Response("x".repeat(2_000), {
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: { "content-type": "text/plain" },
+      });
+    }
+
     if (url.startsWith("https://api.test/")) {
       return jsonResponse({
         ok: true,
@@ -225,16 +233,110 @@ describe("api-fragment", () => {
 
     const result = await fragment.callRoute("POST", "/connections/:slug/request", {
       pathParams: { slug: "bearer" },
-      body: { method: "GET", path: "/resource", headers: { authorization: "Bearer caller" } },
+      body: {
+        method: "GET",
+        path: "/resource",
+        headers: { authorization: "Bearer caller" },
+        body: { type: "empty" },
+      },
     });
     assert(result.type === "json");
-    expect(result.data.body).toMatchObject({ authorization: "Bearer secret-token" });
+    assert(result.data.ok);
+    expect(result.data.response.body).toEqual({
+      type: "json",
+      value: expect.objectContaining({ authorization: "Bearer secret-token" }),
+    });
 
     await drainDurableHooks(fragment);
     expect(onConnectionAvailable).toHaveBeenCalledWith(
       expect.objectContaining({ connectionId: "bearer", authMode: "bearer" }),
       expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
     );
+
+    await setup.test.cleanup();
+  });
+
+  test("stores and applies basic authentication", async () => {
+    const setup = await buildApiTest();
+    const fragment = setup.fragments.api.fragment;
+
+    const created = await fragment.callRoute("PUT", "/connections/:slug", {
+      pathParams: { slug: "jira" },
+      body: {
+        baseUrl: "https://api.test",
+        auth: {
+          type: "basic",
+          username: "user@example.com",
+          password: "api-token",
+        },
+      },
+    });
+    assert(created.type === "json");
+    expect(created.data).toMatchObject({ authMode: "basic" });
+
+    const status = await fragment.callRoute("GET", "/connections/:slug/auth/status", {
+      pathParams: { slug: "jira" },
+    });
+    assert(status.type === "json");
+    expect(status.data).toMatchObject({ authenticated: true, mode: "basic", tokenPresent: true });
+
+    const result = await fragment.callRoute("POST", "/connections/:slug/request", {
+      pathParams: { slug: "jira" },
+      body: {
+        method: "GET",
+        path: "/myself",
+        headers: { authorization: "Bearer caller-token" },
+        body: { type: "empty" },
+      },
+    });
+    assert(result.type === "json");
+    assert(result.data.ok);
+    expect(result.data.response.body).toEqual({
+      type: "json",
+      value: expect.objectContaining({
+        authorization: `Basic ${btoa("user@example.com:api-token")}`,
+      }),
+    });
+
+    const [secrets] = await readAuthSecrets(setup, "jira");
+    expect(secrets[0]?.payload).toContain('"type":"basic"');
+    expect(created.data).not.toHaveProperty("password");
+
+    await setup.test.cleanup();
+  });
+
+  test("sends discriminated JSON and text request bodies", async () => {
+    const setup = await buildApiTest();
+    const fragment = setup.fragments.api.fragment;
+
+    await fragment.callRoute("PUT", "/connections/:slug", {
+      pathParams: { slug: "request-bodies" },
+      body: { baseUrl: "https://api.test", auth: { type: "none" } },
+    });
+
+    await fragment.callRoute("POST", "/connections/:slug/request", {
+      pathParams: { slug: "request-bodies" },
+      body: {
+        method: "POST",
+        path: "/json",
+        body: { type: "json", value: { issue: "FRAG-1" } },
+      },
+    });
+    await fragment.callRoute("POST", "/connections/:slug/request", {
+      pathParams: { slug: "request-bodies" },
+      body: {
+        method: "POST",
+        path: "/xml",
+        headers: { "content-type": "application/xml" },
+        body: { type: "text", value: "<issue>FRAG-1</issue>" },
+      },
+    });
+
+    const [jsonCall, textCall] = setup.fetchRecorder.calls;
+    assert(new Headers(jsonCall?.init?.headers).get("content-type") === "application/json");
+    assert(jsonCall?.init?.body === '{"issue":"FRAG-1"}');
+    assert(new Headers(textCall?.init?.headers).get("content-type") === "application/xml");
+    assert(textCall?.init?.body === "<issue>FRAG-1</issue>");
 
     await setup.test.cleanup();
   });
@@ -250,15 +352,27 @@ describe("api-fragment", () => {
 
     const result = await fragment.callRoute("POST", "/connections/:slug/request", {
       pathParams: { slug: "absolute" },
-      body: { method: "GET", path: "https://evil.test/steal" },
+      body: {
+        method: "GET",
+        path: "https://evil.test/steal",
+        body: { type: "empty" },
+      },
     });
-    assert(result.type === "error");
-    assert(result.error.code === "API_REQUEST_ERROR");
+    assert(result.type === "json");
+    assert(!result.data.ok);
+    expect(result.data).toEqual({
+      ok: false,
+      response: null,
+      error: {
+        code: "REQUEST_ERROR",
+        message: "API request path must be relative",
+      },
+    });
 
     await setup.test.cleanup();
   });
 
-  test("invalid upstream JSON fails the request", async () => {
+  test("reports invalid upstream JSON as a decoding error", async () => {
     const setup = await buildApiTest();
     const fragment = setup.fragments.api.fragment;
 
@@ -269,10 +383,39 @@ describe("api-fragment", () => {
 
     const result = await fragment.callRoute("POST", "/connections/:slug/request", {
       pathParams: { slug: "invalid-json" },
-      body: { method: "GET", path: "/invalid-json" },
+      body: { method: "GET", path: "/invalid-json", body: { type: "empty" } },
     });
-    assert(result.type === "error");
-    assert(result.error.code === "API_REQUEST_ERROR");
+    assert(result.type === "json");
+    assert(!result.data.ok);
+    expect(result.data).toMatchObject({
+      error: {
+        code: "RESPONSE_DECODING_ERROR",
+        message: "Upstream response declared JSON but could not be decoded",
+      },
+      response: { body: { type: "text", value: "{not valid json" } },
+    });
+
+    await setup.test.cleanup();
+  });
+
+  test("bounds HTTP error messages while preserving the response body", async () => {
+    const setup = await buildApiTest();
+    const fragment = setup.fragments.api.fragment;
+
+    await fragment.callRoute("PUT", "/connections/:slug", {
+      pathParams: { slug: "large-error" },
+      body: { baseUrl: "https://api.test", auth: { type: "none" } },
+    });
+
+    const result = await fragment.callRoute("POST", "/connections/:slug/request", {
+      pathParams: { slug: "large-error" },
+      body: { method: "GET", path: "/large-error", body: { type: "empty" } },
+    });
+    assert(result.type === "json");
+    assert(!result.data.ok);
+    assert(result.data.error.code === "HTTP_ERROR");
+    expect(result.data.error.message).toHaveLength(501);
+    expect(result.data.response?.body).toEqual({ type: "text", value: "x".repeat(2_000) });
 
     await setup.test.cleanup();
   });
@@ -297,14 +440,18 @@ describe("api-fragment", () => {
 
     const first = await fragment.callRoute("POST", "/connections/:slug/request", {
       pathParams: { slug: "machine" },
-      body: { method: "GET", path: "/one" },
+      body: { method: "GET", path: "/one", body: { type: "empty" } },
     });
     assert(first.type === "json");
-    expect(first.data.body).toMatchObject({ authorization: "Bearer client-token" });
+    assert(first.data.ok);
+    expect(first.data.response.body).toEqual({
+      type: "json",
+      value: expect.objectContaining({ authorization: "Bearer client-token" }),
+    });
 
     const second = await fragment.callRoute("POST", "/connections/:slug/request", {
       pathParams: { slug: "machine" },
-      body: { method: "GET", path: "/two" },
+      body: { method: "GET", path: "/two", body: { type: "empty" } },
     });
     assert(second.type === "json");
 
@@ -323,7 +470,7 @@ describe("api-fragment", () => {
 
     const third = await fragment.callRoute("POST", "/connections/:slug/request", {
       pathParams: { slug: "machine" },
-      body: { method: "GET", path: "/three" },
+      body: { method: "GET", path: "/three", body: { type: "empty" } },
     });
     assert(third.type === "json");
     expect(
@@ -400,10 +547,14 @@ describe("api-fragment", () => {
 
     const request = await fragment.callRoute("POST", "/connections/:slug/request", {
       pathParams: { slug },
-      body: { method: "GET", path: "/profile" },
+      body: { method: "GET", path: "/profile", body: { type: "empty" } },
     });
     assert(request.type === "json");
-    expect(request.data.body).toMatchObject({ authorization: "Bearer oauth-token" });
+    assert(request.data.ok);
+    expect(request.data.response.body).toEqual({
+      type: "json",
+      value: expect.objectContaining({ authorization: "Bearer oauth-token" }),
+    });
 
     await drainDurableHooks(fragment);
     expect(onConnectionAvailable).toHaveBeenCalledWith(

@@ -1,3 +1,4 @@
+import type { ApiRequestOutput } from "@fragno-dev/api-fragment/types";
 import {
   webhookVerificationConfigSchema,
   type WebhookVerificationConfig,
@@ -88,12 +89,8 @@ type ApiWebhookEndpointSummary = {
   publicUrl: string | null;
 };
 
-type ApiRequestResult = {
+type ApiRequestResult = ApiRequestOutput & {
   connectionSlug: string;
-  status: number;
-  statusText: string;
-  headers: Record<string, string>;
-  body: unknown;
 };
 
 type ApiActionData = {
@@ -113,7 +110,8 @@ type ApiConfigurationLoaderData = {
   configError: string | null;
 };
 
-type ConnectionAuthMode = "none" | "bearer" | "oauth" | "client_credentials";
+type ConnectionAuthMode = "none" | "bearer" | "basic" | "oauth" | "client_credentials";
+type RequestBodyMode = "empty" | "json" | "text";
 type WebhookAuthMode = "none" | "bearer" | "apiKey" | "basic" | "hmac";
 type DeliveryIdentityMode = "header" | "query" | "jsonBodyPath";
 type SignedPayloadMode = "rawBody" | "timestampedBody";
@@ -129,10 +127,12 @@ const deliveryModeFromIdentity = (identity: WebhookDeliveryIdentity): DeliveryId
 const signedPayloadModeFromAuth = (authConfig: WebhookAuthConfig): SignedPayloadMode =>
   authConfig.type === "hmac" ? authConfig.signedPayload.type : "rawBody";
 
-const getFormString = (formData: FormData, key: string) => {
+const getRawFormString = (formData: FormData, key: string) => {
   const value = formData.get(key);
-  return typeof value === "string" ? value.trim() : "";
+  return typeof value === "string" ? value : "";
 };
+
+const getFormString = (formData: FormData, key: string) => getRawFormString(formData, key).trim();
 
 const parseScopes = (value: string) =>
   value
@@ -394,6 +394,13 @@ const readConnectionAuth = (formData: FormData) => {
   if (authMode === "bearer") {
     return { type: "bearer" as const, token: getFormString(formData, "token") };
   }
+  if (authMode === "basic") {
+    return {
+      type: "basic" as const,
+      username: getFormString(formData, "username"),
+      password: getRawFormString(formData, "password"),
+    };
+  }
   if (authMode === "oauth") {
     return {
       type: "oauth" as const,
@@ -615,7 +622,12 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     }
 
     if (intent === "execute-request") {
-      const jsonBody = parseJsonValue(getFormString(formData, "json"));
+      const bodyMode = (getFormString(formData, "bodyMode") || "empty") as RequestBodyMode;
+      const jsonBody = bodyMode === "json" ? parseJsonValue(getFormString(formData, "json")) : null;
+      if (bodyMode === "json" && jsonBody === undefined) {
+        throw new Error("JSON body is required when the request body mode is JSON.");
+      }
+      const textBody = bodyMode === "text" ? getRawFormString(formData, "body") : "";
       const response = await callRoute("POST", "/connections/:slug/request", {
         pathParams: { slug: getFormString(formData, "slug") },
         body: {
@@ -627,8 +639,12 @@ export async function action({ request, context, params }: Route.ActionArgs) {
           ...(parseJsonObject(getFormString(formData, "headers"), "Headers")
             ? { headers: parseJsonObject(getFormString(formData, "headers"), "Headers") }
             : {}),
-          ...(jsonBody === undefined ? {} : { json: jsonBody }),
-          ...(getFormString(formData, "body") ? { body: getFormString(formData, "body") } : {}),
+          body:
+            bodyMode === "json"
+              ? { type: "json", value: jsonBody }
+              : bodyMode === "text"
+                ? { type: "text", value: textBody }
+                : { type: "empty" },
           ...(getFormString(formData, "timeoutMs")
             ? { timeoutMs: Number(getFormString(formData, "timeoutMs")) }
             : {}),
@@ -636,12 +652,12 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       });
       if (response.type === "json" && isSuccessResponse(response)) {
         return {
-          ok: true,
+          ok: response.data.ok,
           intent,
-          message: "API request completed.",
+          message: response.data.ok ? "API request completed." : response.data.error.message,
           requestResult: {
             connectionSlug: getFormString(formData, "slug"),
-            ...(response.data as Omit<ApiRequestResult, "connectionSlug">),
+            ...response.data,
           },
         } satisfies ApiActionData;
       }
@@ -794,6 +810,7 @@ function ConnectionConfigureForm({
           options={[
             { value: "none", label: "No auth" },
             { value: "bearer", label: "Bearer" },
+            { value: "basic", label: "Basic" },
             { value: "oauth", label: "OAuth" },
             { value: "client_credentials", label: "Client creds" },
           ]}
@@ -830,6 +847,23 @@ function ConnectionConfigureForm({
                 className={inputClass}
               />
             </FormField>
+          ) : null}
+
+          {authMode === "basic" ? (
+            <>
+              <FormField label="Username" hint="For Jira, use the Atlassian account email.">
+                <input name="username" required autoComplete="username" className={inputClass} />
+              </FormField>
+              <FormField label="Password" hint="For Jira, use an Atlassian API token.">
+                <input
+                  name="password"
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  className={inputClass}
+                />
+              </FormField>
+            </>
           ) : null}
 
           {authMode === "oauth" ? (
@@ -903,6 +937,7 @@ function ConnectionDetail({
   const auth = connection.authStatus;
   const [editingAuth, setEditingAuth] = useState(false);
   const [headersValue, setHeadersValue] = useState('{"Accept":"application/json"}');
+  const [requestBodyMode, setRequestBodyMode] = useState<RequestBodyMode>("empty");
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
@@ -1103,9 +1138,39 @@ function ConnectionDetail({
               className={`${inputClass} min-h-24 font-mono text-xs`}
             />
           </div>
-          <FormField label="Body">
-            <textarea name="json" className={`${inputClass} min-h-28 font-mono text-xs`} />
-          </FormField>
+          <div className="space-y-2">
+            <FormField label="Body mode">
+              <select
+                name="bodyMode"
+                value={requestBodyMode}
+                onChange={(event) => {
+                  setRequestBodyMode(event.currentTarget.value as RequestBodyMode);
+                }}
+                className={selectClass}
+              >
+                <option value="empty">Empty</option>
+                <option value="json">JSON</option>
+                <option value="text">Text</option>
+              </select>
+            </FormField>
+            {requestBodyMode === "json" ? (
+              <FormField label="JSON body">
+                <textarea
+                  name="json"
+                  required
+                  className={`${inputClass} min-h-28 font-mono text-xs`}
+                />
+              </FormField>
+            ) : null}
+            {requestBodyMode === "text" ? (
+              <FormField
+                label="Text body"
+                hint="Set Content-Type explicitly in headers when needed."
+              >
+                <textarea name="body" className={`${inputClass} min-h-28 font-mono text-xs`} />
+              </FormField>
+            ) : null}
+          </div>
         </div>
         <button
           type="submit"
@@ -1118,12 +1183,27 @@ function ConnectionDetail({
             <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Response
             </p>
-            <p className="mt-2 text-sm font-semibold text-[var(--bo-fg)]">
-              {requestResult.status} {requestResult.statusText}
-            </p>
-            <pre className="mt-3 max-h-96 overflow-auto bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] whitespace-pre text-[var(--bo-fg)]">
-              <code>{JSON.stringify(requestResult.body, null, 2)}</code>
-            </pre>
+            {requestResult.response ? (
+              <>
+                <p className="mt-2 text-sm font-semibold text-[var(--bo-fg)]">
+                  {requestResult.response.status} {requestResult.response.statusText}
+                </p>
+                <pre className="mt-3 max-h-96 overflow-auto bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] whitespace-pre text-[var(--bo-fg)]">
+                  <code>
+                    {requestResult.response.body.type === "json"
+                      ? JSON.stringify(requestResult.response.body.value, null, 2)
+                      : requestResult.response.body.type === "text"
+                        ? requestResult.response.body.value
+                        : "(empty body)"}
+                  </code>
+                </pre>
+              </>
+            ) : null}
+            {!requestResult.ok ? (
+              <p className="mt-2 text-sm text-red-500">
+                {requestResult.error.code}: {requestResult.error.message}
+              </p>
+            ) : null}
           </div>
         ) : null}
       </Form>

@@ -4,8 +4,10 @@ import {
   authConfigSchema,
   type ApiFragmentConfig,
   type ApiRequestInput,
+  type ApiRequestOutput,
   type AuthConfig,
 } from "./api-types";
+import { bytesToBase64, utf8Bytes } from "./crypto";
 import {
   createAuthorizationUrl,
   createCodeChallenge,
@@ -26,8 +28,13 @@ export type SecretRecord = {
 
 export const storedAuthPayloadSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("bearer"), token: z.string().min(1) }),
-  authConfigSchema.options[2].extend({ tokens: oauthTokensSchema.optional() }),
-  authConfigSchema.options[3].extend({
+  z.object({
+    type: z.literal("basic"),
+    username: z.string().min(1),
+    password: z.string().min(1),
+  }),
+  authConfigSchema.options[3].extend({ tokens: oauthTokensSchema.optional() }),
+  authConfigSchema.options[4].extend({
     tokens: oauthTokensSchema.optional(),
     redirectUri: z.url().optional(),
   }),
@@ -148,7 +155,7 @@ async function resolveOAuthAuth(args: {
     return {};
   }
   if (secretIsUnexpired(args.authSecret)) {
-    return { token: args.authPayload.tokens.accessToken };
+    return { authorization: `Bearer ${args.authPayload.tokens.accessToken}` };
   }
   if (!args.authPayload.tokens.refreshToken) {
     throw new Error("OAuth access token expired and no refresh token is available");
@@ -162,7 +169,7 @@ async function resolveOAuthAuth(args: {
     throw new Error("OAuth refresh did not return an access token");
   }
   return {
-    token: tokens.accessToken,
+    authorization: `Bearer ${tokens.accessToken}`,
     authChanges: {
       authPayload: JSON.stringify({ ...args.authPayload, tokens }),
       authExpiresAt: tokenExpiry(tokens),
@@ -176,7 +183,7 @@ async function resolveClientCredentialsAuth(args: {
   authPayload: Extract<StoredAuthPayload, { type: "client_credentials" }>;
 }) {
   if (args.authPayload.tokens?.accessToken && secretExpiresInFuture(args.authSecret)) {
-    return { token: args.authPayload.tokens.accessToken };
+    return { authorization: `Bearer ${args.authPayload.tokens.accessToken}` };
   }
   const tokens = await requestClientCredentialsToken({
     auth: args.authPayload,
@@ -186,7 +193,7 @@ async function resolveClientCredentialsAuth(args: {
     throw new Error("Client credentials flow did not return an access token");
   }
   return {
-    token: tokens.accessToken,
+    authorization: `Bearer ${tokens.accessToken}`,
     authChanges: {
       authPayload: JSON.stringify({ ...args.authPayload, tokens }),
       authExpiresAt: tokenExpiry(tokens),
@@ -197,7 +204,7 @@ async function resolveClientCredentialsAuth(args: {
 export async function resolveApiOperationAuth(args: {
   config: ApiFragmentConfig;
   secrets: SecretRecord[];
-}): Promise<{ token?: string; authChanges?: AuthPersistenceChanges }> {
+}): Promise<{ authorization?: string; authChanges?: AuthPersistenceChanges }> {
   const authSecret = secretByKind(args.secrets, "auth");
   const authPayload = authSecret
     ? storedAuthPayloadSchema.parse(JSON.parse(authSecret.payload))
@@ -206,7 +213,11 @@ export async function resolveApiOperationAuth(args: {
     return {};
   }
   if (authPayload.type === "bearer") {
-    return { token: authPayload.token };
+    return { authorization: `Bearer ${authPayload.token}` };
+  }
+  if (authPayload.type === "basic") {
+    const credentials = bytesToBase64(utf8Bytes(`${authPayload.username}:${authPayload.password}`));
+    return { authorization: `Basic ${credentials}` };
   }
   if (authPayload.type === "oauth") {
     return resolveOAuthAuth({ config: args.config, authSecret: authSecret!, authPayload });
@@ -232,34 +243,40 @@ function resolveRequestUrl(baseUrl: string, path: string, query?: Record<string,
   return url;
 }
 
+function boundedErrorMessage(message: string) {
+  const normalized = message.trim();
+  return normalized.length > 500 ? `${normalized.slice(0, 500)}…` : normalized;
+}
+
 export async function performApiRequest(args: {
   config: ApiFragmentConfig;
   baseUrl: string;
-  token?: string;
+  authorization?: string;
   request: ApiRequestInput;
-}) {
-  const url = resolveRequestUrl(args.baseUrl, args.request.path, args.request.query);
-  const headers = new Headers(args.request.headers ?? {});
-  headers.delete("authorization");
-  headers.delete("Authorization");
-  if (args.token) {
-    headers.set("authorization", `Bearer ${args.token}`);
-  }
-  let body: BodyInit | undefined;
-  if (args.request.json !== undefined) {
-    headers.set("content-type", headers.get("content-type") ?? "application/json");
-    body = JSON.stringify(args.request.json);
-  } else if (args.request.body !== undefined) {
-    body = args.request.body;
-  }
-
+}): Promise<ApiRequestOutput> {
   const controller = args.request.timeoutMs ? new AbortController() : undefined;
   const timeout = controller
     ? setTimeout(() => {
         controller.abort();
       }, args.request.timeoutMs)
     : undefined;
+
   try {
+    const url = resolveRequestUrl(args.baseUrl, args.request.path, args.request.query);
+    const headers = new Headers(args.request.headers ?? {});
+    headers.delete("authorization");
+    headers.delete("Authorization");
+    if (args.authorization) {
+      headers.set("authorization", args.authorization);
+    }
+    let body: BodyInit | undefined;
+    if (args.request.body.type === "json") {
+      headers.set("content-type", headers.get("content-type") ?? "application/json");
+      body = JSON.stringify(args.request.body.value);
+    } else if (args.request.body.type === "text") {
+      body = args.request.body.value;
+    }
+
     const response = await (args.config.fetch ?? fetch)(url, {
       method: args.request.method,
       headers,
@@ -267,15 +284,68 @@ export async function performApiRequest(args: {
       signal: controller?.signal,
     });
     const responseHeaders = Object.fromEntries(response.headers.entries());
+    const responseText = await response.text();
     const contentType = response.headers.get("content-type") ?? "";
-    const responseBody = contentType.includes("application/json")
-      ? await response.json()
-      : await response.text();
-    return {
+    let responseBody:
+      | { type: "json"; value: unknown }
+      | { type: "text"; value: string }
+      | { type: "empty"; value: null };
+    let responseDecodingFailed = false;
+    if (!responseText) {
+      responseBody = { type: "empty", value: null };
+    } else if (contentType.includes("application/json")) {
+      try {
+        responseBody = { type: "json", value: JSON.parse(responseText) as unknown };
+      } catch {
+        responseBody = { type: "text", value: responseText };
+        responseDecodingFailed = true;
+      }
+    } else {
+      responseBody = { type: "text", value: responseText };
+    }
+    const apiResponse = {
       status: response.status,
       statusText: response.statusText,
       headers: responseHeaders,
       body: responseBody,
+    };
+    if (responseDecodingFailed) {
+      return {
+        ok: false,
+        response: apiResponse,
+        error: {
+          code: "RESPONSE_DECODING_ERROR",
+          message: "Upstream response declared JSON but could not be decoded",
+        },
+      };
+    }
+    if (response.ok) {
+      return { ok: true, response: apiResponse, error: null };
+    }
+
+    const responseMessage =
+      responseBody.type === "json" &&
+      responseBody.value &&
+      typeof responseBody.value === "object" &&
+      "message" in responseBody.value
+        ? boundedErrorMessage(String(responseBody.value.message))
+        : boundedErrorMessage(responseText) || response.statusText || `HTTP ${response.status}`;
+    return {
+      ok: false,
+      response: apiResponse,
+      error: { code: "HTTP_ERROR", message: responseMessage },
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error && error.name === "AbortError"
+        ? `API request timed out after ${args.request.timeoutMs}ms`
+        : error instanceof Error
+          ? error.message
+          : String(error);
+    return {
+      ok: false,
+      response: null,
+      error: { code: "REQUEST_ERROR", message },
     };
   } finally {
     if (timeout) {

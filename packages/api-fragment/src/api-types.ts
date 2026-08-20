@@ -18,6 +18,11 @@ export const authConfigSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("none") }),
   z.object({ type: z.literal("bearer"), token: z.string().min(1) }),
   z.object({
+    type: z.literal("basic"),
+    username: z.string().min(1),
+    password: z.string().min(1),
+  }),
+  z.object({
     type: z.literal("client_credentials"),
     tokenEndpoint: z.url(),
     clientId: z.string().min(1),
@@ -64,20 +69,55 @@ export const oauthStartInputSchema = z.object({
   extraAuthorizationParams: z.record(z.string(), z.string()).optional(),
 });
 
-export const apiRequestInputSchema = z
-  .object({
-    method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
-    path: z.string().min(1),
-    query: z.record(z.string(), z.string()).optional(),
-    headers: z.record(z.string(), z.string()).optional(),
-    json: z.unknown().optional(),
-    body: z.string().optional(),
-    timeoutMs: z.number().int().positive().max(120_000).optional(),
-  })
-  .refine((value) => value.json === undefined || value.body === undefined, {
-    message: "Use either json or body, not both",
-    path: ["body"],
-  });
+export const apiRequestBodySchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("empty") }),
+  z.object({ type: z.literal("json"), value: z.unknown() }),
+  z.object({ type: z.literal("text"), value: z.string() }),
+]);
+
+export const apiRequestInputSchema = z.object({
+  method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
+  path: z.string().min(1),
+  query: z.record(z.string(), z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  body: apiRequestBodySchema,
+  timeoutMs: z.number().int().positive().max(120_000).optional(),
+});
+
+export const apiResponseBodySchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("json"), value: z.unknown() }),
+  z.object({ type: z.literal("text"), value: z.string() }),
+  z.object({ type: z.literal("empty"), value: z.null() }),
+]);
+
+export const apiHttpResponseSchema = z.object({
+  status: z.number().int(),
+  statusText: z.string(),
+  headers: z.record(z.string(), z.string()),
+  body: apiResponseBodySchema,
+});
+
+export const apiRequestOutputSchema = z.discriminatedUnion("ok", [
+  z.object({
+    ok: z.literal(true),
+    response: apiHttpResponseSchema,
+    error: z.null(),
+  }),
+  z.object({
+    ok: z.literal(false),
+    response: apiHttpResponseSchema.nullable(),
+    error: z.object({
+      code: z.enum([
+        "HTTP_ERROR",
+        "REQUEST_ERROR",
+        "RESPONSE_DECODING_ERROR",
+        "CONNECTION_NOT_FOUND",
+        "CONNECTION_DISABLED",
+      ]),
+      message: z.string(),
+    }),
+  }),
+]);
 
 const webhookSecretRefSchema = z.string().trim().min(1);
 const webhookRequestValueNameSchema = z.string().trim().min(1);
@@ -161,7 +201,11 @@ export const updateWebhookEndpointInputSchema = z.object({
 export type AuthConfig = z.infer<typeof authConfigSchema>;
 export type ApiConnectionInput = z.infer<typeof createApiConnectionInputSchema>;
 export type ApiConnection = z.infer<typeof apiConnectionOutputSchema>;
+export type ApiRequestBody = z.infer<typeof apiRequestBodySchema>;
 export type ApiRequestInput = z.infer<typeof apiRequestInputSchema>;
+export type ApiResponseBody = z.infer<typeof apiResponseBodySchema>;
+export type ApiHttpResponse = z.infer<typeof apiHttpResponseSchema>;
+export type ApiRequestOutput = z.infer<typeof apiRequestOutputSchema>;
 export type WebhookDeliveryIdentity = z.infer<typeof webhookDeliveryIdentitySchema>;
 export type WebhookEndpointAuthInput = z.infer<typeof webhookEndpointAuthInputSchema>;
 export type WebhookEndpointInput = z.infer<typeof createWebhookEndpointInputSchema>;
