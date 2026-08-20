@@ -1129,10 +1129,10 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
   addTable<
     TTableName extends string,
     TColumns extends Record<string, AnyColumn>,
-    TIndexes extends Record<string, Index> = Record<string, Index>,
+    TIndexes extends Record<string, Index> = {},
   >(
     name: TTableName,
-    callback: (builder: TableBuilder<{}>) => TableBuilder<TColumns, TIndexes>,
+    callback: (builder: TableBuilder<{}, {}>) => TableBuilder<TColumns, TIndexes>,
   ): SchemaBuilder<TTables & Record<TTableName, Table<TColumns, TIndexes>>> {
     this.#version++;
 
@@ -1140,7 +1140,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       throw new Error(`Duplicate table name "${name}" in schema "${this.#name}".`);
     }
 
-    const tableBuilder = new TableBuilder<{}>(name);
+    const tableBuilder = new TableBuilder<{}, {}>(name);
     const result = callback(tableBuilder);
     const builtTable = result.build();
     const indexNames = result.getIndexes().map((idx) => idx.name);
@@ -1243,11 +1243,11 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
   alterTable<
     TTableName extends string & keyof TTables,
     TNewColumns extends Record<string, AnyColumn>,
-    TNewIndexes extends Record<string, Index> = Record<string, Index>,
+    TNewIndexes extends Record<string, Index>,
   >(
     tableName: TTableName,
     callback: (
-      builder: TableBuilder<TTables[TTableName]["columns"]>,
+      builder: TableBuilder<TTables[TTableName]["columns"], TTables[TTableName]["indexes"]>,
     ) => TableBuilder<TNewColumns, TNewIndexes>,
   ): SchemaBuilder<UpdateTable<TTables, TTableName, TNewColumns, TNewIndexes>> {
     const table = this.#tables[tableName];
@@ -1257,7 +1257,10 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     }
 
     // Create builder with existing table state
-    const tableBuilder = new TableBuilder(tableName);
+    const tableBuilder = new TableBuilder<
+      TTables[TTableName]["columns"],
+      TTables[TTableName]["indexes"]
+    >(tableName);
     tableBuilder.setColumns(table.columns);
     tableBuilder.setIndexes(table.indexes);
 
@@ -1270,7 +1273,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     }
 
     // Apply modifications
-    const resultBuilder = callback(tableBuilder as TableBuilder<TTables[TTableName]["columns"]>);
+    const resultBuilder = callback(tableBuilder);
     const newTable = resultBuilder.build();
 
     // Collect sub-operations

@@ -128,6 +128,7 @@ const commentLib = createCommentLibrary(
 - **User-owned database**: your library never owns the database; users provide the adapter.
 - **ORM agnostic**: SQL runtime with explicit schema output formats (SQL, Drizzle, Prisma).
 - **Namespaced tables**: avoids conflicts with user tables.
+- **Request-scoped query policies**: middleware can add type-safe predicates to Fragment reads.
 
 ## Internal registry + describe route
 
@@ -168,6 +169,8 @@ Backed by Postgres and SQLite, including PGLite and Cloudflare Durable Objects.
   [Defining schemas](https://fragno.dev/docs/fragno/for-library-authors/database-integration/defining-schemas)
 - **Querying**:
   [Querying API](https://fragno.dev/docs/fragno/for-library-authors/database-integration/querying)
+- **Query policies**:
+  [Restricting Fragment reads](https://fragno.dev/docs/fragno/for-users/database-fragments/query-policies)
 - **Example library**:
   [`example-fragments/fragno-db-library`](https://github.com/rejot-dev/fragno/tree/main/example-fragments/fragno-db-library)
 
