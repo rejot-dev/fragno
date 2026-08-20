@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { automationScheduleCadenceSchema } from "@/fragno/automation/route-triggers";
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
 const projectSchema = z.object({
@@ -22,6 +23,12 @@ const projectSubjectSchema = z.object({
   projectId: z.string().trim().min(1),
 });
 
+const scheduleTriggeredPayloadSchema = z.object({
+  id: z.string().trim().min(1),
+  name: z.string().trim().min(1),
+  cadence: automationScheduleCadenceSchema,
+});
+
 export const automationsCapability: BackofficeCapability = {
   id: "automations",
   label: "Automations",
@@ -33,6 +40,11 @@ export const automationsCapability: BackofficeCapability = {
         source: "automations",
         label: "Projects",
         description: "Backoffice project lifecycle events.",
+      },
+      {
+        source: "scheduler",
+        label: "Scheduler",
+        description: "One-time and recurring automation schedules.",
       },
     ],
     actionProviders: ["store", "router", "workflow", "hooks", "events"],
@@ -53,6 +65,22 @@ export const automationsCapability: BackofficeCapability = {
     skillPaths: [],
     externalEntities: [],
     automationEvents: [
+      {
+        source: "scheduler",
+        eventType: "schedule.triggered",
+        label: "Schedule triggered",
+        description: "Fires when a scheduled automation route reaches its next occurrence.",
+        payloadSchema: scheduleTriggeredPayloadSchema,
+        example: {
+          id: "daily-report",
+          name: "Daily report",
+          cadence: {
+            kind: "cron",
+            expression: "0 9 * * *",
+            timeZone: "UTC",
+          },
+        },
+      },
       {
         source: "automations",
         eventType: "project.created",

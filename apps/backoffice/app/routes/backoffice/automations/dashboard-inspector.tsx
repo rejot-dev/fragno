@@ -1,4 +1,4 @@
-import { Braces, CalendarClock, CircleDot, X } from "lucide-react";
+import { Braces, ChevronRight, X } from "lucide-react";
 import { useMemo } from "react";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
@@ -10,6 +10,7 @@ import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 import type { AutomationBrowserCollections as AutomationCollections } from "@/fragno/automation/tanstack/browser-database";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 import { resolveWorkflowRuntimeToolCalls } from "@/fragno/runtime-tools/workflow-catalog";
+import { jsonSchemaToTypeScript } from "@/lib/zod/zod-formatter";
 
 import type { AutomationScriptSourceRecord } from "./data";
 import { AutomationDetailRows } from "./detail-rows";
@@ -27,11 +28,18 @@ export type DashboardSource = {
   description: string;
 };
 
+export type DashboardEventDefinition = {
+  source: string;
+  eventType: string;
+  label: string;
+  payloadSchema: unknown;
+};
+
 export type DashboardInspectorSelection =
   | {
       kind: "source";
       source: DashboardSource;
-      routes: readonly AutomationRouteDefinition[];
+      eventDefinitions: readonly DashboardEventDefinition[];
     }
   | { kind: "trigger"; route: AutomationRouteDefinition }
   | { kind: "action"; route: AutomationRouteDefinition };
@@ -106,51 +114,66 @@ function SourceInspector({
 }: {
   selection: Extract<DashboardInspectorSelection, { kind: "source" }>;
 }) {
-  const { source, routes } = selection;
-  const enabledRoutes = routes.filter((route) => route.enabled).length;
-  const Icon = source.id === "scheduler" ? CalendarClock : CircleDot;
+  const { source, eventDefinitions } = selection;
 
   return (
     <div className="p-3">
-      <div className="flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center bg-lime-500/10 text-lime-700 dark:text-lime-300">
-          <Icon className="h-4 w-4" strokeWidth={1.8} />
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-semibold text-[var(--bo-fg)]">{source.label}</h2>
+        <span className="text-xs text-[var(--bo-muted-2)] tabular-nums">
+          {eventDefinitions.length} {eventDefinitions.length === 1 ? "event" : "events"}
         </span>
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold tracking-[0.18em] text-lime-700 uppercase dark:text-lime-300">
-            Event source
-          </p>
-          <h2 className="mt-1 text-lg font-semibold text-[var(--bo-fg)]">{source.label}</h2>
-        </div>
       </div>
 
-      <p className="mt-3 text-sm leading-5 text-[var(--bo-muted)]">{source.description}</p>
-
-      <dl className="mt-3 divide-y divide-[color:var(--bo-border)] border border-[color:var(--bo-border)]">
-        <div className="grid grid-cols-[7rem_1fr] gap-2 px-3 py-2.5">
-          <dt className="text-[11px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-            Triggers
-          </dt>
-          <dd className="text-sm font-semibold text-[var(--bo-fg)] tabular-nums">
-            {routes.length}
-          </dd>
+      {eventDefinitions.length > 0 ? (
+        <div className="mt-3 divide-y divide-[color:var(--bo-border)] border-y border-[color:var(--bo-border)]">
+          {eventDefinitions.map((eventDefinition) => (
+            <EventDefinitionDisclosure
+              key={`${eventDefinition.source}:${eventDefinition.eventType}`}
+              eventDefinition={eventDefinition}
+            />
+          ))}
         </div>
-        <div className="grid grid-cols-[7rem_1fr] gap-2 px-3 py-2.5">
-          <dt className="text-[11px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-            Enabled
-          </dt>
-          <dd className="text-sm font-semibold text-[var(--bo-fg)] tabular-nums">
-            {enabledRoutes}
-          </dd>
-        </div>
-      </dl>
-
-      {routes.length === 0 ? (
-        <p className="mt-3 border border-dashed border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm leading-5 text-[var(--bo-muted)]">
-          This event source is available, but no triggers currently use it.
+      ) : (
+        <p className="mt-3 py-6 text-center text-sm text-[var(--bo-muted)]">
+          No registered events.
         </p>
-      ) : null}
+      )}
     </div>
+  );
+}
+
+function EventDefinitionDisclosure({
+  eventDefinition,
+}: {
+  eventDefinition: DashboardEventDefinition;
+}) {
+  const payloadType = jsonSchemaToTypeScript(
+    eventDefinition.payloadSchema as Parameters<typeof jsonSchemaToTypeScript>[0],
+  );
+
+  return (
+    <details className="group">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 py-2.5 text-left marker:content-none">
+        <ChevronRight
+          className="h-3.5 w-3.5 shrink-0 text-[var(--bo-muted-2)] transition-transform group-open:rotate-90"
+          strokeWidth={1.8}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-mono text-xs text-[var(--bo-fg)]">
+            {eventDefinition.eventType}
+          </span>
+          <span className="mt-0.5 block truncate text-xs text-[var(--bo-muted)]">
+            {eventDefinition.label}
+          </span>
+        </span>
+      </summary>
+      <div className="pb-3 pl-5">
+        <pre className="backoffice-scroll max-h-96 overflow-auto bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] leading-5 whitespace-pre text-[var(--bo-fg)]">
+          <code>{payloadType}</code>
+        </pre>
+      </div>
+    </details>
   );
 }
 

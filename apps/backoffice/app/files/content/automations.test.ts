@@ -121,6 +121,38 @@ describe("automation content", () => {
     );
   });
 
+  test("DB starter routes reclassify basic GitHub webhook events", () => {
+    const githubRoutes = STARTER_AUTOMATION_ROUTES.filter(
+      (route) => route.action.kind === "reclassify_event" && route.action.source === "github",
+    );
+
+    expect(
+      githubRoutes.map((route) =>
+        route.action.kind === "reclassify_event" ? route.action.eventType : null,
+      ),
+    ).toEqual([
+      "issues.opened",
+      "issue_comment.created",
+      "pull_request.opened",
+      "pull_request.synchronize",
+      "push",
+    ]);
+    expect(
+      githubRoutes.find((route) => route.id === "github-pull-request-opened-reclassify")?.action,
+    ).toMatchObject({
+      payload: {
+        kind: "projection",
+        fields: {
+          deliveryId: "$.payload.deliveryId",
+          installationId: "$.payload.installationId",
+          repository: "$.payload.repository",
+          pullRequest: "$.payload.pullRequest",
+          sender: "$.payload.sender",
+        },
+      },
+    });
+  });
+
   test("automation content separates static and system workflows", () => {
     expect(Object.keys(STATIC_AUTOMATION_CONTENT).sort()).toEqual(
       [STATIC_AUTOMATION_SCRIPT_PATHS.projectFilesConfigure].sort(),

@@ -3,10 +3,6 @@ import { z } from "zod";
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
 const AUTOMATION_SOURCE = "api" as const;
-const AUTOMATION_EVENT_CONNECTION_CHANGED = "connection.changed" as const;
-const AUTOMATION_EVENT_CONNECTION_DELETED = "connection.deleted" as const;
-const AUTOMATION_EVENT_CONNECTION_AVAILABLE = "connection.available" as const;
-const AUTOMATION_EVENT_WEBHOOK_RECEIVED = "webhook.received" as const;
 const apiConnectionSnapshotSchema = z.object({
   slug: z.string().min(1),
   name: z.string().nullable(),
@@ -76,7 +72,7 @@ export const apiCapability: BackofficeCapability = {
     automationEvents: [
       {
         source: AUTOMATION_SOURCE,
-        eventType: AUTOMATION_EVENT_CONNECTION_CHANGED,
+        eventType: "connection.changed",
         label: "API connection changed",
         description: "Fires when an API connection is created or its configuration changes.",
         payloadSchema: apiConnectionChangedPayloadSchema,
@@ -94,7 +90,7 @@ export const apiCapability: BackofficeCapability = {
       },
       {
         source: AUTOMATION_SOURCE,
-        eventType: AUTOMATION_EVENT_CONNECTION_DELETED,
+        eventType: "connection.deleted",
         label: "API connection deleted",
         description: "Fires when an API connection is deleted.",
         payloadSchema: apiConnectionDeletedPayloadSchema,
@@ -112,7 +108,7 @@ export const apiCapability: BackofficeCapability = {
       },
       {
         source: AUTOMATION_SOURCE,
-        eventType: AUTOMATION_EVENT_WEBHOOK_RECEIVED,
+        eventType: "webhook.received",
         label: "API webhook received",
         description: "Fires when an API webhook endpoint receives and authenticates a delivery.",
         payloadSchema: apiWebhookReceivedPayloadSchema,
@@ -130,7 +126,7 @@ export const apiCapability: BackofficeCapability = {
       },
       {
         source: AUTOMATION_SOURCE,
-        eventType: AUTOMATION_EVENT_CONNECTION_AVAILABLE,
+        eventType: "connection.available",
         label: "API connection available",
         description: "Fires when configured API authentication becomes usable.",
         payloadSchema: apiConnectionAvailablePayloadSchema,

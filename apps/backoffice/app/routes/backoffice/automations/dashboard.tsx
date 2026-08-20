@@ -28,12 +28,16 @@ import { z } from "zod";
 import { eq, or, useLiveQuery } from "@tanstack/react-db";
 
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
-import { listCapabilityEventSources } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import {
+  listAutomationEventDescriptors,
+  listCapabilityEventSources,
+} from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { runtimeToolWorkflowCatalog } from "@/fragno/runtime-tools/workflow-catalog.server";
 
 import type { Route } from "./+types/dashboard";
 import {
   DashboardInspector,
+  type DashboardEventDefinition,
   type DashboardInspectorSelection,
   type DashboardSource,
 } from "./dashboard-inspector";
@@ -122,7 +126,10 @@ const fallbackSourceLabel = (source: string) =>
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
     .join(" ");
 
-const dashboardSources = (routes: readonly DashboardRoute[]): DashboardSource[] => {
+const dashboardSources = (
+  routes: readonly DashboardRoute[],
+  dynamicEventDefinitions: readonly DashboardEventDefinitionWithSource[],
+): DashboardSource[] => {
   const sources = new Map<string, DashboardSource>();
 
   for (const eventSource of listCapabilityEventSources()) {
@@ -134,11 +141,17 @@ const dashboardSources = (routes: readonly DashboardRoute[]): DashboardSource[] 
     });
   }
 
-  sources.set("scheduler", {
-    id: "scheduler",
-    label: "Scheduler",
-    description: "Starts automation routes at one-time or recurring scheduled occurrences.",
-  });
+  for (const eventDefinition of dynamicEventDefinitions) {
+    const id = normalizedSourceId(eventDefinition.source);
+    if (!sources.has(id)) {
+      const label = fallbackSourceLabel(id);
+      sources.set(id, {
+        id,
+        label,
+        description: `${label} has registered automation events.`,
+      });
+    }
+  }
 
   const triggerCountBySource = new Map<string, number>();
   for (const route of routes) {
@@ -163,6 +176,10 @@ const dashboardSources = (routes: readonly DashboardRoute[]): DashboardSource[] 
     }
     return left.label.localeCompare(right.label);
   });
+};
+
+type DashboardEventDefinitionWithSource = DashboardEventDefinition & {
+  source: string;
 };
 
 type DashboardGridRow = {
@@ -697,6 +714,20 @@ export default function BackofficeAutomationDashboard() {
         })),
     [collections.routeScheduleStates, collections.routes],
   );
+  const eventDefinitionsQuery = useLiveQuery(
+    (query) =>
+      query
+        .from({ definition: collections.eventDefinitions })
+        .orderBy(({ definition }) => definition.source, "asc")
+        .orderBy(({ definition }) => definition.eventType, "asc")
+        .select(({ definition }) => ({
+          source: definition.source,
+          eventType: definition.eventType,
+          label: definition.label,
+          payloadSchema: definition.payloadSchema,
+        })),
+    [collections.eventDefinitions],
+  );
   const workflowsQuery = useLiveQuery(
     (query) =>
       query
@@ -729,6 +760,24 @@ export default function BackofficeAutomationDashboard() {
     ...route,
     nextOccurrenceAt: route.nextOccurrenceAt?.toISOString() ?? null,
   }));
+  const dynamicEventDefinitions: DashboardEventDefinitionWithSource[] = (
+    eventDefinitionsQuery.data ?? []
+  ).map((eventDefinition) => ({
+    ...eventDefinition,
+    payloadSchema: eventDefinition.payloadSchema ?? null,
+  }));
+  const eventDefinitions: DashboardEventDefinitionWithSource[] = [
+    ...listAutomationEventDescriptors().map((eventDefinition) => ({
+      source: eventDefinition.source,
+      eventType: eventDefinition.eventType,
+      label: eventDefinition.label,
+      payloadSchema: eventDefinition.payloadSchema ?? null,
+    })),
+    ...dynamicEventDefinitions,
+  ].sort(
+    (left, right) =>
+      left.source.localeCompare(right.source) || left.eventType.localeCompare(right.eventType),
+  );
   const workflowInstances: DashboardWorkflowInstance[] = (workflowsQuery.data ?? []).map(
     ({ params, ...instance }) => {
       const scriptReference = codemodeWorkflowScriptReferenceSchema.safeParse(params);
@@ -738,7 +787,7 @@ export default function BackofficeAutomationDashboard() {
       };
     },
   );
-  const sources = dashboardSources(routes);
+  const sources = dashboardSources(routes, dynamicEventDefinitions);
   const requestedSourceId = normalizedSourceId(searchParams.get(SOURCE_FILTER_PARAM) ?? "");
   const activeSource = sources.find((source) => source.id === requestedSourceId) ?? null;
   const selectionKind = parseSelectionKind(searchParams.get(SELECTION_KIND_PARAM));
@@ -750,7 +799,9 @@ export default function BackofficeAutomationDashboard() {
       ? {
           kind: "source",
           source: selectedSource,
-          routes: routes.filter((route) => routeSourceId(route) === selectedSource.id),
+          eventDefinitions: eventDefinitions.filter(
+            (eventDefinition) => normalizedSourceId(eventDefinition.source) === selectedSource.id,
+          ),
         }
       : selectionKind === "trigger" && selectedRoute
         ? { kind: "trigger", route: selectedRoute }
@@ -759,6 +810,7 @@ export default function BackofficeAutomationDashboard() {
           : null;
   const errors = [
     routesQuery.isError ? "Route synchronization failed." : null,
+    eventDefinitionsQuery.isError ? "Event catalog synchronization failed." : null,
     workflowsQuery.isError ? "Workflow synchronization failed." : null,
   ].filter((message): message is string => Boolean(message));
 
@@ -829,7 +881,7 @@ export default function BackofficeAutomationDashboard() {
                   description={
                     activeSource
                       ? `Highlighting routes from ${activeSource.label}`
-                      : "All capabilities are always visible"
+                      : "Available event sources are always visible"
                   }
                 />
                 <LaneHeader

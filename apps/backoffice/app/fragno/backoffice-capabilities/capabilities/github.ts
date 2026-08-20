@@ -85,6 +85,48 @@ const githubPayloadSchema = z.object({
   raw: z.record(z.string(), z.unknown()),
 });
 
+const githubCommentSchema = z.looseObject({
+  id: z.union([z.number(), z.string()]),
+  body: z.string(),
+  html_url: z.string().optional(),
+  user: githubUserSchema.nullable().optional(),
+});
+
+const githubNormalizedPayloadShape = {
+  deliveryId: z.string().min(1),
+  installationId: z.string().min(1),
+  repository: githubRepositorySchema,
+  sender: githubUserSchema.nullable(),
+};
+
+const githubIssuesOpenedPayloadSchema = z.object({
+  ...githubNormalizedPayloadShape,
+  issue: githubIssueSchema,
+});
+
+const githubIssueCommentCreatedPayloadSchema = z.object({
+  ...githubNormalizedPayloadShape,
+  issue: githubIssueSchema,
+  comment: githubCommentSchema,
+});
+
+const githubPullRequestOpenedPayloadSchema = z.object({
+  ...githubNormalizedPayloadShape,
+  pullRequest: githubPullRequestSchema,
+});
+
+const githubPullRequestSynchronizePayloadSchema = z.object({
+  ...githubNormalizedPayloadShape,
+  pullRequest: githubPullRequestSchema,
+});
+
+const githubPushPayloadSchema = z.object({
+  ...githubNormalizedPayloadShape,
+  ref: z.string().min(1),
+  before: z.string(),
+  after: z.string(),
+});
+
 const GITHUB_AUTOMATION_SOURCE = "github" as const;
 const GITHUB_AUTOMATION_EVENT_WEBHOOK_RECEIVED = "webhook.received" as const;
 
@@ -141,6 +183,51 @@ export const githubCapability: BackofficeCapability = {
           sender: { id: 42, login: "octocat" },
           raw: {},
         },
+      },
+      {
+        source: GITHUB_AUTOMATION_SOURCE,
+        eventType: "issues.opened",
+        label: "GitHub issue opened",
+        description: "Fires when GitHub reports that an issue was opened.",
+        payloadSchema: githubIssuesOpenedPayloadSchema,
+        actorSchema: githubActorSchema,
+        subjectSchema: githubSubjectSchema,
+      },
+      {
+        source: GITHUB_AUTOMATION_SOURCE,
+        eventType: "issue_comment.created",
+        label: "GitHub issue comment created",
+        description: "Fires when GitHub reports a new issue or pull request comment.",
+        payloadSchema: githubIssueCommentCreatedPayloadSchema,
+        actorSchema: githubActorSchema,
+        subjectSchema: githubSubjectSchema,
+      },
+      {
+        source: GITHUB_AUTOMATION_SOURCE,
+        eventType: "pull_request.opened",
+        label: "GitHub pull request opened",
+        description: "Fires when GitHub reports that a pull request was opened.",
+        payloadSchema: githubPullRequestOpenedPayloadSchema,
+        actorSchema: githubActorSchema,
+        subjectSchema: githubSubjectSchema,
+      },
+      {
+        source: GITHUB_AUTOMATION_SOURCE,
+        eventType: "pull_request.synchronize",
+        label: "GitHub pull request synchronized",
+        description: "Fires when commits are pushed to a pull request branch.",
+        payloadSchema: githubPullRequestSynchronizePayloadSchema,
+        actorSchema: githubActorSchema,
+        subjectSchema: githubSubjectSchema,
+      },
+      {
+        source: GITHUB_AUTOMATION_SOURCE,
+        eventType: "push",
+        label: "GitHub push",
+        description: "Fires when GitHub reports a repository push.",
+        payloadSchema: githubPushPayloadSchema,
+        actorSchema: githubActorSchema,
+        subjectSchema: githubSubjectSchema,
       },
     ],
   },

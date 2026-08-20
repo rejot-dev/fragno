@@ -14,7 +14,7 @@ describe("Capability contributions", () => {
       listCapabilityEventSources()
         .map((eventSource) => eventSource.source)
         .sort(),
-    ).toEqual(["auth", "automations", "github", "otp", "sandbox", "telegram"]);
+    ).toEqual(["auth", "automations", "github", "otp", "sandbox", "scheduler", "telegram"]);
 
     const automationEventSources = new Set(
       listAutomationEventDescriptors().map((event) => event.source),
@@ -23,6 +23,46 @@ describe("Capability contributions", () => {
     expect(automationEventSources).toContain("mcp");
     assert(!listCapabilityEventSources().some((eventSource) => eventSource.source === "api"));
     assert(!listCapabilityEventSources().some((eventSource) => eventSource.source === "mcp"));
+  });
+
+  test("preserves additional fields on projected GitHub provider objects", () => {
+    const github = backofficeCapabilities.find((capability) => capability.id === "github");
+    const pullRequestOpened = github?.contributions.automationEvents.find(
+      (event) => event.eventType === "pull_request.opened",
+    );
+    assert(pullRequestOpened?.payloadSchema);
+
+    const payload = pullRequestOpened.payloadSchema.parse({
+      deliveryId: "delivery-1",
+      installationId: "installation-1",
+      repository: {
+        id: 1,
+        name: "fragno",
+        full_name: "fragno-dev/fragno",
+        private: false,
+        providerField: "preserved",
+      },
+      pullRequest: {
+        id: 2,
+        number: 3,
+        title: "Keep GitHub schemas open",
+        state: "open",
+        providerField: "preserved",
+      },
+      sender: {
+        id: 4,
+        login: "octocat",
+        providerField: "preserved",
+      },
+    }) as {
+      repository: Record<string, unknown>;
+      pullRequest: Record<string, unknown>;
+      sender: Record<string, unknown> | null;
+    };
+
+    assert(payload.repository.providerField === "preserved");
+    assert(payload.pullRequest.providerField === "preserved");
+    assert(payload.sender?.providerField === "preserved");
   });
 
   test("derives legacy system and connection kinds from connection contributions", () => {

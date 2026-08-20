@@ -1,5 +1,6 @@
 import type {
   AutomationForwardEventAction,
+  AutomationReclassifyEventAction,
   AutomationStartWorkflowAction,
   AutomationSendWorkflowEventAction,
 } from "../routing";
@@ -37,6 +38,16 @@ const forwardToSubjectOrgAction = (): AutomationForwardEventAction => ({
   kind: "forward_event",
   targetScope: { kind: "org", orgIdTemplate: "${event.subject.orgId}" },
   idTemplate: "org:${event.id}",
+});
+
+const reclassifyGitHubEventAction = (
+  eventType: string,
+  fields: Record<string, string>,
+): AutomationReclassifyEventAction => ({
+  kind: "reclassify_event",
+  source: "github",
+  eventType,
+  payload: { kind: "projection", fields },
 });
 
 export const SYSTEM_STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInput[] = [
@@ -100,6 +111,124 @@ export const SYSTEM_STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInp
 ];
 
 export const STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInput[] = [
+  {
+    id: "github-issues-opened-reclassify",
+    name: "Classify opened GitHub issues",
+    enabled: true,
+    trigger: {
+      kind: "event",
+      source: "github",
+      eventType: "webhook.received",
+      matcher: {
+        all: [
+          { path: "$.payload.githubEvent", op: "eq", value: "issues" },
+          { path: "$.payload.action", op: "eq", value: "opened" },
+        ],
+      },
+    },
+    priority: 40,
+    action: reclassifyGitHubEventAction("issues.opened", {
+      deliveryId: "$.payload.deliveryId",
+      installationId: "$.payload.installationId",
+      repository: "$.payload.repository",
+      issue: "$.payload.issue",
+      sender: "$.payload.sender",
+    }),
+  },
+  {
+    id: "github-issue-comment-created-reclassify",
+    name: "Classify created GitHub issue comments",
+    enabled: true,
+    trigger: {
+      kind: "event",
+      source: "github",
+      eventType: "webhook.received",
+      matcher: {
+        all: [
+          { path: "$.payload.githubEvent", op: "eq", value: "issue_comment" },
+          { path: "$.payload.action", op: "eq", value: "created" },
+        ],
+      },
+    },
+    priority: 40,
+    action: reclassifyGitHubEventAction("issue_comment.created", {
+      deliveryId: "$.payload.deliveryId",
+      installationId: "$.payload.installationId",
+      repository: "$.payload.repository",
+      issue: "$.payload.issue",
+      comment: "$.payload.raw.comment",
+      sender: "$.payload.sender",
+    }),
+  },
+  {
+    id: "github-pull-request-opened-reclassify",
+    name: "Classify opened GitHub pull requests",
+    enabled: true,
+    trigger: {
+      kind: "event",
+      source: "github",
+      eventType: "webhook.received",
+      matcher: {
+        all: [
+          { path: "$.payload.githubEvent", op: "eq", value: "pull_request" },
+          { path: "$.payload.action", op: "eq", value: "opened" },
+        ],
+      },
+    },
+    priority: 40,
+    action: reclassifyGitHubEventAction("pull_request.opened", {
+      deliveryId: "$.payload.deliveryId",
+      installationId: "$.payload.installationId",
+      repository: "$.payload.repository",
+      pullRequest: "$.payload.pullRequest",
+      sender: "$.payload.sender",
+    }),
+  },
+  {
+    id: "github-pull-request-synchronize-reclassify",
+    name: "Classify synchronized GitHub pull requests",
+    enabled: true,
+    trigger: {
+      kind: "event",
+      source: "github",
+      eventType: "webhook.received",
+      matcher: {
+        all: [
+          { path: "$.payload.githubEvent", op: "eq", value: "pull_request" },
+          { path: "$.payload.action", op: "eq", value: "synchronize" },
+        ],
+      },
+    },
+    priority: 40,
+    action: reclassifyGitHubEventAction("pull_request.synchronize", {
+      deliveryId: "$.payload.deliveryId",
+      installationId: "$.payload.installationId",
+      repository: "$.payload.repository",
+      pullRequest: "$.payload.pullRequest",
+      sender: "$.payload.sender",
+    }),
+  },
+  {
+    id: "github-push-reclassify",
+    name: "Classify GitHub pushes",
+    enabled: true,
+    trigger: {
+      kind: "event",
+      source: "github",
+      eventType: "webhook.received",
+      matcher: { path: "$.payload.githubEvent", op: "eq", value: "push" },
+    },
+    priority: 40,
+    action: reclassifyGitHubEventAction("push", {
+      deliveryId: "$.payload.deliveryId",
+      installationId: "$.payload.installationId",
+      repository: "$.payload.repository",
+      ref: "$.payload.raw.ref",
+      before: "$.payload.raw.before",
+      after: "$.payload.raw.after",
+      sender: "$.payload.sender",
+    }),
+  },
   {
     id: "system-project-files-configure",
     name: "Configure project files",
