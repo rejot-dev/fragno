@@ -2,12 +2,12 @@ import type { Dispatch, SetStateAction } from "react";
 import { isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
-import type { AuthMeData } from "@/fragno/auth/auth-client";
+import type { BackofficeMeData } from "@/fragno/auth/auth-client";
 
 import { AutomationSubpageTabs } from "../../automations/shared";
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../../route-errors";
 
-type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
+type BackofficeOrganisation = BackofficeMeData["organizations"][number]["organization"];
 
 export type GitHubAdminConfigState = {
   configured: boolean;

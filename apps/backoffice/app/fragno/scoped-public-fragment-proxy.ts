@@ -4,7 +4,7 @@ import {
   backofficeScopeFromSinglePathSegment,
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { requireBackofficeMe } from "@/fragno/auth/auth-server";
 import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 
 import { buildBackofficeLoginPath } from "../routes/backoffice/auth-navigation";
@@ -61,7 +61,7 @@ const browserSessionHasScopeAccess = async (
   context: Readonly<RouterContextProvider>,
   scope: BackofficeRoutableScope,
 ) => {
-  const me = await getAuthMe(request, context);
+  const me = await requireBackofficeMe(request, context);
   if (!me?.user) {
     return { ok: false as const, response: redirectToLogin(request) };
   }

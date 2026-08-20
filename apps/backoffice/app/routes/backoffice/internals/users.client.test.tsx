@@ -2,7 +2,6 @@
 
 import { afterEach, describe, expect, test, vi, assert } from "vitest";
 
-import { useState } from "react";
 import { MemoryRouter, Outlet, Route, Routes } from "react-router";
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -30,9 +29,9 @@ const initialPage = {
       createdAt: "2026-01-01T00:00:00.000Z",
     },
   ],
-  cursor: "cursor-2",
-  hasNextPage: true,
-  sortBy: "createdAt" as const,
+  page: 1,
+  total: 2,
+  totalPages: 2,
 };
 
 const finalPage = {
@@ -44,9 +43,9 @@ const finalPage = {
       createdAt: "2026-01-02T00:00:00.000Z",
     },
   ],
-  cursor: undefined,
-  hasNextPage: false,
-  sortBy: "createdAt" as const,
+  page: 2,
+  total: 2,
+  totalPages: 2,
 };
 
 afterEach(() => {
@@ -67,39 +66,30 @@ const renderUsers = (currentUserId = "current-user") =>
   );
 
 describe("Backoffice internal users", () => {
-  test("retries a failed load-more request without losing the cursor", async () => {
-    useUsers.mockImplementation(({ query }: { query: { cursor?: string } }) => {
-      const [retryCount, setRetryCount] = useState(0);
-      const refetch = () => {
-        setRetryCount((currentCount) => currentCount + 1);
-      };
-
-      if (!query.cursor) {
-        return { data: initialPage, loading: false, error: undefined, refetch };
-      }
-
-      return retryCount === 0
-        ? { data: undefined, loading: false, error: new Error("Temporary failure"), refetch }
-        : { data: finalPage, loading: false, error: undefined, refetch };
-    });
+  test("moves between traditional result pages", async () => {
+    useUsers.mockImplementation(({ query }: { query: { page: string } }) => ({
+      data: query.page === "1" ? initialPage : finalPage,
+      loading: false,
+      error: undefined,
+    }));
 
     renderUsers();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Load more users" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("Temporary failure");
-
-    fireEvent.click(screen.getByRole("button", { name: "Load more users" }));
-
+    fireEvent.click(await screen.findByRole("button", { name: "Next" }));
     expect(await screen.findByText("two@example.com")).toBeTruthy();
+    expect(screen.getByText("Page 2 of 2")).toBeTruthy();
     expect(useUsers).toHaveBeenCalledWith({
       query: {
         search: undefined,
         sortBy: "createdAt",
         sortOrder: "desc",
         pageSize: "50",
-        cursor: "cursor-2",
+        page: "2",
       },
     });
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    expect(await screen.findByText("one@example.com")).toBeTruthy();
   });
 
   test("keeps the success notice after updating a user's role", async () => {
@@ -108,7 +98,6 @@ describe("Backoffice internal users", () => {
       data: initialPage,
       loading: false,
       error: undefined,
-      refetch: vi.fn(),
     });
 
     renderUsers();
@@ -129,14 +118,13 @@ describe("Backoffice internal users", () => {
   test("does not allow the current user to change their own global role", async () => {
     useUsers.mockReturnValue({
       data: {
-        ...initialPage,
         users: [...initialPage.users, ...finalPage.users],
-        cursor: undefined,
-        hasNextPage: false,
+        page: 1,
+        total: 2,
+        totalPages: 1,
       },
       loading: false,
       error: undefined,
-      refetch: vi.fn(),
     });
 
     renderUsers("user-1");

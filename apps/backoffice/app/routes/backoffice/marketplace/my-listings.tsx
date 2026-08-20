@@ -1,6 +1,6 @@
 import { Form, Link } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   marketplaceListingStatusSchema,
   type MarketplaceListingStatus,
@@ -41,7 +41,7 @@ const minePath = (input: {
 };
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),

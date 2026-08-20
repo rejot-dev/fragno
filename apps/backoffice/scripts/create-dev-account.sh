@@ -5,6 +5,7 @@ BACKOFFICE_URL="${BACKOFFICE_URL:-http://localhost:5173}"
 MAX_RETRIES=10
 EMAIL="${BACKOFFICE_EMAIL:-${USER}@rejot.dev}"
 PASSWORD="${BACKOFFICE_PASSWORD:-wachtwoord}"
+NAME="${BACKOFFICE_NAME:-${EMAIL%%@*}}"
 
 if [[ -z "${USER:-}" && -z "${BACKOFFICE_EMAIL:-}" ]]; then
   echo "USER is not set. Set BACKOFFICE_EMAIL explicitly." >&2
@@ -41,10 +42,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-url="${BACKOFFICE_URL%/}/api/auth/sign-up"
-body=$(printf '{"email":"%s","password":"%s"}' "$EMAIL" "$PASSWORD")
+url="${BACKOFFICE_URL%/}/api/auth/sign-up/email"
+body=$(EMAIL="$EMAIL" PASSWORD="$PASSWORD" NAME="$NAME" node -e '
+  process.stdout.write(JSON.stringify({
+    name: process.env.NAME,
+    email: process.env.EMAIL,
+    password: process.env.PASSWORD,
+  }));
+')
 
 response_file=$(mktemp)
+trap 'rm -f "$response_file"' EXIT
 attempt=1
 status=""
 curl_exit=0
@@ -58,6 +66,7 @@ while true; do
     --output "$response_file" \
     --write-out "%{http_code}" \
     --header "Content-Type: application/json" \
+    --header "Origin: ${BACKOFFICE_URL%/}" \
     --request POST \
     --data "$body" \
     "$url")
@@ -84,8 +93,8 @@ case "$status" in
   200|201)
     echo "Created dev account: $EMAIL"
     ;;
-  400)
-    if grep -q 'email_already_exists' "$response_file"; then
+  400|422)
+    if grep -Eq 'USER_ALREADY_EXISTS|User already exists' "$response_file"; then
       echo "Dev account already exists: $EMAIL"
     else
       echo "Failed to create dev account: HTTP $status" >&2
@@ -99,5 +108,3 @@ case "$status" in
     exit 1
     ;;
 esac
-
-rm -f "$response_file"

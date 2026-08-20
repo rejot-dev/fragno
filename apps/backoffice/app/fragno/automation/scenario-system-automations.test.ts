@@ -76,6 +76,67 @@ const systemUnrelatedEvent = {
 } satisfies AutomationEvent;
 
 describe("system automation scenarios", () => {
+  test("sign-up reaches automation ingestion through transactional auth hooks", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "sign-up provisions an organization through trigger-backed durable hooks",
+        files: backofficeFiles.systemOnly(),
+        vars: () => ({ organizationId: "" }),
+        steps: ({ when, then }) => [
+          when.auth.signUp({ email: "triggered-user@example.com" }),
+          then.assert("user and organization hooks completed", async (ctx) => {
+            const organizations = await ctx.runtime.objects.auth.singleton().getDevOrganizations();
+            expect(organizations).toHaveLength(1);
+            const organization = organizations[0];
+            assert(organization);
+            ctx.vars.organizationId = organization.id;
+            ctx.rememberOrg(organization.id);
+
+            const repository = await ctx.runtime.objects.auth
+              .singleton()
+              .getDurableHookRepository();
+            const queue = await repository.getHookQueue({ pageSize: 100 });
+            expect(queue.items).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  id: `user.created:${organization.createdBy}`,
+                  hookName: "onUserCreated",
+                  status: "completed",
+                }),
+                expect.objectContaining({
+                  id: `organization.created:${organization.id}`,
+                  hookName: "onOrganizationCreated",
+                  status: "completed",
+                }),
+              ]),
+            );
+          }),
+          then.assert("the triggered organization event reached Automations", async (ctx) => {
+            const organizationId = ctx.vars.organizationId;
+            assert(organizationId);
+
+            const response = await ctx.runtime.objects.automations
+              .singleton()
+              .fetch(new Request("https://automations.test/api/automations/events?limit=500"));
+            assert(response.ok);
+            const result = (await response.json()) as {
+              events: Array<{ id: string; eventType: string; subject: { orgId?: string } }>;
+            };
+            expect(result.events).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  id: `organization.created:${organizationId}`,
+                  eventType: "organization.created",
+                  subject: { orgId: organizationId },
+                }),
+              ]),
+            );
+          }),
+        ],
+      }),
+    );
+  });
+
   test("auth organization.created initializes upload-backed workspace files", async () => {
     const orgId = "org-real";
     let runtime!: InMemoryBackofficeRuntime;

@@ -1,62 +1,10 @@
 import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
-import type {} from "@/fragno/auth/auth-client";
 import { cn } from "@/lib/utils";
 
+import type { ActionNotice, OrganisationTab } from "./organisation-utils";
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "./route-errors";
-
-export type OrganisationTab = "overview" | "members" | "invites" | "billing";
-
-export const ROLE_OPTIONS = ["member", "admin", "owner"] as const;
-
-export type ActionNotice = {
-  type: "success" | "error";
-  message: string;
-} | null;
-
-export const formatDate = (value?: string | null) => {
-  if (!value) {
-    return "--";
-  }
-  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(new Date(value));
-};
-
-export const formatDateTime = (value?: string | null) => {
-  if (!value) {
-    return "--";
-  }
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-};
-
-export const formatRoles = (roles?: string[]) => {
-  if (!roles || roles.length === 0) {
-    return "member";
-  }
-  return roles.join(", ");
-};
-
-export const getErrorMessage = (error: unknown) => {
-  if (!error) {
-    return "Something went wrong.";
-  }
-  if (typeof error === "string") {
-    return error;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === "object" && error && "message" in error) {
-    const message = (error as { message?: string }).message;
-    if (message) {
-      return message;
-    }
-  }
-  return "Something went wrong.";
-};
 
 export function Notice({ notice }: { notice: ActionNotice }) {
   if (!notice) {

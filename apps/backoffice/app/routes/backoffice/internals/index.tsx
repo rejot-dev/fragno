@@ -1,10 +1,7 @@
 import { Link, useOutletContext } from "react-router";
 
 import { BackofficePageHeader, BackofficeStatusLight } from "@/components/backoffice";
-import { authClient } from "@/fragno/auth/auth-client";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
-
-type BackofficeMe = BackofficeLayoutContext["me"];
 
 type InternalDestination = {
   id: string;
@@ -81,10 +78,7 @@ export function meta() {
 
 export default function BackofficeInternals() {
   const { me } = useOutletContext<BackofficeLayoutContext>();
-  const { data: currentMeData } = authClient.useMe();
-  const currentMe = currentMeData as BackofficeMe | null | undefined;
-  const effectiveMe = currentMe ?? me;
-  const hasOrganization = effectiveMe ? effectiveMe.organizations.length > 0 : false;
+  const hasOrganization = me.organizations.length > 0;
   const destinations = internalDestinations(hasOrganization);
 
   return (

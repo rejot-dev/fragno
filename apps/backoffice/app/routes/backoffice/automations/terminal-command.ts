@@ -1,4 +1,4 @@
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import { runBackofficeTerminalAction } from "../terminal.server";
 import type { Route } from "./+types/terminal-command";
@@ -10,7 +10,7 @@ import {
 } from "./scope";
 
 export async function action({ request, context, params }: Route.ActionArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     throw new Response("Authentication required", { status: 401 });
   }

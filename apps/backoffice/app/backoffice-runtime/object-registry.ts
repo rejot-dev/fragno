@@ -6,15 +6,17 @@ import type { Reson8 } from "workers/reson8.do";
 import type { TelegramAdminConfigResponse } from "workers/telegram.do";
 import type { Upload } from "workers/upload.do";
 
-import type {
-  Organization,
-  UserAuthorityFacts,
-  VerifyUserEmailInput,
-  VerifyUserEmailResult,
-} from "@fragno-dev/auth";
 import type { FragnoExecutionContext } from "@fragno-dev/core";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
+import type {
+  BackofficeMeData,
+  Organization,
+  OrganizationHookPayload,
+  UserAuthorityFacts,
+  VerifyUserEmailInput,
+  VerifyUserEmailResult,
+} from "@/fragno/auth/contracts";
 import type {
   AutomationEvent,
   AutomationEventDefinition,
@@ -125,17 +127,45 @@ export type AdminConfigurableObject<TConfig = unknown> = {
   setAdminConfig(...args: unknown[]): Promise<TConfig>;
 };
 
+export type ScenarioAuthFixture = {
+  users?: ReadonlyArray<{
+    id: string;
+    email: string;
+    role: "user" | "admin";
+    status: "active" | "banned";
+  }>;
+  organizations?: ReadonlyArray<{
+    id: string;
+    name: string;
+    slug: string;
+    ownerUserId: string;
+    ownerRoles: readonly string[];
+  }>;
+  members?: ReadonlyArray<{
+    organizationId: string;
+    userId: string;
+    roles: readonly string[];
+  }>;
+  removedMembers?: ReadonlyArray<{ organizationId: string; userId: string }>;
+};
+
 export type AuthObject = FetchObject &
   AlarmableObject &
   DurableHookObject & {
+    enqueueEmailVerificationHook(
+      input: { userId: string; email: string },
+      propagationContext?: Readonly<Record<string, string>> | null,
+    ): Promise<string>;
+    enqueueOrganizationHook(
+      hookName: "onOrganizationCreated" | "onOrganizationUpdated",
+      payload: OrganizationHookPayload,
+      propagationContext?: Readonly<Record<string, string>> | null,
+    ): Promise<string>;
     verifyUserEmail(input: VerifyUserEmailInput): Promise<VerifyUserEmailResult>;
-    issueVerifiedEmailCredential(input: {
+    getBackofficeMe(input: {
       userId: string;
-    }): Promise<
-      | { status: "pending" }
-      | { status: "issued"; credentialToken: string }
-      | { status: "rejected"; reason: "user_not_found" | "user_banned" }
-    >;
+      activeOrganizationId: string | null;
+    }): Promise<BackofficeMeData | null>;
     getUserAuthorityFacts(input: {
       userId: string;
       organizationId?: string;
@@ -150,6 +180,15 @@ export type AuthObject = FetchObject &
         }
       >
     >;
+    /**
+     * Applies deterministic auth state for scenario setup without sessions or lifecycle hooks.
+     * Production auth flows must use Better Auth's public endpoints instead.
+     */
+    applyScenarioFixture(fixture: ScenarioAuthFixture): Promise<void>;
+    getScenarioMemberRoles(input: {
+      organizationId: string;
+      userId: string;
+    }): Promise<string[] | null>;
   };
 
 export type ApiObject = FetchObject &

@@ -1,12 +1,12 @@
 import { redirect } from "react-router";
 
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/index";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(new URL("/backoffice/login", request.url), 302);
   }

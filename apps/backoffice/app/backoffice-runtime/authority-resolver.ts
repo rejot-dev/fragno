@@ -1,6 +1,5 @@
-import type { Role, UserAuthorityFacts } from "@fragno-dev/auth";
-
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import type { Role, UserAuthorityFacts } from "@/fragno/auth/contracts";
 import { automationEntityRefsEqual, type AutomationActors } from "@/fragno/automation/actors";
 
 import {
@@ -82,7 +81,7 @@ const resolveUserAuthorityPermissions = (
   authority: Readonly<{
     userId: string;
     role: Role;
-    organizationIds: readonly string[];
+    organizationId: string | null;
   }>,
   execution: BackofficeExecutionContext,
 ): readonly BackofficePermissionRequirement[] => {
@@ -90,7 +89,7 @@ const resolveUserAuthorityPermissions = (
   return role ? getBackofficeAuthorityRoleGrants(role) : noPermissions;
 };
 
-const resolveVerifiedAccessTokenPermissions = ({
+const resolveVerifiedRequestAuthorityPermissions = ({
   principal,
   execution,
   now,
@@ -133,7 +132,7 @@ export const createBackofficeAuthorityResolver = (
       }
 
       if (execution.userAuthority) {
-        return resolveVerifiedAccessTokenPermissions({
+        return resolveVerifiedRequestAuthorityPermissions({
           principal,
           execution,
           now: now(),
@@ -156,7 +155,7 @@ export const createBackofficeAuthorityResolver = (
         {
           userId: principal.id,
           role: currentUser.role,
-          organizationIds: organizationId && currentUser.organizationMember ? [organizationId] : [],
+          organizationId: organizationId && currentUser.organizationMember ? organizationId : null,
         },
         execution,
       );

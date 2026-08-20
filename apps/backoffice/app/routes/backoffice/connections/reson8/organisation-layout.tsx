@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Outlet, redirect } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { AutomationWorkspaceHeader } from "../../automations/shared";
@@ -11,7 +11,7 @@ import { fetchReson8Config } from "./data";
 import { Reson8ErrorBoundary, Reson8Tabs, type Reson8ConfigState, type Reson8Tab } from "./shared";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }

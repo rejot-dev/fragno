@@ -9,10 +9,10 @@ import {
 import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 
 import {
-  authorizeAuthPrincipal,
-  requireAuthPrincipal,
+  authorizeBackofficePrincipal,
+  requireBackofficePrincipal,
   type BackofficeAuthPrincipal,
-} from "./access-token.server";
+} from "./request-auth.server";
 
 const assertAuthenticatedUserCanAccessScope = (
   auth: BackofficeAuthPrincipal,
@@ -22,7 +22,7 @@ const assertAuthenticatedUserCanAccessScope = (
     {
       userId: auth.user.id,
       role: auth.user.role,
-      organizationIds: auth.auth.sessionContext.organizationIds,
+      organizationId: auth.auth.organization?.id ?? null,
     },
     scope,
   );
@@ -40,16 +40,12 @@ export const createBackofficeExecutionForPrincipal = (
   scope: BackofficeContextScope,
 ): BackofficeExecutionContext => {
   assertAuthenticatedUserCanAccessScope(auth, scope);
-  if (auth.auth.credentialKind !== "jwt" || !auth.auth.expiresAt) {
-    throw new Error("Backoffice execution requires a verified access-token credential.");
-  }
-
   return createBackofficeUserExecution({
     scope,
     userId: auth.user.id,
-    verifiedAccessToken: {
+    verifiedRequestAuthority: {
       role: auth.user.role,
-      organizationIds: auth.auth.sessionContext.organizationIds,
+      organizationId: auth.auth.organization?.id ?? null,
       expiresAt: auth.auth.expiresAt,
     },
   });
@@ -60,7 +56,7 @@ export const requireBackofficeContext = async (
   routerContext: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
 ): Promise<BackofficeExecutionContext> => {
-  const auth = await requireAuthPrincipal(request, routerContext);
+  const auth = await requireBackofficePrincipal(request, routerContext);
   return createBackofficeExecutionForPrincipal(auth, scope);
 };
 
@@ -72,7 +68,7 @@ export const authorizeBackofficeContext = async (
   | { ok: true; execution: BackofficeExecutionContext; headers: Array<[string, string]> }
   | { ok: false; response: Response }
 > => {
-  const authorization = await authorizeAuthPrincipal(request, routerContext);
+  const authorization = await authorizeBackofficePrincipal(request, routerContext);
   if (!authorization.ok) {
     return authorization;
   }

@@ -168,10 +168,10 @@ describe("BackofficeKernel.invoke", () => {
         execution: {
           ...linkedExecution,
           userAuthority: {
-            kind: "verified-access-token",
+            kind: "verified-request-authority",
             userId: "user-2",
             role: "user",
-            organizationIds: ["org-1"],
+            organizationId: "org-1",
             expiresAtEpochMs: Date.now() + 60_000,
           },
         },

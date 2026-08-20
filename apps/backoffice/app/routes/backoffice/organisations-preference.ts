@@ -1,26 +1,25 @@
-export function sortOrganizationsByDefault<TOrganization extends { organization: { id: string } }>(
-  organizations: TOrganization[],
-  defaultOrganizationId: string | null,
-) {
-  if (!defaultOrganizationId) {
+export function sortOrganizationsByPreference<
+  TOrganization extends { organization: { id: string } },
+>(organizations: TOrganization[], preferredOrganizationId: string | null) {
+  if (!preferredOrganizationId) {
     return organizations;
   }
 
   return [
-    ...organizations.filter((entry) => entry.organization.id === defaultOrganizationId),
-    ...organizations.filter((entry) => entry.organization.id !== defaultOrganizationId),
+    ...organizations.filter((entry) => entry.organization.id === preferredOrganizationId),
+    ...organizations.filter((entry) => entry.organization.id !== preferredOrganizationId),
   ];
 }
 
 export function getOrganizationPreferenceState(
   organizationId: string,
-  defaultOrganizationId: string | null,
+  preferredOrganizationId: string | null,
 ) {
-  const isDefault = organizationId === defaultOrganizationId;
+  const isPreferred = organizationId === preferredOrganizationId;
   return {
-    isDefault,
-    badgeLabel: isDefault ? "Default" : "Available",
-    actionLabel: isDefault ? "Default org" : "Set default",
-    canSetDefault: !isDefault,
+    isPreferred,
+    badgeLabel: isPreferred ? "Preferred" : "Available",
+    actionLabel: isPreferred ? "Preferred org" : "Switch here",
+    canSwitch: !isPreferred,
   };
 }

@@ -4,8 +4,7 @@ import { Suspense, use } from "react";
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { AutomationCollectionSourceState } from "@/components/backoffice/current-context";
 import { ClientOnly } from "@/components/client-only";
-import type { AuthMeData } from "@/fragno/auth/auth-client";
-import { authClient } from "@/fragno/auth/auth-client";
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import {
   getAutomationBrowserDatabase,
   type AutomationCollectionSource,
@@ -21,7 +20,7 @@ import { BackofficeThemeMenu } from "./theme-menu";
 const EMPTY_PROJECTS: BackofficeProjectOption[] = [];
 
 type BackofficeTopBarProps = {
-  me: AuthMeData | null;
+  me: BackofficeMeData | null;
   currentScope: BackofficeContextScope | null;
   projectCollectionSource: AutomationCollectionSourceState | null;
   isLoading?: boolean;
@@ -109,15 +108,11 @@ export function BackofficeTopBar({
   workflowDrawerOpen = false,
   onWorkflowDrawerToggle,
 }: BackofficeTopBarProps) {
-  const { data: meData, loading: meLoading } = authClient.useMe();
-  const effectiveMe = meData === undefined ? me : meData;
-  const sessionLoading = isLoading || (!effectiveMe && meLoading);
-
   return (
     <header className="sticky top-0 z-30 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-bg)]">
       <div className="flex h-16 items-stretch">
         <div className="flex min-w-0 flex-1 items-stretch min-[960px]:w-72 min-[960px]:flex-none min-[960px]:border-r min-[960px]:border-[color:var(--bo-border)]">
-          <BackofficeScopeMenu me={effectiveMe} currentScope={currentScope} />
+          <BackofficeScopeMenu me={me} currentScope={currentScope} />
         </div>
 
         {currentScope?.kind === "org" || currentScope?.kind === "project" ? (
@@ -147,7 +142,7 @@ export function BackofficeTopBar({
         </div>
 
         <div className="flex shrink-0 items-center min-[960px]:border-l min-[960px]:border-[color:var(--bo-border)]">
-          <BackofficeAccountMenu me={effectiveMe} isLoading={sessionLoading} />
+          <BackofficeAccountMenu me={me} isLoading={isLoading} />
         </div>
       </div>
 

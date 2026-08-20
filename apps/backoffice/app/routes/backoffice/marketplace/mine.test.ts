@@ -1,8 +1,8 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { getAuthMeMock } = vi.hoisted(() => ({ getAuthMeMock: vi.fn() }));
+const { findBackofficeMeMock } = vi.hoisted(() => ({ findBackofficeMeMock: vi.fn() }));
 
-vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
+vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
 
 import { loader } from "./mine";
 
@@ -20,8 +20,8 @@ const runLoader = (url: URL) =>
   } as never);
 
 beforeEach(() => {
-  getAuthMeMock.mockReset();
-  getAuthMeMock.mockResolvedValue(authenticatedUser);
+  findBackofficeMeMock.mockReset();
+  findBackofficeMeMock.mockResolvedValue(authenticatedUser);
 });
 
 describe("legacy My listings organization selection", () => {

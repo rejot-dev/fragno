@@ -1,7 +1,7 @@
 import { redirect } from "react-router";
 
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { requireBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import {
   BACKOFFICE_PI_WORKFLOW_NAME,
@@ -31,7 +31,7 @@ export async function createSessionAction({ request, params, context }: Route.Ac
   const prompt = getValue("prompt");
   const billingOrganizationId =
     scope.kind === "user"
-      ? ((await getAuthMe(request, context))?.activeOrganization?.organization.id ?? null)
+      ? ((await requireBackofficeMe(request, context)).activeOrganization?.organization.id ?? null)
       : null;
 
   if (!prompt) {

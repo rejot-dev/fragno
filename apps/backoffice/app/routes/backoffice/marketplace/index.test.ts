@@ -1,8 +1,8 @@
 import { assert, beforeEach, describe, test, vi } from "vitest";
 
-const { getAuthMeMock } = vi.hoisted(() => ({ getAuthMeMock: vi.fn() }));
+const { findBackofficeMeMock } = vi.hoisted(() => ({ findBackofficeMeMock: vi.fn() }));
 
-vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
+vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
 
 import { loader } from "./index";
 
@@ -16,12 +16,12 @@ const runLoader = () =>
   } as never);
 
 beforeEach(() => {
-  getAuthMeMock.mockReset();
+  findBackofficeMeMock.mockReset();
 });
 
 describe("Marketplace root scope selection", () => {
   test("redirects organization members to their active organization", async () => {
-    getAuthMeMock.mockResolvedValue({
+    findBackofficeMeMock.mockResolvedValue({
       user: { id: "user-1", email: "ada@example.com" },
       organizations: [{ organization: { id: "org-1", name: "Ada Labs" } }],
       activeOrganization: { organization: { id: "org-1", name: "Ada Labs" } },
@@ -34,7 +34,7 @@ describe("Marketplace root scope selection", () => {
   });
 
   test("redirects organization-less users to their personal Marketplace", async () => {
-    getAuthMeMock.mockResolvedValue({
+    findBackofficeMeMock.mockResolvedValue({
       user: { id: "user-1", email: "ada@example.com" },
       organizations: [],
       activeOrganization: null,

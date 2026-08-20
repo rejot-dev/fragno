@@ -21,8 +21,8 @@
     "@fragno-dev/fragno-db-library": "workspace:*",
     "@fragno-dev/tanstack-db-adapter": "workspace:*",
     "@journeyapps/wa-sqlite": "^1.4.1",
-    "@tanstack/browser-db-sqlite-persistence": "0.2.8",
-    "@tanstack/react-db": "0.1.94",
+    "@tanstack/browser-db-sqlite-persistence": "0.2.14",
+    "@tanstack/react-db": "0.3.1",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

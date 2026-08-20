@@ -10,13 +10,13 @@ import {
   Users,
 } from "lucide-react";
 import { useMemo } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 
-import type { AuthMeData } from "@/fragno/auth/auth-client";
 import { authClient } from "@/fragno/auth/auth-client";
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
 type BackofficeAccountMenuProps = {
-  me: AuthMeData | null;
+  me: BackofficeMeData | null;
   isLoading?: boolean;
 };
 
@@ -41,8 +41,7 @@ const menuItemClassName =
   "flex min-h-10 cursor-default items-center gap-3 px-2.5 text-sm text-[var(--bo-muted)] outline-none transition-[scale,background-color,color] duration-150 ease-out data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)] active:scale-[0.96]";
 
 export function BackofficeAccountMenu({ me, isLoading }: BackofficeAccountMenuProps) {
-  const { mutate: signOut, loading: signingOut } = authClient.useSignOut();
-  const navigate = useNavigate();
+  const { mutate: signOut, loading: signingOut, error: signOutError } = authClient.useSignOut();
   const user = me?.user ?? null;
   const activeOrganization = me?.activeOrganization?.organization ?? null;
   const activeOrganizationPath = activeOrganization
@@ -195,22 +194,24 @@ export function BackofficeAccountMenu({ me, isLoading }: BackofficeAccountMenuPr
 
             <Menu.Separator className="my-1 h-px bg-[var(--bo-border)]" />
             <Menu.Item
+              closeOnClick={false}
               disabled={signingOut}
               onClick={() => {
-                void (async () => {
-                  try {
-                    await signOut({ body: {} });
-                  } finally {
-                    await navigate("/backoffice/login", { replace: true });
-                  }
-                })().catch((error: unknown) => {
-                  console.error("Backoffice sign-out flow failed", error);
-                });
+                void signOut({ body: {} })
+                  .then(() => {
+                    window.location.replace("/backoffice/login");
+                  })
+                  .catch(() => undefined);
               }}
               className={`${menuItemClassName} disabled:opacity-60`}
             >
               {signingOut ? "Signing out…" : "Sign out"}
             </Menu.Item>
+            {signOutError ? (
+              <p role="alert" className="px-2.5 py-2 text-xs text-red-400">
+                {signOutError instanceof Error ? signOutError.message : "Unable to sign out."}
+              </p>
+            ) : null}
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>

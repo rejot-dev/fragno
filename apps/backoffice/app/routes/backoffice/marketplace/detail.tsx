@@ -17,9 +17,9 @@ import {
 } from "@/backoffice-runtime/scope-codec";
 import { BackofficeStatusLight } from "@/components/backoffice";
 import { ClientOnly } from "@/components/client-only";
-import type { AuthMeData } from "@/fragno/auth/auth-client";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { buildMarketplaceIngestionWorkflowInstanceId } from "@/fragno/automation/marketplace-ingest-identity";
 import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
 import { marketplaceListingId, marketplaceListingSlug } from "@/fragno/marketplace/owner";
@@ -75,7 +75,7 @@ type MarketplaceInstallationTarget =
   | { state: "unavailable" | "forbidden"; message: string };
 
 const resolveMarketplaceInstallationTarget = (
-  me: AuthMeData,
+  me: BackofficeMeData,
   targetScope: BackofficeRoutableScope,
 ): MarketplaceInstallationTarget => {
   if (targetScope.kind === "user") {
@@ -133,7 +133,7 @@ export function shouldRevalidate({
 }
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
@@ -245,7 +245,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 }
 
 export async function action({ request, params, context, url }: Route.ActionArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }

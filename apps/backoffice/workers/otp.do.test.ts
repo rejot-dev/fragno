@@ -17,7 +17,6 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
-import type { DurableUserEmailVerifiedHookPayload } from "@fragno-dev/auth";
 import type { HookContext } from "@fragno-dev/db";
 import type { OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
@@ -33,8 +32,10 @@ import { handleEmailVerificationConfirmed, handleIdentityClaimConfirmed } from "
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
 
-const createRuntime = async () => {
-  const runtime = await createInMemoryBackofficeRuntime();
+const createRuntime = async (
+  options: Parameters<typeof createInMemoryBackofficeRuntime>[0] = {},
+) => {
+  const runtime = await createInMemoryBackofficeRuntime(options);
   runtimes.push(runtime);
   return runtime;
 };
@@ -44,15 +45,28 @@ const signUp = async (
   email: string,
 ) => {
   const response = await runtime.objects.auth.singleton().fetch(
-    new Request("https://backoffice.example/api/auth/sign-up", {
+    new Request("https://backoffice.example/api/auth/sign-up/email", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Test User", email, password: "password123" }),
+    }),
+  );
+  assert(response.ok);
+  const result = (await response.json()) as { user: { id: string } };
+  return { userId: result.user.id };
+};
+
+const signIn = async (
+  runtime: Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>,
+  email: string,
+) =>
+  await runtime.objects.auth.singleton().fetch(
+    new Request("https://backoffice.example/api/auth/sign-in/email", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email, password: "password123" }),
     }),
   );
-  assert(response.ok);
-  return (await response.json()) as { userId: string };
-};
 
 afterEach(async () => {
   await Promise.all(runtimes.splice(0).map(async (runtime) => await runtime.cleanup()));
@@ -184,9 +198,10 @@ describe("OTP identity claim completion", () => {
 });
 
 describe("OTP Durable Object email verification", () => {
-  test("idempotently issues a singleton challenge and verifies the Auth email", async () => {
-    const runtime = await createRuntime();
+  test("idempotently issues a singleton challenge and synchronously verifies the Auth email", async () => {
+    const runtime = await createRuntime({ env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" } });
     const { userId } = await signUp(runtime, "new-user@example.com");
+    assert((await signIn(runtime, "new-user@example.com")).status === 403);
     const otp = runtime.objects.otp.singleton();
     const input = {
       userId,
@@ -215,21 +230,14 @@ describe("OTP Durable Object email verification", () => {
       requestId: input.requestId,
       userId,
     });
+    assert((await signIn(runtime, "new-user@example.com")).ok);
     expect(await otp.confirmEmailVerificationChallenge({ userId, code })).toEqual({
       status: "already_confirmed",
     });
-    await runtime.drain();
 
     const repository = await runtime.objects.auth.singleton().getDurableHookRepository();
     const queue = await repository.getHookQueue({ pageSize: 100 });
-    const verificationHook = queue.items.find((hook) => hook.hookName === "onUserEmailVerified");
-    assert(verificationHook);
-    const payload = verificationHook.payload as DurableUserEmailVerifiedHookPayload;
-    expect(payload).toMatchObject({
-      user: { id: userId, email: "new-user@example.com" },
-      actor: null,
-    });
-    expect(new Date(payload.emailVerifiedAt).toString()).not.toBe("Invalid Date");
+    assert(!queue.items.some((hook) => hook.hookName === "onUserEmailVerified"));
   });
 
   test("does not deliver a challenge after a newer request supersedes it", async () => {
@@ -275,8 +283,8 @@ describe("OTP Durable Object email verification", () => {
     });
   });
 
-  test("treats a changed Auth email as a terminal confirmation outcome", async () => {
-    const runtime = await createRuntime();
+  test("rejects a challenge issued for a different Auth email", async () => {
+    const runtime = await createRuntime({ env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" } });
     const { userId } = await signUp(runtime, "current@example.com");
     const otp = runtime.objects.otp.singleton();
     const issued = await otp.issueEmailVerification({
@@ -290,21 +298,10 @@ describe("OTP Durable Object email verification", () => {
     assert(code);
 
     expect(await otp.confirmEmailVerificationChallenge({ userId, code })).toEqual({
-      status: "confirmation_recorded",
-      requestId: "auth-email-verification-hook-stale-email",
-      userId,
+      status: "rejected",
+      reason: "invalid",
     });
-    await runtime.drain();
-
-    const authRepository = await runtime.objects.auth.singleton().getDurableHookRepository();
-    const authQueue = await authRepository.getHookQueue({ pageSize: 100 });
-    assert(!authQueue.items.some((hook) => hook.hookName === "onUserEmailVerified"));
-
-    const otpRepository = await otp.getDurableHookRepository();
-    const otpQueue = await otpRepository.getHookQueue({ pageSize: 100 });
-    const confirmedHook = otpQueue.items.find((hook) => hook.hookName === "onOtpConfirmed");
-    assert(confirmedHook);
-    assert(confirmedHook.status === "completed");
+    assert((await signIn(runtime, "current@example.com")).status === 403);
   });
 
   test("rejects an invalid persisted payload so durable processing can retry", async () => {

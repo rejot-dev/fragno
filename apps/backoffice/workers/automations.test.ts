@@ -293,9 +293,9 @@ describe("Automations fetchWithContext authorization", () => {
       const execution = createBackofficeUserExecution({
         scope,
         userId: "user-1",
-        verifiedAccessToken: {
+        verifiedRequestAuthority: {
           role: "user",
-          organizationIds: [scope.orgId],
+          organizationId: scope.orgId,
           expiresAt: new Date("2099-01-01T00:00:00.000Z"),
         },
       });

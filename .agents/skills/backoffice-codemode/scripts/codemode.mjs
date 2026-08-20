@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,34 +9,44 @@ const authFile = resolve(skillDir, "auth.json");
 const defaultEmail = "wilco@rejot.dev";
 const defaultPassword = "wachtwoord";
 const ports = [5173, 5174, 5175, 5176, 5177, 5178, 5179, 5180];
+const configuredBaseUrl = process.env.BACKOFFICE_URL?.replace(/\/$/, "") ?? null;
 
-const usage = () => {
+class BackofficeTokenExchangeError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.name = "BackofficeTokenExchangeError";
+    this.status = status;
+  }
+}
+
+function usage() {
   console.error(`Usage:
-  codemode.mjs login [--email EMAIL] [--password PASSWORD]
-  codemode.mjs probe
-  codemode.mjs system [orgId] [outputFile]
-    Fetch rendered SYSTEM.md. If orgId is omitted, uses the first org for the logged-in user.
-  codemode.mjs exec <orgId> (--file file.js | - | "async () => { ... }") [--timeout ms]
-  codemode.mjs bash <orgId> (--file script.sh | - | "ls -la") [--cwd path] [--timeout ms]
+  codemode.mjs login [--email EMAIL] [--password PASSWORD] [--base-url URL]
+  codemode.mjs probe [--base-url URL]
+  codemode.mjs doctor [--base-url URL]
+  codemode.mjs system [orgId] [outputFile] [--base-url URL]
+    Fetch rendered SYSTEM.md. If orgId is omitted, uses the active or first organization.
+  codemode.mjs exec <orgId> (--file file.js | - | "async () => { ... }") [--timeout ms] [--base-url URL]
+  codemode.mjs bash <orgId> (--file script.sh | - | "ls -la") [--cwd path] [--timeout ms] [--base-url URL]
 
 Canonical bootstrap:
   codemode.mjs login
-    Probes the dev server, warns if multiple servers are running, refreshes or signs in,
-    stores auth state, and prints the authenticated user plus accessible orgs.
+    Probes the dev server, warns if multiple servers are running, signs in through Better Auth,
+    stores local session and Backoffice JWT state, and prints accessible organizations.
 `);
   process.exit(1);
-};
+}
 
-const readStdin = async () => {
+async function readStdin() {
   let input = "";
   process.stdin.setEncoding("utf8");
   for await (const chunk of process.stdin) {
     input += chunk;
   }
   return input;
-};
+}
 
-const getFlag = (args, name, fallback) => {
+function getFlag(args, name, fallback) {
   const index = args.indexOf(name);
   if (index === -1) {
     return fallback;
@@ -47,9 +57,9 @@ const getFlag = (args, name, fallback) => {
   }
   args.splice(index, 2);
   return value;
-};
+}
 
-const readAuth = async () => {
+async function readAuth() {
   let text;
   try {
     text = await readFile(authFile, "utf8");
@@ -69,23 +79,26 @@ const readAuth = async () => {
       cause: error,
     });
   }
-};
+}
 
-const writeAuth = async (auth) => {
+async function writeAuth(auth) {
   await mkdir(dirname(authFile), { recursive: true });
-  await writeFile(authFile, `${JSON.stringify(auth, null, 2)}\n`);
-};
+  const temporaryAuthFile = `${authFile}.${process.pid}.tmp`;
+  await writeFile(temporaryAuthFile, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 });
+  await rename(temporaryAuthFile, authFile);
+  await chmod(authFile, 0o600);
+}
 
-const readJsonResponse = async (response) => {
+async function readJsonResponse(response) {
   const text = await response.text();
   try {
     return text ? JSON.parse(text) : null;
   } catch {
     return text;
   }
-};
+}
 
-const assertOk = async (response, label) => {
+async function assertOk(response, label) {
   if (response.ok) {
     return await readJsonResponse(response);
   }
@@ -93,65 +106,30 @@ const assertOk = async (response, label) => {
   throw new Error(
     `${label} failed (${response.status}): ${typeof body === "string" ? body : JSON.stringify(body)}`,
   );
-};
+}
 
-const readProbeJson = async (response) => {
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.toLowerCase().includes("application/json")) {
-    return null;
-  }
+function isBackofficeHealthResponse(status, body) {
+  return status === 200 && body?.ok === true;
+}
 
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-};
-
-const isMeBody = (body) =>
-  Boolean(
-    body &&
-    typeof body === "object" &&
-    body.user &&
-    typeof body.user === "object" &&
-    typeof body.user.id === "string" &&
-    Array.isArray(body.organizations),
-  );
-
-const isCredentialInvalidBody = (body) =>
-  Boolean(
-    body &&
-    typeof body === "object" &&
-    ((body.error && typeof body.error === "object" && body.error.code === "credential_invalid") ||
-      body.code === "credential_invalid"),
-  );
-
-const isBackofficeMeResponse = (status, body) => {
-  if (status === 200) {
-    return isMeBody(body);
-  }
-
-  return (status === 400 || status === 401) && isCredentialInvalidBody(body);
-};
-
-const findBackofficeServers = async () => {
+async function findBackofficeServers() {
   const candidates = [];
   for (const port of ports) {
     const baseUrl = `http://localhost:${port}`;
     try {
-      const response = await fetch(`${baseUrl}/api/auth/me`);
-      const body = await readProbeJson(response);
-      if (isBackofficeMeResponse(response.status, body)) {
-        candidates.push({ baseUrl, status: response.status });
+      const response = await fetch(`${baseUrl}/api/auth/ok`);
+      const body = await readJsonResponse(response);
+      if (isBackofficeHealthResponse(response.status, body)) {
+        candidates.push({ baseUrl });
       }
     } catch {
       // Try the next Vite port.
     }
   }
   return candidates;
-};
+}
 
-const warnForMultipleServers = (candidates) => {
+function warnForMultipleServers(candidates) {
   if (candidates.length <= 1) {
     return;
   }
@@ -161,193 +139,347 @@ const warnForMultipleServers = (candidates) => {
       .map((candidate) => candidate.baseUrl)
       .join(", ")}. Using ${candidates[0].baseUrl}.`,
   );
-};
+}
 
-const probe = async ({ print = true } = {}) => {
+async function assertBackofficeServer(baseUrl) {
+  const response = await fetch(`${baseUrl}/api/auth/ok`);
+  const body = await readJsonResponse(response);
+  if (!isBackofficeHealthResponse(response.status, body)) {
+    throw new Error(`${baseUrl} is not a current Backoffice dev server.`);
+  }
+  return baseUrl;
+}
+
+async function probe({ print = true, baseUrl = configuredBaseUrl } = {}) {
+  if (baseUrl) {
+    const selected = await assertBackofficeServer(baseUrl.replace(/\/$/, ""));
+    if (print) {
+      console.log(selected);
+    }
+    return selected;
+  }
+
   const candidates = await findBackofficeServers();
   if (candidates.length === 0) {
     throw new Error("No Backoffice dev server found on ports 5173-5180.");
   }
 
   warnForMultipleServers(candidates);
-  const baseUrl = candidates[0].baseUrl;
+  const selected = candidates[0].baseUrl;
   if (print) {
-    console.log(baseUrl);
+    console.log(selected);
   }
-  return baseUrl;
-};
+  return selected;
+}
 
-const fetchMe = async (auth) => {
-  const response = await fetch(`${auth.baseUrl}/api/auth/me`, {
-    headers: { authorization: `Bearer ${auth.token}` },
+function readSetCookie(response, cookieName) {
+  const cookies = response.headers.getSetCookie?.() ?? [];
+  const prefix = `${cookieName}=`;
+  for (const cookie of cookies) {
+    if (cookie.startsWith(prefix)) {
+      return cookie.slice(0, cookie.indexOf(";"));
+    }
+  }
+  return null;
+}
+
+function isCurrentAuthState(auth, baseUrl, email) {
+  return Boolean(
+    auth &&
+    auth.baseUrl === baseUrl &&
+    (!email || auth.email === email) &&
+    typeof auth.sessionCookie === "string" &&
+    typeof auth.accessToken === "string",
+  );
+}
+
+async function fetchMe(auth) {
+  const response = await fetch(`${auth.baseUrl}/api/backoffice/me`, {
+    headers: { authorization: `Bearer ${auth.accessToken}` },
   });
   return { response, body: await readJsonResponse(response) };
-};
+}
 
-const refreshAuth = async (auth) => {
-  if (!auth?.refreshToken) {
-    return null;
-  }
-
-  const response = await fetch(`${auth.baseUrl}/api/auth/token/refresh`, {
+async function exchangeBackofficeToken(auth, organizationId) {
+  const response = await fetch(`${auth.baseUrl}/api/auth/backoffice-token`, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${auth.refreshToken}`,
+      cookie: auth.sessionCookie,
+      origin: auth.baseUrl,
       "content-type": "application/json",
     },
-    body: "{}",
+    body: JSON.stringify({ organizationId }),
   });
   if (!response.ok) {
-    return null;
+    const body = await readJsonResponse(response);
+    const detail = typeof body === "string" ? body : (body?.message ?? JSON.stringify(body));
+    throw new BackofficeTokenExchangeError(
+      response.status,
+      `Backoffice token exchange failed (${response.status}): ${detail}`,
+    );
   }
 
   const body = await readJsonResponse(response);
-  if (!body?.auth?.token) {
-    throw new Error("Refresh did not return auth.token.");
+  const accessCookie =
+    readSetCookie(response, "fragno-backoffice.access_token") ??
+    readSetCookie(response, "__Host-fragno-backoffice.access_token");
+  if (!accessCookie) {
+    throw new Error("Backoffice token exchange did not set an access token cookie.");
   }
 
   const next = {
     ...auth,
-    token: body.auth.token,
-    refreshToken: body.auth.refreshToken ?? auth.refreshToken,
-    expiresAt: body.auth.expiresAt ?? null,
-    refreshExpiresAt: body.auth.refreshExpiresAt ?? auth.refreshExpiresAt ?? null,
+    accessToken: accessCookie.slice(accessCookie.indexOf("=") + 1),
+    organizationId: body.organizationId,
+    expiresAt: body.expiresAt,
   };
   await writeAuth(next);
   return next;
-};
+}
 
-const signIn = async ({ baseUrl, email, password }) => {
-  const response = await fetch(`${baseUrl}/api/auth/sign-in`, {
+async function signIn({ baseUrl, email, password }) {
+  const response = await fetch(`${baseUrl}/api/auth/sign-in/email`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      origin: baseUrl,
+      "content-type": "application/json",
+    },
     body: JSON.stringify({ email, password }),
   });
-  const body = await assertOk(response, "Sign-in");
-  if (!body?.auth?.token || !body?.auth?.refreshToken) {
-    throw new Error("Sign-in did not return auth.token and auth.refreshToken.");
+  await assertOk(response.clone(), "Sign-in");
+
+  const sessionCookie =
+    readSetCookie(response, "better-auth.session_token") ??
+    readSetCookie(response, "__Secure-better-auth.session_token");
+  if (!sessionCookie) {
+    throw new Error("Better Auth sign-in did not set a session cookie.");
   }
 
   const auth = {
     baseUrl,
-    token: body.auth.token,
-    refreshToken: body.auth.refreshToken,
-    expiresAt: body.auth.expiresAt ?? null,
-    refreshExpiresAt: body.auth.refreshExpiresAt ?? null,
+    email,
+    sessionCookie,
+    accessToken: "",
+    organizationId: null,
+    expiresAt: null,
   };
-  await writeAuth(auth);
-  return auth;
-};
+  return await exchangeBackofficeToken(auth, null);
+}
 
-const getLoginSummary = ({ baseUrl, me }) => ({
-  baseUrl,
-  user: me.user,
-  active: me.activeOrganization?.organization?.id ?? null,
-  organizations: (me.organizations ?? []).map((entry) => entry.organization),
-});
+function isMeBody(body) {
+  return Boolean(
+    body &&
+    typeof body === "object" &&
+    body.user &&
+    typeof body.user === "object" &&
+    typeof body.user.id === "string" &&
+    Array.isArray(body.organizations),
+  );
+}
 
-const ensureSession = async ({
-  email = defaultEmail,
-  password = defaultPassword,
+async function ensureSession({
+  baseUrl: requestedBaseUrl = configuredBaseUrl,
+  email = null,
+  password = null,
   forceSignIn = false,
-} = {}) => {
-  const baseUrl = await probe({ print: false });
+} = {}) {
+  const baseUrl = await probe({ print: false, baseUrl: requestedBaseUrl });
   const existingAuth = await readAuth();
-  const authAtCurrentServer = existingAuth ? { ...existingAuth, baseUrl } : null;
+  const selectedEmail = email ?? existingAuth?.email ?? defaultEmail;
 
-  if (authAtCurrentServer && !forceSignIn) {
-    const current = await fetchMe(authAtCurrentServer);
+  if (!forceSignIn && isCurrentAuthState(existingAuth, baseUrl, selectedEmail)) {
+    const current = await fetchMe(existingAuth);
     if (current.response.ok && isMeBody(current.body)) {
-      if (existingAuth?.baseUrl !== baseUrl) {
-        await writeAuth(authAtCurrentServer);
-      }
-      return { auth: authAtCurrentServer, me: current.body };
+      return { auth: existingAuth, me: current.body };
     }
 
-    const refreshedAuth = await refreshAuth(authAtCurrentServer);
-    if (refreshedAuth) {
-      const refreshed = await fetchMe(refreshedAuth);
+    try {
+      const exchanged = await exchangeBackofficeToken(existingAuth, existingAuth.organizationId);
+      const refreshed = await fetchMe(exchanged);
       if (refreshed.response.ok && isMeBody(refreshed.body)) {
-        return { auth: refreshedAuth, me: refreshed.body };
+        return { auth: exchanged, me: refreshed.body };
+      }
+    } catch (error) {
+      if (!(error instanceof BackofficeTokenExchangeError) || error.status !== 401) {
+        throw error;
       }
     }
   }
 
-  const auth = await signIn({ baseUrl, email, password });
+  const selectedPassword = password ?? (selectedEmail === defaultEmail ? defaultPassword : null);
+  if (!selectedPassword) {
+    throw new Error(
+      `The stored Better Auth session for ${selectedEmail} expired. Run codemode.mjs login --email ${selectedEmail} --password PASSWORD again.`,
+    );
+  }
+
+  const auth = await signIn({ baseUrl, email: selectedEmail, password: selectedPassword });
   const signedIn = await fetchMe(auth);
   if (!signedIn.response.ok || !isMeBody(signedIn.body)) {
-    throw new Error("Signed in, but /api/auth/me did not return the authenticated user.");
+    throw new Error("Signed in, but /api/backoffice/me did not return the authenticated user.");
   }
   return { auth, me: signedIn.body };
-};
+}
 
-const login = async (args) => {
+function getLoginSummary({ baseUrl, me }) {
+  return {
+    baseUrl,
+    user: me.user,
+    active: me.activeOrganizationId,
+    organizations: me.organizations.map((entry) => entry.organization),
+  };
+}
+
+async function login(args) {
   const email = getFlag(args, "--email", defaultEmail);
   const password = getFlag(args, "--password", defaultPassword);
+  const baseUrl = getFlag(args, "--base-url", configuredBaseUrl);
   if (args.length > 0) {
     usage();
   }
 
   const { auth, me } = await ensureSession({
+    baseUrl,
     email,
     password,
     forceSignIn: email !== defaultEmail || password !== defaultPassword,
   });
   console.error(`Stored auth state in ${authFile}`);
   console.log(JSON.stringify(getLoginSummary({ baseUrl: auth.baseUrl, me }), null, 2));
-};
+}
 
-const authedFetch = async (path, options = {}) => {
-  const { retryOnStatuses = [401], ...fetchOptions } = options;
-  const { auth } = await ensureSession();
-  const response = await fetch(`${auth.baseUrl}${path}`, {
-    ...fetchOptions,
-    headers: {
-      authorization: `Bearer ${auth.token}`,
-      ...fetchOptions.headers,
-    },
-  });
-  if (!retryOnStatuses.includes(response.status) || response.status !== 401) {
+function requireAccessibleOrganization(me, organizationId) {
+  const organization = me.organizations.find((entry) => entry.organization.id === organizationId);
+  if (!organization) {
+    throw new Error(`Organization ${organizationId} is not available to the authenticated user.`);
+  }
+  return organization.organization;
+}
+
+async function authedFetch(path, organizationId, options = {}) {
+  const { baseUrl, ...fetchOptions } = options;
+  const { auth: currentAuth, me } = await ensureSession({ baseUrl });
+  requireAccessibleOrganization(me, organizationId);
+
+  const auth =
+    currentAuth.organizationId === organizationId
+      ? currentAuth
+      : await exchangeBackofficeToken(currentAuth, organizationId);
+  const fetchWithAuth = (credentials) =>
+    fetch(`${credentials.baseUrl}${path}`, {
+      ...fetchOptions,
+      headers: {
+        authorization: `Bearer ${credentials.accessToken}`,
+        ...fetchOptions.headers,
+      },
+    });
+
+  const response = await fetchWithAuth(auth);
+  if (response.status !== 401) {
     return response;
   }
 
-  const { auth: nextAuth } = await ensureSession({ forceSignIn: true });
-  return await fetch(`${nextAuth.baseUrl}${path}`, {
-    ...fetchOptions,
-    headers: {
-      authorization: `Bearer ${nextAuth.token}`,
-      ...fetchOptions.headers,
-    },
-  });
-};
+  try {
+    const refreshed = await exchangeBackofficeToken(auth, organizationId);
+    return await fetchWithAuth(refreshed);
+  } catch (error) {
+    if (!(error instanceof BackofficeTokenExchangeError) || error.status !== 401) {
+      throw error;
+    }
+  }
 
-const resolveDefaultOrgId = (me) => {
-  const orgId = me.organizations?.[0]?.organization?.id;
+  if (auth.email !== defaultEmail) {
+    throw new Error(
+      `The stored Better Auth session for ${auth.email} expired. Run codemode.mjs login --email ${auth.email} --password PASSWORD again.`,
+    );
+  }
+
+  const signedIn = await signIn({
+    baseUrl: auth.baseUrl,
+    email: defaultEmail,
+    password: defaultPassword,
+  });
+  const scoped =
+    signedIn.organizationId === organizationId
+      ? signedIn
+      : await exchangeBackofficeToken(signedIn, organizationId);
+  return await fetchWithAuth(scoped);
+}
+
+function resolveDefaultOrgId(me) {
+  const orgId = me.activeOrganizationId ?? me.organizations[0]?.organization?.id;
   if (!orgId) {
     throw new Error("The authenticated user has no organizations.");
   }
   return orgId;
-};
+}
 
-const fetchSystem = async (args) => {
-  const session = await ensureSession();
+function orgCodemodePath(organizationId, suffix = "") {
+  return `/__dev/codemode/org/${encodeURIComponent(organizationId)}${suffix}`;
+}
+
+async function doctor(args) {
+  const baseUrl = getFlag(args, "--base-url", configuredBaseUrl);
+  if (args.length > 0) {
+    usage();
+  }
+
+  const { auth, me } = await ensureSession({ baseUrl });
+  const organizationId = resolveDefaultOrgId(me);
+  const systemResponse = await authedFetch(
+    orgCodemodePath(organizationId, "/SYSTEM.md"),
+    organizationId,
+    { baseUrl },
+  );
+  if (!systemResponse.ok) {
+    await assertOk(systemResponse, "Fetch SYSTEM.md");
+  }
+
+  const executionResponse = await authedFetch(orgCodemodePath(organizationId), organizationId, {
+    baseUrl,
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      code: 'async () => ({ rootEntries: await state.readdir({ path: "/" }) })',
+    }),
+  });
+  const execution = await assertOk(executionResponse, "Read-only codemode execution");
+
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        baseUrl: auth.baseUrl,
+        user: me.user.email,
+        organizationId,
+        systemPrompt: "available",
+        execution: execution.result,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+async function fetchSystem(args) {
+  const baseUrl = getFlag(args, "--base-url", configuredBaseUrl);
+  const session = await ensureSession({ baseUrl });
   const orgId = args.shift() ?? resolveDefaultOrgId(session.me);
   const outputFile = args.shift() ?? "/tmp/backoffice-codemode-SYSTEM.md";
   if (args.length > 0) {
     usage();
   }
 
-  const response = await authedFetch(`/__dev/codemode/${encodeURIComponent(orgId)}/SYSTEM.md`, {
-    retryOnStatuses: [401, 403],
-  });
+  const response = await authedFetch(orgCodemodePath(orgId, "/SYSTEM.md"), orgId, { baseUrl });
   if (!response.ok) {
     await assertOk(response, "Fetch SYSTEM.md");
   }
   await writeFile(outputFile, await response.text());
   console.log(outputFile);
-};
+}
 
-const execCodemode = async (args) => {
+async function execCodemode(args) {
+  const baseUrl = getFlag(args, "--base-url", configuredBaseUrl);
   const orgId = args.shift();
   if (!orgId) {
     usage();
@@ -369,16 +501,17 @@ const execCodemode = async (args) => {
     body.timeout = Number(timeoutValue);
   }
 
-  const response = await authedFetch(`/__dev/codemode/${encodeURIComponent(orgId)}`, {
+  const response = await authedFetch(orgCodemodePath(orgId), orgId, {
+    baseUrl,
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
-    retryOnStatuses: [401, 403],
   });
   console.log(JSON.stringify(await assertOk(response, "Codemode execution"), null, 2));
-};
+}
 
-const execBash = async (args) => {
+async function execBash(args) {
+  const baseUrl = getFlag(args, "--base-url", configuredBaseUrl);
   const orgId = args.shift();
   if (!orgId) {
     usage();
@@ -408,21 +541,27 @@ const execBash = async (args) => {
     body.timeout = Number(timeoutValue);
   }
 
-  const response = await authedFetch(`/__dev/codemode/${encodeURIComponent(orgId)}/bash`, {
+  const response = await authedFetch(orgCodemodePath(orgId, "/bash"), orgId, {
+    baseUrl,
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
-    retryOnStatuses: [401, 403],
   });
   console.log(JSON.stringify(await assertOk(response, "Bash execution"), null, 2));
-};
+}
 
 const [command, ...args] = process.argv.slice(2);
 try {
   if (command === "login") {
     await login(args);
   } else if (command === "probe") {
-    await probe();
+    const baseUrl = getFlag(args, "--base-url", configuredBaseUrl);
+    if (args.length > 0) {
+      usage();
+    }
+    await probe({ baseUrl });
+  } else if (command === "doctor") {
+    await doctor(args);
   } else if (command === "system") {
     await fetchSystem(args);
   } else if (command === "exec") {

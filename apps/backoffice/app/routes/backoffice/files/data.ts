@@ -8,7 +8,7 @@ import type {
 } from "@/components/backoffice/files-explorer";
 import type { FilesExplorerSearchGroup } from "@/components/backoffice/files-explorer/view";
 import type { FileTreeEntry } from "@/file-collection/file-collection";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
 import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
@@ -57,7 +57,7 @@ export async function resolveAuthorizedFilesRouteScope({
   url: URL;
 }): Promise<BackofficeContextScope | Response> {
   const returnTo = `${url.pathname}${url.search}`;
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(new URL(buildBackofficeLoginPath(returnTo), request.url), 302);
   }

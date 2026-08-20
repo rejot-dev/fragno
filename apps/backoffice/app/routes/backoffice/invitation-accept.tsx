@@ -1,11 +1,13 @@
 import { FragnoClientApiError } from "@fragno-dev/core/client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
+import { buildBackofficeOrganizationSwitchPath } from "@/routes/backoffice/auth-navigation";
 
-import { Notice, type ActionNotice, getErrorMessage } from "./organisation-shared";
+import { Notice } from "./organisation-shared";
+import { type ActionNotice, getErrorMessage } from "./organisation-utils";
 
 export function meta() {
   return [{ title: "Accept Invitation" }];
@@ -55,6 +57,12 @@ export default function BackofficeInvitationAccept() {
     "idle",
   );
   const [acceptedOrganizationId, setAcceptedOrganizationId] = useState<string | null>(null);
+  const respondInvitationRef = useRef(respondInvitation);
+  const acceptanceRequestKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    respondInvitationRef.current = respondInvitation;
+  }, [respondInvitation]);
 
   const invitationEntry = useMemo(() => {
     if (!invitationId) {
@@ -66,9 +74,6 @@ export default function BackofficeInvitationAccept() {
   }, [invitationId, userInvitationsData?.invitations]);
 
   useEffect(() => {
-    if (status !== "idle" && status !== "checking") {
-      return undefined;
-    }
     if (!invitationId) {
       setStatus("error");
       setNotice({ type: "error", message: "Invitation ID is missing." });
@@ -80,10 +85,13 @@ export default function BackofficeInvitationAccept() {
       return undefined;
     }
 
+    const requestKey = `${invitationId}:${token}`;
+    if (acceptanceRequestKey.current === requestKey) {
+      return undefined;
+    }
+
     if (userInvitationsLoading) {
-      if (status !== "checking") {
-        setStatus("checking");
-      }
+      setStatus("checking");
       return undefined;
     }
 
@@ -112,51 +120,44 @@ export default function BackofficeInvitationAccept() {
       return undefined;
     }
 
-    let isActive = true;
+    acceptanceRequestKey.current = requestKey;
+    let active = true;
+    setStatus("accepting");
+    setNotice(null);
 
-    const acceptInvitation = async () => {
-      setStatus("accepting");
-      setNotice(null);
-      try {
-        const response = await respondInvitation({
-          path: { invitationId },
-          body: { action: "accept", token },
-        });
-        if (!isActive) {
-          return;
-        }
-        const invitation =
-          response && typeof response === "object" && "invitation" in response
-            ? (response as { invitation?: { organizationId?: string } }).invitation
-            : null;
-        if (invitation?.organizationId) {
-          setAcceptedOrganizationId(invitation.organizationId);
-        }
-        setStatus("success");
-        setNotice({ type: "success", message: "Invitation accepted." });
-      } catch (error) {
-        if (!isActive) {
-          return;
-        }
-        setStatus("error");
-        setNotice({ type: "error", message: getInvitationErrorMessage(error) });
-      }
-    };
-
-    void acceptInvitation();
+    void respondInvitationRef
+      .current({
+        path: { invitationId },
+        body: { action: "accept", token },
+      })
+      .then(
+        (response) => {
+          if (!active) {
+            return;
+          }
+          const invitation =
+            response && typeof response === "object" && "invitation" in response
+              ? (response as { invitation?: { organizationId?: string } }).invitation
+              : null;
+          if (invitation?.organizationId) {
+            setAcceptedOrganizationId(invitation.organizationId);
+          }
+          setStatus("success");
+          setNotice({ type: "success", message: "Invitation accepted." });
+        },
+        (error: unknown) => {
+          if (!active) {
+            return;
+          }
+          setStatus("error");
+          setNotice({ type: "error", message: getInvitationErrorMessage(error) });
+        },
+      );
 
     return () => {
-      isActive = false;
+      active = false;
     };
-  }, [
-    invitationEntry,
-    invitationId,
-    respondInvitation,
-    status,
-    token,
-    userInvitationsError,
-    userInvitationsLoading,
-  ]);
+  }, [invitationEntry, invitationId, token, userInvitationsError, userInvitationsLoading]);
 
   return (
     <div className="space-y-4">
@@ -186,7 +187,10 @@ export default function BackofficeInvitationAccept() {
         {status === "success" && acceptedOrganizationId ? (
           <div className="flex flex-wrap gap-2">
             <Link
-              to={`/backoffice/organisations/${acceptedOrganizationId}`}
+              to={buildBackofficeOrganizationSwitchPath(
+                acceptedOrganizationId,
+                `/backoffice/organisations/${acceptedOrganizationId}`,
+              )}
               className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
             >
               Open organisation

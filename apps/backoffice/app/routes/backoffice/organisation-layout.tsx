@@ -1,6 +1,6 @@
 import { Outlet } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/organisation-layout";
 import { buildBackofficeLoginPath } from "./auth-navigation";
@@ -8,8 +8,8 @@ import {
   OrganisationErrorBoundary,
   OrganisationHeader,
   OrganisationTabs,
-  type OrganisationTab,
 } from "./organisation-shared";
+import type { OrganisationTab } from "./organisation-utils";
 import { throwOrganisationNotFound } from "./route-errors";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
@@ -17,7 +17,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),

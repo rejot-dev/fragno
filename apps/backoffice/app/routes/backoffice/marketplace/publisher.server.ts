@@ -1,4 +1,4 @@
-import type { AuthMeData } from "@/fragno/auth/auth-client";
+import type { BackofficeMeData } from "@/fragno/auth/auth-client";
 import type { MarketplaceOwner } from "@/fragno/marketplace/contracts";
 
 type MarketplaceOrganizationOwner = MarketplaceOwner & {
@@ -6,7 +6,7 @@ type MarketplaceOrganizationOwner = MarketplaceOwner & {
 };
 
 export const marketplaceOwnerForOrganization = (
-  me: AuthMeData,
+  me: BackofficeMeData,
   organizationId: string,
 ): MarketplaceOrganizationOwner | null => {
   const organization = me.organizations.find(

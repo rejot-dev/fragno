@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const { authorizeAuthPrincipalMock, requireAuthPrincipalMock } = vi.hoisted(() => ({
-  authorizeAuthPrincipalMock: vi.fn(),
-  requireAuthPrincipalMock: vi.fn(),
+const { authorizeBackofficePrincipalMock, requireBackofficePrincipalMock } = vi.hoisted(() => ({
+  authorizeBackofficePrincipalMock: vi.fn(),
+  requireBackofficePrincipalMock: vi.fn(),
 }));
 
-vi.mock("./access-token.server", () => ({
-  authorizeAuthPrincipal: authorizeAuthPrincipalMock,
-  requireAuthPrincipal: requireAuthPrincipalMock,
+vi.mock("./request-auth.server", () => ({
+  authorizeBackofficePrincipal: authorizeBackofficePrincipalMock,
+  requireBackofficePrincipal: requireBackofficePrincipalMock,
 }));
 
 import {
@@ -17,27 +17,19 @@ import {
 
 describe("requireBackofficeContext", () => {
   beforeEach(() => {
-    authorizeAuthPrincipalMock.mockReset();
-    requireAuthPrincipalMock.mockReset();
+    authorizeBackofficePrincipalMock.mockReset();
+    requireBackofficePrincipalMock.mockReset();
   });
 
   test("copies verified access-token authority into trusted execution context", async () => {
     const expiresAt = new Date("2099-01-01T00:00:00.000Z");
-    requireAuthPrincipalMock.mockResolvedValue({
+    requireBackofficePrincipalMock.mockResolvedValue({
       user: {
         id: "user-1",
         email: "user@example.com",
         role: "admin",
       },
-      auth: {
-        strategy: "session",
-        credentialKind: "jwt",
-        credentialSource: "cookie",
-        credentialId: "session-1",
-        expiresAt,
-        activeOrganizationId: "org-1",
-        sessionContext: { organizationIds: ["org-1", "org-2"] },
-      },
+      auth: { transport: "cookie", expiresAt, organization: { id: "org-1", roles: ["owner"] } },
     });
 
     await expect(
@@ -48,25 +40,25 @@ describe("requireBackofficeContext", () => {
     ).resolves.toMatchObject({
       scope: { kind: "org", orgId: "org-1" },
       userAuthority: {
-        kind: "verified-access-token",
+        kind: "verified-request-authority",
         userId: "user-1",
         role: "admin",
-        organizationIds: ["org-1", "org-2"],
+        organizationId: "org-1",
         expiresAtEpochMs: expiresAt.getTime(),
       },
     });
   });
 
   test("preserves forbidden authorization responses", async () => {
-    authorizeAuthPrincipalMock.mockResolvedValue({
+    authorizeBackofficePrincipalMock.mockResolvedValue({
       ok: true,
       headers: [],
       principal: {
         user: { id: "user-1", role: "user" },
         auth: {
-          credentialKind: "jwt",
+          transport: "cookie",
           expiresAt: new Date("2099-01-01T00:00:00.000Z"),
-          sessionContext: { organizationIds: ["org-1"] },
+          organization: { id: "org-1", roles: ["member"] },
         },
       },
     });
@@ -82,15 +74,15 @@ describe("requireBackofficeContext", () => {
 
   test("returns refreshed authentication headers with the scoped execution", async () => {
     const expiresAt = new Date("2099-01-01T00:00:00.000Z");
-    authorizeAuthPrincipalMock.mockResolvedValue({
+    authorizeBackofficePrincipalMock.mockResolvedValue({
       ok: true,
       headers: [["Set-Cookie", "access-token=refreshed"]],
       principal: {
         user: { id: "user-1", role: "user" },
         auth: {
-          credentialKind: "jwt",
+          transport: "cookie",
           expiresAt,
-          sessionContext: { organizationIds: ["org-1"] },
+          organization: { id: "org-1", roles: ["member"] },
         },
       },
     });
@@ -108,12 +100,12 @@ describe("requireBackofficeContext", () => {
   });
 
   test("does not let an administrator enter another user's private scope", async () => {
-    requireAuthPrincipalMock.mockResolvedValue({
+    requireBackofficePrincipalMock.mockResolvedValue({
       user: { id: "admin-1", email: "admin@example.com", role: "admin" },
       auth: {
-        credentialKind: "jwt",
+        transport: "cookie",
         expiresAt: new Date("2099-01-01T00:00:00.000Z"),
-        sessionContext: { organizationIds: [] },
+        organization: null,
       },
     });
 

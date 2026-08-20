@@ -1,5 +1,4 @@
-import type { Role } from "@fragno-dev/auth";
-
+import type { Role } from "@/fragno/auth/contracts";
 import type { AutomationEntityRef } from "@/fragno/automation/actors";
 
 import type { BackofficeContextScope } from "./context";
@@ -13,7 +12,6 @@ const USER_AUTHORITY_ROLE_GRANTS = {
   "system-administrator": allBackofficePermissionRequirements,
   "user-owner": [
     BACKOFFICE_PERMISSION.capabilities.read,
-    BACKOFFICE_PERMISSION.workflow.executeCode,
     BACKOFFICE_PERMISSION.events.emit,
     BACKOFFICE_PERMISSION.events.manage,
     BACKOFFICE_PERMISSION.events.read,
@@ -34,7 +32,6 @@ const USER_AUTHORITY_ROLE_GRANTS = {
   ],
   "organization-member": [
     BACKOFFICE_PERMISSION.capabilities.read,
-    BACKOFFICE_PERMISSION.workflow.executeCode,
     BACKOFFICE_PERMISSION.connections.manage,
     BACKOFFICE_PERMISSION.connections.read,
     BACKOFFICE_PERMISSION.events.emit,
@@ -141,10 +138,11 @@ export const resolveBackofficeUserAuthorityRole = (
   authority: Readonly<{
     userId: string;
     role: Role;
-    organizationIds: readonly string[];
+    organizationId: string | null;
   }>,
   scope: BackofficeContextScope,
 ): BackofficeUserAuthorityRole | null => {
+  // A system administrator may administer shared scopes, but not another user's private scope.
   if (scope.kind === "user") {
     if (scope.userId !== authority.userId) {
       return null;
@@ -157,7 +155,7 @@ export const resolveBackofficeUserAuthorityRole = (
     return authority.role === "admin" ? "system-administrator" : null;
   }
 
-  if (!authority.organizationIds.includes(scope.orgId)) {
+  if (authority.organizationId !== scope.orgId) {
     return null;
   }
 

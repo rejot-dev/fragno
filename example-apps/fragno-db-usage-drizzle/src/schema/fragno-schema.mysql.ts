@@ -511,6 +511,7 @@ export const workflow_instance_workflows = mysqlTable("workflow_instance_workflo
   remoteWorkflowName: varchar("remoteWorkflowName", { length: 191 }),
   instanceId: varchar("instanceId", { length: 191 }).notNull(),
   status: varchar("status", { length: 191 }).notNull(),
+  runGeneration: int("runGeneration").notNull().default(1),
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   updatedAt: datetime("updatedAt").notNull().default(sql`(now())`),
   startedAt: datetime("startedAt"),

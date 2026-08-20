@@ -14,7 +14,7 @@ import {
   backofficeScopeSinglePathSegment,
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   CLOUDFLARE_SANDBOX_PROVIDER,
   type SandboxCommandResult,
@@ -782,7 +782,7 @@ async function requireSandboxScopeAccess({
   params,
   context,
 }: Pick<Route.LoaderArgs, "request" | "params" | "context">): Promise<BackofficeRoutableScope> {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     throw new Response("Unauthorized", { status: 401 });
   }

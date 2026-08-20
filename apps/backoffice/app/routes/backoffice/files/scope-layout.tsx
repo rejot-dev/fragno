@@ -1,6 +1,6 @@
 import { Outlet, redirect } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import { lookupAutomationProject } from "../automations/data.server";
@@ -15,7 +15,7 @@ import { FilesErrorBoundary } from "./shared";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const returnTo = `${url.pathname}${url.search}`;
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     throw redirect(buildBackofficeLoginPath(returnTo));
   }

@@ -1,157 +1,172 @@
 ---
 name: backoffice-codemode
 description:
-  Interact with the local Fragno Backoffice dev system through its dev codemode routes. Use when
-  debugging or inspecting the running backoffice app, automation/event/workflow/Pi/runtime-tool
-  behavior, org-scoped filesystems, or when asked to run codemode scripts in the context of the
-  backoffice runtime.
+  Use the local Backoffice dev runtime for authenticated codemode, filesystem, Pi session, workflow,
+  event, and runtime-provider inspection.
 disable-model-invocation: true
 ---
 
 # Backoffice Codemode
 
-Use the running Backoffice dev server as the source of truth for runtime behavior. The server is
-usually `http://localhost:5173`, but may be on another Vite port such as `5174`.
+Treat the running Backoffice dev server as the source of truth. Use `scripts/codemode.mjs`; it
+handles Better Auth, organization-scoped JWTs, scoped dev routes, and local auth state in the
+gitignored `auth.json`.
 
-Use `scripts/codemode.mjs` for auth, org discovery, and codemode calls. It stores local JWT state in
-`.agents/skills/backoffice-codemode/auth.json`; this file is gitignored. Default dev credentials are
-`wilco@rejot.dev` / `wachtwoord`.
+Default credentials are `wilco@rejot.dev` / `wachtwoord`. Set `BACKOFFICE_URL` or pass
+`--base-url URL` when more than one server is running.
 
 ## Required workflow
 
-1. Run the canonical bootstrap command.
+1. **Bootstrap.**
 
    ```bash
    .agents/skills/backoffice-codemode/scripts/codemode.mjs login
    ```
 
-   `login` always probes the running Backoffice server, warns if multiple matching dev servers are
-   running, refreshes or signs in with the default dev credentials, stores auth state, and prints
-   the authenticated user plus accessible orgs. Prefer `active`; otherwise use the only org or ask
-   the user which org id to use. Never run codemode for an org not listed here.
+   The command probes `/api/auth/ok`, restores or creates a Better Auth session, exchanges it for a
+   Backoffice JWT, and prints the authenticated user and accessible organizations. Prefer `active`;
+   otherwise use the only organization or ask the user. Proceed only with an organization printed by
+   `login`.
 
-   `probe` exists only as a low-level debug command to print the detected base URL.
-
-2. Fetch and read the org-scoped rendered codemode system prompt.
+   For an explicit server or account:
 
    ```bash
-   .agents/skills/backoffice-codemode/scripts/codemode.mjs system "$ORG_ID" /tmp/backoffice-codemode-SYSTEM.md
+   .agents/skills/backoffice-codemode/scripts/codemode.mjs login \
+     --base-url http://localhost:5173 \
+     --email wilco@rejot.dev \
+     --password wachtwoord
    ```
 
-   If `$ORG_ID` is omitted, `system` uses the first organization returned for the logged-in user.
-   Then read `/tmp/backoffice-codemode-SYSTEM.md`. Treat it as authoritative for available
-   `state.*`, workflow helpers, and runtime tool providers. The route reads the org's existing
-   `/workspace/codemode/system.d.ts` index and includes the generated state and scoped context
-   declarations inline.
+   Completion: the output names the intended server, user, and organization.
 
-3. Run codemode through the authenticated dev route when you need to execute in the Backoffice
-   runtime. The helper auto-authenticates if needed.
+2. **Load runtime declarations.**
 
    ```bash
-   .agents/skills/backoffice-codemode/scripts/codemode.mjs exec "$ORG_ID" 'async () => { return await state.readdir("/"); }'
+   .agents/skills/backoffice-codemode/scripts/codemode.mjs system \
+     "$ORG_ID" /tmp/backoffice-codemode-SYSTEM.md
    ```
 
-   For larger snippets, prefer a temp file or stdin:
+   Read `/tmp/backoffice-codemode-SYSTEM.md`. Treat it as authoritative. Before using a provider,
+   read its referenced declaration with `state.readFile({ path: ... })`; provider names and input
+   shapes can change.
+
+   Completion: the selected provider and method exist in the rendered declarations.
+
+3. **Execute one inspectable operation.**
+
+   ```bash
+   .agents/skills/backoffice-codemode/scripts/codemode.mjs exec "$ORG_ID" \
+     'async () => ({ entries: await state.readdir({ path: "/" }) })'
+   ```
+
+   For larger snippets, use a temporary file or stdin:
 
    ```bash
    .agents/skills/backoffice-codemode/scripts/codemode.mjs exec "$ORG_ID" --file /tmp/snippet.js
-   printf '%s\n' 'async () => await state.readdir("/")' \
+   printf '%s\n' 'async () => await state.readdir({ path: "/" })' \
      | .agents/skills/backoffice-codemode/scripts/codemode.mjs exec "$ORG_ID" -
    ```
 
-   The body supports `code` and optional `timeout`. It intentionally does not mount
-   `/context/event.json`; it mirrors the Pi `execCodeMode` tool by using the org filesystem plus
-   route-backed domain tools.
+   Return JSON-serializable observations and tool results. Completion: the executed result directly
+   supports the conclusion reported to the user.
 
-## Relevant code
+## Diagnostics
 
-Inspect code when runtime behavior is unclear. Relevant areas:
-
-- `apps/backoffice/app/fragno/runtime-tools/*` — runtime tool definitions/providers.
-- `apps/backoffice/app/fragno/automation/*` — automation ingestion, bindings, and execution.
-- `apps/backoffice/app/fragno/pi/*` — Pi `execCodeMode` behavior and harness prompts.
-- `apps/backoffice/app/fragno/codemode/workflow-*` and
-  `runtime-tools/families/automations-workflow*` — workflow codemode behavior.
-- `apps/backoffice/app/fragno/codemode/*` — dynamic-worker execution and filesystem state.
-
-## Safety and expectations
-
-- These routes are dev-only, localhost-only.
-- Dynamic Worker code has no direct outbound network by default. Use exposed domain tools for
-  Backoffice effects.
-- Prefer small, inspectable codemode snippets. Return JSON-serializable objects with observations,
-  file paths changed, and tool call results.
-- For filesystem edits, prefer `state.planEdits()` then `state.applyEditPlan()`.
-
-## Bash route
-
-Use the dev bash route when a dashboard-style shell command is enough and codemode is unnecessary:
+Run the read-only end-to-end check when authentication, routing, or codemode execution is unclear:
 
 ```bash
-.agents/skills/backoffice-codemode/scripts/codemode.mjs bash "$ORG_ID" 'ls /workspace'
-.agents/skills/backoffice-codemode/scripts/codemode.mjs bash "$ORG_ID" --cwd /workspace 'find . -maxdepth 2'
-printf '%s\n' 'pwd && ls' | .agents/skills/backoffice-codemode/scripts/codemode.mjs bash "$ORG_ID" -
+.agents/skills/backoffice-codemode/scripts/codemode.mjs doctor \
+  --base-url http://localhost:5173
 ```
 
-It calls `POST /__dev/codemode/:orgId/bash`, runs against the org filesystem with the same
-runtime-tool bash adapter as the dashboard terminal, and returns `stdout`, `stderr`, combined
-`output`, `exitCode`, `nextCwd`, and runtime `commandCalls`.
+It verifies server discovery, Better Auth restoration, JWT exchange, `/api/backoffice/me`, SYSTEM
+prompt retrieval, and a read-only codemode call.
 
-## Debugging examples
+`probe` only identifies the selected server:
 
-List root mounts:
+```bash
+.agents/skills/backoffice-codemode/scripts/codemode.mjs probe --base-url http://localhost:5173
+```
+
+## Provider selection
+
+Read the provider declaration before calling it:
+
+```js
+async () => ({
+  pi: await state.readFile({ path: "/static/codemode/providers/pi.d.ts" }),
+  workflow: await state.readFile({ path: "/static/codemode/providers/workflow.d.ts" }),
+});
+```
+
+- **Pi chat sessions**, including URLs containing `interactive-chat-workflow`: use `pi.getSession`.
+- **Saved durable workflow instances**: use `workflow.getInstance` and `workflow.getHistory`.
+- **Filesystem inspection**: use the declared `state` object-input methods such as `readFile`,
+  `readdir`, `glob`, and `searchFiles`.
+
+Inspect a Pi session:
+
+```js
+async () =>
+  await pi.getSession({
+    sessionId: "paste-session-id-here",
+    events: true,
+    trace: true,
+    turns: true,
+  });
+```
+
+Inspect a durable workflow instance:
 
 ```js
 async () => {
-  return await state.readdir("/");
+  const instanceId = "paste-instance-id-here";
+  const [instance, history] = await Promise.all([
+    workflow.getInstance({ instanceId }),
+    workflow.getHistory({ instanceId }),
+  ]);
+  return { instance, history };
 };
+```
+
+List errored durable workflow instances:
+
+```js
+async () => await workflow.listInstances({ status: "errored", pageSize: 20 });
 ```
 
 Inspect automation files:
 
 ```js
-async () => {
-  const files = await state.find("/workspace/automations", { type: "file", maxDepth: 4 });
-  return files.map((file) => file.path);
-};
+async () => await state.glob({ pattern: "/workspace/automations/**" });
 ```
 
-Find errored workflow instances:
+## Bash route
 
-```js
-async () => {
-  const { workflows } = await workflow.listWorkflows({});
-  const results = [];
+Use bash for shell-shaped filesystem inspection:
 
-  for (const item of workflows) {
-    const errored = await workflow.listInstances({
-      workflowName: item.name,
-      status: "errored",
-      pageSize: 20,
-    });
-
-    results.push({ workflowName: item.name, instances: errored.instances });
-  }
-
-  return results.filter((entry) => entry.instances.length > 0);
-};
+```bash
+.agents/skills/backoffice-codemode/scripts/codemode.mjs bash "$ORG_ID" 'ls /workspace'
+.agents/skills/backoffice-codemode/scripts/codemode.mjs bash "$ORG_ID" \
+  --cwd /workspace 'find . -maxdepth 2'
 ```
 
-Inspect why a specific workflow instance failed:
+The helper calls the scope-aware `/__dev/codemode/org/:orgId/bash` route and returns output,
+`exitCode`, `nextCwd`, and runtime command calls.
 
-```js
-async () => {
-  const workflowName = "automation-codemode-script";
-  const instanceId = "paste-instance-id-here";
+## Safety
 
-  const instance = await workflow.getInstance({ workflowName, instanceId });
-  const history = await workflow.getHistory({ workflowName, instanceId });
+- Dev routes are localhost-only.
+- Use exposed providers for external effects; Dynamic Worker code has no direct outbound network.
+- Prefer small read-only snippets during diagnosis.
+- For filesystem changes, inspect first and use the currently declared atomic edit method, typically
+  `state.applyEdits`.
 
-  return {
-    status: instance.details.status,
-    error: instance.details.error,
-    meta: instance.meta,
-    failedSteps: history.steps.filter((step) => step.status === "errored"),
-  };
-};
-```
+## Code pointers
+
+Inspect implementation only when rendered runtime behavior is insufficient:
+
+- `apps/backoffice/app/fragno/runtime-tools/*`
+- `apps/backoffice/app/fragno/automation/*`
+- `apps/backoffice/app/fragno/pi/*`
+- `apps/backoffice/app/fragno/codemode/*`

@@ -1,6 +1,6 @@
 import type { RouterContextProvider } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { fetchPublishedMarketplaceArtifactFile } from "./artifact-files.server";
@@ -20,7 +20,7 @@ export async function loadMarketplaceArtifactFile({
   context,
   url,
 }: MarketplaceArtifactFileLoaderArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     throw new Response("Unauthorized", { status: 401 });
   }

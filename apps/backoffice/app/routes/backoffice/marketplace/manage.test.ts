@@ -1,20 +1,20 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
 const {
-  getAuthMeMock,
+  findBackofficeMeMock,
   addDraftVersionMock,
   archiveListingMock,
   publishVersionMock,
   updateListingMock,
 } = vi.hoisted(() => ({
-  getAuthMeMock: vi.fn(),
+  findBackofficeMeMock: vi.fn(),
   addDraftVersionMock: vi.fn(),
   archiveListingMock: vi.fn(),
   publishVersionMock: vi.fn(),
   updateListingMock: vi.fn(),
 }));
 
-vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
+vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
 
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 
@@ -70,12 +70,12 @@ const runAction = (formData: FormData) =>
   } as never);
 
 beforeEach(() => {
-  getAuthMeMock.mockReset();
+  findBackofficeMeMock.mockReset();
   addDraftVersionMock.mockReset();
   archiveListingMock.mockReset();
   publishVersionMock.mockReset();
   updateListingMock.mockReset();
-  getAuthMeMock.mockResolvedValue(authenticatedUser);
+  findBackofficeMeMock.mockResolvedValue(authenticatedUser);
 });
 
 describe("marketplace listing management action", () => {

@@ -35,7 +35,7 @@
   },
   "dependencies": {
     "@fragno-dev/db": "workspace:*",
-    "@tanstack/db-sqlite-persistence-core": "0.2.8",
+    "@tanstack/db-sqlite-persistence-core": "0.2.14",
     "superjson": "^2.2.1"
   },
   "devDependencies": {
@@ -44,9 +44,9 @@
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@journeyapps/wa-sqlite": "^1.4.1",
-    "@tanstack/browser-db-sqlite-persistence": "0.2.8",
-    "@tanstack/db": "0.6.16",
-    "@tanstack/node-db-sqlite-persistence": "0.2.8",
+    "@tanstack/browser-db-sqlite-persistence": "^0.2.14",
+    "@tanstack/db": "^0.8.1",
+    "@tanstack/node-db-sqlite-persistence": "^0.2.14",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.19.7",
     "@vitest/coverage-istanbul": "^4.1.0",
@@ -58,9 +58,9 @@
     "@fragno-dev/core": "^0.2.2",
     "@fragno-dev/test": "^2.0.0",
     "@journeyapps/wa-sqlite": "^1.4.1",
-    "@tanstack/browser-db-sqlite-persistence": "^0.2.8",
-    "@tanstack/db": "^0.6.16",
-    "@tanstack/node-db-sqlite-persistence": "^0.2.8",
+    "@tanstack/browser-db-sqlite-persistence": "^0.2.14",
+    "@tanstack/db": "^0.8.1",
+    "@tanstack/node-db-sqlite-persistence": "^0.2.14",
     "better-sqlite3": "^12.6.2"
   },
   "peerDependenciesMeta": {

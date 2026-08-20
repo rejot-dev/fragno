@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
-import type { AuthMeData } from "@/fragno/auth/auth-client";
+import { scheduleBackofficeTokenRefresh } from "@/fragno/auth/browser-auth.client";
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
 import { BackofficeClsDebugger } from "./cls-debugger";
 import { CurrentBackofficeProvider, type CurrentBackofficeContext } from "./current-context";
@@ -11,7 +12,8 @@ import { BackofficeTopBar } from "./top-bar";
 
 type BackofficeShellProps = {
   children: ReactNode;
-  me: AuthMeData | null;
+  me: BackofficeMeData | null;
+  accessTokenExpiresAt: string | null;
   currentContext: CurrentBackofficeContext | null;
   isLoading?: boolean;
 };
@@ -29,9 +31,23 @@ export function BackofficeShell(props: BackofficeShellProps) {
   );
 }
 
-function BackofficeShellFrame({ children, me, currentContext, isLoading }: BackofficeShellProps) {
+function BackofficeShellFrame({
+  children,
+  me,
+  accessTokenExpiresAt,
+  currentContext,
+  isLoading,
+}: BackofficeShellProps) {
   const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  useEffect(() => {
+    if (!accessTokenExpiresAt) {
+      return undefined;
+    }
+    return scheduleBackofficeTokenRefresh(accessTokenExpiresAt, () => {
+      window.location.replace("/backoffice/login");
+    });
+  }, [accessTokenExpiresAt]);
   useGlobalHotkey({
     id: "toggle-sidebar",
     key: "b",

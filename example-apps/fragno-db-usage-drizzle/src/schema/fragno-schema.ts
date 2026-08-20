@@ -519,6 +519,7 @@ export const workflow_instance_workflows = schema_workflows.table("workflow_inst
   remoteWorkflowName: varchar("remoteWorkflowName", { length: 191 }),
   instanceId: varchar("instanceId", { length: 191 }).notNull(),
   status: varchar("status", { length: 191 }).notNull(),
+  runGeneration: integer("runGeneration").notNull().default(1),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   startedAt: timestamp("startedAt"),

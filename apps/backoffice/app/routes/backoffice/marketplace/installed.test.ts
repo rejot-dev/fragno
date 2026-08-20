@@ -1,14 +1,13 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { getAuthMeMock, getLatestPublishedVersionsMock, listMarketplaceIngestionsMock } = vi.hoisted(
-  () => ({
-    getAuthMeMock: vi.fn(),
+const { findBackofficeMeMock, getLatestPublishedVersionsMock, listMarketplaceIngestionsMock } =
+  vi.hoisted(() => ({
+    findBackofficeMeMock: vi.fn(),
     getLatestPublishedVersionsMock: vi.fn(),
     listMarketplaceIngestionsMock: vi.fn(),
-  }),
-);
+  }));
 
-vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
+vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
 
 import { loader } from "./installed";
 
@@ -48,11 +47,11 @@ const runLoader = (scopeKind = "org", scopeId = "org-1") => {
 };
 
 beforeEach(() => {
-  getAuthMeMock.mockReset();
+  findBackofficeMeMock.mockReset();
   getLatestPublishedVersionsMock.mockReset();
   listMarketplaceIngestionsMock.mockReset();
   forOrgMock.mockClear();
-  getAuthMeMock.mockResolvedValue(authenticatedUser);
+  findBackofficeMeMock.mockResolvedValue(authenticatedUser);
   listMarketplaceIngestionsMock.mockResolvedValue([]);
   getLatestPublishedVersionsMock.mockResolvedValue({});
 });
@@ -142,7 +141,7 @@ describe("installed Marketplace loader", () => {
   });
 
   test("reads personal-workspace ingestion state from every organization coordinator", async () => {
-    getAuthMeMock.mockResolvedValueOnce({
+    findBackofficeMeMock.mockResolvedValueOnce({
       ...authenticatedUser,
       organizations: [
         { organization: { id: "org-1", name: "Ada Labs" } },

@@ -1,6 +1,6 @@
 import { redirect } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { getGitHubWebhookRouterDurableObject } from "@/worker-runtime/durable-objects";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
@@ -11,7 +11,7 @@ const CONNECTIONS_INDEX_PATH = "/backoffice/connections/github";
 const toStatePreview = (value: string) => (value ? `${value.slice(0, 8)}…` : "");
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }

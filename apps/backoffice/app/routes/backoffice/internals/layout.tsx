@@ -1,20 +1,20 @@
 import { Outlet, redirect, useOutletContext } from "react-router";
 
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { getBackofficeMe } from "@/fragno/auth/auth-server";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
+import { buildBackofficeSessionEntryPath } from "../auth-navigation";
 import type { Route } from "./+types/layout";
 
 export const middleware: Route.MiddlewareFunction[] = [
   async ({ request, context }) => {
-    const me = await getAuthMe(request, context);
-    if (!me?.user) {
+    const authentication = await getBackofficeMe(request, context);
+    if (authentication.status !== "authenticated") {
       const url = new URL(request.url);
-      throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
+      throw redirect(buildBackofficeSessionEntryPath(`${url.pathname}${url.search}`));
     }
 
-    if (me.user.role !== "admin") {
+    if (authentication.me.user.role !== "admin") {
       throw new Response("Not Found", { status: 404 });
     }
   },

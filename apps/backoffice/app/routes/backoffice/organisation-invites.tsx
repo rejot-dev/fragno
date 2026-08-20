@@ -1,4 +1,4 @@
-import { useEffect, useState, type SubmitEvent } from "react";
+import { useEffect, useReducer, useState, type SubmitEvent } from "react";
 import { useOutletContext } from "react-router";
 
 import { FormContainer, FormField } from "@/components/backoffice";
@@ -6,14 +6,78 @@ import { authClient } from "@/fragno/auth/auth-client";
 import { cn } from "@/lib/utils";
 
 import type { OrganisationLayoutContext } from "./organisation-layout";
+import { Notice } from "./organisation-shared";
 import {
-  Notice,
   ROLE_OPTIONS,
   type ActionNotice,
   formatDateTime,
   formatRoles,
   getErrorMessage,
-} from "./organisation-shared";
+} from "./organisation-utils";
+
+type InvitationFormState = {
+  email: string;
+  roles: Array<(typeof ROLE_OPTIONS)[number]>;
+  notice: ActionNotice;
+  token: string | null;
+  invitationId: string | null;
+};
+
+type InvitationFormAction =
+  | { type: "reset" }
+  | { type: "emailChanged"; email: string }
+  | { type: "roleToggled"; role: (typeof ROLE_OPTIONS)[number] }
+  | { type: "submissionStarted" }
+  | { type: "submissionRejected"; message: string }
+  | {
+      type: "submissionSucceeded";
+      email: string;
+      token: string | null;
+      invitationId: string | null;
+    };
+
+const initialInvitationFormState: InvitationFormState = {
+  email: "",
+  roles: ["member"],
+  notice: null,
+  token: null,
+  invitationId: null,
+};
+
+function invitationFormReducer(
+  state: InvitationFormState,
+  action: InvitationFormAction,
+): InvitationFormState {
+  switch (action.type) {
+    case "reset":
+      return initialInvitationFormState;
+    case "emailChanged":
+      return { ...state, email: action.email, notice: null };
+    case "roleToggled":
+      return {
+        ...state,
+        roles: state.roles.includes(action.role)
+          ? state.roles.filter((role) => role !== action.role)
+          : [...state.roles, action.role],
+      };
+    case "submissionStarted":
+      return { ...state, notice: null, token: null, invitationId: null };
+    case "submissionRejected":
+      return { ...state, notice: { type: "error", message: action.message } };
+    case "submissionSucceeded":
+      return {
+        email: "",
+        roles: ["member"],
+        notice: { type: "success", message: `Invitation created for ${action.email}.` },
+        token: action.token,
+        invitationId: action.invitationId,
+      };
+    default: {
+      const unreachableAction: never = action;
+      return unreachableAction;
+    }
+  }
+}
 
 function CopyButton({
   text,
@@ -77,18 +141,13 @@ export default function BackofficeOrganisationInvites() {
     error: inviteMemberError,
   } = authClient.useInviteOrganizationMember();
 
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRoles, setInviteRoles] = useState<string[]>(["member"]);
-  const [inviteNotice, setInviteNotice] = useState<ActionNotice>(null);
-  const [inviteToken, setInviteToken] = useState<string | null>(null);
-  const [inviteId, setInviteId] = useState<string | null>(null);
+  const [inviteForm, dispatchInviteForm] = useReducer(
+    invitationFormReducer,
+    initialInvitationFormState,
+  );
 
   useEffect(() => {
-    setInviteEmail("");
-    setInviteRoles(["member"]);
-    setInviteNotice(null);
-    setInviteToken(null);
-    setInviteId(null);
+    dispatchInviteForm({ type: "reset" });
   }, [organization.id]);
 
   useEffect(() => {
@@ -99,52 +158,47 @@ export default function BackofficeOrganisationInvites() {
 
   const handleInviteSubmit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setInviteNotice(null);
-    setInviteToken(null);
-    setInviteId(null);
+    dispatchInviteForm({ type: "submissionStarted" });
 
-    const email = inviteEmail.trim();
+    const email = inviteForm.email.trim();
     if (!email) {
-      setInviteNotice({ type: "error", message: "Invite email is required." });
+      dispatchInviteForm({ type: "submissionRejected", message: "Invite email is required." });
       return;
     }
 
-    const roles = inviteRoles.length > 0 ? inviteRoles : undefined;
+    const roles = inviteForm.roles.length > 0 ? inviteForm.roles : undefined;
 
     try {
       const response = await inviteMember({
         path: { organizationId: organization.id },
         body: { email, roles },
       });
-      setInviteNotice({ type: "success", message: `Invitation created for ${email}.` });
-      if (response && typeof response === "object" && "invitation" in response) {
-        const invitation = (response as { invitation?: { id?: string; token?: string } })
-          .invitation;
-        if (invitation?.token && invitation?.id) {
-          setInviteToken(invitation.token);
-          setInviteId(invitation.id);
-        }
-      }
-      setInviteEmail("");
-      setInviteRoles(["member"]);
+      const invitation =
+        response && typeof response === "object" && "invitation" in response
+          ? (response as { invitation?: { id?: string; token?: string } }).invitation
+          : undefined;
+      dispatchInviteForm({
+        type: "submissionSucceeded",
+        email,
+        token: invitation?.token ?? null,
+        invitationId: invitation?.id ?? null,
+      });
     } catch (error) {
-      setInviteNotice({ type: "error", message: getErrorMessage(error) });
+      dispatchInviteForm({ type: "submissionRejected", message: getErrorMessage(error) });
     }
   };
 
-  const toggleRole = (role: string) => {
+  const toggleRole = (role: (typeof ROLE_OPTIONS)[number]) => {
     if (!canManageMembers) {
       return;
     }
-    setInviteRoles((prev) =>
-      prev.includes(role) ? prev.filter((entry) => entry !== role) : [...prev, role],
-    );
+    dispatchInviteForm({ type: "roleToggled", role });
   };
 
   const invitations = invitationsData?.invitations ?? [];
   const inviteLink =
-    inviteToken && inviteId
-      ? `${origin || ""}/backoffice/invitations/${inviteId}?token=${inviteToken}`
+    inviteForm.token && inviteForm.invitationId
+      ? `${origin || ""}/backoffice/invitations/${inviteForm.invitationId}?token=${inviteForm.token}`
       : null;
 
   return (
@@ -161,10 +215,9 @@ export default function BackofficeOrganisationInvites() {
           >
             <input
               type="email"
-              value={inviteEmail}
+              value={inviteForm.email}
               onChange={(event) => {
-                setInviteEmail(event.target.value);
-                setInviteNotice(null);
+                dispatchInviteForm({ type: "emailChanged", email: event.target.value });
               }}
               placeholder="teammate@fragno.dev"
               disabled={!canManageMembers}
@@ -177,7 +230,7 @@ export default function BackofficeOrganisationInvites() {
             </p>
             <div className="flex flex-wrap gap-2">
               {ROLE_OPTIONS.map((role) => {
-                const isSelected = inviteRoles.includes(role);
+                const isSelected = inviteForm.roles.includes(role);
                 return (
                   <button
                     key={role}
@@ -217,7 +270,7 @@ export default function BackofficeOrganisationInvites() {
               </span>
             ) : null}
           </div>
-          <Notice notice={inviteNotice} />
+          <Notice notice={inviteForm.notice} />
           {inviteLink ? (
             <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs text-[var(--bo-muted)]">
               <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
@@ -226,6 +279,7 @@ export default function BackofficeOrganisationInvites() {
               <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input
                   readOnly
+                  aria-label="Invitation link"
                   value={inviteLink}
                   className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 font-mono text-[11px] text-[var(--bo-fg)]"
                 />

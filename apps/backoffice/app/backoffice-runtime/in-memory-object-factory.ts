@@ -8,6 +8,7 @@ import { InMemoryBillingObject } from "../../workers/billing.do";
 import { InMemoryCloudflareObject } from "../../workers/cloudflare.do";
 import { InMemoryGitHubWebhookRouterObject } from "../../workers/github-webhook-router.do";
 import { InMemoryGitHubObject } from "../../workers/github.do";
+import { createInMemoryAuthDatabase } from "../../workers/in-memory-auth-database";
 import { InMemoryMarketplaceObject } from "../../workers/marketplace.do";
 import { InMemoryMcpObject } from "../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../workers/otp.do";
@@ -192,6 +193,7 @@ const inMemoryObjectFactories = {
       state,
       env: env as never,
       runtime,
+      database: createInMemoryAuthDatabase(),
     }),
   TELEGRAM: ({ state, runtime }) =>
     new InMemoryTelegramObject({

@@ -12,7 +12,7 @@ import {
 import { BackofficeSystemState } from "@/components/backoffice";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { ClientOnly } from "@/components/client-only";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   describeAutomationCollectionSource,
   getAutomationBrowserDatabase,
@@ -93,7 +93,7 @@ const currentTabFromPath = (pathname: string): AutomationTab => {
 };
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
@@ -198,7 +198,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     return { ok: false, message: "Unknown automation action." } satisfies ProjectActionData;
   }
 
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }

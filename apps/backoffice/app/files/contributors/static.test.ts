@@ -73,9 +73,9 @@ describe("static file contributor", () => {
         execution: createBackofficeUserExecution({
           scope: { kind: "system" },
           userId: "admin-1",
-          verifiedAccessToken: {
+          verifiedRequestAuthority: {
             role: "admin",
-            organizationIds: ["org-1"],
+            organizationId: "org-1",
             expiresAt: new Date("2027-01-01T00:00:00.000Z"),
           },
         }),
@@ -87,9 +87,9 @@ describe("static file contributor", () => {
         execution: createBackofficeUserExecution({
           scope: { kind: "org", orgId: "org-1" },
           userId: "admin-1",
-          verifiedAccessToken: {
+          verifiedRequestAuthority: {
             role: "admin",
-            organizationIds: ["org-1"],
+            organizationId: "org-1",
             expiresAt: new Date("2027-01-01T00:00:00.000Z"),
           },
         }),

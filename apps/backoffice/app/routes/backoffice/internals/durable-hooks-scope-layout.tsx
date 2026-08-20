@@ -8,7 +8,7 @@ import {
   BackofficeScopeCodecError,
 } from "@/backoffice-runtime/scope-codec";
 import { BackofficePageHeader } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import { getBackofficeObjects } from "@/worker-runtime/durable-objects";
 
@@ -142,7 +142,7 @@ function normalizeProject(
 }
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),

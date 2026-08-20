@@ -1,25 +1,28 @@
 import "../../backoffice.css";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import { z } from "zod";
 
 import { FormContainer, FormField } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
-import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth/auth-server";
+import {
+  callBetterAuth,
+  createBackofficeIdentityChangeHeaders,
+  getBackofficeMe,
+} from "@/fragno/auth/auth-server";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
 
 import type { Route } from "./+types/login";
 import {
-  BACKOFFICE_HOME_PATH,
-  buildBackofficeLoginPath,
+  buildBackofficeAuthBootstrapPath,
+  buildBackofficeSignUpPath,
   readBackofficeReturnTo,
 } from "./auth-navigation";
 
 type BackofficeLoginLoaderData = {
   authenticated: boolean;
   returnTo: string;
-  defaultOrganizationId: string;
   bootstrapError: string | null;
 };
 
@@ -40,7 +43,6 @@ const loginActionInputSchema = z.discriminatedUnion("intent", [
     intent: z.literal("sign_in"),
     email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
     password: z.string().min(1),
-    activeOrganizationId: z.string().trim().optional(),
   }),
   z.object({
     intent: z.literal("resend"),
@@ -49,74 +51,28 @@ const loginActionInputSchema = z.discriminatedUnion("intent", [
 ]);
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const me = await getAuthMe(request, context);
+  if (import.meta.env.MODE !== "development") {
+    throw new Response("Not Found", { status: 404 });
+  }
+
   const returnTo = readBackofficeReturnTo(url);
-
-  if (me?.user) {
-    const currentActiveOrganizationId = me.activeOrganization?.organization.id ?? null;
-    const nextActiveOrganizationId =
-      currentActiveOrganizationId ?? me.organizations[0]?.organization.id ?? null;
-
-    if (!nextActiveOrganizationId || nextActiveOrganizationId === currentActiveOrganizationId) {
-      return redirect(returnTo);
-    }
-
-    try {
-      const callAuthRoute = createAuthRouteCaller(request, context);
-      const response = await callAuthRoute("POST", "/organizations/active", {
-        body: { organizationId: nextActiveOrganizationId },
-      });
-
-      if (response.type === "error") {
-        return {
-          authenticated: true,
-          returnTo,
-          defaultOrganizationId: "",
-          bootstrapError: response.error.message || "Unable to initialize the active organisation.",
-        } satisfies BackofficeLoginLoaderData;
-      }
-
-      if (response.type !== "json" && response.type !== "empty") {
-        return {
-          authenticated: true,
-          returnTo,
-          defaultOrganizationId: "",
-          bootstrapError: "Unable to initialize the active organisation.",
-        } satisfies BackofficeLoginLoaderData;
-      }
-
-      return redirect(returnTo, { headers: response.headers });
-    } catch (error) {
-      return {
-        authenticated: true,
-        returnTo,
-        defaultOrganizationId: "",
-        bootstrapError:
-          error instanceof Error ? error.message : "Unable to initialize the active organisation.",
-      } satisfies BackofficeLoginLoaderData;
-    }
+  const jwtMe = await getBackofficeMe(request, context);
+  if (jwtMe.status === "authenticated") {
+    return redirect(returnTo);
   }
 
   return {
     authenticated: false,
     returnTo,
-    defaultOrganizationId: "",
     bootstrapError: null,
   } satisfies BackofficeLoginLoaderData;
 }
 
-export async function clientLoader({ serverLoader }: Route.ClientLoaderArgs) {
-  const serverData = await serverLoader();
-  if (serverData.authenticated) {
-    return serverData;
+export async function action({ request, context, url }: Route.ActionArgs) {
+  if (import.meta.env.MODE !== "development") {
+    throw new Response("Not Found", { status: 404 });
   }
 
-  const defaultOrganizationId = authClient.defaultOrganization.read() ?? "";
-  return { ...serverData, defaultOrganizationId };
-}
-clientLoader.hydrate = true;
-
-export async function action({ request, context, url }: Route.ActionArgs) {
   const formData = await request.formData();
   const returnTo = readBackofficeReturnTo(url);
   const input = loginActionInputSchema.safeParse(Object.fromEntries(formData));
@@ -144,39 +100,33 @@ export async function action({ request, context, url }: Route.ActionArgs) {
   }
 
   try {
-    const callAuthRoute = createAuthRouteCaller(request, context);
-    const response = await callAuthRoute("POST", "/sign-in", {
-      body: {
-        email: input.data.email,
-        password: input.data.password,
-        auth: input.data.activeOrganizationId
-          ? { activeOrganizationId: input.data.activeOrganizationId }
-          : undefined,
-      },
+    const response = await callBetterAuth(request, context, "/sign-in/email", {
+      method: "POST",
+      body: JSON.stringify({ email: input.data.email, password: input.data.password }),
     });
-
-    if (response.type === "error") {
-      return response.error.code === "email_verification_required"
+    if (!response.ok) {
+      const error = (await response.json().catch(() => null)) as {
+        code?: string;
+        message?: string;
+      } | null;
+      const verificationRequired =
+        error?.code === "EMAIL_NOT_VERIFIED" ||
+        error?.message?.toLowerCase().includes("verify your email");
+      return verificationRequired
         ? ({
             state: "verification_required",
             email: input.data.email,
             resend: "available",
-            message: response.error.message || "Verify your email before signing in.",
+            message: error?.message || "Verify your email before signing in.",
           } satisfies BackofficeLoginActionData)
         : ({
             state: "error",
-            message: response.error.message || "Unable to sign in.",
+            message: error?.message || "Unable to sign in.",
           } satisfies BackofficeLoginActionData);
     }
-
-    if (response.type !== "json" && response.type !== "empty") {
-      return {
-        state: "error",
-        message: "Unable to sign in.",
-      } satisfies BackofficeLoginActionData;
-    }
-
-    return redirect(returnTo || BACKOFFICE_HOME_PATH, { headers: response.headers });
+    return redirect(buildBackofficeAuthBootstrapPath(returnTo), {
+      headers: createBackofficeIdentityChangeHeaders(response),
+    });
   } catch (error) {
     return {
       state: "error",
@@ -193,15 +143,9 @@ export function meta() {
 }
 
 export default function BackofficeLogin() {
-  const {
-    authenticated,
-    returnTo,
-    defaultOrganizationId: initialDefaultOrganizationId,
-    bootstrapError,
-  } = useLoaderData<BackofficeLoginLoaderData>();
+  const { authenticated, returnTo, bootstrapError } = useLoaderData<BackofficeLoginLoaderData>();
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [oauthPending, setOauthPending] = useState(false);
-  const [defaultOrganizationId, setDefaultOrganizationId] = useState(initialDefaultOrganizationId);
   const actionData = useActionData<BackofficeLoginActionData>();
   const navigation = useNavigation();
   const passwordError = actionData?.message ?? null;
@@ -209,17 +153,6 @@ export default function BackofficeLogin() {
   const submittedIntent = navigation.formData?.get("intent");
   const passwordPending = navigation.state === "submitting" && submittedIntent !== "resend";
   const resendPending = navigation.state === "submitting" && submittedIntent === "resend";
-
-  useEffect(() => {
-    if (authenticated) {
-      return;
-    }
-
-    const nextDefaultOrganizationId = authClient.defaultOrganization.read() ?? "";
-    if (nextDefaultOrganizationId !== defaultOrganizationId) {
-      setDefaultOrganizationId(nextDefaultOrganizationId);
-    }
-  }, [authenticated, defaultOrganizationId]);
 
   if (authenticated) {
     return <BackofficeLoginBootstrap returnTo={returnTo} bootstrapError={bootstrapError} />;
@@ -230,21 +163,22 @@ export default function BackofficeLogin() {
     setOauthError(null);
 
     try {
-      const preferredOrganizationId =
-        authClient.defaultOrganization.read() || defaultOrganizationId;
-      const result = await authClient.oauth.getAuthorizationUrl({
+      const callbackURL = new URL(
+        buildBackofficeAuthBootstrapPath(returnTo),
+        window.location.origin,
+      ).toString();
+      const result = await authClient.signIn.social({
         provider: "github",
-        returnTo: buildBackofficeLoginPath(returnTo),
-        auth: preferredOrganizationId
-          ? { activeOrganizationId: preferredOrganizationId }
-          : undefined,
+        callbackURL,
+        disableRedirect: true,
       });
-
-      if (!result?.url) {
+      if (result.error) {
+        throw new Error(result.error.message || "Unable to start GitHub sign-in.");
+      }
+      if (!result.data?.url) {
         throw new Error("GitHub authorization URL is missing.");
       }
-
-      window.location.assign(result.url);
+      window.location.assign(result.data.url);
     } catch (error) {
       setOauthError(error instanceof Error ? error.message : "Unable to start GitHub sign-in.");
       setOauthPending(false);
@@ -302,7 +236,6 @@ export default function BackofficeLogin() {
                 </p>
               )}
               <Form method="post" className="space-y-3">
-                <input type="hidden" name="activeOrganizationId" value={defaultOrganizationId} />
                 <div className="border-t border-[color:var(--bo-border)] pt-4">
                   <p className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                     Sign in with password
@@ -377,7 +310,7 @@ export default function BackofficeLogin() {
               <p className="border-t border-[color:var(--bo-border)] pt-4 text-xs text-[var(--bo-muted-2)]">
                 Need an account?{" "}
                 <Link
-                  to="/backoffice/sign-up"
+                  to={buildBackofficeSignUpPath(returnTo)}
                   className="font-semibold tracking-[0.22em] text-[var(--bo-accent)] uppercase transition-colors hover:text-[var(--bo-accent-strong)]"
                 >
                   Create one

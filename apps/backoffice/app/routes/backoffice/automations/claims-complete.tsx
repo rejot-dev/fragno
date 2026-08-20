@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { getOtpDurableObject } from "@/worker-runtime/durable-objects";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
@@ -24,7 +24,7 @@ export async function loader({
     throw new Response("Not Found", { status: 404 });
   }
 
-  const me = await getAuthMe(request, context);
+  const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),

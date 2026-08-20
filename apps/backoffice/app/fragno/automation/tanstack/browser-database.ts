@@ -11,6 +11,7 @@ import {
   backofficeContextScopeRoutePath,
   backofficeContextScopeSinglePathSegment,
 } from "@/backoffice-runtime/scope-codec";
+import { backofficeFetch } from "@/fragno/auth/browser-auth.client";
 
 import { automationFragmentSchema } from "../schema";
 import { createAutomationCollections, type AutomationCollections } from "./collections";
@@ -108,7 +109,7 @@ async function openAutomationBrowserDatabase(
 ): Promise<AutomationBrowserDatabase> {
   const coordinator = await createFragnoOutboxCoordinator({
     baseUrl: description.baseUrl,
-    fetch: (input, init) => globalThis.fetch(input, init),
+    fetch: backofficeFetch,
     schemas: [automationFragmentSchema, workflowsSchema] as const,
     onCatchUpProgress(progress) {
       publishAutomationCatchUpProgress(description.resourceKey, progress);

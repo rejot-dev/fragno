@@ -6,7 +6,7 @@ import { authClient } from "@/fragno/auth/auth-client";
 import { cn } from "@/lib/utils";
 
 import type { OrganisationLayoutContext } from "./organisation-layout";
-import { ROLE_OPTIONS, formatDate, formatRoles, getErrorMessage } from "./organisation-shared";
+import { ROLE_OPTIONS, formatDate, formatRoles, getErrorMessage } from "./organisation-utils";
 
 const MEMBER_PAGE_SIZE = 25;
 
@@ -28,11 +28,8 @@ export default function BackofficeOrganisationMembers() {
   const canManageMembers =
     me.user.role === "admin" || member.roles.some((role) => role === "owner" || role === "admin");
 
-  const [membersCursor, setMembersCursor] = useState<string | null>(null);
+  const [membersPage, setMembersPage] = useState(1);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
-  const [membersHasNext, setMembersHasNext] = useState(false);
-  const [membersInitialized, setMembersInitialized] = useState(false);
-  const [membersLoadingMore, setMembersLoadingMore] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
 
   const {
@@ -43,7 +40,7 @@ export default function BackofficeOrganisationMembers() {
     path: { organizationId: organization.id },
     query: {
       pageSize: String(MEMBER_PAGE_SIZE),
-      cursor: membersCursor ?? undefined,
+      page: String(membersPage),
     },
   });
 
@@ -51,11 +48,8 @@ export default function BackofficeOrganisationMembers() {
   const { mutate: removeMember } = authClient.useRemoveOrganizationMember();
 
   useEffect(() => {
-    setMembersCursor(null);
+    setMembersPage(1);
     setMembers([]);
-    setMembersHasNext(false);
-    setMembersInitialized(false);
-    setMembersLoadingMore(false);
     setMemberSearch("");
   }, [organization.id]);
 
@@ -64,28 +58,8 @@ export default function BackofficeOrganisationMembers() {
       return;
     }
 
-    const pageMembers = membersData.members ?? [];
-    setMembers((prev) => {
-      const next = membersCursor ? [...prev, ...pageMembers] : pageMembers;
-      const seen = new Set<string>();
-      return next.filter((entry) => {
-        if (seen.has(entry.id)) {
-          return false;
-        }
-        seen.add(entry.id);
-        return true;
-      });
-    });
-    setMembersHasNext(membersData.hasNextPage);
-    setMembersInitialized(true);
-    setMembersLoadingMore(false);
-  }, [membersCursor, membersData]);
-
-  useEffect(() => {
-    if (membersError) {
-      setMembersLoadingMore(false);
-    }
-  }, [membersError]);
+    setMembers(membersData.members);
+  }, [membersData]);
 
   const handleUpdateMemberRoles = async (memberId: string, roles: string[]) => {
     await updateMemberRoles({
@@ -111,12 +85,13 @@ export default function BackofficeOrganisationMembers() {
     }
     return members.filter(
       (entry) =>
-        entry.userId.toLowerCase().includes(query) ||
+        entry.user.name.toLowerCase().includes(query) ||
+        entry.user.email.toLowerCase().includes(query) ||
         entry.roles.some((role) => role.toLowerCase().includes(query)),
     );
   }, [memberSearch, members]);
 
-  const isInitialMembersLoading = membersLoading && !membersInitialized && members.length === 0;
+  const isInitialMembersLoading = membersLoading && members.length === 0;
   const hasMemberSearch = memberSearch.trim().length > 0;
 
   return (
@@ -142,14 +117,12 @@ export default function BackofficeOrganisationMembers() {
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--bo-muted-2)]">
             <span>
               {hasMemberSearch
-                ? `Showing ${filteredMembers.length} of ${members.length} loaded members`
-                : `${members.length} members loaded`}
+                ? `Showing ${filteredMembers.length} of ${members.length} members on this page`
+                : `${membersData?.total ?? 0} members`}
             </span>
-            {membersHasNext ? (
-              <span>More members available</span>
-            ) : membersInitialized ? (
-              <span>All members loaded</span>
-            ) : null}
+            <span>
+              Page {membersData?.page ?? membersPage} of {membersData?.totalPages ?? 1}
+            </span>
           </div>
 
           {isInitialMembersLoading ? (
@@ -182,7 +155,7 @@ export default function BackofficeOrganisationMembers() {
                 <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
                   {filteredMembers.map((memberEntry) => (
                     <OrganizationMemberRow
-                      key={memberEntry.id}
+                      key={`${memberEntry.id}:${memberEntry.roles.join(",")}`}
                       member={memberEntry}
                       isSelf={Boolean(currentUserId && memberEntry.userId === currentUserId)}
                       canManageMembers={canManageMembers}
@@ -199,26 +172,28 @@ export default function BackofficeOrganisationMembers() {
             <p className="text-xs text-red-600">{getErrorMessage(membersError)}</p>
           ) : null}
 
-          {membersHasNext ? (
+          <div className="flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={() => {
-                if (!membersHasNext || membersLoadingMore) {
-                  return;
-                }
-                const nextCursor = membersData?.cursor;
-                if (!nextCursor) {
-                  return;
-                }
-                setMembersLoadingMore(true);
-                setMembersCursor(nextCursor);
+                setMembersPage((page) => Math.max(1, page - 1));
               }}
-              disabled={!membersHasNext || membersLoadingMore}
+              disabled={membersLoading || membersPage === 1}
               className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
             >
-              {membersLoadingMore ? "Loading..." : "Load more"}
+              Previous
             </button>
-          ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setMembersPage((page) => page + 1);
+              }}
+              disabled={membersLoading || membersPage >= (membersData?.totalPages ?? 1)}
+              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </FormContainer>
     </div>
@@ -243,13 +218,6 @@ function OrganizationMemberRow({
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
 
-  useEffect(() => {
-    setSelectedRoles(member.roles);
-    setActionNotice(null);
-    setSaving(false);
-    setRemoving(false);
-  }, [member.id, member.roles]);
-
   const roleOptions = useMemo(() => {
     const extras = member.roles.filter(
       (role) => !ROLE_OPTIONS.includes(role as (typeof ROLE_OPTIONS)[number]),
@@ -260,6 +228,9 @@ function OrganizationMemberRow({
     return [...ROLE_OPTIONS, ...uniqueExtras];
   }, [member.roles]);
 
+  const selectedRoleSet = useMemo(() => new Set(selectedRoles), [selectedRoles]);
+  const canEditMember = canManageMembers && !isSelf;
+
   const rolesChanged = useMemo(() => {
     const current = [...member.roles].sort((left, right) => left.localeCompare(right)).join("|");
     const next = [...selectedRoles].sort((left, right) => left.localeCompare(right)).join("|");
@@ -267,7 +238,7 @@ function OrganizationMemberRow({
   }, [member.roles, selectedRoles]);
 
   const handleToggleRole = (role: string) => {
-    if (!canManageMembers) {
+    if (!canEditMember) {
       return;
     }
     setActionNotice(null);
@@ -277,7 +248,7 @@ function OrganizationMemberRow({
   };
 
   const handleSave = async () => {
-    if (!canManageMembers || selectedRoles.length === 0 || !rolesChanged) {
+    if (!canEditMember || selectedRoles.length === 0 || !rolesChanged) {
       return;
     }
     setSaving(true);
@@ -293,10 +264,10 @@ function OrganizationMemberRow({
   };
 
   const handleRemove = async () => {
-    if (!canManageMembers || removing) {
+    if (!canEditMember || removing) {
       return;
     }
-    if (!window.confirm(`Remove ${member.userId} from this organisation?`)) {
+    if (!window.confirm(`Remove ${member.user.name} from this organisation?`)) {
       return;
     }
     setRemoving(true);
@@ -313,19 +284,22 @@ function OrganizationMemberRow({
     <tr className="text-[var(--bo-muted)]">
       <td className="px-3 py-2 font-semibold text-[var(--bo-fg)]">
         <div className="flex flex-col">
-          <span className="font-mono text-xs text-[var(--bo-fg)]">{member.userId}</span>
-          {isSelf ? (
-            <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              You
-            </span>
-          ) : null}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-[var(--bo-fg)]">{member.user.name}</span>
+            {isSelf ? (
+              <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                You
+              </span>
+            ) : null}
+          </div>
+          <span className="text-xs font-normal text-[var(--bo-muted)]">{member.user.email}</span>
         </div>
       </td>
       <td className="px-3 py-2">
         {canManageMembers ? (
           <div className="flex flex-wrap gap-2">
             {roleOptions.map((role) => {
-              const isSelected = selectedRoles.includes(role);
+              const isSelected = selectedRoleSet.has(role);
               return (
                 <button
                   key={role}
@@ -333,8 +307,9 @@ function OrganizationMemberRow({
                   onClick={() => {
                     handleToggleRole(role);
                   }}
+                  disabled={!canEditMember}
                   className={cn(
-                    "border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] transition-colors",
+                    "border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] transition-colors disabled:cursor-not-allowed disabled:opacity-60",
                     isSelected
                       ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
                       : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]",
@@ -357,7 +332,7 @@ function OrganizationMemberRow({
               <button
                 type="button"
                 onClick={() => void handleSave()}
-                disabled={!rolesChanged || selectedRoles.length === 0 || saving}
+                disabled={!canEditMember || !rolesChanged || selectedRoles.length === 0 || saving}
                 className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-2 py-1 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
               >
                 {saving ? "Saving" : "Save"}
@@ -365,7 +340,7 @@ function OrganizationMemberRow({
               <button
                 type="button"
                 onClick={() => void handleRemove()}
-                disabled={removing}
+                disabled={!canEditMember || removing}
                 className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
               >
                 {removing ? "Removing" : "Remove"}

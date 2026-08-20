@@ -1,11 +1,41 @@
 {
   "version": 1,
   "skills": {
+    "better-auth-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "skillPath": "better-auth/best-practices/SKILL.md",
+      "computedHash": "61ba0ef64ed2e7c424401cc848ca33dd6d790a720c44727717dc0c5cba5fc122"
+    },
+    "better-auth-security-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "skillPath": "security/SKILL.md",
+      "computedHash": "7a230edf3a24ce18162cb4379f59b6a19b8d24ca04db530609d0f15cede556dc"
+    },
     "core": {
       "source": "vercel-labs/json-render",
       "sourceType": "github",
       "skillPath": "skills/core/SKILL.md",
       "computedHash": "ff1d5f1daa4736237aab6c37b7642ae8e623d65b8cb2eb9916c6ba33384efb81"
+    },
+    "create-auth": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "skillPath": "better-auth/create-auth/SKILL.md",
+      "computedHash": "4e261efac2ae9a2321c4495c846ef97cf239818fc8bd2ab7e92ed1f9d25470f7"
+    },
+    "email-and-password-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "skillPath": "better-auth/emailAndPassword/SKILL.md",
+      "computedHash": "747d7f73bd9e2ec5317b8ef88dc70f97df716d00e3d02de4051feebaa48b062d"
+    },
+    "organization-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "skillPath": "better-auth/organization/SKILL.md",
+      "computedHash": "27627eb3a13bd44eff3a5d890f96e7db052b623db90e01684f759abe3e7fe56b"
     },
     "react": {
       "source": "vercel-labs/json-render",
@@ -18,6 +48,12 @@
       "sourceType": "github",
       "skillPath": "skills/react-doctor/SKILL.md",
       "computedHash": "99ce09a65a0c78f23bc685739e106f02edb1279699a94805368d54ea7f399d6f"
+    },
+    "two-factor-authentication-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "skillPath": "better-auth/twoFactor/SKILL.md",
+      "computedHash": "a6f720042e5a090909e0d519a6a50a7eb8179553cd5315f0bbad852a6d20dac8"
     }
   }
 }

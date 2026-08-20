@@ -4,8 +4,8 @@ import { resolveBackofficeUserAuthorityRole } from "@/backoffice-runtime/authori
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficeBreadcrumbs } from "@/components/backoffice/breadcrumbs";
 import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
-import { requireAuthPrincipal } from "@/fragno/auth/access-token.server";
 import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
+import { requireBackofficePrincipal } from "@/fragno/auth/request-auth.server";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -26,32 +26,27 @@ type PermissionScopeDefinition = Readonly<{
 const permissionScopeDefinitions = (
   userId: string,
   role: "user" | "admin",
-  organizationIds: readonly string[],
+  organizationId: string | null,
 ): PermissionScopeDefinition[] => [
   ...(role === "admin" ? [{ key: "system", scope: { kind: "system" as const } }] : []),
   { key: `user:${userId}`, scope: { kind: "user", userId } },
-  ...organizationIds.map((orgId) => ({
-    key: `org:${orgId}`,
-    scope: { kind: "org" as const, orgId },
-  })),
+  ...(organizationId
+    ? [{ key: `org:${organizationId}`, scope: { kind: "org" as const, orgId: organizationId } }]
+    : []),
 ];
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const auth = await requireAuthPrincipal(request, context);
-  if (auth.auth.credentialKind !== "jwt" || !auth.auth.expiresAt) {
-    throw new Response("Verified access-token authority is required", { status: 401 });
-  }
-
-  const organizationIds = auth.auth.sessionContext.organizationIds;
+  const auth = await requireBackofficePrincipal(request, context);
+  const organizationId = auth.auth.organization?.id ?? null;
   const authority = {
     userId: auth.user.id,
     role: auth.user.role,
-    organizationIds,
+    organizationId,
   };
   const { runtime } = context.get(BackofficeWorkerContext);
 
   const scopes = await Promise.all(
-    permissionScopeDefinitions(auth.user.id, auth.user.role, organizationIds).map(
+    permissionScopeDefinitions(auth.user.id, auth.user.role, organizationId).map(
       async ({ key, scope }) => {
         const execution = createBackofficeExecutionForPrincipal(auth, scope);
         const principal = execution.actors.principal;
