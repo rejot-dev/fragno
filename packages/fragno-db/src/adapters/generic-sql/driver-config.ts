@@ -255,7 +255,23 @@ export class CloudflareDurableObjectsDriverConfig extends DriverConfig {
   override readonly outboxVersionstampStrategy = "insert-on-conflict-returning";
 
   override normalizeError(error: unknown): Error {
-    return normalizeSqliteError(error);
+    const normalizedError = normalizeSqliteError(error);
+    if (normalizedError !== error || !(error instanceof Error) || error.cause === undefined) {
+      return normalizedError;
+    }
+
+    const normalizedCause = normalizeSqliteError(error.cause);
+    if (normalizedCause instanceof DatabaseConstraintError) {
+      return new DatabaseConstraintError({
+        kind: normalizedCause.kind,
+        table: normalizedCause.table,
+        constraint: normalizedCause.constraint,
+        columns: normalizedCause.columns,
+        cause: error,
+      });
+    }
+
+    return normalizedError;
   }
 }
 

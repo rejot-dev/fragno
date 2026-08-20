@@ -9,3 +9,7 @@ export default {
 export class OutboxHarnessDurableObject extends DurableObject {
   async alarm() {}
 }
+
+export class WorkflowsHarnessDurableObject extends DurableObject {
+  async alarm() {}
+}

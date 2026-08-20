@@ -146,6 +146,36 @@ export type WorkflowsTestRunPayload = Omit<WorkflowEnqueuedHookPayload, "instanc
   instanceRef?: string;
 };
 
+/** Run one workflow tick against a concrete fragment runtime and database adapter. */
+export async function runWorkflowsTestTick<TRegistry extends WorkflowsRegistry>(options: {
+  fragment: WorkflowsFragment<TRegistry>;
+  config: WorkflowsFragmentConfig<TRegistry> & { workflows: TRegistry };
+  payload: WorkflowsTestRunPayload;
+}): Promise<number> {
+  const { fragment, config, payload } = options;
+  const handlerTx = ((...args: Parameters<DatabaseHandlerTx>) =>
+    fragment.inContext(function (this: { handlerTx: DatabaseHandlerTx }) {
+      return this.handlerTx(...args);
+    })) as DatabaseHandlerTx;
+
+  return await fragment.inContext(function () {
+    return runWorkflowsTick({
+      handlerTx,
+      busHandlerTx: handlerTx,
+      workflows: config.workflows,
+      createExecutionId: () => config.runtime.random.uuid(),
+      createEpoch: () => config.runtime.random.uuid(),
+      stepEmissions: fragment.$internal.deps.stepEmissions,
+      payload: {
+        ...payload,
+        instanceRef:
+          payload.instanceRef ?? buildScopedInstanceRowId(payload.workflowName, payload.instanceId),
+        timestamp: config.runtime.time.now(),
+      },
+    });
+  });
+}
+
 export type WorkflowsTestRunner<
   TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
   TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
@@ -691,12 +721,12 @@ export async function createWorkflowsTestHarness<
       },
     };
   }
-  const config: WorkflowsFragmentConfig<TRegistry> = {
+  const config = {
     workflows,
     runtime,
     autoTickHooks: options.autoTickHooks,
     ...options.fragmentConfig,
-  };
+  } satisfies WorkflowsFragmentConfig<TRegistry>;
   const baseBuilder = options.testBuilder.withTestAdapter(adapterConfig);
   const configuredBuilder = options.configureBuilder
     ? options.configureBuilder(baseBuilder)
@@ -723,10 +753,6 @@ export async function createWorkflowsTestHarness<
   const getWorkflowFragment = () => fragmentsWithWorkflows.workflows;
   const getFragment = () => getWorkflowFragment().fragment;
   const getDb = () => getWorkflowFragment().db;
-  const workflowsByName = new Map<string, WorkflowRegistryEntry>();
-  for (const entry of Object.values(workflows)) {
-    workflowsByName.set(entry.name, entry);
-  }
 
   const runWorkflowService = async <T>(createServiceCall: () => unknown) =>
     await getFragment().inContext(async function () {
@@ -741,39 +767,15 @@ export async function createWorkflowsTestHarness<
     "fragments" | "recreateFragments" | "inContext"
   >;
 
-  const getWorkflowFragmentFromRuntime = (runnerRuntime: RunnerRuntime) =>
-    runnerRuntime.fragments.workflows.fragment;
-
-  const completePayload = (payload: WorkflowsTestRunPayload): WorkflowEnqueuedHookPayload => ({
-    ...payload,
-    instanceRef:
-      payload.instanceRef ?? buildScopedInstanceRowId(payload.workflowName, payload.instanceId),
-  });
-
-  const runTick = async (
+  const runTestTickForRuntime = async (
     runnerRuntime: RunnerRuntime,
     payload: WorkflowsTestRunPayload,
-    stepEmissions: WorkflowsFragmentConfig<TRegistry>["stepEmissions"],
-  ) => {
-    const workflowFragment = getWorkflowFragmentFromRuntime(runnerRuntime);
-    return await workflowFragment.inContext(function () {
-      const handlerTx = ((...args: Parameters<DatabaseHandlerTx>) =>
-        workflowFragment.inContext(function (this: { handlerTx: DatabaseHandlerTx }) {
-          return this.handlerTx(...args);
-        })) as DatabaseHandlerTx;
-
-      return runWorkflowsTick({
-        handlerTx,
-        busHandlerTx: handlerTx,
-        workflows,
-        workflowsByName,
-        createExecutionId: () => runtime.random.uuid(),
-        createEpoch: () => runtime.random.uuid(),
-        stepEmissions,
-        payload: { ...completePayload(payload), timestamp: clock.now() },
-      });
+  ) =>
+    await runWorkflowsTestTick({
+      fragment: runnerRuntime.fragments.workflows.fragment,
+      config,
+      payload,
     });
-  };
 
   const mainRunnerRuntime: RunnerRuntime = {
     fragments: fragmentsWithWorkflows,
@@ -797,11 +799,7 @@ export async function createWorkflowsTestHarness<
 
     const tick = async (payload: WorkflowsTestRunPayload) => {
       const runnerRuntime = await getRunnerRuntime();
-      return await runTick(
-        runnerRuntime,
-        payload,
-        runnerRuntime.fragments.workflows.fragment.$internal.deps.stepEmissions,
-      );
+      return await runTestTickForRuntime(runnerRuntime, payload);
     };
 
     const runUntilIdle = async (
@@ -851,7 +849,7 @@ export async function createWorkflowsTestHarness<
 
   const defaultRunner = createRunner(mainRunnerRuntime);
   const tick = async (payload: WorkflowsTestRunPayload) =>
-    await runTick(mainRunnerRuntime, payload, config.stepEmissions);
+    await runTestTickForRuntime(mainRunnerRuntime, payload);
   const runUntilIdle = async (payload: WorkflowsTestRunPayload, options?: RunUntilIdleOptions) => {
     const maxTicks = options?.maxTicks ?? 25;
     let ticks = 0;

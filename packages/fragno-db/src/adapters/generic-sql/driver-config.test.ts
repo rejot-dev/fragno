@@ -28,6 +28,28 @@ describe("DriverConfig.normalizeError", () => {
     expect(normalized).toMatchObject({ kind: "unique", table: "users", columns: ["email"] });
   });
 
+  it("normalizes Durable Object query errors with a SQLite unique-constraint cause", () => {
+    const config = new CloudflareDurableObjectsDriverConfig();
+    const sqliteError = withProps(
+      "UNIQUE constraint failed: workflow_step_workflows.instanceRef, workflow_step_workflows.stepKey",
+      { code: "SQLITE_CONSTRAINT_UNIQUE" },
+    );
+    const queryError = new Error(
+      'Durable Object SQLite rejected query: insert into "workflow_step_workflows" (...) values (...)',
+      { cause: sqliteError },
+    );
+
+    const normalized = config.normalizeError(queryError);
+
+    expect(normalized).toBeInstanceOf(DatabaseConstraintError);
+    expect(normalized).toMatchObject({
+      kind: "unique",
+      table: "workflow_step_workflows",
+      columns: ["instanceRef", "stepKey"],
+      cause: queryError,
+    });
+  });
+
   it("extracts columns from prefixed sqlite-wasm unique errors", () => {
     const config = new SQLocalDriverConfig();
     const normalized = config.normalizeError(

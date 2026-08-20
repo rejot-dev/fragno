@@ -2682,6 +2682,87 @@ describe("Workflows Runner", () => {
     assert(status.status === "complete");
   });
 
+  test("concurrent create and event ticks converge on the first committed wait step", async () => {
+    const firstPassageStarted = Promise.withResolvers<void>();
+    const releaseFirstPassage = Promise.withResolvers<void>();
+    const eventPassageStarted = Promise.withResolvers<void>();
+    const releaseEventPassage = Promise.withResolvers<void>();
+    let passageCount = 0;
+
+    const ConcurrentCreateEventWorkflow = defineWorkflow(
+      { name: "concurrent-create-event-workflow" },
+      async (_event, step) => {
+        passageCount += 1;
+        if (passageCount === 1) {
+          firstPassageStarted.resolve();
+          await releaseFirstPassage.promise;
+        }
+
+        const command = await step.waitForEvent<{ text: string }>("wait-command", {
+          type: "command",
+          onConsume: async () => {
+            eventPassageStarted.resolve();
+            await releaseEventPassage.promise;
+          },
+        });
+        return command.payload;
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { CONCURRENT_CREATE_EVENT: ConcurrentCreateEventWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("CONCURRENT_CREATE_EVENT", {
+      id: "concurrent-create-event-1",
+    });
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read-concurrent-create-event-instance")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    assert(instance);
+
+    const createTick = harness.tick(buildPayload(instance, "create"));
+    await firstPassageStarted.promise;
+
+    await harness.sendEvent("CONCURRENT_CREATE_EVENT", instanceId, {
+      type: "command",
+      payload: { text: "hello" },
+    });
+    const eventTick = harness.tick(buildPayload(instance, "event"));
+    await eventPassageStarted.promise;
+
+    releaseFirstPassage.resolve();
+    await createTick;
+    releaseEventPassage.resolve();
+
+    await expect(eventTick).resolves.toBeGreaterThanOrEqual(0);
+    await expect(harness.getStatus("CONCURRENT_CREATE_EVENT", instanceId)).resolves.toMatchObject({
+      status: "complete",
+      output: { text: "hello" },
+    });
+    await expect(harness.getHistory("CONCURRENT_CREATE_EVENT", instanceId)).resolves.toMatchObject({
+      steps: [
+        expect.objectContaining({
+          stepKey: "waitForEvent:wait-command",
+          status: "completed",
+        }),
+      ],
+      events: [
+        expect.objectContaining({
+          type: "command",
+          consumedByStepKey: "waitForEvent:wait-command",
+        }),
+      ],
+    });
+  });
+
   test("terminate during in-flight tick does not get overwritten", async () => {
     // report: terminating while a tick is running should persist termination over completion.
     const started = Promise.withResolvers<void>();

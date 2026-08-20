@@ -15,12 +15,16 @@
         "name": "OUTBOX_HARNESS",
         "class_name": "OutboxHarnessDurableObject",
       },
+      {
+        "name": "WORKFLOWS_HARNESS",
+        "class_name": "WorkflowsHarnessDurableObject",
+      },
     ],
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["OutboxHarnessDurableObject"],
+      "new_sqlite_classes": ["OutboxHarnessDurableObject", "WorkflowsHarnessDurableObject"],
     },
   ],
 }
