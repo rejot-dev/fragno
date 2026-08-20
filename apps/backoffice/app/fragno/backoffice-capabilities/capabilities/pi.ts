@@ -4,10 +4,14 @@ import type {
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type { PiRuntimeState } from "@/fragno/pi/pi-shared";
 
-const capability = { id: "pi", label: "Pi", kind: "connection" } as const;
+const connectionStatusIdentity = {
+  id: "pi",
+  label: "Pi",
+  kind: "connection",
+} as const;
 
 const toPiStatus = (state: PiRuntimeState): ConnectionStatus => ({
-  ...capability,
+  ...connectionStatusIdentity,
   configured: state.configured,
   config: { modelCatalog: state.modelCatalog },
   verification: state.configured
@@ -24,23 +28,29 @@ const toPiStatus = (state: PiRuntimeState): ConnectionStatus => ({
 });
 
 export const piCapability: BackofficeCapability = {
-  ...capability,
-  runtimeToolNamespaces: ["pi"],
-  skillPaths: [],
-  connection: {
-    objectBinding: "AUTOMATIONS",
-    configurable: false,
-    getStatus: async ({ objects, scope }) =>
-      toPiStatus(await objects.automations.for(scope).getPiRuntimeState()),
-    verify: async ({ objects, scope }) =>
-      toPiStatus(await objects.automations.for(scope).getPiRuntimeState()),
-  },
-  hooks: [
-    {
-      id: "pi",
-      label: "Pi",
-      getRepository: ({ objects, scope }) =>
-        objects.automations.for(scope).getDurableHookRepository("pi"),
+  id: connectionStatusIdentity.id,
+  label: connectionStatusIdentity.label,
+  objectBinding: "AUTOMATIONS",
+  contributions: {
+    connection: {
+      configurable: false,
+      getStatus: async ({ objects, scope }) =>
+        toPiStatus(await objects.automations.for(scope).getPiRuntimeState()),
+      verify: async ({ objects, scope }) =>
+        toPiStatus(await objects.automations.for(scope).getPiRuntimeState()),
     },
-  ],
+    eventSources: [],
+    actionProviders: ["pi"],
+    hookScopes: [
+      {
+        id: "pi",
+        label: "Pi",
+        getRepository: ({ objects, scope }) =>
+          objects.automations.for(scope).getDurableHookRepository("pi"),
+      },
+    ],
+    skillPaths: [],
+    externalEntities: [],
+    automationEvents: [],
+  },
 };

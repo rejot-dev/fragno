@@ -85,21 +85,25 @@ const telegramCapabilityConfiguredSubjectSchema = z.object({
   capabilityId: z.literal("telegram"),
 });
 
-const capability = { id: "telegram", label: "Telegram", kind: "connection" } as const;
+const connectionStatusIdentity = {
+  id: "telegram",
+  label: "Telegram",
+  kind: "connection",
+} as const;
 const getTelegramDo = (objects: BackofficeObjectRegistry, orgId: string) =>
   objects.telegram.forOrg(orgId);
 
 const toTelegramStatus = (response: TelegramAdminConfigResponse): ConnectionStatus => {
   if (!response.configured) {
     return {
-      ...capability,
+      ...connectionStatusIdentity,
       configured: false,
       missing: ["botToken", "webhookSecretToken", "webhookBaseUrl"],
     };
   }
 
   return {
-    ...capability,
+    ...connectionStatusIdentity,
     configured: true,
     config: response.config,
     ...(response.webhook ? { verification: response.webhook } : {}),
@@ -107,90 +111,101 @@ const toTelegramStatus = (response: TelegramAdminConfigResponse): ConnectionStat
 };
 
 export const telegramCapability: BackofficeConfigurableConnectionCapability = {
-  ...capability,
-  runtimeToolNamespaces: ["telegram"],
-  skillPaths: ["skills/telegram-connection/SKILL.md"],
-  externalEntities: [telegramAutomationExternalEntities.chat],
-  connection: {
-    configurable: true,
-    configureInputSchema: telegramConfigureInputSchema,
-    configureFields: [
+  id: connectionStatusIdentity.id,
+  label: connectionStatusIdentity.label,
+  objectBinding: null,
+  contributions: {
+    connection: {
+      configurable: true,
+      configureInputSchema: telegramConfigureInputSchema,
+      configureFields: [
+        {
+          name: "botToken",
+          required: true,
+          secret: true,
+          description: "Telegram BotFather bot token.",
+        },
+        {
+          name: "webhookSecretToken",
+          required: true,
+          secret: true,
+          description: "Secret token Telegram sends with webhook requests.",
+        },
+        { name: "botUsername", description: "Optional bot username, with or without @." },
+        { name: "apiBaseUrl", description: "Optional Telegram API base URL override." },
+        {
+          name: "webhookBaseUrl",
+          required: true,
+          description: "Public http(s) base URL used when registering the Telegram webhook.",
+        },
+      ],
+      getStatus: async ({ objects, orgId }) =>
+        toTelegramStatus(await getTelegramDo(objects, orgId).getAdminConfig()),
+      verify: async ({ objects, orgId }) =>
+        toTelegramStatus(await getTelegramDo(objects, orgId).getAdminConfig()),
+      reset: async ({ objects, orgId }) =>
+        toTelegramStatus(await getTelegramDo(objects, orgId).resetAdminConfig()),
+      configure: async ({ objects, orgId, origin, payload }) =>
+        toTelegramStatus(
+          await getTelegramDo(objects, orgId).setAdminConfig(
+            telegramConfigureInputSchema.parse(payload),
+            origin,
+          ),
+        ),
+    },
+    eventSources: [
       {
-        name: "botToken",
-        required: true,
-        secret: true,
-        description: "Telegram BotFather bot token.",
-      },
-      {
-        name: "webhookSecretToken",
-        required: true,
-        secret: true,
-        description: "Secret token Telegram sends with webhook requests.",
-      },
-      { name: "botUsername", description: "Optional bot username, with or without @." },
-      { name: "apiBaseUrl", description: "Optional Telegram API base URL override." },
-      {
-        name: "webhookBaseUrl",
-        required: true,
-        description: "Public http(s) base URL used when registering the Telegram webhook.",
+        source: AUTOMATION_SOURCE,
+        label: "Telegram",
+        description: "Messages received by the connected Telegram bot.",
       },
     ],
-    getStatus: async ({ objects, orgId }) =>
-      toTelegramStatus(await getTelegramDo(objects, orgId).getAdminConfig()),
-    verify: async ({ objects, orgId }) =>
-      toTelegramStatus(await getTelegramDo(objects, orgId).getAdminConfig()),
-    reset: async ({ objects, orgId }) =>
-      toTelegramStatus(await getTelegramDo(objects, orgId).resetAdminConfig()),
-    configure: async ({ objects, orgId, origin, payload }) =>
-      toTelegramStatus(
-        await getTelegramDo(objects, orgId).setAdminConfig(
-          telegramConfigureInputSchema.parse(payload),
-          origin,
-        ),
-      ),
+    actionProviders: ["telegram"],
+    hookScopes: [
+      {
+        id: "telegram",
+        label: "Telegram",
+        getRepository: ({ objects, orgId }) =>
+          getTelegramDo(objects, orgId).getDurableHookRepository(),
+      },
+    ],
+    skillPaths: ["skills/telegram-connection/SKILL.md"],
+    externalEntities: [telegramAutomationExternalEntities.chat],
+    automationEvents: [
+      {
+        source: AUTOMATION_SOURCE,
+        eventType: AUTOMATION_EVENT_MESSAGE_RECEIVED,
+        label: "Telegram message received",
+        payloadSchema: telegramMessageReceivedPayloadSchema,
+        actorSchema: telegramMessageReceivedActorSchema,
+        example: {
+          messageId: "42",
+          chatId: "123456789",
+          fromUserId: "123456789",
+          text: "hello",
+          attachments: [
+            {
+              kind: "voice",
+              fileId: "voice-file-1",
+              fileUniqueId: "voice-unique-1",
+              duration: 3,
+              mimeType: "audio/ogg",
+            },
+          ],
+        },
+      },
+      {
+        source: AUTOMATION_SOURCE,
+        eventType: AUTOMATION_EVENT_CAPABILITY_CONFIGURED,
+        label: "Telegram configured",
+        description: "Fires after Telegram is configured for an organisation for the first time.",
+        payloadSchema: telegramCapabilityConfiguredPayloadSchema,
+        subjectSchema: telegramCapabilityConfiguredSubjectSchema,
+        example: {
+          capabilityId: "telegram",
+          capabilityLabel: "Telegram",
+        },
+      },
+    ],
   },
-  hooks: [
-    {
-      id: "telegram",
-      label: "Telegram",
-      getRepository: ({ objects, orgId }) =>
-        getTelegramDo(objects, orgId).getDurableHookRepository(),
-    },
-  ],
-  automationEvents: [
-    {
-      source: AUTOMATION_SOURCE,
-      eventType: AUTOMATION_EVENT_MESSAGE_RECEIVED,
-      label: "Telegram message received",
-      payloadSchema: telegramMessageReceivedPayloadSchema,
-      actorSchema: telegramMessageReceivedActorSchema,
-      example: {
-        messageId: "42",
-        chatId: "123456789",
-        fromUserId: "123456789",
-        text: "hello",
-        attachments: [
-          {
-            kind: "voice",
-            fileId: "voice-file-1",
-            fileUniqueId: "voice-unique-1",
-            duration: 3,
-            mimeType: "audio/ogg",
-          },
-        ],
-      },
-    },
-    {
-      source: AUTOMATION_SOURCE,
-      eventType: AUTOMATION_EVENT_CAPABILITY_CONFIGURED,
-      label: "Telegram configured",
-      description: "Fires after Telegram is configured for an organisation for the first time.",
-      payloadSchema: telegramCapabilityConfiguredPayloadSchema,
-      subjectSchema: telegramCapabilityConfiguredSubjectSchema,
-      example: {
-        capabilityId: "telegram",
-        capabilityLabel: "Telegram",
-      },
-    },
-  ],
 };

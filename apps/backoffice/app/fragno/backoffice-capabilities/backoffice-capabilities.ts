@@ -100,6 +100,13 @@ type BackofficeAutomationEventDescriptor = {
   example?: unknown;
 };
 
+/** Declares a user-facing event producer independently from lifecycle events a capability emits. */
+type CapabilityEventSourceContribution = {
+  source: string;
+  label: string;
+  description: string;
+};
+
 export type BackofficeConnectionConfigureField = {
   name: string;
   required?: boolean;
@@ -110,7 +117,6 @@ export type BackofficeConnectionConfigureField = {
 type BackofficeConnectionInput = BackofficeCapabilityContext;
 
 type BackofficeConnectionDescriptorBase = {
-  objectBinding?: BackofficeObjectBindingName;
   getStatus(input: BackofficeConnectionInput): Promise<ConnectionStatus>;
   verify?(input: BackofficeConnectionInput): Promise<ConnectionStatus>;
 };
@@ -131,37 +137,47 @@ export type BackofficeManagedConnectionDescriptor = BackofficeConnectionDescript
   configure?: never;
 };
 
-type BackofficeCapabilityBase = {
+type BackofficeConnectionDescriptor =
+  | BackofficeConfigurableConnectionDescriptor
+  | BackofficeManagedConnectionDescriptor;
+
+/** Collects the independent product roles contributed by one Backoffice capability. */
+type CapabilityContributions = {
+  connection: BackofficeConnectionDescriptor | null;
+  eventSources: readonly CapabilityEventSourceContribution[];
+  actionProviders: readonly string[];
+  hookScopes: readonly BackofficeHookScope[];
+  skillPaths: readonly string[];
+  externalEntities: readonly AutomationExternalEntityDefinition[];
+  automationEvents: readonly BackofficeAutomationEventDescriptor[];
+};
+
+export type BackofficeCapability = {
   id: BackofficeCapabilityId;
   label: string;
-  objectBinding?: BackofficeObjectBindingName;
-  runtimeToolNamespaces?: readonly string[];
-  skillPaths: readonly string[];
-  hooks?: readonly BackofficeHookScope[];
-  externalEntities?: readonly AutomationExternalEntityDefinition[];
-  automationEvents?: readonly BackofficeAutomationEventDescriptor[];
+  objectBinding: BackofficeObjectBindingName | null;
+  contributions: CapabilityContributions;
 };
 
-export type BackofficeConfigurableConnectionCapability = BackofficeCapabilityBase & {
-  kind: "connection";
-  connection: BackofficeConfigurableConnectionDescriptor;
+export type BackofficeConfigurableConnectionCapability = BackofficeCapability & {
+  contributions: CapabilityContributions & {
+    connection: BackofficeConfigurableConnectionDescriptor;
+  };
 };
 
-export type BackofficeManagedConnectionCapability = BackofficeCapabilityBase & {
-  kind: "connection";
-  connection: BackofficeManagedConnectionDescriptor;
+export type BackofficeManagedConnectionCapability = BackofficeCapability & {
+  contributions: CapabilityContributions & {
+    connection: BackofficeManagedConnectionDescriptor;
+  };
 };
 
 export type BackofficeConnectionCapability =
   | BackofficeConfigurableConnectionCapability
   | BackofficeManagedConnectionCapability;
 
-export type BackofficeSystemCapability = BackofficeCapabilityBase & {
-  kind: "system";
-  connection?: never;
+export type BackofficeSystemCapability = BackofficeCapability & {
+  contributions: CapabilityContributions & { connection: null };
 };
-
-export type BackofficeCapability = BackofficeConnectionCapability | BackofficeSystemCapability;
 
 export const backofficeCapabilities: readonly BackofficeCapability[] = [
   apiCapability,
@@ -237,9 +253,24 @@ export const backofficeConnectionCatalog: readonly BackofficeConnectionCatalogEn
   },
 ];
 
-export const listAutomationEventDescriptors = () => {
-  const events = backofficeCapabilities.flatMap((capability) =>
-    (capability.automationEvents ?? []).map((event) => ({
+export function getBackofficeCapabilityKind(
+  capability: BackofficeCapability,
+): BackofficeCapabilityKind {
+  return capability.contributions.connection ? "connection" : "system";
+}
+
+export function listCapabilityEventSources() {
+  return backofficeCapabilities.flatMap((capability) =>
+    capability.contributions.eventSources.map((eventSource) => ({
+      ...eventSource,
+      capabilityId: capability.id,
+    })),
+  );
+}
+
+export function listAutomationEventDescriptors() {
+  return backofficeCapabilities.flatMap((capability) =>
+    capability.contributions.automationEvents.map((event) => ({
       ...event,
       capabilityId: capability.id,
       payloadSchema: zodSchemaToJsonSchema(event.payloadSchema),
@@ -247,35 +278,39 @@ export const listAutomationEventDescriptors = () => {
       subjectSchema: zodSchemaToJsonSchema(event.subjectSchema),
     })),
   );
+}
 
-  return events;
-};
-
-const isConnectionCapability = (
+function isConnectionCapability(
   capability: BackofficeCapability,
-): capability is BackofficeConnectionCapability => capability.kind === "connection";
+): capability is BackofficeConnectionCapability {
+  return capability.contributions.connection !== null;
+}
 
-export const listConnectionCapabilities = () =>
-  backofficeCapabilities.filter(isConnectionCapability);
+export function listConnectionCapabilities() {
+  return backofficeCapabilities.filter(isConnectionCapability);
+}
 
-export const getConnectionCapability = (id: string) =>
-  listConnectionCapabilities().find((capability) => capability.id === id);
+export function getConnectionCapability(id: string) {
+  return listConnectionCapabilities().find((capability) => capability.id === id);
+}
 
-export const listHookScopes = () =>
-  backofficeCapabilities.flatMap((capability) =>
-    (capability.hooks ?? []).map((hook) => ({
+export function listHookScopes() {
+  return backofficeCapabilities.flatMap((capability) =>
+    capability.contributions.hookScopes.map((hook) => ({
       id: hook.id,
       label: hook.label,
       capabilityId: capability.id,
       capabilityLabel: capability.label,
-      kind: capability.kind,
+      kind: getBackofficeCapabilityKind(capability),
     })),
   );
+}
 
-export const getHookScope = (id: string) =>
-  backofficeCapabilities
-    .flatMap((capability) => capability.hooks ?? [])
+export function getHookScope(id: string) {
+  return backofficeCapabilities
+    .flatMap((capability) => capability.contributions.hookScopes)
     .find((hook) => hook.id === id);
+}
 
 export const AUTOMATION_SOURCES = {
   auth: AUTH_AUTOMATION_SOURCE,

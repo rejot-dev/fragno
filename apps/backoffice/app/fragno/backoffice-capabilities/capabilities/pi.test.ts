@@ -43,9 +43,10 @@ describe("Pi capability", () => {
         GEMINI_API_KEY: undefined,
       },
     });
-    assert(piCapability.connection);
+    const connection = piCapability.contributions.connection;
+    assert(connection);
 
-    const status = await piCapability.connection.getStatus(capabilityContext(runtime));
+    const status = await connection.getStatus(capabilityContext(runtime));
 
     expect(status).toMatchObject({
       configured: false,
@@ -56,7 +57,9 @@ describe("Pi capability", () => {
 
   test("initializes Pi before exposing its hook repository", async () => {
     runtime = await createInMemoryBackofficeRuntime();
-    const hookScope = piCapability.hooks?.find((candidate) => candidate.id === "pi");
+    const hookScope = piCapability.contributions.hookScopes.find(
+      (candidate) => candidate.id === "pi",
+    );
     assert(hookScope);
 
     const repository = await hookScope.getRepository(capabilityContext(runtime));

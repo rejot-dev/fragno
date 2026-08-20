@@ -25,7 +25,7 @@ const readSkillName = (skill: string) => {
 describe("Backoffice capability static skills", () => {
   test("capability skills are spec-shaped static skills", () => {
     for (const capability of backofficeCapabilities) {
-      for (const skillPath of capability.skillPaths) {
+      for (const skillPath of capability.contributions.skillPaths) {
         const skill = readStaticText(skillPath);
         const skillName = readSkillName(skill);
 
@@ -43,7 +43,7 @@ describe("Backoffice capability static skills", () => {
   test("some capabilities intentionally rely on general system guidance instead of specific skills", () => {
     const capabilityIdsWithoutSkills = new Set(
       backofficeCapabilities
-        .filter((capability) => capability.skillPaths.length === 0)
+        .filter((capability) => capability.contributions.skillPaths.length === 0)
         .map((capability) => capability.id),
     );
 

@@ -24,28 +24,39 @@ const identityClaimCompletedSubjectSchema = z.object({
 export const otpCapability: BackofficeCapability = {
   id: "otp",
   label: "OTP",
-  kind: "system",
-  runtimeToolNamespaces: ["otp"],
-  skillPaths: ["skills/otp-system/SKILL.md"],
-  hooks: [
-    {
-      id: "otp",
-      label: "OTP",
-      getRepository: ({ objects, orgId }) => objects.otp.forOrg(orgId).getDurableHookRepository(),
-    },
-  ],
-  automationEvents: [
-    {
-      source: AUTOMATION_SOURCE,
-      eventType: AUTOMATION_EVENT_IDENTITY_CLAIM_COMPLETED,
-      label: "OTP identity claim completed",
-      payloadSchema: identityClaimCompletedPayloadSchema,
-      actorSchema: identityClaimCompletedActorSchema,
-      subjectSchema: identityClaimCompletedSubjectSchema,
-      example: {
-        otpId: "otp_123",
-        claimType: "identity_link",
+  objectBinding: null,
+  contributions: {
+    connection: null,
+    eventSources: [
+      {
+        source: AUTOMATION_SOURCE,
+        label: "Identity claims",
+        description: "Completed Backoffice identity claims.",
       },
-    },
-  ],
+    ],
+    actionProviders: ["otp"],
+    hookScopes: [
+      {
+        id: "otp",
+        label: "OTP",
+        getRepository: ({ objects, orgId }) => objects.otp.forOrg(orgId).getDurableHookRepository(),
+      },
+    ],
+    skillPaths: ["skills/otp-system/SKILL.md"],
+    externalEntities: [],
+    automationEvents: [
+      {
+        source: AUTOMATION_SOURCE,
+        eventType: AUTOMATION_EVENT_IDENTITY_CLAIM_COMPLETED,
+        label: "OTP identity claim completed",
+        payloadSchema: identityClaimCompletedPayloadSchema,
+        actorSchema: identityClaimCompletedActorSchema,
+        subjectSchema: identityClaimCompletedSubjectSchema,
+        example: {
+          otpId: "otp_123",
+          claimType: "identity_link",
+        },
+      },
+    ],
+  },
 };

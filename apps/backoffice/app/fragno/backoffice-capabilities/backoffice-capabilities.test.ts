@@ -1,6 +1,46 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
-import { toConnectionVerification } from "./backoffice-capabilities";
+import {
+  backofficeCapabilities,
+  getBackofficeCapabilityKind,
+  listAutomationEventDescriptors,
+  listCapabilityEventSources,
+  toConnectionVerification,
+} from "./backoffice-capabilities";
+
+describe("Capability contributions", () => {
+  test("declares user-facing event sources independently from automation event descriptors", () => {
+    expect(
+      listCapabilityEventSources()
+        .map((eventSource) => eventSource.source)
+        .sort(),
+    ).toEqual(["auth", "automations", "github", "otp", "sandbox", "telegram"]);
+
+    const automationEventSources = new Set(
+      listAutomationEventDescriptors().map((event) => event.source),
+    );
+    expect(automationEventSources).toContain("api");
+    expect(automationEventSources).toContain("mcp");
+    assert(!listCapabilityEventSources().some((eventSource) => eventSource.source === "api"));
+    assert(!listCapabilityEventSources().some((eventSource) => eventSource.source === "mcp"));
+  });
+
+  test("derives legacy system and connection kinds from connection contributions", () => {
+    expect(
+      Object.fromEntries(
+        backofficeCapabilities.map((capability) => [
+          capability.id,
+          getBackofficeCapabilityKind(capability),
+        ]),
+      ),
+    ).toMatchObject({
+      api: "system",
+      mcp: "system",
+      pi: "connection",
+      telegram: "connection",
+    });
+  });
+});
 
 describe("toConnectionVerification", () => {
   test("verifies present configuration when a capability has no specific health check", () => {

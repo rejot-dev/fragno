@@ -28,10 +28,7 @@ import { z } from "zod";
 import { eq, or, useLiveQuery } from "@tanstack/react-db";
 
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
-import {
-  backofficeCapabilities,
-  backofficeConnectionCatalog,
-} from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { listCapabilityEventSources } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { runtimeToolWorkflowCatalog } from "@/fragno/runtime-tools/workflow-catalog.server";
 
 import type { Route } from "./+types/dashboard";
@@ -125,29 +122,21 @@ const fallbackSourceLabel = (source: string) =>
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
     .join(" ");
 
-const sourceDescriptionById = new Map(
-  backofficeConnectionCatalog.map((connection) => [connection.id, connection.description]),
-);
-
 const dashboardSources = (routes: readonly DashboardRoute[]): DashboardSource[] => {
   const sources = new Map<string, DashboardSource>();
 
-  for (const capability of backofficeCapabilities) {
-    const id = normalizedSourceId(capability.id);
+  for (const eventSource of listCapabilityEventSources()) {
+    const id = normalizedSourceId(eventSource.source);
     sources.set(id, {
       id,
-      label: capability.label,
-      kind: capability.kind,
-      description:
-        sourceDescriptionById.get(capability.id) ??
-        `${capability.label} is available as a ${capability.kind} automation capability.`,
+      label: eventSource.label,
+      description: eventSource.description,
     });
   }
 
   sources.set("scheduler", {
     id: "scheduler",
     label: "Scheduler",
-    kind: "system",
     description: "Starts automation routes at one-time or recurring scheduled occurrences.",
   });
 
@@ -161,8 +150,7 @@ const dashboardSources = (routes: readonly DashboardRoute[]): DashboardSource[] 
       sources.set(id, {
         id,
         label,
-        kind: "system",
-        description: `${label} is available as an automation event source.`,
+        description: `${label} produces events used by configured automation routes.`,
       });
     }
   }
@@ -370,7 +358,7 @@ function SourceCard({
           {source.label}
         </span>
         <span className="mt-0.5 block truncate text-[10px] tracking-[0.12em] text-[var(--bo-muted-2)] uppercase">
-          {source.kind} capability
+          Event source
         </span>
       </span>
     </button>

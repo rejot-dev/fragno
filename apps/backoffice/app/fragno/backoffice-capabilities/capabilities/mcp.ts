@@ -28,40 +28,44 @@ const mcpServerConfigurationSubjectSchema = mcpScopeSubjectSchema.extend({
 export const mcpCapability: BackofficeCapability = {
   id: "mcp",
   label: "MCP",
-  kind: "system",
   objectBinding: "MCP",
-  runtimeToolNamespaces: ["mcp"],
-  skillPaths: ["skills/mcp-connection/SKILL.md"],
-  hooks: [
-    {
-      id: "mcp",
-      label: "MCP",
-      getRepository: ({ objects, scope }) => objects.mcp.for(scope).getDurableHookRepository(),
-    },
-  ],
-  automationEvents: [
-    {
-      source: AUTOMATION_SOURCE,
-      eventType: AUTOMATION_EVENT_SERVER_CONFIGURATION_CHANGED,
-      label: "MCP server configuration changed",
-      description: "Fires when an MCP server's refreshed configuration meaningfully changes.",
-      payloadSchema: mcpServerConfigurationChangedPayloadSchema,
-      subjectSchema: mcpServerConfigurationSubjectSchema,
-      example: {
-        serverId: "local-tools",
-        current: { tools: [{ name: "new-tool" }] },
+  contributions: {
+    connection: null,
+    eventSources: [],
+    actionProviders: ["mcp"],
+    hookScopes: [
+      {
+        id: "mcp",
+        label: "MCP",
+        getRepository: ({ objects, scope }) => objects.mcp.for(scope).getDurableHookRepository(),
       },
-    },
-    {
-      source: AUTOMATION_SOURCE,
-      eventType: AUTOMATION_EVENT_SERVER_CONFIGURATION_DELETED,
-      label: "MCP server configuration deleted",
-      description: "Fires when an MCP server configuration is deleted.",
-      payloadSchema: mcpServerConfigurationDeletedPayloadSchema,
-      subjectSchema: mcpServerConfigurationSubjectSchema,
-      example: {
-        serverId: "local-tools",
+    ],
+    skillPaths: ["skills/mcp-connection/SKILL.md"],
+    externalEntities: [],
+    automationEvents: [
+      {
+        source: AUTOMATION_SOURCE,
+        eventType: AUTOMATION_EVENT_SERVER_CONFIGURATION_CHANGED,
+        label: "MCP server configuration changed",
+        description: "Fires when an MCP server's refreshed configuration meaningfully changes.",
+        payloadSchema: mcpServerConfigurationChangedPayloadSchema,
+        subjectSchema: mcpServerConfigurationSubjectSchema,
+        example: {
+          serverId: "local-tools",
+          current: { tools: [{ name: "new-tool" }] },
+        },
       },
-    },
-  ],
+      {
+        source: AUTOMATION_SOURCE,
+        eventType: AUTOMATION_EVENT_SERVER_CONFIGURATION_DELETED,
+        label: "MCP server configuration deleted",
+        description: "Fires when an MCP server configuration is deleted.",
+        payloadSchema: mcpServerConfigurationDeletedPayloadSchema,
+        subjectSchema: mcpServerConfigurationSubjectSchema,
+        example: {
+          serverId: "local-tools",
+        },
+      },
+    ],
+  },
 };

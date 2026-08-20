@@ -8,7 +8,6 @@ import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 import type { AutomationBrowserCollections as AutomationCollections } from "@/fragno/automation/tanstack/browser-database";
-import type { BackofficeCapabilityKind } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 import { resolveWorkflowRuntimeToolCalls } from "@/fragno/runtime-tools/workflow-catalog";
 
@@ -25,7 +24,6 @@ import { ScriptWorkflowGraph } from "./script-view/workflow-graph";
 export type DashboardSource = {
   id: string;
   label: string;
-  kind: BackofficeCapabilityKind;
   description: string;
 };
 
@@ -120,7 +118,7 @@ function SourceInspector({
         </span>
         <div className="min-w-0">
           <p className="text-[10px] font-semibold tracking-[0.18em] text-lime-700 uppercase dark:text-lime-300">
-            {source.kind} capability
+            Event source
           </p>
           <h2 className="mt-1 text-lg font-semibold text-[var(--bo-fg)]">{source.label}</h2>
         </div>
@@ -149,7 +147,7 @@ function SourceInspector({
 
       {routes.length === 0 ? (
         <p className="mt-3 border border-dashed border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm leading-5 text-[var(--bo-muted)]">
-          This capability is available, but no triggers currently use it.
+          This event source is available, but no triggers currently use it.
         </p>
       ) : null}
     </div>

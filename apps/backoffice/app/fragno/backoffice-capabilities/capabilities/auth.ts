@@ -42,60 +42,71 @@ const authOrganizationSubjectSchema = z.object({
 export const authCapability: BackofficeCapability = {
   id: "auth",
   label: "Auth",
-  kind: "system",
-  runtimeToolNamespaces: [],
-  skillPaths: [],
-  hooks: [
-    {
-      id: "auth",
-      label: "Auth",
-      getRepository: ({ objects }) => objects.auth.singleton().getDurableHookRepository(),
-    },
-  ],
-  automationEvents: [
-    {
-      source: AUTH_AUTOMATION_SOURCE,
-      eventType: AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
-      label: "Organization created",
-      description: "Fires after a Backoffice organization is created.",
-      payloadSchema: authOrganizationPayloadSchema,
-      actorSchema: authOrganizationActorSchema,
-      subjectSchema: authOrganizationSubjectSchema,
-      example: {
-        organization: {
-          id: "org_123",
-          name: "Acme",
-          slug: "acme",
-          logoUrl: null,
-          metadata: null,
-          createdBy: "user_123",
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-          deletedAt: null,
+  objectBinding: null,
+  contributions: {
+    connection: null,
+    eventSources: [
+      {
+        source: AUTH_AUTOMATION_SOURCE,
+        label: "Organizations",
+        description: "Backoffice organization lifecycle events.",
+      },
+    ],
+    actionProviders: [],
+    hookScopes: [
+      {
+        id: "auth",
+        label: "Auth",
+        getRepository: ({ objects }) => objects.auth.singleton().getDurableHookRepository(),
+      },
+    ],
+    skillPaths: [],
+    externalEntities: [],
+    automationEvents: [
+      {
+        source: AUTH_AUTOMATION_SOURCE,
+        eventType: AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
+        label: "Organization created",
+        description: "Fires after a Backoffice organization is created.",
+        payloadSchema: authOrganizationPayloadSchema,
+        actorSchema: authOrganizationActorSchema,
+        subjectSchema: authOrganizationSubjectSchema,
+        example: {
+          organization: {
+            id: "org_123",
+            name: "Acme",
+            slug: "acme",
+            logoUrl: null,
+            metadata: null,
+            createdBy: "user_123",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            deletedAt: null,
+          },
         },
       },
-    },
-    {
-      source: AUTH_AUTOMATION_SOURCE,
-      eventType: AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED,
-      label: "Organization updated",
-      description: "Fires after a Backoffice organization is updated.",
-      payloadSchema: authOrganizationPayloadSchema,
-      actorSchema: authOrganizationActorSchema,
-      subjectSchema: authOrganizationSubjectSchema,
-      example: {
-        organization: {
-          id: "org_123",
-          name: "Acme Inc.",
-          slug: "acme",
-          logoUrl: null,
-          metadata: { plan: "pro" },
-          createdBy: "user_123",
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-02T00:00:00.000Z",
-          deletedAt: null,
+      {
+        source: AUTH_AUTOMATION_SOURCE,
+        eventType: AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED,
+        label: "Organization updated",
+        description: "Fires after a Backoffice organization is updated.",
+        payloadSchema: authOrganizationPayloadSchema,
+        actorSchema: authOrganizationActorSchema,
+        subjectSchema: authOrganizationSubjectSchema,
+        example: {
+          organization: {
+            id: "org_123",
+            name: "Acme Inc.",
+            slug: "acme",
+            logoUrl: null,
+            metadata: { plan: "pro" },
+            createdBy: "user_123",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-02T00:00:00.000Z",
+            deletedAt: null,
+          },
         },
       },
-    },
-  ],
+    ],
+  },
 };

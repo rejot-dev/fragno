@@ -91,47 +91,57 @@ const GITHUB_AUTOMATION_EVENT_WEBHOOK_RECEIVED = "webhook.received" as const;
 export const githubCapability: BackofficeCapability = {
   id: "github",
   label: "GitHub",
-  kind: "connection",
-  runtimeToolNamespaces: [],
-  skillPaths: [],
-  connection: {
-    configurable: false,
-    getStatus: async ({ config }) => ({
-      id: "github",
-      label: "GitHub",
-      kind: "connection",
-      configured: config.bindings.github,
-      config: { configurationScope: "environment" },
-      nextSteps: ["Configure the GitHub App environment and installation."],
-    }),
-  },
-  hooks: [
-    {
-      id: "github",
-      label: "GitHub",
-      getRepository: ({ objects, orgId }) =>
-        objects.github.forOrg(orgId).getDurableHookRepository(),
+  objectBinding: null,
+  contributions: {
+    connection: {
+      configurable: false,
+      getStatus: async ({ config }) => ({
+        id: "github",
+        label: "GitHub",
+        kind: "connection",
+        configured: config.bindings.github,
+        config: { configurationScope: "environment" },
+        nextSteps: ["Configure the GitHub App environment and installation."],
+      }),
     },
-  ],
-  automationEvents: [
-    {
-      source: GITHUB_AUTOMATION_SOURCE,
-      eventType: GITHUB_AUTOMATION_EVENT_WEBHOOK_RECEIVED,
-      label: "GitHub webhook received",
-      description: "Fires when a GitHub App webhook is received for an organisation.",
-      payloadSchema: githubPayloadSchema,
-      actorSchema: githubActorSchema,
-      subjectSchema: githubSubjectSchema,
-      example: {
-        deliveryId: "delivery-123",
-        githubEvent: "pull_request",
-        action: "opened",
-        installationId: "123456",
-        repository: { id: 1, name: "project", full_name: "acme/project", private: false },
-        pullRequest: { id: 10, number: 7, title: "Add webhook support", state: "open" },
-        sender: { id: 42, login: "octocat" },
-        raw: {},
+    eventSources: [
+      {
+        source: GITHUB_AUTOMATION_SOURCE,
+        label: "GitHub",
+        description: "Activity received from the connected GitHub App.",
       },
-    },
-  ],
+    ],
+    actionProviders: [],
+    hookScopes: [
+      {
+        id: "github",
+        label: "GitHub",
+        getRepository: ({ objects, orgId }) =>
+          objects.github.forOrg(orgId).getDurableHookRepository(),
+      },
+    ],
+    skillPaths: [],
+    externalEntities: [],
+    automationEvents: [
+      {
+        source: GITHUB_AUTOMATION_SOURCE,
+        eventType: GITHUB_AUTOMATION_EVENT_WEBHOOK_RECEIVED,
+        label: "GitHub webhook received",
+        description: "Fires when a GitHub App webhook is received for an organisation.",
+        payloadSchema: githubPayloadSchema,
+        actorSchema: githubActorSchema,
+        subjectSchema: githubSubjectSchema,
+        example: {
+          deliveryId: "delivery-123",
+          githubEvent: "pull_request",
+          action: "opened",
+          installationId: "123456",
+          repository: { id: 1, name: "project", full_name: "acme/project", private: false },
+          pullRequest: { id: 10, number: 7, title: "Add webhook support", state: "open" },
+          sender: { id: 42, login: "octocat" },
+          raw: {},
+        },
+      },
+    ],
+  },
 };

@@ -51,7 +51,8 @@ export const createCodemodeStaticArtifacts = async ({
   const configuredCapabilities: BackofficeCapabilityId[] = [];
 
   for (const capability of backofficeCapabilities) {
-    if (capability.kind === "system") {
+    const connection = capability.contributions.connection;
+    if (!connection) {
       configuredCapabilities.push(capability.id);
       continue;
     }
@@ -60,7 +61,7 @@ export const createCodemodeStaticArtifacts = async ({
       continue;
     }
 
-    const status = await capability.connection.getStatus({
+    const status = await connection.getStatus({
       objects,
       config,
       scope: { kind: "org", orgId },

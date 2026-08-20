@@ -25,83 +25,94 @@ const projectSubjectSchema = z.object({
 export const automationsCapability: BackofficeCapability = {
   id: "automations",
   label: "Automations",
-  kind: "system",
-  runtimeToolNamespaces: ["store", "router", "workflow", "hooks", "events"],
-  skillPaths: [],
-  hooks: [
-    {
-      id: "automations",
-      label: "Automations",
-      getRepository: ({ objects, orgId }) =>
-        objects.automations.forOrg(orgId).getDurableHookRepository("automation"),
-    },
-    {
-      id: "workflows",
-      label: "Workflows",
-      getRepository: ({ objects, scope }) =>
-        objects.automations.for(scope).getDurableHookRepository("workflows"),
-    },
-  ],
-  automationEvents: [
-    {
-      source: "automations",
-      eventType: "project.created",
-      label: "Project created",
-      description: "Fires after an automation project is created in an organisation.",
-      payloadSchema: projectPayloadSchema,
-      subjectSchema: projectSubjectSchema,
-      example: {
-        project: {
-          id: "project_123",
-          slug: "launch-plan",
-          name: "Launch Plan",
-          description: null,
-          archivedAt: null,
-          createdByUserId: "user_123",
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
+  objectBinding: null,
+  contributions: {
+    connection: null,
+    eventSources: [
+      {
+        source: "automations",
+        label: "Projects",
+        description: "Backoffice project lifecycle events.",
+      },
+    ],
+    actionProviders: ["store", "router", "workflow", "hooks", "events"],
+    hookScopes: [
+      {
+        id: "automations",
+        label: "Automations",
+        getRepository: ({ objects, orgId }) =>
+          objects.automations.forOrg(orgId).getDurableHookRepository("automation"),
+      },
+      {
+        id: "workflows",
+        label: "Workflows",
+        getRepository: ({ objects, scope }) =>
+          objects.automations.for(scope).getDurableHookRepository("workflows"),
+      },
+    ],
+    skillPaths: [],
+    externalEntities: [],
+    automationEvents: [
+      {
+        source: "automations",
+        eventType: "project.created",
+        label: "Project created",
+        description: "Fires after an automation project is created in an organisation.",
+        payloadSchema: projectPayloadSchema,
+        subjectSchema: projectSubjectSchema,
+        example: {
+          project: {
+            id: "project_123",
+            slug: "launch-plan",
+            name: "Launch Plan",
+            description: null,
+            archivedAt: null,
+            createdByUserId: "user_123",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          },
         },
       },
-    },
-    {
-      source: "automations",
-      eventType: "project.updated",
-      label: "Project updated",
-      description: "Fires after an automation project's editable fields change.",
-      payloadSchema: projectPayloadSchema,
-      subjectSchema: projectSubjectSchema,
-      example: {
-        project: {
-          id: "project_123",
-          slug: "launch-plan",
-          name: "Launch Plan v2",
-          description: "Updated launch workspace.",
-          archivedAt: null,
-          createdByUserId: "user_123",
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-02T00:00:00.000Z",
+      {
+        source: "automations",
+        eventType: "project.updated",
+        label: "Project updated",
+        description: "Fires after an automation project's editable fields change.",
+        payloadSchema: projectPayloadSchema,
+        subjectSchema: projectSubjectSchema,
+        example: {
+          project: {
+            id: "project_123",
+            slug: "launch-plan",
+            name: "Launch Plan v2",
+            description: "Updated launch workspace.",
+            archivedAt: null,
+            createdByUserId: "user_123",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-02T00:00:00.000Z",
+          },
         },
       },
-    },
-    {
-      source: "automations",
-      eventType: "project.archived",
-      label: "Project archived",
-      description: "Fires after an automation project is archived.",
-      payloadSchema: projectPayloadSchema,
-      subjectSchema: projectSubjectSchema,
-      example: {
-        project: {
-          id: "project_123",
-          slug: "launch-plan",
-          name: "Launch Plan",
-          description: null,
-          archivedAt: "2026-01-03T00:00:00.000Z",
-          createdByUserId: "user_123",
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-03T00:00:00.000Z",
+      {
+        source: "automations",
+        eventType: "project.archived",
+        label: "Project archived",
+        description: "Fires after an automation project is archived.",
+        payloadSchema: projectPayloadSchema,
+        subjectSchema: projectSubjectSchema,
+        example: {
+          project: {
+            id: "project_123",
+            slug: "launch-plan",
+            name: "Launch Plan",
+            description: null,
+            archivedAt: "2026-01-03T00:00:00.000Z",
+            createdByUserId: "user_123",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-03T00:00:00.000Z",
+          },
         },
       },
-    },
-  ],
+    ],
+  },
 };

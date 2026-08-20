@@ -44,7 +44,11 @@ const resendCapabilityConfiguredSubjectSchema = z.object({
   capabilityId: z.literal("resend"),
 });
 
-const capability = { id: "resend", label: "Resend", kind: "connection" } as const;
+const connectionStatusIdentity = {
+  id: "resend",
+  label: "Resend",
+  kind: "connection",
+} as const;
 const getResendDo = (objects: BackofficeObjectRegistry, orgId: string) =>
   objects.resend.forOrg(orgId);
 
@@ -56,70 +60,77 @@ type ResendAdminConfigResponse = {
 const toResendStatus = (response: ResendAdminConfigResponse): ConnectionStatus => {
   if (!response.configured) {
     return {
-      ...capability,
+      ...connectionStatusIdentity,
       configured: false,
       missing: ["apiKey", "defaultFrom", "webhookBaseUrl", "webhookSecret"],
     };
   }
 
   return {
-    ...capability,
+    ...connectionStatusIdentity,
     configured: true,
     ...(response.config ? { config: response.config } : {}),
   };
 };
 
 export const resendCapability: BackofficeCapability = {
-  ...capability,
-  runtimeToolNamespaces: ["resend"],
-  skillPaths: ["skills/resend-connection/SKILL.md"],
-  connection: {
-    configurable: true,
-    configureInputSchema: resendConfigureInputSchema,
-    configureFields: [
-      { name: "apiKey", secret: true, description: "Resend API key. Required on first setup." },
-      { name: "defaultFrom", description: "Default sender address. Required on first setup." },
-      { name: "defaultReplyTo", description: "Optional default reply-to address or addresses." },
+  id: connectionStatusIdentity.id,
+  label: connectionStatusIdentity.label,
+  objectBinding: null,
+  contributions: {
+    connection: {
+      configurable: true,
+      configureInputSchema: resendConfigureInputSchema,
+      configureFields: [
+        { name: "apiKey", secret: true, description: "Resend API key. Required on first setup." },
+        { name: "defaultFrom", description: "Default sender address. Required on first setup." },
+        { name: "defaultReplyTo", description: "Optional default reply-to address or addresses." },
+        {
+          name: "webhookBaseUrl",
+          required: true,
+          description: "Public http(s) base URL used when registering Resend webhooks.",
+        },
+      ],
+      getStatus: async ({ objects, orgId }) =>
+        toResendStatus(await getResendDo(objects, orgId).getAdminConfig()),
+      verify: async ({ objects, orgId }) =>
+        toResendStatus(await getResendDo(objects, orgId).getAdminConfig()),
+      reset: async ({ objects, orgId }) =>
+        toResendStatus(await getResendDo(objects, orgId).resetAdminConfig()),
+      configure: async ({ objects, orgId, origin, payload }) =>
+        toResendStatus(
+          await getResendDo(objects, orgId).setAdminConfig(
+            resendConfigureInputSchema.parse(payload),
+            { kind: "org", orgId },
+            origin,
+          ),
+        ),
+    },
+    eventSources: [],
+    actionProviders: ["resend"],
+    hookScopes: [
       {
-        name: "webhookBaseUrl",
-        required: true,
-        description: "Public http(s) base URL used when registering Resend webhooks.",
+        id: "resend",
+        label: "Resend",
+        getRepository: ({ objects, orgId }) =>
+          getResendDo(objects, orgId).getDurableHookRepository(),
       },
     ],
-    getStatus: async ({ objects, orgId }) =>
-      toResendStatus(await getResendDo(objects, orgId).getAdminConfig()),
-    verify: async ({ objects, orgId }) =>
-      toResendStatus(await getResendDo(objects, orgId).getAdminConfig()),
-    reset: async ({ objects, orgId }) =>
-      toResendStatus(await getResendDo(objects, orgId).resetAdminConfig()),
-    configure: async ({ objects, orgId, origin, payload }) =>
-      toResendStatus(
-        await getResendDo(objects, orgId).setAdminConfig(
-          resendConfigureInputSchema.parse(payload),
-          { kind: "org", orgId },
-          origin,
-        ),
-      ),
-  },
-  hooks: [
-    {
-      id: "resend",
-      label: "Resend",
-      getRepository: ({ objects, orgId }) => getResendDo(objects, orgId).getDurableHookRepository(),
-    },
-  ],
-  automationEvents: [
-    {
-      source: "resend",
-      eventType: "capability.configured",
-      label: "Resend configured",
-      description: "Fires after Resend is configured for an organisation for the first time.",
-      payloadSchema: resendCapabilityConfiguredPayloadSchema,
-      subjectSchema: resendCapabilityConfiguredSubjectSchema,
-      example: {
-        capabilityId: "resend",
-        capabilityLabel: "Resend",
+    skillPaths: ["skills/resend-connection/SKILL.md"],
+    externalEntities: [],
+    automationEvents: [
+      {
+        source: "resend",
+        eventType: "capability.configured",
+        label: "Resend configured",
+        description: "Fires after Resend is configured for an organisation for the first time.",
+        payloadSchema: resendCapabilityConfiguredPayloadSchema,
+        subjectSchema: resendCapabilityConfiguredSubjectSchema,
+        example: {
+          capabilityId: "resend",
+          capabilityLabel: "Resend",
+        },
       },
-    },
-  ],
+    ],
+  },
 };

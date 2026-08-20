@@ -3,7 +3,6 @@ import { z } from "zod";
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
   backofficeObjectScopePolicy,
-  type BackofficeObjectBindingName,
   type BackofficeObjectRegistry,
   type BackofficeObjectScopeKind,
 } from "@/backoffice-runtime/object-registry";
@@ -14,18 +13,18 @@ import {
   type AutomationEventDefinition,
   type AutomationEventDefinitionCreateInput,
 } from "@/fragno/automation/event-definitions";
-import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import {
+  backofficeCapabilities,
+  getBackofficeCapabilityKind,
   getConnectionCapability,
+  listAutomationEventDescriptors,
   listConnectionCapabilities,
+  listHookScopes,
   toConnectionVerification,
-} from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import { listHookScopes } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import { backofficeCapabilities } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import type {
-  BackofficeCapabilityContext,
-  ConnectionStatus,
-  ConnectionVerification,
+  type BackofficeCapability,
+  type BackofficeCapabilityContext,
+  type ConnectionStatus,
+  type ConnectionVerification,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import {
   defineCliArgsParser,
@@ -866,13 +865,10 @@ export const createBackofficeCapabilitiesRuntime = ({
     ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
   } as BackofficeCapabilityContext;
   const contextScopeKind = scope.kind === "system" ? "singleton" : scope.kind;
-  const scopeSupported = (capability: {
-    objectBinding?: BackofficeObjectBindingName;
-    connection?: { objectBinding?: BackofficeObjectBindingName };
-  }) => {
-    const objectBinding = capability.objectBinding ?? capability.connection?.objectBinding;
+  const scopeSupported = (capability: BackofficeCapability) => {
+    const objectBinding = capability.objectBinding;
     if (!objectBinding) {
-      return capability.connection ? scope.kind === "org" : true;
+      return capability.contributions.connection ? scope.kind === "org" : true;
     }
 
     const allowedScopes: readonly BackofficeObjectScopeKind[] =
@@ -880,13 +876,7 @@ export const createBackofficeCapabilitiesRuntime = ({
     return allowedScopes.includes(contextScopeKind);
   };
 
-  const assertConnectionAvailable = (
-    id: string,
-    capability: {
-      objectBinding?: BackofficeObjectBindingName;
-      connection?: { objectBinding?: BackofficeObjectBindingName };
-    },
-  ) => {
+  const assertConnectionAvailable = (id: string, capability: BackofficeCapability) => {
     if (!scopeSupported(capability)) {
       throw new Error(`Connection ${id} is not available in ${scope.kind} context.`);
     }
@@ -896,33 +886,35 @@ export const createBackofficeCapabilitiesRuntime = ({
     listCapabilities: async () =>
       await Promise.all(
         backofficeCapabilities.map(async (capability) => {
+          const kind = getBackofficeCapabilityKind(capability);
+          const connection = capability.contributions.connection;
           if (!scopeSupported(capability)) {
             return {
               id: capability.id,
               label: capability.label,
-              kind: capability.kind,
+              kind,
               available: false,
               configured: false,
               healthy: false,
               reason: `${capability.label} is not available in ${scope.kind} context.`,
             };
           }
-          if (!capability.connection) {
+          if (!connection) {
             return {
               id: capability.id,
               label: capability.label,
-              kind: capability.kind,
+              kind,
               available: true,
               configured: true,
               healthy: true,
             };
           }
           try {
-            const status = await capability.connection.getStatus(capabilityContext);
+            const status = await connection.getStatus(capabilityContext);
             return {
               id: capability.id,
               label: capability.label,
-              kind: capability.kind,
+              kind,
               available: true,
               configured: status.configured,
               ...(status.verification ? { healthy: status.verification.ok } : {}),
@@ -934,7 +926,7 @@ export const createBackofficeCapabilitiesRuntime = ({
             return {
               id: capability.id,
               label: capability.label,
-              kind: capability.kind,
+              kind,
               available: false,
               configured: false,
               healthy: false,
@@ -950,10 +942,11 @@ export const createBackofficeCapabilitiesRuntime = ({
             if (!scopeSupported(capability)) {
               return [capability.id, { configured: false, healthy: false }] as const;
             }
-            if (!capability.connection) {
+            const connection = capability.contributions.connection;
+            if (!connection) {
               return [capability.id, { configured: true, healthy: true }] as const;
             }
-            const status = await capability.connection.getStatus(capabilityContext);
+            const status = await connection.getStatus(capabilityContext);
             return [
               capability.id,
               {
@@ -982,19 +975,18 @@ export const createBackofficeCapabilitiesRuntime = ({
         listConnectionCapabilities()
           .filter((capability) => scopeSupported(capability))
           .map(async (capability) => {
-            const status = await capability.connection.getStatus(capabilityContext);
+            const status = await capability.contributions.connection.getStatus(capabilityContext);
             return {
               id: capability.id,
               label: capability.label,
-              kind: capability.kind,
+              kind: getBackofficeCapabilityKind(capability),
               configured: status.configured,
-              hookScopes: (capability.hooks ?? []).map((hook) => hook.id),
+              hookScopes: capability.contributions.hookScopes.map((hook) => hook.id),
               runtimeToolNamespaces: [
                 ...(runtimeToolNamespacesByCapability?.get(capability.id) ??
-                  capability.runtimeToolNamespaces ??
-                  []),
+                  capability.contributions.actionProviders),
               ],
-              automationEvents: (capability.automationEvents ?? []).map(
+              automationEvents: capability.contributions.automationEvents.map(
                 (event) => `${event.source}:${event.eventType}`,
               ),
               ...(status.missing ? { missing: status.missing } : {}),
@@ -1003,19 +995,20 @@ export const createBackofficeCapabilitiesRuntime = ({
       ),
     getConnection: async ({ id }) => {
       const capability = getConnectionCapability(id);
-      if (!capability?.connection) {
+      if (!capability) {
         throw new Error(`Unknown configurable connection: ${id}`);
       }
       assertConnectionAvailable(id, capability);
-      return await capability.connection.getStatus(capabilityContext);
+      return await capability.contributions.connection.getStatus(capabilityContext);
     },
     setupConnection: async ({ id }) => {
       const capability = getConnectionCapability(id);
-      if (!capability?.connection) {
+      if (!capability) {
         throw new Error(`Unknown configurable connection: ${id}`);
       }
       assertConnectionAvailable(id, capability);
-      const skillPath = capability.skillPaths[0];
+      const connection = capability.contributions.connection;
+      const skillPath = capability.contributions.skillPaths[0];
       const hasSkill = skillPath !== undefined;
       return {
         id: capability.id,
@@ -1032,7 +1025,7 @@ export const createBackofficeCapabilitiesRuntime = ({
               },
             ]
           : [],
-        fields: [...(capability.connection.configureFields ?? [])],
+        fields: [...(connection.configureFields ?? [])],
         verify: {
           tool: `connections.verify --id ${capability.id}`,
           description: `Check verification.ok=true for ${capability.label}.`,
@@ -1042,24 +1035,25 @@ export const createBackofficeCapabilitiesRuntime = ({
     },
     getConnectionSchema: async ({ id }) => {
       const capability = getConnectionCapability(id);
-      if (!capability?.connection) {
+      if (!capability) {
         throw new Error(`Unknown configurable connection: ${id}`);
       }
       assertConnectionAvailable(id, capability);
       return {
         id: capability.id,
         label: capability.label,
-        fields: [...(capability.connection.configureFields ?? [])],
+        fields: [...(capability.contributions.connection.configureFields ?? [])],
       };
     },
     verifyConnection: async ({ id }) => {
       const capability = getConnectionCapability(id);
-      if (!capability?.connection) {
+      if (!capability) {
         throw new Error(`Unknown configurable connection: ${id}`);
       }
       assertConnectionAvailable(id, capability);
-      const status = await (capability.connection.verify?.(capabilityContext) ??
-        capability.connection.getStatus(capabilityContext));
+      const connection = capability.contributions.connection;
+      const status = await (connection.verify?.(capabilityContext) ??
+        connection.getStatus(capabilityContext));
       return toConnectionVerification(status);
     },
     resetConnection: async ({ id, confirm }) => {
@@ -1067,20 +1061,22 @@ export const createBackofficeCapabilitiesRuntime = ({
         throw new Error(`Refusing to reset '${id}' without --confirm ${id}.`);
       }
       const capability = getConnectionCapability(id);
-      if (!capability?.connection?.reset) {
+      const connection = capability?.contributions.connection;
+      if (!capability || !connection?.reset) {
         throw new Error(`Connection cannot be reset through runtime tools: ${id}`);
       }
       assertConnectionAvailable(id, capability);
-      return await capability.connection.reset(capabilityContext);
+      return await connection.reset(capabilityContext);
     },
     configureConnection: async ({ id, payload, origin: inputOrigin }) => {
       const capability = getConnectionCapability(id);
-      if (!capability?.connection?.configure) {
+      const connection = capability?.contributions.connection;
+      if (!capability || !connection?.configure) {
         throw new Error(`Connection is not configurable through runtime tools: ${id}`);
       }
       assertConnectionAvailable(id, capability);
-      const parsedPayload = capability.connection.configureInputSchema?.parse(payload) ?? payload;
-      return await capability.connection.configure({
+      const parsedPayload = connection.configureInputSchema?.parse(payload) ?? payload;
+      return await connection.configure({
         objects,
         config,
         scope,
