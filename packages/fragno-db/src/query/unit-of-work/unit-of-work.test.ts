@@ -44,7 +44,7 @@ function createMockDecoder(): UOWDecoder {
   };
 }
 
-describe("FindBuilder", () => {
+describe("TypedUnitOfWork reads", () => {
   it("should support primary index", () => {
     const testSchema = schema("test", (s) =>
       s.addTable("users", (t) =>

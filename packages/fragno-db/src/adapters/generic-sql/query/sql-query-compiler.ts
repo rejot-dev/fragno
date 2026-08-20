@@ -11,7 +11,6 @@ import type { SqlBool } from "kysely";
 
 import type { NamingResolver } from "../../../naming/sql-naming";
 import type { Condition } from "../../../query/condition-builder";
-import type { CompiledJoin } from "../../../query/find-options";
 import type { AnyColumn, AnyTable } from "../../../schema/create";
 import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
@@ -57,7 +56,6 @@ export interface FindManyCompilerOptions {
   orderBy?: [AnyColumn, "asc" | "desc"][];
   limit?: number;
   offset?: number;
-  join?: CompiledJoin[];
   readTracking?: boolean;
 }
 
@@ -178,119 +176,12 @@ export abstract class SQLQueryCompiler {
   }
 
   /**
-   * Process joins recursively to support nested joins.
-   */
-  protected processJoins<O>(
-    query: AnySelectQueryBuilder<O>,
-    joins: CompiledJoin[],
-    parentTable: AnyTable,
-    parentTableName: string,
-    mappedSelect: ProjectedSelectExpression[],
-    parentPath: string = "",
-    aliasCollector?: JoinAliasInfo[],
-    readTracking?: boolean,
-  ): AnySelectQueryBuilder<O> {
-    let result = query;
-
-    for (const join of joins) {
-      const { options: joinOptions, relation } = join;
-
-      if (joinOptions === false) {
-        continue;
-      }
-
-      const targetTable = relation.table;
-      // Build the full path for this join (e.g., "author:inviter")
-      const fullPath = parentPath ? `${parentPath}:${relation.name}` : relation.name;
-      // SQL table alias uses underscores (e.g., "author_inviter")
-      const joinName = fullPath.replace(/:/g, "_");
-      if (aliasCollector) {
-        aliasCollector.push({ table: targetTable, alias: joinName });
-      }
-
-      const joinSelectBuilder = extendSelect(joinOptions.select);
-      if (readTracking) {
-        joinSelectBuilder.extend(targetTable.getIdColumn().name);
-      }
-      const compiledJoinSelect = joinSelectBuilder.compile();
-      mappedSelect.push(
-        ...mapSelectColumns(compiledJoinSelect.result, targetTable, this.resolver, {
-          relation: fullPath, // Use full path with colons for column aliases
-          tableName: joinName, // Use underscore version for table name
-        }).map((column) => projectSelectedColumn(column, this.driverConfig)),
-      );
-
-      result = result.leftJoin(`${this.getTableName(targetTable)} as ${joinName}`, (b) =>
-        b.on((eb) => {
-          const conditions = [];
-          for (const [left, right] of relation.on) {
-            const leftCol = parentTable.columns[left];
-            const actualLeft =
-              leftCol?.role === "external-id" ? parentTable.getInternalIdColumn().name : left;
-            const actualLeftCol = parentTable.columns[actualLeft];
-            // Foreign keys always use internal IDs
-            // If the relation references an external ID column (any name), translate to "_internalId"
-            const rightCol = targetTable.columns[right];
-            const actualRight = rightCol?.role === "external-id" ? "_internalId" : right;
-
-            conditions.push(
-              eb(
-                `${parentTableName}.${
-                  this.resolver
-                    ? this.resolver.getColumnName(
-                        parentTable.name,
-                        actualLeftCol ? actualLeftCol.name : parentTable.columns[left].name,
-                      )
-                    : (actualLeftCol ?? parentTable.columns[left]).name
-                }`,
-                "=",
-                eb.ref(
-                  `${joinName}.${
-                    this.resolver
-                      ? this.resolver.getColumnName(
-                          targetTable.name,
-                          targetTable.columns[actualRight].name,
-                        )
-                      : targetTable.columns[actualRight].name
-                  }`,
-                ),
-              ),
-            );
-          }
-
-          if (joinOptions.where) {
-            conditions.push(this.buildWhereClause(joinOptions.where, eb, targetTable, joinName));
-          }
-
-          return eb.and(conditions);
-        }),
-      );
-
-      // Recursively process nested joins with the full path
-      if (joinOptions.join && joinOptions.join.length > 0) {
-        result = this.processJoins(
-          result,
-          joinOptions.join,
-          targetTable,
-          joinName,
-          mappedSelect,
-          fullPath,
-          aliasCollector,
-          readTracking,
-        );
-      }
-    }
-
-    return result;
-  }
-
-  /**
    * Build a select query with joins applied, returning a list of table aliases used.
    * Intended for conflict checks that need to mirror the join tree from queries.
    */
   buildJoinQuery(
     table: AnyTable,
-    options: { where?: Condition; join?: CompiledJoin[] },
+    options: { where?: Condition },
   ): {
     query: AnySelectQueryBuilder;
     aliases: JoinAliasInfo[];
@@ -301,11 +192,6 @@ export abstract class SQLQueryCompiler {
 
     if (options.where) {
       query = query.where((eb) => this.buildWhereClause(options.where!, eb, table));
-    }
-
-    if (options.join && options.join.length > 0) {
-      const mappedSelect: ProjectedSelectExpression[] = [];
-      query = this.processJoins(query, options.join, table, tableName, mappedSelect, "", aliases);
     }
 
     return { query, aliases };
@@ -361,20 +247,6 @@ export abstract class SQLQueryCompiler {
       selectBuilder.extend(table.getIdColumn().name);
     }
     const mappedSelect: ProjectedSelectExpression[] = [];
-
-    // Process joins if provided
-    if (options.join && options.join.length > 0) {
-      query = this.processJoins(
-        query,
-        options.join,
-        table,
-        this.getTableName(table),
-        mappedSelect,
-        "",
-        undefined,
-        options.readTracking,
-      );
-    }
 
     const compiledSelect = selectBuilder.compile();
     mappedSelect.push(

@@ -2,7 +2,6 @@ import type { AnyTable } from "../schema/create";
 import type { Prettify } from "../util/types";
 import type { Condition, ConditionBuilder } from "./condition-builder";
 import type { TableToColumnValues } from "./table-values";
-import type { FindBuilder } from "./unit-of-work/unit-of-work";
 
 export type {
   RawColumnValues,
@@ -29,35 +28,7 @@ export type SelectResult<T extends AnyTable, JoinOut, Select extends SelectClaus
   MainSelectResult<Select, T> & JoinOut
 >;
 
-export type JoinBuilder<_T extends AnyTable, _Out = {}> = never;
-
 export type OrderBy<Column = string> = [columnName: Column, "asc" | "desc"];
-
-/**
- * Extract Select type parameter from a FindBuilder type (handles Omit wrapper)
- * @internal
- */
-export type ExtractSelect<T> =
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  T extends FindBuilder<any, infer TSelect, any>
-    ? TSelect
-    : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      T extends Omit<FindBuilder<any, infer TSelect, any>, any>
-      ? TSelect
-      : true;
-
-/**
- * Extract JoinOut type parameter from a FindBuilder type (handles Omit wrapper)
- * @internal
- */
-export type ExtractJoinOut<T> =
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  T extends FindBuilder<any, any, infer TJoinOut>
-    ? TJoinOut
-    : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      T extends Omit<FindBuilder<any, any, infer TJoinOut>, any>
-      ? TJoinOut
-      : {};
 
 export type FindFirstOptions<
   T extends AnyTable = AnyTable,
@@ -79,7 +50,6 @@ export type FindManyOptions<
   where?: (eb: ConditionBuilder<T["columns"]>) => Condition | boolean;
   limit?: number;
   orderBy?: OrderBy<keyof T["columns"]> | OrderBy<keyof T["columns"]>[];
-  join?: never;
 } & (IsRoot extends true
   ? {
       // drizzle doesn't support `offset` in join queries (this may be changed in future, we can add it back)

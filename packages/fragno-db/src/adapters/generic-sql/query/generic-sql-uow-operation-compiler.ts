@@ -4,7 +4,6 @@ import type { NamingResolver } from "../../../naming/sql-naming";
 import { buildCondition } from "../../../query/condition-builder";
 import type { Condition } from "../../../query/condition-builder";
 import { buildFindOptions } from "../../../query/find-options";
-import type { AnySelectClause } from "../../../query/mod";
 import { buildCheckAbsentCondition } from "../../../query/unit-of-work/check-absent";
 import type { MutationOperation } from "../../../query/unit-of-work/mutation-recorder";
 import type {
@@ -102,7 +101,6 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     const {
       useIndex: _useIndex,
       orderByIndex,
-      joins: join,
       queryTree,
       after,
       before,
@@ -184,19 +182,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     // For cursor pagination, fetch one extra item to determine if there's a next page
     const effectiveLimit = pageSize && op.withCursor ? pageSize + 1 : pageSize;
 
-    // When we have joins, use the query builder directly
-    if (join && join.length > 0) {
-      return sqlCompiler.compileFindMany(op.table, {
-        select: (findManyOptions.select ?? true) as AnySelectClause,
-        where: combinedWhere,
-        orderBy,
-        limit: effectiveLimit,
-        join,
-        readTracking: op.readTracking,
-      });
-    }
-
-    // Otherwise, use buildFindOptions to process the query options
+    // Build the adapter-independent options used by the SQL compiler.
     const compiledOptions = buildFindOptions(op.table, {
       ...findManyOptions,
       where: combinedWhere ? () => combinedWhere : undefined,

@@ -1,18 +1,6 @@
-import type { AnyColumn, AnyRelation, AnyTable } from "../schema/create";
-import { getTableRelations } from "../schema/create";
+import type { AnyColumn, AnyTable } from "../schema/create";
 import { buildCondition, type Condition } from "./condition-builder";
-import type {
-  AnySelectClause,
-  FindFirstOptions,
-  FindManyOptions,
-  JoinBuilder,
-  OrderBy,
-} from "./mod";
-
-export interface CompiledJoin {
-  relation: AnyRelation;
-  options: SimplifyFindOptions<FindManyOptions> | false;
-}
+import type { AnySelectClause, FindManyOptions, OrderBy } from "./mod";
 
 function isOrderByArray(v: OrderBy | OrderBy[]): v is OrderBy[] {
   return Array.isArray(v) && Array.isArray(v[0]);
@@ -41,7 +29,7 @@ function simplifyOrderBy(
 
 export function buildFindOptions(
   table: AnyTable,
-  { select = true, where, orderBy, join, ...options }: FindManyOptions,
+  { select = true, where, orderBy, ...options }: FindManyOptions,
 ): SimplifyFindOptions<FindManyOptions> | false {
   let conditions = where ? buildCondition(table.columns, where) : undefined;
   if (conditions === true) {
@@ -55,38 +43,12 @@ export function buildFindOptions(
     select,
     where: conditions,
     orderBy: simplifyOrderBy(table.columns, orderBy),
-    join: join ? buildJoin(table, join) : undefined,
     ...options,
   };
 }
 
-function buildJoin(table: AnyTable, fn: (builder: JoinBuilder<AnyTable>) => void): CompiledJoin[] {
-  const compiled: CompiledJoin[] = [];
-  const builder: Record<string, unknown> = {};
-
-  const relations = getTableRelations(table);
-
-  for (const name in relations) {
-    const relation = relations[name];
-
-    builder[name] = (options: FindFirstOptions | FindManyOptions = {}) => {
-      compiled.push({
-        relation,
-        options: buildFindOptions(relation.table, options),
-      });
-
-      delete builder[name];
-      return builder;
-    };
-  }
-
-  fn(builder as JoinBuilder<AnyTable>);
-  return compiled;
-}
-
-export type SimplifyFindOptions<O> = Omit<O, "where" | "orderBy" | "select" | "join"> & {
+export type SimplifyFindOptions<O> = Omit<O, "where" | "orderBy" | "select"> & {
   select: AnySelectClause;
   where?: Condition | undefined;
   orderBy?: OrderBy<AnyColumn>[];
-  join?: CompiledJoin[];
 };
