@@ -134,6 +134,7 @@ export type BackofficeManagedConnectionDescriptor = BackofficeConnectionDescript
 type BackofficeCapabilityBase = {
   id: BackofficeCapabilityId;
   label: string;
+  objectBinding?: BackofficeObjectBindingName;
   runtimeToolNamespaces?: readonly string[];
   skillPaths: readonly string[];
   hooks?: readonly BackofficeHookScope[];

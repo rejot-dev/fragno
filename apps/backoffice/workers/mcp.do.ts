@@ -1,101 +1,54 @@
-import { DurableObject } from "cloudflare:workers";
-import { z } from "zod";
+import {
+  createFragmentDurableObjectHost,
+  type FragmentDurableObjectHost,
+} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
+import { DurableObject, RpcTarget } from "cloudflare:workers";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { McpObject } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
-import {
-  assertSameBackofficeRoutableScope,
-  type BackofficeRoutableScope,
-} from "@/backoffice-runtime/scope-codec";
+import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
-import { mcpConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/mcp";
-import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
+import { createDurableHookRepository } from "@/fragno/durable-hooks";
 import { createMcpServer, type McpConfig, type McpFragment } from "@/fragno/mcp";
 import { MCP_PUBLIC_PREFIX, scopedPublicBaseUrl } from "@/fragno/scoped-public-fragment-routes";
 
+import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
+import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
 import {
-  createBackofficeFragmentDurableObject,
-  type BackofficeFragmentDurableObject,
-  type BackofficeObjectState,
-} from "./lib/backoffice-fragment-durable-object";
+  createScopedFragmentDurableObjectRuntime,
+  type ScopedFragmentDurableObjectRuntime,
+} from "./lib/scoped-fragment-durable-object";
 
 type McpObjectEnv = {
   DOCS_PUBLIC_BASE_URL?: string;
 };
 
-type StoredMcpConfig = {
-  scope: BackofficeRoutableScope;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type McpAdminConfigResponse = {
-  configured: boolean;
-  config?: {
-    publicBaseUrl?: string | null;
-    createdAt?: string;
-    updatedAt?: string;
-  };
-};
-
-const mcpOwnerScopeSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("org"), orgId: z.string().trim().min(1) }),
-  z.object({
-    kind: z.literal("project"),
-    orgId: z.string().trim().min(1),
-    projectId: z.string().trim().min(1),
-  }),
-  z.object({ kind: z.literal("user"), userId: z.string().trim().min(1) }),
-]);
-
-const setAdminConfigInputSchema = mcpConfigureInputSchema.extend({
-  scope: mcpOwnerScopeSchema,
-});
-
-const readMcpPublicOrigin = (env: McpObjectEnv) => {
+function readMcpPublicOrigin(env: McpObjectEnv) {
   const origin = env.DOCS_PUBLIC_BASE_URL?.trim();
   if (!origin) {
     throw new Error("MCP OAuth redirect origin is not configured.");
   }
   return origin;
-};
+}
 
-const scopeSubject = (scope: BackofficeRoutableScope, serverId?: string) => ({
-  scope,
-  ...(scope.kind === "org" || scope.kind === "project" ? { orgId: scope.orgId } : {}),
-  ...(serverId ? { serverId } : {}),
-});
-
-function buildConfigResponse(
-  env: McpObjectEnv,
-  config: StoredMcpConfig | null,
-): McpAdminConfigResponse {
-  if (!config) {
-    return { configured: false };
-  }
-
+function scopeSubject(scope: BackofficeRoutableScope, serverId?: string) {
   return {
-    configured: true,
-    config: {
-      publicBaseUrl: scopedPublicBaseUrl({
-        baseUrl: readMcpPublicOrigin(env),
-        publicPrefix: MCP_PUBLIC_PREFIX,
-        scope: config.scope,
-      }),
-      createdAt: config.createdAt,
-      updatedAt: config.updatedAt,
-    },
+    scope,
+    ...(scope.kind === "org" || scope.kind === "project" ? { orgId: scope.orgId } : {}),
+    ...(serverId ? { serverId } : {}),
   };
 }
 
-export class InMemoryMcpObject implements McpObject {
+export class InMemoryMcpObject extends RpcTarget implements McpObject {
   readonly #env: McpObjectEnv;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
-  readonly #host: BackofficeFragmentDurableObject<StoredMcpConfig, McpConfig, McpFragment>;
+  readonly #host: FragmentDurableObjectHost<McpConfig, McpFragment>;
+  readonly #scopedRuntime: ScopedFragmentDurableObjectRuntime<McpFragment>;
 
   constructor({
     state,
@@ -106,153 +59,115 @@ export class InMemoryMcpObject implements McpObject {
     env?: McpObjectEnv;
     runtime: BackofficeRuntimeServices;
   }) {
+    super();
     this.#env = env ?? {};
     this.#state = state;
     this.#runtimeServices = runtime;
-    this.#host = createBackofficeFragmentDurableObject({
+    this.#host = createFragmentDurableObjectHost({
       name: "MCP",
       state,
       env: this.#env,
-      getStoredScope: (stored) => stored.scope,
-      toSource: (stored) => ({
-        publicBaseUrl: scopedPublicBaseUrl({
-          baseUrl: readMcpPublicOrigin(this.#env),
-          publicPrefix: MCP_PUBLIC_PREFIX,
-          scope: stored.scope,
-        }),
-        onServerConfigurationChanged: async (payload, context) => {
-          const scope = stored.scope;
-          await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
-            {
-              id: context.hookId.toString(),
-              scope,
-              source: "mcp",
-              eventType: "server.configuration.changed",
-              occurredAt: new Date().toISOString(),
-              payload: { ...payload },
-              actors: {
-                initiator: AUTOMATION_SYSTEM_INITIATOR,
-                principal: null,
-                delegation: [],
-              },
-              subject: scopeSubject(scope, payload.serverId),
-            },
-            { propagationContext: context.capturePropagationContext() },
-          );
-        },
-        onServerConfigurationDeleted: async (payload, context) => {
-          const scope = stored.scope;
-          await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
-            {
-              id: context.hookId.toString(),
-              scope,
-              source: "mcp",
-              eventType: "server.configuration.deleted",
-              occurredAt: new Date().toISOString(),
-              payload: { ...payload },
-              actors: {
-                initiator: AUTOMATION_SYSTEM_INITIATOR,
-                principal: null,
-                delegation: [],
-              },
-              subject: scopeSubject(scope, payload.serverId),
-            },
-            { propagationContext: context.capturePropagationContext() },
-          );
-        },
-      }),
       createRuntime: (config) =>
         createMcpServer(config, {
           adapters: this.#runtimeServices.adapters,
         }),
-      outbox: {
-        dispatch: async (item, { stored }) => {
-          if (item.type !== "capability.configured") {
-            return;
-          }
+      durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
+      onProcessError: (error) => {
+        console.error("MCP hook processor error", error);
+      },
+      onDispatcherError: (error) => {
+        console.warn("MCP hook processor disabled", error);
+      },
+    });
+    this.#scopedRuntime = createScopedFragmentDurableObjectRuntime({
+      name: "MCP",
+      state,
+      host: this.#host,
+      createSource: (scope) => this.#createConfig(scope),
+    });
 
-          const scope = stored.scope;
-          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
-            id: item.id,
+    void state.blockConcurrencyWhile(async () => {
+      // Restore inside the constructor boundary so alarms cannot run before the dispatcher exists.
+      await this.#scopedRuntime.initializeFromStoredOwnerScope();
+    });
+  }
+
+  init(scope: BackofficeContextScope): McpObject {
+    this.#scopedRuntime.init(scope);
+    return this;
+  }
+
+  async getPublicBaseUrl(): Promise<string> {
+    return scopedPublicBaseUrl({
+      baseUrl: readMcpPublicOrigin(this.#env),
+      publicPrefix: MCP_PUBLIC_PREFIX,
+      scope: this.#scopedRuntime.requireOwnerScope(),
+    });
+  }
+
+  #createConfig(ownerScope: BackofficeRoutableScope): McpConfig {
+    return {
+      publicBaseUrl: scopedPublicBaseUrl({
+        baseUrl: readMcpPublicOrigin(this.#env),
+        publicPrefix: MCP_PUBLIC_PREFIX,
+        scope: ownerScope,
+      }),
+      onServerConfigurationChanged: async (payload, context) => {
+        const scope = ownerScope;
+        await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
+          {
+            id: context.hookId.toString(),
             scope,
             source: "mcp",
-            eventType: "capability.configured",
-            occurredAt: item.createdAt,
-            payload: {
-              capabilityId: "mcp",
-              capabilityLabel: "MCP",
-            },
+            eventType: "server.configuration.changed",
+            occurredAt: new Date().toISOString(),
+            payload: { ...payload },
             actors: {
               initiator: AUTOMATION_SYSTEM_INITIATOR,
               principal: null,
               delegation: [],
             },
-            subject: {
-              ...scopeSubject(scope),
-              capabilityId: "mcp",
-            },
-          });
-        },
+            subject: scopeSubject(scope, payload.serverId),
+          },
+          { propagationContext: context.capturePropagationContext() },
+        );
       },
-    });
-
-    void state.blockConcurrencyWhile(async () => {
-      await this.#host.initializeFromStored(await this.#host.loadStored());
-    });
-  }
-
-  async alarm() {
-    await this.#host.alarm();
-  }
-
-  getDurableHookRepository() {
-    return this.#host.getDurableHookRepository<DurableHookQueueOptions>(({ runtime }) => runtime);
-  }
-
-  async getAdminConfig(): Promise<McpAdminConfigResponse> {
-    const config = await this.#host.loadStored();
-    return buildConfigResponse(this.#env, config);
-  }
-
-  async resetAdminConfig(): Promise<McpAdminConfigResponse> {
-    await this.#state.blockConcurrencyWhile(async () => {
-      await this.#host.clearConfig();
-    });
-    return { configured: false };
-  }
-
-  async setAdminConfig(payload: unknown): Promise<McpAdminConfigResponse> {
-    const parsed = setAdminConfigInputSchema.parse(payload);
-    const scope = parsed.scope;
-    const existing = await this.#host.loadStored();
-    assertSameBackofficeRoutableScope(
-      existing?.scope ?? null,
-      scope,
-      "MCP is already configured for a different scope.",
-    );
-
-    const now = new Date().toISOString();
-    const stored: StoredMcpConfig = {
-      scope,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
+      onServerConfigurationDeleted: async (payload, context) => {
+        const scope = ownerScope;
+        await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
+          {
+            id: context.hookId.toString(),
+            scope,
+            source: "mcp",
+            eventType: "server.configuration.deleted",
+            occurredAt: new Date().toISOString(),
+            payload: { ...payload },
+            actors: {
+              initiator: AUTOMATION_SYSTEM_INITIATOR,
+              principal: null,
+              delegation: [],
+            },
+            subject: scopeSubject(scope, payload.serverId),
+          },
+          { propagationContext: context.capturePropagationContext() },
+        );
+      },
     };
+  }
 
-    await this.#state.blockConcurrencyWhile(async () => {
-      await this.#host.storeAndInitialize(stored);
-      const configuredAt = new Date().toISOString();
-      await this.#host.dispatch({
-        id: crypto.randomUUID(),
-        type: "capability.configured",
-        createdAt: configuredAt,
-      });
-    });
+  async getDurableHookRepository() {
+    const fragment = await this.#scopedRuntime.getRuntime();
+    return createDurableHookRepository(() => fragment);
+  }
 
-    return buildConfigResponse(this.#env, stored);
+  async alarm(): Promise<void> {
+    await this.#scopedRuntime.alarm();
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#host.fetch(request);
+    return await this.#host.fetch(await this.#scopedRuntime.getRuntime(), request, {
+      waitUntil: this.#state.waitUntil.bind(this.#state),
+    });
   }
 }
 
@@ -268,24 +183,20 @@ export class Mcp extends DurableObject<CloudflareEnv> implements McpObject {
     });
   }
 
-  async alarm() {
+  init(scope: BackofficeContextScope): McpObject {
+    return this.#object.init(scope);
+  }
+
+  async getPublicBaseUrl(): Promise<string> {
+    return await this.#object.getPublicBaseUrl();
+  }
+
+  async alarm(): Promise<void> {
     await this.#object.alarm();
   }
 
-  getDurableHookRepository() {
-    return this.#object.getDurableHookRepository();
-  }
-
-  async getAdminConfig(): Promise<McpAdminConfigResponse> {
-    return await this.#object.getAdminConfig();
-  }
-
-  async resetAdminConfig(): Promise<McpAdminConfigResponse> {
-    return await this.#object.resetAdminConfig();
-  }
-
-  async setAdminConfig(payload: unknown): Promise<McpAdminConfigResponse> {
-    return await this.#object.setAdminConfig(payload);
+  async getDurableHookRepository() {
+    return await this.#object.getDurableHookRepository();
   }
 
   async fetch(request: Request): Promise<Response> {

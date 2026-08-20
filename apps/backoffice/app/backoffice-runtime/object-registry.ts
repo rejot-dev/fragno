@@ -1,7 +1,5 @@
-import type { Api } from "workers/api.do";
 import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { GitHub } from "workers/github.do";
-import type { Mcp } from "workers/mcp.do";
 import type { Otp } from "workers/otp.do";
 import type { Resend } from "workers/resend.do";
 import type { Reson8 } from "workers/reson8.do";
@@ -156,8 +154,9 @@ export type AuthObject = FetchObject &
 
 export type ApiObject = FetchObject &
   AlarmableObject &
-  DurableHookObject &
-  AdminConfigurableObject<AwaitedMethodReturn<Api, "getAdminConfig">>;
+  DurableHookObject & {
+    getPublicBaseUrl(): Promise<string>;
+  };
 
 export type BillingObject = FetchObject &
   AlarmableObject & {
@@ -321,8 +320,9 @@ export type Reson8Object = FetchObject &
   };
 export type McpObject = FetchObject &
   AlarmableObject &
-  DurableHookObject &
-  AdminConfigurableObject<AwaitedMethodReturn<Mcp, "getAdminConfig">>;
+  DurableHookObject & {
+    getPublicBaseUrl(): Promise<string>;
+  };
 export type UploadObject = FetchObject &
   AlarmableObject &
   DurableHookObject &
@@ -750,7 +750,7 @@ const scopedInitialized = <TObject>(
 });
 
 export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory) => ({
-  api: scoped(factory, binding<ApiObject>("API")),
+  api: scopedInitialized(factory, initializedBinding<ApiObject>("API")),
   auth: scoped(factory, binding<AuthObject>("AUTH")),
 
   automations: scopedInitialized(factory, initializedBinding<AutomationsObject>("AUTOMATIONS")),
@@ -760,7 +760,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   otp: scoped(factory, binding<OtpObject>("OTP")),
   resend: scoped(factory, binding<ResendObject>("RESEND")),
   reson8: scoped(factory, binding<Reson8Object>("RESON8")),
-  mcp: scoped(factory, binding<McpObject>("MCP")),
+  mcp: scopedInitialized(factory, initializedBinding<McpObject>("MCP")),
   upload: scoped(factory, binding<UploadObject>("UPLOAD")),
   github: scoped(factory, binding<GitHubObject>("GITHUB")),
 

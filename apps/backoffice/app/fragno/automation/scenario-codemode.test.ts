@@ -1,4 +1,4 @@
-import { describe, expect, test, vi, assert } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -114,7 +114,7 @@ describe("Backoffice codemode scenarios", () => {
   test("exposes user-scoped MCP connection tools from scoped codemode handles", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: "codemode user scoped context configures MCP connections",
+        name: "codemode user scoped context uses MCP without capability setup",
 
         files: backofficeFiles.workspaceStarter(),
 
@@ -123,30 +123,14 @@ describe("Backoffice codemode scenarios", () => {
         steps: ({ when, then }) => [
           when.codemode.run({
             orgId: "org-1",
-            label: "configure user-scoped MCP from codemode",
-            code: `async () => {
-  const before = await context.user("scenario-user").connections.get({ id: "mcp" });
-  const configured = await context.user("scenario-user").connections.configure({
-    id: "mcp",
-    payload: {},
-  });
-  const after = await context.user("scenario-user").connections.get({ id: "mcp" });
-
-  return { before, configured, after };
-}`,
-            assertToolCalls: ["user:connections.get", "user:connections.configure"],
+            label: "use user-scoped MCP from codemode",
+            code: `async () => await context.user("scenario-user").mcp.listServers()`,
+            assertToolCalls: ["user:mcp.listServers"],
           }),
 
-          then.assert("user scoped MCP connection was configured", (ctx) => {
-            const result = ctx.codemodeRuns.at(-1)?.result.result as {
-              before?: { configured: boolean };
-              configured?: { configured: boolean; config?: { publicBaseUrl?: string } };
-              after?: { configured: boolean; config?: { publicBaseUrl?: string } };
-            };
-            assert(!result.before?.configured);
-            assert(result.configured?.configured);
-            assert(result.after?.configured);
-            expect(result.after?.config?.publicBaseUrl).toContain("/api/mcp/user%3Ascenario-user");
+          then.assert("user scoped MCP was available without setup", (ctx) => {
+            const result = ctx.codemodeRuns.at(-1)?.result.result as { servers?: unknown[] };
+            expect(result.servers).toEqual([]);
           }),
         ],
       }),

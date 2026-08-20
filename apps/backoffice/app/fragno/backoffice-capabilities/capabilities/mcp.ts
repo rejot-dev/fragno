@@ -1,24 +1,10 @@
 import { z } from "zod";
 
-import type {
-  BackofficeConfigurableConnectionCapability,
-  ConnectionStatus,
-} from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-
-import type { McpAdminConfigResponse } from "../../../../workers/mcp.do";
-
-export const mcpConfigureInputSchema = z.object({});
+import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
 const AUTOMATION_SOURCE = "mcp" as const;
 const AUTOMATION_EVENT_SERVER_CONFIGURATION_CHANGED = "server.configuration.changed" as const;
 const AUTOMATION_EVENT_SERVER_CONFIGURATION_DELETED = "server.configuration.deleted" as const;
-const AUTOMATION_EVENT_CAPABILITY_CONFIGURED = "capability.configured" as const;
-
-const mcpCapabilityConfiguredPayloadSchema = z.object({
-  capabilityId: z.literal("mcp"),
-  capabilityLabel: z.literal("MCP"),
-});
-
 const mcpServerConfigurationChangedPayloadSchema = z.object({
   serverId: z.string().min(1),
   current: z.object({
@@ -35,56 +21,17 @@ const mcpScopeSubjectSchema = z.object({
   scope: z.unknown().optional(),
 });
 
-const mcpCapabilityConfiguredSubjectSchema = mcpScopeSubjectSchema.extend({
-  capabilityId: z.literal("mcp"),
-});
-
 const mcpServerConfigurationSubjectSchema = mcpScopeSubjectSchema.extend({
   serverId: z.string().min(1),
 });
 
-const capability = { id: "mcp", label: "MCP", kind: "connection" } as const;
-
-const toMcpStatus = (response: McpAdminConfigResponse): ConnectionStatus => {
-  if (!response.configured) {
-    return {
-      ...capability,
-      configured: false,
-      missing: ["initialization"],
-      nextSteps: ["Initialize MCP for this organisation."],
-    };
-  }
-
-  return {
-    ...capability,
-    configured: true,
-    config: response.config,
-  };
-};
-
-export const mcpCapability: BackofficeConfigurableConnectionCapability = {
-  ...capability,
+export const mcpCapability: BackofficeCapability = {
+  id: "mcp",
+  label: "MCP",
+  kind: "system",
+  objectBinding: "MCP",
   runtimeToolNamespaces: ["mcp"],
   skillPaths: ["skills/mcp-connection/SKILL.md"],
-  connection: {
-    configurable: true,
-    objectBinding: "MCP",
-    configureInputSchema: mcpConfigureInputSchema,
-    configureFields: [],
-    getStatus: async ({ objects, scope }) =>
-      toMcpStatus(await objects.mcp.for(scope).getAdminConfig()),
-    verify: async ({ objects, scope }) =>
-      toMcpStatus(await objects.mcp.for(scope).getAdminConfig()),
-    reset: async ({ objects, scope }) =>
-      toMcpStatus(await objects.mcp.for(scope).resetAdminConfig()),
-    configure: async ({ objects, scope, payload }) =>
-      toMcpStatus(
-        await objects.mcp.for(scope).setAdminConfig({
-          ...mcpConfigureInputSchema.parse(payload),
-          scope,
-        }),
-      ),
-  },
   hooks: [
     {
       id: "mcp",
@@ -93,18 +40,6 @@ export const mcpCapability: BackofficeConfigurableConnectionCapability = {
     },
   ],
   automationEvents: [
-    {
-      source: AUTOMATION_SOURCE,
-      eventType: AUTOMATION_EVENT_CAPABILITY_CONFIGURED,
-      label: "MCP configured",
-      description: "Fires after MCP is configured for a scope for the first time.",
-      payloadSchema: mcpCapabilityConfiguredPayloadSchema,
-      subjectSchema: mcpCapabilityConfiguredSubjectSchema,
-      example: {
-        capabilityId: "mcp",
-        capabilityLabel: "MCP",
-      },
-    },
     {
       source: AUTOMATION_SOURCE,
       eventType: AUTOMATION_EVENT_SERVER_CONFIGURATION_CHANGED,

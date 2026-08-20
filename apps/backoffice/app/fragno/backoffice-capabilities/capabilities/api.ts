@@ -1,28 +1,12 @@
 import { z } from "zod";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
-import type {
-  BackofficeConfigurableConnectionCapability,
-  ConnectionStatus,
-} from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-
-import type { ApiAdminConfigResponse } from "../../../../workers/api.do";
-
-export const apiConfigureInputSchema = z.object({});
+import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
 const AUTOMATION_SOURCE = "api" as const;
 const AUTOMATION_EVENT_CONNECTION_CHANGED = "connection.changed" as const;
 const AUTOMATION_EVENT_CONNECTION_DELETED = "connection.deleted" as const;
 const AUTOMATION_EVENT_CONNECTION_AVAILABLE = "connection.available" as const;
 const AUTOMATION_EVENT_WEBHOOK_RECEIVED = "webhook.received" as const;
-const AUTOMATION_EVENT_CAPABILITY_CONFIGURED = "capability.configured" as const;
-
-const apiCapabilityConfiguredPayloadSchema = z.object({
-  capabilityId: z.literal("api"),
-  capabilityLabel: z.literal("API"),
-});
-
 const apiConnectionSnapshotSchema = z.object({
   slug: z.string().min(1),
   name: z.string().nullable(),
@@ -52,10 +36,6 @@ const apiScopeSubjectSchema = z.object({
   orgId: z.string().min(1).optional(),
 });
 
-const apiCapabilityConfiguredSubjectSchema = apiScopeSubjectSchema.extend({
-  capabilityId: z.literal("api"),
-});
-
 const apiConnectionSubjectSchema = apiScopeSubjectSchema.extend({
   connectionId: z.string().min(1),
 });
@@ -76,75 +56,21 @@ const apiWebhookSubjectSchema = apiScopeSubjectSchema.extend({
   deliveryId: z.string().min(1),
 });
 
-const capability = { id: "api", label: "API", kind: "connection" } as const;
-const getApiDo = ({
-  objects,
-  scope,
-}: {
-  objects: BackofficeObjectRegistry;
-  scope: BackofficeContextScope;
-}) => objects.api.for(scope);
-
-const toApiStatus = (response: ApiAdminConfigResponse): ConnectionStatus => {
-  if (!response.configured) {
-    return {
-      ...capability,
-      configured: false,
-      missing: ["initialization"],
-      nextSteps: ["Initialize API integrations for this organisation."],
-    };
-  }
-
-  return {
-    ...capability,
-    configured: true,
-    config: response.config,
-  };
-};
-
-export const apiCapability: BackofficeConfigurableConnectionCapability = {
-  ...capability,
+export const apiCapability: BackofficeCapability = {
+  id: "api",
+  label: "API",
+  kind: "system",
+  objectBinding: "API",
   runtimeToolNamespaces: ["api"],
   skillPaths: ["skills/api-connection/SKILL.md", "skills/api-webhooks/SKILL.md"],
-  connection: {
-    configurable: true,
-    configureInputSchema: apiConfigureInputSchema,
-    configureFields: [],
-    getStatus: async ({ objects, scope }) =>
-      toApiStatus(await getApiDo({ objects, scope }).getAdminConfig()),
-    verify: async ({ objects, scope }) =>
-      toApiStatus(await getApiDo({ objects, scope }).getAdminConfig()),
-    reset: async ({ objects, scope }) =>
-      toApiStatus(await getApiDo({ objects, scope }).resetAdminConfig()),
-    configure: async ({ objects, scope, payload }) =>
-      toApiStatus(
-        await getApiDo({ objects, scope }).setAdminConfig({
-          ...apiConfigureInputSchema.parse(payload),
-          scope,
-        }),
-      ),
-  },
   hooks: [
     {
       id: "api",
       label: "API",
-      getRepository: ({ objects, scope }) =>
-        getApiDo({ objects, scope }).getDurableHookRepository(),
+      getRepository: ({ objects, scope }) => objects.api.for(scope).getDurableHookRepository(),
     },
   ],
   automationEvents: [
-    {
-      source: AUTOMATION_SOURCE,
-      eventType: AUTOMATION_EVENT_CAPABILITY_CONFIGURED,
-      label: "API configured",
-      description: "Fires after the API capability is configured for a scope for the first time.",
-      payloadSchema: apiCapabilityConfiguredPayloadSchema,
-      subjectSchema: apiCapabilityConfiguredSubjectSchema,
-      example: {
-        capabilityId: "api",
-        capabilityLabel: "API",
-      },
-    },
     {
       source: AUTOMATION_SOURCE,
       eventType: AUTOMATION_EVENT_CONNECTION_CHANGED,

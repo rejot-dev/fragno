@@ -299,9 +299,7 @@ export type FakeResendApi = {
 export type FakeMcpApi = {
   servers: FakeMcpServer[];
   fetch(request: Request): Promise<Response>;
-  getAdminConfig(): Promise<{ configured: boolean }>;
-  resetAdminConfig(): Promise<{ configured: boolean }>;
-  setAdminConfig(): Promise<{ configured: boolean }>;
+  getPublicBaseUrl(): Promise<string>;
 };
 
 export type ScenarioFakes = {
@@ -1440,7 +1438,6 @@ const createScenarioFakeFactory = (): ScenarioFakeFactory => ({
 });
 
 const createFakeMcpApi = (input: { servers?: FakeMcpServer[] } = {}): FakeMcpApi => {
-  let configured = false;
   const servers = input.servers ?? [];
 
   const normalizeServer = (server: FakeMcpServer) => ({
@@ -1454,25 +1451,11 @@ const createFakeMcpApi = (input: { servers?: FakeMcpServer[] } = {}): FakeMcpApi
     fetch: async (request) => {
       const url = new URL(request.url);
       if (request.method === "GET" && url.pathname.endsWith("/servers")) {
-        if (!configured) {
-          return Response.json(
-            { message: "MCP is not configured for this organisation." },
-            { status: 400 },
-          );
-        }
         return Response.json({ servers: servers.map(normalizeServer) });
       }
       return Response.json({ message: "Not found", code: "NOT_FOUND" }, { status: 404 });
     },
-    getAdminConfig: async () => ({ configured }),
-    resetAdminConfig: async () => {
-      configured = false;
-      return { configured };
-    },
-    setAdminConfig: async () => {
-      configured = true;
-      return { configured };
-    },
+    getPublicBaseUrl: async () => "https://backoffice.example/api/http/org/test/mcp",
   };
 };
 
@@ -4287,24 +4270,26 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
   }
 
   if (fakes.mcp) {
-    objectFactories.MCP = () => ({
-      fetch: (request: Request) => fakes.mcp!.fetch(request),
-      alarm: async () => undefined,
-      getAdminConfig: () => fakes.mcp!.getAdminConfig(),
-      resetAdminConfig: () => fakes.mcp!.resetAdminConfig(),
-      setAdminConfig: () => fakes.mcp!.setAdminConfig(),
-      getDurableHookRepository: () => ({
-        getHookQueue: async () => ({
-          configured: false,
-          hooksEnabled: false,
-          namespace: null,
-          items: [],
-          cursor: undefined,
-          hasNextPage: false,
+    objectFactories.MCP = () => {
+      const object = {
+        init: () => object,
+        fetch: (request: Request) => fakes.mcp!.fetch(request),
+        alarm: async () => undefined,
+        getPublicBaseUrl: () => fakes.mcp!.getPublicBaseUrl(),
+        getDurableHookRepository: () => ({
+          getHookQueue: async () => ({
+            configured: false,
+            hooksEnabled: false,
+            namespace: null,
+            items: [],
+            cursor: undefined,
+            hasNextPage: false,
+          }),
+          getHook: async () => null,
         }),
-        getHook: async () => null,
-      }),
-    });
+      };
+      return object;
+    };
   }
 
   return objectFactories;

@@ -1,9 +1,9 @@
 ---
 name: mcp-connection
 description:
-  Configure and use Backoffice MCP servers. Use when registering remote MCP endpoints, initializing
-  the MCP connection, authenticating MCP servers with OAuth or bearer tokens, listing MCP tools, or
-  calling MCP tools from automations.
+  Configure and use Backoffice MCP servers. Use when registering remote MCP endpoints,
+  authenticating MCP servers with OAuth or bearer tokens, listing MCP tools, or calling MCP tools
+  from automations.
 ---
 
 # MCP Connection
@@ -13,21 +13,8 @@ authentication, tool discovery, and MCP tool calls from Backoffice runtimes.
 
 # MCP configuration
 
-Configuration fields:
+The MCP capability is available automatically for the current scope.
 
-MCP has no user-supplied connection fields. Initializing the connection stores the organisation id
-and prepares the organisation's public OAuth callback route.
-
-Setup notes:
-
-- Initialize the MCP connection before adding servers:
-
-```js
-await connections.configure({ id: "mcp", payload: {} });
-```
-
-- After initialization, inspect the returned connection config if you need the organisation's public
-  MCP base URL.
 - Register each remote MCP server with a stable lowercase slug, a display name, the streamable HTTP
   endpoint URL, and an auth mode.
 - For OAuth servers, create the server first with `auth: { type: "oauth" }`, then start OAuth and
@@ -39,8 +26,6 @@ OAuth setup example:
 
 ```js
 const serverId = "cloudflare-mcp";
-
-await connections.configure({ id: "mcp", payload: {} });
 
 await mcp.createServer({
   slug: serverId,
@@ -60,8 +45,6 @@ After the user completes OAuth, refresh the server tools with
 
 Cataloged automation events:
 
-- `source`: `mcp`, `eventType`: `capability.configured` — fires after MCP is configured for a scope
-  for the first time.
 - `source`: `mcp`, `eventType`: `server.configuration.changed` — fires after a server refresh when
   the advertised tools differ from the previous cache.
 - `source`: `mcp`, `eventType`: `server.configuration.deleted` — fires after an MCP server

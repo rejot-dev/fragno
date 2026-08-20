@@ -244,10 +244,7 @@ export const createApiRuntime = (object: ApiObject) =>
   createRouteBackedApiRuntime({
     baseUrl: "https://api.do",
     fetch: async (outboundRequest) => object.fetch(outboundRequest),
-    getPublicBaseUrl: async () => {
-      const config = await object.getAdminConfig();
-      return config.configured ? (config.config?.publicBaseUrl ?? null) : null;
-    },
+    getPublicBaseUrl: async () => object.getPublicBaseUrl(),
   });
 
 export const createUnavailableApiRuntime = (message = API_NOT_CONFIGURED): ApiRuntime => ({

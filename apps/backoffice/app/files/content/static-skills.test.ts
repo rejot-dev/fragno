@@ -64,7 +64,8 @@ describe("Backoffice capability static skills", () => {
   test("MCP skill documents OAuth setup and tools", () => {
     const skill = readStaticText("skills/mcp-connection/SKILL.md");
 
-    expect(skill).toContain("public OAuth callback route");
+    expect(skill).toContain("available automatically for the current scope");
+    expect(skill).not.toContain('connections.configure({ id: "mcp"');
     expect(skill).toContain('auth: { type: "oauth" }');
     expect(skill).toContain("mcp.refreshServer");
     expect(skill).toContain("server.configuration.changed");

@@ -229,18 +229,6 @@ const createApiRouteCallerForScope = (
   });
 };
 
-async function ensureApiConfiguredForScope(
-  context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
-) {
-  const apiObject = getApiObjectForScope(context, scope);
-  const status = await apiObject.getAdminConfig();
-  if (!status.configured) {
-    return await apiObject.setAdminConfig({ scope });
-  }
-  return status;
-}
-
 async function fetchApiConnectionsForScope(
   request: Request,
   context: Readonly<RouterContextProvider>,
@@ -317,8 +305,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   let publicBaseUrl: string | null = null;
   let configError: string | null = null;
   try {
-    const configState = await ensureApiConfiguredForScope(context, scope);
-    publicBaseUrl = configState.configured ? (configState.config?.publicBaseUrl ?? null) : null;
+    publicBaseUrl = await getApiObjectForScope(context, scope).getPublicBaseUrl();
   } catch (error) {
     configError = error instanceof Error ? error.message : "Unable to initialize API capability.";
   }
@@ -515,7 +502,6 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const intent = getFormString(formData, "intent");
 
   try {
-    await ensureApiConfiguredForScope(context, scope);
     const callRoute = createApiRouteCallerForScope(request, context, scope);
 
     if (intent === "add-connection") {

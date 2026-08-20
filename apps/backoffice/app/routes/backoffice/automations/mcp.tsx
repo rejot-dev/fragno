@@ -16,7 +16,6 @@ import { jsonSchemaToTypeScript, type JsonSchemaObject } from "@/lib/zod/zod-for
 
 import {
   createMcpActionRouteCallerForScope,
-  ensureMcpConfiguredForScope,
   fetchMcpServersForScope,
   type McpServerRefreshState,
   type McpServerSummary,
@@ -71,7 +70,6 @@ const selectedServerPath = (slug: string) => `?server=${encodeURIComponent(slug)
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const scope = automationScopeFromRouteParams(params);
   await requireBackofficeContext(request, context, scope);
-  await ensureMcpConfiguredForScope(context, scope);
 
   const { servers, serversError } = await fetchMcpServersForScope(request, context, scope);
 
@@ -86,8 +84,6 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const intent = getFormString(formData, "intent") || "add-server";
 
   try {
-    await ensureMcpConfiguredForScope(context, scope);
-
     const callRoute = createMcpActionRouteCallerForScope(request, context, scope);
 
     if (intent === "add-server") {

@@ -9,15 +9,6 @@ import {
 import type { McpFragment } from "@/fragno/mcp";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-export type McpConfigState = {
-  configured: boolean;
-  config?: {
-    publicBaseUrl?: string | null;
-    createdAt?: string;
-    updatedAt?: string;
-  };
-};
-
 export type McpServerCache = {
   protocolVersion?: string | null;
   serverInfo?: unknown;
@@ -131,33 +122,6 @@ const createMcpRouteCallerForScope = (
     fetch: async (outboundRequest) => mcpDo.fetch(outboundRequest),
   });
 };
-
-export async function ensureMcpConfiguredForScope(
-  context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
-) {
-  const ownerScope = requireMcpOwnerScope(scope);
-  const mcpDo = getMcpObjectForScope(context, ownerScope);
-  const status = await mcpDo.getAdminConfig();
-  if (!status.configured) {
-    await mcpDo.setAdminConfig({ scope: ownerScope });
-  }
-}
-
-export async function fetchMcpConfigForScope(
-  context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
-): Promise<{ configState: McpConfigState | null; configError: string | null }> {
-  try {
-    const mcpDo = getMcpObjectForScope(context, scope);
-    return { configState: await mcpDo.getAdminConfig(), configError: null };
-  } catch (error) {
-    return {
-      configState: null,
-      configError: error instanceof Error ? error.message : "Unable to load MCP configuration.",
-    };
-  }
-}
 
 export async function fetchMcpServersForScope(
   request: Request,

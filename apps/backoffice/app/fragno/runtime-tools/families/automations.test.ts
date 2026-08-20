@@ -132,7 +132,7 @@ describe("automation runtime tools", () => {
     ]);
   });
 
-  test("project, sandbox, and configured capability events are represented in the catalog", () => {
+  test("project, sandbox, connection, and configured capability events are represented in the catalog", () => {
     const events = listAutomationEventDescriptors().map((event) => ({
       capabilityId: event.capabilityId,
       source: event.source,
@@ -147,8 +147,8 @@ describe("automation runtime tools", () => {
         { capabilityId: "sandbox", source: "sandbox", eventType: "instance.ready" },
         { capabilityId: "sandbox", source: "sandbox", eventType: "instance.stopped" },
         { capabilityId: "sandbox", source: "sandbox", eventType: "instance.failed" },
-        { capabilityId: "api", source: "api", eventType: "capability.configured" },
-        { capabilityId: "mcp", source: "mcp", eventType: "capability.configured" },
+        { capabilityId: "api", source: "api", eventType: "connection.changed" },
+        { capabilityId: "mcp", source: "mcp", eventType: "server.configuration.changed" },
         { capabilityId: "resend", source: "resend", eventType: "capability.configured" },
         { capabilityId: "reson8", source: "reson8", eventType: "capability.configured" },
         { capabilityId: "upload", source: "upload", eventType: "capability.configured" },

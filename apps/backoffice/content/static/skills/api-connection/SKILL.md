@@ -13,19 +13,9 @@ tokens, client credentials, and API requests through Backoffice runtimes.
 
 # API configuration
 
-Configuration fields:
+The API capability is available automatically for the current scope. Create each external API
+connection with a stable lowercase slug and a base URL.
 
-Initialize the API capability to store the scope id and prepare the public OAuth callback route.
-
-Setup notes:
-
-- Initialize the API capability before creating API connections:
-
-```js
-await connections.configure({ id: "api", payload: {} });
-```
-
-- Create each external API connection with a stable lowercase slug and a base URL.
 - Use `api.*` methods for API connections.
 - Register the public OAuth callback route `/api/http/:scope/oauth/callback` for scoped OAuth
   connections.
@@ -45,14 +35,8 @@ Rules:
 
 Typical OAuth setup flow:
 
-1. Initialize the API capability:
-
-```js
-await connections.configure({ id: "api", payload: {} });
-```
-
-2. Create the API connection with the requested auth configuration.
-3. For OAuth connections, immediately start OAuth after creating the connection and give the
+1. Create the API connection with the requested auth configuration.
+2. For OAuth connections, immediately start OAuth after creating the connection and give the
    returned authorization URL to the user:
 
 ```js
@@ -145,8 +129,6 @@ OAuth restart and troubleshooting notes:
 
 Cataloged automation events:
 
-- `source`: `api`, `eventType`: `capability.configured` — fires after API is configured for a scope
-  for the first time.
 - `source`: `api`, `eventType`: `connection.changed` — fires when an API connection is created or
   its configuration changes.
 - `source`: `api`, `eventType`: `connection.deleted` — fires when an API connection is deleted.

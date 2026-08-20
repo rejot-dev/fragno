@@ -15,20 +15,16 @@ automations.
 
 # API webhook configuration
 
-Configuration fields:
-
-Initialize the API capability first; webhook endpoints share the same API capability storage and
-public base URL.
+The API capability is available automatically for the current scope. Webhook endpoints share its
+storage and public base URL.
 
 Typical setup flow:
 
-1. Initialize the shared API capability and create a draft endpoint. Assume the user needs a webhook
-   URL before auth, payload, or header details are known. Deduce a good stable lowercase
-   `endpointId` from the user's request; this is usually the name of the service you are configuring
-   webhooks for:
+1. Create a draft endpoint. Assume the user needs a webhook URL before auth, payload, or header
+   details are known. Deduce a good stable lowercase `endpointId` from the user's request; this is
+   usually the name of the service you are configuring webhooks for:
 
 ```js
-const apiCapability = await connections.configure({ id: "api", payload: {} });
 const draft = await api.createWebhookEndpoint({
   endpointId: "example-provider",
   name: "Example Provider",
@@ -38,7 +34,7 @@ const draft = await api.createWebhookEndpoint({
   auth: { type: "none" },
 });
 
-return { publicBaseUrl: apiCapability.config?.publicBaseUrl, webhookUrl: draft.publicUrl };
+return { webhookUrl: draft.publicUrl };
 ```
 
 Draft endpoints reserve a stable URL and reject deliveries with "not configured yet" until you
@@ -98,12 +94,11 @@ Rules:
 
 - ALWAYS start by immediately setting up a draft endpoint with a good endpointId AND informing the
   user of the FULL receiving webhook URL. ALWAYS DO THIS.
-- Do not talk about setting up the API connection (i.e. `connections.get({ id: 'api' })`) unless
-  something is wrong.
+- Do not talk about setting up the API capability; it is available automatically.
 - Do NOT mention the public base URL. This could confuse the user. Only mention the fully qualified
   url including the filled in endpointId and orgId.
-- Do not call `connections.setup({ id: "api-webhooks" })`; webhook endpoints use the shared `api`
-  capability.
+- Do not call `connections.setup` for API webhooks; webhook endpoints use the shared `api`
+  capability automatically.
 - Do not guess webhook auth from the word "secret" or "key". If the user says "webhook secret",
   "signing secret", or gives a secret-shaped webhook key, treat it as likely `hmac` and ask for the
   signature header/encoding/payload details if missing. Use `bearer` only when the provider

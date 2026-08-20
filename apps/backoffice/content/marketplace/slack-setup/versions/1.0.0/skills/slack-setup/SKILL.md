@@ -10,13 +10,12 @@ description:
 
 Set Slack up as one handshake: **connect → verify → receive → prove**.
 
-## 1. Inspect Backoffice capabilities
+## 1. Inspect existing API connections
 
-Inspect the `api` connection with `connections.list`, `connections.get`, `connections.schema`, and
-`connections.setup`. If API is unconfigured and its live schema requires no values, initialize it
-with `connections.configure({ id: "api", payload: {} })`.
+The API capability is available automatically for the current scope. Inspect the existing outbound
+API connections before creating or updating the Slack connection.
 
-**Complete when** the API capability is configured and the existing outbound connections are known.
+**Complete when** the existing outbound connections are known.
 
 ## 2. Collect missing secrets
 

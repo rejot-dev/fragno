@@ -867,11 +867,12 @@ export const createBackofficeCapabilitiesRuntime = ({
   } as BackofficeCapabilityContext;
   const contextScopeKind = scope.kind === "system" ? "singleton" : scope.kind;
   const scopeSupported = (capability: {
+    objectBinding?: BackofficeObjectBindingName;
     connection?: { objectBinding?: BackofficeObjectBindingName };
   }) => {
-    const objectBinding = capability.connection?.objectBinding;
+    const objectBinding = capability.objectBinding ?? capability.connection?.objectBinding;
     if (!objectBinding) {
-      return scope.kind === "org";
+      return capability.connection ? scope.kind === "org" : true;
     }
 
     const allowedScopes: readonly BackofficeObjectScopeKind[] =
@@ -881,7 +882,10 @@ export const createBackofficeCapabilitiesRuntime = ({
 
   const assertConnectionAvailable = (
     id: string,
-    capability: { connection?: { objectBinding?: BackofficeObjectBindingName } },
+    capability: {
+      objectBinding?: BackofficeObjectBindingName;
+      connection?: { objectBinding?: BackofficeObjectBindingName };
+    },
   ) => {
     if (!scopeSupported(capability)) {
       throw new Error(`Connection ${id} is not available in ${scope.kind} context.`);
@@ -892,16 +896,6 @@ export const createBackofficeCapabilitiesRuntime = ({
     listCapabilities: async () =>
       await Promise.all(
         backofficeCapabilities.map(async (capability) => {
-          if (!capability.connection) {
-            return {
-              id: capability.id,
-              label: capability.label,
-              kind: capability.kind,
-              available: true,
-              configured: true,
-              healthy: true,
-            };
-          }
           if (!scopeSupported(capability)) {
             return {
               id: capability.id,
@@ -911,6 +905,16 @@ export const createBackofficeCapabilitiesRuntime = ({
               configured: false,
               healthy: false,
               reason: `${capability.label} is not available in ${scope.kind} context.`,
+            };
+          }
+          if (!capability.connection) {
+            return {
+              id: capability.id,
+              label: capability.label,
+              kind: capability.kind,
+              available: true,
+              configured: true,
+              healthy: true,
             };
           }
           try {
@@ -943,11 +947,11 @@ export const createBackofficeCapabilitiesRuntime = ({
       const statuses = new Map(
         (await Promise.all(
           backofficeCapabilities.map(async (capability) => {
-            if (!capability.connection) {
-              return [capability.id, { configured: true, healthy: true }] as const;
-            }
             if (!scopeSupported(capability)) {
               return [capability.id, { configured: false, healthy: false }] as const;
+            }
+            if (!capability.connection) {
+              return [capability.id, { configured: true, healthy: true }] as const;
             }
             const status = await capability.connection.getStatus(capabilityContext);
             return [
@@ -960,7 +964,18 @@ export const createBackofficeCapabilitiesRuntime = ({
           }),
         )) as readonly (readonly [string, { configured: boolean; healthy?: boolean }])[],
       );
-      return listHookScopes().map((scope) => ({ ...scope, ...statuses.get(scope.capabilityId) }));
+      const capabilitiesById = new Map(
+        backofficeCapabilities.map((capability) => [capability.id, capability]),
+      );
+      return listHookScopes()
+        .filter((hookScope) => {
+          const capability = capabilitiesById.get(hookScope.capabilityId);
+          return capability ? scopeSupported(capability) : false;
+        })
+        .map((hookScope) => ({
+          ...hookScope,
+          ...statuses.get(hookScope.capabilityId),
+        }));
     },
     listConnections: async () =>
       await Promise.all(

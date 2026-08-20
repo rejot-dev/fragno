@@ -743,7 +743,6 @@ describe("system automation scenarios", () => {
             id: "upload",
             payload: { provider: "database" },
           }),
-          given.connection.configured({ orgId: "org-1", id: "mcp" }),
           runner.drain(),
         ],
 

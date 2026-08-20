@@ -179,10 +179,7 @@ describe("API webhook scenarios", () => {
           acceptedChallenge: null,
           acceptedDelivery: null,
         }),
-        setup: ({ given }) => [
-          given.organization.exists({ id: ORG_ID, name: "Ada Labs" }),
-          given.connection.configured({ orgId: ORG_ID, id: "api" }),
-        ],
+        setup: ({ given }) => [given.organization.exists({ id: ORG_ID, name: "Ada Labs" })],
         steps: ({ when, then }) => [
           when.codemode.run({
             orgId: ORG_ID,
