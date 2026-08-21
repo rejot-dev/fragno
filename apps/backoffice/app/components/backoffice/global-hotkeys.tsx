@@ -2,8 +2,6 @@ import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode }
 
 import { matchesGlobalHotkey, type GlobalHotkeyDefinition } from "./global-hotkey-definition";
 
-export type { GlobalHotkeyDefinition } from "./global-hotkey-definition";
-
 type GlobalHotkeyRegistration = GlobalHotkeyDefinition & {
   id: string;
   handler: (event: KeyboardEvent) => void;
@@ -44,9 +42,9 @@ export function GlobalHotkeysProvider({ children }: { children: ReactNode }) {
       hotkey.handler(event);
     };
 
-    document.addEventListener("keydown", handleGlobalKeyDown);
+    document.addEventListener("keydown", handleGlobalKeyDown, { capture: true });
     return () => {
-      document.removeEventListener("keydown", handleGlobalKeyDown);
+      document.removeEventListener("keydown", handleGlobalKeyDown, { capture: true });
     };
   }, []);
 
@@ -78,6 +76,7 @@ export function useGlobalHotkey(
     return registry.register({
       id: definition.id,
       key: definition.key,
+      code: definition.code,
       modifiers: {
         alt: modifierAlt,
         primary: modifierPrimary,
@@ -94,6 +93,7 @@ export function useGlobalHotkey(
     definition.enabled,
     definition.id,
     definition.key,
+    definition.code,
     modifierAlt,
     modifierPrimary,
     modifierShift,

@@ -1,4 +1,12 @@
-import { Folder, MessagesSquare, Store, Workflow, type LucideIcon } from "lucide-react";
+import {
+  Folder,
+  MessagesSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Store,
+  Workflow,
+  type LucideIcon,
+} from "lucide-react";
 import { NavLink, useLocation } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
@@ -47,22 +55,30 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
 
 export function BackofficeSidebarNav({
   currentScope,
+  collapsed,
+  onCollapsedChange,
 }: {
   currentScope: BackofficeContextScope | null;
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
 }) {
   const location = useLocation();
 
   return (
-    <aside className="sticky top-16 z-20 hidden h-[calc(100svh-4rem)] w-72 shrink-0 self-start border-r border-[color:var(--bo-border)] bg-[color:var(--bo-sidebar-bg)] min-[960px]:block">
-      <nav aria-label="Backoffice" className="flex flex-col gap-2.5 px-3 py-4">
+    <aside
+      className={`sticky top-16 z-20 hidden h-[calc(100svh-4rem)] shrink-0 self-start border-r border-[color:var(--bo-border)] bg-[color:var(--bo-sidebar-bg)] transition-[width] duration-150 ease-out min-[960px]:flex min-[960px]:flex-col ${collapsed ? "w-16" : "w-72"}`}
+    >
+      <nav aria-label="Backoffice" className="flex flex-col gap-2.5 px-2 py-4">
         {PRIMARY_NAVIGATION.map((item) => (
           <NavLink
             key={item.to}
             to={navigationItemPath(item, currentScope)}
+            title={collapsed ? item.label : undefined}
             className={({ isActive }) => {
               const active = isActive || item.isActive(location.pathname);
               return cn(
-                "flex min-h-11 items-center gap-3 rounded-[4px] border px-3 text-sm font-semibold text-[var(--bo-fg)] transition-[background-color,border-color,box-shadow,color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none",
+                "flex min-h-11 items-center rounded-[4px] border text-sm font-semibold text-[var(--bo-fg)] transition-[background-color,border-color,box-shadow,color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none",
+                collapsed ? "justify-center px-0" : "gap-3 px-3",
                 active
                   ? "border-[color:var(--bo-sidebar-item-active-border)] bg-[var(--bo-sidebar-item-active-bg)] shadow-[var(--bo-sidebar-item-active-shadow)]"
                   : "border-transparent hover:bg-[var(--bo-panel-2)]",
@@ -74,10 +90,28 @@ export function BackofficeSidebarNav({
               className="size-4 shrink-0 text-[var(--bo-muted)]"
               strokeWidth={1.75}
             />
-            {item.label}
+            <span className={collapsed ? "sr-only" : undefined}>{item.label}</span>
           </NavLink>
         ))}
       </nav>
+      <button
+        type="button"
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        title={`${collapsed ? "Expand" : "Collapse"} sidebar (⌘B)`}
+        onClick={() => {
+          onCollapsedChange(!collapsed);
+        }}
+        className={cn(
+          "mt-auto mb-3 flex size-9 shrink-0 items-center justify-center rounded-[4px] border border-transparent text-[var(--bo-muted)] transition-[background-color,border-color,color,transform] duration-150 ease-out hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.94]",
+          collapsed ? "self-center" : "mr-3 self-end",
+        )}
+      >
+        {collapsed ? (
+          <PanelLeftOpen className="size-4" strokeWidth={1.75} aria-hidden="true" />
+        ) : (
+          <PanelLeftClose className="size-4" strokeWidth={1.75} aria-hidden="true" />
+        )}
+      </button>
     </aside>
   );
 }

@@ -31,6 +31,16 @@ export function BackofficeShell(props: BackofficeShellProps) {
 
 function BackofficeShellFrame({ children, me, currentContext, isLoading }: BackofficeShellProps) {
   const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  useGlobalHotkey({
+    id: "toggle-sidebar",
+    key: "b",
+    code: "KeyB",
+    modifiers: { primary: true },
+    handler() {
+      setSidebarCollapsed((collapsed) => !collapsed);
+    },
+  });
   useGlobalHotkey({
     id: "toggle-recent-workflows",
     key: "i",
@@ -59,7 +69,11 @@ function BackofficeShellFrame({ children, me, currentContext, isLoading }: Backo
           }}
         />
         <div className="flex min-w-0 flex-1">
-          <BackofficeSidebarNav currentScope={currentContext?.scope ?? null} />
+          <BackofficeSidebarNav
+            currentScope={currentContext?.scope ?? null}
+            collapsed={sidebarCollapsed}
+            onCollapsedChange={setSidebarCollapsed}
+          />
           <main className="relative z-10 flex min-w-0 flex-1 flex-col">
             <div className="flex min-w-0 flex-1 flex-col">{children}</div>
           </main>

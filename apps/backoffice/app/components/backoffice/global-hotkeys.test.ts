@@ -5,6 +5,7 @@ import { matchesGlobalHotkey } from "./global-hotkey-definition";
 const keyboardEvent = (
   overrides: Partial<{
     altKey: boolean;
+    code: string;
     ctrlKey: boolean;
     key: string;
     metaKey: boolean;
@@ -13,6 +14,7 @@ const keyboardEvent = (
   }> = {},
 ) => ({
   altKey: false,
+  code: "KeyI",
   ctrlKey: false,
   key: "i",
   metaKey: false,
@@ -27,6 +29,17 @@ describe("matchesGlobalHotkey", () => {
 
     assert(matchesGlobalHotkey(keyboardEvent({ metaKey: true }), definition));
     assert(matchesGlobalHotkey(keyboardEvent({ ctrlKey: true }), definition));
+  });
+
+  test("matches a physical key code when the modified key value changes", () => {
+    const definition = { key: "`", code: "Backquote", modifiers: { primary: true } };
+
+    assert(
+      matchesGlobalHotkey(
+        keyboardEvent({ code: "Backquote", key: "Dead", metaKey: true }),
+        definition,
+      ),
+    );
   });
 
   test("rejects missing or additional modifiers", () => {

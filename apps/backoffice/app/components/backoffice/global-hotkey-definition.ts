@@ -8,6 +8,7 @@ type GlobalHotkeyModifiers = {
 
 export type GlobalHotkeyDefinition = {
   key: string;
+  code?: string;
   modifiers?: GlobalHotkeyModifiers;
   allowRepeat?: boolean;
   preventDefault?: boolean;
@@ -16,7 +17,7 @@ export type GlobalHotkeyDefinition = {
 export function matchesGlobalHotkey(
   event: Pick<
     KeyboardEvent | ReactKeyboardEvent,
-    "altKey" | "ctrlKey" | "key" | "metaKey" | "repeat" | "shiftKey"
+    "altKey" | "code" | "ctrlKey" | "key" | "metaKey" | "repeat" | "shiftKey"
   >,
   definition: GlobalHotkeyDefinition,
 ): boolean {
@@ -26,8 +27,11 @@ export function matchesGlobalHotkey(
 
   const modifiers = definition.modifiers ?? {};
   const primaryPressed = event.metaKey || event.ctrlKey;
+  const keyMatches = definition.code
+    ? event.code.toLowerCase() === definition.code.toLowerCase()
+    : event.key.toLowerCase() === definition.key.toLowerCase();
   return (
-    event.key.toLowerCase() === definition.key.toLowerCase() &&
+    keyMatches &&
     primaryPressed === Boolean(modifiers.primary) &&
     event.altKey === Boolean(modifiers.alt) &&
     event.shiftKey === Boolean(modifiers.shift)
