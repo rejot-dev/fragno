@@ -798,7 +798,7 @@ export function createWorkflowTokenMachine({
       parentId,
       source: sourceRangeFromToken(path, conditionStart),
       construction: { status: "partial", phase: "branches" },
-      analysis: { status: "partial", outcomes: [], annotations: [] },
+      analysis: { status: "partial", outcomes: [] },
     };
     extendSourceRangeToToken(condition.source, questionMark);
     for (const activeCondition of activeConditionMachines(workflowMachine.workflow)) {
@@ -837,7 +837,7 @@ export function createWorkflowTokenMachine({
       parentId,
       source: sourceRangeFromToken(path, significantTokens.at(-1) ?? openingParenthesis),
       construction: { status: "partial", phase: "condition" },
-      analysis: { status: "partial", outcomes: [], annotations: [] },
+      analysis: { status: "partial", outcomes: [] },
     };
     workflowMachine.workflow.children.push(condition);
     runtime.add(
@@ -1795,7 +1795,7 @@ function cloneNode<T extends WorkflowNode | WorkflowChildNode>(node: T): T {
 
 function cloneConditionAnalysis(analysis: ConditionAnalysis): ConditionAnalysis {
   if (analysis.status !== "complete") {
-    return { status: analysis.status, outcomes: [], annotations: [] };
+    return { status: analysis.status, outcomes: [] };
   }
   return {
     status: "complete",
@@ -1804,10 +1804,6 @@ function cloneConditionAnalysis(analysis: ConditionAnalysis): ConditionAnalysis 
       path: outcome.path,
       predicate: clonePredicate(outcome.predicate),
       completion: { ...outcome.completion },
-    })),
-    annotations: analysis.annotations.map((annotation) => ({
-      ...annotation,
-      subject: { ...annotation.subject, path: [...annotation.subject.path] },
     })),
   };
 }

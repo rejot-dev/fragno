@@ -9,7 +9,7 @@ import {
 } from "./workflow-graph-presentation";
 
 describe("workflow graph presentation", () => {
-  it("moves a leading event guard into workflow metadata", () => {
+  it("keeps a leading source guard in the workflow tree", () => {
     const visualization = visualizeWorkflowSource(
       "automations/pi-configure.workflow.js",
       `defineWorkflow({ name: "pi-configure" }, async (event, step) => {
@@ -28,17 +28,23 @@ describe("workflow graph presentation", () => {
 
     const presentation = createWorkflowGraphPresentation(visualization);
 
-    expect(presentation.eventGuardByWorkflowId.get(workflow.id)).toMatchObject({
-      eventSource: "pi",
-      eventType: "capability.configured",
-    });
-    expect(presentation.childrenByParent.get(workflow.id)).toEqual([
-      expect.objectContaining({ kind: "step", label: "configure pi", order: 0 }),
+    expect(
+      presentation.childrenByParent
+        .get(workflow.id)
+        ?.map((node) => ({ kind: node.kind, label: node.label, order: node.order })),
+    ).toEqual([
+      {
+        kind: "condition",
+        label:
+          'if automationEvent.source !== "pi" || automationEvent.eventType !== "capability.configured"',
+        order: 0,
+      },
+      { kind: "step", label: "configure pi", order: 1 },
     ]);
     assert.equal(countRenderedWorkflowSteps(workflow.id, presentation.childrenByParent), 1);
   });
 
-  it("promotes the accepted branch and removes the rejected branch", () => {
+  it("preserves positive and rejected source-guard branches", () => {
     const visualization = visualizeWorkflowSource(
       "automations/positive-event.workflow.js",
       `defineWorkflow({ name: "positive-event" }, async (event, step) => {
@@ -64,7 +70,12 @@ describe("workflow graph presentation", () => {
         .get(workflow.id)
         ?.map((node) => ({ kind: node.kind, label: node.label, order: node.order })),
     ).toEqual([
-      { kind: "step", label: "configure pi", order: 0 },
+      {
+        kind: "condition",
+        label:
+          'if automationEvent.source === "pi" && automationEvent.eventType === "capability.configured"',
+        order: 0,
+      },
       { kind: "step", label: "finish", order: 1 },
     ]);
     assert.equal(countRenderedWorkflowSteps(workflow.id, presentation.childrenByParent), 2);
@@ -136,7 +147,6 @@ describe("workflow graph presentation", () => {
 
     const presentation = createWorkflowGraphPresentation(visualization);
 
-    assert(!presentation.eventGuardByWorkflowId.has(workflow.id));
     expect(presentation.childrenByParent.get(workflow.id)?.map((node) => node.kind)).toEqual([
       "condition",
       "step",
@@ -162,7 +172,6 @@ describe("workflow graph presentation", () => {
 
     const presentation = createWorkflowGraphPresentation(visualization);
 
-    assert(!presentation.eventGuardByWorkflowId.has(workflow.id));
     expect(presentation.childrenByParent.get(workflow.id)?.map((node) => node.kind)).toEqual([
       "step",
       "condition",

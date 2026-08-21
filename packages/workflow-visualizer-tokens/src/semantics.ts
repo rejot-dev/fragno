@@ -1,7 +1,6 @@
 import type {
   BranchNode,
   ConditionAnalysis,
-  ConditionAnnotation,
   ConditionNode,
   ConditionOutcome,
   ConditionOutcomeCompletion,
@@ -9,7 +8,6 @@ import type {
   SemanticOperand,
   SemanticPredicate,
   SemanticReference,
-  TerminalNode,
   WorkflowChildNode,
   WorkflowNode,
 } from "./model.ts";
@@ -46,22 +44,17 @@ function analyzeCondition({
   tokens: PositionedWorkflowToken[];
 }): ConditionAnalysis {
   if (condition.construction.status === "partial") {
-    return { status: "partial", outcomes: [], annotations: [] };
+    return { status: "partial", outcomes: [] };
   }
 
   const bindings = constantReferenceBindingsBefore({ workflow, condition, tokens });
   const predicate = parsePredicate(condition.condition, bindings);
   if (!predicate) {
-    return { status: "unsupported", outcomes: [], annotations: [] };
+    return { status: "unsupported", outcomes: [] };
   }
 
   const outcomes = conditionOutcomes(condition, children, predicate);
-  return {
-    status: "complete",
-    predicate,
-    outcomes,
-    annotations: specificEventGuardAnnotations(outcomes, children),
-  };
+  return { status: "complete", predicate, outcomes };
 }
 
 function conditionOutcomes(
@@ -125,130 +118,6 @@ function completionForContainer(
   return lastChild?.kind === "terminal"
     ? { kind: "terminal", terminalNodeId: lastChild.id }
     : { kind: "continues" };
-}
-
-function specificEventGuardAnnotations(
-  outcomes: ConditionOutcome[],
-  children: WorkflowChildNode[],
-): ConditionAnnotation[] {
-  const continuingOutcomes = outcomes.filter((outcome) => outcome.completion.kind === "continues");
-  const terminalOutcomes = outcomes.filter(
-    (
-      outcome,
-    ): outcome is ConditionOutcome & {
-      completion: { kind: "terminal"; terminalNodeId: string };
-    } => outcome.completion.kind === "terminal",
-  );
-  if (continuingOutcomes.length !== 1 || terminalOutcomes.length === 0) {
-    return [];
-  }
-
-  const acceptedOutcome = continuingOutcomes.at(0);
-  const terminalOutcome = terminalOutcomes.at(0);
-  if (!acceptedOutcome || !terminalOutcome) {
-    return [];
-  }
-  const identity = specificEventIdentity(acceptedOutcome.predicate);
-  if (!identity) {
-    return [];
-  }
-
-  const rejectedTerminal = children.find(
-    (node): node is TerminalNode =>
-      node.kind === "terminal" && node.id === terminalOutcome.completion.terminalNodeId,
-  );
-  if (!rejectedTerminal || !isPureTerminalGuardBranch(rejectedTerminal, children)) {
-    return [];
-  }
-
-  return [
-    {
-      kind: "specific-event-guard",
-      subject: identity.subject,
-      eventSource: identity.eventSource,
-      eventType: identity.eventType,
-      acceptedPath: acceptedOutcome.path,
-      rejectedTerminalId: rejectedTerminal.id,
-      ...(!isDefaultTerminalLabel(rejectedTerminal.label)
-        ? { rejectionReason: rejectedTerminal.label }
-        : {}),
-    },
-  ];
-}
-
-function isPureTerminalGuardBranch(terminal: TerminalNode, children: WorkflowChildNode[]): boolean {
-  const branchChildren = children.filter((node) => node.parentId === terminal.parentId);
-  return branchChildren.length === 1 && branchChildren[0]?.id === terminal.id;
-}
-
-function specificEventIdentity(predicate: SemanticPredicate): {
-  subject: SemanticReference;
-  eventSource: string;
-  eventType: string;
-} | null {
-  if (predicate.kind !== "all" || predicate.predicates.length !== 2) {
-    return null;
-  }
-
-  const facts = predicate.predicates.map((candidate) => {
-    if (candidate.kind !== "comparison" || candidate.operator !== "equals") {
-      return null;
-    }
-    return eventDiscriminantFact(candidate.left, candidate.right);
-  });
-  if (facts.some((fact) => fact === null)) {
-    return null;
-  }
-
-  const eventFacts = facts.filter((fact): fact is NonNullable<typeof fact> => fact !== null);
-  const sourceFacts = eventFacts.filter((fact) => fact.property === "source");
-  const eventTypeFacts = eventFacts.filter((fact) => fact.property === "eventType");
-  const sourceFact = sourceFacts.at(0);
-  const eventTypeFact = eventTypeFacts.at(0);
-  if (
-    sourceFacts.length !== 1 ||
-    eventTypeFacts.length !== 1 ||
-    !sourceFact ||
-    !eventTypeFact ||
-    !sameReference(sourceFact.subject, eventTypeFact.subject)
-  ) {
-    return null;
-  }
-
-  return {
-    subject: sourceFact.subject,
-    eventSource: sourceFact.value,
-    eventType: eventTypeFact.value,
-  };
-}
-
-function eventDiscriminantFact(
-  left: SemanticOperand,
-  right: SemanticOperand,
-): { subject: SemanticReference; value: string; property: "source" | "eventType" } | null {
-  const reference = left.kind === "reference" ? left : right.kind === "reference" ? right : null;
-  const literal = left.kind === "literal" ? left : right.kind === "literal" ? right : null;
-  if (!reference || typeof literal?.value !== "string") {
-    return null;
-  }
-
-  const property = reference.path.at(-1);
-  if (property !== "source" && property !== "eventType") {
-    return null;
-  }
-  return {
-    subject: { kind: "reference", root: reference.root, path: reference.path.slice(0, -1) },
-    value: literal.value,
-    property,
-  };
-}
-
-function sameReference(left: SemanticReference, right: SemanticReference): boolean {
-  return left.root === right.root && left.path.join("\u0000") === right.path.join("\u0000");
-}
-
-function isDefaultTerminalLabel(label: string): boolean {
-  return label === "return" || label === "early return" || label === "error";
 }
 
 function negatePredicate(predicate: SemanticPredicate): SemanticPredicate {

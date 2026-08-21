@@ -512,21 +512,6 @@ describe("workflow token state machine", () => {
         ],
       },
       outcomes: expect.any(Array),
-      annotations: [
-        {
-          kind: "specific-event-guard",
-          subject: {
-            kind: "reference",
-            root: "event",
-            path: ["payload", "automationEvent"],
-          },
-          eventSource: "pi",
-          eventType: "capability.configured",
-          acceptedPath: "fallthrough",
-          rejectedTerminalId: expect.any(String),
-          rejectionReason: "not-pi-capability-configured",
-        },
-      ],
     });
     const acceptedOutcome =
       condition.analysis.status === "complete"
@@ -823,7 +808,7 @@ describe("workflow token state machine", () => {
       label: "if sample.value >= 0.5",
       condition: "sample.value >= 0.5",
       construction: { status: "complete", phase: "complete" },
-      analysis: { status: "unsupported", outcomes: [], annotations: [] },
+      analysis: { status: "unsupported", outcomes: [] },
     });
     expect(branches.map((branch) => branch.branchType)).toEqual(["then", "else"]);
     expect(ancestorLabels(snapshot.graph, highBranch)).toEqual([

@@ -4,7 +4,7 @@ import { visualizeWorkflowSource } from "./index.ts";
 import type { ConditionNode } from "./model.ts";
 
 describe("workflow condition semantics", () => {
-  it("resolves chained aliases and reversed discriminant comparisons", () => {
+  it("resolves chained aliases and reversed comparisons", () => {
     const condition = visualizeCondition(`
       const received = event.payload.automationEvent;
       const automationEvent = received;
@@ -17,134 +17,60 @@ describe("workflow condition semantics", () => {
     `);
 
     assert(condition.analysis.status === "complete");
-    expect(condition.analysis.annotations).toEqual([
+    expect(condition.analysis.outcomes).toEqual([
       expect.objectContaining({
-        kind: "specific-event-guard",
-        subject: {
-          kind: "reference",
-          root: "event",
-          path: ["payload", "automationEvent"],
+        path: "then",
+        completion: expect.objectContaining({ kind: "terminal" }),
+      }),
+      {
+        path: "fallthrough",
+        predicate: {
+          kind: "all",
+          predicates: [
+            {
+              kind: "comparison",
+              operator: "equals",
+              left: { kind: "literal", value: "pi" },
+              right: {
+                kind: "reference",
+                root: "event",
+                path: ["payload", "automationEvent", "source"],
+              },
+            },
+            {
+              kind: "comparison",
+              operator: "equals",
+              left: { kind: "literal", value: "capability.configured" },
+              right: {
+                kind: "reference",
+                root: "event",
+                path: ["payload", "automationEvent", "eventType"],
+              },
+            },
+          ],
         },
-        eventSource: "pi",
-        eventType: "capability.configured",
-        acceptedPath: "fallthrough",
-        rejectionReason: "wrong-event",
-      }),
+        completion: { kind: "continues" },
+      },
     ]);
   });
 
-  it("normalizes negated event predicates", () => {
+  it("records terminal and continuing outcomes without interpreting event routing", () => {
     const condition = visualizeCondition(`
-      const automationEvent = event.payload.automationEvent;
-      if (!(
-        automationEvent.source !== "pi" ||
-        automationEvent.eventType !== "capability.configured"
-      )) {
-        await step.do("configure pi", async () => {});
+      if (event.payload.enabled === true) {
+        await step.do("configure", async () => {});
       } else {
-        return { skipped: true, reason: "wrong-event" };
+        return { skipped: true };
       }
     `);
 
     assert(condition.analysis.status === "complete");
-    expect(condition.analysis.annotations).toEqual([
+    expect(condition.analysis.outcomes).toEqual([
+      expect.objectContaining({ path: "then", completion: { kind: "continues" } }),
       expect.objectContaining({
-        kind: "specific-event-guard",
-        eventSource: "pi",
-        eventType: "capability.configured",
-        acceptedPath: "then",
+        path: "else",
+        completion: expect.objectContaining({ kind: "terminal" }),
       }),
     ]);
-  });
-
-  it("recognizes a positive event branch when its else branch exits", () => {
-    const condition = visualizeCondition(`
-      const automationEvent = event.payload.automationEvent;
-      if (
-        automationEvent.source === "pi" &&
-        automationEvent.eventType === "capability.configured"
-      ) {
-        await step.do("configure pi", async () => {});
-      } else {
-        return { skipped: true, reason: "wrong-event" };
-      }
-    `);
-
-    assert(condition.analysis.status === "complete");
-    expect(condition.analysis.annotations).toEqual([
-      expect.objectContaining({
-        kind: "specific-event-guard",
-        eventSource: "pi",
-        eventType: "capability.configured",
-        acceptedPath: "then",
-      }),
-    ]);
-  });
-
-  it("does not hide an additional accepted-path requirement", () => {
-    const condition = visualizeCondition(`
-      const automationEvent = event.payload.automationEvent;
-      if (
-        automationEvent.source === "pi" &&
-        automationEvent.eventType === "capability.configured" &&
-        event.payload.enabled === true
-      ) {
-        await step.do("configure pi", async () => {});
-      } else {
-        return { skipped: true, reason: "wrong-event" };
-      }
-    `);
-
-    assert(condition.analysis.status === "complete");
-    expect(condition.analysis.annotations).toEqual([]);
-  });
-
-  it("does not hide an additional rejected-path requirement", () => {
-    const condition = visualizeCondition(`
-      const automationEvent = event.payload.automationEvent;
-      if (
-        automationEvent.source !== "pi" ||
-        automationEvent.eventType !== "capability.configured" ||
-        event.payload.enabled !== true
-      ) {
-        return { skipped: true, reason: "wrong-event" };
-      }
-    `);
-
-    assert(condition.analysis.status === "complete");
-    expect(condition.analysis.annotations).toEqual([]);
-  });
-
-  it("does not call a conditional event branch a guard when both paths continue", () => {
-    const condition = visualizeCondition(`
-      const automationEvent = event.payload.automationEvent;
-      if (
-        automationEvent.source === "pi" &&
-        automationEvent.eventType === "capability.configured"
-      ) {
-        await step.do("configure pi", async () => {});
-      }
-      await step.do("continue", async () => {});
-    `);
-
-    assert(condition.analysis.status === "complete");
-    expect(condition.analysis.annotations).toEqual([]);
-  });
-
-  it("does not hide a rejecting branch that performs durable work", () => {
-    const condition = visualizeCondition(`
-      const automationEvent = event.payload.automationEvent;
-      if (
-        automationEvent.source !== "pi" ||
-        automationEvent.eventType !== "capability.configured"
-      ) {
-        await step.do("record rejected event", async () => {});
-        return { skipped: true, reason: "wrong-event" };
-      }
-    `);
-
-    assert(condition.analysis.status === "complete");
-    expect(condition.analysis.annotations).toEqual([]);
   });
 
   it("keeps unsupported expressions explicit", () => {
@@ -157,7 +83,6 @@ describe("workflow condition semantics", () => {
     expect(condition.analysis).toEqual({
       status: "unsupported",
       outcomes: [],
-      annotations: [],
     });
   });
 });

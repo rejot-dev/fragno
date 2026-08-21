@@ -8,7 +8,6 @@ import {
   LogOut,
   OctagonX,
   Repeat2,
-  ShieldCheck,
 } from "lucide-react";
 
 import type {
@@ -18,7 +17,6 @@ import type {
   LoopNode,
   ParallelNode,
   SourceRange,
-  SpecificEventGuardAnnotation,
   StepNode,
   TerminalNode,
   TryNode,
@@ -38,7 +36,6 @@ import { WorkflowGeneratedUi, type WorkflowEventSender } from "./workflow-genera
 import {
   createWorkflowGraphPresentation,
   workflowTerminalDetails,
-  type WorkflowEventGuardPresentation,
 } from "./workflow-graph-presentation";
 import { hasVisibleWorkflowOutput } from "./workflow-output";
 import { WorkflowOutputDisclosure } from "./workflow-output-data";
@@ -92,7 +89,6 @@ export function ScriptWorkflowGraph({
       ) : (
         <div className="space-y-6">
           {workflows.map((workflow) => {
-            const eventGuard = presentation.eventGuardByWorkflowId.get(workflow.id);
             const workflowRun =
               selectedRun?.workflowName === workflow.name ? selectedRun : undefined;
             const uiWaitPairings = createWorkflowUiWaitPairings({
@@ -108,9 +104,6 @@ export function ScriptWorkflowGraph({
                 >
                   {workflow.name}
                 </h3>
-                {eventGuard ? (
-                  <WorkflowEventGuard eventGuard={eventGuard} onSourceSelect={onSourceSelect} />
-                ) : null}
                 <RuntimeMismatchNotice
                   run={workflowRun}
                   sourceCode={sourceCode}
@@ -279,31 +272,6 @@ function workflowRunHasGeneratedUiOutput(
   run: ScriptWorkflowRun | undefined,
 ): run is ScriptWorkflowRun {
   return run?.status === "complete" && parseBackofficeUiResult(run.output).kind !== "ordinary";
-}
-
-function WorkflowEventGuard({
-  eventGuard,
-  onSourceSelect,
-}: {
-  eventGuard: WorkflowEventGuardPresentation;
-  onSourceSelect?: (source: SourceRange) => void;
-}) {
-  return (
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--bo-border)] pt-3">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="flex items-center gap-1.5 text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-accent-fg)] uppercase">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          Runs on
-        </span>
-        <code className="font-mono text-xs font-semibold text-[var(--bo-fg)]">
-          {eventGuard.eventSource}
-        </code>
-        <span className="font-mono text-[10px] text-[var(--bo-muted-2)]">/</span>
-        <code className="font-mono text-xs text-[var(--bo-fg)]">{eventGuard.eventType}</code>
-      </div>
-      <SourceLocationButton source={eventGuard.source} onSelect={onSourceSelect} />
-    </div>
-  );
 }
 
 function WorkflowChildTree({
@@ -481,53 +449,17 @@ function ConditionCard({
   condition: ConditionNode;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
-  const eventGuard =
-    condition.analysis.status === "complete"
-      ? condition.analysis.annotations.find(
-          (candidate): candidate is SpecificEventGuardAnnotation =>
-            candidate.kind === "specific-event-guard",
-        )
-      : undefined;
-
   return (
     <div className="border border-[color:var(--bo-accent)]/40 bg-[var(--bo-accent-bg)] p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-accent-fg)] uppercase">
-            {eventGuard ? (
-              <ShieldCheck className="h-3.5 w-3.5" />
-            ) : (
-              <GitBranch className="h-3.5 w-3.5" />
-            )}
-            {eventGuard ? "Specific event guard" : "If"}
+            <GitBranch className="h-3.5 w-3.5" />
+            If
           </div>
-          {eventGuard ? (
-            <div className="mt-2">
-              <p className="font-mono text-sm font-semibold text-[var(--bo-fg)]">
-                {eventGuard.eventSource}
-                <span className="text-[var(--bo-muted-2)]"> · </span>
-                {eventGuard.eventType}
-              </p>
-              <p className="mt-1 font-mono text-[10px] text-[var(--bo-muted-2)]">
-                {semanticReferenceLabel(eventGuard.subject)}
-              </p>
-              {eventGuard.rejectionReason ? (
-                <p className="mt-1 text-[10px] text-[var(--bo-muted)]">
-                  Other events exit as{" "}
-                  <span className="font-mono text-[var(--bo-fg)]">
-                    {eventGuard.rejectionReason}
-                  </span>
-                </p>
-              ) : null}
-              <code className="mt-2 block border-t border-[color:var(--bo-border)] pt-2 font-mono text-[10px] leading-4 break-all text-[var(--bo-muted)]">
-                {condition.condition}
-              </code>
-            </div>
-          ) : (
-            <code className="mt-2 block font-mono text-xs leading-5 break-all text-[var(--bo-fg)]">
-              {condition.condition || "Condition still being written"}
-            </code>
-          )}
+          <code className="mt-2 block font-mono text-xs leading-5 break-all text-[var(--bo-fg)]">
+            {condition.condition || "Condition still being written"}
+          </code>
         </div>
         <div className="flex items-center gap-2">
           <SourceLocationButton source={condition.source} onSelect={onSourceSelect} />
@@ -538,10 +470,6 @@ function ConditionCard({
       </div>
     </div>
   );
-}
-
-function semanticReferenceLabel(reference: { root: string; path: string[] }): string {
-  return [reference.root, ...reference.path].join(".");
 }
 
 function LoopCard({

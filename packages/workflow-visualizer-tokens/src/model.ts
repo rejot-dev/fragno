@@ -128,26 +128,13 @@ export interface ConditionOutcome {
   completion: ConditionOutcomeCompletion;
 }
 
-export interface SpecificEventGuardAnnotation {
-  kind: "specific-event-guard";
-  subject: SemanticReference;
-  eventSource: string;
-  eventType: string;
-  acceptedPath: ConditionOutcomePath;
-  rejectedTerminalId: string;
-  rejectionReason?: string;
-}
-
-export type ConditionAnnotation = SpecificEventGuardAnnotation;
-
 export type ConditionAnalysis =
-  | { status: "partial"; outcomes: []; annotations: [] }
-  | { status: "unsupported"; outcomes: []; annotations: [] }
+  | { status: "partial"; outcomes: [] }
+  | { status: "unsupported"; outcomes: [] }
   | {
       status: "complete";
       predicate: SemanticPredicate;
       outcomes: ConditionOutcome[];
-      annotations: ConditionAnnotation[];
     };
 
 export interface ConditionNode {
