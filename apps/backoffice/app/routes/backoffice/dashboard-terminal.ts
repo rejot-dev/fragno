@@ -69,7 +69,7 @@ export type DashboardCommandSpec = {
   examples?: readonly string[];
 };
 
-export type DashboardAutocompleteMode = "completion" | "history";
+type DashboardAutocompleteMode = "completion" | "history";
 
 export type DashboardAutocompleteSuggestion = {
   id: string;
@@ -80,10 +80,6 @@ export type DashboardAutocompleteSuggestion = {
   replacement: string;
   replacementStart: number;
   replacementEnd: number;
-};
-
-export type DashboardArgumentHint = AutomationCommandOptionSpec & {
-  used: boolean;
 };
 
 type DashboardTerminalSnapshot = {
@@ -155,14 +151,6 @@ const currentTokenAt = (commandLine: string, cursorPosition: number): Token => {
     start: cursorPosition - value.length,
     end: cursorPosition,
   };
-};
-
-const findCommandSpec = (
-  commandLine: string,
-  commandSpecs: readonly DashboardCommandSpec[],
-): DashboardCommandSpec | undefined => {
-  const commandName = tokenizeCommandLine(commandLine)[0]?.value;
-  return commandName ? commandSpecs.find((spec) => spec.command === commandName) : undefined;
 };
 
 const usedOptionNames = (tokens: readonly Token[], ignoredToken?: Token) => {
@@ -313,7 +301,7 @@ export const shortenDashboardCwd = (cwd: string, maxLength = 40) => {
   return cwd;
 };
 
-export const createWelcomeEntry = (
+const createWelcomeEntry = (
   scopeName?: string | null,
   timestamp = new Date().toISOString(),
 ): DashboardTerminalEntry => ({
@@ -494,28 +482,6 @@ export const buildDashboardAutocomplete = ({
     }));
 };
 
-export const getDashboardArgumentHints = ({
-  commandLine,
-  commandSpecs,
-}: {
-  commandLine: string;
-  commandSpecs: readonly DashboardCommandSpec[];
-}): DashboardArgumentHint[] => {
-  const commandSpec = findCommandSpec(commandLine, commandSpecs);
-  if (!commandSpec) {
-    return [];
-  }
-
-  const usedOptions = usedOptionNames(tokenizeCommandLine(commandLine));
-
-  return commandSpec.options
-    .map((option) => ({
-      ...option,
-      used: usedOptions.has(option.name),
-    }))
-    .sort((left, right) => Number(Boolean(right.required)) - Number(Boolean(left.required)));
-};
-
 export const applyDashboardAutocompleteSuggestion = (
   commandLine: string,
   suggestion: DashboardAutocompleteSuggestion,
@@ -594,11 +560,6 @@ export const useDashboardTerminal = ({
       snapshot.commands,
       snapshot.cwd,
     ],
-  );
-
-  const argumentHints = useMemo(
-    () => getDashboardArgumentHints({ commandLine: command, commandSpecs }),
-    [command, commandSpecs],
   );
 
   const queueInputSelection = () => {
@@ -711,6 +672,27 @@ export const useDashboardTerminal = ({
     setActiveAutocompleteIndex(0);
   }, [autocompleteSuggestions, disabled]);
 
+  useEffect(() => {
+    if (disabled || !requestPathAutocomplete) {
+      return undefined;
+    }
+
+    const request = getDashboardPathAutocompleteRequest({
+      commandLine: command,
+      cwd: snapshot.cwd,
+    });
+    if (!request) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      requestPathAutocomplete(request);
+    }, 120);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [command, disabled, requestPathAutocomplete, snapshot.cwd]);
+
   const clear = () => {
     setSnapshot(createSnapshot(scopeName));
     setCommand("");
@@ -732,7 +714,7 @@ export const useDashboardTerminal = ({
       setActiveAutocompleteIndex(0);
     }
 
-    if (!disabled && nextValue.endsWith(".")) {
+    if (!disabled && (nextValue.endsWith(".") || nextValue.endsWith(" "))) {
       openAutocomplete("completion");
     }
   };
@@ -845,7 +827,6 @@ export const useDashboardTerminal = ({
 
   return {
     activeAutocompleteIndex,
-    argumentHints,
     autocompleteMode,
     autocompleteOpen,
     autocompleteSuggestions,

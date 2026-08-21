@@ -8,8 +8,6 @@ import type { AuthMeData } from "@/fragno/auth/auth-client";
 import type { AutomationProjectRecord } from "./data";
 import { toExternalId } from "./data";
 
-export type AutomationScopeKind = "system" | "org" | "project" | "user";
-
 export type AutomationUiScope =
   | { kind: "system"; label: string }
   | { kind: "org"; orgId: string; label: string }
@@ -59,9 +57,8 @@ export const automationUiScopeId = (scope: AutomationUiScope) => {
   throw new Error("Unsupported automation UI scope kind.");
 };
 
-export type AutomationScopeTab =
+type AutomationScopeTab =
   | "dashboard"
-  | "terminal"
   | "scripts"
   | "router"
   | "store"
@@ -86,6 +83,9 @@ export const automationScopeTabPath = (
   scope: AutomationUiScope,
   tab: AutomationScopeTab = "dashboard",
 ) => `${automationScopeBasePath(scope)}/${tab}`;
+
+export const automationScopeTerminalCommandPath = (scope: AutomationUiScope) =>
+  `${automationScopeBasePath(scope)}/terminal-command`;
 
 export const automationScopeFromRouteParams = (params: {
   scopeKind?: string;

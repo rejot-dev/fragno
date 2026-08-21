@@ -335,11 +335,11 @@ export const DURABLE_HOOKS_OBJECT_CONFIGURE_META: Partial<
     label: "Configure Pi",
   },
   workflows: {
-    path: (orgId) => `/backoffice/automations/org/${orgId}/terminal`,
+    path: (orgId) => `/backoffice/automations/org/${orgId}/dashboard`,
     label: "Open Automations runtime",
   },
   automations: {
-    path: (orgId) => `/backoffice/automations/org/${orgId}/terminal`,
+    path: (orgId) => `/backoffice/automations/org/${orgId}/dashboard`,
     label: "Open Automations runtime",
   },
 };

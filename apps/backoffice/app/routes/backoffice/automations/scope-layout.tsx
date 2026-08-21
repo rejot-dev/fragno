@@ -31,6 +31,7 @@ import {
   toExternalId,
 } from "./data.server";
 import type { AutomationLayoutContext, AutomationTab } from "./layout-context";
+import { QuakeTerminal } from "./quake-terminal";
 import {
   automationScopeBasePath,
   automationScopeFromRouteParams,
@@ -60,9 +61,6 @@ const currentTabFromPath = (pathname: string): AutomationTab => {
   const segments = pathname.replace(/\/+$/, "").split("/");
   if (segments.includes("dashboard")) {
     return "dashboard";
-  }
-  if (segments.includes("terminal")) {
-    return "terminal";
   }
   if (segments.includes("sandboxes")) {
     return "sandboxes";
@@ -440,6 +438,7 @@ export default function BackofficeAutomationScopeLayout({
           </Suspense>
         </ClientOnly>
       )}
+      <QuakeTerminal selectedScope={loaderData.selectedScope} />
     </div>
   );
 }

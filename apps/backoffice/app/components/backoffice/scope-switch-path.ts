@@ -5,7 +5,6 @@ const SCOPE_ROUTE_KINDS = new Set(["system", "org", "project", "user"]);
 
 const AUTOMATION_TABS = new Set([
   "dashboard",
-  "terminal",
   "scripts",
   "router",
   "store",

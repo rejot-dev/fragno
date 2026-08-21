@@ -4,7 +4,6 @@ import {
   applyDashboardAutocompleteSuggestion,
   buildDashboardAutocomplete,
   extractNextCwd,
-  getDashboardArgumentHints,
   getDashboardPathAutocompleteRequest,
   type DashboardCommandSpec,
   wrapDashboardCommand,
@@ -138,6 +137,19 @@ describe("dashboard terminal autocomplete", () => {
     );
   });
 
+  test("keeps argument requirements and used-option filtering in autocomplete", () => {
+    const suggestions = buildDashboardAutocomplete({
+      commandLine: "pi.session.get --format json ",
+      commandSpecs,
+      history: [],
+      mode: "completion",
+    });
+
+    expect(suggestions.map((suggestion) => [suggestion.label, suggestion.detail])).toEqual([
+      ["--session-id <id>", "Required · value: id"],
+    ]);
+  });
+
   test("builds path completion requests for shell command path arguments", () => {
     expect(
       getDashboardPathAutocompleteRequest({
@@ -185,17 +197,5 @@ describe("dashboard terminal autocomplete", () => {
       applyDashboardAutocompleteSuggestion("cd /workspace/bla", suggestions[0]!),
       "cd /workspace/blackbird/",
     );
-  });
-
-  test("returns argument hints and marks already-used options", () => {
-    const hints = getDashboardArgumentHints({
-      commandLine: "pi.session.get --session-id abc",
-      commandSpecs,
-    });
-
-    expect(hints.map((hint) => [hint.name, hint.used, hint.description])).toEqual([
-      ["session-id", true, "Pi session id."],
-      ["format", false, "Output format."],
-    ]);
   });
 });
