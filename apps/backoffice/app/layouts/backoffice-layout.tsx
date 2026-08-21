@@ -6,12 +6,10 @@ import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import { BackofficeScopeCodecError } from "@/backoffice-runtime/scope-codec";
 import type { CurrentBackofficeContext } from "@/components/backoffice/current-context";
-import type { BackofficeProjectOption } from "@/components/backoffice/project-menu";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
 import { buildBackofficeLoginPath } from "@/routes/backoffice/auth-navigation";
-import { fetchAutomationProjects, toExternalId } from "@/routes/backoffice/automations/data.server";
 
 import type { Route } from "./+types/backoffice-layout";
 import { resolveCurrentBackofficeScope } from "./backoffice-layout-scope";
@@ -55,45 +53,51 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw error;
   }
 
-  const projectOrgId =
-    currentScope.kind === "org" || currentScope.kind === "project" ? currentScope.orgId : null;
-  const [automationCollectionSource, projectsResult] = await Promise.all([
-    fetchAutomationCollectionSource(request, context, currentScope).then(
-      (source): CurrentBackofficeContext["automationCollectionSource"] => ({
-        status: "ready",
-        source,
-      }),
-      (error: unknown): CurrentBackofficeContext["automationCollectionSource"] => ({
-        status: "unavailable",
-        message:
-          error instanceof Error ? error.message : "Workflow synchronization is unavailable.",
-      }),
-    ),
-    projectOrgId
-      ? fetchAutomationProjects(context, projectOrgId)
-      : Promise.resolve({ projects: [], projectsError: null }),
+  const automationCollectionSourcePromise = fetchAutomationCollectionSource(
+    request,
+    context,
+    currentScope,
+  ).then(
+    (source): CurrentBackofficeContext["automationCollectionSource"] => ({
+      status: "ready",
+      source,
+    }),
+    (error: unknown): CurrentBackofficeContext["automationCollectionSource"] => ({
+      status: "unavailable",
+      message: error instanceof Error ? error.message : "Workflow synchronization is unavailable.",
+    }),
+  );
+  const projectCollectionSourcePromise: Promise<
+    CurrentBackofficeContext["projectCollectionSource"]
+  > | null =
+    currentScope.kind === "org"
+      ? automationCollectionSourcePromise
+      : currentScope.kind === "project"
+        ? fetchAutomationCollectionSource(request, context, {
+            kind: "org",
+            orgId: currentScope.orgId,
+          }).then(
+            (source): CurrentBackofficeContext["automationCollectionSource"] => ({
+              status: "ready",
+              source,
+            }),
+            (error: unknown): CurrentBackofficeContext["automationCollectionSource"] => ({
+              status: "unavailable",
+              message:
+                error instanceof Error ? error.message : "Project synchronization is unavailable.",
+            }),
+          )
+        : null;
+  const [automationCollectionSource, projectCollectionSource] = await Promise.all([
+    automationCollectionSourcePromise,
+    projectCollectionSourcePromise,
   ]);
-  const projects: BackofficeProjectOption[] = projectsResult.projects.flatMap((project) => {
-    if (project.archivedAt) {
-      return [];
-    }
-    const projectId = toExternalId(project.id);
-    if (!projectId) {
-      return [];
-    }
-    return [
-      {
-        id: projectId,
-        label: project.name?.trim() || project.slug?.trim() || projectId,
-      },
-    ];
-  });
+
   return {
     me,
     currentScope,
     automationCollectionSource,
-    projects,
-    projectsError: projectsResult.projectsError,
+    projectCollectionSource,
   };
 }
 

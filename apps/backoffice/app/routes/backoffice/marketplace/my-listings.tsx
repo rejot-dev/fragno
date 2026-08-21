@@ -12,7 +12,7 @@ import {
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
-import { fetchAutomationProjects } from "../automations/data.server";
+import { lookupAutomationProject } from "../automations/data.server";
 import type { Route } from "./+types/my-listings";
 import { marketplaceListingManagePath, marketplaceListingPath } from "./navigation";
 import { marketplaceScopeFromRouteParams, resolveMarketplaceUiScope } from "./scope";
@@ -51,21 +51,20 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   const routeScope = marketplaceScopeFromRouteParams(params);
   const organizations = me.organizations.map(({ organization }) => organization);
-  const projectOrgId =
-    routeScope.kind === "org" || routeScope.kind === "project"
-      ? routeScope.orgId
-      : (me.activeOrganization?.organization.id ?? organizations[0]?.id ?? null);
-  if (!projectOrgId) {
-    throw new Response("Publisher scope was not found.", { status: 404 });
+  const projectLookup =
+    routeScope.kind === "project"
+      ? await lookupAutomationProject(context, routeScope.orgId, routeScope.projectId)
+      : null;
+  if (projectLookup?.status === "error") {
+    throw new Response(projectLookup.message, { status: 502 });
   }
-  const projectsResult = await fetchAutomationProjects(context, projectOrgId);
-  if (routeScope.kind === "project" && projectsResult.projectsError) {
-    throw new Response(projectsResult.projectsError, { status: 502 });
+  if (projectLookup?.status === "not-found") {
+    throw new Response("Not Found", { status: 404 });
   }
   const selectedScope = resolveMarketplaceUiScope({
     params,
     organisations: organizations,
-    projects: projectsResult.projects,
+    project: projectLookup?.status === "found" ? projectLookup.project : null,
     user: me.user,
   });
 

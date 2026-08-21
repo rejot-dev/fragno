@@ -49,14 +49,6 @@ const getScopedAutomationsObject = (
   return kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
 };
 
-const toRecordArray = <T extends Record<string, unknown>>(value: unknown): T[] => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.filter((item): item is T => Boolean(item) && typeof item === "object");
-};
-
 const createBackofficeAutomationFileSystem = async ({
   request,
   context,
@@ -181,41 +173,42 @@ export async function loadAutomationScriptSource({
   }
 }
 
-export async function fetchAutomationProjects(
+type AutomationProjectLookupResult =
+  | { status: "found"; project: AutomationProjectRecord }
+  | { status: "not-found" }
+  | { status: "error"; message: string };
+
+/** Looks up one project only when a server boundary must validate a project-scoped request. */
+export async function lookupAutomationProject(
   context: Readonly<RouterContextProvider>,
   orgId: string,
-): Promise<{
-  projects: AutomationProjectRecord[];
-  projectsError: string | null;
-}> {
+  projectId: string,
+): Promise<AutomationProjectLookupResult> {
   try {
     const callRoute = createAutomationsRouteCaller({
       object: getScopedAutomationsObject(context, { kind: "org", orgId }),
     });
-    const response = await callRoute("GET", "/projects");
+    const response = await callRoute("GET", "/projects/:projectId", {
+      pathParams: { projectId },
+    });
 
     if (response.type === "json" && isSuccessStatus(response.status)) {
-      return {
-        projects: toRecordArray<AutomationProjectRecord>(response.data),
-        projectsError: null,
-      };
+      return { status: "found", project: response.data as AutomationProjectRecord };
     }
-
+    if (response.status === 404) {
+      return { status: "not-found" };
+    }
     if (response.type === "error") {
-      return {
-        projects: [],
-        projectsError: response.error.message,
-      };
+      return { status: "error", message: response.error.message };
     }
-
     return {
-      projects: [],
-      projectsError: `Failed to fetch automation projects (${response.status}).`,
+      status: "error",
+      message: `Failed to look up automation project (${response.status}).`,
     };
   } catch (error) {
     return {
-      projects: [],
-      projectsError: formatErrorMessage(error, "Failed to load automation projects."),
+      status: "error",
+      message: formatErrorMessage(error, "Failed to look up automation project."),
     };
   }
 }

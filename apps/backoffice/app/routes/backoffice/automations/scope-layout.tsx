@@ -26,8 +26,8 @@ import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/scope-layout";
 import {
   createAutomationProject,
-  fetchAutomationProjects,
   loadAutomationWorkspaceData,
+  lookupAutomationProject,
   toExternalId,
 } from "./data.server";
 import type { AutomationLayoutContext, AutomationTab } from "./layout-context";
@@ -110,31 +110,27 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   } catch {
     throw new Response("Not Found", { status: 404 });
   }
-  const selectedRouteScope =
-    parsedRouteScope?.kind === "project" || parsedRouteScope?.kind === "org"
-      ? parsedRouteScope.orgId
-      : undefined;
-  const activeOrgId =
-    selectedRouteScope ?? me.activeOrganization?.organization.id ?? organisations[0]?.id ?? null;
-  if (!activeOrgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const projectsResult = await fetchAutomationProjects(context, activeOrgId);
-  if (params.scopeKind === "project" && projectsResult.projectsError) {
+  const projectLookup =
+    parsedRouteScope.kind === "project"
+      ? await lookupAutomationProject(context, parsedRouteScope.orgId, parsedRouteScope.projectId)
+      : null;
+  if (projectLookup?.status === "error") {
     throw Response.json(
       {
-        code: "AUTOMATION_PROJECTS_UNAVAILABLE",
-        message: projectsResult.projectsError,
+        code: "AUTOMATION_PROJECT_UNAVAILABLE",
+        message: projectLookup.message,
       },
       { status: 502, statusText: "Bad Gateway" },
     );
+  }
+  if (projectLookup?.status === "not-found") {
+    throw new Response("Not Found", { status: 404 });
   }
 
   const selectedScope = resolveAutomationUiScope({
     params,
     organisations,
-    projects: projectsResult.projects,
+    project: projectLookup?.status === "found" ? projectLookup.project : null,
     user: me.user,
   });
   const backofficeScope = toBackofficeScope(selectedScope);

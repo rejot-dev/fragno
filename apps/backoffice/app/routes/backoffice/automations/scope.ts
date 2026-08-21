@@ -108,12 +108,12 @@ export const automationScopeFromRouteParams = (params: {
 export const resolveAutomationUiScope = ({
   params,
   organisations,
-  projects,
+  project,
   user,
 }: {
   params: { scopeKind?: string; scopeId?: string };
   organisations: Organisation[];
-  projects: AutomationProjectRecord[];
+  project: AutomationProjectRecord | null;
   user: AuthMeData["user"];
 }): AutomationUiScope => {
   let parsed;
@@ -143,8 +143,7 @@ export const resolveAutomationUiScope = ({
     if (!organisation) {
       throw new Response("Not Found", { status: 404 });
     }
-    const project = projects.find((entry) => toExternalId(entry.id) === parsed.projectId);
-    if (!project || project.archivedAt) {
+    if (!project || toExternalId(project.id) !== parsed.projectId || project.archivedAt) {
       throw new Response("Not Found", { status: 404 });
     }
     return {

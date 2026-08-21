@@ -1,13 +1,13 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { fetchAutomationProjectsMock, getAuthMeMock } = vi.hoisted(() => ({
-  fetchAutomationProjectsMock: vi.fn(),
+const { getAuthMeMock, lookupAutomationProjectMock } = vi.hoisted(() => ({
   getAuthMeMock: vi.fn(),
+  lookupAutomationProjectMock: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
 vi.mock("../automations/data.server", () => ({
-  fetchAutomationProjects: fetchAutomationProjectsMock,
+  lookupAutomationProject: lookupAutomationProjectMock,
 }));
 
 import { loader } from "./scope-layout";
@@ -15,8 +15,8 @@ import { loader } from "./scope-layout";
 const requestUrl = "https://example.test/backoffice/marketplace/user/user-1/marketplace";
 
 beforeEach(() => {
-  fetchAutomationProjectsMock.mockReset();
   getAuthMeMock.mockReset();
+  lookupAutomationProjectMock.mockReset();
 });
 
 describe("personal Marketplace scope", () => {
@@ -40,7 +40,7 @@ describe("personal Marketplace scope", () => {
       userId: "user-1",
       label: "ada@example.com",
     });
-    expect(fetchAutomationProjectsMock).not.toHaveBeenCalled();
+    expect(lookupAutomationProjectMock).not.toHaveBeenCalled();
   });
 });
 
@@ -62,6 +62,6 @@ describe("organisation Marketplace scope", () => {
 
     assert(!(result instanceof Response));
     expect(result.selectedScope).toEqual({ kind: "org", orgId: "org-1", label: "Ada Labs" });
-    expect(fetchAutomationProjectsMock).not.toHaveBeenCalled();
+    expect(lookupAutomationProjectMock).not.toHaveBeenCalled();
   });
 });

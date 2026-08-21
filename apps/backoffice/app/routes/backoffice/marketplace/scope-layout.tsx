@@ -4,7 +4,7 @@ import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
-import { fetchAutomationProjects } from "../automations/data.server";
+import { lookupAutomationProject } from "../automations/data.server";
 import type { Route } from "./+types/scope-layout";
 import type { MarketplaceLayoutContext } from "./layout-context";
 import {
@@ -40,18 +40,21 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   const organisations = me.organizations.map((entry) => entry.organization);
   const routeScope = marketplaceScopeFromRouteParams(params);
-  const projectsResult =
+  const projectLookup =
     routeScope.kind === "project"
-      ? await fetchAutomationProjects(context, routeScope.orgId)
-      : { projects: [], projectsError: null };
-  if (routeScope.kind === "project" && projectsResult.projectsError) {
-    throw new Response(projectsResult.projectsError, { status: 502 });
+      ? await lookupAutomationProject(context, routeScope.orgId, routeScope.projectId)
+      : null;
+  if (projectLookup?.status === "error") {
+    throw new Response(projectLookup.message, { status: 502 });
+  }
+  if (projectLookup?.status === "not-found") {
+    throw new Response("Not Found", { status: 404 });
   }
 
   const selectedScope = resolveMarketplaceUiScope({
     params,
     organisations,
-    projects: projectsResult.projects,
+    project: projectLookup?.status === "found" ? projectLookup.project : null,
     user: me.user,
   });
   return { selectedScope };

@@ -13,7 +13,7 @@ import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/d
 import { getBackofficeObjects } from "@/worker-runtime/durable-objects";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
-import { fetchAutomationProjects, toExternalId } from "../automations/data.server";
+import { lookupAutomationProject, toExternalId } from "../automations/data.server";
 import type { Route } from "./+types/durable-hooks-scope-layout";
 import {
   createDurableHooksObjectOptions,
@@ -118,30 +118,28 @@ const loadDurableHookQueue = async ({
   throw new Error("Unsupported durable hooks object.");
 };
 
-const normalizeProjects = (
+function normalizeProject(
   orgId: string,
-  projects: Awaited<ReturnType<typeof fetchAutomationProjects>>["projects"],
-): DurableHooksProject[] => {
-  const normalizedProjects: DurableHooksProject[] = [];
-  for (const project of projects) {
-    if (project.archivedAt) {
-      continue;
-    }
+  project: Awaited<ReturnType<typeof lookupAutomationProject>>,
+): DurableHooksProject[] {
+  if (project.status !== "found" || project.project.archivedAt) {
+    return [];
+  }
 
-    const id = toExternalId(project.id);
-    if (!id) {
-      continue;
-    }
+  const id = toExternalId(project.project.id);
+  if (!id) {
+    return [];
+  }
 
-    normalizedProjects.push({
+  return [
+    {
       id,
       orgId,
-      label: project.name?.trim() || project.slug?.trim() || id,
-      slug: project.slug?.trim() || null,
-    });
-  }
-  return normalizedProjects;
-};
+      label: project.project.name?.trim() || project.project.slug?.trim() || id,
+      slug: project.project.slug?.trim() || null,
+    },
+  ];
+}
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
@@ -176,20 +174,23 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  const projectOrgId = routeScope.kind === "project" ? routeScope.orgId : null;
-  const projectsResult = projectOrgId
-    ? await fetchAutomationProjects(context, projectOrgId)
-    : { projects: [], projectsError: null };
-  if (routeScope.kind === "project" && projectsResult.projectsError) {
+  const projectLookup =
+    routeScope.kind === "project"
+      ? await lookupAutomationProject(context, routeScope.orgId, routeScope.projectId)
+      : null;
+  if (projectLookup?.status === "error") {
     throw Response.json(
       {
-        code: "DURABLE_HOOK_PROJECTS_UNAVAILABLE",
-        message: projectsResult.projectsError,
+        code: "DURABLE_HOOK_PROJECT_UNAVAILABLE",
+        message: projectLookup.message,
       },
       { status: 502, statusText: "Bad Gateway" },
     );
   }
-  const projects = projectOrgId ? normalizeProjects(projectOrgId, projectsResult.projects) : [];
+  const projects =
+    routeScope.kind === "project" && projectLookup
+      ? normalizeProject(routeScope.orgId, projectLookup)
+      : [];
 
   const selection = resolveDurableHooksScopeSelection({
     scope: routeScope,

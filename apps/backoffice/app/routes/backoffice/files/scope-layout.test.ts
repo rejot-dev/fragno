@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const { getAuthMeMock, fetchAutomationProjectsMock } = vi.hoisted(() => ({
+const { getAuthMeMock, lookupAutomationProjectMock } = vi.hoisted(() => ({
   getAuthMeMock: vi.fn(),
-  fetchAutomationProjectsMock: vi.fn(),
+  lookupAutomationProjectMock: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
 vi.mock("../automations/data.server", () => ({
-  fetchAutomationProjects: fetchAutomationProjectsMock,
+  lookupAutomationProject: lookupAutomationProjectMock,
 }));
 
 import { loader } from "./scope-layout";
@@ -15,7 +15,7 @@ import { loader } from "./scope-layout";
 describe("Files scope layout without an organisation", () => {
   beforeEach(() => {
     getAuthMeMock.mockReset();
-    fetchAutomationProjectsMock.mockReset();
+    lookupAutomationProjectMock.mockReset();
   });
 
   test("opens the personal workspace without loading projects", async () => {
@@ -28,7 +28,7 @@ describe("Files scope layout without an organisation", () => {
       }),
     );
 
-    expect(fetchAutomationProjectsMock).not.toHaveBeenCalled();
+    expect(lookupAutomationProjectMock).not.toHaveBeenCalled();
     expect(result.selectedScope).toEqual({
       kind: "user",
       userId: "user-1",
@@ -46,7 +46,7 @@ describe("Files scope layout without an organisation", () => {
       }),
     );
 
-    expect(fetchAutomationProjectsMock).not.toHaveBeenCalled();
+    expect(lookupAutomationProjectMock).not.toHaveBeenCalled();
     expect(result.selectedScope).toEqual({ kind: "system", label: "System" });
   });
 });

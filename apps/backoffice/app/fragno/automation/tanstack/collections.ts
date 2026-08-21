@@ -10,19 +10,11 @@ import type { Collection } from "@tanstack/react-db";
 
 import { automationFragmentSchema } from "../schema";
 
-type AutomationTableName = keyof (typeof automationFragmentSchema)["tables"];
-
 type TableCollection<TTable extends AnyTable> = Collection<FragnoCollectionRow<TTable>, string>;
-
-export type AutomationCollectionTarget =
-  | AutomationTableName
-  | "workflows.workflow_instance"
-  | "workflows.workflow_step"
-  | "workflows.workflow_event"
-  | "workflows.workflow_step_emission";
 
 export type AutomationCollections = {
   kvStore: TableCollection<(typeof automationFragmentSchema.tables)["kv_store"]>;
+  projects: TableCollection<(typeof automationFragmentSchema.tables)["project"]>;
   sandboxInstances: TableCollection<(typeof automationFragmentSchema.tables)["sandbox_instance"]>;
   routes: TableCollection<(typeof automationFragmentSchema.tables)["automation_route"]>;
   routeScheduleStates: TableCollection<
@@ -53,6 +45,7 @@ export function createAutomationCollections(
 ): AutomationCollections {
   return {
     kvStore: coordinator.collection(automationFragmentSchema, "kv_store"),
+    projects: coordinator.collection(automationFragmentSchema, "project"),
     sandboxInstances: coordinator.collection(automationFragmentSchema, "sandbox_instance"),
     routes: coordinator.collection(automationFragmentSchema, "automation_route"),
     routeScheduleStates: coordinator.collection(

@@ -3,7 +3,7 @@ import { Outlet, redirect } from "react-router";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
-import { fetchAutomationProjects } from "../automations/data.server";
+import { lookupAutomationProject } from "../automations/data.server";
 import {
   automationScopeFromRouteParams,
   resolveAutomationUiScope,
@@ -22,21 +22,21 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   const organisations = me.organizations.map((entry) => entry.organization);
   const parsedScope = automationScopeFromRouteParams(params);
-  const selectedOrgId =
-    parsedScope.kind === "org" || parsedScope.kind === "project" ? parsedScope.orgId : null;
-  const projectOrgId =
-    selectedOrgId ?? me.activeOrganization?.organization.id ?? organisations[0]?.id ?? null;
-  const projectsResult = projectOrgId
-    ? await fetchAutomationProjects(context, projectOrgId)
-    : { projects: [], projectsError: null };
-  if (parsedScope.kind === "project" && projectsResult.projectsError) {
-    throw new Response(projectsResult.projectsError, { status: 502 });
+  const projectLookup =
+    parsedScope.kind === "project"
+      ? await lookupAutomationProject(context, parsedScope.orgId, parsedScope.projectId)
+      : null;
+  if (projectLookup?.status === "error") {
+    throw new Response(projectLookup.message, { status: 502 });
+  }
+  if (projectLookup?.status === "not-found") {
+    throw new Response("Not Found", { status: 404 });
   }
 
   const selectedScope = resolveAutomationUiScope({
     params,
     organisations,
-    projects: projectsResult.projects,
+    project: projectLookup?.status === "found" ? projectLookup.project : null,
     user: me.user,
   });
   return {

@@ -6,7 +6,6 @@ import { BackofficeClsDebugger } from "./cls-debugger";
 import { CurrentBackofficeProvider, type CurrentBackofficeContext } from "./current-context";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
 import { GlobalWorkflowDrawer } from "./global-workflow-drawer";
-import type { BackofficeProjectOption } from "./project-menu";
 import { BackofficeSidebarNav } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
 
@@ -14,8 +13,6 @@ type BackofficeShellProps = {
   children: ReactNode;
   me: AuthMeData | null;
   currentContext: CurrentBackofficeContext | null;
-  projects?: BackofficeProjectOption[];
-  projectsError?: string | null;
   isLoading?: boolean;
 };
 
@@ -32,14 +29,7 @@ export function BackofficeShell(props: BackofficeShellProps) {
   );
 }
 
-function BackofficeShellFrame({
-  children,
-  me,
-  currentContext,
-  projects,
-  projectsError,
-  isLoading,
-}: BackofficeShellProps) {
+function BackofficeShellFrame({ children, me, currentContext, isLoading }: BackofficeShellProps) {
   const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
   useGlobalHotkey({
     id: "toggle-recent-workflows",
@@ -61,8 +51,7 @@ function BackofficeShellFrame({
         <BackofficeTopBar
           me={me}
           currentScope={currentContext?.scope ?? null}
-          projects={projects}
-          projectsError={projectsError}
+          projectCollectionSource={currentContext?.projectCollectionSource ?? null}
           isLoading={isLoading}
           workflowDrawerOpen={workflowDrawerOpen}
           onWorkflowDrawerToggle={() => {

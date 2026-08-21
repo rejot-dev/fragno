@@ -13,7 +13,7 @@ import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-da
 import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
-import { fetchAutomationProjects } from "../automations/data.server";
+import { lookupAutomationProject } from "../automations/data.server";
 import {
   automationScopeFromRouteParams,
   resolveAutomationUiScope,
@@ -63,19 +63,22 @@ export async function resolveAuthorizedFilesRouteScope({
   }
 
   const parsedScope = automationScopeFromRouteParams(params);
-  const projectsResult =
+  const projectLookup =
     parsedScope.kind === "project"
-      ? await fetchAutomationProjects(context, parsedScope.orgId)
-      : { projects: [], projectsError: null };
-  if (projectsResult.projectsError) {
-    throw new Response(projectsResult.projectsError, { status: 502 });
+      ? await lookupAutomationProject(context, parsedScope.orgId, parsedScope.projectId)
+      : null;
+  if (projectLookup?.status === "error") {
+    throw new Response(projectLookup.message, { status: 502 });
+  }
+  if (projectLookup?.status === "not-found") {
+    throw new Response("Not Found", { status: 404 });
   }
 
   return toBackofficeScope(
     resolveAutomationUiScope({
       params,
       organisations: me.organizations.map((entry) => entry.organization),
-      projects: projectsResult.projects,
+      project: projectLookup?.status === "found" ? projectLookup.project : null,
       user: me.user,
     }),
   );

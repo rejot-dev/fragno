@@ -13,13 +13,14 @@ import {
 } from "@/backoffice-runtime/scope-codec";
 
 import { automationFragmentSchema } from "../schema";
+import { createAutomationCollections, type AutomationCollections } from "./collections";
 
 export type AutomationCollectionSource = {
   scope: BackofficeContextScope;
   adapterIdentity: string;
 };
 
-export type AutomationCollectionSourceDescription = {
+type AutomationCollectionSourceDescription = {
   resourceKey: string;
   baseUrl: string;
   internalUrl: string;
@@ -29,7 +30,7 @@ type SharedAutomationsCoordinator = FragnoOutboxCoordinator<
   readonly [typeof automationFragmentSchema, typeof workflowsSchema]
 >;
 
-export type AutomationBrowserCollections = ReturnType<typeof createAutomationBrowserCollections>;
+export type AutomationBrowserCollections = AutomationCollections;
 
 export type AutomationBrowserDatabase = {
   coordinator: SharedAutomationsCoordinator;
@@ -113,7 +114,7 @@ async function openAutomationBrowserDatabase(
       publishAutomationCatchUpProgress(description.resourceKey, progress);
     },
   });
-  const collections = createAutomationBrowserCollections(coordinator);
+  const collections = createAutomationCollections(coordinator);
 
   try {
     await coordinator.preload();
@@ -122,36 +123,4 @@ async function openAutomationBrowserDatabase(
     await coordinator.cleanup().catch(() => {});
     throw error;
   }
-}
-
-function createAutomationBrowserCollections(coordinator: SharedAutomationsCoordinator) {
-  return {
-    kvStore: coordinator.collection(automationFragmentSchema, "kv_store"),
-    sandboxInstances: coordinator.collection(automationFragmentSchema, "sandbox_instance"),
-    routes: coordinator.collection(automationFragmentSchema, "automation_route"),
-    routeScheduleStates: coordinator.collection(
-      automationFragmentSchema,
-      "automation_route_schedule_state",
-    ),
-    events: coordinator.collection(automationFragmentSchema, "automation_event"),
-    marketplaceIngestions: coordinator.collection(
-      automationFragmentSchema,
-      "marketplace_ingestion",
-    ),
-    eventDefinitions: coordinator.collection(
-      automationFragmentSchema,
-      "automation_event_definition",
-    ),
-    externalIdentityBindings: coordinator.collection(
-      automationFragmentSchema,
-      "external_identity_binding",
-    ),
-    workflowInstances: coordinator.collection(workflowsSchema, "workflow_instance"),
-    workflowSteps: coordinator.collection(workflowsSchema, "workflow_step"),
-    workflowEvents: coordinator.collection(workflowsSchema, "workflow_event"),
-    workflowStepEmissions: coordinator.collection(workflowsSchema, "workflow_step_emission", {
-      rowUpdateMode: "full",
-      skipMissingTruncateDeletes: true,
-    }),
-  };
 }

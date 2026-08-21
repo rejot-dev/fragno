@@ -1,8 +1,16 @@
 import { Activity } from "lucide-react";
+import { Suspense, use } from "react";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type { AutomationCollectionSourceState } from "@/components/backoffice/current-context";
+import { ClientOnly } from "@/components/client-only";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 import { authClient } from "@/fragno/auth/auth-client";
+import {
+  getAutomationBrowserDatabase,
+  type AutomationCollectionSource,
+} from "@/fragno/automation/tanstack/browser-database";
+import { useAutomationProjects } from "@/fragno/automation/tanstack/use-automation-projects";
 
 import { BackofficeAccountMenu } from "./account-menu";
 import { BackofficeProjectMenu, type BackofficeProjectOption } from "./project-menu";
@@ -15,18 +23,88 @@ const EMPTY_PROJECTS: BackofficeProjectOption[] = [];
 type BackofficeTopBarProps = {
   me: AuthMeData | null;
   currentScope: BackofficeContextScope | null;
-  projects?: BackofficeProjectOption[];
-  projectsError?: string | null;
+  projectCollectionSource: AutomationCollectionSourceState | null;
   isLoading?: boolean;
   workflowDrawerOpen?: boolean;
   onWorkflowDrawerToggle?: () => void;
 };
 
+function LocalFirstBackofficeProjectMenu({
+  orgId,
+  currentProjectId,
+  sourceState,
+}: {
+  orgId: string;
+  currentProjectId: string | null;
+  sourceState: AutomationCollectionSourceState | null;
+}) {
+  const loadingMenu = (
+    <BackofficeProjectMenu
+      orgId={orgId}
+      currentProjectId={currentProjectId}
+      projects={EMPTY_PROJECTS}
+      projectsError={null}
+      projectsLoading
+    />
+  );
+  if (!sourceState || sourceState.status === "unavailable") {
+    return (
+      <BackofficeProjectMenu
+        orgId={orgId}
+        currentProjectId={currentProjectId}
+        projects={EMPTY_PROJECTS}
+        projectsError={sourceState?.message ?? "Project synchronization is unavailable."}
+        projectsLoading={false}
+      />
+    );
+  }
+
+  // Backoffice cannot operate without its local-first database, so initialization failures are
+  // intentionally allowed to reach the route error boundary instead of rendering degraded UI.
+  return (
+    <ClientOnly fallback={loadingMenu}>
+      <Suspense fallback={loadingMenu}>
+        <SynchronizedBackofficeProjectMenu
+          orgId={orgId}
+          currentProjectId={currentProjectId}
+          source={sourceState.source}
+        />
+      </Suspense>
+    </ClientOnly>
+  );
+}
+
+function SynchronizedBackofficeProjectMenu({
+  orgId,
+  currentProjectId,
+  source,
+}: {
+  orgId: string;
+  currentProjectId: string | null;
+  source: AutomationCollectionSource;
+}) {
+  const { collections } = use(getAutomationBrowserDatabase(source));
+  const projectsState = useAutomationProjects(collections);
+  const projects = projectsState.projects.map((project) => ({
+    id: project.id,
+    label: project.name.trim() || project.slug.trim() || project.id,
+  }));
+
+  return (
+    <BackofficeProjectMenu
+      orgId={orgId}
+      currentProjectId={currentProjectId}
+      projects={projects}
+      projectsError={projectsState.status === "error" ? projectsState.message : null}
+      projectsLoading={projectsState.status === "loading"}
+    />
+  );
+}
+
 export function BackofficeTopBar({
   me,
   currentScope,
-  projects = EMPTY_PROJECTS,
-  projectsError = null,
+  projectCollectionSource,
   isLoading,
   workflowDrawerOpen = false,
   onWorkflowDrawerToggle,
@@ -44,11 +122,10 @@ export function BackofficeTopBar({
 
         {currentScope?.kind === "org" || currentScope?.kind === "project" ? (
           <div className="flex min-w-0 flex-1 items-stretch min-[960px]:w-72 min-[960px]:flex-none min-[960px]:border-r min-[960px]:border-[color:var(--bo-border)]">
-            <BackofficeProjectMenu
+            <LocalFirstBackofficeProjectMenu
               orgId={currentScope.orgId}
               currentProjectId={currentScope.kind === "project" ? currentScope.projectId : null}
-              projects={projects}
-              projectsError={projectsError}
+              sourceState={projectCollectionSource}
             />
           </div>
         ) : null}

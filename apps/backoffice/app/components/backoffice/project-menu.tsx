@@ -21,11 +21,13 @@ export function BackofficeProjectMenu({
   currentProjectId,
   projects,
   projectsError,
+  projectsLoading,
 }: {
   orgId: string;
   currentProjectId: string | null;
   projects: BackofficeProjectOption[];
   projectsError: string | null;
+  projectsLoading: boolean;
 }) {
   const location = useLocation();
   const currentProject = currentProjectId
@@ -126,7 +128,11 @@ export function BackofficeProjectMenu({
                   </Menu.Item>
                 );
               })}
-              {projects.length === 0 && !projectsError ? (
+              {projectsLoading ? (
+                <p className="px-2 py-1.5 text-xs text-[var(--bo-muted-2)]">
+                  Synchronizing projects…
+                </p>
+              ) : projects.length === 0 && !projectsError ? (
                 <p className="px-2 py-1.5 text-xs text-[var(--bo-muted-2)]">
                   This organisation has no projects yet.
                 </p>

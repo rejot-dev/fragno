@@ -26,7 +26,7 @@ import { parseSleepAfterInput } from "@/sandbox/sleep-after";
 import { getScopedSandboxRuntime } from "@/worker-runtime/sandbox-manager";
 
 import type { Route } from "./+types/sandboxes";
-import { fetchAutomationProjects, toExternalId } from "./data.server";
+import { lookupAutomationProject } from "./data.server";
 import type { AutomationLayoutContext } from "./layout-context";
 import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope";
 
@@ -805,21 +805,17 @@ async function requireSandboxScopeAccess({
   }
 
   if (scope.kind === "project") {
-    const projectsResult = await fetchAutomationProjects(context, scope.orgId);
-    if (projectsResult.projectsError) {
+    const projectLookup = await lookupAutomationProject(context, scope.orgId, scope.projectId);
+    if (projectLookup.status === "error") {
       throw Response.json(
         {
-          code: "AUTOMATION_PROJECTS_UNAVAILABLE",
-          message: projectsResult.projectsError,
+          code: "AUTOMATION_PROJECT_UNAVAILABLE",
+          message: projectLookup.message,
         },
         { status: 502, statusText: "Bad Gateway" },
       );
     }
-
-    const project = projectsResult.projects.find(
-      (entry) => toExternalId(entry.id) === scope.projectId,
-    );
-    if (!project || project.archivedAt) {
+    if (projectLookup.status === "not-found" || projectLookup.project.archivedAt) {
       throw new Response("Not Found", { status: 404 });
     }
   }

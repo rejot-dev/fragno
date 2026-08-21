@@ -22,7 +22,7 @@ const userName = (user: AuthMeData["user"]) => user.email ?? user.id;
 const projectLabel = (project: AutomationProjectRecord) =>
   project.name?.trim() || project.slug?.trim() || toExternalId(project.id) || "Untitled project";
 
-export const toMarketplaceTargetScope = (scope: MarketplaceUiScope): BackofficeRoutableScope => {
+const toMarketplaceTargetScope = (scope: MarketplaceUiScope): BackofficeRoutableScope => {
   switch (scope.kind) {
     case "org":
       return { kind: "org", orgId: scope.orgId };
@@ -37,7 +37,7 @@ export const toMarketplaceTargetScope = (scope: MarketplaceUiScope): BackofficeR
   }
 };
 
-export const marketplaceScopeBasePath = (scope: MarketplaceUiScope) =>
+const marketplaceScopeBasePath = (scope: MarketplaceUiScope) =>
   `/backoffice/marketplace/${backofficeContextScopeRoutePath(toMarketplaceTargetScope(scope))}`;
 
 export const marketplaceScopeTabPath = (
@@ -66,12 +66,12 @@ export const marketplaceScopeFromRouteParams = (params: {
 export const resolveMarketplaceUiScope = ({
   params,
   organisations,
-  projects,
+  project,
   user,
 }: {
   params: { scopeKind?: string; scopeId?: string };
   organisations: Organisation[];
-  projects: AutomationProjectRecord[];
+  project: AutomationProjectRecord | null;
   user: AuthMeData["user"];
 }): MarketplaceUiScope => {
   const parsed = marketplaceScopeFromRouteParams(params);
@@ -86,8 +86,12 @@ export const resolveMarketplaceUiScope = ({
 
   if (parsed.kind === "project") {
     const organisation = organisations.find((entry) => entry.id === parsed.orgId);
-    const project = projects.find((entry) => toExternalId(entry.id) === parsed.projectId);
-    if (!organisation || !project || project.archivedAt) {
+    if (
+      !organisation ||
+      !project ||
+      toExternalId(project.id) !== parsed.projectId ||
+      project.archivedAt
+    ) {
       throw new Response("Not Found", { status: 404 });
     }
     return {

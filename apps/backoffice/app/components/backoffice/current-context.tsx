@@ -10,6 +10,7 @@ export type AutomationCollectionSourceState =
 export type CurrentBackofficeContext = {
   scope: BackofficeContextScope;
   automationCollectionSource: AutomationCollectionSourceState;
+  projectCollectionSource: AutomationCollectionSourceState | null;
 };
 
 const CurrentBackofficeReactContext = createContext<CurrentBackofficeContext | null>(null);
