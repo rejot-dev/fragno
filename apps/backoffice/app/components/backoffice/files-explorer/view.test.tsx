@@ -9,12 +9,21 @@ import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { createFileTree } from "@/file-collection/create-file-tree";
+import { STARTER_AUTOMATION_ROUTES } from "@/fragno/automation/content/starter-routing";
 
-import { FilesExplorerView, type FilesExplorerSource } from "./view";
+import {
+  FilesExplorerView as FilesExplorerViewComponent,
+  type FilesExplorerSource,
+  type FilesExplorerViewProps,
+} from "./view";
 
 afterEach(cleanup);
 
 const filePath = "/artifact/1.0.0/README.md";
+function FilesExplorerView(props: Omit<FilesExplorerViewProps, "workflowRouting">) {
+  return <FilesExplorerViewComponent {...props} workflowRouting={{ status: "unavailable" }} />;
+}
+
 const source: FilesExplorerSource = {
   tree: createFileTree([
     {
@@ -52,6 +61,67 @@ describe("FilesExplorerView", () => {
     assert(markup.includes("<h1"));
     assert(markup.includes("Published artifact"));
     assert(!markup.includes("Download"));
+  });
+
+  test("shows only routes that start the selected workflow path", () => {
+    const workflowPath = "/workspace/automations/telegram-user-linking.workflow.js";
+    const route = STARTER_AUTOMATION_ROUTES.find(
+      (candidate) =>
+        candidate.action.kind === "start_workflow" &&
+        candidate.action.workflowScriptPath === workflowPath,
+    );
+    assert(route);
+    assert(route.action.kind === "start_workflow");
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <FilesExplorerViewComponent
+          sources={[
+            {
+              tree: createFileTree([
+                {
+                  kind: "file",
+                  path: "automations/telegram-user-linking.workflow.js",
+                  sizeBytes: 128,
+                  contentType: "text/javascript",
+                  updatedAt: null,
+                  metadata: null,
+                },
+              ]),
+              rootPath: "/workspace",
+              rootTitle: "Workspace",
+            },
+          ]}
+          selectedPath={workflowPath}
+          selectedContent={{
+            path: workflowPath,
+            text: 'defineWorkflow({ name: "telegram-user-linking" }, async () => {});',
+          }}
+          loadError={null}
+          buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
+          workflowRouting={{
+            status: "ready",
+            routes: [
+              { ...route, nextOccurrenceAt: null },
+              {
+                ...route,
+                id: "other-workflow",
+                name: "Unrelated workflow route",
+                action: {
+                  ...route.action,
+                  workflowScriptPath: "/workspace/automations/other.workflow.js",
+                },
+                nextOccurrenceAt: null,
+              },
+            ],
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    assert(markup.includes("Telegram /start identity linking"));
+    assert(markup.includes("telegram / message.received"));
+    assert(markup.includes("$.payload.text equals &quot;/start&quot;"));
+    assert(!markup.includes("Unrelated workflow route"));
   });
 
   test("formats updated timestamps in UTC for deterministic server rendering", () => {

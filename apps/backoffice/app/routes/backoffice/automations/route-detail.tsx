@@ -62,7 +62,11 @@ export function AutomationRouteDetail({
                   {
                     label: "event",
                     value: route.trigger.eventType,
-                    to: automationEventCatalogLink(eventsCatalogPath, route.trigger.eventType),
+                    to: automationEventCatalogLink(
+                      eventsCatalogPath,
+                      route.trigger.source,
+                      route.trigger.eventType,
+                    ),
                   },
                   { label: "priority", value: String(route.priority) },
                 ]

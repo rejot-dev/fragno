@@ -100,7 +100,7 @@ describe("Marketplace artifact lazy content", () => {
     );
   });
 
-  test("renders text file content selected by the route loader", async () => {
+  test("renders workflow files as workflow graphs in the Files tab", async () => {
     const fileData: MarketplaceArtifactExplorerData = data;
     const router = createMemoryRouter(
       [
@@ -127,7 +127,7 @@ describe("Marketplace artifact lazy content", () => {
       assert(search.get("artifactPath") === workflowPath);
       assert(search.get("artifactContent") === "text");
     });
-    await screen.findByText(/defineWorkflow/);
+    await screen.findByLabelText("Workflow graph");
   });
 
   test("clears a fetched workflow when the artifact version changes", async () => {

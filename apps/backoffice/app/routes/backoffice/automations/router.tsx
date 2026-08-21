@@ -1,9 +1,9 @@
 import { Link, useOutletContext, useSearchParams } from "react-router";
 
-import { eq, useLiveQuery } from "@tanstack/react-db";
-
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
+import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
 
+import { filesScopeBasePath } from "../files/scope";
 import { formatTimestamp } from "./formatting";
 import type { AutomationLayoutContext } from "./layout-context";
 import { AutomationRouteDetail } from "./route-detail";
@@ -40,43 +40,20 @@ const routeSections = (routes: AutomationRouteDefinition[]) => [
 
 export default function BackofficeAutomationRouter() {
   const { selectedScope, collections } = useOutletContext<AutomationLayoutContext>();
-  const routesQuery = useLiveQuery(
-    (query) =>
-      query
-        .from({ route: collections.routes })
-        .leftJoin({ schedule: collections.routeScheduleStates }, ({ route, schedule }) =>
-          eq(route.id, schedule.id),
-        )
-        .orderBy(({ route }) => route.priority, "asc")
-        .orderBy(({ route }) => route.id, "asc")
-        .select(({ route, schedule }) => ({
-          id: route.id,
-          name: route.name,
-          enabled: route.enabled,
-          priority: route.priority,
-          trigger: route.trigger,
-          action: route.action,
-          description: route.description,
-          nextOccurrenceAt: schedule?.nextOccurrenceAt,
-        })),
-    [collections.routeScheduleStates, collections.routes],
-  );
-  const routes: AutomationRouteDefinition[] = (routesQuery.data ?? []).map((route) => ({
-    ...route,
-    nextOccurrenceAt: route.nextOccurrenceAt?.toISOString() ?? null,
-  }));
-  const routeError = routesQuery.isError ? "Automation route synchronization failed." : null;
+  const routesState = useAutomationRoutes(collections);
+  const routes: AutomationRouteDefinition[] = routesState.routes;
+  const routeError = routesState.status === "error" ? routesState.message : null;
   const [searchParams] = useSearchParams();
   const selectedRouteId = searchParams.get("route")?.trim() ?? "";
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? null;
   const basePath = automationScopeTabPath(selectedScope, "router");
-  const scriptsPath = automationScopeTabPath(selectedScope, "scripts");
+  const scriptsPath = filesScopeBasePath(selectedScope);
   const eventsCatalogPath = automationScopeTabPath(selectedScope, "events-catalog");
   const isDetailVisible = Boolean(selectedRoute);
   const enabledRoutes = routes.filter((route) => route.enabled).length;
   const sections = routeSections(routes).filter((section) => section.routes.length > 0);
 
-  if (routesQuery.isLoading && routes.length === 0) {
+  if (routesState.status === "loading") {
     return (
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
         Loading automation routes…

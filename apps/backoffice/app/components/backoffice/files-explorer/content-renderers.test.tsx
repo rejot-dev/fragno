@@ -2,15 +2,122 @@ import { assert, describe, test } from "vitest";
 
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { STARTER_AUTOMATION_ROUTES } from "@/fragno/automation/content/starter-routing";
+
 import { resolveFilesContentRenderer, type FilesContentPreview } from "./content-renderers";
 
 describe("files content rendering", () => {
+  test("renders workflow JavaScript files as workflow graphs", () => {
+    const preview: FilesContentPreview = {
+      title: "daily-digest.workflow.js",
+      contentType: "text/javascript",
+      metadata: null,
+      textContent: `defineWorkflow({ name: "daily-digest" }, async (_event, step) => {
+  await step.do("Send digest", async () => undefined);
+});`,
+      workflowRouting: { status: "unavailable" },
+    };
+
+    const renderer = resolveFilesContentRenderer(preview);
+    assert(renderer);
+    const markup = renderToStaticMarkup(renderer.render(preview));
+
+    assert.equal(renderer.id, "workflow");
+    assert(markup.includes('aria-label="Workflow graph"'));
+    assert(markup.includes("daily-digest"));
+    assert(markup.includes("Send digest"));
+  });
+
+  test("renders the configured project-created start route", () => {
+    const workflowPath = "/static/automations/project-files-configure.workflow.js";
+    const route = STARTER_AUTOMATION_ROUTES.find(
+      (candidate) =>
+        candidate.action.kind === "start_workflow" &&
+        candidate.action.workflowScriptPath === workflowPath,
+    );
+    assert(route);
+    const preview: FilesContentPreview = {
+      title: "project-files-configure.workflow.js",
+      contentType: "text/javascript",
+      metadata: null,
+      textContent:
+        'defineWorkflow({ name: "project-files-configure" }, async (_event, step) => {});',
+      workflowRouting: {
+        status: "ready",
+        routes: [{ ...route, nextOccurrenceAt: null }],
+      },
+    };
+
+    const renderer = resolveFilesContentRenderer(preview);
+    assert(renderer);
+    const markup = renderToStaticMarkup(renderer.render(preview));
+
+    assert(markup.includes("Runs on"));
+    assert(markup.includes("automations / project.created"));
+    assert(markup.includes("Configure project files"));
+  });
+
+  test("renders multiple schedule routes with enabled state and next occurrence", () => {
+    const workflowAction = {
+      kind: "start_workflow" as const,
+      authority: { kind: "organization-automation" as const },
+      workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
+      instanceIdTemplate: "daily-${event.id}",
+    };
+    const preview: FilesContentPreview = {
+      title: "daily-digest.workflow.js",
+      contentType: "text/javascript",
+      metadata: null,
+      textContent: 'defineWorkflow({ name: "daily-digest" }, async () => {});',
+      workflowRouting: {
+        status: "ready",
+        routes: [
+          {
+            id: "weekday-digest",
+            name: "Weekday digest",
+            enabled: false,
+            priority: 10,
+            trigger: {
+              kind: "schedule",
+              cadence: { kind: "cron", expression: "0 9 * * 1-5", timeZone: "America/New_York" },
+            },
+            action: workflowAction,
+            nextOccurrenceAt: "2026-08-24T13:00:00.000Z",
+          },
+          {
+            id: "launch-digest",
+            name: "Launch digest",
+            enabled: true,
+            priority: 20,
+            trigger: {
+              kind: "schedule",
+              cadence: { kind: "once", at: "2026-08-25T12:00:00.000Z" },
+            },
+            action: workflowAction,
+            nextOccurrenceAt: "2026-08-25T12:00:00.000Z",
+          },
+        ],
+      },
+    };
+
+    const renderer = resolveFilesContentRenderer(preview);
+    assert(renderer);
+    const markup = renderToStaticMarkup(renderer.render(preview));
+
+    assert(markup.includes("Scheduled · Disabled"));
+    assert(markup.includes("Cron · 0 9 * * 1-5 · America/New_York"));
+    assert(markup.includes("Weekday digest"));
+    assert(markup.includes("Launch digest"));
+    assert(markup.includes("Aug 24, 2026, 09:00 America/New_York"));
+  });
+
   test("renders Markdown files with the shared Streamdown renderer", () => {
     const preview: FilesContentPreview = {
       title: "README.md",
       contentType: "text/markdown",
       metadata: null,
       textContent: "# Explorer heading\n\n- One\n- Two",
+      workflowRouting: { status: "unavailable" },
     };
 
     const renderer = resolveFilesContentRenderer(preview);
@@ -30,6 +137,7 @@ describe("files content rendering", () => {
       contentType: "text/markdown",
       metadata: null,
       textContent: "---\nname: explorer\ndescription: Browse files\n---\n\n# Instructions",
+      workflowRouting: { status: "unavailable" },
     };
 
     const renderer = resolveFilesContentRenderer(preview);
@@ -51,6 +159,7 @@ describe("files content rendering", () => {
       contentType: "Text/Markdown; charset=utf-8",
       metadata: null,
       textContent: "# Parameterized Markdown",
+      workflowRouting: { status: "unavailable" },
     };
 
     const renderer = resolveFilesContentRenderer(preview);
@@ -104,5 +213,6 @@ function createImagePreview(metadata: Record<string, unknown>): FilesContentPrev
     contentType: "image/png",
     metadata,
     textContent: null,
+    workflowRouting: { status: "unavailable" },
   };
 }

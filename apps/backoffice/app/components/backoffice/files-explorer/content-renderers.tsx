@@ -1,13 +1,37 @@
+import { Tabs } from "@base-ui/react/tabs";
+import {
+  AlertTriangle,
+  CalendarClock,
+  Code2,
+  ShieldCheck,
+  Workflow as WorkflowIcon,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { Streamdown } from "streamdown";
 
+import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
+
+import type {
+  AutomationEventMatcher,
+  AutomationRouteDefinition,
+} from "@/fragno/automation/routing";
+import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 import { parseFrontmatter } from "@/lib/frontmatter";
+import { formatTimestampInTimeZone } from "@/routes/backoffice/automations/formatting";
+import { ScriptWorkflowGraph } from "@/routes/backoffice/automations/script-view/workflow-graph";
+
+export type WorkflowFileRouting =
+  | { status: "unavailable" }
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; routes: readonly AutomationRouteDefinition[] };
 
 export type FilesContentPreview = {
   title: string;
   contentType: string | null;
   metadata: Record<string, unknown> | null;
   textContent: string | null;
+  workflowRouting: WorkflowFileRouting;
 };
 
 type FilesContentRenderer = {
@@ -16,6 +40,220 @@ type FilesContentRenderer = {
   renderBefore?: (preview: FilesContentPreview) => ReactNode;
   render: (preview: FilesContentPreview) => ReactNode;
 };
+
+const EMPTY_WORKFLOW_RUNTIME_TOOL_CALLS: ReadonlyMap<
+  string,
+  readonly ResolvedWorkflowRuntimeToolCall[]
+> = new Map();
+
+const WorkflowRenderer: FilesContentRenderer = {
+  id: "workflow",
+  label: "Workflow preview",
+  render(preview) {
+    return <WorkflowFilePreview preview={preview} />;
+  },
+};
+
+function WorkflowFilePreview({ preview }: { preview: FilesContentPreview }) {
+  const source = preview.textContent ?? "";
+  const visualization = visualizeWorkflowSource(preview.title, source, {
+    fallbackName: preview.title.replace(/\.workflow\.js$/iu, ""),
+  });
+
+  return (
+    <Tabs.Root defaultValue="graph" className="flex h-full min-h-0 flex-col">
+      <Tabs.List
+        aria-label="Workflow preview views"
+        className="flex shrink-0 items-center gap-2 border-b border-[var(--bo-border)]"
+      >
+        <Tabs.Tab
+          value="code"
+          className="flex min-h-10 items-center gap-1.5 border-b-2 border-transparent px-1 font-mono text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[scale,border-color,color] duration-150 ease-out outline-none hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] data-[active]:border-[color:var(--bo-accent)] data-[active]:text-[var(--bo-accent-fg)]"
+        >
+          <Code2 className="size-3.5" aria-hidden="true" />
+          Code
+        </Tabs.Tab>
+        <Tabs.Tab
+          value="graph"
+          className="flex min-h-10 items-center gap-1.5 border-b-2 border-transparent px-1 font-mono text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[scale,border-color,color] duration-150 ease-out outline-none hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] data-[active]:border-[color:var(--bo-accent)] data-[active]:text-[var(--bo-accent-fg)]"
+        >
+          <WorkflowIcon className="size-3.5" aria-hidden="true" />
+          Graph
+        </Tabs.Tab>
+      </Tabs.List>
+
+      <Tabs.Panel value="code" className="min-h-0 flex-1 pt-3">
+        <pre
+          aria-label="Workflow code"
+          tabIndex={0}
+          className="backoffice-scroll h-full overflow-auto overscroll-contain px-1 font-mono text-[12px] leading-6 whitespace-pre-wrap text-[var(--bo-fg)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--bo-accent)]"
+        >
+          <code>{source}</code>
+        </pre>
+      </Tabs.Panel>
+      <Tabs.Panel value="graph" className="flex min-h-0 flex-1 flex-col pt-3">
+        <WorkflowStartRouteSummary routing={preview.workflowRouting} />
+        <div className="min-h-0 flex-1 [--bo-accent-bg:color-mix(in_srgb,var(--bo-blue-4)_24%,var(--bo-panel))] [--bo-accent-fg:var(--bo-blue-1)] [--bo-accent:var(--bo-blue-2)] dark:[--bo-accent-bg:color-mix(in_srgb,var(--bo-blue-1)_20%,var(--bo-panel))] dark:[--bo-accent-fg:var(--bo-blue-4)]">
+          <ScriptWorkflowGraph
+            visualization={visualization}
+            detailMode="simple"
+            runtimeToolCallsByStepId={EMPTY_WORKFLOW_RUNTIME_TOOL_CALLS}
+            selectedRun={null}
+            sourceCode={source}
+            fillHeight
+          />
+        </div>
+      </Tabs.Panel>
+    </Tabs.Root>
+  );
+}
+
+function WorkflowStartRouteSummary({ routing }: { routing: WorkflowFileRouting }) {
+  if (routing.status === "unavailable") {
+    return null;
+  }
+  if (routing.status === "loading") {
+    return (
+      <div className="mb-3 shrink-0 border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 py-2.5 text-xs text-[var(--bo-muted)]">
+        Synchronizing workflow routes…
+      </div>
+    );
+  }
+  if (routing.status === "error") {
+    return (
+      <div
+        role="alert"
+        className="mb-3 flex shrink-0 items-start gap-2 border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 py-2.5 text-xs text-[var(--bo-failed)]"
+      >
+        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+        <span>Workflow routing unavailable: {routing.message}</span>
+      </div>
+    );
+  }
+  if (routing.routes.length === 0) {
+    return (
+      <div className="mb-3 shrink-0 border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 py-2.5 text-xs text-[var(--bo-muted)]">
+        No configured route starts this workflow.
+      </div>
+    );
+  }
+
+  return (
+    <section
+      aria-label="Workflow start routes"
+      className="backoffice-scroll mb-3 max-h-48 shrink-0 space-y-2 overflow-auto overscroll-contain"
+    >
+      {routing.routes.map((route) => (
+        <div
+          key={route.id}
+          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2.5"
+        >
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-2.5">
+              <span className="flex size-7 shrink-0 items-center justify-center bg-orange-500/10 text-orange-700 dark:text-orange-300">
+                {route.trigger.kind === "event" ? (
+                  <ShieldCheck className="size-3.5" aria-hidden="true" />
+                ) : (
+                  <CalendarClock className="size-3.5" aria-hidden="true" />
+                )}
+              </span>
+              <div className="min-w-0">
+                <p className="text-[9px] font-semibold tracking-[0.18em] text-orange-700 uppercase dark:text-orange-300">
+                  {route.trigger.kind === "event" ? "Runs on" : "Scheduled"}
+                  {route.enabled ? "" : " · Disabled"}
+                </p>
+                <p className="mt-1 font-mono text-xs font-semibold break-all text-[var(--bo-fg)]">
+                  {workflowRouteTriggerText(route)}
+                </p>
+                {route.trigger.kind === "event" && route.trigger.matcher ? (
+                  <p className="mt-1.5 font-mono text-[10px] leading-4 break-all text-[var(--bo-muted)]">
+                    {automationEventMatcherText(route.trigger.matcher)}
+                  </p>
+                ) : null}
+                {route.trigger.kind === "schedule" ? (
+                  <p className="mt-1.5 font-mono text-[10px] leading-4 text-[var(--bo-muted)] tabular-nums">
+                    Next ·{" "}
+                    {route.nextOccurrenceAt ? (
+                      <time dateTime={route.nextOccurrenceAt}>
+                        {formatTimestampInTimeZone(
+                          route.nextOccurrenceAt,
+                          route.trigger.cadence.kind === "cron"
+                            ? route.trigger.cadence.timeZone
+                            : "UTC",
+                        )}
+                      </time>
+                    ) : (
+                      "None queued"
+                    )}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <span className="max-w-48 shrink-0 truncate text-[9px] text-[var(--bo-muted-2)]">
+              {route.name}
+            </span>
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function workflowRouteTriggerText(route: AutomationRouteDefinition): string {
+  if (route.trigger.kind === "event") {
+    return `${route.trigger.source} / ${route.trigger.eventType}`;
+  }
+  if (route.trigger.cadence.kind === "once") {
+    return `Once · ${route.trigger.cadence.at}`;
+  }
+  return `Cron · ${route.trigger.cadence.expression} · ${route.trigger.cadence.timeZone}`;
+}
+
+function automationEventMatcherText(matcher: AutomationEventMatcher): string {
+  if ("all" in matcher) {
+    return matcher.all.map(automationEventMatcherText).map(parenthesizeMatcherText).join(" and ");
+  }
+  if ("any" in matcher) {
+    return matcher.any.map(automationEventMatcherText).map(parenthesizeMatcherText).join(" or ");
+  }
+  if ("not" in matcher) {
+    return `not (${automationEventMatcherText(matcher.not)})`;
+  }
+  if ("actor" in matcher) {
+    const actor = matcher.actor;
+    return [
+      `${actor.participation} actor`,
+      actor.scope,
+      actor.source,
+      actor.type,
+      actor.id,
+      "role" in actor ? actor.role : undefined,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(" · ");
+  }
+
+  const operator =
+    matcher.op === "eq"
+      ? "equals"
+      : matcher.op === "neq"
+        ? "does not equal"
+        : matcher.op === "startsWith"
+          ? "starts with"
+          : matcher.op;
+  if (matcher.op === "exists") {
+    return `${matcher.path} exists`;
+  }
+  return `${matcher.path} ${operator} ${formatMatcherValue(matcher.value)}`;
+}
+
+function parenthesizeMatcherText(value: string): string {
+  return `(${value})`;
+}
+
+function formatMatcherValue(value: unknown): string {
+  return JSON.stringify(value) ?? String(value);
+}
 
 const TextRenderer: FilesContentRenderer = {
   id: "text",
@@ -135,6 +373,10 @@ const FILES_CONTENT_RENDERERS_BY_CONTENT_TYPE = new Map<string, FilesContentRend
 export function resolveFilesContentRenderer(
   preview: FilesContentPreview,
 ): FilesContentRenderer | null {
+  if (preview.title.toLowerCase().endsWith(".workflow.js") && preview.textContent !== null) {
+    return WorkflowRenderer;
+  }
+
   const normalizedContentType = normalizeMediaType(preview.contentType);
 
   if (normalizedContentType) {

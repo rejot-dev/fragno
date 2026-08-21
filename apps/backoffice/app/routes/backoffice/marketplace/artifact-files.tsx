@@ -184,6 +184,7 @@ function MarketplaceArtifactExplorer({
             </p>
           </div>
         }
+        workflowRouting={{ status: "unavailable" }}
         buildNodeTo={(path) => {
           const entry = entriesByExplorerPath.get(path);
           return buildArtifactSelectionPath(

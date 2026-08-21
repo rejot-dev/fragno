@@ -18,17 +18,17 @@ import { Form, Link, type To } from "react-router";
 import type { FileTree, FileTreeEntry } from "@/file-collection/file-collection";
 
 import { BackofficeSystemState } from "../system-state";
-import { resolveFilesContentRenderer } from "./content-renderers";
+import { resolveFilesContentRenderer, type WorkflowFileRouting } from "./content-renderers";
 
-export type FilesExplorerRootKind = "static" | "upload" | "custom";
-export type FilesExplorerPersistence = "ephemeral" | "persistent" | "session";
+type FilesExplorerRootKind = "static" | "upload" | "custom";
+type FilesExplorerPersistence = "ephemeral" | "persistent" | "session";
 
-export type FilesExplorerDetailField = {
+type FilesExplorerDetailField = {
   label: string;
   value: string;
 };
 
-export type FilesExplorerNode = {
+type FilesExplorerNode = {
   kind: "root" | "directory" | "file";
   path: string;
   title: string;
@@ -79,7 +79,7 @@ export type FilesExplorerSelectedContent = {
   text: string;
 };
 
-export type FilesExplorerSearchMatch = {
+type FilesExplorerSearchMatch = {
   path: string;
   line: number;
   column: number;
@@ -94,7 +94,7 @@ export type FilesExplorerSearchGroup = {
   matches: readonly FilesExplorerSearchMatch[];
 };
 
-export type FilesExplorerContentSearch = {
+type FilesExplorerContentSearch = {
   query: string;
   groups: readonly FilesExplorerSearchGroup[];
 };
@@ -116,6 +116,7 @@ export type FilesExplorerViewProps = {
   detailHeadingLevel?: 2 | 3 | 4;
   emptySelection?: ReactNode;
   contentSearch?: FilesExplorerContentSearch;
+  workflowRouting: WorkflowFileRouting;
 };
 
 export function FilesExplorerView({
@@ -135,6 +136,7 @@ export function FilesExplorerView({
   detailHeadingLevel = 2,
   emptySelection = null,
   contentSearch,
+  workflowRouting,
 }: FilesExplorerViewProps) {
   const [uncontrolledCollapsedRootPaths, setUncontrolledCollapsedRootPaths] = useState(
     () => new Set(defaultCollapsedRootPaths),
@@ -352,6 +354,7 @@ export function FilesExplorerView({
                   buildDownloadHref={buildDownloadHref}
                   rootIcon={rootIcon}
                   headingLevel={detailHeadingLevel}
+                  workflowRouting={workflowRouting}
                 />
               ) : (
                 emptySelection
@@ -473,17 +476,31 @@ function ExplorerNodeDetailPanel({
   buildDownloadHref,
   rootIcon: RootIcon,
   headingLevel,
+  workflowRouting,
 }: {
   detail: ExplorerNodeDetail;
   buildDownloadHref?: (path: string) => string | null;
   rootIcon: LucideIcon;
   headingLevel: 2 | 3 | 4;
+  workflowRouting: WorkflowFileRouting;
 }) {
+  const selectedWorkflowRouting: WorkflowFileRouting =
+    workflowRouting.status === "ready"
+      ? {
+          status: "ready",
+          routes: workflowRouting.routes.filter(
+            (route) =>
+              route.action.kind === "start_workflow" &&
+              route.action.workflowScriptPath === detail.node.path,
+          ),
+        }
+      : workflowRouting;
   const contentPreview = {
     title: detail.node.title,
     contentType: detail.node.contentType ?? null,
     metadata: detail.metadata,
     textContent: detail.textContent,
+    workflowRouting: selectedWorkflowRouting,
   };
   const contentRenderer = resolveFilesContentRenderer(contentPreview);
   const contentPreamble = contentRenderer?.renderBefore?.(contentPreview) ?? null;

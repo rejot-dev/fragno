@@ -4,13 +4,23 @@ import { useLoaderData, useOutletContext } from "react-router";
 import { and, eq, useLiveQuery } from "@tanstack/react-db";
 
 import {
+  useCurrentBackofficeContext,
+  type AutomationCollectionSourceState,
+} from "@/components/backoffice/current-context";
+import {
   FilesExplorerView,
   type FilesExplorerSource,
 } from "@/components/backoffice/files-explorer";
+import type { WorkflowFileRouting } from "@/components/backoffice/files-explorer/content-renderers";
 import type { FilesExplorerSearchGroup } from "@/components/backoffice/files-explorer/view";
 import { ClientOnly } from "@/components/client-only";
 import { createUploadFileTree } from "@/file-collection/create-upload-file-tree";
 import { resolveSynchronizedFileTree } from "@/file-collection/resolve-synchronized-file-tree";
+import {
+  getAutomationBrowserDatabase,
+  type AutomationCollectionSource,
+} from "@/fragno/automation/tanstack/browser-database";
+import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
 import { toUploadFileRecord, type UploadFileRecord } from "@/fragno/upload/file-record";
 import {
   describeUploadCollectionSource,
@@ -42,26 +52,81 @@ export function meta({ loaderData }: Route.MetaArgs) {
 export default function BackofficeFilesExplorer() {
   const loaderData = useLoaderData<typeof loader>();
   const { selectedScope } = useOutletContext<FilesLayoutContext>();
-  const synchronizedSource = loaderData.sources.find(hasUploadSynchronization);
-  const initialView = <FilesExplorerRouteView {...loaderData} selectedScope={selectedScope} />;
-
-  if (!synchronizedSource?.synchronization) {
-    return initialView;
-  }
+  const { automationCollectionSource } = useCurrentBackofficeContext();
+  const initialView = (
+    <FilesExplorerRouteView
+      {...loaderData}
+      selectedScope={selectedScope}
+      workflowRouting={{ status: "loading" }}
+    />
+  );
 
   return (
     <ClientOnly fallback={initialView}>
       <Suspense fallback={initialView}>
-        <SynchronizedFilesExplorer
-          key={
-            describeUploadCollectionSource(synchronizedSource.synchronization.source).resourceKey
-          }
+        <LocalFirstFilesExplorer
           {...loaderData}
           selectedScope={selectedScope}
-          synchronizedSource={synchronizedSource}
+          automationCollectionSource={automationCollectionSource}
         />
       </Suspense>
     </ClientOnly>
+  );
+}
+
+function LocalFirstFilesExplorer({
+  automationCollectionSource,
+  ...props
+}: FilesExplorerLocalDataProps & {
+  automationCollectionSource: AutomationCollectionSourceState;
+}) {
+  if (automationCollectionSource.status === "unavailable") {
+    return (
+      <FilesExplorerWithLocalData
+        {...props}
+        workflowRouting={{ status: "error", message: automationCollectionSource.message }}
+      />
+    );
+  }
+
+  return (
+    <SynchronizedAutomationRoutesFilesExplorer
+      {...props}
+      collectionSource={automationCollectionSource.source}
+    />
+  );
+}
+
+function SynchronizedAutomationRoutesFilesExplorer({
+  collectionSource,
+  ...props
+}: FilesExplorerLocalDataProps & {
+  collectionSource: AutomationCollectionSource;
+}) {
+  const { collections } = use(getAutomationBrowserDatabase(collectionSource));
+  const routesState = useAutomationRoutes(collections);
+  const workflowRouting: WorkflowFileRouting =
+    routesState.status === "loading"
+      ? { status: "loading" }
+      : routesState.status === "error"
+        ? { status: "error", message: routesState.message }
+        : { status: "ready", routes: routesState.routes };
+
+  return <FilesExplorerWithLocalData {...props} workflowRouting={workflowRouting} />;
+}
+
+function FilesExplorerWithLocalData(props: FilesExplorerRouteViewProps) {
+  const synchronizedSource = props.sources.find(hasUploadSynchronization);
+  if (!synchronizedSource?.synchronization) {
+    return <FilesExplorerRouteView {...props} />;
+  }
+
+  return (
+    <SynchronizedFilesExplorer
+      key={describeUploadCollectionSource(synchronizedSource.synchronization.source).resourceKey}
+      {...props}
+      synchronizedSource={synchronizedSource}
+    />
   );
 }
 
@@ -73,6 +138,7 @@ function SynchronizedFilesExplorer({
   searchQuery,
   searchGroups,
   selectedScope,
+  workflowRouting,
   synchronizedSource,
 }: FilesExplorerRouteViewProps & {
   synchronizedSource: SynchronizedFilesExplorerSource;
@@ -140,9 +206,12 @@ function SynchronizedFilesExplorer({
       searchQuery={searchQuery}
       searchGroups={searchGroups}
       selectedScope={selectedScope}
+      workflowRouting={workflowRouting}
     />
   );
 }
+
+type FilesExplorerLocalDataProps = Omit<FilesExplorerRouteViewProps, "workflowRouting">;
 
 type FilesExplorerRouteViewProps = {
   sources: readonly FilesExplorerSourceSnapshot[];
@@ -152,6 +221,7 @@ type FilesExplorerRouteViewProps = {
   searchQuery: string;
   searchGroups: FilesExplorerSearchGroup[];
   selectedScope: FilesUiScope;
+  workflowRouting: WorkflowFileRouting;
 };
 
 function FilesExplorerRouteView({
@@ -162,6 +232,7 @@ function FilesExplorerRouteView({
   searchQuery,
   searchGroups,
   selectedScope,
+  workflowRouting,
 }: FilesExplorerRouteViewProps) {
   return (
     <FilesExplorerView
@@ -173,6 +244,7 @@ function FilesExplorerRouteView({
       defaultCollapsedRootPaths={["/static", "/system"]}
       buildNodeTo={(path) => ({ pathname: filesExplorerPath(selectedScope, path) })}
       buildDownloadHref={(path) => filesDownloadPath(selectedScope, path)}
+      workflowRouting={workflowRouting}
     />
   );
 }

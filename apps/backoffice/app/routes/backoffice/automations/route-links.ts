@@ -1,18 +1,24 @@
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 
-import { toAutomationScriptIdFromAbsolutePath } from "./script-records";
+import { filesExplorerPathFromScopePath } from "../files/scope";
 
 export const automationRouteScriptLink = (
   route: AutomationRouteDefinition,
-  scriptsPath: string,
+  filesScopePath: string,
 ) => {
   if (route.action.kind !== "start_workflow") {
     return null;
   }
 
-  const scriptId = toAutomationScriptIdFromAbsolutePath(route.action.workflowScriptPath);
-  return `${scriptsPath}?${new URLSearchParams({ script: scriptId }).toString()}`;
+  return filesExplorerPathFromScopePath(filesScopePath, route.action.workflowScriptPath);
 };
 
-export const automationEventCatalogLink = (eventsCatalogPath: string, eventType: string) =>
-  `${eventsCatalogPath}?${new URLSearchParams({ search: eventType }).toString()}`;
+export const automationEventCatalogLink = (
+  eventsCatalogPath: string,
+  source: string,
+  eventType: string,
+) =>
+  `${eventsCatalogPath}?${new URLSearchParams({
+    selection: "event",
+    selected: `${source}:${eventType}`,
+  }).toString()}`;

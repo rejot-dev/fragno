@@ -7,10 +7,17 @@ export type FilesUiScope = AutomationUiScope;
 export const filesScopeBasePath = (scope: FilesUiScope): string =>
   `/backoffice/files/${backofficeContextScopeRoutePath(toBackofficeScope(scope))}`;
 
-export const filesExplorerPath = (scope: FilesUiScope, path?: string | null): string => {
+/** Appends a filesystem path to an already encoded scoped Files route. */
+export function filesExplorerPathFromScopePath(
+  filesScopePath: string,
+  path?: string | null,
+): string {
   const encodedPath = path?.split("/").filter(Boolean).map(encodeURIComponent).join("/");
-  return encodedPath ? `${filesScopeBasePath(scope)}/${encodedPath}` : filesScopeBasePath(scope);
-};
+  return encodedPath ? `${filesScopePath}/${encodedPath}` : filesScopePath;
+}
+
+export const filesExplorerPath = (scope: FilesUiScope, path?: string | null): string =>
+  filesExplorerPathFromScopePath(filesScopeBasePath(scope), path);
 
 export const filesDownloadPath = (scope: FilesUiScope, path: string): string => {
   const params = new URLSearchParams({ path });

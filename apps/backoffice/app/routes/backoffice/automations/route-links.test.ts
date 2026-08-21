@@ -22,7 +22,7 @@ const routeWithAction = (
 });
 
 describe("automation route links", () => {
-  it("opens the route workflow script in the scoped scripts tab", () => {
+  it("opens the route workflow script in the scoped files section", () => {
     const route = routeWithAction({
       kind: "start_workflow",
       authority: { kind: "organization-automation" },
@@ -31,8 +31,8 @@ describe("automation route links", () => {
     });
 
     assert.equal(
-      automationRouteScriptLink(route, "/backoffice/automations/org/acme/scripts"),
-      "/backoffice/automations/org/acme/scripts?script=automation-script%3Aworkspace%3Atelegram-linking.workflow.js",
+      automationRouteScriptLink(route, "/backoffice/files/org/acme"),
+      "/backoffice/files/org/acme/workspace/automations/telegram-linking.workflow.js",
     );
   });
 
@@ -43,19 +43,17 @@ describe("automation route links", () => {
       target: { kind: "instance_id", template: "instance-${event}" },
     });
 
-    assert.equal(
-      automationRouteScriptLink(route, "/backoffice/automations/org/acme/scripts"),
-      null,
-    );
+    assert.equal(automationRouteScriptLink(route, "/backoffice/files/org/acme"), null);
   });
 
   it("opens a filtered event catalog", () => {
     assert.equal(
       automationEventCatalogLink(
         "/backoffice/automations/org/acme/events-catalog",
+        "telegram",
         "message.received",
       ),
-      "/backoffice/automations/org/acme/events-catalog?search=message.received",
+      "/backoffice/automations/org/acme/events-catalog?selection=event&selected=telegram%3Amessage.received",
     );
   });
 });
