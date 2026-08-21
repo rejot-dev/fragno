@@ -3,6 +3,8 @@ import { useMemo } from "react";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
+import { eq, useLiveQuery } from "@tanstack/react-db";
+
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
@@ -14,6 +16,7 @@ import { jsonSchemaToTypeScript } from "@/lib/zod/zod-formatter";
 
 import type { AutomationScriptSourceRecord } from "./data";
 import { AutomationDetailRows } from "./detail-rows";
+import { formatTimestamp } from "./formatting";
 import { automationRouteActionDetailRows, automationRouteActionLabel } from "./route-action";
 import { AutomationEventMatcherDetail, AutomationRouteTargetDetail } from "./route-configuration";
 import { AutomationRouteDetail } from "./route-detail";
@@ -41,6 +44,7 @@ export type DashboardInspectorSelection =
       source: DashboardSource;
       eventDefinitions: readonly DashboardEventDefinition[];
     }
+  | { kind: "event"; eventDefinition: DashboardEventDefinition }
   | { kind: "trigger"; route: AutomationRouteDefinition }
   | { kind: "action"; route: AutomationRouteDefinition };
 
@@ -54,12 +58,12 @@ export function DashboardInspector({
   scope,
   onClear,
 }: {
-  selection: DashboardInspectorSelection;
+  selection: DashboardInspectorSelection | null;
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
   collections: Pick<
     AutomationCollections,
-    "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
+    "events" | "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
   >;
   scriptsPath: string;
   eventsCatalogPath: string;
@@ -72,19 +76,28 @@ export function DashboardInspector({
         <p className="text-[11px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
           Inspector
         </p>
-        <button
-          type="button"
-          aria-label="Clear dashboard selection"
-          onClick={onClear}
-          className="flex h-10 w-10 items-center justify-center text-[var(--bo-muted-2)] transition-[color,transform] hover:text-[var(--bo-fg)] active:scale-[0.96]"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
+        {selection ? (
+          <button
+            type="button"
+            aria-label="Clear dashboard selection"
+            onClick={onClear}
+            className="flex h-10 w-10 items-center justify-center text-[var(--bo-muted-2)] transition-[color,transform] hover:text-[var(--bo-fg)] active:scale-[0.96]"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
       </div>
 
       <div className="backoffice-scroll xl:max-h-[calc(100vh-10.25rem)] xl:overflow-y-auto">
-        {selection.kind === "source" ? <SourceInspector selection={selection} /> : null}
-        {selection.kind === "trigger" ? (
+        {!selection ? <FullEventLogInspector collections={collections} /> : null}
+        {selection?.kind === "source" ? <SourceInspector selection={selection} /> : null}
+        {selection?.kind === "event" ? (
+          <RecentEventInspector
+            eventDefinition={selection.eventDefinition}
+            collections={collections}
+          />
+        ) : null}
+        {selection?.kind === "trigger" ? (
           <div className="p-3">
             <AutomationRouteDetail
               route={selection.route}
@@ -94,7 +107,7 @@ export function DashboardInspector({
             />
           </div>
         ) : null}
-        {selection.kind === "action" ? (
+        {selection?.kind === "action" ? (
           <ActionInspector
             route={selection.route}
             source={workflowSource}
@@ -137,6 +150,139 @@ function SourceInspector({
       ) : (
         <p className="mt-3 py-6 text-center text-sm text-[var(--bo-muted)]">
           No registered events.
+        </p>
+      )}
+    </div>
+  );
+}
+
+const RECENT_EVENT_LOG_LIMIT = 50;
+
+function FullEventLogInspector({
+  collections,
+}: {
+  collections: Pick<AutomationCollections, "events">;
+}) {
+  const eventsQuery = useLiveQuery(
+    (query) =>
+      query
+        .from({ event: collections.events })
+        .orderBy(({ event }) => event.occurredAt, "desc")
+        .orderBy(({ event }) => event.id, "desc")
+        .limit(RECENT_EVENT_LOG_LIMIT)
+        .select(({ event }) => ({
+          id: event.id,
+          source: event.source,
+          eventType: event.eventType,
+          occurredAt: event.occurredAt,
+          payload: event.payload,
+        })),
+    [collections.events],
+  );
+  const events = eventsQuery.data ?? [];
+
+  return (
+    <div className="p-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold tracking-[0.18em] text-orange-700 uppercase dark:text-orange-300">
+            Event log
+          </p>
+          <h2 className="mt-1 text-sm font-semibold text-[var(--bo-fg)]">Recent events</h2>
+        </div>
+        <span className="text-xs text-[var(--bo-muted-2)] tabular-nums">{events.length}</span>
+      </div>
+
+      {events.length > 0 ? (
+        <div className="mt-3 divide-y divide-[color:var(--bo-border)] border-y border-[color:var(--bo-border)]">
+          {events.map((event) => (
+            <details key={event.id} className="group py-2.5">
+              <summary className="cursor-pointer list-none marker:content-none">
+                <p className="font-mono text-xs font-semibold break-all text-[var(--bo-fg)]">
+                  {event.source}.{event.eventType}
+                </p>
+                <p className="mt-1 font-mono text-[10px] break-all text-[var(--bo-muted-2)]">
+                  {event.id}
+                </p>
+                <p className="mt-1 text-[10px] text-[var(--bo-muted-2)] tabular-nums">
+                  {formatTimestamp(event.occurredAt)}
+                </p>
+              </summary>
+              <pre className="backoffice-scroll mt-2 max-h-64 overflow-auto bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
+                {JSON.stringify(event.payload, null, 2)}
+              </pre>
+            </details>
+          ))}
+        </div>
+      ) : (
+        <p className="py-8 text-center text-sm text-[var(--bo-muted)]">
+          {eventsQuery.isLoading ? "Loading event log…" : "No events have been recorded."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function RecentEventInspector({
+  eventDefinition,
+  collections,
+}: {
+  eventDefinition: DashboardEventDefinition;
+  collections: Pick<AutomationCollections, "events">;
+}) {
+  const recentEventsQuery = useLiveQuery(
+    (query) =>
+      query
+        .from({ event: collections.events })
+        .where(({ event }) => eq(event.source, eventDefinition.source))
+        .where(({ event }) => eq(event.eventType, eventDefinition.eventType))
+        .orderBy(({ event }) => event.occurredAt, "desc")
+        .orderBy(({ event }) => event.id, "desc")
+        .limit(10)
+        .select(({ event }) => ({
+          id: event.id,
+          occurredAt: event.occurredAt,
+          payload: event.payload,
+        })),
+    [collections.events, eventDefinition.eventType, eventDefinition.source],
+  );
+  const recentEvents = recentEventsQuery.data ?? [];
+
+  return (
+    <div className="p-3">
+      <p className="text-[10px] font-semibold tracking-[0.18em] text-orange-700 uppercase dark:text-orange-300">
+        Event
+      </p>
+      <h2 className="mt-1 font-mono text-sm font-semibold break-all text-[var(--bo-fg)]">
+        {eventDefinition.source}.{eventDefinition.eventType}
+      </h2>
+      <p className="mt-1 text-xs text-[var(--bo-muted)]">{eventDefinition.label}</p>
+
+      <div className="mt-4 flex items-center justify-between border-b border-[color:var(--bo-border)] pb-2">
+        <p className="text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+          Recent events
+        </p>
+        <span className="text-xs text-[var(--bo-muted-2)] tabular-nums">{recentEvents.length}</span>
+      </div>
+      {recentEvents.length > 0 ? (
+        <div className="divide-y divide-[color:var(--bo-border)]">
+          {recentEvents.map((event) => (
+            <details key={event.id} className="group py-2">
+              <summary className="cursor-pointer list-none marker:content-none">
+                <p className="font-mono text-[11px] break-all text-[var(--bo-fg)]">{event.id}</p>
+                <p className="mt-1 text-[10px] text-[var(--bo-muted-2)] tabular-nums">
+                  {formatTimestamp(event.occurredAt)}
+                </p>
+              </summary>
+              <pre className="backoffice-scroll mt-2 max-h-64 overflow-auto bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
+                {JSON.stringify(event.payload, null, 2)}
+              </pre>
+            </details>
+          ))}
+        </div>
+      ) : (
+        <p className="py-8 text-center text-sm text-[var(--bo-muted)]">
+          {recentEventsQuery.isLoading ? "Loading recent events…" : "No recent events recorded."}
         </p>
       )}
     </div>

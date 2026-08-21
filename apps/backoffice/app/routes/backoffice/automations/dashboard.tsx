@@ -28,12 +28,14 @@ import { z } from "zod";
 import { eq, or, useLiveQuery } from "@tanstack/react-db";
 
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
+import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
 import {
   listAutomationEventDescriptors,
   listCapabilityEventSources,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { runtimeToolWorkflowCatalog } from "@/fragno/runtime-tools/workflow-catalog.server";
 
+import { filesScopeBasePath } from "../files/scope";
 import type { Route } from "./+types/dashboard";
 import {
   DashboardInspector,
@@ -81,7 +83,8 @@ type DashboardWorkflowInstance = {
 };
 
 type DashboardRoute = AutomationRouteDefinition;
-type DashboardSelectionKind = "source" | "trigger" | "action";
+type DashboardSelectionKind = "source" | "event" | "trigger" | "action";
+type AutomationSwimlaneView = "workflows" | "events";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const workflowScriptId = url.searchParams.get(WORKFLOW_SCRIPT_ID_PARAM)?.trim() ?? "";
@@ -126,26 +129,31 @@ const fallbackSourceLabel = (source: string) =>
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
     .join(" ");
 
-const dashboardSources = (
-  routes: readonly DashboardRoute[],
-  dynamicEventDefinitions: readonly DashboardEventDefinitionWithSource[],
-): DashboardSource[] => {
-  const sources = new Map<string, DashboardSource>();
+function dashboardSources({
+  routes,
+  eventDefinitions,
+  includeUnroutedSources,
+}: {
+  routes: readonly DashboardRoute[];
+  eventDefinitions: readonly DashboardEventDefinitionWithSource[];
+  includeUnroutedSources: boolean;
+}): DashboardSource[] {
+  const sourceCatalog = new Map<string, DashboardSource>();
 
   for (const eventSource of listCapabilityEventSources()) {
     const id = normalizedSourceId(eventSource.source);
-    sources.set(id, {
+    sourceCatalog.set(id, {
       id,
       label: eventSource.label,
       description: eventSource.description,
     });
   }
 
-  for (const eventDefinition of dynamicEventDefinitions) {
+  for (const eventDefinition of eventDefinitions) {
     const id = normalizedSourceId(eventDefinition.source);
-    if (!sources.has(id)) {
+    if (!sourceCatalog.has(id)) {
       const label = fallbackSourceLabel(id);
-      sources.set(id, {
+      sourceCatalog.set(id, {
         id,
         label,
         description: `${label} has registered automation events.`,
@@ -153,30 +161,34 @@ const dashboardSources = (
     }
   }
 
+  const sources = includeUnroutedSources
+    ? new Map<string, DashboardSource>(sourceCatalog)
+    : new Map<string, DashboardSource>();
   const triggerCountBySource = new Map<string, number>();
   for (const route of routes) {
     const id = routeSourceId(route);
     triggerCountBySource.set(id, (triggerCountBySource.get(id) ?? 0) + 1);
 
     if (!sources.has(id)) {
-      const label = fallbackSourceLabel(id);
-      sources.set(id, {
+      const catalogSource = sourceCatalog.get(id);
+      const label = catalogSource?.label ?? fallbackSourceLabel(id);
+      sources.set(
         id,
-        label,
-        description: `${label} produces events used by configured automation routes.`,
-      });
+        catalogSource ?? {
+          id,
+          label,
+          description: `${label} produces events used by configured automation routes.`,
+        },
+      );
     }
   }
 
   return [...sources.values()].sort((left, right) => {
-    const leftHasTriggers = triggerCountBySource.has(left.id);
-    const rightHasTriggers = triggerCountBySource.has(right.id);
-    if (leftHasTriggers !== rightHasTriggers) {
-      return rightHasTriggers ? 1 : -1;
-    }
-    return left.label.localeCompare(right.label);
+    const triggerCountDifference =
+      (triggerCountBySource.get(right.id) ?? 0) - (triggerCountBySource.get(left.id) ?? 0);
+    return triggerCountDifference || left.label.localeCompare(right.label);
   });
-};
+}
 
 type DashboardEventDefinitionWithSource = DashboardEventDefinition & {
   source: string;
@@ -185,6 +197,15 @@ type DashboardEventDefinitionWithSource = DashboardEventDefinition & {
 type DashboardGridRow = {
   sourceId: string;
   source: DashboardSource | null;
+  route: DashboardRoute | null;
+  dividerAfterSource: boolean;
+};
+
+type EventSwimlaneRow = {
+  sourceId: string;
+  eventId: string | null;
+  source: DashboardSource | null;
+  eventDefinition: DashboardEventDefinitionWithSource | null;
   route: DashboardRoute | null;
   dividerAfterSource: boolean;
 };
@@ -219,6 +240,104 @@ const dashboardGridRows = (
       route,
       dividerAfterSource: hasFollowingSource && routeIndex === sourceRoutes.length - 1,
     }));
+  });
+};
+
+const eventSwimlaneRows = (
+  sources: readonly DashboardSource[],
+  eventDefinitions: readonly DashboardEventDefinitionWithSource[],
+  routes: readonly DashboardRoute[],
+): EventSwimlaneRow[] => {
+  return sources.flatMap<EventSwimlaneRow>((source, sourceIndex) => {
+    const events = new Map<string, DashboardEventDefinitionWithSource>();
+    for (const eventDefinition of eventDefinitions) {
+      if (normalizedSourceId(eventDefinition.source) === source.id) {
+        events.set(eventDefinition.eventType, eventDefinition);
+      }
+    }
+
+    for (const route of routes) {
+      if (routeSourceId(route) !== source.id) {
+        continue;
+      }
+      const eventType =
+        route.trigger.kind === "schedule" ? `schedule:${route.id}` : route.trigger.eventType;
+      if (!events.has(eventType)) {
+        events.set(eventType, {
+          source: source.id,
+          eventType,
+          label:
+            route.trigger.kind === "schedule"
+              ? (scheduleLabel(route) ?? route.name)
+              : route.trigger.eventType,
+          payloadSchema: null,
+        });
+      }
+    }
+
+    const sourceEvents = [...events.values()].sort((left, right) => {
+      const routeCount = (eventType: string) =>
+        routes.filter(
+          (route) =>
+            routeSourceId(route) === source.id &&
+            (route.trigger.kind === "schedule"
+              ? eventType === `schedule:${route.id}`
+              : route.trigger.eventType === eventType),
+        ).length;
+      return (
+        routeCount(right.eventType) - routeCount(left.eventType) ||
+        left.eventType.localeCompare(right.eventType)
+      );
+    });
+    const rows = sourceEvents.flatMap<EventSwimlaneRow>((eventDefinition) => {
+      const eventRoutes = routes.filter((route) => {
+        if (routeSourceId(route) !== source.id) {
+          return false;
+        }
+        return route.trigger.kind === "schedule"
+          ? eventDefinition.eventType === `schedule:${route.id}`
+          : route.trigger.eventType === eventDefinition.eventType;
+      });
+      if (eventRoutes.length === 0) {
+        return [
+          {
+            sourceId: source.id,
+            eventId: `${eventDefinition.source}:${eventDefinition.eventType}`,
+            source: null,
+            eventDefinition,
+            route: null,
+            dividerAfterSource: false,
+          },
+        ];
+      }
+      return eventRoutes.map((route, routeIndex) => ({
+        sourceId: source.id,
+        eventId: `${eventDefinition.source}:${eventDefinition.eventType}`,
+        source: null,
+        eventDefinition: routeIndex === 0 ? eventDefinition : null,
+        route,
+        dividerAfterSource: false,
+      }));
+    });
+
+    if (rows.length === 0) {
+      rows.push({
+        sourceId: source.id,
+        eventId: null,
+        source: source,
+        eventDefinition: null,
+        route: null,
+        dividerAfterSource: sourceIndex < sources.length - 1,
+      });
+      return rows;
+    }
+
+    rows[0] = { ...rows[0], source };
+    rows[rows.length - 1] = {
+      ...rows[rows.length - 1],
+      dividerAfterSource: sourceIndex < sources.length - 1,
+    };
+    return rows;
   });
 };
 
@@ -444,6 +563,39 @@ function TriggerCard({
   );
 }
 
+function EventCard({
+  eventDefinition,
+  selected,
+  onSelect,
+}: {
+  eventDefinition: DashboardEventDefinitionWithSource;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onSelect}
+      className={`flex h-full w-full min-w-0 items-center gap-2.5 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${selected ? "ring-2 ring-orange-600/30" : ""}`}
+    >
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-orange-500/10 text-orange-700 dark:text-orange-300">
+        <Zap className="h-3.5 w-3.5" strokeWidth={1.8} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-mono text-[12px] font-semibold text-[var(--bo-fg)]">
+          {eventDefinition.eventType.startsWith("schedule:")
+            ? "Scheduled occurrence"
+            : eventDefinition.eventType}
+        </span>
+        <span className="mt-0.5 block truncate text-[11px] text-[var(--bo-muted-2)]">
+          {eventDefinition.label}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function WorkflowStatus({ status }: { status: string }) {
   const tone = statusTone(status);
   const className =
@@ -542,8 +694,16 @@ function ActionCard({
                 {destination}
               </p>
               <p className={`mt-0.5 truncate text-[11px] font-medium ${appearance.labelClassName}`}>
-                {routeActionLabel(route)}
+                {route.action.kind === "reclassify_event" && route.trigger.kind === "event"
+                  ? `${route.trigger.source}:${route.trigger.eventType} → ${route.action.source}:${route.action.eventType}`
+                  : routeActionLabel(route)}
               </p>
+              {route.action.kind === "reclassify_event" ? (
+                <p className="mt-1 truncate font-mono text-[10px] text-[var(--bo-muted-2)]">
+                  {Object.keys(route.action.payload.fields).length} projected payload field
+                  {Object.keys(route.action.payload.fields).length === 1 ? "" : "s"}
+                </p>
+              ) : null}
             </div>
             {instance ? <WorkflowStatus status={instance.status} /> : null}
           </div>
@@ -678,42 +838,152 @@ function DashboardRouteGrid({
   );
 }
 
+function EventRouteGrid({
+  rows,
+  routes,
+  workflowInstances,
+  activeSource,
+  selectionKind,
+  selectionId,
+  onSelectSource,
+  onSelectEvent,
+  onSelectTrigger,
+  onSelectAction,
+}: {
+  rows: readonly EventSwimlaneRow[];
+  routes: readonly DashboardRoute[];
+  workflowInstances: DashboardWorkflowInstance[];
+  activeSource: DashboardSource | null;
+  selectionKind: DashboardSelectionKind | null;
+  selectionId: string;
+  onSelectSource: (source: DashboardSource) => void;
+  onSelectEvent: (eventDefinition: DashboardEventDefinitionWithSource) => void;
+  onSelectTrigger: (route: DashboardRoute) => void;
+  onSelectAction: (route: DashboardRoute) => void;
+}) {
+  const selectedRoute =
+    selectionKind === "trigger" || selectionKind === "action"
+      ? (routes.find((route) => route.id === selectionId) ?? null)
+      : null;
+  const selectedEventId =
+    selectionKind === "event"
+      ? selectionId
+      : selectedRoute?.trigger.kind === "event"
+        ? `${selectedRoute.trigger.source}:${selectedRoute.trigger.eventType}`
+        : selectedRoute
+          ? `scheduler:schedule:${selectedRoute.id}`
+          : null;
+  const selectedSourceId =
+    selectionKind === "source"
+      ? selectionId
+      : selectedRoute
+        ? routeSourceId(selectedRoute)
+        : selectedEventId
+          ? (rows.find((row) => row.eventId === selectedEventId)?.sourceId ?? null)
+          : (activeSource?.id ?? null);
+
+  return (
+    <div className="grid auto-rows-[5.75rem] grid-cols-[18rem_minmax(20rem,1fr)_minmax(22rem,1.1fr)] items-stretch gap-x-3 px-3">
+      {rows.map((row, rowIndex) => {
+        const source = row.source;
+        const eventDefinition = row.eventDefinition;
+        const route = row.route;
+        const dividerClassName = row.dividerAfterSource
+          ? "border-b border-[color:var(--bo-border)]"
+          : "";
+        const sourceMuted = Boolean(selectedSourceId && row.sourceId !== selectedSourceId);
+        const eventMuted = selectedEventId ? row.eventId !== selectedEventId : sourceMuted;
+        const routingMuted = selectedRoute
+          ? route?.id !== selectedRoute.id
+          : selectedEventId
+            ? row.eventId !== selectedEventId
+            : sourceMuted;
+        return (
+          <Fragment key={`${row.sourceId}:${row.eventId ?? "empty"}:${route?.id ?? rowIndex}`}>
+            <div className={`min-w-0 py-2.5 ${dividerClassName}`}>
+              {source ? (
+                <SourceCard
+                  source={source}
+                  selected={selectionKind === "source" && selectionId === source.id}
+                  muted={sourceMuted}
+                  onSelect={() => {
+                    onSelectSource(source);
+                  }}
+                />
+              ) : null}
+            </div>
+            <div
+              className={`min-w-0 py-2.5 transition-opacity ${dividerClassName} ${eventMuted ? "opacity-35" : ""}`}
+            >
+              {eventDefinition ? (
+                <EventCard
+                  eventDefinition={eventDefinition}
+                  selected={
+                    (selectionKind === "event" &&
+                      selectionId === `${eventDefinition.source}:${eventDefinition.eventType}`) ||
+                    (selectionKind === "trigger" &&
+                      route?.trigger.kind === "schedule" &&
+                      selectionId === route.id)
+                  }
+                  onSelect={() => {
+                    if (route?.trigger.kind === "schedule") {
+                      onSelectTrigger(route);
+                      return;
+                    }
+                    onSelectEvent(eventDefinition);
+                  }}
+                />
+              ) : route ? null : (
+                <div className="flex h-full items-center px-3 text-xs text-[var(--bo-muted-2)]">
+                  No registered events
+                </div>
+              )}
+            </div>
+            <div
+              className={`min-w-0 py-2.5 transition-opacity ${dividerClassName} ${routingMuted ? "opacity-35" : ""}`}
+            >
+              {route ? (
+                <ActionCard
+                  route={route}
+                  instance={latestWorkflowRunForRoute(route, workflowInstances)}
+                  selected={selectionKind === "action" && selectionId === route.id}
+                  onSelect={() => {
+                    onSelectAction(route);
+                  }}
+                />
+              ) : eventDefinition ? (
+                <div className="flex h-full items-center px-3 text-xs text-[var(--bo-muted-2)]">
+                  No routes
+                </div>
+              ) : null}
+            </div>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
 const parseSelectionKind = (value: string | null): DashboardSelectionKind | null => {
   if (value === "workflow") {
     return "action";
   }
-  if (value === "source" || value === "trigger" || value === "action") {
+  if (value === "source" || value === "event" || value === "trigger" || value === "action") {
     return value;
   }
   return null;
 };
 
-export default function BackofficeAutomationDashboard() {
+export function AutomationSwimlaneDashboard({
+  view = "workflows",
+}: {
+  view?: AutomationSwimlaneView;
+}) {
   const { collections, selectedScope } = useOutletContext<AutomationLayoutContext>();
   const loaderData = useLoaderData<typeof loader>();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const routesQuery = useLiveQuery(
-    (query) =>
-      query
-        .from({ route: collections.routes })
-        .leftJoin({ schedule: collections.routeScheduleStates }, ({ route, schedule }) =>
-          eq(route.id, schedule.id),
-        )
-        .orderBy(({ route }) => route.priority, "asc")
-        .orderBy(({ route }) => route.id, "asc")
-        .select(({ route, schedule }) => ({
-          id: route.id,
-          name: route.name,
-          enabled: route.enabled,
-          priority: route.priority,
-          trigger: route.trigger,
-          action: route.action,
-          description: route.description,
-          nextOccurrenceAt: schedule?.nextOccurrenceAt,
-        })),
-    [collections.routeScheduleStates, collections.routes],
-  );
+  const routesState = useAutomationRoutes(collections);
   const eventDefinitionsQuery = useLiveQuery(
     (query) =>
       query
@@ -756,10 +1026,7 @@ export default function BackofficeAutomationDashboard() {
     [collections.workflowInstances],
   );
 
-  const routes: DashboardRoute[] = (routesQuery.data ?? []).map((route) => ({
-    ...route,
-    nextOccurrenceAt: route.nextOccurrenceAt?.toISOString() ?? null,
-  }));
+  const routes: DashboardRoute[] = routesState.routes;
   const dynamicEventDefinitions: DashboardEventDefinitionWithSource[] = (
     eventDefinitionsQuery.data ?? []
   ).map((eventDefinition) => ({
@@ -787,13 +1054,28 @@ export default function BackofficeAutomationDashboard() {
       };
     },
   );
-  const sources = dashboardSources(routes, dynamicEventDefinitions);
+  const workflowRoutes = routes.filter(
+    (route) =>
+      route.action.kind === "start_workflow" || route.action.kind === "send_workflow_event",
+  );
+  const eventRoutes = routes.filter((route) => route.action.kind !== "start_workflow");
+  const sources = dashboardSources({
+    routes: view === "workflows" ? workflowRoutes : eventRoutes,
+    eventDefinitions,
+    includeUnroutedSources: view === "events",
+  });
+  const eventRows =
+    view === "events" ? eventSwimlaneRows(sources, eventDefinitions, eventRoutes) : [];
   const requestedSourceId = normalizedSourceId(searchParams.get(SOURCE_FILTER_PARAM) ?? "");
   const activeSource = sources.find((source) => source.id === requestedSourceId) ?? null;
   const selectionKind = parseSelectionKind(searchParams.get(SELECTION_KIND_PARAM));
   const selectionId = searchParams.get(SELECTION_ID_PARAM)?.trim() ?? "";
   const selectedRoute = routes.find((route) => route.id === selectionId) ?? null;
   const selectedSource = sources.find((source) => source.id === selectionId) ?? null;
+  const selectedEvent =
+    eventDefinitions.find(
+      (eventDefinition) => `${eventDefinition.source}:${eventDefinition.eventType}` === selectionId,
+    ) ?? eventRows.find((row) => row.eventId === selectionId)?.eventDefinition;
   const inspectorSelection: DashboardInspectorSelection | null =
     selectionKind === "source" && selectedSource
       ? {
@@ -803,13 +1085,16 @@ export default function BackofficeAutomationDashboard() {
             (eventDefinition) => normalizedSourceId(eventDefinition.source) === selectedSource.id,
           ),
         }
-      : selectionKind === "trigger" && selectedRoute
-        ? { kind: "trigger", route: selectedRoute }
-        : selectionKind === "action" && selectedRoute
-          ? { kind: "action", route: selectedRoute }
-          : null;
+      : selectionKind === "event" && selectedEvent
+        ? { kind: "event", eventDefinition: selectedEvent }
+        : selectionKind === "trigger" && selectedRoute
+          ? { kind: "trigger", route: selectedRoute }
+          : selectionKind === "action" && selectedRoute
+            ? { kind: "action", route: selectedRoute }
+            : null;
+  const showInspector = view === "events" || inspectorSelection !== null;
   const errors = [
-    routesQuery.isError ? "Route synchronization failed." : null,
+    routesState.status === "error" ? routesState.message : null,
     eventDefinitionsQuery.isError ? "Event catalog synchronization failed." : null,
     workflowsQuery.isError ? "Workflow synchronization failed." : null,
   ].filter((message): message is string => Boolean(message));
@@ -867,7 +1152,7 @@ export default function BackofficeAutomationDashboard() {
 
       <div
         className={`grid min-w-0 flex-1 gap-3 ${
-          inspectorSelection ? "xl:grid-cols-[minmax(0,1fr)_28rem]" : ""
+          showInspector ? "xl:grid-cols-[minmax(0,1fr)_28rem]" : ""
         }`}
       >
         <div className="min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
@@ -881,74 +1166,118 @@ export default function BackofficeAutomationDashboard() {
                   description={
                     activeSource
                       ? `Highlighting routes from ${activeSource.label}`
-                      : "Available event sources are always visible"
+                      : view === "events"
+                        ? "Available event sources are always visible"
+                        : "Sources with configured workflow routes"
                   }
                 />
                 <LaneHeader
                   dotClassName="bg-[#c47c31]"
                   icon={<Zap className="h-3 w-3" strokeWidth={1.8} />}
-                  title="Triggers"
-                  description="Events, schedules, matchers, and priority"
+                  title={view === "workflows" ? "When" : "Events"}
+                  description={
+                    view === "workflows"
+                      ? "Events, schedules, matchers, and priority"
+                      : "Every registered or routed event"
+                  }
                 />
                 <LaneHeader
                   dotClassName="bg-[#6b5f73]"
                   icon={<Braces className="h-3 w-3" strokeWidth={1.8} />}
-                  title="Actions"
-                  description="Workflow starts, events, and forwarding"
+                  title={view === "workflows" ? "Then" : "Routing"}
+                  description={
+                    view === "workflows"
+                      ? "Workflow starts and workflow events"
+                      : "Every configured route action"
+                  }
                 />
               </div>
 
-              <DashboardRouteGrid
-                sources={sources}
-                routes={routes}
-                workflowInstances={workflowInstances}
-                activeSource={activeSource}
-                selectionKind={selectionKind}
-                selectionId={selectionId}
-                routesLoading={routesQuery.isLoading && routes.length === 0}
-                onSelectSource={(source) => {
-                  const isClearing = activeSource?.id === source.id;
-                  setSearchParams((currentSearchParams) => {
-                    const nextSearchParams = new URLSearchParams(currentSearchParams);
-                    if (isClearing) {
-                      nextSearchParams.delete(SOURCE_FILTER_PARAM);
-                      nextSearchParams.delete(SELECTION_KIND_PARAM);
-                      nextSearchParams.delete(SELECTION_ID_PARAM);
-                    } else {
-                      nextSearchParams.set(SOURCE_FILTER_PARAM, source.id);
-                      nextSearchParams.set(SELECTION_KIND_PARAM, "source");
-                      nextSearchParams.set(SELECTION_ID_PARAM, source.id);
-                    }
-                    nextSearchParams.delete(WORKFLOW_SCRIPT_ID_PARAM);
-                    return nextSearchParams;
-                  }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
-                }}
-                onSelectTrigger={(route) => {
-                  updateSelection({ kind: "trigger", id: route.id, clearSourceFilter: true });
-                }}
-                onSelectAction={(route) => {
-                  updateSelection({
-                    kind: "action",
-                    id: route.id,
-                    clearSourceFilter: true,
-                    workflowScriptId:
-                      route.action.kind === "start_workflow"
-                        ? toAutomationScriptIdFromAbsolutePath(route.action.workflowScriptPath)
-                        : undefined,
-                  });
-                }}
-              />
+              {view === "workflows" ? (
+                <DashboardRouteGrid
+                  sources={sources}
+                  routes={workflowRoutes}
+                  workflowInstances={workflowInstances}
+                  activeSource={activeSource}
+                  selectionKind={selectionKind}
+                  selectionId={selectionId}
+                  routesLoading={routesState.status === "loading"}
+                  onSelectSource={(source) => {
+                    const isClearing = activeSource?.id === source.id;
+                    setSearchParams((currentSearchParams) => {
+                      const nextSearchParams = new URLSearchParams(currentSearchParams);
+                      if (isClearing) {
+                        nextSearchParams.delete(SOURCE_FILTER_PARAM);
+                        nextSearchParams.delete(SELECTION_KIND_PARAM);
+                        nextSearchParams.delete(SELECTION_ID_PARAM);
+                      } else {
+                        nextSearchParams.set(SOURCE_FILTER_PARAM, source.id);
+                        nextSearchParams.set(SELECTION_KIND_PARAM, "source");
+                        nextSearchParams.set(SELECTION_ID_PARAM, source.id);
+                      }
+                      nextSearchParams.delete(WORKFLOW_SCRIPT_ID_PARAM);
+                      return nextSearchParams;
+                    }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
+                  }}
+                  onSelectTrigger={(route) => {
+                    updateSelection({ kind: "trigger", id: route.id, clearSourceFilter: true });
+                  }}
+                  onSelectAction={(route) => {
+                    updateSelection({
+                      kind: "action",
+                      id: route.id,
+                      clearSourceFilter: true,
+                      workflowScriptId:
+                        route.action.kind === "start_workflow"
+                          ? toAutomationScriptIdFromAbsolutePath(route.action.workflowScriptPath)
+                          : undefined,
+                    });
+                  }}
+                />
+              ) : (
+                <EventRouteGrid
+                  rows={eventRows}
+                  routes={eventRoutes}
+                  workflowInstances={workflowInstances}
+                  activeSource={activeSource}
+                  selectionKind={selectionKind}
+                  selectionId={selectionId}
+                  onSelectSource={(source) => {
+                    updateSelection({ kind: "source", id: source.id });
+                  }}
+                  onSelectEvent={(eventDefinition) => {
+                    updateSelection({
+                      kind: "event",
+                      id: `${eventDefinition.source}:${eventDefinition.eventType}`,
+                      clearSourceFilter: true,
+                    });
+                  }}
+                  onSelectTrigger={(route) => {
+                    updateSelection({ kind: "trigger", id: route.id, clearSourceFilter: true });
+                  }}
+                  onSelectAction={(route) => {
+                    updateSelection({
+                      kind: "action",
+                      id: route.id,
+                      workflowScriptId:
+                        route.action.kind === "start_workflow"
+                          ? toAutomationScriptIdFromAbsolutePath(route.action.workflowScriptPath)
+                          : undefined,
+                    });
+                  }}
+                />
+              )}
             </div>
           </div>
         </div>
 
-        {inspectorSelection ? (
+        {showInspector ? (
           <DashboardInspector
             selection={inspectorSelection}
             workflowSource={loaderData.workflowSource}
             runtimeToolCatalog={loaderData.runtimeToolCatalog}
             collections={collections}
-            scriptsPath={automationScopeTabPath(selectedScope, "scripts")}
+            scriptsPath={filesScopeBasePath(selectedScope)}
             eventsCatalogPath={automationScopeTabPath(selectedScope, "events-catalog")}
             scope={toBackofficeScope(selectedScope)}
             onClear={() => {
@@ -966,4 +1295,8 @@ export default function BackofficeAutomationDashboard() {
       </div>
     </section>
   );
+}
+
+export default function BackofficeAutomationDashboard() {
+  return <AutomationSwimlaneDashboard />;
 }

@@ -26,17 +26,11 @@ export function useScriptPresentation() {
 }
 
 const AUTOMATION_TAB_GROUPS = [
-  [{ id: "dashboard", label: "Dashboard" }],
   [
-    { id: "terminal", label: "Terminal" },
-    { id: "scripts", label: "Scripts" },
-    { id: "router", label: "Router" },
+    { id: "dashboard", label: "Orchestration" },
+    { id: "events-catalog", label: "Events" },
   ],
-  [
-    { id: "store", label: "Store" },
-    { id: "events", label: "Events" },
-    { id: "events-catalog", label: "Events Catalog" },
-  ],
+  [{ id: "store", label: "Store" }],
   [
     { id: "api", label: "API" },
     { id: "integrations", label: "Integrations" },
@@ -82,7 +76,7 @@ function AutomationTabRail({
   );
 }
 
-export type AutomationSubpageTab = {
+type AutomationSubpageTab = {
   id: string;
   label: string;
   to: string;

@@ -66,7 +66,14 @@ export const automationRouteActionDetailRows = (
       return eventId ? [{ label: labels.eventId, value: eventId }] : [];
     }
     case "reclassify_event":
-      return [{ label: labels.event, value: `${action.source}:${action.eventType}` }];
+      return [
+        { label: "Output source", value: action.source },
+        { label: "Output event", value: action.eventType },
+        ...Object.entries(action.payload.fields).map(([field, path]) => ({
+          label: `Payload · ${field}`,
+          value: path,
+        })),
+      ];
   }
 
   throw new Error("Unsupported automation route action kind.");
