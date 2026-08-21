@@ -18,8 +18,19 @@
     "undici",
   ],
 
-  // Tooling config: Prettier plugin names are resolved dynamically by Prettier.
-  "ignorePatterns": ["prettier.unsupported.config.mjs"],
+  // Tooling config: Prettier plugin names are resolved dynamically by Prettier. Backoffice content
+  // and shims are loaded through runtime registries and build aliases rather than static imports.
+  "ignorePatterns": [
+    "prettier.unsupported.config.mjs",
+    "apps/backoffice/content/**",
+    "apps/backoffice/shims/**",
+    "apps/backoffice/vitest.cloudflare.config.ts",
+    "apps/backoffice/vitest.node.config.ts",
+    "apps/backoffice/vitest.shared.ts",
+    "apps/backoffice/workers/app.ts",
+    "apps/backoffice/workers/sandbox.do.ts",
+    "apps/backoffice/workers/vitest-env.ts",
+  ],
 
   "duplicates": {
     "ignore": [
