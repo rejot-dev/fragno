@@ -90,6 +90,8 @@ export {
 
 export const FRAGNO_OUTBOX_LOCAL_SCHEMA_VERSION = 1;
 
+const FRAGNO_OUTBOX_STARTUP_TIMEOUT_MS = 5_000;
+
 export type { FragnoInternalDescription } from "./coordinator/fragno-internal-fetcher";
 
 export async function fetchFragnoOutboxDescription(options: {
@@ -176,7 +178,10 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
   // The v3 prefix leaves behind databases created with the temporary single-process wiring.
   const databaseName = `fragno-v3-${databaseHash.slice(0, 32)}.sqlite`;
 
-  const persistenceResource = await dependencies.openPersistence({ databaseName });
+  const persistenceResource = await waitForFragnoOutboxStartupStage(
+    dependencies.openPersistence({ databaseName }),
+    "opening browser persistence",
+  );
   const persistence = orderFragnoPersistenceWrites(persistenceResource.persistence);
 
   let internalCollection: FragnoInternalCollection | undefined;
@@ -190,7 +195,10 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
       schemaVersion: FRAGNO_OUTBOX_LOCAL_SCHEMA_VERSION,
       state,
     });
-    await internalCollection.preload();
+    await waitForFragnoOutboxStartupStage(
+      internalCollection.preload(),
+      "preloading coordinator metadata",
+    );
 
     let completedCatchUpPages = 0;
     const initialCheckpoint = internalCollection.getCheckpoint();
@@ -343,9 +351,19 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
         try {
           transitionTo("registering");
           const collectionsReady = initializedCollectionRegistry.preload();
-          void collectionsReady.catch(() => {});
-          await initializedOutboxSynchronizer.waitUntilRegistered(
+          const collectionsRegistered = initializedOutboxSynchronizer.waitUntilRegistered(
             initializedCollectionRegistry.registeredTargets(),
+          );
+          await waitForFragnoOutboxStartupStage(
+            Promise.race([
+              collectionsRegistered,
+              collectionsReady.then(() => {
+                throw new Error(
+                  "Fragno collections became ready before outbox synchronization registration completed.",
+                );
+              }),
+            ]),
+            "registering synchronized collections",
           );
 
           transitionTo("catching-up");
@@ -394,6 +412,28 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
       return cleanupPromise;
     },
   };
+}
+
+async function waitForFragnoOutboxStartupStage<T>(
+  stagePromise: Promise<T>,
+  stage: string,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      reject(
+        new Error(
+          `Fragno outbox startup timed out after ${FRAGNO_OUTBOX_STARTUP_TIMEOUT_MS}ms while ${stage}.`,
+        ),
+      );
+    }, FRAGNO_OUTBOX_STARTUP_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([stagePromise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function isAbortError(error: unknown): boolean {

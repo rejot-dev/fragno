@@ -337,6 +337,26 @@ describe("Fragno TanStack adapter from scratch end-to-end", () => {
     }
   });
 
+  it("rejects startup when browser persistence opening stalls", async () => {
+    const server = await createTestServer("persistence-opening-timeout");
+    const coordinatorPromise = createFragnoOutboxCoordinator(
+      { baseUrl: server.baseUrl, fetch: server.fetch, schemas: [appSchema] },
+      {
+        openPersistence() {
+          return new Promise<never>(() => {});
+        },
+      },
+    );
+
+    try {
+      await expect(coordinatorPromise).rejects.toThrow(
+        "Fragno outbox startup timed out after 5000ms while opening browser persistence.",
+      );
+    } finally {
+      await server.cleanup();
+    }
+  }, 10_000);
+
   it("checks the aligned outbox page before streaming from a persisted database", async () => {
     const server = await createTestServer("persisted-reload");
     const temporaryDirectory = await mkdtemp(join(tmpdir(), "fragno-outbox-reload-"));
