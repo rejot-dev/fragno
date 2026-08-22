@@ -1,5 +1,3 @@
-import { Link } from "react-router";
-
 import { BackofficePageHeader } from "@/components/backoffice";
 
 export default function BackofficeNotFound() {
@@ -10,14 +8,6 @@ export default function BackofficeNotFound() {
         eyebrow="Backoffice"
         title="Page not found"
         description="This backoffice route does not exist."
-        actions={
-          <Link
-            to="/backoffice"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-          >
-            Back to terminal
-          </Link>
-        }
       />
 
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">

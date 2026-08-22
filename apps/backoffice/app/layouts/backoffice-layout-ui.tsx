@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link, Outlet, isRouteErrorResponse, useRouteError } from "react-router";
+import { Outlet, isRouteErrorResponse, useRouteError } from "react-router";
 
 import { BackofficePageHeader, BackofficeShell } from "@/components/backoffice";
 import { getRouteErrorDebugDetails } from "@/routes/backoffice/route-errors";
@@ -56,14 +56,6 @@ export function ErrorBoundary() {
           eyebrow="Backoffice"
           title={title}
           description={description}
-          actions={
-            <Link
-              to="/backoffice"
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-            >
-              Back to terminal
-            </Link>
-          }
         />
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
           {status ? <p>Error code: {status}</p> : null}
