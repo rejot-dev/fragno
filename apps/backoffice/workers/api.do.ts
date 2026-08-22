@@ -178,6 +178,35 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
           { propagationContext: context.capturePropagationContext() },
         );
       },
+      onWebhookEndpointChanged: async (payload, context) => {
+        const automations = this.#runtimeServices.objects.automations.for(ownerScope);
+        await automations.ensureEventSource({
+          source: payload.endpointId,
+          label: payload.endpoint.name,
+          description: `${payload.endpoint.name} webhook events received through the API.`,
+          category: "custom",
+        });
+        if (payload.change !== "created") {
+          return;
+        }
+        await automations.ingestEvent(
+          {
+            id: context.hookId.toString(),
+            scope: ownerScope,
+            source: "api",
+            eventType: "webhook_endpoint.created",
+            occurredAt: new Date().toISOString(),
+            payload: { endpointId: payload.endpointId, ...payload.endpoint },
+            actors: {
+              initiator: AUTOMATION_SYSTEM_INITIATOR,
+              principal: null,
+              delegation: [],
+            },
+            subject: scopeSubject(ownerScope, { endpointId: payload.endpointId }),
+          },
+          { propagationContext: context.capturePropagationContext() },
+        );
+      },
       onWebhookReceived: async (payload, context) => {
         const scope = ownerScope;
         await this.#runtimeServices.objects.automations.for(scope).ingestEvent(

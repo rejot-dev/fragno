@@ -38,6 +38,7 @@ import {
   type AutomationEventDefinition,
 } from "./event-definitions";
 import { createAutomationEventDefinitionServices } from "./event-definitions-storage-runtime";
+import { createAutomationEventSourceServices } from "./event-sources-storage-runtime";
 import { createAutomationEventServices } from "./events-storage-runtime";
 import { createExternalIdentityBindingServices } from "./external-identity-bindings-storage-runtime";
 import type { AutomationEventIngestionPayload, AutomationHookUnitOfWork } from "./internal-hooks";
@@ -386,6 +387,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     });
     const routeServices = createAutomationRouteServices(defineService);
     const eventServices = createAutomationEventServices(defineService);
+    const eventSourceServices = createAutomationEventSourceServices(defineService);
     const eventDefinitionServices = createAutomationEventDefinitionServices(defineService);
     const marketplaceIngestionServices =
       createAutomationMarketplaceIngestionServices(defineService);
@@ -397,6 +399,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ...sandboxServices,
       ...routeServices,
       ...eventServices,
+      ...eventSourceServices,
       ...eventDefinitionServices,
       ...marketplaceIngestionServices,
       ...externalIdentityBindingServices,

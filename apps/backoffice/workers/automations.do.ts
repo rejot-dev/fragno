@@ -56,6 +56,10 @@ import type {
 } from "@/fragno/automation";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
+import type {
+  AutomationEventSource,
+  AutomationEventSourceInput,
+} from "@/fragno/automation/event-sources";
 import {
   bindExternalIdentityInputSchema,
   getExternalIdentityBindingInputSchema,
@@ -1019,6 +1023,53 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     context?: BackofficeRpcContext,
   ): Promise<AutomationIngestResult> {
     return await this.triggerIngestEvent(event, context);
+  }
+
+  async listEventSources(): Promise<AutomationEventSource[]> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    const sources = await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.listEventSources(),
+    );
+
+    return sources.map((source) => ({
+      id: source.id.valueOf(),
+      source: source.source,
+      label: source.label,
+      description: source.description,
+      category: source.category,
+      createdAt: source.createdAt.toISOString(),
+      updatedAt: source.updatedAt.toISOString(),
+    }));
+  }
+
+  async getEventSource(input: { source: string }): Promise<AutomationEventSource | null> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    const source = await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.getEventSource(input),
+    );
+
+    return source
+      ? {
+          id: source.id.valueOf(),
+          source: source.source,
+          label: source.label,
+          description: source.description,
+          category: source.category,
+          createdAt: source.createdAt.toISOString(),
+          updatedAt: source.updatedAt.toISOString(),
+        }
+      : null;
+  }
+
+  async ensureEventSource(input: AutomationEventSourceInput): Promise<AutomationEventSource> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.ensureEventSource(input),
+    );
   }
 
   async listEventDefinitions(): Promise<AutomationEventDefinition[]> {

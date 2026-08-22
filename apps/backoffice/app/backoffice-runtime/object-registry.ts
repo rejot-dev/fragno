@@ -37,6 +37,10 @@ import type {
 } from "@/fragno/automation";
 import type { AutomationActor } from "@/fragno/automation/actors";
 import type {
+  AutomationEventSource,
+  AutomationEventSourceInput,
+} from "@/fragno/automation/event-sources";
+import type {
   BindExternalIdentityInput,
   BindExternalIdentityResult,
   GetExternalIdentityBindingInput,
@@ -287,6 +291,9 @@ export type AutomationsObject = FetchObject &
       input: GetExternalIdentityBindingInput,
       context: BackofficeActionRpcContext,
     ): Promise<ResolveExternalIdentityResult>;
+    listEventSources(): Promise<AutomationEventSource[]>;
+    getEventSource(input: { source: string }): Promise<AutomationEventSource | null>;
+    ensureEventSource(input: AutomationEventSourceInput): Promise<AutomationEventSource>;
     listEventDefinitions(): Promise<AutomationEventDefinition[]>;
     getEventDefinition(input: {
       source: string;

@@ -131,10 +131,12 @@ const fallbackSourceLabel = (source: string) =>
 
 function dashboardSources({
   routes,
+  eventSources,
   eventDefinitions,
   includeUnroutedSources,
 }: {
   routes: readonly DashboardRoute[];
+  eventSources: readonly DashboardSource[];
   eventDefinitions: readonly DashboardEventDefinitionWithSource[];
   includeUnroutedSources: boolean;
 }): DashboardSource[] {
@@ -147,6 +149,11 @@ function dashboardSources({
       label: eventSource.label,
       description: eventSource.description,
     });
+  }
+
+  for (const eventSource of eventSources) {
+    const id = normalizedSourceId(eventSource.id);
+    sourceCatalog.set(id, { ...eventSource, id });
   }
 
   for (const eventDefinition of eventDefinitions) {
@@ -984,6 +991,18 @@ export function AutomationSwimlaneDashboard({
   const [searchParams, setSearchParams] = useSearchParams();
 
   const routesState = useAutomationRoutes(collections);
+  const eventSourcesQuery = useLiveQuery(
+    (query) =>
+      query
+        .from({ source: collections.eventSources })
+        .orderBy(({ source }) => source.label, "asc")
+        .select(({ source }) => ({
+          id: source.source,
+          label: source.label,
+          description: source.description,
+        })),
+    [collections.eventSources],
+  );
   const eventDefinitionsQuery = useLiveQuery(
     (query) =>
       query
@@ -1061,6 +1080,7 @@ export function AutomationSwimlaneDashboard({
   const eventRoutes = routes.filter((route) => route.action.kind !== "start_workflow");
   const sources = dashboardSources({
     routes: view === "workflows" ? workflowRoutes : eventRoutes,
+    eventSources: eventSourcesQuery.data ?? [],
     eventDefinitions,
     includeUnroutedSources: view === "events",
   });
@@ -1095,6 +1115,7 @@ export function AutomationSwimlaneDashboard({
   const showInspector = view === "events" || inspectorSelection !== null;
   const errors = [
     routesState.status === "error" ? routesState.message : null,
+    eventSourcesQuery.isError ? "Event source synchronization failed." : null,
     eventDefinitionsQuery.isError ? "Event catalog synchronization failed." : null,
     workflowsQuery.isError ? "Workflow synchronization failed." : null,
   ].filter((message): message is string => Boolean(message));
