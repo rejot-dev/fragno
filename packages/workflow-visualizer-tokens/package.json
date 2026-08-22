@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/workflow-visualizer-tokens",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Incremental token-state-machine workflow visualizer for incomplete automation source.",
   "homepage": "https://fragno.dev",
   "license": "MIT",
