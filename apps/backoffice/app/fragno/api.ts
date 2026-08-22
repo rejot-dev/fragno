@@ -10,6 +10,7 @@ export type ApiConfig = Pick<
   | "onConnectionChanged"
   | "onConnectionDeleted"
   | "onConnectionAvailable"
+  | "onWebhookEndpointChanged"
   | "onWebhookReceived"
 >;
 
@@ -24,6 +25,7 @@ export function createApiServer(
       onConnectionChanged: config.onConnectionChanged,
       onConnectionDeleted: config.onConnectionDeleted,
       onConnectionAvailable: config.onConnectionAvailable,
+      onWebhookEndpointChanged: config.onWebhookEndpointChanged,
       onWebhookReceived: config.onWebhookReceived,
     },
     {

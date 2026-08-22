@@ -41,6 +41,63 @@ describe("API system capability", () => {
     await expect(response.json()).resolves.toEqual({ connections: [] });
   });
 
+  test("creates an automation event source for a new webhook endpoint", async () => {
+    const runtime = await createRuntime();
+    const scope = { kind: "org" as const, orgId: "org-1" };
+    const api = runtime.objects.api.for(scope);
+
+    const response = await api.fetch(
+      new Request("https://api.do/api/api/webhooks/endpoints/slack", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Slack",
+          status: "active",
+          verification: { type: "none" },
+          deliveryIdentity: { type: "header", name: "x-slack-event-id" },
+          auth: { type: "none" },
+        }),
+      }),
+    );
+    assert.equal(response.status, 201);
+
+    await api.alarm?.();
+    await runtime.drainWaitUntil();
+
+    const automations = runtime.objects.automations.for(scope);
+    await expect(automations.listEventSources()).resolves.toEqual([
+      expect.objectContaining({
+        source: "slack",
+        label: "Slack",
+        description: "Slack webhook events received through the API.",
+        category: "custom",
+      }),
+    ]);
+
+    const eventsResponse = await automations.fetch(
+      new Request("https://automations.test/api/automations/events?limit=10"),
+    );
+    assert.equal(eventsResponse.status, 200);
+    await expect(eventsResponse.json()).resolves.toMatchObject({
+      events: [
+        {
+          source: "api",
+          eventType: "webhook_endpoint.created",
+          payload: {
+            endpointId: "slack",
+            name: "Slack",
+            status: "active",
+            authConfig: { type: "none" },
+            verification: { type: "none" },
+            deliveryIdentity: { type: "header", name: "x-slack-event-id" },
+            secretRefs: [],
+          },
+          subject: expect.objectContaining({ endpointId: "slack", orgId: "org-1" }),
+        },
+      ],
+    });
+  });
+
   test("does not advertise API or MCP in system scope", async () => {
     const runtime = await createRuntime();
     const capabilities = createBackofficeCapabilitiesRuntime({

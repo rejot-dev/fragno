@@ -1,3 +1,6 @@
+import { webhookDeliveryIdentitySchema } from "@fragno-dev/api-fragment/types";
+import { webhookAuthConfigSchema } from "@fragno-dev/api-fragment/webhooks/auth";
+import { webhookVerificationConfigSchema } from "@fragno-dev/api-fragment/webhooks/verification";
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
@@ -34,6 +37,20 @@ const apiScopeSubjectSchema = z.object({
 
 const apiConnectionSubjectSchema = apiScopeSubjectSchema.extend({
   connectionId: z.string().min(1),
+});
+
+const apiWebhookEndpointCreatedPayloadSchema = z.object({
+  endpointId: z.string().min(1),
+  name: z.string().min(1),
+  status: z.enum(["draft", "active", "disabled"]),
+  authConfig: webhookAuthConfigSchema,
+  verification: webhookVerificationConfigSchema,
+  deliveryIdentity: webhookDeliveryIdentitySchema,
+  secretRefs: z.array(z.string()),
+});
+
+const apiWebhookEndpointSubjectSchema = apiScopeSubjectSchema.extend({
+  endpointId: z.string().min(1),
 });
 
 const apiWebhookReceivedPayloadSchema = z.object({
@@ -104,6 +121,23 @@ export const apiCapability: BackofficeCapability = {
             authMode: "bearer",
             status: "active",
           },
+        },
+      },
+      {
+        source: AUTOMATION_SOURCE,
+        eventType: "webhook_endpoint.created",
+        label: "API webhook endpoint created",
+        description: "Fires when an API webhook endpoint is created.",
+        payloadSchema: apiWebhookEndpointCreatedPayloadSchema,
+        subjectSchema: apiWebhookEndpointSubjectSchema,
+        example: {
+          endpointId: "stripe",
+          name: "Stripe",
+          status: "active",
+          authConfig: { type: "none" },
+          verification: { type: "none" },
+          deliveryIdentity: { type: "header", name: "stripe-event-id" },
+          secretRefs: [],
         },
       },
       {

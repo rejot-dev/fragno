@@ -2,6 +2,7 @@ import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
 import type { AutomationEvent } from "./contracts";
 import type { AutomationEventDefinition } from "./event-definitions";
+import type { AutomationEventSource } from "./event-sources";
 import type {
   AutomationRouteAction,
   AutomationRouteMetadata,
@@ -187,5 +188,24 @@ export const automationFragmentSchema = schema("automations", (s) => {
     })
     .alterTable("automation_route", (t) => {
       return t.addColumn("metadata", jsonColumn<AutomationRouteMetadata>().nullable());
+    })
+    .addTable("automation_event_source", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("source", column("string"))
+        .addColumn("label", column("string"))
+        .addColumn("description", column("text"))
+        .addColumn("category", jsonColumn<AutomationEventSource["category"]>())
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .addColumn(
+          "updatedAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("idx_automation_event_source_source", ["source"], {
+          unique: true,
+        });
     });
 });
