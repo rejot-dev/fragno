@@ -5,6 +5,10 @@ import type { AnySchema, AnyTable, FragnoId, FragnoReference } from "@fragno-dev
 import type { Collection } from "@tanstack/db";
 import type { PersistedCollectionPersistence } from "@tanstack/db-sqlite-persistence-core";
 
+import {
+  openFragnoBrowserPersistenceWithDiagnostics,
+  type FragnoBrowserPersistenceDiagnostics,
+} from "./coordinator/fragno-browser-persistence-startup";
 import { FragnoCollectionRegistry } from "./coordinator/fragno-collection-registry";
 import {
   FRAGNO_INTERNAL_COLLECTION_ID,
@@ -80,6 +84,7 @@ export type FragnoCollectionRow<TTable extends AnyTable> = {
 };
 
 export type { FragnoOutboxCheckpoint } from "./checkpoint";
+export type { FragnoBrowserPersistenceDiagnostics } from "./coordinator/fragno-browser-persistence-startup";
 
 export {
   FragnoInternalCollection,
@@ -108,11 +113,13 @@ export type FragnoOutboxCatchUpProgress = {
   percent: number;
 };
 
+type FragnoOutboxPersistenceResource = {
+  persistence: PersistedCollectionPersistence;
+  cleanup(): Promise<void>;
+};
+
 export type FragnoOutboxCoordinatorDependencies = {
-  openPersistence(options: { databaseName: string }): Promise<{
-    persistence: PersistedCollectionPersistence;
-    cleanup(): Promise<void>;
-  }>;
+  openPersistence(options: { databaseName: string }): Promise<FragnoOutboxPersistenceResource>;
 };
 
 export type FragnoCollectionOptions = {
@@ -150,6 +157,8 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
     fetch: typeof globalThis.fetch;
     schemas: TSchemas;
     onCatchUpProgress?(progress: FragnoOutboxCatchUpProgress): void;
+    /** Receives recurring browser persistence diagnostics while startup remains stalled. */
+    onBrowserPersistenceDiagnostic?(diagnostics: FragnoBrowserPersistenceDiagnostics): void;
   },
   dependencies: FragnoOutboxCoordinatorDependencies = {
     openPersistence: openBrowserFragnoOutboxPersistence,
@@ -178,10 +187,11 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
   // The v3 prefix leaves behind databases created with the temporary single-process wiring.
   const databaseName = `fragno-v3-${databaseHash.slice(0, 32)}.sqlite`;
 
-  const persistenceResource = await waitForFragnoOutboxStartupStage(
-    dependencies.openPersistence({ databaseName }),
-    "opening browser persistence",
-  );
+  const persistenceResource = await openFragnoBrowserPersistenceWithDiagnostics({
+    databaseName,
+    onDiagnostic: (diagnostics) => options.onBrowserPersistenceDiagnostic?.(diagnostics),
+    openPersistence: () => dependencies.openPersistence({ databaseName }),
+  });
   const persistence = orderFragnoPersistenceWrites(persistenceResource.persistence);
 
   let internalCollection: FragnoInternalCollection | undefined;

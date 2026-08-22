@@ -24,6 +24,7 @@ import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/scope-layout";
+import { AutomationBrowserPersistenceDiagnosticPanel } from "./browser-persistence-diagnostics";
 import {
   createAutomationProject,
   loadAutomationWorkspaceData,
@@ -357,6 +358,9 @@ function AutomationClientLoading() {
           JavaScript is required to open scoped automations.
         </span>
       </noscript>
+      {import.meta.env.DEV && resourceKey ? (
+        <AutomationBrowserPersistenceDiagnosticPanel resourceKey={resourceKey} />
+      ) : null}
     </BackofficeSystemState>
   );
 }
