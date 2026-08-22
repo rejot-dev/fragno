@@ -22,6 +22,7 @@ import { createNodeSQLitePersistence } from "@tanstack/node-db-sqlite-persistenc
 
 import {
   createFragnoOutboxCoordinator,
+  type FragnoBrowserPersistenceDiagnostics,
   type FragnoCollectionRow,
   type FragnoOutboxCoordinatorDependencies,
   type FragnoOutboxCoordinatorState,
@@ -337,23 +338,75 @@ describe("Fragno TanStack adapter from scratch end-to-end", () => {
     }
   });
 
-  it("rejects startup when browser persistence opening stalls", async () => {
-    const server = await createTestServer("persistence-opening-timeout");
-    const coordinatorPromise = createFragnoOutboxCoordinator(
-      { baseUrl: server.baseUrl, fetch: server.fetch, schemas: [appSchema] },
+  it("reports delayed startup before synchronizing route-backed state into SQLite", async () => {
+    const server = await createTestServer("delayed-persistence-startup");
+    const temporaryDirectory = await mkdtemp(join(tmpdir(), "fragno-delayed-startup-"));
+    const databasePath = join(temporaryDirectory, "persistence.sqlite");
+    const persistenceOpeningStarted = Promise.withResolvers<void>();
+    const allowPersistenceOpening = Promise.withResolvers<void>();
+    const diagnosticPublished = Promise.withResolvers<FragnoBrowserPersistenceDiagnostics>();
+    let persistenceCleanupCalls = 0;
+    let coordinatorCleaned = false;
+
+    const coordinatorOpening = createFragnoOutboxCoordinator(
       {
-        openPersistence() {
-          return new Promise<never>(() => {});
+        baseUrl: server.baseUrl,
+        fetch: server.fetch,
+        schemas: [appSchema],
+        onBrowserPersistenceDiagnostic(diagnostics) {
+          diagnosticPublished.resolve(diagnostics);
+        },
+      },
+      {
+        async openPersistence() {
+          persistenceOpeningStarted.resolve();
+          await allowPersistenceOpening.promise;
+          const database = new Database(databasePath);
+          return {
+            persistence: createNodeSQLitePersistence({ database }),
+            async cleanup() {
+              persistenceCleanupCalls += 1;
+              database.close();
+            },
+          };
         },
       },
     );
 
     try {
-      await expect(coordinatorPromise).rejects.toThrow(
-        "Fragno outbox startup timed out after 5000ms while opening browser persistence.",
-      );
+      await persistenceOpeningStarted.promise;
+      const diagnostic = await diagnosticPublished.promise;
+      assert.ok(diagnostic.elapsedMs >= 3_000);
+      assert.match(diagnostic.databaseName, /^fragno-v3-[0-9a-f]{32}\.sqlite$/);
+
+      allowPersistenceOpening.resolve();
+      const coordinator = await coordinatorOpening;
+      try {
+        const users = coordinator.collection(appSchema, "users");
+        await server.createDiscussion();
+        await coordinator.preload();
+        await waitForCollection(users, () => users.get("user-2")?.name === "Grace");
+        await coordinator.flushPersistence();
+
+        expect(sortedRows<User>(users.values())).toEqual([
+          { id: "user-1", name: "Ada" },
+          { id: "user-2", name: "Grace" },
+        ]);
+        assert.ok(readDurableCheckpoint(databasePath));
+      } finally {
+        await coordinator.cleanup();
+        coordinatorCleaned = true;
+      }
+
+      assert.equal(persistenceCleanupCalls, 1);
     } finally {
+      allowPersistenceOpening.resolve();
+      if (!coordinatorCleaned) {
+        const coordinator = await coordinatorOpening.catch(() => null);
+        await coordinator?.cleanup().catch(() => {});
+      }
       await server.cleanup();
+      await rm(temporaryDirectory, { recursive: true, force: true });
     }
   }, 10_000);
 

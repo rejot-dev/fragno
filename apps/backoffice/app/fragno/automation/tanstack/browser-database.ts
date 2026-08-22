@@ -2,6 +2,7 @@ import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
 import {
   createFragnoOutboxCoordinator,
+  type FragnoBrowserPersistenceDiagnostics,
   type FragnoOutboxCatchUpProgress,
   type FragnoOutboxCoordinator,
 } from "@fragno-dev/tanstack-db-adapter";
@@ -54,6 +55,8 @@ export function describeAutomationCollectionSource(
 const resources = new Map<string, Promise<AutomationBrowserDatabase>>();
 const catchUpProgress = new Map<string, FragnoOutboxCatchUpProgress>();
 const catchUpProgressListeners = new Map<string, Set<() => void>>();
+const browserPersistenceDiagnostics = new Map<string, FragnoBrowserPersistenceDiagnostics>();
+const browserPersistenceDiagnosticListeners = new Map<string, Set<() => void>>();
 
 export function getAutomationCatchUpProgress(
   resourceKey: string,
@@ -86,6 +89,39 @@ function publishAutomationCatchUpProgress(
   }
 }
 
+/** Returns the latest browser persistence startup diagnostics for an Automations resource. */
+export function getAutomationBrowserPersistenceDiagnostics(
+  resourceKey: string,
+): FragnoBrowserPersistenceDiagnostics | null {
+  return browserPersistenceDiagnostics.get(resourceKey) ?? null;
+}
+
+/** Subscribes to browser persistence startup diagnostics for an Automations resource. */
+export function subscribeAutomationBrowserPersistenceDiagnostics(
+  resourceKey: string,
+  listener: () => void,
+): () => void {
+  const listeners = browserPersistenceDiagnosticListeners.get(resourceKey) ?? new Set();
+  listeners.add(listener);
+  browserPersistenceDiagnosticListeners.set(resourceKey, listeners);
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) {
+      browserPersistenceDiagnosticListeners.delete(resourceKey);
+    }
+  };
+}
+
+function publishAutomationBrowserPersistenceDiagnostics(
+  resourceKey: string,
+  diagnostics: FragnoBrowserPersistenceDiagnostics,
+): void {
+  browserPersistenceDiagnostics.set(resourceKey, diagnostics);
+  for (const listener of browserPersistenceDiagnosticListeners.get(resourceKey) ?? []) {
+    listener();
+  }
+}
+
 /** One browser database for every scope-specific Automations Durable Object and its shared outbox. */
 export function getAutomationBrowserDatabase(
   source: AutomationCollectionSource,
@@ -114,6 +150,13 @@ async function openAutomationBrowserDatabase(
     onCatchUpProgress(progress) {
       publishAutomationCatchUpProgress(description.resourceKey, progress);
     },
+    ...(import.meta.env.DEV
+      ? {
+          onBrowserPersistenceDiagnostic(diagnostics: FragnoBrowserPersistenceDiagnostics) {
+            publishAutomationBrowserPersistenceDiagnostics(description.resourceKey, diagnostics);
+          },
+        }
+      : {}),
   });
   const collections = createAutomationCollections(coordinator);
 
