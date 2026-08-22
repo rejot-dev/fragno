@@ -1,12 +1,14 @@
-import { assert, describe, expect, test } from "vitest";
+import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { instantiate } from "@fragno-dev/core";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
 import { createApiFragmentClients } from "../client/client";
 import { apiFragmentDefinition } from "../definition";
 import { apiRoutesFactory } from "../routes";
 import { apiSchema } from "../schema";
+
+const onWebhookEndpointChanged = vi.fn();
 
 const buildApiTest = async () => {
   const setup = await buildDatabaseFragmentsTest()
@@ -17,6 +19,7 @@ const buildApiTest = async () => {
       instantiate(apiFragmentDefinition)
         .withConfig({
           publicBaseUrl: "https://app.test",
+          onWebhookEndpointChanged,
         })
         .withRoutes([apiRoutesFactory]),
     )
@@ -38,6 +41,10 @@ async function readWebhookSecrets(test: ApiTest, endpointId: string) {
 }
 
 describe("webhook endpoint management", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   test("exports webhook endpoint client builders", () => {
     const clients = createApiFragmentClients();
 
@@ -91,6 +98,24 @@ describe("webhook endpoint management", () => {
       deliveryIdentity: { type: "header", name: "stripe-event-id" },
     });
     expect(JSON.stringify(created.data)).not.toContain("whsec_secret");
+
+    await drainDurableHooks(fragment);
+    expect(onWebhookEndpointChanged).toHaveBeenCalledOnce();
+    expect(onWebhookEndpointChanged).toHaveBeenCalledWith(
+      {
+        change: "created",
+        endpointId: "stripe",
+        endpoint: {
+          name: "Stripe",
+          status: "active",
+          authConfig: expect.objectContaining({ type: "hmac", secretRef: "secret" }),
+          verification: { type: "none" },
+          deliveryIdentity: { type: "header", name: "stripe-event-id" },
+          secretRefs: ["secret"],
+        },
+      },
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
+    );
 
     const secrets = await readWebhookSecrets(setup, "stripe");
     expect(secrets).toHaveLength(1);
@@ -146,6 +171,89 @@ describe("webhook endpoint management", () => {
     });
     assert(missing.type === "error");
     assert(missing.error.code === "WEBHOOK_ENDPOINT_NOT_FOUND");
+
+    await setup.test.cleanup();
+  });
+
+  test("reconciles webhook endpoint changes after PUT replacements and PATCH updates", async () => {
+    const setup = await buildApiTest();
+    const fragment = setup.fragments.api.fragment;
+
+    await fragment.callRoute("PUT", "/webhooks/endpoints/:endpointId", {
+      pathParams: { endpointId: "reconciled-webhook" },
+      body: {
+        name: "Initial",
+        status: "active",
+        verification: { type: "none" },
+        deliveryIdentity: { type: "header", name: "x-event-id" },
+        auth: { type: "bearer", token: "initial-token" },
+      },
+    });
+    await drainDurableHooks(fragment);
+    vi.clearAllMocks();
+
+    await fragment.callRoute("PUT", "/webhooks/endpoints/:endpointId", {
+      pathParams: { endpointId: "reconciled-webhook" },
+      body: {
+        name: "Replaced",
+        status: "active",
+        verification: { type: "none" },
+        deliveryIdentity: { type: "jsonBodyPath", path: ["id"] },
+        auth: { type: "basic", username: "ada", password: "lovelace" },
+      },
+    });
+    await drainDurableHooks(fragment);
+    expect(onWebhookEndpointChanged).toHaveBeenCalledOnce();
+    expect(onWebhookEndpointChanged).toHaveBeenCalledWith(
+      {
+        change: "updated",
+        endpointId: "reconciled-webhook",
+        endpoint: {
+          name: "Replaced",
+          status: "active",
+          authConfig: { type: "basic", usernameRef: "username", passwordRef: "password" },
+          verification: { type: "none" },
+          deliveryIdentity: { type: "jsonBodyPath", path: ["id"] },
+          secretRefs: ["username", "password"],
+        },
+      },
+      expect.any(Object),
+    );
+    vi.clearAllMocks();
+
+    await fragment.callRoute("PATCH", "/webhooks/endpoints/:endpointId", {
+      pathParams: { endpointId: "reconciled-webhook" },
+      body: { name: "Renamed" },
+    });
+    await drainDurableHooks(fragment);
+    expect(onWebhookEndpointChanged).toHaveBeenCalledOnce();
+    expect(onWebhookEndpointChanged).toHaveBeenCalledWith(
+      {
+        change: "updated",
+        endpointId: "reconciled-webhook",
+        endpoint: expect.objectContaining({
+          name: "Renamed",
+          status: "active",
+          secretRefs: ["username", "password"],
+        }),
+      },
+      expect.any(Object),
+    );
+    vi.clearAllMocks();
+
+    await fragment.callRoute("PATCH", "/webhooks/endpoints/:endpointId", {
+      pathParams: { endpointId: "reconciled-webhook" },
+      body: { status: "disabled" },
+    });
+    await drainDurableHooks(fragment);
+    expect(onWebhookEndpointChanged).toHaveBeenCalledWith(
+      {
+        change: "updated",
+        endpointId: "reconciled-webhook",
+        endpoint: expect.objectContaining({ name: "Renamed", status: "disabled" }),
+      },
+      expect.any(Object),
+    );
 
     await setup.test.cleanup();
   });

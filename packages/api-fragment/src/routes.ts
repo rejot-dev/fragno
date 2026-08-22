@@ -18,7 +18,7 @@ import {
   type WebhookEndpointAuthInput,
 } from "./api-types";
 import { sha256Base64Url, utf8Bytes } from "./crypto";
-import { apiFragmentDefinition } from "./definition";
+import { apiFragmentDefinition, type WebhookEndpointHookSnapshot } from "./definition";
 import { apiSchema } from "./schema";
 import { assertAllowedBaseUrl, storedAuthPayloadSchema } from "./services";
 import {
@@ -142,6 +142,23 @@ function parseWebhookEndpointStatus(status: string): "draft" | "active" | "disab
     return status;
   }
   throw new Error(`Unexpected webhook endpoint status: ${status}`);
+}
+
+function webhookEndpointHookSnapshot(endpoint: {
+  name: string;
+  status: string;
+  authConfig: WebhookAuthConfig;
+  verification: WebhookVerificationConfig;
+  deliveryIdentity: WebhookDeliveryIdentity;
+}): WebhookEndpointHookSnapshot {
+  return {
+    name: endpoint.name,
+    status: parseWebhookEndpointStatus(endpoint.status),
+    authConfig: endpoint.authConfig,
+    verification: endpoint.verification,
+    deliveryIdentity: endpoint.deliveryIdentity,
+    secretRefs: [...getWebhookAuthSecretRefs(endpoint.authConfig)],
+  };
 }
 
 function recordFromSearchParams(
@@ -278,27 +295,36 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
           )
           .mutate(({ forSchema, retrieveResult: [existing, existingSecrets] }) => {
             const uow = forSchema(apiSchema);
+            const endpoint = {
+              id: pathParams.endpointId,
+              name: body.name,
+              status: body.status,
+              authConfig: authStorage.authConfig,
+              verification: body.verification,
+              deliveryIdentity: body.deliveryIdentity,
+              createdAt: existing?.createdAt,
+            };
             if (existing) {
               uow.update("webhookEndpoint", existing.id, (b) =>
                 b
                   .set({
-                    name: body.name,
-                    status: body.status,
-                    authConfig: authStorage.authConfig,
-                    verification: body.verification,
-                    deliveryIdentity: body.deliveryIdentity,
+                    name: endpoint.name,
+                    status: endpoint.status,
+                    authConfig: endpoint.authConfig,
+                    verification: endpoint.verification,
+                    deliveryIdentity: endpoint.deliveryIdentity,
                     updatedAt: b.now(),
                   })
                   .check(),
               );
             } else {
               uow.create("webhookEndpoint", {
-                id: pathParams.endpointId,
-                name: body.name,
-                status: body.status,
-                authConfig: authStorage.authConfig,
-                verification: body.verification,
-                deliveryIdentity: body.deliveryIdentity,
+                id: endpoint.id,
+                name: endpoint.name,
+                status: endpoint.status,
+                authConfig: endpoint.authConfig,
+                verification: endpoint.verification,
+                deliveryIdentity: endpoint.deliveryIdentity,
               });
             }
 
@@ -327,18 +353,13 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
               }
             }
 
-            return {
-              created: !existing,
-              endpoint: {
-                id: pathParams.endpointId,
-                name: body.name,
-                status: body.status,
-                authConfig: authStorage.authConfig,
-                verification: body.verification,
-                deliveryIdentity: body.deliveryIdentity,
-                createdAt: existing?.createdAt,
-              },
-            };
+            uow.triggerHook("onWebhookEndpointChanged", {
+              change: existing ? "updated" : "created",
+              endpointId: pathParams.endpointId,
+              endpoint: webhookEndpointHookSnapshot(endpoint),
+            });
+
+            return { created: !existing, endpoint };
           })
           .execute();
 
@@ -721,6 +742,11 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                 });
               }
             }
+            uow.triggerHook("onWebhookEndpointChanged", {
+              change: "updated",
+              endpointId: pathParams.endpointId,
+              endpoint: webhookEndpointHookSnapshot(next),
+            });
             return { found: true as const, endpoint: next };
           })
           .execute();

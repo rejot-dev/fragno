@@ -1,8 +1,11 @@
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase, type HookContext, type HookFn } from "@fragno-dev/db";
 
-import type { ApiFragmentConfig as BaseApiFragmentConfig } from "./api-types";
-import type { ApiRequestInput } from "./api-types";
+import type {
+  ApiFragmentConfig as BaseApiFragmentConfig,
+  ApiRequestInput,
+  WebhookEndpoint,
+} from "./api-types";
 import { apiSchema } from "./schema";
 import {
   createOAuthCallbackSnapshot,
@@ -49,6 +52,21 @@ interface InternalWebhookReceivedPayload {
   contentType: string | null;
 }
 
+export interface WebhookEndpointHookSnapshot {
+  name: WebhookEndpoint["name"];
+  status: WebhookEndpoint["status"];
+  authConfig: WebhookEndpoint["authConfig"];
+  verification: WebhookEndpoint["verification"];
+  deliveryIdentity: WebhookEndpoint["deliveryIdentity"];
+  secretRefs: WebhookEndpoint["secretRefs"];
+}
+
+export interface WebhookEndpointChangedPayload {
+  change: "created" | "updated";
+  endpointId: string;
+  endpoint: WebhookEndpointHookSnapshot;
+}
+
 export interface WebhookReceivedPayload {
   endpointId: string;
   deliveryId: string;
@@ -73,6 +91,10 @@ export interface ApiFragmentHooksConfig {
     payload: ApiConnectionAvailablePayload,
     context: HookContext,
   ) => Promise<void> | void;
+  onWebhookEndpointChanged?: (
+    payload: WebhookEndpointChangedPayload,
+    context: HookContext,
+  ) => Promise<void> | void;
   onWebhookReceived?: (
     payload: WebhookReceivedPayload,
     context: HookContext,
@@ -85,6 +107,7 @@ export type ApiHooksMap = {
   onConnectionChanged: HookFn<ApiConnectionChangedPayload>;
   onConnectionDeleted: HookFn<ApiConnectionDeletedPayload>;
   onConnectionAvailable: HookFn<ApiConnectionAvailablePayload>;
+  onWebhookEndpointChanged: HookFn<WebhookEndpointChangedPayload>;
   onWebhookReceived: HookFn<InternalWebhookReceivedPayload>;
 };
 
@@ -115,6 +138,9 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
     }),
     onConnectionAvailable: defineHook(async function (payload) {
       await config.onConnectionAvailable?.(payload, this);
+    }),
+    onWebhookEndpointChanged: defineHook(async function (payload) {
+      await config.onWebhookEndpointChanged?.(payload, this);
     }),
     onWebhookReceived: defineHook(async function (payload) {
       await config.onWebhookReceived?.(
