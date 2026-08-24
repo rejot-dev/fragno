@@ -2,6 +2,11 @@ import { signJWT } from "better-auth/plugins/jwt";
 import { createLocalJWKSet, errors, jwtVerify, type JSONWebKeySet } from "jose";
 import { z } from "zod";
 
+import {
+  backofficeContextScopeSchema,
+  type BackofficeContextScope,
+} from "@/backoffice-runtime/context";
+
 export const ACCESS_TOKEN_ISSUER = "fragno-backoffice-auth";
 export const ACCESS_TOKEN_AUDIENCE = "fragno-backoffice";
 export const BACKOFFICE_JWT_LIFETIME_SECONDS = 15 * 60;
@@ -14,12 +19,8 @@ export const backofficeJwtPayloadSchema = z.object({
   sub: z.string().min(1),
   email: z.email(),
   globalRole: z.enum(["user", "admin"]),
-  organization: z
-    .object({
-      id: z.string().min(1),
-      roles: z.array(z.string().min(1)),
-    })
-    .nullable(),
+  scope: backofficeContextScopeSchema,
+  organizationRoles: z.array(z.string().min(1)),
   iss: z.literal(ACCESS_TOKEN_ISSUER),
   aud: z.literal(ACCESS_TOKEN_AUDIENCE),
   iat: z.number().int().nonnegative(),
@@ -94,7 +95,8 @@ export const issueBackofficeJwt = async (
     userId: string;
     email: string;
     globalRole: "user" | "admin";
-    organization: { id: string; roles: string[] } | null;
+    scope: BackofficeContextScope;
+    organizationRoles: string[];
   },
 ): Promise<{ token: string; expiresAt: Date }> => {
   const issuedAtEpochSeconds = Math.floor(Date.now() / 1_000);
@@ -111,7 +113,8 @@ export const issueBackofficeJwt = async (
       sub: authority.userId,
       email: authority.email,
       globalRole: authority.globalRole,
-      organization: authority.organization,
+      scope: authority.scope,
+      organizationRoles: authority.organizationRoles,
       iat: issuedAtEpochSeconds,
       exp: expiresAtEpochSeconds,
       jti: crypto.randomUUID(),

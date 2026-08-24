@@ -1,17 +1,12 @@
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
-import { betterAuth, type BetterAuthOptions, type BetterAuthPlugin } from "better-auth";
-import { APIError, createAuthEndpoint, sessionMiddleware } from "better-auth/api";
-import { deleteSessionCookie } from "better-auth/cookies";
-import { getMigrations } from "better-auth/db/migration";
-import { admin } from "better-auth/plugins/admin";
-import { jwt } from "better-auth/plugins/jwt";
-import { organization } from "better-auth/plugins/organization";
+import { betterAuth, type BetterAuthOptions } from "better-auth";
+import { APIError } from "better-auth/api";
 import { DurableObject } from "cloudflare:workers";
 import { Kysely } from "kysely";
-import { z } from "zod";
 
 import { extractW3CRequestPropagationContext } from "@fragno-dev/core";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { AuthObject, ScenarioAuthFixture } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
@@ -20,6 +15,8 @@ import {
 import {
   type AuthHookContext,
   type AuthUser,
+  type BackofficeCliOAuthConfig,
+  type BackofficeCliTokenResult,
   type BackofficeMeData,
   joinOrganizationRoles,
   type Organization,
@@ -28,7 +25,6 @@ import {
   type OrganizationInvitation,
   type OrganizationMember,
   type Role,
-  issueBackofficeTokenInputSchema,
   resolveLiveAccessTokenSecret,
   splitOrganizationRoles,
   type UserAuthorityFacts,
@@ -36,13 +32,6 @@ import {
   type VerifyUserEmailInput,
   type VerifyUserEmailResult,
 } from "@/fragno/auth/contracts";
-import {
-  ACCESS_TOKEN_AUDIENCE,
-  ACCESS_TOKEN_ISSUER,
-  backofficeAccessTokenCookieAttributes,
-  backofficeAccessTokenCookieName,
-  issueBackofficeJwt,
-} from "@/fragno/auth/token-lifecycle";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import {
   AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
@@ -55,16 +44,25 @@ import {
   type DurableHookQueueResponse,
   type DurableHookRepository,
 } from "@/fragno/durable-hooks";
-import {
-  buildBackofficeAuthBootstrapPath,
-  buildBackofficeLoginPath,
-} from "@/routes/backoffice/auth-navigation";
 import { buildUserEmailVerificationEmail } from "@/transactional-emails/user-email-verification";
 
 import {
   ensureUserHasOrganization,
   type UserOrganizationDependencies,
 } from "./auth-user-organization";
+import {
+  applyBackofficeBetterAuthSchemaMigrations,
+  BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION,
+} from "./auth/better-auth-migrations";
+import {
+  BackofficeTokenGrantForbiddenError,
+  type BackofficeTokenGrantResolution,
+  exchangeBackofficeOAuthAccessToken,
+  getBackofficeCliOAuthConfig,
+  initializeBackofficeCodemodeOAuthClient,
+} from "./auth/better-auth-oauth";
+import { createBackofficeTokenPlugin } from "./auth/better-auth-plugin";
+import { createBackofficeBetterAuthSchemaPlugins } from "./auth/better-auth-schema-plugins";
 import {
   completeBetterAuthDurableHook,
   deleteBetterAuthDurableHooksForFixture,
@@ -151,7 +149,6 @@ type StoreUser = AuthDatabase["user"];
 type StoreOrganization = AuthDatabase["organization"];
 type StoreMember = AuthDatabase["member"];
 type StoreInvitation = AuthDatabase["invitation"];
-
 type AuthHookPayloads = {
   onUserCreated: { user: { id: string; email: string; name: string } };
   onUserEmailVerificationRequested: { user: { id: string; email: string } };
@@ -168,7 +165,6 @@ type StoredAuthHook = {
 }[AuthHookName];
 
 const AUTH_SCHEMA_VERSION_STORAGE_KEY = "backoffice-auth-schema-version";
-const AUTH_SCHEMA_VERSION = "better-auth-v1";
 const MAX_HOOK_ATTEMPTS = 10;
 const AUTH_HOOK_BATCH_SIZE = 25;
 const AUTH_HOOK_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
@@ -395,19 +391,18 @@ const resolveAuthBaseUrl = (request: Request): string => {
   return requestUrl.origin;
 };
 
-type BetterAuthInstance = Pick<ReturnType<typeof betterAuth>, "handler">;
+type BetterAuthInstance = Pick<ReturnType<typeof betterAuth>, "handler" | "options" | "$context">;
 type BetterAuthContext = Awaited<ReturnType<typeof betterAuth>["$context"]>;
 type CreateOrganizationEndpoint = (input: {
   body: { name: string; slug: string; userId: string };
 }) => Promise<{ id: string; slug: string }>;
-
 // Better Auth erases plugin endpoints when options are returned from a runtime factory. Keep the
 // assertion at the plugin boundary instead of widening the type of the complete auth instance.
 const getCreateOrganizationEndpoint = (auth: BetterAuthInstance): CreateOrganizationEndpoint =>
   (auth as unknown as { api: { createOrganization: CreateOrganizationEndpoint } }).api
     .createOrganization;
 const getAuthContext = async (auth: BetterAuthInstance): Promise<BetterAuthContext> =>
-  await (auth as unknown as { $context: Promise<BetterAuthContext> }).$context;
+  await auth.$context;
 
 type BetterAuthAdapter = BetterAuthContext["adapter"];
 
@@ -490,6 +485,96 @@ const findStoreUser = async (
     where: [{ field: "id", value: userId }],
   });
 
+async function resolveBackofficeScopeTokenGrant(
+  adapter: BetterAuthAdapter,
+  input: { userId: string; scope: BackofficeContextScope | null },
+): Promise<BackofficeTokenGrantResolution> {
+  const storedUser = await findStoreUser(adapter, input.userId);
+  if (!storedUser || normalizeBoolean(storedUser.banned)) {
+    throw new BackofficeTokenGrantForbiddenError(
+      "This user cannot receive a Backoffice access token.",
+    );
+  }
+
+  const globalRole = normalizeRole(storedUser.role);
+  if (input.scope?.kind === "system") {
+    if (globalRole !== "admin") {
+      throw new BackofficeTokenGrantForbiddenError(
+        "The requested system scope is not available to this user.",
+      );
+    }
+    return {
+      status: "ready",
+      authority: {
+        userId: storedUser.id,
+        email: storedUser.email,
+        globalRole,
+        scope: input.scope,
+        organizationRoles: [],
+      },
+    };
+  }
+
+  if (input.scope?.kind === "user") {
+    if (input.scope.userId !== storedUser.id) {
+      throw new BackofficeTokenGrantForbiddenError(
+        "The requested user scope is not available to this user.",
+      );
+    }
+    return {
+      status: "ready",
+      authority: {
+        userId: storedUser.id,
+        email: storedUser.email,
+        globalRole,
+        scope: input.scope,
+        organizationRoles: [],
+      },
+    };
+  }
+
+  const memberships = await adapter.findMany<StoreMember>({
+    model: "member",
+    where: [{ field: "userId", value: storedUser.id }],
+  });
+  memberships.sort((left, right) => {
+    const createdAtDifference =
+      toDate(left.createdAt).getTime() - toDate(right.createdAt).getTime();
+    return createdAtDifference || left.id.localeCompare(right.id);
+  });
+
+  const requestedOrganizationScope =
+    input.scope?.kind === "org" || input.scope?.kind === "project" ? input.scope : null;
+  const defaultMembership = memberships[0];
+  if (!requestedOrganizationScope && !defaultMembership) {
+    return { status: "organization_provisioning", retryAfterMs: 250 };
+  }
+
+  const selectedScope = requestedOrganizationScope ?? {
+    kind: "org" as const,
+    orgId: defaultMembership.organizationId,
+  };
+  const selectedMembership = memberships.find(
+    (membership) => membership.organizationId === selectedScope.orgId,
+  );
+  if (!selectedMembership) {
+    throw new BackofficeTokenGrantForbiddenError(
+      "The requested Backoffice scope is not available to this user.",
+    );
+  }
+
+  return {
+    status: "ready",
+    authority: {
+      userId: storedUser.id,
+      email: storedUser.email,
+      globalRole,
+      scope: selectedScope,
+      organizationRoles: splitOrganizationRoles(selectedMembership.role),
+    },
+  };
+}
+
 const buildBackofficeMe = async (
   adapter: BetterAuthAdapter,
   input: { userId: string; activeOrganizationId: string | null },
@@ -567,7 +652,7 @@ export class InMemoryAuthObject implements AuthObject {
   readonly #database: Kysely<AuthDatabase>;
   readonly #ready: Promise<void>;
   readonly #authByBaseUrl = new Map<string, BetterAuthInstance>();
-  readonly #rateLimits = new Map<string, { key: string; count: number; lastRequest: number }>();
+  readonly #rateLimits = new Map<string, { key: string; count: number; windowStartedAt: number }>();
   #processingHooks: Promise<void> | null = null;
 
   constructor({
@@ -598,16 +683,24 @@ export class InMemoryAuthObject implements AuthObject {
       const installedSchemaVersion = await state.storage.get<string>(
         AUTH_SCHEMA_VERSION_STORAGE_KEY,
       );
-      if (installedSchemaVersion !== AUTH_SCHEMA_VERSION) {
-        const options = this.#createOptions("http://localhost");
-        // Better Auth introspection is not safe to repeat after Durable Object storage has created
-        // internal state. Run it only when the application-owned auth schema version changes.
-        await removeBetterAuthDurableHookTriggers(this.#database);
-        const migrations = await getMigrations(options);
-        await migrations.runMigrations();
-        await installBetterAuthDurableHooks(this.#database);
-        await state.storage.put(AUTH_SCHEMA_VERSION_STORAGE_KEY, AUTH_SCHEMA_VERSION);
+      if (installedSchemaVersion !== BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION) {
+        await this.#database.transaction().execute(async (transaction) => {
+          await removeBetterAuthDurableHookTriggers<AuthDatabase>(transaction);
+          await applyBackofficeBetterAuthSchemaMigrations<AuthDatabase>(
+            transaction,
+            installedSchemaVersion ?? null,
+          );
+          await installBetterAuthDurableHooks<AuthDatabase>(transaction);
+        });
+        await state.storage.put(
+          AUTH_SCHEMA_VERSION_STORAGE_KEY,
+          BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION,
+        );
       }
+
+      const auth = this.#getAuth("http://localhost");
+      await initializeBackofficeCodemodeOAuthClient(auth);
+
       const nextHookWakeAt = await findNextBetterAuthDurableHookWakeAt(this.#database, {
         wakeImmediately: false,
       });
@@ -622,16 +715,8 @@ export class InMemoryAuthObject implements AuthObject {
     const emailVerification = runtime.config.authEmailVerification;
     const secret = resolveLiveAccessTokenSecret(this.#env, import.meta.env.MODE === "development");
     const isDevelopment = import.meta.env.MODE === "development";
-    const organizationPlugin = organization({
-      allowUserToCreateOrganization: true,
-      creatorRole: "owner",
-      schema: {
-        organization: {
-          additionalFields: {
-            createdBy: { type: "string", required: true, input: false },
-          },
-        },
-      },
+    const schemaPlugins = createBackofficeBetterAuthSchemaPlugins({
+      baseURL,
       organizationHooks: {
         async beforeCreateOrganization({ organization: nextOrganization, user }) {
           return {
@@ -648,133 +733,10 @@ export class InMemoryAuthObject implements AuthObject {
       },
     });
 
-    const backofficeTokenPlugin = {
-      id: "fragno-backoffice-token",
-      endpoints: {
-        enterBackoffice: createAuthEndpoint(
-          "/backoffice-entry",
-          {
-            method: "GET",
-            query: z.object({ returnTo: z.string().optional() }),
-          },
-          async function enterBackofficeWithSession(context) {
-            const returnTo = context.query.returnTo;
-            const sessionToken = await context.getSignedCookie(
-              context.context.authCookies.sessionToken.name,
-              context.context.secret,
-            );
-            const session = sessionToken
-              ? await context.context.internalAdapter.findSession(sessionToken)
-              : null;
-            const sessionIsValid = Boolean(
-              session && session.session.expiresAt.getTime() > Date.now(),
-            );
-            if (!sessionIsValid && sessionToken) {
-              deleteSessionCookie(context);
-            }
-            const destination = sessionIsValid
-              ? buildBackofficeAuthBootstrapPath(returnTo)
-              : buildBackofficeLoginPath(returnTo);
-            throw context.redirect(new URL(destination, context.context.baseURL).toString());
-          },
-        ),
-        clearBackofficeToken: createAuthEndpoint(
-          "/backoffice-sign-out",
-          { method: "POST", requireHeaders: true },
-          async function revokeBackofficeCredentials(context) {
-            const sessionToken = await context.getSignedCookie(
-              context.context.authCookies.sessionToken.name,
-              context.context.secret,
-            );
-            if (sessionToken) {
-              await context.context.internalAdapter.deleteSession(sessionToken);
-            }
-
-            deleteSessionCookie(context);
-            for (const isDevelopmentCookie of [true, false]) {
-              context.setCookie(backofficeAccessTokenCookieName(isDevelopmentCookie), "", {
-                ...backofficeAccessTokenCookieAttributes(isDevelopmentCookie),
-                maxAge: 0,
-              });
-            }
-            return context.json({ sessionRevoked: true, credentialsCleared: true });
-          },
-        ),
-        issueBackofficeToken: createAuthEndpoint(
-          "/backoffice-token",
-          {
-            method: "POST",
-            requireHeaders: true,
-            body: issueBackofficeTokenInputSchema,
-            use: [sessionMiddleware],
-          },
-          async function issueOrganizationScopedBackofficeToken(context) {
-            const session = context.context.session;
-            const storedUser = await findStoreUser(context.context.adapter, session.user.id);
-            if (!storedUser || normalizeBoolean(storedUser.banned)) {
-              throw new APIError("FORBIDDEN", {
-                message: "This user cannot receive a Backoffice access token.",
-              });
-            }
-
-            const memberships = await context.context.adapter.findMany<StoreMember>({
-              model: "member",
-              where: [{ field: "userId", value: storedUser.id }],
-            });
-            memberships.sort((left, right) => {
-              const createdAtDifference =
-                toDate(left.createdAt).getTime() - toDate(right.createdAt).getTime();
-              return createdAtDifference || left.id.localeCompare(right.id);
-            });
-
-            const requestedOrganizationId = context.body.organizationId ?? null;
-            if (!requestedOrganizationId && memberships.length === 0) {
-              context.setStatus(202);
-              return context.json({
-                status: "organization_provisioning",
-                retryAfterMs: 250,
-              });
-            }
-            const selectedMembership = requestedOrganizationId
-              ? memberships.find(
-                  (membership) => membership.organizationId === requestedOrganizationId,
-                )
-              : (memberships[0] ?? null);
-            if (requestedOrganizationId && !selectedMembership) {
-              throw new APIError("FORBIDDEN", {
-                message: "The requested organization is not available to this user.",
-              });
-            }
-
-            const issued = await issueBackofficeJwt(context, {
-              userId: storedUser.id,
-              email: storedUser.email,
-              globalRole: normalizeRole(storedUser.role),
-              organization: selectedMembership
-                ? {
-                    id: selectedMembership.organizationId,
-                    roles: splitOrganizationRoles(selectedMembership.role),
-                  }
-                : null,
-            });
-            context.setCookie(backofficeAccessTokenCookieName(!isDevelopment), "", {
-              ...backofficeAccessTokenCookieAttributes(!isDevelopment),
-              maxAge: 0,
-            });
-            context.setCookie(
-              backofficeAccessTokenCookieName(isDevelopment),
-              issued.token,
-              backofficeAccessTokenCookieAttributes(isDevelopment),
-            );
-
-            return context.json({
-              expiresAt: issued.expiresAt.toISOString(),
-              organizationId: selectedMembership?.organizationId ?? null,
-            });
-          },
-        ),
-      },
-    } satisfies BetterAuthPlugin;
+    const backofficeTokenPlugin = createBackofficeTokenPlugin({
+      isDevelopment,
+      resolveBackofficeScopeTokenGrant,
+    });
 
     const options = {
       appName: "Fragno Backoffice",
@@ -828,9 +790,30 @@ export class InMemoryAuthObject implements AuthObject {
       rateLimit: {
         enabled: true,
         customStorage: {
-          get: async (key: string) => this.#rateLimits.get(key) ?? null,
-          set: async (key: string, value: { key: string; count: number; lastRequest: number }) => {
-            this.#rateLimits.set(key, value);
+          consume: async (key: string, rule: { window: number; max: number }) => {
+            const now = Date.now();
+            const windowInMilliseconds = rule.window * 1_000;
+            const current = this.#rateLimits.get(key);
+
+            if (!current || now - current.windowStartedAt >= windowInMilliseconds) {
+              this.#rateLimits.set(key, { key, count: 1, windowStartedAt: now });
+              return { allowed: true, retryAfter: null };
+            }
+
+            if (current.count >= rule.max) {
+              return {
+                allowed: false,
+                retryAfter: Math.ceil(
+                  (current.windowStartedAt + windowInMilliseconds - now) / 1_000,
+                ),
+              };
+            }
+
+            this.#rateLimits.set(key, {
+              ...current,
+              count: current.count + 1,
+            });
+            return { allowed: true, retryAfter: null };
           },
         },
       },
@@ -838,6 +821,9 @@ export class InMemoryAuthObject implements AuthObject {
       advanced: {
         useSecureCookies: import.meta.env.MODE !== "development",
         defaultCookieAttributes: { path: "/api/auth" },
+        cookies: {
+          session_token: { attributes: { path: "/" } },
+        },
       },
       // Never add Better Auth `after` database hooks here. They run outside the mutation
       // transaction; lifecycle side effects must be recorded atomically by SQLite triggers and
@@ -861,19 +847,7 @@ export class InMemoryAuthObject implements AuthObject {
           },
         },
       },
-      plugins: [
-        admin({ defaultRole: "user", adminRoles: ["admin"] }),
-        organizationPlugin,
-        backofficeTokenPlugin,
-        jwt({
-          disableSettingJwtHeader: true,
-          jwt: {
-            issuer: ACCESS_TOKEN_ISSUER,
-            audience: ACCESS_TOKEN_AUDIENCE,
-            expirationTime: "15m",
-          },
-        }),
-      ],
+      plugins: [...schemaPlugins, backofficeTokenPlugin],
     } satisfies BetterAuthOptions;
 
     return options;
@@ -1097,9 +1071,9 @@ export class InMemoryAuthObject implements AuthObject {
     });
   }
 
-  async #authContext() {
+  async #authContext(baseURL = "http://localhost") {
     await this.#ready;
-    return await getAuthContext(this.#getAuth("http://localhost"));
+    return await getAuthContext(this.#getAuth(baseURL));
   }
 
   async verifyUserEmail(input: VerifyUserEmailInput): Promise<VerifyUserEmailResult> {
@@ -1130,6 +1104,28 @@ export class InMemoryAuthObject implements AuthObject {
   }): Promise<BackofficeMeData | null> {
     const { adapter } = await this.#authContext();
     return await buildBackofficeMe(adapter, input);
+  }
+
+  async getBackofficeCliOAuthConfig(input: {
+    requestUrl: string;
+  }): Promise<BackofficeCliOAuthConfig> {
+    await this.#ready;
+    const baseURL = new URL(input.requestUrl).origin;
+    return await getBackofficeCliOAuthConfig(this.#getAuth(baseURL), input);
+  }
+
+  async exchangeBackofficeOAuthAccessToken(input: {
+    requestUrl: string;
+    oauthAccessToken: string;
+    scope: BackofficeContextScope | null;
+  }): Promise<BackofficeCliTokenResult> {
+    await this.#ready;
+    const baseURL = new URL(input.requestUrl).origin;
+    return await exchangeBackofficeOAuthAccessToken(
+      this.#getAuth(baseURL),
+      input,
+      resolveBackofficeScopeTokenGrant,
+    );
   }
 
   async getUserAuthorityFacts(input: {
@@ -1402,6 +1398,20 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
     activeOrganizationId: string | null;
   }): Promise<BackofficeMeData | null> {
     return await this.#object.getBackofficeMe(input);
+  }
+
+  async getBackofficeCliOAuthConfig(input: {
+    requestUrl: string;
+  }): Promise<BackofficeCliOAuthConfig> {
+    return await this.#object.getBackofficeCliOAuthConfig(input);
+  }
+
+  async exchangeBackofficeOAuthAccessToken(input: {
+    requestUrl: string;
+    oauthAccessToken: string;
+    scope: BackofficeContextScope | null;
+  }): Promise<BackofficeCliTokenResult> {
+    return await this.#object.exchangeBackofficeOAuthAccessToken(input);
   }
 
   async getUserAuthorityFacts(input: { userId: string; organizationId?: string }) {

@@ -124,6 +124,58 @@ describe("Auth Durable Object account creation policy", () => {
   });
 });
 
+describe("Auth Durable Object rate limiting", () => {
+  test("blocks the fourth authentication attempt within the rate-limit window", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+    const auth = runtime.objects.auth.singleton();
+
+    const responses = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        auth.fetch(
+          new Request("https://backoffice.example/api/auth/sign-in/email", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              email: "missing@example.com",
+              password: "password123",
+            }),
+          }),
+        ),
+      ),
+    );
+
+    assert(responses.slice(0, 3).every((response) => response.status !== 429));
+    assert.equal(responses[3]?.status, 429);
+    assert.equal(responses[3]?.headers.get("X-Retry-After"), "10");
+  });
+
+  test("opens a new fixed window ten seconds after the first authentication attempt", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+    const auth = runtime.objects.auth.singleton();
+    const attempt = () =>
+      auth.fetch(
+        new Request("https://backoffice.example/api/auth/sign-in/email", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            email: "missing@example.com",
+            password: "password123",
+          }),
+        }),
+      );
+
+    assert((await attempt()).status !== 429);
+    vi.advanceTimersByTime(4_000);
+    assert((await attempt()).status !== 429);
+    vi.advanceTimersByTime(4_000);
+    assert((await attempt()).status !== 429);
+    vi.advanceTimersByTime(2_000);
+    assert((await attempt()).status !== 429);
+  });
+});
+
 describe("Auth Durable Object email verification delivery", () => {
   test("reuses the OTP after a committed issuance response is lost", async () => {
     let issueAttempts = 0;

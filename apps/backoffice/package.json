@@ -8,6 +8,7 @@
   },
   "type": "module",
   "scripts": {
+    "auth:migration:generate": "auth generate --config scripts/better-auth-cli.ts --output workers/auth/migrations/better-auth.sql --yes",
     "build": "react-router build",
     "deploy": "pnpm run build && wrangler deploy",
     "dev": "react-router dev",
@@ -25,6 +26,7 @@
   "dependencies": {
     "@assistant-ui/react": "^0.15.1",
     "@base-ui/react": "^1.2.0",
+    "@better-auth/oauth-provider": "^1.7.1",
     "@cfworker/json-schema": "^4.1.1",
     "@cloudflare/sandbox": "^0.12.4",
     "@cloudflare/worker-bundler": "0.2.2",
@@ -52,7 +54,7 @@
     "@tanstack/db-sqlite-persistence-core": "0.2.14",
     "@tanstack/react-db": "0.3.1",
     "aws4fetch": "^1.0.20",
-    "better-auth": "^1.6.16",
+    "better-auth": "^1.7.1",
     "better-sqlite3": "^12.10.0",
     "clsx": "^2.1.1",
     "croner": "10.0.1",
@@ -88,6 +90,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "ajv": "^8.18.0",
+    "auth": "^1.7.1",
     "happy-dom": "^20.3.3",
     "tailwindcss": "^4.1.18",
     "typescript": "catalog:",

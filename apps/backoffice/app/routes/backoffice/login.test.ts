@@ -63,6 +63,28 @@ describe("backoffice login route", () => {
     expect(callBetterAuth).not.toHaveBeenCalled();
   });
 
+  it("renders sign-in for device authorization even when a Backoffice JWT exists", async () => {
+    vi.stubEnv("MODE", "development");
+    vi.mocked(getBackofficeMe).mockResolvedValue({
+      status: "authenticated",
+      me: {} as never,
+      expiresAt: new Date("2027-01-01T00:00:00.000Z"),
+    });
+
+    await expect(
+      loader(
+        createLoaderArgs(
+          "https://example.com/backoffice/login?returnTo=%2Fbackoffice%2Fdevice%3Fuser_code%3DME7L-5UAH",
+        ),
+      ),
+    ).resolves.toEqual({
+      authenticated: false,
+      returnTo: "/backoffice/device?user_code=ME7L-5UAH",
+      bootstrapError: null,
+    });
+    expect(getBackofficeMe).not.toHaveBeenCalled();
+  });
+
   it("redirects a successful Better Auth email sign-in", async () => {
     vi.stubEnv("MODE", "development");
     vi.mocked(callBetterAuth).mockResolvedValue(

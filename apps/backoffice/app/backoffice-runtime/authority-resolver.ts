@@ -1,4 +1,7 @@
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import type {
+  BackofficeContextScope,
+  BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import type { Role, UserAuthorityFacts } from "@/fragno/auth/contracts";
 import { automationEntityRefsEqual, type AutomationActors } from "@/fragno/automation/actors";
 
@@ -81,7 +84,7 @@ const resolveUserAuthorityPermissions = (
   authority: Readonly<{
     userId: string;
     role: Role;
-    organizationId: string | null;
+    scope: BackofficeContextScope;
   }>,
   execution: BackofficeExecutionContext,
 ): readonly BackofficePermissionRequirement[] => {
@@ -109,8 +112,8 @@ const resolveVerifiedRequestAuthorityPermissions = ({
 /**
  * Resolves authority from verified access-token claims or current production identity state.
  *
- * Immediate user-request actions trust the role and organization snapshot in the verified JWT until
- * its expiry, avoiding an Auth round-trip for each sensitive action. Deferred executions carry no
+ * Immediate user-request actions trust the role and scope snapshot in the verified JWT until its
+ * expiry, avoiding an Auth round-trip for each sensitive action. Deferred executions carry no
  * token authority and instead reevaluate current user state through the identity directory. Trusted
  * runtime actor types resolve to explicit roles with only the finite grants in `authority-roles.ts`.
  */
@@ -151,11 +154,15 @@ export const createBackofficeAuthorityResolver = (
         return noPermissions;
       }
 
+      const authorityScope =
+        organizationId && !currentUser.organizationMember
+          ? ({ kind: "user", userId: principal.id } as const)
+          : execution.scope;
       return resolveUserAuthorityPermissions(
         {
           userId: principal.id,
           role: currentUser.role,
-          organizationId: organizationId && currentUser.organizationMember ? organizationId : null,
+          scope: authorityScope,
         },
         execution,
       );

@@ -37,11 +37,14 @@ const permissionScopeDefinitions = (
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const auth = await requireBackofficePrincipal(request, context);
-  const organizationId = auth.auth.organization?.id ?? null;
+  const organizationId =
+    auth.auth.scope.kind === "org" || auth.auth.scope.kind === "project"
+      ? auth.auth.scope.orgId
+      : null;
   const authority = {
     userId: auth.user.id,
     role: auth.user.role,
-    organizationId,
+    scope: auth.auth.scope,
   };
   const { runtime } = context.get(BackofficeWorkerContext);
 

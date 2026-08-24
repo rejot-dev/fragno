@@ -11,6 +11,18 @@ export type BackofficeContextScope =
   | { kind: "user"; userId: string }
   | { kind: "project"; orgId: string; projectId: string };
 
+/** Validates a serialized Backoffice execution scope at an HTTP or storage boundary. */
+export const backofficeContextScopeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("system") }),
+  z.strictObject({ kind: z.literal("org"), orgId: z.string().trim().min(1) }),
+  z.strictObject({ kind: z.literal("user"), userId: z.string().trim().min(1) }),
+  z.strictObject({
+    kind: z.literal("project"),
+    orgId: z.string().trim().min(1),
+    projectId: z.string().trim().min(1),
+  }),
+]) satisfies z.ZodType<BackofficeContextScope>;
+
 export const backofficeContextScopeLabel = (scope: BackofficeContextScope): string => {
   switch (scope.kind) {
     case "system":
@@ -51,7 +63,7 @@ export type BackofficeVerifiedRequestAuthority = Readonly<{
   kind: "verified-request-authority";
   userId: string;
   role: Role;
-  organizationId: string | null;
+  scope: BackofficeContextScope;
   expiresAtEpochMs: number;
 }>;
 
@@ -60,7 +72,7 @@ export const backofficeVerifiedRequestAuthoritySchema: z.ZodType<BackofficeVerif
     kind: z.literal("verified-request-authority"),
     userId: z.string().trim().min(1),
     role: z.enum(["user", "admin"]),
-    organizationId: z.string().trim().min(1).nullable(),
+    scope: backofficeContextScopeSchema,
     expiresAtEpochMs: z.number().int().positive(),
   });
 
@@ -97,7 +109,7 @@ export const createBackofficeUserExecution = ({
   userId: string;
   verifiedRequestAuthority?: Readonly<{
     role: Role;
-    organizationId: string | null;
+    scope: BackofficeContextScope;
     expiresAt: Date;
   }>;
 }): BackofficeExecutionContext => ({
@@ -118,7 +130,7 @@ export const createBackofficeUserExecution = ({
           kind: "verified-request-authority" as const,
           userId,
           role: verifiedRequestAuthority.role,
-          organizationId: verifiedRequestAuthority.organizationId,
+          scope: verifiedRequestAuthority.scope,
           expiresAtEpochMs: verifiedRequestAuthority.expiresAt.getTime(),
         },
       }

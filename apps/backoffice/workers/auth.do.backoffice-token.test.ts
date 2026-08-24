@@ -163,7 +163,8 @@ describe("Backoffice token exchange", () => {
       sub: user.id,
       email: "token-user@example.com",
       globalRole: "user",
-      organization: { id: organizationId, roles: ["owner"] },
+      scope: { kind: "org", orgId: organizationId },
+      organizationRoles: ["owner"],
     });
     expect(verification.payload.jti).toEqual(expect.any(String));
 
