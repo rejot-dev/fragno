@@ -5,8 +5,8 @@ export class NotConfiguredError extends Error {
   }
 }
 
-export const createOrganisationNotConfiguredMessage = (serviceName: string) =>
-  `${serviceName} is not configured for this organisation.`;
+export const createOrganizationNotConfiguredMessage = (serviceName: string) =>
+  `${serviceName} is not configured for this organization.`;
 
 export const isSuccessStatus = (status: number) => status >= 200 && status < 300;
 

@@ -9,8 +9,7 @@ import type { Route } from "./+types/claims-complete";
 
 type LoaderData = {
   ok: boolean;
-  orgId: string;
-  organisationName: string;
+  organization: { id: string; slug: string; name: string };
   message: string;
 };
 
@@ -20,7 +19,7 @@ export async function loader({
   params,
   url,
 }: Route.LoaderArgs): Promise<LoaderData | Response> {
-  if (!params.orgId) {
+  if (!params.orgSlug) {
     throw new Response("Not Found", { status: 404 });
   }
 
@@ -32,9 +31,10 @@ export async function loader({
     );
   }
 
-  const organisation =
-    me.organizations.find((entry) => entry.organization.id === params.orgId)?.organization ?? null;
-  if (!organisation) {
+  const organization =
+    me.organizations.find((entry) => entry.organization.slug === params.orgSlug)?.organization ??
+    null;
+  if (!organization) {
     throw new Response("Not Found", { status: 404 });
   }
 
@@ -44,13 +44,12 @@ export async function loader({
   if (!externalId || !code) {
     return {
       ok: false,
-      orgId: params.orgId,
-      organisationName: organisation.name,
+      organization: organization,
       message: "This link is missing the claim details. Ask the source app to send a fresh link.",
     };
   }
 
-  const otpDo = getOtpDurableObject(context, params.orgId);
+  const otpDo = getOtpDurableObject(context, organization.id);
   const result = await otpDo.confirmIdentityClaim({
     externalId,
     code,
@@ -67,16 +66,14 @@ export async function loader({
 
     return {
       ok: false,
-      orgId: params.orgId,
-      organisationName: organisation.name,
+      organization: organization,
       message,
     };
   }
 
   return {
     ok: true,
-    orgId: params.orgId,
-    organisationName: organisation.name,
+    organization: organization,
     message: "Your link was confirmed. Your account link is confirmed and active.",
   };
 }
@@ -96,7 +93,7 @@ export default function BackofficeAutomationClaimComplete({
         breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Automations" }]}
         eyebrow="Automations"
         title={loaderData.ok ? "Identity link confirmed" : "Identity link failed"}
-        description={`Organisation: ${loaderData.organisationName}`}
+        description={`Organization: ${loaderData.organization.name}`}
       />
 
       <FormContainer
@@ -105,10 +102,10 @@ export default function BackofficeAutomationClaimComplete({
         description={loaderData.message}
         actions={
           <Link
-            to={`/backoffice/organisations/${loaderData.orgId}`}
+            to={`/backoffice/organizations/${encodeURIComponent(loaderData.organization.slug)}`}
             className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
-            Back to organisation
+            Back to organization
           </Link>
         }
       >

@@ -9,12 +9,8 @@ function isBackofficePath(pathname: string): boolean {
   return pathname === BACKOFFICE_HOME_PATH || pathname.startsWith(`${BACKOFFICE_HOME_PATH}/`);
 }
 
-function isScopedFragmentOAuthCallbackPath(pathname: string): boolean {
-  return /^\/api\/(?:mcp|http)\/[^/]+\/oauth\/callback$/.test(pathname);
-}
-
 function isAllowedBackofficeReturnToPath(pathname: string): boolean {
-  return isBackofficePath(pathname) || isScopedFragmentOAuthCallbackPath(pathname);
+  return isBackofficePath(pathname);
 }
 
 export function sanitizeBackofficeReturnTo(value: string | null | undefined): string | null {
@@ -23,11 +19,7 @@ export function sanitizeBackofficeReturnTo(value: string | null | undefined): st
   }
 
   const trimmed = value.trim();
-  if (
-    !trimmed.startsWith(BACKOFFICE_HOME_PATH) &&
-    !trimmed.startsWith("/api/mcp/") &&
-    !trimmed.startsWith("/api/http/")
-  ) {
+  if (!trimmed.startsWith(BACKOFFICE_HOME_PATH)) {
     return null;
   }
 
@@ -98,17 +90,17 @@ export function readBackofficeOrganizationSwitchId(url: URL | string): string | 
 
 export function retargetBackofficeOrganizationReturnTo(
   returnTo: string,
-  organizationId: string | null,
+  organizationSlug: string | null,
 ): string {
   const sanitizedReturnTo = sanitizeBackofficeReturnTo(returnTo) ?? BACKOFFICE_HOME_PATH;
-  if (!organizationId || !sanitizedReturnTo.startsWith(BACKOFFICE_HOME_PATH)) {
+  if (!organizationSlug || !sanitizedReturnTo.startsWith(BACKOFFICE_HOME_PATH)) {
     return sanitizedReturnTo;
   }
 
   const destination = new URL(sanitizedReturnTo, "http://localhost");
   destination.pathname = destination.pathname.replace(
     /\/org\/[^/]+/,
-    `/org/${encodeURIComponent(organizationId)}`,
+    `/org/${encodeURIComponent(organizationSlug)}`,
   );
   return `${destination.pathname}${destination.search}`;
 }

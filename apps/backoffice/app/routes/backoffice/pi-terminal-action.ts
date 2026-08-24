@@ -38,7 +38,7 @@ import {
   PI_TERMINAL_COMMAND_SPECS,
 } from "./pi-terminal-specs";
 
-/** The active organisation the terminal is scoped to (or null when none is selected). */
+/** The active organization the terminal is scoped to (or null when none is selected). */
 type ActiveOrg = { id: string; name?: string | null } | null;
 
 /** The route action `context`: a router context provider we read worker runtime + auth from. */

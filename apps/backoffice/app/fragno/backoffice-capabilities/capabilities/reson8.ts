@@ -89,7 +89,7 @@ export const reson8Capability: BackofficeCapability = {
         source: "reson8",
         eventType: "capability.configured",
         label: "Reson8 configured",
-        description: "Fires after Reson8 is configured for an organisation for the first time.",
+        description: "Fires after Reson8 is configured for an organization for the first time.",
         payloadSchema: reson8CapabilityConfiguredPayloadSchema,
         subjectSchema: reson8CapabilityConfiguredSubjectSchema,
         example: {

@@ -4,7 +4,10 @@ import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { getGitHubWebhookRouterDurableObject } from "@/worker-runtime/durable-objects";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
-import { integrationBasePath, scopeToAutomationUiScope } from "../../integrations/scope";
+import {
+  integrationBasePath,
+  integrationScopeSelectionFromRuntimeScope,
+} from "../../integrations/scope";
 import type { Route } from "./+types/setup-callback";
 
 const CONNECTIONS_INDEX_PATH = "/backoffice/connections/github";
@@ -39,7 +42,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   }
 
   const scope = { kind: "org" as const, orgId: resolved.orgId };
-  const targetPath = `${integrationBasePath(scopeToAutomationUiScope(scope, me), "github")}/configuration`;
+  const targetPath = `${integrationBasePath(integrationScopeSelectionFromRuntimeScope(scope, me), "github")}/configuration`;
   const search = url.searchParams.toString();
   return redirect(search ? `${targetPath}?${search}` : targetPath);
 }

@@ -11,13 +11,14 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     return redirect(buildBackofficeAuthBootstrapPath(`${url.pathname}${url.search}`));
   }
 
-  const me = jwtMe.me;
-  const orgId = me.activeOrganization?.organization.id ?? me.organizations[0]?.organization.id;
-  if (!orgId) {
-    return redirect("/backoffice/organisations");
+  const activeOrganization = jwtMe.me.activeOrganization?.organization;
+  if (!activeOrganization) {
+    return redirect("/backoffice/organizations");
   }
 
-  return redirect(`/backoffice/automations/org/${orgId}/dashboard`);
+  return redirect(
+    `/backoffice/automations/org/${encodeURIComponent(activeOrganization.slug)}/dashboard`,
+  );
 }
 
 export default function BackofficeIndex() {

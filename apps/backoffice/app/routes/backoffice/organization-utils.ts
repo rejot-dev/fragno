@@ -1,4 +1,4 @@
-export type OrganisationTab = "overview" | "members" | "invites" | "billing";
+export type OrganizationTab = "overview" | "members" | "invites" | "billing";
 
 export const ROLE_OPTIONS = ["member", "admin", "owner"] as const;
 

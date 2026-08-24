@@ -59,7 +59,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   } satisfies GitHubRepositoriesLoaderData;
 }
 
-export default function BackofficeOrganisationGitHubRepositories() {
+export default function BackofficeOrganizationGitHubRepositories() {
   const { repos, configError, reposError } = useLoaderData<typeof loader>();
   const { basePath: integrationBasePath } = useOutletContext<GitHubLayoutContext>();
   const { repoId } = useParams();

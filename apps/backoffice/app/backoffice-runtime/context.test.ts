@@ -39,7 +39,7 @@ describe("Backoffice execution context", () => {
         userId: "user-1",
         verifiedRequestAuthority: {
           role: "admin",
-          scope: { kind: "org", orgId: "org-1" },
+          organizationId: "org-1",
           expiresAt,
         },
       }),
@@ -48,7 +48,7 @@ describe("Backoffice execution context", () => {
         kind: "verified-request-authority",
         userId: "user-1",
         role: "admin",
-        scope: { kind: "org", orgId: "org-1" },
+        organizationId: "org-1",
         expiresAtEpochMs: expiresAt.getTime(),
       },
     });

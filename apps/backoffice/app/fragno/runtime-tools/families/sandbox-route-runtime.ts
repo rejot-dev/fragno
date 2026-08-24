@@ -58,7 +58,7 @@ export const createSandboxRouteRuntime = ({
 }): SandboxRuntime => {
   const normalizedOrgId = orgId.trim();
   if (!normalizedOrgId) {
-    throw new Error("Sandbox runtime requires an organisation id");
+    throw new Error("Sandbox runtime requires an organization id");
   }
 
   return createSandboxRuntime({

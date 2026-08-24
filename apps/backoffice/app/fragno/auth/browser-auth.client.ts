@@ -28,7 +28,7 @@ async function issueRefreshedBackofficeAccessToken(
     { selection: "preferred", organizationId: readPreferredOrganization() },
     fetchImplementation,
   );
-  writePreferredOrganization(result.organizationId);
+  writePreferredOrganization(result.organization?.id ?? null);
   recordIssuedBackofficeToken(result);
   return result;
 }

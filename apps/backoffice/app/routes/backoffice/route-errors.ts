@@ -1,12 +1,17 @@
 import { isRouteErrorResponse } from "react-router";
 
-const ORG_NOT_FOUND_CODE = "ORG_NOT_FOUND";
+export const BACKOFFICE_ORGANIZATION_NOT_FOUND_CODE = "BACKOFFICE_ORGANIZATION_NOT_FOUND";
 
 type RouteErrorData = {
   code?: unknown;
   message?: unknown;
   resource?: unknown;
+  organizationSlug?: unknown;
   debugDetails?: unknown;
+};
+
+export type BackofficeOrganizationNotFound = {
+  organizationSlug: string | null;
 };
 
 const stringifyRouteErrorValue = (value: unknown) =>
@@ -24,17 +29,36 @@ const getRouteErrorData = (error: unknown): RouteErrorData | null => {
   return error.data as RouteErrorData;
 };
 
-export function throwOrganisationNotFound(orgId?: string): never {
+/** Throws the structured 404 consumed by authenticated Backoffice error boundaries. */
+export function throwBackofficeOrganizationNotFound(organizationSlug?: string): never {
+  const normalizedSlug = organizationSlug?.trim() || null;
   throw Response.json(
     {
-      code: ORG_NOT_FOUND_CODE,
-      resource: "organisation" as const,
-      message: orgId
-        ? `Organisation '${orgId}' could not be found.`
-        : "Organisation could not be found.",
+      code: BACKOFFICE_ORGANIZATION_NOT_FOUND_CODE,
+      resource: "organization" as const,
+      organizationSlug: normalizedSlug,
+      message: normalizedSlug
+        ? `Organization '${normalizedSlug}' could not be found.`
+        : "Organization could not be found.",
     },
     { status: 404, statusText: "Not Found" },
   );
+}
+
+/** Returns structured organization-not-found details without string matching. */
+export function getBackofficeOrganizationNotFound(
+  error: unknown,
+): BackofficeOrganizationNotFound | null {
+  const errorData = getRouteErrorData(error);
+  if (errorData?.code !== BACKOFFICE_ORGANIZATION_NOT_FOUND_CODE) {
+    return null;
+  }
+  return {
+    organizationSlug:
+      typeof errorData.organizationSlug === "string" && errorData.organizationSlug
+        ? errorData.organizationSlug
+        : null,
+  };
 }
 
 export const getRouteErrorMessage = (
@@ -55,11 +79,6 @@ export const getRouteErrorMessage = (
   }
 
   return fallback;
-};
-
-export const isOrganisationNotFoundError = (error: unknown) => {
-  const errorData = getRouteErrorData(error);
-  return errorData?.code === ORG_NOT_FOUND_CODE || errorData?.resource === "organisation";
 };
 
 export const getRouteErrorDebugDetails = (error: unknown) => {

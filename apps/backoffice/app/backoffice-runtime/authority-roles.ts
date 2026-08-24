@@ -142,7 +142,7 @@ export const resolveBackofficeUserAuthorityRole = (
   authority: Readonly<{
     userId: string;
     role: Role;
-    scope: BackofficeContextScope;
+    organizationId: string | null;
   }>,
   scope: BackofficeContextScope,
 ): BackofficeUserAuthorityRole | null => {
@@ -159,11 +159,7 @@ export const resolveBackofficeUserAuthorityRole = (
     return authority.role === "admin" ? "system-administrator" : null;
   }
 
-  const authorityOrganizationId =
-    authority.scope.kind === "org" || authority.scope.kind === "project"
-      ? authority.scope.orgId
-      : null;
-  if (authorityOrganizationId !== scope.orgId) {
+  if (authority.organizationId !== scope.orgId) {
     return null;
   }
 

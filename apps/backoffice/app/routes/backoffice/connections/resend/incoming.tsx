@@ -58,7 +58,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   } satisfies ResendIncomingLoaderData;
 }
 
-export default function BackofficeOrganisationResendIncoming() {
+export default function BackofficeOrganizationResendIncoming() {
   const { emails, configError, incomingError, hasNextPage } = useLoaderData<typeof loader>();
   const { basePath: integrationBasePath } = useOutletContext<ResendLayoutContext>();
   const { emailId } = useParams();

@@ -331,7 +331,7 @@ export const mcpRuntimeTools = [
     namespace: "mcp",
     name: "listServers",
     capabilityId: "mcp",
-    description: "List MCP servers configured for the current organisation.",
+    description: "List MCP servers configured for the current organization.",
     requiredPermissions: ["servers.read"],
     inputSchema: z.object({}).optional().default({}),
     outputSchema: serversOutputSchema,

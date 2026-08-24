@@ -116,6 +116,10 @@ class UnavailableInMemoryDurableObject {
     return [];
   }
 
+  async getOrganizationBySlug() {
+    return null;
+  }
+
   async hasOrganizationMember() {
     return false;
   }

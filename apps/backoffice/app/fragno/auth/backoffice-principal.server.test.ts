@@ -32,8 +32,7 @@ describe("requireBackofficeContext", () => {
       auth: {
         transport: "cookie",
         expiresAt,
-        scope: { kind: "org", orgId: "org-1" },
-        organizationRoles: ["owner"],
+        organization: { id: "org-1", slug: "acme", roles: ["owner"] },
       },
     });
 
@@ -48,7 +47,7 @@ describe("requireBackofficeContext", () => {
         kind: "verified-request-authority",
         userId: "user-1",
         role: "admin",
-        scope: { kind: "org", orgId: "org-1" },
+        organizationId: "org-1",
         expiresAtEpochMs: expiresAt.getTime(),
       },
     });
@@ -63,8 +62,7 @@ describe("requireBackofficeContext", () => {
         auth: {
           transport: "cookie",
           expiresAt: new Date("2099-01-01T00:00:00.000Z"),
-          scope: { kind: "org", orgId: "org-1" },
-          organizationRoles: ["member"],
+          organization: { id: "org-1", slug: "acme", roles: ["member"] },
         },
       },
     });
@@ -88,8 +86,7 @@ describe("requireBackofficeContext", () => {
         auth: {
           transport: "cookie",
           expiresAt,
-          scope: { kind: "org", orgId: "org-1" },
-          organizationRoles: ["member"],
+          organization: { id: "org-1", slug: "acme", roles: ["member"] },
         },
       },
     });
@@ -112,8 +109,7 @@ describe("requireBackofficeContext", () => {
       auth: {
         transport: "cookie",
         expiresAt: new Date("2099-01-01T00:00:00.000Z"),
-        scope: { kind: "system" },
-        organizationRoles: [],
+        organization: null,
       },
     });
 

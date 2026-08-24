@@ -1,13 +1,13 @@
 import { Outlet, redirect } from "react-router";
 
+import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import { lookupAutomationProject } from "../automations/data.server";
 import {
-  automationScopeFromRouteParams,
-  resolveAutomationUiScope,
-  toBackofficeScope,
+  automationRuntimeScopeFromRouteParams,
+  resolveAutomationScopeSelection,
 } from "../automations/scope";
 import type { Route } from "./+types/scope-layout";
 import type { FilesLayoutContext } from "./layout-context";
@@ -20,8 +20,8 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw redirect(buildBackofficeLoginPath(returnTo));
   }
 
-  const organisations = me.organizations.map((entry) => entry.organization);
-  const parsedScope = automationScopeFromRouteParams(params);
+  const organizations = me.organizations.map((entry) => entry.organization);
+  const parsedScope = automationRuntimeScopeFromRouteParams(params, organizations);
   const projectLookup =
     parsedScope.kind === "project"
       ? await lookupAutomationProject(context, parsedScope.orgId, parsedScope.projectId)
@@ -33,9 +33,9 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  const selectedScope = resolveAutomationUiScope({
+  const selectedScope = resolveAutomationScopeSelection({
     params,
-    organisations,
+    organizations,
     project: projectLookup?.status === "found" ? projectLookup.project : null,
     user: me.user,
   });
@@ -55,7 +55,7 @@ export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
 
 export default function BackofficeFilesScopeLayout({ loaderData }: Route.ComponentProps) {
   const outletContext = {
-    scope: toBackofficeScope(loaderData.selectedScope),
+    scope: backofficeRuntimeScopeFromResolvedScope(loaderData.selectedScope),
     selectedScope: loaderData.selectedScope,
     origin: loaderData.origin,
   } satisfies FilesLayoutContext;

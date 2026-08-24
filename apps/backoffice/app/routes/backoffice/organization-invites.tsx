@@ -5,15 +5,15 @@ import { FormContainer, FormField } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
 import { cn } from "@/lib/utils";
 
-import type { OrganisationLayoutContext } from "./organisation-layout";
-import { Notice } from "./organisation-shared";
+import type { OrganizationLayoutContext } from "./organization-layout";
+import { Notice } from "./organization-shared";
 import {
   ROLE_OPTIONS,
   type ActionNotice,
   formatDateTime,
   formatRoles,
   getErrorMessage,
-} from "./organisation-utils";
+} from "./organization-utils";
 
 type InvitationFormState = {
   email: string;
@@ -118,11 +118,11 @@ function CopyButton({
 }
 
 export function meta() {
-  return [{ title: "Organisation Invites" }];
+  return [{ title: "Organization Invites" }];
 }
 
-export default function BackofficeOrganisationInvites() {
-  const { organization, member, me } = useOutletContext<OrganisationLayoutContext>();
+export default function BackofficeOrganizationInvites() {
+  const { organization, member, me } = useOutletContext<OrganizationLayoutContext>();
   const canManageMembers =
     me.user.role === "admin" || member.roles.some((role) => role === "owner" || role === "admin");
 
@@ -293,7 +293,7 @@ export default function BackofficeOrganisationInvites() {
       <FormContainer
         eyebrow="Pending"
         title={`Open invitations (${invitations.length})`}
-        description="Track pending invitations for this organisation and copy invite links to share."
+        description="Track pending invitations for this organization and copy invite links to share."
       >
         {invitationsLoading ? (
           <p className="text-sm text-[var(--bo-muted)]">Loading invitations...</p>

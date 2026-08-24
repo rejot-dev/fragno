@@ -5,13 +5,12 @@ import { useLiveQuery } from "@tanstack/react-db";
 
 import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
-import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/identity-bindings";
 import { formatTimestamp } from "./formatting";
 import type { AutomationLayoutContext } from "./layout-context";
-import { automationScopeFromRouteParams } from "./scope";
+import { requireAutomationRouteExecution } from "./scope.server";
 
 type BindingStatus = "all" | "active" | "revoked";
 
@@ -47,8 +46,7 @@ const searchableBindingText = (binding: {
     .toLowerCase();
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
-  const scope = automationScopeFromRouteParams(params);
-  const execution = await requireBackofficeContext(request, context, scope);
+  const execution = await requireAutomationRouteExecution(request, context, params);
   const { kernel } = context.get(BackofficeWorkerContext);
 
   try {

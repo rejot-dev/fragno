@@ -1,8 +1,8 @@
 import type { RouterContextProvider } from "react-router";
 
+import { requireBackofficeContextScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { isAutomationOutboxPath } from "@/fragno/automation/route-callers";
-import { automationScopeFromRouteParams } from "@/routes/backoffice/automations/scope";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 export type AutomationsScopedRouteParams = {
@@ -22,7 +22,7 @@ export const forwardToScopedAutomationsFragment = async ({
   params: AutomationsScopedRouteParams;
   mountRoute: "/api/automations";
 }) => {
-  const scope = automationScopeFromRouteParams(params);
+  const scope = requireBackofficeContextScopeFromRouteParams(params);
   const execution = await requireBackofficeContext(request, context, scope);
 
   const suffix = params["*"] ? `/${params["*"]}` : "";

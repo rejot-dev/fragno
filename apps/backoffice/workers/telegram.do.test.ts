@@ -179,7 +179,7 @@ describe("Telegram Durable Object", () => {
     vi.unstubAllGlobals();
   });
 
-  test("binds the fragment to the durable object's organisation", async () => {
+  test("binds the fragment to the durable object's organization", async () => {
     const { state, store } = createState();
     const telegram = createTelegramObject(state);
 
@@ -250,7 +250,7 @@ describe("Telegram Durable Object", () => {
     );
   });
 
-  test("rejects attempts to initialize the same object for a different organisation", async () => {
+  test("rejects attempts to initialize the same object for a different organization", async () => {
     const { state } = createState();
     const telegram = new Telegram(state, {} as CloudflareEnv);
 

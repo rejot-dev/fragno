@@ -9,6 +9,8 @@ import {
   useSearchParams,
 } from "react-router";
 
+import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import { backofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
 import { BackofficeSystemState } from "@/components/backoffice";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { ClientOnly } from "@/components/client-only";
@@ -23,6 +25,7 @@ import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-da
 import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
+import { throwBackofficeOrganizationNotFound } from "../route-errors";
 import type { Route } from "./+types/scope-layout";
 import { AutomationBrowserPersistenceDiagnosticPanel } from "./browser-persistence-diagnostics";
 import {
@@ -34,10 +37,9 @@ import {
 import type { AutomationLayoutContext, AutomationTab } from "./layout-context";
 import {
   automationScopeBasePath,
-  automationScopeFromRouteParams,
+  automationRuntimeScopeFromRouteParams,
   automationScopeTabPath,
-  resolveAutomationUiScope,
-  toBackofficeScope,
+  resolveAutomationScopeSelection,
 } from "./scope";
 import {
   AutomationErrorBoundary,
@@ -101,13 +103,23 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
 
-  const organisations = me.organizations.map((entry) => entry.organization);
-  let parsedRouteScope;
+  const organizations = me.organizations.map((entry) => entry.organization);
+  let routeScope;
   try {
-    parsedRouteScope = automationScopeFromRouteParams(params);
+    routeScope = backofficeRouteScopeFromParams(params);
   } catch {
     throw new Response("Not Found", { status: 404 });
   }
+  const requestedOrganizationSlug =
+    routeScope?.kind === "org" || routeScope?.kind === "project" ? routeScope.orgSlug : null;
+  if (
+    requestedOrganizationSlug &&
+    !organizations.some(({ slug }) => slug === requestedOrganizationSlug)
+  ) {
+    throwBackofficeOrganizationNotFound(requestedOrganizationSlug);
+  }
+
+  const parsedRouteScope = automationRuntimeScopeFromRouteParams(params, organizations);
   const projectLookup =
     parsedRouteScope.kind === "project"
       ? await lookupAutomationProject(context, parsedRouteScope.orgId, parsedRouteScope.projectId)
@@ -125,13 +137,13 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  const selectedScope = resolveAutomationUiScope({
+  const selectedScope = resolveAutomationScopeSelection({
     params,
-    organisations,
+    organizations,
     project: projectLookup?.status === "found" ? projectLookup.project : null,
     user: me.user,
   });
-  const backofficeScope = toBackofficeScope(selectedScope);
+  const backofficeScope = backofficeRuntimeScopeFromResolvedScope(selectedScope);
   const currentTab = currentTabFromPath(url.pathname);
   const serverScriptLayers =
     selectedScope.kind === "org"
@@ -143,7 +155,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     selectedScope.kind === "org" && currentTab === "scripts"
       ? fetchUploadAdapterIdentity(request, context, {
           kind: "org",
-          orgId: selectedScope.orgId,
+          orgId: selectedScope.organization.id,
         })
           .then(
             (
@@ -153,7 +165,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
               error: null;
             } => ({
               source: {
-                scope: { kind: "org", orgId: selectedScope.orgId },
+                scope: { kind: "org", orgId: selectedScope.organization.id },
                 adapterIdentity,
               },
               error: null,
@@ -203,11 +215,12 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }
 
-  const scope = automationScopeFromRouteParams(params);
+  const organizations = me.organizations.map((entry) => entry.organization);
+  const scope = automationRuntimeScopeFromRouteParams(params, organizations);
   const orgId =
     scope.kind === "org" || scope.kind === "project"
       ? scope.orgId
-      : (me.activeOrganization?.organization.id ?? me.organizations[0]?.organization.id ?? null);
+      : (me.activeOrganization?.organization.id ?? null);
   if (!orgId || !me.organizations.some((entry) => entry.organization.id === orgId)) {
     throw new Response("Not Found", { status: 404 });
   }
@@ -240,7 +253,11 @@ export async function action({ request, params, context, url }: Route.ActionArgs
   return redirect(
     automationScopeTabPath({
       kind: "project",
-      orgId,
+      organization:
+        organizations.find((organization) => organization.id === orgId) ??
+        (() => {
+          throw new Error("Created project organization was not found.");
+        })(),
       projectId,
       label: result.project.name ?? name,
     }),

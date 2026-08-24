@@ -5,9 +5,9 @@ import { BackofficePageHeader } from "@/components/backoffice";
 import type { BackofficeMeData } from "@/fragno/auth/auth-client";
 
 import { AutomationSubpageTabs } from "../../automations/shared";
-import { getRouteErrorMessage, isOrganisationNotFoundError } from "../../route-errors";
+import { getRouteErrorMessage, getBackofficeOrganizationNotFound } from "../../route-errors";
 
-type BackofficeOrganisation = BackofficeMeData["organizations"][number]["organization"];
+type BackofficeOrganization = BackofficeMeData["organizations"][number]["organization"];
 
 export type GitHubAdminConfigState = {
   configured: boolean;
@@ -26,7 +26,7 @@ export type GitHubAdminConfigState = {
 
 export type GitHubLayoutContext = {
   origin: string;
-  organisation: BackofficeOrganisation | null;
+  organization: BackofficeOrganization | null;
   basePath: string;
   integrationsPath: string;
   configState: GitHubAdminConfigState | null;
@@ -88,8 +88,8 @@ export function GitHubErrorBoundary({
 
   message = getRouteErrorMessage(error, message);
 
-  if (statusCode === 404 && isOrganisationNotFoundError(error)) {
-    message = "Organisation for this scope could not be found.";
+  if (statusCode === 404 && getBackofficeOrganizationNotFound(error)) {
+    message = "Organization for this scope could not be found.";
   }
 
   return (

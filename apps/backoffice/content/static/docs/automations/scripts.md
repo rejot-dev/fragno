@@ -12,7 +12,7 @@ The automation catalog reads three file-system roots:
 | --------- | ------------------------ | ------------------------------------------------------------------- |
 | Static    | `/static/automations`    | Product-owned content bundled with Backoffice.                      |
 | System    | `/system/automations`    | System-managed content generated for the deployment.                |
-| Workspace | `/workspace/automations` | Scope-local content authored for an organisation, project, or user. |
+| Workspace | `/workspace/automations` | Scope-local content authored for an organization, project, or user. |
 
 The catalog recursively discovers files under these roots. It exposes a single relative `path` for
 display and an `absolutePath` for loading. A catalog identity also includes the layer, derived key,
@@ -141,7 +141,7 @@ automatically after evaluation.
 The Backoffice UI presents layers according to the selected scope:
 
 - System scope shows system scripts.
-- Organisation scope shows static and workspace scripts.
+- Organization scope shows static and workspace scripts.
 - Project and user scopes show workspace scripts.
 
 The runtime still resolves an explicit absolute path through the scoped master file system. Route

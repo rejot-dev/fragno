@@ -39,11 +39,12 @@ describe("Backoffice browser authentication", () => {
 
   test("refresh preserves the validated preferred organization", async () => {
     localStorage.setItem("fragno-backoffice-default-organization", "org-1");
-    const fetchImplementation = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        Response.json({ expiresAt: "2026-08-11T12:15:00.000Z", organizationId: "org-1" }),
-      );
+    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        expiresAt: "2026-08-11T12:15:00.000Z",
+        organization: { id: "org-1", slug: "acme" },
+      }),
+    );
 
     await refreshBackofficeAccessToken(fetchImplementation);
 
@@ -58,11 +59,12 @@ describe("Backoffice browser authentication", () => {
 
   test("stores the server fallback for a stale preferred organization", async () => {
     localStorage.setItem("fragno-backoffice-default-organization", "org-stale");
-    const fetchImplementation = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        Response.json({ expiresAt: "2026-08-11T12:15:00.000Z", organizationId: "org-current" }),
-      );
+    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        expiresAt: "2026-08-11T12:15:00.000Z",
+        organization: { id: "org-current", slug: "current" },
+      }),
+    );
 
     await refreshBackofficeAccessToken(fetchImplementation);
 
@@ -85,7 +87,10 @@ describe("Backoffice browser authentication", () => {
         }),
       )
       .mockResolvedValueOnce(
-        Response.json({ expiresAt: "2026-08-11T12:15:00.000Z", organizationId: null }),
+        Response.json({
+          expiresAt: "2026-08-11T12:15:00.000Z",
+          organization: null,
+        }),
       )
       .mockResolvedValueOnce(Response.json({ ok: true }));
 
@@ -120,7 +125,12 @@ describe("Backoffice browser authentication", () => {
     const firstRequest = backofficeFetch("/api/backoffice/first", undefined, fetchImplementation);
     const secondRequest = backofficeFetch("/api/backoffice/second", undefined, fetchImplementation);
     await vi.waitFor(() => expect(fetchImplementation).toHaveBeenCalledTimes(3));
-    completeRefresh(Response.json({ expiresAt: "2027-08-11T12:15:00.000Z", organizationId: null }));
+    completeRefresh(
+      Response.json({
+        expiresAt: "2027-08-11T12:15:00.000Z",
+        organization: null,
+      }),
+    );
 
     await expect(Promise.all([firstRequest, secondRequest])).resolves.toHaveLength(2);
     expect(

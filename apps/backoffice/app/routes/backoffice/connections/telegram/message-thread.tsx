@@ -91,7 +91,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   } satisfies TelegramSendMessageActionData;
 }
 
-export default function BackofficeOrganisationTelegramMessageThread() {
+export default function BackofficeOrganizationTelegramMessageThread() {
   const { messages, messagesError } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();

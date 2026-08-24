@@ -19,7 +19,7 @@ describe("marketplace listing navigation", () => {
     });
     const path = marketplaceListingPath(listingId, {
       kind: "org",
-      orgId: "org-1",
+      organization: { id: "org-1", slug: "acme" },
       label: "Ada Labs",
     });
     const matches = matchRoutes(
@@ -41,10 +41,10 @@ describe("marketplace listing navigation", () => {
     expect(
       marketplaceListingPath(listingId, {
         kind: "org",
-        orgId: "org-1",
+        organization: { id: "org-1", slug: "acme" },
         label: "Ada Labs",
       }),
-    ).toBe(`/backoffice/marketplace/org/org-1/marketplace/${marketplaceListingRef(listingId)}`);
+    ).toBe(`/backoffice/marketplace/org/acme/marketplace/${marketplaceListingRef(listingId)}`);
   });
 
   test("rejects malformed and non-listing references at the route boundary", () => {
@@ -63,11 +63,11 @@ describe("marketplace listing navigation", () => {
     expect(
       marketplaceListingManagePath({
         listingId,
-        organizationId: "org-1",
+        organizationSlug: "acme",
         result: { created: "1.0.0" },
       }),
     ).toBe(
-      `/backoffice/marketplace/${marketplaceListingRef(listingId)}/manage?organizationId=org-1&created=1.0.0`,
+      `/backoffice/marketplace/${marketplaceListingRef(listingId)}/manage?organizationSlug=acme&created=1.0.0`,
     );
   });
 });

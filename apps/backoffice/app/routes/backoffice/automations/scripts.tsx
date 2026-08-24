@@ -15,7 +15,8 @@ import type { Route } from "./+types/scripts";
 import type { AutomationScriptRecord } from "./data";
 import { loadAutomationScriptSource } from "./data.server";
 import type { AutomationLayoutContext } from "./layout-context";
-import { automationScopeFromRouteParams, automationScopeTabPath, toBackofficeScope } from "./scope";
+import { automationScopeTabPath } from "./scope";
+import { requireAutomationRouteExecution } from "./scope.server";
 import { buildUploadWorkspaceScriptRecords } from "./script-records";
 import { ScriptSourcePanel } from "./script-view/script-source-panel";
 import {
@@ -88,16 +89,15 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   return {
     selectedScriptSource: await loadAutomationScriptSource({
-      request,
       context,
-      scope: automationScopeFromRouteParams(params),
+      execution: await requireAutomationRouteExecution(request, context, params),
       scriptId: selectedScriptId,
     }),
     runtimeToolCatalog: runtimeToolWorkflowCatalog,
   };
 }
 
-export default function BackofficeOrganisationAutomationScripts() {
+export default function BackofficeOrganizationAutomationScripts() {
   const context = useOutletContext<AutomationLayoutContext>();
 
   if (!context.uploadCollectionSource) {
@@ -214,7 +214,7 @@ function AutomationScriptsView({
   if (scripts.length === 0) {
     return (
       <div className="w-full max-w-[120rem] border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-        No automation scripts are defined for this organisation.
+        No automation scripts are defined for this organization.
       </div>
     );
   }
@@ -341,7 +341,7 @@ function AutomationScriptsView({
                 source={loaderData.selectedScriptSource}
                 runtimeToolCatalog={loaderData.runtimeToolCatalog}
                 collections={collections}
-                scope={toBackofficeScope(selectedScope)}
+                resolvedScope={selectedScope}
               />
             </div>
           ) : (

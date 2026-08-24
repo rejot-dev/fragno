@@ -1,6 +1,6 @@
 import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { GitHub } from "workers/github.do";
-import type { Otp } from "workers/otp.do";
+import type { IssueIdentityClaimInput, IssueIdentityClaimResult, Otp } from "workers/otp.do";
 import type { Resend } from "workers/resend.do";
 import type { Reson8 } from "workers/reson8.do";
 import type { TelegramAdminConfigResponse } from "workers/telegram.do";
@@ -183,6 +183,7 @@ export type AuthObject = FetchObject &
       organizationId?: string;
     }): Promise<UserAuthorityFacts>;
     getAllOrganizations(): Promise<Organization[]>;
+    getOrganizationBySlug(slug: string): Promise<Pick<Organization, "id" | "slug"> | null>;
     hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean>;
     getDevOrganizations(): Promise<
       Array<
@@ -344,19 +345,7 @@ export type OtpObject = FetchObject &
     confirmEmailVerificationChallenge(
       input: Parameters<Otp["confirmEmailVerificationChallenge"]>[0],
     ): Promise<AwaitedMethodReturn<Otp, "confirmEmailVerificationChallenge">>;
-    issueIdentityClaim(input: {
-      orgId: string;
-      actor: unknown;
-      expiresInMinutes?: number;
-      publicBaseUrl: string;
-    }): Promise<{
-      ok: true;
-      url: string;
-      otpId: string;
-      externalId: string;
-      code: string;
-      type: string;
-    }>;
+    issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult>;
     confirmIdentityClaim(input: unknown): Promise<AwaitedMethodReturn<Otp, "confirmIdentityClaim">>;
   };
 

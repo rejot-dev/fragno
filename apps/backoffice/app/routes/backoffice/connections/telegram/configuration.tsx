@@ -27,8 +27,8 @@ const SETUP_STEPS = [
   {
     title: "Store credentials",
     description:
-      "Save the bot token and secret for this organisation. The fragment will start ingesting chats.",
-    helper: "Saved per organisation",
+      "Save the bot token and secret for this organization. The fragment will start ingesting chats.",
+    helper: "Saved per organization",
   },
 ];
 
@@ -177,7 +177,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   }
 }
 
-export default function BackofficeOrganisationTelegramConfiguration() {
+export default function BackofficeOrganizationTelegramConfiguration() {
   const { origin, scope, configState, configLoading, configError, setConfigError } =
     useOutletContext<TelegramLayoutContext>();
   const [currentStep, setCurrentStep] = useState(0);
@@ -274,7 +274,7 @@ export default function BackofficeOrganisationTelegramConfiguration() {
                 Telegram connection
               </h2>
               <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                Each organisation gets a dedicated Telegram fragment instance and database.
+                Each organization gets a dedicated Telegram fragment instance and database.
               </p>
             </div>
             <span
@@ -348,7 +348,7 @@ export default function BackofficeOrganisationTelegramConfiguration() {
       <FormContainer
         title="Telegram credentials"
         eyebrow="Configuration"
-        description="Store bot credentials for this organisation. Tokens are never displayed after save."
+        description="Store bot credentials for this organization. Tokens are never displayed after save."
         actions={
           <button
             type="button"

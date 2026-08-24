@@ -2,12 +2,16 @@ import "../backoffice.css";
 
 import { redirect } from "react-router";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
-import { BackofficeScopeCodecError } from "@/backoffice-runtime/scope-codec";
+import {
+  backofficeRuntimeScopeFromResolvedScope,
+  type BackofficeResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
+import { isBackofficeScopeCodecError } from "@/backoffice-runtime/scope-codec";
 import type { CurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { getBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import type { Organization } from "@/fragno/auth/contracts";
 import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
 import {
   buildBackofficeAuthBootstrapPath,
@@ -37,22 +41,35 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   const me = jwtMe.me;
   const accessTokenExpiresAt = jwtMe.expiresAt.toISOString();
 
-  const defaultOrganizationId =
-    me.activeOrganization?.organization.id ?? me.organizations[0]?.organization.id ?? null;
-  const defaultScope = defaultOrganizationId
-    ? { kind: "org" as const, orgId: defaultOrganizationId }
-    : { kind: "user" as const, userId: me.user.id };
-  let currentScope: BackofficeContextScope;
-  try {
-    currentScope = resolveCurrentBackofficeScope({ params, defaultScope });
-  } catch (error) {
-    if (error instanceof BackofficeScopeCodecError) {
-      throw new Response("Not Found", { status: 404 });
-    }
-    throw error;
+  const activeOrganization = me.activeOrganization?.organization ?? null;
+  if (
+    me.activeOrganizationId &&
+    (!activeOrganization || activeOrganization.id !== me.activeOrganizationId)
+  ) {
+    throw redirect(buildBackofficeAuthBootstrapPath(returnTo));
   }
+  const defaultScope: BackofficeResolvedScope<Organization> = activeOrganization
+    ? { kind: "org", organization: activeOrganization }
+    : { kind: "user", userId: me.user.id };
+  let resolvedScope: BackofficeResolvedScope<Organization>;
+  try {
+    resolvedScope = resolveCurrentBackofficeScope({
+      params,
+      defaultScope,
+      organizations: me.organizations.map(({ organization }) => organization),
+    });
+  } catch (error) {
+    if (isBackofficeScopeCodecError(error)) {
+      resolvedScope = defaultScope;
+    } else {
+      throw error;
+    }
+  }
+  const runtimeScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
   const destinationOrganizationId =
-    currentScope.kind === "org" || currentScope.kind === "project" ? currentScope.orgId : null;
+    resolvedScope.kind === "org" || resolvedScope.kind === "project"
+      ? resolvedScope.organization.id
+      : null;
   if (
     destinationOrganizationId &&
     destinationOrganizationId !== me.activeOrganizationId &&
@@ -62,7 +79,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   }
 
   try {
-    await requireBackofficeContext(request, context, currentScope);
+    await requireBackofficeContext(request, context, runtimeScope);
   } catch (error) {
     if (error instanceof BackofficeForbiddenError) {
       throw new Response(error.message, { status: 403 });
@@ -73,7 +90,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   const automationCollectionSourcePromise = fetchAutomationCollectionSource(
     request,
     context,
-    currentScope,
+    resolvedScope,
   ).then(
     (source): CurrentBackofficeContext["automationCollectionSource"] => ({
       status: "ready",
@@ -81,18 +98,19 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     }),
     (error: unknown): CurrentBackofficeContext["automationCollectionSource"] => ({
       status: "unavailable",
+      resolvedScope,
       message: error instanceof Error ? error.message : "Workflow synchronization is unavailable.",
     }),
   );
   const projectCollectionSourcePromise: Promise<
     CurrentBackofficeContext["projectCollectionSource"]
   > | null =
-    currentScope.kind === "org"
+    resolvedScope.kind === "org"
       ? automationCollectionSourcePromise
-      : currentScope.kind === "project"
+      : resolvedScope.kind === "project"
         ? fetchAutomationCollectionSource(request, context, {
             kind: "org",
-            orgId: currentScope.orgId,
+            organization: resolvedScope.organization,
           }).then(
             (source): CurrentBackofficeContext["automationCollectionSource"] => ({
               status: "ready",
@@ -100,6 +118,10 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
             }),
             (error: unknown): CurrentBackofficeContext["automationCollectionSource"] => ({
               status: "unavailable",
+              resolvedScope: {
+                kind: "org",
+                organization: resolvedScope.organization,
+              },
               message:
                 error instanceof Error ? error.message : "Project synchronization is unavailable.",
             }),
@@ -113,7 +135,6 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   return {
     me,
     accessTokenExpiresAt,
-    currentScope,
     automationCollectionSource,
     projectCollectionSource,
   };

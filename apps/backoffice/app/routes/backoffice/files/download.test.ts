@@ -18,7 +18,7 @@ vi.mock("./file-collections.server", () => ({
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import { loader } from "./download";
 
-const DOWNLOAD_PATH = "/backoffice/files/org/org_123/download";
+const DOWNLOAD_PATH = "/backoffice/files/org/fragno/download";
 
 describe("backoffice files download route", () => {
   beforeEach(() => {
@@ -91,7 +91,7 @@ const createLoaderArgs = (url: string) =>
     request: new Request(url),
     url: new URL(url),
     context: { get: () => ({ runtime: { objects: {}, config: {} } }) } as never,
-    params: { scopeKind: "org", scopeId: "org_123" },
+    params: { scopeKind: "org", scopeId: "fragno" },
   }) as unknown as Parameters<typeof loader>[0];
 
 function toResponse(result: Awaited<ReturnType<typeof loader>>): Response {
@@ -106,12 +106,12 @@ const createAuthMe = () => ({
   user: { id: "user_123", email: "dev@fragno.test", role: "admin" },
   organizations: [
     {
-      organization: { id: "org_123", name: "Fragno" },
+      organization: { id: "org_123", slug: "fragno", name: "Fragno" },
       member: { organizationId: "org_123" },
     },
   ],
   activeOrganization: {
-    organization: { id: "org_123", name: "Fragno" },
+    organization: { id: "org_123", slug: "fragno", name: "Fragno" },
     member: { organizationId: "org_123" },
   },
   invitations: [],

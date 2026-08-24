@@ -11,7 +11,6 @@ import {
 import { Streamdown } from "streamdown";
 
 import { FormField } from "@/components/backoffice";
-import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { jsonSchemaToTypeScript, type JsonSchemaObject } from "@/lib/zod/zod-formatter";
 
 import {
@@ -22,7 +21,7 @@ import {
   type McpServerToolsState,
 } from "../connections/mcp/data";
 import type { Route } from "./+types/mcp";
-import { automationScopeFromRouteParams } from "./scope";
+import { requireAutomationRouteExecution } from "./scope.server";
 
 type McpActionData = {
   ok: boolean;
@@ -68,8 +67,7 @@ const parseScopes = (value: string) =>
 const selectedServerPath = (slug: string) => `?server=${encodeURIComponent(slug)}`;
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
-  const scope = automationScopeFromRouteParams(params);
-  await requireBackofficeContext(request, context, scope);
+  const { scope } = await requireAutomationRouteExecution(request, context, params);
 
   const { servers, serversError } = await fetchMcpServersForScope(request, context, scope);
 
@@ -77,8 +75,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context, params }: Route.ActionArgs) {
-  const scope = automationScopeFromRouteParams(params);
-  await requireBackofficeContext(request, context, scope);
+  const { scope } = await requireAutomationRouteExecution(request, context, params);
 
   const formData = await request.formData();
   const intent = getFormString(formData, "intent") || "add-server";
@@ -827,7 +824,7 @@ function ServerDetail({
   );
 }
 
-export default function BackofficeOrganisationMcpConfiguration() {
+export default function BackofficeOrganizationMcpConfiguration() {
   const { servers, serversError } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const refreshFetcher = useFetcher<typeof action>();

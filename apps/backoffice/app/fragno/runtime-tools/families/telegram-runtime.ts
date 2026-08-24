@@ -8,7 +8,7 @@ import type {
 import type { TelegramFragment } from "@/fragno/telegram";
 
 import {
-  createOrganisationNotConfiguredMessage,
+  createOrganizationNotConfiguredMessage,
   isSuccessStatus,
   throwOnRouteRuntimeError,
 } from "../runtime-errors";
@@ -19,7 +19,7 @@ export type RegisteredTelegramCommandContext = {
   runtime: TelegramRuntime;
 };
 
-const TELEGRAM_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("Telegram");
+const TELEGRAM_NOT_CONFIGURED = createOrganizationNotConfiguredMessage("Telegram");
 
 type CreateRouteBackedTelegramRuntimeOptions = {
   baseUrl: string;

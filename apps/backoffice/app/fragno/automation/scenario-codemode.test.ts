@@ -137,7 +137,7 @@ describe("Backoffice codemode scenarios", () => {
     );
   });
 
-  test("lets the explicitly trusted scenario shell arrange another organisation", async () => {
+  test("lets the explicitly trusted scenario shell arrange another organization", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "trusted scenario codemode writes state through a scoped context",

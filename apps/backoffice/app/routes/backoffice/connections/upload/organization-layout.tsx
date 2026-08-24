@@ -1,32 +1,19 @@
 import { useEffect, useState } from "react";
 import { Outlet, redirect, useLoaderData, useMatches, type LoaderFunctionArgs } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { UploadAdminConfigResponse } from "@/fragno/upload";
 import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
-import { throwOrganisationNotFound } from "../../route-errors";
 import { fetchUploadConfig } from "./data";
 import type { UploadLayoutContext } from "./layout-context";
-import { resolveUploadWorkspaceTab } from "./organisation-layout-state";
+import { resolveUploadWorkspaceTab } from "./organization-layout-state";
+import { requireUploadRouteOrganization } from "./organization.server";
 import { UploadErrorBoundary, UploadHeader, UploadWorkspaceTabs } from "./shared";
 
 export async function loader({ request, params, context, url }: LoaderFunctionArgs) {
-  const orgId = params.orgId;
-  if (!orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(new URL("/backoffice/login", request.url), 302);
-  }
-
-  const organisation =
-    me.organizations.find((entry) => entry.organization.id === orgId)?.organization ?? null;
-  if (!organisation) {
-    throwOrganisationNotFound(orgId);
-  }
+  const { organization } = await requireUploadRouteOrganization(request, context, params.orgSlug);
+  const orgId = organization.id;
+  const orgSlug = organization.slug;
 
   const { configState, configError } = await fetchUploadConfig(context, orgId);
   let persistenceSource: UploadLayoutContext["persistenceSource"] = null;
@@ -43,16 +30,15 @@ export async function loader({ request, params, context, url }: LoaderFunctionAr
   }
 
   const currentPath = url.pathname.replace(/\/+$/, "");
-  const basePath = `/backoffice/connections/upload/${orgId}`;
+  const basePath = `/backoffice/connections/upload/${encodeURIComponent(orgSlug)}`;
   if (currentPath === basePath) {
     const target = configState?.configured ? "files" : "configuration";
     return redirect(`${basePath}/${target}`);
   }
 
   return {
-    orgId,
     origin: url.origin,
-    organisation,
+    organization,
     configState,
     configError,
     persistenceSource,
@@ -60,20 +46,19 @@ export async function loader({ request, params, context, url }: LoaderFunctionAr
   };
 }
 
-export function meta({ loaderData }: { loaderData?: { orgId?: string } }) {
-  const orgId = loaderData?.orgId ?? "organisation";
-  return [{ title: `Upload Setup · ${orgId}` }];
+export function meta({ loaderData }: { loaderData?: { organization?: { id: string } } }) {
+  const organizationId = loaderData?.organization?.id ?? "organization";
+  return [{ title: `Upload Setup · ${organizationId}` }];
 }
 
-export function ErrorBoundary({ error, params }: { error: unknown; params: { orgId?: string } }) {
+export function ErrorBoundary({ error, params }: { error: unknown; params: { orgSlug?: string } }) {
   return <UploadErrorBoundary error={error} params={params} />;
 }
 
-export default function BackofficeOrganisationUploadLayout() {
+export default function BackofficeOrganizationUploadLayout() {
   const {
-    orgId,
     origin,
-    organisation,
+    organization,
     configState: initialConfigState,
     configError: initialConfigError,
     persistenceSource,
@@ -89,7 +74,7 @@ export default function BackofficeOrganisationUploadLayout() {
   useEffect(() => {
     setConfigState(initialConfigState);
     setConfigError(initialConfigError);
-  }, [initialConfigError, initialConfigState, orgId]);
+  }, [initialConfigError, initialConfigState, organization.id]);
 
   const matches = useMatches();
   const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
@@ -98,17 +83,16 @@ export default function BackofficeOrganisationUploadLayout() {
 
   return (
     <div className="space-y-4">
-      <UploadHeader orgId={orgId} organisationName={organisation?.name ?? orgId} />
+      <UploadHeader organizationLabel={organization.name || organization.id} />
       <UploadWorkspaceTabs
-        orgId={orgId}
+        orgSlug={organization.slug}
         activeTab={activeTab}
         isConfigured={Boolean(configState?.configured)}
       />
       <Outlet
         context={{
-          orgId,
           origin,
-          organisation,
+          organization,
           configState,
           configLoading,
           configError,

@@ -13,7 +13,7 @@ export async function bootstrapBackofficePreferredOrganization(
     preferredOrganizationId,
     fetchImplementation,
   );
-  writePreference(result.organizationId);
+  writePreference(result.organization?.id ?? null);
   recordIssuedBackofficeToken(result);
   return result;
 }
@@ -27,7 +27,7 @@ export async function bootstrapBackofficeSession(
     { selection: "required", organizationId },
     fetchImplementation,
   );
-  writePreference(result.organizationId);
+  writePreference(result.organization?.id ?? null);
   recordIssuedBackofficeToken(result);
   return result;
 }

@@ -3,9 +3,9 @@ import { describe, expect, test } from "vitest";
 import {
   getOrganizationPreferenceState,
   sortOrganizationsByPreference,
-} from "./organisations-preference";
+} from "./organizations-preference";
 
-describe("Backoffice organisations preferred-org helpers", () => {
+describe("Backoffice organizations preferred-org helpers", () => {
   test("sorts the preferred organization to the front of the list", () => {
     const organizations = [
       { organization: { id: "org-a", name: "Org A" } },

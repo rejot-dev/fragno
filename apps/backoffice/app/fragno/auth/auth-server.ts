@@ -79,10 +79,7 @@ export async function getBackofficeMe(
 
   const me = await authObject.getBackofficeMe({
     userId: verification.payload.sub,
-    activeOrganizationId:
-      verification.payload.scope.kind === "org" || verification.payload.scope.kind === "project"
-        ? verification.payload.scope.orgId
-        : null,
+    activeOrganizationId: verification.payload.organization?.id ?? null,
   });
   return me
     ? {

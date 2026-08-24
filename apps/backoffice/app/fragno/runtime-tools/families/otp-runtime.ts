@@ -2,7 +2,9 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { OtpObject } from "@/backoffice-runtime/object-registry";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
+import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
+import { buildIdentityClaimCompletionUrl } from "@/fragno/otp";
 
 import type { OtpRuntime } from "./otp";
 
@@ -21,22 +23,17 @@ export const createUnavailableOtpRuntime = (message: string): OtpRuntime => ({
 export const createOtpRuntime = ({
   object,
   config,
-  orgId,
+  scope,
   kernel,
   execution,
 }: {
   object: OtpObject;
   config: BackofficeRuntimeConfig;
-  orgId: string;
+  scope: Extract<BackofficeResolvedScope, { kind: "org" }>;
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
 }): OtpRuntime => ({
   createClaim: async ({ ttlMinutes }) => {
-    const normalizedOrgId = orgId.trim();
-    if (!normalizedOrgId) {
-      throw new Error("otp.identity.create-claim requires an organisation id");
-    }
-
     const publicBaseUrl = config.docsPublicBaseUrl?.trim();
     if (!publicBaseUrl) {
       throw new Error(
@@ -68,15 +65,19 @@ export const createOtpRuntime = ({
       },
       execute: async () =>
         await object.issueIdentityClaim({
-          orgId: normalizedOrgId,
+          scope: { kind: "org", orgId: scope.organization.id },
           actor,
           expiresInMinutes: ttlMinutes,
-          publicBaseUrl,
         }),
     });
 
     return {
-      url: issued.url,
+      url: buildIdentityClaimCompletionUrl(
+        publicBaseUrl,
+        scope.organization.slug,
+        issued.externalId,
+        issued.code,
+      ),
       otpId: issued.otpId,
       externalId: issued.externalId,
       code: issued.code,

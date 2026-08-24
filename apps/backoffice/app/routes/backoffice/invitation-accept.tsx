@@ -2,12 +2,16 @@ import { FragnoClientApiError } from "@fragno-dev/core/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 
+import {
+  backofficeOrganizationIdentity,
+  type BackofficeOrganizationIdentity,
+} from "@/backoffice-runtime/resolved-scope";
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
 import { buildBackofficeOrganizationSwitchPath } from "@/routes/backoffice/auth-navigation";
 
-import { Notice } from "./organisation-shared";
-import { type ActionNotice, getErrorMessage } from "./organisation-utils";
+import { Notice } from "./organization-shared";
+import { type ActionNotice, getErrorMessage } from "./organization-utils";
 
 export function meta() {
   return [{ title: "Accept Invitation" }];
@@ -21,7 +25,7 @@ const INVITATION_ERROR_COPY: Record<string, string> = {
   permission_denied: "You do not have permission to accept this invitation with this account.",
   session_invalid: "Your session expired. Please sign in again.",
   limit_reached:
-    "This organisation has reached its member limit. Ask an admin to increase the limit.",
+    "This organization has reached its member limit. Ask an admin to increase the limit.",
 };
 
 const getInvitationErrorMessage = (error: unknown) => {
@@ -56,7 +60,8 @@ export default function BackofficeInvitationAccept() {
   const [status, setStatus] = useState<"idle" | "checking" | "accepting" | "success" | "error">(
     "idle",
   );
-  const [acceptedOrganizationId, setAcceptedOrganizationId] = useState<string | null>(null);
+  const [acceptedOrganization, setAcceptedOrganization] =
+    useState<BackofficeOrganizationIdentity | null>(null);
   const respondInvitationRef = useRef(respondInvitation);
   const acceptanceRequestKey = useRef<string | null>(null);
 
@@ -139,9 +144,15 @@ export default function BackofficeInvitationAccept() {
             response && typeof response === "object" && "invitation" in response
               ? (response as { invitation?: { organizationId?: string } }).invitation
               : null;
-          if (invitation?.organizationId) {
-            setAcceptedOrganizationId(invitation.organizationId);
+          if (invitation?.organizationId !== invitationEntry.organization.id) {
+            setStatus("error");
+            setNotice({
+              type: "error",
+              message: "The accepted invitation returned an unexpected organization.",
+            });
+            return;
           }
+          setAcceptedOrganization(backofficeOrganizationIdentity(invitationEntry.organization));
           setStatus("success");
           setNotice({ type: "success", message: "Invitation accepted." });
         },
@@ -164,7 +175,7 @@ export default function BackofficeInvitationAccept() {
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
-          { label: "Organisations", to: "/backoffice/organisations" },
+          { label: "Organizations", to: "/backoffice/organizations" },
           { label: "Accept invitation" },
         ]}
         eyebrow="Invitations"
@@ -184,22 +195,22 @@ export default function BackofficeInvitationAccept() {
           <p className="text-sm text-[var(--bo-muted)]">Accepting invitation...</p>
         ) : null}
         <Notice notice={notice} />
-        {status === "success" && acceptedOrganizationId ? (
+        {status === "success" && acceptedOrganization ? (
           <div className="flex flex-wrap gap-2">
             <Link
               to={buildBackofficeOrganizationSwitchPath(
-                acceptedOrganizationId,
-                `/backoffice/organisations/${acceptedOrganizationId}`,
+                acceptedOrganization.id,
+                `/backoffice/organizations/${encodeURIComponent(acceptedOrganization.slug)}`,
               )}
               className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
             >
-              Open organisation
+              Open organization
             </Link>
             <Link
-              to="/backoffice/organisations"
+              to="/backoffice/organizations"
               className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
             >
-              Back to organisations
+              Back to organizations
             </Link>
           </div>
         ) : null}

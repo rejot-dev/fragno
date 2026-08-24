@@ -15,7 +15,7 @@ import {
 
 import { eq, toArray, useLiveQuery } from "@tanstack/react-db";
 
-import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
+import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { BackofficeUiErrorBoundary, BackofficeUiRenderer } from "@/backoffice-ui/renderer";
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
@@ -397,6 +397,7 @@ function WorkflowRunDetail({
   source: AutomationCollectionSource;
   onBack: () => void;
 }) {
+  const runtimeScope = backofficeRuntimeScopeFromResolvedScope(source.resolvedScope);
   const generatedUi = latestWorkflowGeneratedUi(run);
   const completedSteps = run.steps.filter((step) => step.status === "completed").length;
   const runError = workflowRunErrorText(run);
@@ -506,7 +507,9 @@ function WorkflowRunDetail({
                 state={workflowStepGeneratedUiState(generatedUi.step)}
                 workflowEvents={run.workflowEvents}
                 workflowRunRecordId={run.id}
-                currentScope={isBackofficeRoutableScope(source.scope) ? source.scope : undefined}
+                currentScope={
+                  source.resolvedScope.kind !== "system" ? source.resolvedScope : undefined
+                }
                 workflowName={run.remoteWorkflowName ?? run.workflowName}
                 workflowInstanceId={run.instanceId}
                 waitingEventTypes={currentWorkflowWaitingEventTypes(run.steps)}
@@ -520,7 +523,7 @@ function WorkflowRunDetail({
                   await sendBackofficeWorkflowEvent({
                     eventId,
                     reference: {
-                      scope: source.scope,
+                      scope: runtimeScope,
                       workflowName,
                       instanceId,
                     },

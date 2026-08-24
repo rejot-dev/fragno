@@ -81,7 +81,7 @@ A route performs exactly one action.
 
 - `workflowScriptPath` — absolute path to a saved workflow file;
 - `instanceIdTemplate` — stable instance identity rendered from the event;
-- `authority` — delegated-user or organisation-automation authority.
+- `authority` — delegated-user or organization-automation authority.
 
 The workflow runs in the current event scope. The action has no target-scope override.
 
@@ -127,8 +127,8 @@ creating a second logical workflow event.
 `forward_event` copies the event into another Backoffice scope. The action can target:
 
 - system;
-- an organisation;
-- a project within an organisation;
+- an organization;
+- a project within an organization;
 - a user.
 
 Scope IDs are templates. The route can also provide `idTemplate`; otherwise, the forwarded event
@@ -158,7 +158,7 @@ Forwarded event IDs and scope IDs use raw template rendering because provider an
 identifiers may require punctuation.
 
 A template can therefore be valid but still produce an empty required value. Actions validate
-critical results at execution time: forwarding rejects empty organisation, project, or user IDs,
+critical results at execution time: forwarding rejects empty organization, project, or user IDs,
 while workflow-event delivery treats an empty instance ID as a no-op.
 
 ## Route provenance and marketplace ownership

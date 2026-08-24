@@ -11,7 +11,7 @@ import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/installed";
 import type { MarketplaceLayoutContext } from "./layout-context";
 import { marketplaceListingPath } from "./navigation";
-import { marketplaceScopeFromRouteParams } from "./scope";
+import { marketplaceRuntimeScopeFromRouteParams } from "./scope";
 
 export function meta() {
   return [{ title: "Installed · Marketplace" }];
@@ -26,7 +26,10 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
 
-  const targetScope = marketplaceScopeFromRouteParams(params);
+  const targetScope = marketplaceRuntimeScopeFromRouteParams(
+    params,
+    me.organizations.map(({ organization }) => organization),
+  );
   if (targetScope.kind === "user" && targetScope.userId !== me.user.id) {
     throw new Response("Not Found", { status: 404 });
   }

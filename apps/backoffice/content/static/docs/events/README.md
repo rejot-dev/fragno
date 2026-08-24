@@ -15,7 +15,7 @@ Every event has these fields:
 | Field        | Meaning                                                                          |
 | ------------ | -------------------------------------------------------------------------------- |
 | `id`         | Stable event identity within the scoped Automations object.                      |
-| `scope`      | System, organisation, project, or user scope in which routing occurs.            |
+| `scope`      | System, organization, project, or user scope in which routing occurs.            |
 | `source`     | Namespace of the producer, such as `telegram`, `auth`, `scheduler`, or `custom`. |
 | `eventType`  | Source-local event name, such as `message.received` or `schedule.triggered`.     |
 | `occurredAt` | ISO timestamp for when the source says the event occurred.                       |
@@ -43,7 +43,7 @@ explicit paths:
 Both paths use the Backoffice kernel. Router forwarding verifies that the Automations owner may
 target the requested scope. `events.fire` also verifies that the current execution can access that
 scoped context. Project-scoped emission verifies that the project exists and belongs to the supplied
-organisation.
+organization.
 
 Forwarding preserves the event's source, type, payload, actors, occurrence time, and subject. It
 changes the scope and can change the event ID. Emitting a new event creates a new random ID and a
@@ -73,7 +73,7 @@ The subject is optional, open-ended metadata. It commonly contains `orgId`, `pro
 `userId`, but it can include additional event-specific fields.
 
 Subject is not the routing scope and does not grant access. For example, a system-scoped
-organisation-created event can name the new organisation in `subject.orgId` while remaining owned
+organization-created event can name the new organization in `subject.orgId` while remaining owned
 and routed by the system Automations object.
 
 For project-targeted emission, Backoffice resolves the project and writes canonical `orgId` and

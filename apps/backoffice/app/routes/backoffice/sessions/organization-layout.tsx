@@ -1,30 +1,46 @@
 import { Outlet } from "react-router";
 
 import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
+import {
+  backofficeRouteScopeFromResolvedScope,
+  backofficeRuntimeScopeFromResolvedScope,
+  resolveBackofficeRouteScope,
+} from "@/backoffice-runtime/resolved-scope";
+import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
 import { requireBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 
-import { automationScopeFromRouteParams } from "../automations/scope";
-import type { Route } from "./+types/organisation-layout";
+import type { Route } from "./+types/organization-layout";
 import { fetchPiAdapterIdentity, fetchPiRuntimeState } from "./data";
 import { isPiSessionsPath } from "./path";
 import { PiErrorBoundary, type PiLayoutContext } from "./shared";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  const scope = automationScopeFromRouteParams(params);
+  const me = await requireBackofficeMe(request, context);
+  const routeScope = requireBackofficeRouteScopeFromParams(params);
+  const resolvedScope = resolveBackofficeRouteScope(
+    routeScope,
+    me.organizations.map(({ organization }) => organization),
+  );
+  if (!resolvedScope) {
+    throw new Response("Not Found", { status: 404 });
+  }
+  const scope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
   const execution = await requireBackofficeContext(request, context, scope);
 
   const billingOrganization =
-    scope.kind === "user"
-      ? ((await requireBackofficeMe(request, context)).activeOrganization?.organization ?? null)
-      : undefined;
+    resolvedScope.kind === "org" || resolvedScope.kind === "project"
+      ? resolvedScope.organization
+      : resolvedScope.kind === "user"
+        ? (me.activeOrganization?.organization ?? null)
+        : null;
   const { runtimeState, runtimeError } = await fetchPiRuntimeState(context, scope);
   let persistenceSource: PiLayoutContext["persistenceSource"] = null;
   let persistenceError: string | null = null;
   if (runtimeState?.configured) {
     try {
       const adapterIdentity = await fetchPiAdapterIdentity(request, context, scope);
-      persistenceSource = { scope, adapterIdentity };
+      persistenceSource = { resolvedScope, adapterIdentity };
     } catch (error) {
       persistenceError =
         error instanceof Error ? error.message : "Failed to load Pi session persistence.";
@@ -32,7 +48,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   return {
-    scope,
+    resolvedScope,
     scopeLabel: backofficeContextScopeLabel(execution.scope),
     billingOrganization,
     persistenceSource,
@@ -52,7 +68,7 @@ export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
 
 export default function BackofficeScopedPiLayout({ loaderData, matches }: Route.ComponentProps) {
   const {
-    scope,
+    resolvedScope,
     scopeLabel,
     billingOrganization,
     persistenceSource,
@@ -62,7 +78,10 @@ export default function BackofficeScopedPiLayout({ loaderData, matches }: Route.
   } = loaderData;
 
   const currentPath = matches[matches.length - 1]?.pathname ?? "";
-  const isSessions = isPiSessionsPath(scope, currentPath);
+  const isSessions = isPiSessionsPath(
+    backofficeRouteScopeFromResolvedScope(resolvedScope),
+    currentPath,
+  );
 
   return (
     <div
@@ -76,7 +95,7 @@ export default function BackofficeScopedPiLayout({ loaderData, matches }: Route.
       <div className={isSessions ? "flex min-h-0 flex-1 flex-col" : undefined}>
         <Outlet
           context={{
-            scope,
+            resolvedScope,
             billingOrganization,
             persistenceSource,
             persistenceError,

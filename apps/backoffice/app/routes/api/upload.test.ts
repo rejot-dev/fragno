@@ -1,12 +1,20 @@
 import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
-const { requireBackofficeContextMock, uploadFetchMock, getUploadDurableObjectMock } = vi.hoisted(
-  () => ({
-    requireBackofficeContextMock: vi.fn(),
-    uploadFetchMock: vi.fn(),
-    getUploadDurableObjectMock: vi.fn(),
-  }),
-);
+const {
+  requireBackofficeContextMock,
+  requireBackofficeMeMock,
+  uploadFetchMock,
+  getUploadDurableObjectMock,
+} = vi.hoisted(() => ({
+  requireBackofficeContextMock: vi.fn(),
+  requireBackofficeMeMock: vi.fn(),
+  uploadFetchMock: vi.fn(),
+  getUploadDurableObjectMock: vi.fn(),
+}));
+
+vi.mock("@/fragno/auth/auth-server", () => ({
+  requireBackofficeMe: requireBackofficeMeMock,
+}));
 
 vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
   requireBackofficeContext: requireBackofficeContextMock,
@@ -22,18 +30,25 @@ const context = {} as never;
 
 beforeEach(() => {
   requireBackofficeContextMock.mockReset();
+  requireBackofficeMeMock.mockReset();
   uploadFetchMock.mockReset();
   getUploadDurableObjectMock.mockReset();
   requireBackofficeContextMock.mockResolvedValue({});
+  requireBackofficeMeMock.mockResolvedValue({
+    organizations: [
+      { organization: { id: "org-1", slug: "acme" } },
+      { organization: { id: "org-2", slug: "other" } },
+    ],
+  });
   uploadFetchMock.mockResolvedValue(new Response("ok"));
   getUploadDurableObjectMock.mockReturnValue({ fetch: uploadFetchMock });
 });
 
 describe("Upload API proxy", () => {
-  test("authorizes organisation access before forwarding the request", async () => {
-    const request = new Request("https://example.test/api/upload/org-1/_internal/outbox");
+  test("authorizes organization access before forwarding the request", async () => {
+    const request = new Request("https://example.test/api/upload/acme/_internal/outbox");
 
-    await loader({ request, context, params: { orgId: "org-1" } } as never);
+    await loader({ request, context, params: { orgSlug: "acme" } } as never);
 
     expect(requireBackofficeContextMock).toHaveBeenCalledWith(request, context, {
       kind: "org",
@@ -50,9 +65,9 @@ describe("Upload API proxy", () => {
   test("does not reach the Durable Object when authorization fails", async () => {
     const authorizationError = new Response("Not Found", { status: 404 });
     requireBackofficeContextMock.mockRejectedValue(authorizationError);
-    const request = new Request("https://example.test/api/upload/org-2/_internal/outbox");
+    const request = new Request("https://example.test/api/upload/other/_internal/outbox");
 
-    await expect(loader({ request, context, params: { orgId: "org-2" } } as never)).rejects.toBe(
+    await expect(loader({ request, context, params: { orgSlug: "other" } } as never)).rejects.toBe(
       authorizationError,
     );
 

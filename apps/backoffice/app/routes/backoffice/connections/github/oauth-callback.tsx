@@ -203,7 +203,7 @@ export async function action({
       ok: false,
       message:
         mappingResult.code === "INSTALLATION_ORG_CONFLICT"
-          ? "That GitHub installation is already linked to a different organisation."
+          ? "That GitHub installation is already linked to a different organization."
           : mappingResult.message,
     };
   }
@@ -268,7 +268,7 @@ export default function BackofficeGitHubOAuthCallback() {
     <FormContainer
       title="Restore GitHub installation"
       eyebrow="Verified GitHub access"
-      description="Choose the installation to restore for this Backoffice organisation."
+      description="Choose the installation to restore for this Backoffice organization."
     >
       <p className="text-sm text-[var(--bo-muted)]">
         Signed in to GitHub as{" "}

@@ -23,6 +23,16 @@ export class BackofficeScopeCodecError extends Error {
   }
 }
 
+export function isBackofficeScopeCodecError(error: unknown): error is BackofficeScopeCodecError {
+  return (
+    error instanceof BackofficeScopeCodecError ||
+    (typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "INVALID_BACKOFFICE_SCOPE")
+  );
+}
+
 const invalidScope = (message: string): never => {
   throw new BackofficeScopeCodecError(message);
 };
@@ -35,7 +45,7 @@ const decodeScopeComponent = (value: string, label: string): string => {
     }
     return decoded;
   } catch (error) {
-    if (error instanceof BackofficeScopeCodecError) {
+    if (isBackofficeScopeCodecError(error)) {
       throw error;
     }
     return invalidScope(`Invalid ${label} encoding.`);
@@ -104,6 +114,20 @@ export const backofficeContextScopeFromRouteParams = ({
 
   return invalidScope(`Unknown scope kind '${scopeKind}'.`);
 };
+
+/** Requires route parameters to contain one complete ID-backed runtime scope. */
+export function requireBackofficeContextScopeFromRouteParams(params: {
+  scopeKind?: string;
+  scopeId?: string;
+}): BackofficeContextScope {
+  const scope = backofficeContextScopeFromRouteParams(params);
+  if (!scope) {
+    throw new BackofficeScopeCodecError(
+      "A scoped Backoffice runtime route did not provide a scope.",
+    );
+  }
+  return scope;
+}
 
 export const backofficeScopeFromRouteParams = (params: {
   scopeKind?: string;

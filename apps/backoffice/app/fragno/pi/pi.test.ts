@@ -151,7 +151,7 @@ describe("Backoffice Pi fragment", () => {
       userId: scope.userId,
       verifiedRequestAuthority: {
         role: "user",
-        scope: { kind: "org", orgId: "org-1" },
+        organizationId: "org-1",
         expiresAt: new Date("2099-01-01T00:00:00.000Z"),
       },
     });
@@ -495,7 +495,7 @@ description: Static fallback skill.
 # Static fallback
 `;
     const uploadNotConfigured = Object.assign(
-      new Error("Upload is not configured for this organisation."),
+      new Error("Upload is not configured for this organization."),
       { name: "UploadFileListingError", code: "NOT_CONFIGURED" },
     );
     const state = {

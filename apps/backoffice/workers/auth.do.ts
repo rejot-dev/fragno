@@ -514,7 +514,7 @@ async function resolveBackofficeScopeTokenGrant(
         email: storedUser.email,
         globalRole,
         scope: input.scope,
-        organizationRoles: [],
+        organization: null,
       },
     };
   }
@@ -532,7 +532,7 @@ async function resolveBackofficeScopeTokenGrant(
         email: storedUser.email,
         globalRole,
         scope: input.scope,
-        organizationRoles: [],
+        organization: null,
       },
     };
   }
@@ -579,6 +579,15 @@ async function resolveBackofficeScopeTokenGrant(
     requestedMembership && requestedOrganizationScope
       ? requestedOrganizationScope
       : { kind: "org", orgId: selectedMembership.organizationId };
+  const selectedOrganization = await adapter.findOne<StoreOrganization>({
+    model: "organization",
+    where: [{ field: "id", value: selectedMembership.organizationId }],
+  });
+  if (!selectedOrganization) {
+    throw new Error(
+      `Stored organization membership '${selectedMembership.id}' references missing organization '${selectedMembership.organizationId}'.`,
+    );
+  }
 
   return {
     status: "ready",
@@ -587,7 +596,11 @@ async function resolveBackofficeScopeTokenGrant(
       email: storedUser.email,
       globalRole,
       scope: selectedScope,
-      organizationRoles: splitOrganizationRoles(selectedMembership.role),
+      organization: {
+        id: selectedOrganization.id,
+        slug: selectedOrganization.slug,
+        roles: splitOrganizationRoles(selectedMembership.role),
+      },
     },
   };
 }
@@ -1182,6 +1195,15 @@ export class InMemoryAuthObject implements AuthObject {
     ).map(toOrganization);
   }
 
+  async getOrganizationBySlug(slug: string): Promise<Pick<Organization, "id" | "slug"> | null> {
+    const { adapter } = await this.#authContext();
+    const organization = await adapter.findOne<StoreOrganization>({
+      model: "organization",
+      where: [{ field: "slug", value: slug }],
+    });
+    return organization ? { id: organization.id, slug: organization.slug } : null;
+  }
+
   async hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean> {
     const { adapter } = await this.#authContext();
     return Boolean(
@@ -1437,6 +1459,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   async getAllOrganizations() {
     return await this.#object.getAllOrganizations();
+  }
+
+  async getOrganizationBySlug(slug: string) {
+    return await this.#object.getOrganizationBySlug(slug);
   }
 
   async hasOrganizationMember(input: { organizationId: string; userId: string }) {

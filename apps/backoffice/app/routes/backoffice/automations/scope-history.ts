@@ -1,6 +1,11 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-import { automationUiScopeId, type AutomationUiScope } from "./scope";
+import {
+  type BackofficeScopeSelection,
+  backofficeResolvedScopeId,
+} from "@/backoffice-runtime/resolved-scope";
+
+import {} from "./scope";
 
 const AUTOMATION_SCOPE_HISTORY_STORAGE_KEY = "backoffice.automations.scope-history";
 const AUTOMATION_SCOPE_HISTORY_CHANGE_EVENT = "backoffice:automation-scope-history-change";
@@ -8,15 +13,15 @@ const LEGACY_AUTOMATION_CURRENT_SCOPE_STORAGE_KEY = "backoffice.automations.curr
 const LEGACY_AUTOMATION_LAST_SCOPE_STORAGE_KEY = "backoffice.automations.last-scope";
 
 export type AutomationScopeHistory = {
-  version: 1;
-  current: AutomationUiScope;
-  previous: AutomationUiScope | null;
+  version: 2;
+  current: BackofficeScopeSelection;
+  previous: BackofficeScopeSelection | null;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const parseAutomationUiScope = (value: unknown): AutomationUiScope | null => {
+const parseBackofficeScopeSelection = (value: unknown): BackofficeScopeSelection | null => {
   if (!isRecord(value) || typeof value.kind !== "string" || typeof value.label !== "string") {
     return null;
   }
@@ -25,14 +30,23 @@ const parseAutomationUiScope = (value: unknown): AutomationUiScope | null => {
     case "system":
       return { kind: "system", label: value.label };
     case "org":
-      return typeof value.orgId === "string"
-        ? { kind: "org", orgId: value.orgId, label: value.label }
+      return isRecord(value.organization) &&
+        typeof value.organization.id === "string" &&
+        typeof value.organization.slug === "string"
+        ? {
+            kind: "org",
+            organization: { id: value.organization.id, slug: value.organization.slug },
+            label: value.label,
+          }
         : null;
     case "project":
-      return typeof value.orgId === "string" && typeof value.projectId === "string"
+      return isRecord(value.organization) &&
+        typeof value.organization.id === "string" &&
+        typeof value.organization.slug === "string" &&
+        typeof value.projectId === "string"
         ? {
             kind: "project",
-            orgId: value.orgId,
+            organization: { id: value.organization.id, slug: value.organization.slug },
             projectId: value.projectId,
             label: value.label,
           }
@@ -55,17 +69,17 @@ export const parseAutomationScopeHistory = (
 
   try {
     const value: unknown = JSON.parse(snapshot);
-    if (!isRecord(value) || value.version !== 1) {
+    if (!isRecord(value) || value.version !== 2) {
       return null;
     }
 
-    const current = parseAutomationUiScope(value.current);
-    const previous = value.previous === null ? null : parseAutomationUiScope(value.previous);
+    const current = parseBackofficeScopeSelection(value.current);
+    const previous = value.previous === null ? null : parseBackofficeScopeSelection(value.previous);
     if (!current || (value.previous !== null && !previous)) {
       return null;
     }
 
-    return { version: 1, current, previous };
+    return { version: 2, current, previous };
   } catch {
     return null;
   }
@@ -73,26 +87,27 @@ export const parseAutomationScopeHistory = (
 
 export const advanceAutomationScopeHistory = (
   storedHistory: AutomationScopeHistory | null,
-  selectedScope: AutomationUiScope,
+  selectedScope: BackofficeScopeSelection,
 ): AutomationScopeHistory => {
   if (!storedHistory) {
-    return { version: 1, current: selectedScope, previous: null };
+    return { version: 2, current: selectedScope, previous: null };
   }
 
-  const selectedScopeId = automationUiScopeId(selectedScope);
-  if (automationUiScopeId(storedHistory.current) !== selectedScopeId) {
+  const selectedScopeId = backofficeResolvedScopeId(selectedScope);
+  if (backofficeResolvedScopeId(storedHistory.current) !== selectedScopeId) {
     return {
-      version: 1,
+      version: 2,
       current: selectedScope,
       previous: storedHistory.current,
     };
   }
 
   return {
-    version: 1,
+    version: 2,
     current: selectedScope,
     previous:
-      storedHistory.previous && automationUiScopeId(storedHistory.previous) !== selectedScopeId
+      storedHistory.previous &&
+      backofficeResolvedScopeId(storedHistory.previous) !== selectedScopeId
         ? storedHistory.previous
         : null,
   };
@@ -138,7 +153,7 @@ const persistAutomationScopeHistory = (snapshot: string) => {
   }
 };
 
-export function usePreviousAutomationScope(selectedScope: AutomationUiScope) {
+export function usePreviousAutomationScope(selectedScope: BackofficeScopeSelection) {
   const storedSnapshot = useSyncExternalStore(
     subscribeToAutomationScopeHistory,
     readAutomationScopeHistorySnapshot,

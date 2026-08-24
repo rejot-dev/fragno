@@ -3,12 +3,12 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
-const { requireBackofficeContextMock } = vi.hoisted(() => ({
-  requireBackofficeContextMock: vi.fn(),
+const { requireAutomationRouteExecutionMock } = vi.hoisted(() => ({
+  requireAutomationRouteExecutionMock: vi.fn(),
 }));
 
-vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
-  requireBackofficeContext: requireBackofficeContextMock,
+vi.mock("./scope.server", () => ({
+  requireAutomationRouteExecution: requireAutomationRouteExecutionMock,
 }));
 
 import { loader } from "./identity-bindings";
@@ -24,9 +24,9 @@ const context = {
 } as never;
 
 beforeEach(() => {
-  requireBackofficeContextMock.mockReset();
+  requireAutomationRouteExecutionMock.mockReset();
   assertAuthorized.mockReset();
-  requireBackofficeContextMock.mockResolvedValue(execution);
+  requireAutomationRouteExecutionMock.mockResolvedValue(execution);
 });
 
 describe("automation identity bindings loader", () => {
@@ -35,11 +35,14 @@ describe("automation identity bindings loader", () => {
       loader({
         request,
         context,
-        params: { scopeKind: "org", scopeId: "org-1" },
+        params: { scopeKind: "org", scopeId: "ada-labs" },
       } as never),
     ).resolves.toBeNull();
 
-    expect(requireBackofficeContextMock).toHaveBeenCalledWith(request, context, scope);
+    expect(requireAutomationRouteExecutionMock).toHaveBeenCalledWith(request, context, {
+      scopeKind: "org",
+      scopeId: "ada-labs",
+    });
     expect(assertAuthorized).toHaveBeenCalledWith({
       execution,
       operation: BACKOFFICE_PERMISSION.identity.read,
@@ -53,7 +56,7 @@ describe("automation identity bindings loader", () => {
     const response = await loader({
       request,
       context,
-      params: { scopeKind: "org", scopeId: "org-1" },
+      params: { scopeKind: "org", scopeId: "ada-labs" },
     } as never).catch((error: unknown) => error);
 
     expect(response).toBeInstanceOf(Response);

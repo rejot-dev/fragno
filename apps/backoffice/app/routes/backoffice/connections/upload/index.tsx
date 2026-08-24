@@ -12,10 +12,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     return redirect("/backoffice/login");
   }
 
-  const activeOrganizationId =
-    me.activeOrganization?.organization.id ?? me.organizations?.[0]?.organization.id ?? null;
-  if (activeOrganizationId) {
-    return redirect(`/backoffice/connections/upload/${activeOrganizationId}`);
+  const activeOrganization = me.activeOrganization?.organization ?? null;
+  if (activeOrganization) {
+    return redirect(
+      `/backoffice/connections/upload/${encodeURIComponent(activeOrganization.slug)}`,
+    );
   }
 
   return null;
@@ -24,7 +25,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 export function meta() {
   return [
     { title: "Upload Connection" },
-    { name: "description", content: "Manage Upload connections by organisation." },
+    { name: "description", content: "Manage Upload connections by organization." },
   ];
 }
 
@@ -43,7 +44,7 @@ export default function BackofficeConnectionsUpload() {
         ]}
         eyebrow="Administration"
         title="Upload connection workspace."
-        description="Pick an organisation to configure storage and manage files."
+        description="Pick an organization to configure storage and manage files."
         actions={
           <Link
             to="/backoffice/internals"
@@ -56,7 +57,7 @@ export default function BackofficeConnectionsUpload() {
 
       {organizations.length === 0 ? (
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          No organisations are linked to this account yet.
+          No organizations are linked to this account yet.
         </div>
       ) : (
         <section className="grid gap-3 md:grid-cols-2">
@@ -98,7 +99,7 @@ export default function BackofficeConnectionsUpload() {
 
               <div className="mt-4">
                 <Link
-                  to={`/backoffice/connections/upload/${organization.id}`}
+                  to={`/backoffice/connections/upload/${encodeURIComponent(organization.slug)}`}
                   className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                 >
                   Manage Upload

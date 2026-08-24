@@ -3,7 +3,7 @@ import type { RouterContextProvider } from "react-router";
 import {
   backofficeContextScopeFromSinglePathSegment,
   backofficeContextScopeSinglePathSegment,
-  BackofficeScopeCodecError,
+  isBackofficeScopeCodecError,
 } from "@/backoffice-runtime/scope-codec";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -32,7 +32,7 @@ export async function forwardScopedPiRequest({
   try {
     scope = backofficeContextScopeFromSinglePathSegment(params.scopeSegment);
   } catch (error) {
-    if (error instanceof BackofficeScopeCodecError) {
+    if (isBackofficeScopeCodecError(error)) {
       return new Response(error.message, { status: 400 });
     }
     throw error;

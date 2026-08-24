@@ -105,7 +105,7 @@ export class InMemoryGitHubObject implements GitHubObject {
   async ensureAdminConfig(orgId: string) {
     const normalizedOrgId = orgId.trim();
     if (!normalizedOrgId) {
-      throw new Error("GitHub configuration requires an organisation id.");
+      throw new Error("GitHub configuration requires an organization id.");
     }
     if (!this.#configResolution.ok) {
       throw new Error(

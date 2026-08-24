@@ -295,7 +295,7 @@ describe("Automations fetchWithContext authorization", () => {
         userId: "user-1",
         verifiedRequestAuthority: {
           role: "user",
-          scope,
+          organizationId: scope.orgId,
           expiresAt: new Date("2099-01-01T00:00:00.000Z"),
         },
       });

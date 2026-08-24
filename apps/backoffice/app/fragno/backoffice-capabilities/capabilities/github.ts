@@ -127,7 +127,7 @@ export const githubCapability: BackofficeCapability = {
         source: GITHUB_AUTOMATION_SOURCE,
         eventType: GITHUB_AUTOMATION_EVENT_WEBHOOK_RECEIVED,
         label: "GitHub webhook received",
-        description: "Fires when a GitHub App webhook is received for an organisation.",
+        description: "Fires when a GitHub App webhook is received for an organization.",
         payloadSchema: githubPayloadSchema,
         actorSchema: githubActorSchema,
         subjectSchema: githubSubjectSchema,

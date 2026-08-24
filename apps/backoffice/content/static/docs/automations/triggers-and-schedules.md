@@ -141,7 +141,7 @@ A scheduled occurrence enters the router as this event class:
 | `payload`          | Route ID, route name, and cadence snapshot.                      |
 | `actors.initiator` | Internal `schedule` actor identified by the route ID.            |
 | `actors.principal` | `null`.                                                          |
-| `subject`          | Organisation, project, or user IDs derived from the owner scope. |
+| `subject`          | Organization, project, or user IDs derived from the owner scope. |
 
 The scheduler passes the selected route as a snapshot to ingestion. The ingestion hook executes that
 route directly instead of scanning event routes. This preserves the accepted scheduled action even

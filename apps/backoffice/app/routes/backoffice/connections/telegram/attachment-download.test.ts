@@ -34,14 +34,14 @@ describe("telegram attachment download route", () => {
 
     const response = await loader(
       createLoaderArgs(
-        "https://example.com/backoffice/automations/org/org_123/integrations/telegram/attachment-download?fileId=file-1&kind=voice",
+        "https://example.com/backoffice/automations/org/fragno/integrations/telegram/attachment-download?fileId=file-1&kind=voice",
       ),
     );
 
     expect(response).toBeInstanceOf(Response);
     assert(response.status === 302);
     expect(response.headers.get("Location")).toBe(
-      `https://example.com${buildBackofficeLoginPath("/backoffice/automations/org/org_123/integrations/telegram/attachment-download?fileId=file-1&kind=voice")}`,
+      `https://example.com${buildBackofficeLoginPath("/backoffice/automations/org/fragno/integrations/telegram/attachment-download?fileId=file-1&kind=voice")}`,
     );
   });
 
@@ -60,7 +60,7 @@ describe("telegram attachment download route", () => {
 
     const response = await loader(
       createLoaderArgs(
-        "https://example.com/backoffice/automations/org/org_123/integrations/telegram/attachment-download?fileId=file-1&kind=voice",
+        "https://example.com/backoffice/automations/org/fragno/integrations/telegram/attachment-download?fileId=file-1&kind=voice",
       ),
     );
 
@@ -88,7 +88,7 @@ describe("telegram attachment download route", () => {
 
     const response = await loader(
       createLoaderArgs(
-        "https://example.com/backoffice/automations/org/org_123/integrations/telegram/attachment-download?fileId=file-1&kind=document&filename=Quarterly%20Report.pdf",
+        "https://example.com/backoffice/automations/org/fragno/integrations/telegram/attachment-download?fileId=file-1&kind=document&filename=Quarterly%20Report.pdf",
       ),
     );
 
@@ -114,7 +114,7 @@ describe("telegram attachment download route", () => {
 
     const response = await loader(
       createLoaderArgs(
-        "https://example.com/backoffice/automations/org/org_123/integrations/telegram/attachment-download?fileId=file%2Fwith%20spaces&kind=voice",
+        "https://example.com/backoffice/automations/org/fragno/integrations/telegram/attachment-download?fileId=file%2Fwith%20spaces&kind=voice",
       ),
     );
 
@@ -140,7 +140,7 @@ describe("telegram attachment download route", () => {
 
     const response = await loader(
       createLoaderArgs(
-        "https://example.com/backoffice/automations/org/org_123/integrations/telegram/attachment-download?fileId=file-1&kind=photo&disposition=inline",
+        "https://example.com/backoffice/automations/org/fragno/integrations/telegram/attachment-download?fileId=file-1&kind=photo&disposition=inline",
       ),
     );
 
@@ -149,7 +149,7 @@ describe("telegram attachment download route", () => {
     assert(response.headers.get("content-type") === "image/jpeg");
   });
 
-  it("returns 404 for users outside the organisation", async () => {
+  it("returns 404 for users outside the organization", async () => {
     findBackofficeMeMock.mockResolvedValue({
       ...createAuthMe(),
       organizations: [],
@@ -158,7 +158,7 @@ describe("telegram attachment download route", () => {
     await expect(
       loader(
         createLoaderArgs(
-          "https://example.com/backoffice/automations/org/org_123/integrations/telegram/attachment-download?fileId=file-1&kind=voice",
+          "https://example.com/backoffice/automations/org/fragno/integrations/telegram/attachment-download?fileId=file-1&kind=voice",
         ),
       ),
     ).rejects.toMatchObject({
@@ -200,19 +200,19 @@ const createLoaderArgs = (url: string) =>
         },
       }),
     } as never,
-    params: { scopeKind: "org", scopeId: "org_123" },
+    params: { scopeKind: "org", scopeId: "fragno" },
   }) as Parameters<typeof loader>[0];
 
 const createAuthMe = () => ({
   user: { id: "user_123", email: "dev@fragno.test", role: "admin" },
   organizations: [
     {
-      organization: { id: "org_123", name: "Fragno" },
+      organization: { id: "org_123", slug: "fragno", name: "Fragno" },
       member: { organizationId: "org_123" },
     },
   ],
   activeOrganization: {
-    organization: { id: "org_123", name: "Fragno" },
+    organization: { id: "org_123", slug: "fragno", name: "Fragno" },
     member: { organizationId: "org_123" },
   },
   invitations: [],

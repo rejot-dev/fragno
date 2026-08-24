@@ -6,7 +6,7 @@ describe("Files scope paths", () => {
   test("encodes project scopes and explorer paths canonically", () => {
     const scope = {
       kind: "project" as const,
-      orgId: "org/one",
+      organization: { id: "org-id", slug: "org/one" },
       projectId: "project:one",
       label: "Project one",
     };
@@ -24,8 +24,11 @@ describe("Files scope paths", () => {
 
   test("preserves percent signs through router and scope decoding", () => {
     assert(
-      filesScopeBasePath({ kind: "org", orgId: "org%one", label: "Percent org" }) ===
-        "/backoffice/files/org/org%2525one",
+      filesScopeBasePath({
+        kind: "org",
+        organization: { id: "org-id", slug: "org%one" },
+        label: "Percent org",
+      }) === "/backoffice/files/org/org%2525one",
     );
   });
 

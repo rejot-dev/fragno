@@ -24,7 +24,7 @@ import type {
   WorkflowVisualizationSnapshot,
 } from "@fragno-dev/workflow-visualizer-tokens";
 
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
+import type { BackofficeRoutableResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 
@@ -70,7 +70,7 @@ export function ScriptWorkflowGraph({
   sourceCode?: string;
   scrollViewport?: LinkedScrollViewport;
   fillHeight?: boolean;
-  currentScope?: BackofficeRoutableScope;
+  currentScope?: BackofficeRoutableResolvedScope;
   workflowEventSender?: WorkflowEventSender;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
@@ -165,7 +165,7 @@ function WorkflowUiResults({
   childrenByParent: Map<string, WorkflowChildNode[]>;
   run?: ScriptWorkflowRun;
   uiWaitPairings: WorkflowUiWaitPairings;
-  currentScope?: BackofficeRoutableScope;
+  currentScope?: BackofficeRoutableResolvedScope;
   workflowEventSender?: WorkflowEventSender;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
@@ -299,7 +299,7 @@ function WorkflowChildTree({
   uiWaitPairings: WorkflowUiWaitPairings;
   workflowEvents?: readonly WorkflowRunEvent[];
   workflowRunRecordId?: string;
-  currentScope?: BackofficeRoutableScope;
+  currentScope?: BackofficeRoutableResolvedScope;
   workflowEventSender?: WorkflowEventSender;
   workflowEventWorkflowName?: string;
   workflowInstanceId?: string;
@@ -389,7 +389,7 @@ function WorkflowChildCard({
   runState?: WorkflowStepRunState;
   workflowEvents?: readonly WorkflowRunEvent[];
   workflowRunRecordId?: string;
-  currentScope?: BackofficeRoutableScope;
+  currentScope?: BackofficeRoutableResolvedScope;
   workflowEventSender?: WorkflowEventSender;
   workflowEventWorkflowName?: string;
   workflowInstanceId?: string;

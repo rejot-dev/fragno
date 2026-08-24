@@ -2,11 +2,13 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useEffect } from "react";
 import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
-  backofficeContextScopeFromRouteParams,
-  BackofficeScopeCodecError,
-} from "@/backoffice-runtime/scope-codec";
+  backofficeRouteScopeFromResolvedScope,
+  backofficeRuntimeScopeFromResolvedScope,
+  resolveBackofficeRouteScope,
+} from "@/backoffice-runtime/resolved-scope";
+import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
+import { isBackofficeScopeCodecError } from "@/backoffice-runtime/scope-codec";
 import { BackofficePageHeader } from "@/components/backoffice";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
@@ -60,56 +62,55 @@ const loadDurableHookQueue = async ({
   pageSize?: number;
 }): Promise<DurableHookQueueResponse> => {
   const objects = getBackofficeObjects(context);
+  const runtimeScope = backofficeRuntimeScopeFromResolvedScope(selection.resolvedScope);
   const queueOptions = { cursor, pageSize };
 
   switch (selection.objectId) {
     case "api": {
-      const repository = await objects.api.for(selection.scope).getDurableHookRepository();
+      const repository = await objects.api.for(runtimeScope).getDurableHookRepository();
       return repository.getHookQueue(queueOptions);
     }
     case "auth": {
-      const repository = await objects.auth.for(selection.scope).getDurableHookRepository();
+      const repository = await objects.auth.for(runtimeScope).getDurableHookRepository();
       return repository.getHookQueue(queueOptions);
     }
     case "automations": {
       const repository = await objects.automations
-        .for(selection.scope)
+        .for(runtimeScope)
         .getDurableHookRepository("automation");
       return repository.getHookQueue(queueOptions);
     }
     case "telegram": {
-      const repository = await objects.telegram.for(selection.scope).getDurableHookRepository();
+      const repository = await objects.telegram.for(runtimeScope).getDurableHookRepository();
       return repository.getHookQueue(queueOptions);
     }
     case "otp": {
-      const repository = await objects.otp.for(selection.scope).getDurableHookRepository();
+      const repository = await objects.otp.for(runtimeScope).getDurableHookRepository();
       return repository.getHookQueue(queueOptions);
     }
     case "resend": {
-      const repository = await objects.resend.for(selection.scope).getDurableHookRepository();
+      const repository = await objects.resend.for(runtimeScope).getDurableHookRepository();
       return repository.getHookQueue(queueOptions);
     }
     case "mcp": {
-      const repository = await objects.mcp.for(selection.scope).getDurableHookRepository();
+      const repository = await objects.mcp.for(runtimeScope).getDurableHookRepository();
       return repository.getHookQueue(queueOptions);
     }
     case "upload": {
-      const repository = await objects.upload.for(selection.scope).getDurableHookRepository();
+      const repository = await objects.upload.for(runtimeScope).getDurableHookRepository();
       return repository.getHookQueue(queueOptions);
     }
     case "github": {
-      const repository = await objects.github.for(selection.scope).getDurableHookRepository();
+      const repository = await objects.github.for(runtimeScope).getDurableHookRepository();
       return repository.getHookQueue(queueOptions);
     }
     case "pi": {
-      const repository = await objects.automations
-        .for(selection.scope)
-        .getDurableHookRepository("pi");
+      const repository = await objects.automations.for(runtimeScope).getDurableHookRepository("pi");
       return repository.getHookQueue(queueOptions);
     }
     case "workflows": {
       const repository = await objects.automations
-        .for(selection.scope)
+        .for(runtimeScope)
         .getDurableHookRepository("workflows");
       return repository.getHookQueue(queueOptions);
     }
@@ -150,33 +151,27 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
 
-  const organisations = me.organizations.map((entry) => entry.organization);
-  let routeScope: BackofficeContextScope | null;
+  const organizations = me.organizations.map((entry) => entry.organization);
+  let routeScope;
   try {
-    routeScope = backofficeContextScopeFromRouteParams(params);
+    routeScope = requireBackofficeRouteScopeFromParams(params);
   } catch (error) {
-    if (error instanceof BackofficeScopeCodecError) {
+    if (isBackofficeScopeCodecError(error)) {
       throw new Response("Not Found", { status: 404 });
     }
     throw error;
   }
-  if (!routeScope) {
+  const resolvedScope = resolveBackofficeRouteScope(routeScope, organizations);
+  if (!resolvedScope) {
     throw new Response("Not Found", { status: 404 });
   }
-
-  if (
-    (routeScope.kind === "org" || routeScope.kind === "project") &&
-    !organisations.some((organisation) => organisation.id === routeScope.orgId)
-  ) {
+  if (resolvedScope.kind === "user" && resolvedScope.userId !== me.user.id) {
     throw new Response("Not Found", { status: 404 });
   }
-  if (routeScope.kind === "user" && routeScope.userId !== me.user.id) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
+  const runtimeScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
   const projectLookup =
-    routeScope.kind === "project"
-      ? await lookupAutomationProject(context, routeScope.orgId, routeScope.projectId)
+    runtimeScope.kind === "project"
+      ? await lookupAutomationProject(context, runtimeScope.orgId, runtimeScope.projectId)
       : null;
   if (projectLookup?.status === "error") {
     throw Response.json(
@@ -188,14 +183,14 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
   const projects =
-    routeScope.kind === "project" && projectLookup
-      ? normalizeProject(routeScope.orgId, projectLookup)
+    runtimeScope.kind === "project" && projectLookup
+      ? normalizeProject(runtimeScope.orgId, projectLookup)
       : [];
 
   const selection = resolveDurableHooksScopeSelection({
-    scope: routeScope,
+    scope: runtimeScope,
     objectId: params.objectId,
-    organisations,
+    organizations,
     projects,
     user: me.user,
   });
@@ -308,9 +303,13 @@ export default function BackofficeDurableHooksScopeLayout({ loaderData }: Route.
   const objectLabel =
     getDurableHooksObjectDefinition(selection.objectId)?.label ?? selection.objectId;
   const configureMeta = DURABLE_HOOKS_OBJECT_CONFIGURE_META[selection.objectId] ?? null;
-  const configureOrgId =
-    selection.kind === "org" || selection.kind === "project" ? selection.orgId : null;
-  const configurePath = configureOrgId && configureMeta ? configureMeta.path(configureOrgId) : null;
+  const selectionRouteScope = backofficeRouteScopeFromResolvedScope(selection.resolvedScope);
+  const configureOrgSlug =
+    selectionRouteScope.kind === "org" || selectionRouteScope.kind === "project"
+      ? selectionRouteScope.orgSlug
+      : null;
+  const configurePath =
+    configureOrgSlug && configureMeta ? configureMeta.path(configureOrgSlug) : null;
   const queueCount = items.length;
 
   const nextSearchParams = new URLSearchParams(searchParams);

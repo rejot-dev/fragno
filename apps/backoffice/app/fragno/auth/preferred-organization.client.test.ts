@@ -13,21 +13,20 @@ const createStorage = (initial: Record<string, string>) => {
 };
 
 describe("Backoffice organization preference", () => {
-  test("migrates the legacy organization preference", () => {
-    const storage = createStorage({ "fragno-auth.default-organization-id": "org-legacy" });
-
-    assert(readPreferredOrganizationFromStorage(storage) === "org-legacy");
-    assert(storage.values.get("fragno-backoffice-default-organization") === "org-legacy");
-    assert(!storage.values.has("fragno-auth.default-organization-id"));
-  });
-
-  test("keeps the current preference and removes the legacy value", () => {
+  test("reads the current organization preference", () => {
     const storage = createStorage({
-      "fragno-auth.default-organization-id": "org-legacy",
       "fragno-backoffice-default-organization": "org-current",
     });
 
     assert(readPreferredOrganizationFromStorage(storage) === "org-current");
-    assert(!storage.values.has("fragno-auth.default-organization-id"));
+  });
+
+  test("removes blank organization preferences", () => {
+    const storage = createStorage({
+      "fragno-backoffice-default-organization": "   ",
+    });
+
+    assert(readPreferredOrganizationFromStorage(storage) === null);
+    assert(!storage.values.has("fragno-backoffice-default-organization"));
   });
 });

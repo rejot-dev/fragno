@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type { BackofficeRouteScope } from "@/backoffice-runtime/route-scope";
 import { cn } from "@/lib/utils";
 
 import { scopeSwitchPath } from "./scope-switch-path";
@@ -22,8 +22,8 @@ type PrimaryNavigationItem = {
 };
 
 // Section links carry the current scope so switching sections keeps the
-// selected organisation/project instead of falling back to the default scope.
-const navigationItemPath = (item: PrimaryNavigationItem, scope: BackofficeContextScope | null) =>
+// selected organization/project instead of falling back to the default scope.
+const navigationItemPath = (item: PrimaryNavigationItem, scope: BackofficeRouteScope | null) =>
   scope ? scopeSwitchPath(item.to, scope) : item.to;
 
 const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
@@ -58,7 +58,7 @@ export function BackofficeSidebarNav({
   collapsed,
   onCollapsedChange,
 }: {
-  currentScope: BackofficeContextScope | null;
+  currentScope: BackofficeRouteScope | null;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
 }) {
@@ -119,7 +119,7 @@ export function BackofficeSidebarNav({
 export function BackofficeMobileNav({
   currentScope,
 }: {
-  currentScope: BackofficeContextScope | null;
+  currentScope: BackofficeRouteScope | null;
 }) {
   const location = useLocation();
 

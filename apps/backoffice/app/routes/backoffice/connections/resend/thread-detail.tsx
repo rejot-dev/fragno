@@ -131,7 +131,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   } satisfies ResendThreadReplyActionData;
 }
 
-export default function BackofficeOrganisationResendThreadDetail() {
+export default function BackofficeOrganizationResendThreadDetail() {
   const { thread, messages, hasNextPage, error } = useLoaderData<typeof loader>();
   const outletContext = useOutletContext<ResendThreadsOutletContext | null>();
   const { threadId } = useParams();

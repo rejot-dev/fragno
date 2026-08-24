@@ -23,8 +23,8 @@ import { marketplaceListingManagePath, marketplaceListingRef } from "./navigatio
 
 const authenticatedUser = {
   user: { id: "user-1" },
-  organizations: [{ organization: { id: "org-1", name: "Acme" } }],
-  activeOrganization: { organization: { id: "org-1", name: "Acme" } },
+  organizations: [{ organization: { id: "org-1", slug: "acme", name: "Acme" } }],
+  activeOrganization: { organization: { id: "org-1", slug: "acme", name: "Acme" } },
 };
 
 const listingId = marketplaceListingId({
@@ -56,7 +56,7 @@ const runAction = (formData: FormData) =>
   action({
     request: new Request(
       new URL(
-        marketplaceListingManagePath({ listingId, organizationId: "org-1" }),
+        marketplaceListingManagePath({ listingId, organizationSlug: "acme" }),
         "https://example.test",
       ),
       { method: "POST", body: formData },
@@ -64,7 +64,7 @@ const runAction = (formData: FormData) =>
     params: { listingRef },
     context,
     url: new URL(
-      marketplaceListingManagePath({ listingId, organizationId: "org-1" }),
+      marketplaceListingManagePath({ listingId, organizationSlug: "acme" }),
       "https://example.test",
     ),
   } as never);
@@ -86,7 +86,7 @@ describe("marketplace listing management action", () => {
     });
     const formData = new FormData();
     formData.set("intent", "update");
-    formData.set("organizationId", "org-1");
+    formData.set("organizationSlug", "acme");
     formData.set("name", "Daily operations briefing");
     formData.set("summary", "Build and deliver a concise daily operations briefing.");
     formData.set(
@@ -126,7 +126,7 @@ describe("marketplace listing management action", () => {
     });
     const formData = new FormData();
     formData.set("intent", "add-version");
-    formData.set("organizationId", "org-1");
+    formData.set("organizationSlug", "acme");
     formData.set("version", "1.1.0");
 
     const response = await runAction(formData);
@@ -152,7 +152,7 @@ describe("marketplace listing management action", () => {
     });
     const formData = new FormData();
     formData.set("intent", "publish");
-    formData.set("organizationId", "org-1");
+    formData.set("organizationSlug", "acme");
     formData.set("version", "1.1.0");
 
     const response = await runAction(formData);
@@ -176,7 +176,7 @@ describe("marketplace listing management action", () => {
     });
     const formData = new FormData();
     formData.set("intent", "publish");
-    formData.set("organizationId", "org-1");
+    formData.set("organizationSlug", "acme");
     formData.set("version", "2.0.0");
 
     await expect(runAction(formData)).resolves.toEqual({
@@ -192,7 +192,7 @@ describe("marketplace listing management action", () => {
     });
     const formData = new FormData();
     formData.set("intent", "archive");
-    formData.set("organizationId", "org-1");
+    formData.set("organizationSlug", "acme");
 
     const response = await runAction(formData);
 

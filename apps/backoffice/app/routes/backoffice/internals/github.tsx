@@ -1,6 +1,7 @@
 import { Link, useLoaderData } from "react-router";
 
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   BACKOFFICE_ADMIN_OBJECT_NAME,
   getGitHubWebhookRouterDurableObject,
@@ -56,6 +57,7 @@ type LoaderData = {
   snapshot: GitHubWebhookRouterSnapshot | null;
   snapshotError: string | null;
   setupUrl: string;
+  organizationSlugs: Record<string, string>;
 };
 
 const formatTimestamp = (value?: number | Date | null) => {
@@ -81,6 +83,10 @@ export function meta() {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const origin = new URL(request.url).origin;
+  const me = await findBackofficeMe(request, context);
+  const organizationSlugs = Object.fromEntries(
+    (me?.organizations ?? []).map(({ organization }) => [organization.id, organization.slug]),
+  );
   const setupUrl = `${origin.replace(/\/+$/, "")}/backoffice/connections/github/setup-callback`;
   const githubRouterDo = getGitHubWebhookRouterDurableObject(context);
 
@@ -109,11 +115,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     snapshot,
     snapshotError,
     setupUrl,
+    organizationSlugs,
   } satisfies LoaderData;
 }
 
 export default function BackofficeInternalsGitHub() {
-  const { configState, configError, snapshot, snapshotError, setupUrl } =
+  const { configState, configError, snapshot, snapshotError, setupUrl, organizationSlugs } =
     useLoaderData<typeof loader>();
 
   return (
@@ -232,7 +239,7 @@ export default function BackofficeInternalsGitHub() {
 
             <section className="space-y-2">
               <h2 className="text-sm font-semibold text-[var(--bo-fg)]">
-                Installation ↔ organisation links
+                Installation ↔ organization links
               </h2>
               {snapshot.installationMappings.length === 0 ? (
                 <p className="text-sm text-[var(--bo-muted)]">
@@ -250,15 +257,17 @@ export default function BackofficeInternalsGitHub() {
                         <span className="font-semibold text-[var(--bo-fg)]">
                           {mapping.installationId}
                         </span>{" "}
-                        → Organisation{" "}
+                        → Organization{" "}
                         <span className="font-semibold text-[var(--bo-fg)]">{mapping.orgId}</span>
                       </p>
-                      <Link
-                        to={`/backoffice/connections/github/${mapping.orgId}/configuration`}
-                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                      >
-                        Open org
-                      </Link>
+                      {organizationSlugs[mapping.orgId] ? (
+                        <Link
+                          to={`/backoffice/connections/github/${encodeURIComponent(organizationSlugs[mapping.orgId])}/configuration`}
+                          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                        >
+                          Open org
+                        </Link>
+                      ) : null}
                     </div>
                   ))}
                 </div>

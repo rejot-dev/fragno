@@ -1,8 +1,10 @@
 import { X } from "lucide-react";
 import { use, useState, type ReactNode } from "react";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
+import {
+  backofficeRuntimeScopeFromResolvedScope,
+  type BackofficeRoutableResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import {
@@ -28,7 +30,6 @@ import {
 
 export function MarketplaceInstallationWorkflow({
   collectionSource,
-  coordinatorScope,
   fallback,
   ingestionWorkflowInstanceId,
   onClose,
@@ -36,12 +37,11 @@ export function MarketplaceInstallationWorkflow({
   targetScope,
 }: {
   collectionSource: AutomationCollectionSource | null;
-  coordinatorScope: BackofficeContextScope;
   fallback: ReactNode;
   ingestionWorkflowInstanceId: string;
   onClose: () => void;
   requested: boolean;
-  targetScope: BackofficeRoutableScope;
+  targetScope: BackofficeRoutableResolvedScope;
 }) {
   if (!collectionSource) {
     return requested ? (
@@ -57,7 +57,6 @@ export function MarketplaceInstallationWorkflow({
     <SynchronizedMarketplaceInstallationWorkflow
       key={ingestionWorkflowInstanceId}
       collectionSource={collectionSource}
-      coordinatorScope={coordinatorScope}
       fallback={fallback}
       ingestionWorkflowInstanceId={ingestionWorkflowInstanceId}
       onClose={onClose}
@@ -69,7 +68,6 @@ export function MarketplaceInstallationWorkflow({
 
 function SynchronizedMarketplaceInstallationWorkflow({
   collectionSource,
-  coordinatorScope,
   fallback,
   ingestionWorkflowInstanceId,
   onClose,
@@ -77,12 +75,11 @@ function SynchronizedMarketplaceInstallationWorkflow({
   targetScope,
 }: {
   collectionSource: AutomationCollectionSource;
-  coordinatorScope: BackofficeContextScope;
   fallback: ReactNode;
   ingestionWorkflowInstanceId: string;
   onClose: () => void;
   requested: boolean;
-  targetScope: BackofficeRoutableScope;
+  targetScope: BackofficeRoutableResolvedScope;
 }) {
   const [resultDismissed, setResultDismissed] = useState(false);
   const database = use(getAutomationBrowserDatabase(collectionSource));
@@ -192,7 +189,7 @@ function SynchronizedMarketplaceInstallationWorkflow({
         <InstallationWorkflowNotice message="Finalizing installation…" />
       ) : (
         <MarketplaceInstallerGeneratedUi
-          coordinatorScope={coordinatorScope}
+          collectionSource={collectionSource}
           instance={installer}
           targetScope={targetScope}
         />
@@ -202,14 +199,17 @@ function SynchronizedMarketplaceInstallationWorkflow({
 }
 
 export function MarketplaceInstallerGeneratedUi({
-  coordinatorScope,
+  collectionSource,
   instance,
   targetScope,
 }: {
-  coordinatorScope: BackofficeContextScope;
+  collectionSource: AutomationCollectionSource;
   instance: AutomationWorkflowRun;
-  targetScope: BackofficeRoutableScope;
+  targetScope: BackofficeRoutableResolvedScope;
 }) {
+  const coordinatorRuntimeScope = backofficeRuntimeScopeFromResolvedScope(
+    collectionSource.resolvedScope,
+  );
   const generatedUi = selectMarketplaceInstallationGeneratedUi(instance);
   if (instance.status === "complete" && generatedUi?.kind !== "output") {
     return <InstallationWorkflowNotice message="Installation complete." />;
@@ -240,7 +240,7 @@ export function MarketplaceInstallerGeneratedUi({
       workflowEventSender={async ({ eventId, workflowName, instanceId, eventType, payload }) => {
         await sendBackofficeWorkflowEvent({
           eventId,
-          reference: { scope: coordinatorScope, workflowName, instanceId },
+          reference: { scope: coordinatorRuntimeScope, workflowName, instanceId },
           eventType,
           payload,
         });

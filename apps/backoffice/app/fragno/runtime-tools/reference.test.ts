@@ -478,7 +478,7 @@ describe("runtime tool reference generation", () => {
           getCurrentScope(): Promise<BackofficeCodemodeScope>;
           /** Providers bound to the selected current context. */
           readonly current: BackofficeCodemodeScopedProviders;
-          /** Providers bound to an organisation context. */
+          /** Providers bound to an organization context. */
           org(orgId: string): BackofficeCodemodeScopedProviders;
           /** Providers bound to a user context. */
           user(userId: string): BackofficeCodemodeScopedProviders;
@@ -568,7 +568,7 @@ describe("runtime tool reference generation", () => {
           getCurrentScope(): Promise<BackofficeCodemodeScope>;
           /** Providers bound to the selected current context. */
           readonly current: BackofficeCodemodeScopedProviders;
-          /** Providers bound to an organisation context. */
+          /** Providers bound to an organization context. */
           org(orgId: string): BackofficeCodemodeScopedProviders;
           /** Providers bound to a user context. */
           user(userId: string): BackofficeCodemodeScopedProviders;
@@ -2616,7 +2616,7 @@ describe("runtime tool reference generation", () => {
 
       // mcp tools
       type McpCodemodeProvider = {
-        /** List MCP servers configured for the current organisation. */
+        /** List MCP servers configured for the current organization. */
         listServers(input: McpListServersInput): Promise<McpListServersOutput>;
         /** Register a remote streamable HTTP MCP server. */
         createServer(input: McpCreateServerInput): Promise<McpCreateServerOutput>;
@@ -3169,11 +3169,11 @@ describe("runtime tool reference generation", () => {
 
       // sandbox tools
       type SandboxCodemodeProvider = {
-        /** Start a Cloudflare sandbox for the current organisation. */
+        /** Start a Cloudflare sandbox for the current organization. */
         startSandbox(input: SandboxStartSandboxInput): Promise<SandboxStartSandboxOutput>;
-        /** List Cloudflare sandboxes for the current organisation. */
+        /** List Cloudflare sandboxes for the current organization. */
         listSandboxes(input: SandboxListSandboxesInput): Promise<SandboxListSandboxesOutput>;
-        /** Kill a Cloudflare sandbox for the current organisation. */
+        /** Kill a Cloudflare sandbox for the current organization. */
         killSandbox(input: SandboxKillSandboxInput): Promise<SandboxKillSandboxOutput>;
         /** Execute a command in a Cloudflare sandbox. */
         executeCommand(input: SandboxExecuteCommandInput): Promise<SandboxExecuteCommandOutput>;
@@ -3635,7 +3635,7 @@ describe("runtime tool reference generation", () => {
         getCurrentScope(): Promise<BackofficeCodemodeScope>;
         /** Providers bound to the selected current context. */
         readonly current: BackofficeCodemodeScopedProviders;
-        /** Providers bound to an organisation context. */
+        /** Providers bound to an organization context. */
         org(orgId: string): BackofficeCodemodeScopedProviders;
         /** Providers bound to a user context. */
         user(userId: string): BackofficeCodemodeScopedProviders;
@@ -3721,7 +3721,7 @@ describe("runtime tool reference generation", () => {
         getCurrentScope(): Promise<BackofficeCodemodeScope>;
         /** Providers bound to the selected current context. */
         readonly current: BackofficeCodemodeScopedProviders;
-        /** Providers bound to an organisation context. */
+        /** Providers bound to an organization context. */
         org(orgId: string): BackofficeCodemodeScopedProviders;
         /** Providers bound to a user context. */
         user(userId: string): BackofficeCodemodeScopedProviders;
@@ -4360,7 +4360,7 @@ describe("runtime tool reference generation", () => {
         getCurrentScope(): Promise<BackofficeCodemodeScope>;
         /** Providers bound to the selected current context. */
         readonly current: BackofficeCodemodeScopedProviders;
-        /** Providers bound to an organisation context. */
+        /** Providers bound to an organization context. */
         org(orgId: string): BackofficeCodemodeScopedProviders;
         /** Providers bound to a user context. */
         user(userId: string): BackofficeCodemodeScopedProviders;
@@ -5107,7 +5107,7 @@ describe("runtime tool reference generation", () => {
         getCurrentScope(): Promise<BackofficeCodemodeScope>;
         /** Providers bound to the selected current context. */
         readonly current: BackofficeCodemodeScopedProviders;
-        /** Providers bound to an organisation context. */
+        /** Providers bound to an organization context. */
         org(orgId: string): BackofficeCodemodeScopedProviders;
         /** Providers bound to a user context. */
         user(userId: string): BackofficeCodemodeScopedProviders;
@@ -5487,7 +5487,7 @@ describe("runtime tool reference generation", () => {
         getCurrentScope(): Promise<BackofficeCodemodeScope>;
         /** Providers bound to the selected current context. */
         readonly current: BackofficeCodemodeScopedProviders;
-        /** Providers bound to an organisation context. */
+        /** Providers bound to an organization context. */
         org(orgId: string): BackofficeCodemodeScopedProviders;
         /** Providers bound to a user context. */
         user(userId: string): BackofficeCodemodeScopedProviders;
@@ -6304,7 +6304,7 @@ describe("runtime tool reference generation", () => {
         getCurrentScope(): Promise<BackofficeCodemodeScope>;
         /** Providers bound to the selected current context. */
         readonly current: BackofficeCodemodeScopedProviders;
-        /** Providers bound to an organisation context. */
+        /** Providers bound to an organization context. */
         org(orgId: string): BackofficeCodemodeScopedProviders;
         /** Providers bound to a user context. */
         user(userId: string): BackofficeCodemodeScopedProviders;
@@ -6459,11 +6459,11 @@ describe("runtime tool reference generation", () => {
       ",
         "sandbox": "// sandbox tools
       type SandboxCodemodeProvider = {
-        /** Start a Cloudflare sandbox for the current organisation. */
+        /** Start a Cloudflare sandbox for the current organization. */
         startSandbox(input: SandboxStartSandboxInput): Promise<SandboxStartSandboxOutput>;
-        /** List Cloudflare sandboxes for the current organisation. */
+        /** List Cloudflare sandboxes for the current organization. */
         listSandboxes(input: SandboxListSandboxesInput): Promise<SandboxListSandboxesOutput>;
-        /** Kill a Cloudflare sandbox for the current organisation. */
+        /** Kill a Cloudflare sandbox for the current organization. */
         killSandbox(input: SandboxKillSandboxInput): Promise<SandboxKillSandboxOutput>;
         /** Execute a command in a Cloudflare sandbox. */
         executeCommand(input: SandboxExecuteCommandInput): Promise<SandboxExecuteCommandOutput>;

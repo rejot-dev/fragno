@@ -45,7 +45,7 @@ export function BackofficeAccountMenu({ me, isLoading }: BackofficeAccountMenuPr
   const user = me?.user ?? null;
   const activeOrganization = me?.activeOrganization?.organization ?? null;
   const activeOrganizationPath = activeOrganization
-    ? `/backoffice/organisations/${activeOrganization.id}`
+    ? `/backoffice/organizations/${encodeURIComponent(activeOrganization.slug)}`
     : null;
   const displayName = useMemo(() => (user ? userDisplayName(user.email) : null), [user]);
   const initials = useMemo(() => (user ? userInitials(user.email) : "--"), [user]);
@@ -109,7 +109,7 @@ export function BackofficeAccountMenu({ me, isLoading }: BackofficeAccountMenuPr
               <>
                 <Menu.Separator className="my-1 h-px bg-[var(--bo-border)]" />
                 <Menu.Group
-                  aria-label={`Current organisation: ${activeOrganization.name}`}
+                  aria-label={`Current organization: ${activeOrganization.name}`}
                   className="space-y-1"
                 >
                   <p
@@ -159,11 +159,11 @@ export function BackofficeAccountMenu({ me, isLoading }: BackofficeAccountMenuPr
                 Workspace
               </p>
               <Menu.Item
-                render={<Link to="/backoffice/organisations" />}
+                render={<Link to="/backoffice/organizations" />}
                 className={menuItemClassName}
               >
                 <Users className="size-4 shrink-0" aria-hidden="true" />
-                Manage organisations
+                Manage organizations
               </Menu.Item>
               <Menu.Item render={<Link to="/backoffice/settings" />} className={menuItemClassName}>
                 <Settings className="size-4 shrink-0" aria-hidden="true" />

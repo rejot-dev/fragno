@@ -8,7 +8,7 @@ description:
 
 # MCP Connection
 
-Use this skill for organisation-scoped MCP server registration, OAuth or bearer-token
+Use this skill for organization-scoped MCP server registration, OAuth or bearer-token
 authentication, tool discovery, and MCP tool calls from Backoffice runtimes.
 
 # MCP configuration

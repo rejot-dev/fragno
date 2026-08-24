@@ -17,6 +17,6 @@ export async function loader({ params, context, url }: Route.LoaderArgs) {
   return redirect(`${url.pathname.replace(/\/+$/u, "")}/send`);
 }
 
-export default function BackofficeOrganisationResendOutboxIndex() {
+export default function BackofficeOrganizationResendOutboxIndex() {
   return null;
 }

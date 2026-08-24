@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
+import { requireBackofficeContextScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import { automationScopeFromRouteParams } from "@/routes/backoffice/automations/scope";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 const forwardToScopedUpload = async (
@@ -9,11 +9,11 @@ const forwardToScopedUpload = async (
   context: LoaderFunctionArgs["context"],
   params: LoaderFunctionArgs["params"],
 ) => {
-  const scope = automationScopeFromRouteParams(params);
-  await requireBackofficeContext(request, context, scope);
+  const runtimeScope = requireBackofficeContextScopeFromRouteParams(params);
+  await requireBackofficeContext(request, context, runtimeScope);
 
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
-  const uploadObject = kernel.scoped("UPLOAD", scope, runtime.objects.upload);
+  const uploadObject = kernel.scoped("UPLOAD", runtimeScope, runtime.objects.upload);
   const url = new URL(request.url);
   const suffix = params["*"] ? `/${params["*"]}` : "";
   url.pathname = `/api/upload${suffix}`;
@@ -21,7 +21,7 @@ const forwardToScopedUpload = async (
   return uploadObject.fetch(new Request(url, request));
 };
 
-/** Authenticated browser proxy for system, organisation, project, and user Upload objects. */
+/** Authenticated browser proxy for system, organization, project, and user Upload objects. */
 export async function loader({ request, context, params }: LoaderFunctionArgs) {
   return forwardToScopedUpload(request, context, params);
 }

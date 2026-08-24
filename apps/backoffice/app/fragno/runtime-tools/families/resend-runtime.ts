@@ -14,7 +14,7 @@ import type { ResendFragment } from "@/fragno/resend";
 
 import {
   NotConfiguredError,
-  createOrganisationNotConfiguredMessage,
+  createOrganizationNotConfiguredMessage,
   isSuccessStatus,
   throwOnRouteRuntimeError,
 } from "../runtime-errors";
@@ -292,7 +292,7 @@ export const createResendRouteRuntime = ({ object }: { object: ResendObject }): 
     fetch: object.fetch.bind(object),
   });
 
-const RESEND_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("Resend");
+const RESEND_NOT_CONFIGURED = createOrganizationNotConfiguredMessage("Resend");
 
 export const createUnavailableResendRuntime = (message = RESEND_NOT_CONFIGURED): ResendRuntime => ({
   listThreads: async () => {

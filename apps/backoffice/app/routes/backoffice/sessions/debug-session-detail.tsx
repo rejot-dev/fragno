@@ -1,7 +1,7 @@
-import { useMemo } from "react";
 import { useOutletContext, useParams } from "react-router";
 
-import { createPiClient } from "@/fragno/pi/pi-client";
+import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import { usePiClient } from "@/fragno/pi/pi-client";
 
 import type { PiSessionsOutletContext } from "./session-types";
 
@@ -35,12 +35,13 @@ const JsonPanel = ({ title, value }: { title: string; value: unknown }) => (
   </section>
 );
 
-export default function BackofficeOrganisationPiDebugSessionDetail() {
+export default function BackofficeOrganizationPiDebugSessionDetail() {
   const { workflowName, sessionId } = useParams();
-  const { scope } = useOutletContext<PiSessionsOutletContext>();
+  const { resolvedScope } = useOutletContext<PiSessionsOutletContext>();
+  const scope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
   const resolvedWorkflowName = workflowName ?? "";
   const resolvedSessionId = sessionId ?? "";
-  const pi = useMemo(() => createPiClient(scope), [scope]);
+  const pi = usePiClient(scope);
   const sessionPath = { workflowName: resolvedWorkflowName, sessionId: resolvedSessionId };
   const sessionDetail = pi.useSessionDetail({ path: sessionPath });
 

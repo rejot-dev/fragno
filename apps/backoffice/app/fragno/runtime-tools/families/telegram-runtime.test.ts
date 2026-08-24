@@ -275,7 +275,7 @@ describe("telegram bash command registration", () => {
     const result = await bash.exec("telegram.file.download --file-id missing");
 
     assert(result.exitCode === 1);
-    expect(result.stderr).toContain("Telegram is not configured for this organisation.");
+    expect(result.stderr).toContain("Telegram is not configured for this organization.");
   });
 
   it("uses the shared route error formatting for telegram route-backed commands", async () => {

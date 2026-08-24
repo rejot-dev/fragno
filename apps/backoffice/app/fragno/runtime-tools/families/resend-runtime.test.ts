@@ -534,7 +534,7 @@ describe("resend bash runtime", () => {
     await expect(runtime.listThreads()).rejects.toEqual(
       expect.objectContaining({
         name: "NotConfiguredError",
-        message: "Resend is not configured for this organisation.",
+        message: "Resend is not configured for this organization.",
       }),
     );
     await expect(runtime.listThreads()).rejects.toBeInstanceOf(NotConfiguredError);

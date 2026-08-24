@@ -6,7 +6,7 @@ import {
   type ParsedCliTokens,
 } from "@/fragno/runtime-tools/bash-cli";
 import {
-  createOrganisationNotConfiguredMessage,
+  createOrganizationNotConfiguredMessage,
   throwOnHttpResponseError,
 } from "@/fragno/runtime-tools/runtime-errors";
 
@@ -217,7 +217,7 @@ const parseTelegramMessageEdit = defineCliArgsParser<TelegramEditMessageArgs>(
 
 const dataFormat = <T>(result: T) => ({ data: result });
 
-const TELEGRAM_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("Telegram");
+const TELEGRAM_NOT_CONFIGURED = createOrganizationNotConfiguredMessage("Telegram");
 
 const bytesToBinaryString = (bytes: Uint8Array) => {
   if (bytes.byteLength === 0) {

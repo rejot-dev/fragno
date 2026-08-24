@@ -22,8 +22,7 @@ beforeEach(() => {
     auth: {
       transport: "cookie",
       expiresAt: new Date("2027-01-01T00:00:00.000Z"),
-      scope: { kind: "org", orgId: "org-1" },
-      organizationRoles: ["member"],
+      organization: { id: "org-1", slug: "acme", roles: ["member"] },
     },
   });
 });
@@ -82,7 +81,7 @@ describe("Backoffice settings authority inspection", () => {
           kind: "verified-request-authority",
           userId: "user-1",
           role: "user",
-          scope: { kind: "org", orgId: "org-1" },
+          organizationId: "org-1",
           expiresAtEpochMs: Date.parse("2027-01-01T00:00:00.000Z"),
         },
       }),
@@ -95,8 +94,7 @@ describe("Backoffice settings authority inspection", () => {
       auth: {
         transport: "cookie",
         expiresAt: new Date("2027-01-01T00:00:00.000Z"),
-        scope: { kind: "system" },
-        organizationRoles: [],
+        organization: null,
       },
     });
     const resolvePrincipalPermissions = vi.fn(async () => [BACKOFFICE_PERMISSION.internal.manage]);

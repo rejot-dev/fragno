@@ -9,7 +9,7 @@ import {
   resolveDurableHooksScopeSelection,
 } from "./durable-hooks-scope";
 
-const organisations = [
+const organizations = [
   {
     id: "org_123",
     name: "Acme",
@@ -41,7 +41,7 @@ const resolveSelection = ({
   const selection = resolveDurableHooksScopeSelection({
     scope,
     objectId,
-    organisations,
+    organizations,
     projects,
     user,
   });
@@ -50,12 +50,15 @@ const resolveSelection = ({
 };
 
 describe("resolveDurableHooksScopeSelection", () => {
-  it("resolves organisation, project, user, and singleton scopes", () => {
+  it("resolves organization, project, user, and singleton scopes", () => {
     expect(
       resolveSelection({ scope: { kind: "org", orgId: "org_123" }, objectId: "api" }),
     ).toMatchObject({
       kind: "org",
-      orgId: "org_123",
+      resolvedScope: {
+        kind: "org",
+        organization: { id: "org_123", slug: "acme" },
+      },
       objectId: "api",
     });
     expect(
@@ -65,8 +68,11 @@ describe("resolveDurableHooksScopeSelection", () => {
       }),
     ).toMatchObject({
       kind: "project",
-      orgId: "org_123",
-      projectId: "project_1",
+      resolvedScope: {
+        kind: "project",
+        organization: { id: "org_123", slug: "acme" },
+        projectId: "project_1",
+      },
       label: "Launch Plan",
       objectId: "upload",
     });
@@ -74,7 +80,7 @@ describe("resolveDurableHooksScopeSelection", () => {
       resolveSelection({ scope: { kind: "user", userId: "user_1" }, objectId: "mcp" }),
     ).toMatchObject({
       kind: "user",
-      userId: "user_1",
+      resolvedScope: { kind: "user", userId: "user_1" },
       label: "operator@example.com",
       objectId: "mcp",
     });
@@ -89,7 +95,7 @@ describe("resolveDurableHooksScopeSelection", () => {
       resolveDurableHooksScopeSelection({
         scope: { kind: "user", userId: "user_1" },
         objectId: "auth",
-        organisations,
+        organizations,
         projects,
         user,
       }),
@@ -98,7 +104,7 @@ describe("resolveDurableHooksScopeSelection", () => {
       resolveDurableHooksScopeSelection({
         scope: { kind: "system" },
         objectId: "api",
-        organisations,
+        organizations,
         projects,
         user,
       }),
@@ -158,7 +164,7 @@ describe("durable hook selectors", () => {
       objectId: "telegram",
     });
 
-    expect(createDurableHooksScopeOptions({ organisations, projects, user, selection })).toEqual([
+    expect(createDurableHooksScopeOptions({ organizations, projects, user, selection })).toEqual([
       {
         id: "system/system",
         kind: "singleton",
@@ -170,15 +176,15 @@ describe("durable hook selectors", () => {
         id: "org/org_123",
         kind: "org",
         label: "Acme",
-        description: "Organisation · acme",
-        to: "/backoffice/internals/durable-hooks/org/org_123/telegram",
+        description: "Organization · acme",
+        to: "/backoffice/internals/durable-hooks/org/acme/telegram",
       },
       {
         id: "project/org_123%3Aproject_1",
         kind: "project",
         label: "Launch Plan",
         description: "Project · launch-plan",
-        to: "/backoffice/internals/durable-hooks/project/org_123%3Aproject_1/telegram",
+        to: "/backoffice/internals/durable-hooks/project/acme%3Aproject_1/telegram",
       },
       {
         id: "user/user_1",
@@ -195,7 +201,7 @@ describe("durable hook selectors", () => {
       scope: { kind: "org", orgId: "org_123" },
       objectId: "github",
     });
-    const options = createDurableHooksScopeOptions({ organisations, projects, user, selection });
+    const options = createDurableHooksScopeOptions({ organizations, projects, user, selection });
 
     assert.equal(
       options.find((option) => option.kind === "user")?.to,

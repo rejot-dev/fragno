@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import type { WorkflowRunCollections } from "@/routes/backoffice/automations/script-view/use-script-workflow-runs";
 
 import type {
@@ -15,7 +16,7 @@ export type PiCreateSessionActionData = {
 };
 
 export type PiSessionsOutletContext = {
-  scope: PiLayoutContext["scope"];
+  resolvedScope: BackofficeResolvedScope;
   persistenceSource: NonNullable<PiLayoutContext["persistenceSource"]>;
   basePath: string;
   createSessionPanel?: ReactNode;

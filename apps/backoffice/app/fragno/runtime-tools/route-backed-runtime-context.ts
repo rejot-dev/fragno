@@ -3,6 +3,7 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { resolveBackofficeRuntimeScope } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { createBackofficeFileSystem, type IFileSystem } from "@/files";
@@ -80,8 +81,10 @@ const ownerOrgScope = (execution: BackofficeExecutionContext): { orgId: string }
     ? { orgId: execution.scope.orgId }
     : null;
 
-const selectedOrgScope = (execution: BackofficeExecutionContext): { orgId: string } | null =>
-  execution.scope.kind === "org" ? { orgId: execution.scope.orgId } : null;
+const selectedOrgScope = (
+  execution: BackofficeExecutionContext,
+): Extract<BackofficeExecutionContext["scope"], { kind: "org" }> | null =>
+  execution.scope.kind === "org" ? execution.scope : null;
 
 const createExecutionStateBackend = ({
   runtime,
@@ -103,6 +106,19 @@ const createExecutionStateBackend = ({
     }),
   });
 };
+
+async function resolveRuntimeOrganization(
+  runtime: BackofficeRuntimeServices,
+  organizationId: string,
+) {
+  const organization = (await runtime.objects.auth.singleton().getAllOrganizations()).find(
+    ({ id }) => id === organizationId,
+  );
+  if (!organization) {
+    throw new Error(`Organization '${organizationId}' could not be found.`);
+  }
+  return { id: organization.id, slug: organization.slug };
+}
 
 const unavailableObject = <T>(resolve: () => T): T | null => {
   try {
@@ -261,13 +277,21 @@ export const createRouteBackedRuntimeContext = ({
       : null,
     otp: {
       runtime: selectedOrg
-        ? createOtpRuntime({
-            object: kernel.scoped("OTP", execution.scope, runtime.objects.otp),
-            config: runtime.config,
-            orgId: selectedOrg.orgId,
-            kernel,
-            execution,
-          })
+        ? {
+            createClaim: async (input) => {
+              const resolvedScope = await resolveBackofficeRuntimeScope(
+                selectedOrg,
+                (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
+              );
+              return await createOtpRuntime({
+                object: kernel.scoped("OTP", execution.scope, runtime.objects.otp),
+                config: runtime.config,
+                scope: resolvedScope,
+                kernel,
+                execution,
+              }).createClaim(input);
+            },
+          }
         : createUnavailableOtpRuntime(unavailableMessage("OTP", execution)),
     },
     pi: pi ?? {

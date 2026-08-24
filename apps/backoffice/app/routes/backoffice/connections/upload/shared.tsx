@@ -2,29 +2,23 @@ import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
 
-import { getRouteErrorMessage, isOrganisationNotFoundError } from "../../route-errors";
+import { getRouteErrorMessage, getBackofficeOrganizationNotFound } from "../../route-errors";
 import type { UploadConfigurableProvider, UploadTab } from "./layout-context";
 
 type UploadProviderTab = UploadConfigurableProvider | "s3" | "direct";
 
-export function UploadHeader({
-  orgId,
-  organisationName,
-}: {
-  orgId: string;
-  organisationName?: string | null;
-}) {
+export function UploadHeader({ organizationLabel }: { organizationLabel: string }) {
   return (
     <BackofficePageHeader
       breadcrumbs={[
         { label: "Backoffice", to: "/backoffice" },
         { label: "Internals", to: "/backoffice/internals" },
         { label: "Upload", to: "/backoffice/connections/upload" },
-        { label: organisationName ?? orgId },
+        { label: organizationLabel },
       ]}
       eyebrow="Integrations"
-      title={`Upload for ${organisationName ?? orgId}`}
-      description="Configure organisation-scoped upload storage with an enforced org namespace."
+      title={`Upload for ${organizationLabel}`}
+      description="Configure organization-scoped upload storage with an enforced org namespace."
       actions={
         <Link
           to="/backoffice/connections/upload"
@@ -38,15 +32,15 @@ export function UploadHeader({
 }
 
 export function UploadWorkspaceTabs({
-  orgId,
+  orgSlug,
   activeTab,
   isConfigured,
 }: {
-  orgId: string;
+  orgSlug: string;
   activeTab: UploadTab;
   isConfigured: boolean;
 }) {
-  const basePath = `/backoffice/connections/upload/${orgId}`;
+  const basePath = `/backoffice/connections/upload/${encodeURIComponent(orgSlug)}`;
   const tabs = [
     {
       id: "files" as const,
@@ -196,7 +190,7 @@ export function UploadErrorBoundary({
   params,
 }: {
   error: unknown;
-  params: { orgId?: string };
+  params: { orgSlug?: string };
 }) {
   let statusCode = 500;
   let message = "An unexpected error occurred.";
@@ -209,13 +203,13 @@ export function UploadErrorBoundary({
 
   message = getRouteErrorMessage(error, message);
 
-  if (statusCode === 404 && params.orgId && isOrganisationNotFoundError(error)) {
-    message = `Organisation '${params.orgId}' could not be found.`;
+  if (statusCode === 404 && params.orgSlug && getBackofficeOrganizationNotFound(error)) {
+    message = `Organization '${params.orgSlug}' could not be found.`;
   }
 
   return (
     <div className="space-y-4">
-      <UploadHeader orgId={params.orgId ?? "organisation"} organisationName="Error" />
+      <UploadHeader organizationLabel="Error" />
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           {statusCode} · {statusText}

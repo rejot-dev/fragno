@@ -148,7 +148,7 @@ export default function BackofficeInternalUsers() {
         ]}
         eyebrow="Identity control"
         title="System users and global authority."
-        description="Review every account known to Auth and assign the global user or administrator role. Organisation roles are managed separately."
+        description="Review every account known to Auth and assign the global user or administrator role. Organization roles are managed separately."
       />
 
       <section className="bo-fragment-surface bo-panel-surface bg-[var(--bo-panel)] p-4">

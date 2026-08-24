@@ -6,7 +6,7 @@ import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { AutomationWorkspaceHeader } from "../../automations/shared";
 import { organizationIdFromScope, resolveIntegrationContext } from "../../integrations/scope";
-import type { Route } from "./+types/organisation-layout";
+import type { Route } from "./+types/organization-layout";
 import {
   fetchGitHubAdminConfig,
   fetchGitHubLinkedRepositories,
@@ -38,7 +38,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   if (!organizationId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const organisation =
+  const organization =
     me.organizations.find((entry) => entry.organization.id === organizationId)?.organization ??
     null;
 
@@ -59,7 +59,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     ...integration,
     organizationId,
     origin,
-    organisation,
+    organization,
     configState,
     configError,
     repositoriesEnabled,
@@ -67,7 +67,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  const label = loaderData?.label ?? "organisation";
+  const label = loaderData?.label ?? "organization";
   return [{ title: `GitHub Setup · ${label}` }];
 }
 
@@ -75,14 +75,14 @@ export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
   return <GitHubErrorBoundary error={error} params={params} />;
 }
 
-export default function BackofficeOrganisationGitHubLayout({
+export default function BackofficeOrganizationGitHubLayout({
   loaderData,
   matches,
 }: Route.ComponentProps) {
   const {
     organizationId,
     origin,
-    organisation,
+    organization,
     uiScope,
     basePath,
     integrationsPath,
@@ -127,7 +127,7 @@ export default function BackofficeOrganisationGitHubLayout({
         context={{
           organizationId,
           origin,
-          organisation,
+          organization,
           basePath,
           integrationsPath,
           configState,

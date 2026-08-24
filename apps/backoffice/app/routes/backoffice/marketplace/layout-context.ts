@@ -1,5 +1,5 @@
-import type { MarketplaceUiScope } from "./scope";
+import type { BackofficeRoutableScopeSelection } from "@/backoffice-runtime/resolved-scope";
 
 export type MarketplaceLayoutContext = {
-  selectedScope: MarketplaceUiScope;
+  selectedScope: BackofficeRoutableScopeSelection;
 };

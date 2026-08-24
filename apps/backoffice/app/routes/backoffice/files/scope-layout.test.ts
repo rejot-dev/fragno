@@ -12,7 +12,7 @@ vi.mock("../automations/data.server", () => ({
 
 import { loader } from "./scope-layout";
 
-describe("Files scope layout without an organisation", () => {
+describe("Files scope layout without an organization", () => {
   beforeEach(() => {
     findBackofficeMeMock.mockReset();
     lookupAutomationProjectMock.mockReset();

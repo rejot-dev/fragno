@@ -73,7 +73,9 @@ describe("Better Auth Durable Object SQLite", () => {
     if (!tokenResponse.ok) {
       assert.fail(await tokenResponse.text());
     }
-    expect(await tokenResponse.clone().json()).toMatchObject({ organizationId });
+    expect(await tokenResponse.clone().json()).toMatchObject({
+      organization: { id: organizationId },
+    });
     const accessTokenCookie = cookieHeader(tokenResponse);
     expect(accessTokenCookie).toContain(`${backofficeAccessTokenCookieName(false)}=`);
 
@@ -84,14 +86,14 @@ describe("Better Auth Durable Object SQLite", () => {
       stub,
     );
     assert(verification.ok);
-    expect(verification.payload.scope).toEqual({ kind: "org", orgId: organizationId });
+    expect(verification.payload.organization).toMatchObject({
+      id: organizationId,
+      slug: "sqlite-users-organization",
+    });
 
     const me = (await stub.getBackofficeMe({
       userId: verification.payload.sub,
-      activeOrganizationId:
-        verification.payload.scope.kind === "org" || verification.payload.scope.kind === "project"
-          ? verification.payload.scope.orgId
-          : null,
+      activeOrganizationId: verification.payload.organization?.id ?? null,
     })) as BackofficeMeData | null;
     expect(me?.activeOrganizationId).toBe(organizationId);
     expect(me?.activeOrganization?.organization.id).toBe(organizationId);

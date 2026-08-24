@@ -138,7 +138,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   } satisfies ResendStartThreadActionData;
 }
 
-export default function BackofficeOrganisationResendThreadStart() {
+export default function BackofficeOrganizationResendThreadStart() {
   const outletContext = useOutletContext<ResendThreadsOutletContext | null>();
   const fetcher = useFetcher<typeof action>();
   const navigate = useNavigate();

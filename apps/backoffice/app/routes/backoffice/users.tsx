@@ -78,7 +78,7 @@ export default function BackofficeUsers() {
                   Role
                 </th>
                 <th scope="col" className="px-3 py-2">
-                  Organisation
+                  Organization
                 </th>
                 <th scope="col" className="px-3 py-2">
                   Status

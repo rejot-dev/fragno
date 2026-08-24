@@ -4,14 +4,18 @@ import { createUploadFragmentClient } from "@fragno-dev/upload/react";
 
 import type { UploadHelpers } from "@fragno-dev/upload";
 
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
-import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import type { BackofficeRoutableResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 
-const scopedUploadMountRoute = (scope: BackofficeRoutableScope) =>
-  `/api/upload-scoped/${backofficeContextScopeRoutePath(scope)}`;
+function scopedUploadMountRoute(scope: BackofficeRoutableResolvedScope): string {
+  return `/api/upload-scoped/${backofficeRouteScopePath(
+    backofficeRouteScopeFromResolvedScope(scope),
+  )}`;
+}
 
 export function createScopedUploadClient(
-  scope: BackofficeRoutableScope,
+  scope: BackofficeRoutableResolvedScope,
   config: FragnoPublicClientConfig = {},
 ): ReturnType<typeof createUploadFragmentClient> {
   return createUploadFragmentClient({
@@ -20,7 +24,7 @@ export function createScopedUploadClient(
   });
 }
 
-export function createScopedUploadHelpers(scope: BackofficeRoutableScope): UploadHelpers {
+export function createScopedUploadHelpers(scope: BackofficeRoutableResolvedScope): UploadHelpers {
   const mountRoute = scopedUploadMountRoute(scope);
   return createUploadHelpers({
     buildUrl: (path) => `${mountRoute}${path}`,
@@ -29,11 +33,11 @@ export function createScopedUploadHelpers(scope: BackofficeRoutableScope): Uploa
 }
 
 export function createUploadClient(
-  orgId: string,
+  orgSlug: string,
   config: FragnoPublicClientConfig = {},
 ): ReturnType<typeof createUploadFragmentClient> {
   return createUploadFragmentClient({
     ...config,
-    mountRoute: `/api/upload/${orgId}`,
+    mountRoute: `/api/upload/${encodeURIComponent(orgSlug)}`,
   });
 }

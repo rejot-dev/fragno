@@ -10,9 +10,9 @@ import {
 import { decodeBillingTrackerCursor } from "@/fragno/billing/pagination";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import type { Route } from "./+types/organisation-billing";
+import type { Route } from "./+types/organization-billing";
 import { buildBackofficeLoginPath } from "./auth-navigation";
-import { throwOrganisationNotFound } from "./route-errors";
+import { throwBackofficeOrganizationNotFound } from "./route-errors";
 
 const TOTAL_COST_METER = "ai.cost.total";
 
@@ -70,7 +70,7 @@ const billingPagePath = (period: string, cursor?: string) => {
 };
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  if (!params.orgId) {
+  if (!params.orgSlug) {
     throw new Response("Not Found", { status: 404 });
   }
 
@@ -82,8 +82,11 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
 
-  if (!me.organizations.some((entry) => entry.organization.id === params.orgId)) {
-    throwOrganisationNotFound(params.orgId);
+  const organization = me.organizations.find(
+    (entry) => entry.organization.slug === params.orgSlug,
+  )?.organization;
+  if (!organization) {
+    throwBackofficeOrganizationNotFound(params.orgSlug);
   }
 
   const search = new URL(request.url).searchParams;
@@ -98,7 +101,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   const period = periodResult.data;
   const requestedCursor = search.get("cursor");
   const cursor = requestedCursor === null ? undefined : requestedCursor.trim();
-  const scope = { kind: "org" as const, orgId: params.orgId };
+  const scope = { kind: "org" as const, orgId: organization.id };
 
   if (requestedCursor !== null && !cursor) {
     throw new Response("Invalid billing page cursor.", { status: 400 });
@@ -111,7 +114,9 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     }
   }
 
-  const billing = context.get(BackofficeWorkerContext).runtime.objects.billing.forOrg(params.orgId);
+  const billing = context
+    .get(BackofficeWorkerContext)
+    .runtime.objects.billing.forOrg(organization.id);
   const page = await billing.getTrackers({
     scope,
     period,
@@ -124,10 +129,10 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 }
 
 export function meta() {
-  return [{ title: "Organisation Billing" }];
+  return [{ title: "Organization Billing" }];
 }
 
-export default function BackofficeOrganisationBilling({ loaderData }: Route.ComponentProps) {
+export default function BackofficeOrganizationBilling({ loaderData }: Route.ComponentProps) {
   const { period, cursor, trackers, nextCursor, hasNextPage, summaryTracker } = loaderData;
   const totalCost = summaryTracker?.quantity;
   const previousPeriod = shiftPeriod(period, -1);
@@ -178,7 +183,7 @@ export default function BackofficeOrganisationBilling({ loaderData }: Route.Comp
       <FormContainer
         eyebrow="Recorded measurements"
         title="Statement ledger"
-        description="Monthly counters maintained by this organisation's Billing object, ordered by meter."
+        description="Monthly counters maintained by this organization's Billing object, ordered by meter."
       >
         {trackers.length === 0 ? (
           <div className="border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] px-5 py-8 text-center">

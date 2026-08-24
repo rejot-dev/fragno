@@ -20,11 +20,10 @@ import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { FormField } from "@/components/backoffice";
 import type { ApiFragment } from "@/fragno/api";
-import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/api";
-import { automationScopeFromRouteParams } from "./scope";
+import { requireAutomationRouteExecution } from "./scope.server";
 
 type ApiConnectionSummary = {
   slug: string;
@@ -299,8 +298,7 @@ async function fetchApiWebhooksForScope(
 }
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
-  const scope = automationScopeFromRouteParams(params);
-  await requireBackofficeContext(request, context, scope);
+  const { scope } = await requireAutomationRouteExecution(request, context, params);
 
   let publicBaseUrl: string | null = null;
   let configError: string | null = null;
@@ -496,8 +494,7 @@ const readWebhookAuth = (formData: FormData) => {
 };
 
 export async function action({ request, context, params }: Route.ActionArgs) {
-  const scope = automationScopeFromRouteParams(params);
-  await requireBackofficeContext(request, context, scope);
+  const { scope } = await requireAutomationRouteExecution(request, context, params);
   const formData = await request.formData();
   const intent = getFormString(formData, "intent");
 

@@ -1,20 +1,11 @@
 import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
-import {
-  BackofficeForbiddenError,
-  BackofficeKernel,
-  noopBackofficeKernelObserver,
-} from "@/backoffice-runtime/kernel";
+import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 
-const { requireBackofficeContextMock, fetchWithContextMock, fetchMock } = vi.hoisted(() => ({
-  requireBackofficeContextMock: vi.fn(),
+const { fetchWithContextMock, fetchMock } = vi.hoisted(() => ({
   fetchWithContextMock: vi.fn(),
   fetchMock: vi.fn(),
-}));
-
-vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
-  requireBackofficeContext: requireBackofficeContextMock,
 }));
 
 import { deleteAutomationStoreEntry, lookupAutomationProject } from "./data.server";
@@ -70,10 +61,8 @@ const request = new Request("https://backoffice.example/backoffice/automations/o
 });
 
 beforeEach(() => {
-  requireBackofficeContextMock.mockReset();
   fetchWithContextMock.mockReset();
   fetchMock.mockReset();
-  requireBackofficeContextMock.mockResolvedValue(execution);
 });
 
 describe("lookupAutomationProject", () => {
@@ -107,7 +96,7 @@ describe("deleteAutomationStoreEntry", () => {
     fetchWithContextMock.mockResolvedValue(Response.json({ ok: true, key: "ordinary/key" }));
 
     await expect(
-      deleteAutomationStoreEntry(request, context, scope, "ordinary/key"),
+      deleteAutomationStoreEntry(request, context, execution, "ordinary/key"),
     ).resolves.toEqual({ ok: true, error: null });
 
     expect(fetchWithContextMock).toHaveBeenCalledOnce();
@@ -123,7 +112,7 @@ describe("deleteAutomationStoreEntry", () => {
     const requestWithoutPropagation = new Request(request.url, { method: "POST" });
 
     await expect(
-      deleteAutomationStoreEntry(requestWithoutPropagation, context, scope, "ordinary/key"),
+      deleteAutomationStoreEntry(requestWithoutPropagation, context, execution, "ordinary/key"),
     ).resolves.toEqual({ ok: true, error: null });
 
     expect(fetchWithContextMock).toHaveBeenCalledOnce();
@@ -131,35 +120,6 @@ describe("deleteAutomationStoreEntry", () => {
       execution,
       propagationContext: null,
     });
-  });
-
-  test("preserves authentication responses", async () => {
-    const authenticationResponse = new Response("Authentication required", { status: 401 });
-    requireBackofficeContextMock.mockRejectedValue(authenticationResponse);
-
-    await expect(deleteAutomationStoreEntry(request, context, scope, "ordinary/key")).rejects.toBe(
-      authenticationResponse,
-    );
-
-    expect(fetchWithContextMock).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  test("maps scope authorization failures to HTTP 403", async () => {
-    requireBackofficeContextMock.mockRejectedValue(new BackofficeForbiddenError("Forbidden"));
-
-    const response = await deleteAutomationStoreEntry(
-      request,
-      context,
-      scope,
-      "ordinary/key",
-    ).catch((error: unknown) => error);
-
-    assert(response instanceof Response);
-    assert(response.status === 403);
-    await expect(response.text()).resolves.toBe("Forbidden");
-    expect(fetchWithContextMock).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test("preserves authorization failures returned by the Automations fragment", async () => {
@@ -176,7 +136,7 @@ describe("deleteAutomationStoreEntry", () => {
     const response = await deleteAutomationStoreEntry(
       request,
       context,
-      scope,
+      execution,
       "ordinary/key",
     ).catch((error: unknown) => error);
 
@@ -203,7 +163,7 @@ describe("deleteAutomationStoreEntry", () => {
     const response = await deleteAutomationStoreEntry(
       request,
       context,
-      scope,
+      execution,
       "ordinary/key",
     ).catch((error: unknown) => error);
 
@@ -227,7 +187,7 @@ describe("deleteAutomationStoreEntry", () => {
     );
 
     await expect(
-      deleteAutomationStoreEntry(request, context, scope, "missing/key"),
+      deleteAutomationStoreEntry(request, context, execution, "missing/key"),
     ).resolves.toEqual({
       ok: false,
       error: "Store entry not found for missing/key.",

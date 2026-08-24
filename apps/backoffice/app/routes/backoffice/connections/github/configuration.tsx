@@ -41,7 +41,7 @@ const INSTALL_FLOW_QUERY = "installFlow";
 const INSTALL_FLOW_MESSAGES = {
   installed: {
     tone: "success",
-    message: "GitHub installation callback validated and linked to this organisation.",
+    message: "GitHub installation callback validated and linked to this organization.",
   },
   installed_pending_webhook: {
     tone: "warning",
@@ -50,7 +50,7 @@ const INSTALL_FLOW_MESSAGES = {
   },
   installed_synced: {
     tone: "success",
-    message: "GitHub installation callback validated, linked to this organisation, and synced.",
+    message: "GitHub installation callback validated, linked to this organization, and synced.",
   },
   install_requested: {
     tone: "warning",
@@ -233,7 +233,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       }
 
       if (consumed.orgId !== organizationId) {
-        console.warn("GitHub install callback resolved to a different organisation", {
+        console.warn("GitHub install callback resolved to a different organization", {
           requestedOrgId: organizationId,
           resolvedOrgId: consumed.orgId,
           installationId: callbackInstallationId,
@@ -248,7 +248,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
         organizationId,
       );
       if (!mappingResult.ok) {
-        console.error("GitHub install callback failed to map installation to organisation", {
+        console.error("GitHub install callback failed to map installation to organization", {
           organizationId: organizationId,
           installationId: callbackInstallationId,
           state: toStatePreview(callbackState),
@@ -514,7 +514,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
   } satisfies GitHubConfigurationActionData;
 }
 
-export default function BackofficeOrganisationGitHubConfiguration() {
+export default function BackofficeOrganizationGitHubConfiguration() {
   const { configState, configError, setConfigState, setConfigError } =
     useOutletContext<GitHubLayoutContext>();
   const loaderData = useLoaderData<typeof loader>();
@@ -580,14 +580,14 @@ export default function BackofficeOrganisationGitHubConfiguration() {
             eyebrow="Installation"
             description={
               hasActiveInstallation
-                ? "Manage the GitHub App installation linked to this organisation."
+                ? "Manage the GitHub App installation linked to this organization."
                 : "Install the app for the first time, or reconnect an installation that already exists in GitHub."
             }
           >
             {hasActiveInstallation && githubInstallationUrl ? (
               <>
                 <p className="text-sm text-[var(--bo-muted)]">
-                  Installation is configured for this organisation. Open GitHub to manage
+                  Installation is configured for this organization. Open GitHub to manage
                   installation settings or review app authorizations for your GitHub account.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -666,7 +666,7 @@ export default function BackofficeOrganisationGitHubConfiguration() {
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2">
                   <p className="text-xs text-[var(--bo-muted-2)]">
                     Not sure whether it is already installed? Check GitHub first, switch to the
-                    right GitHub organisation if needed, then return here.
+                    right GitHub organization if needed, then return here.
                   </p>
                   <a
                     href="https://github.com/settings/apps/authorizations"

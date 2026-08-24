@@ -31,7 +31,7 @@ need a separate execution path for scheduled work.
 
 ## Scope is the unit of ownership
 
-Each Automations object belongs to one Backoffice scope: system, organisation, project, or user. The
+Each Automations object belongs to one Backoffice scope: system, organization, project, or user. The
 object owns its routes, events, schedule state, store entries, workflow instances, and other
 automation records.
 
@@ -40,7 +40,7 @@ cannot override that scope. Cross-scope delivery requires an explicit `forward_e
 the Backoffice kernel verifies that the current Automations owner may target the requested scope.
 
 The system scope has a small set of starter routes for system-wide work, such as initializing an
-organisation workspace and forwarding organisation lifecycle events into the new organisation's
+organization workspace and forwarding organization lifecycle events into the new organization's
 scope. Other scopes receive their own starter routes.
 
 ## Durable boundaries
@@ -78,12 +78,12 @@ Every `start_workflow` action chooses one of two authority modes:
 - **Delegated user** keeps the triggering internal user as the principal and adds the stable route
   automation identity as a delegate. Both identities must authorize protected work. The automation
   cannot elevate the user's permissions.
-- **Organisation automation** replaces the principal with `automation-route:<routeId>`. The original
+- **Organization automation** replaces the principal with `automation-route:<routeId>`. The original
   initiator remains provenance but supplies no authority. The workflow receives the finite shared
   automation grant set.
 
 Delegated-user execution fails closed when the event lacks a valid internal user principal.
-Organisation-automation execution can continue when the route creator or triggering user later loses
+Organization-automation execution can continue when the route creator or triggering user later loses
 access, but it remains limited by the automation role.
 
 ## Runtime resources

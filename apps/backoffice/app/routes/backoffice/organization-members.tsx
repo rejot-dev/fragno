@@ -5,8 +5,8 @@ import { FormContainer } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
 import { cn } from "@/lib/utils";
 
-import type { OrganisationLayoutContext } from "./organisation-layout";
-import { ROLE_OPTIONS, formatDate, formatRoles, getErrorMessage } from "./organisation-utils";
+import type { OrganizationLayoutContext } from "./organization-layout";
+import { ROLE_OPTIONS, formatDate, formatRoles, getErrorMessage } from "./organization-utils";
 
 const MEMBER_PAGE_SIZE = 25;
 
@@ -19,11 +19,11 @@ type ActionNotice = {
 } | null;
 
 export function meta() {
-  return [{ title: "Organisation Members" }];
+  return [{ title: "Organization Members" }];
 }
 
-export default function BackofficeOrganisationMembers() {
-  const { organization, member, me } = useOutletContext<OrganisationLayoutContext>();
+export default function BackofficeOrganizationMembers() {
+  const { organization, member, me } = useOutletContext<OrganizationLayoutContext>();
   const currentUserId = me.user.id;
   const canManageMembers =
     me.user.role === "admin" || member.roles.some((role) => role === "owner" || role === "admin");
@@ -99,11 +99,11 @@ export default function BackofficeOrganisationMembers() {
       <FormContainer
         eyebrow="Members"
         title={`Members (${members.length})`}
-        description="Review the current organisation roster and role assignments."
+        description="Review the current organization roster and role assignments."
         actions={
           <input
             type="search"
-            aria-label="Search organisation members"
+            aria-label="Search organization members"
             value={memberSearch}
             onChange={(event) => {
               setMemberSearch(event.target.value);
@@ -267,7 +267,7 @@ function OrganizationMemberRow({
     if (!canEditMember || removing) {
       return;
     }
-    if (!window.confirm(`Remove ${member.user.name} from this organisation?`)) {
+    if (!window.confirm(`Remove ${member.user.name} from this organization?`)) {
       return;
     }
     setRemoving(true);

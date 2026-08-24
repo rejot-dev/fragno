@@ -21,7 +21,7 @@ A stored entry has these fields:
 | `createdAt`   | ISO timestamp    | Database creation time. Returned by get and list operations.                 |
 | `updatedAt`   | ISO timestamp    | Database time of the most recent write. Returned by get and list operations. |
 
-Keys are globally unique inside one scoped Automations object. Separate system, organisation,
+Keys are globally unique inside one scoped Automations object. Separate system, organization,
 project, and user Automations objects have separate stores.
 
 Use stable namespaced keys, for example:

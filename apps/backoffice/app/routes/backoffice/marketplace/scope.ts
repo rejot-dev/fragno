@@ -1,8 +1,14 @@
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import {
-  backofficeScopeFromRouteParams,
-  backofficeContextScopeRoutePath,
-} from "@/backoffice-runtime/scope-codec";
+  backofficeOrganizationIdentity,
+  backofficeRouteScopeFromResolvedScope,
+  backofficeRuntimeScopeFromResolvedScope,
+  resolveBackofficeRouteScope,
+  type BackofficeRoutableScopeSelection,
+} from "@/backoffice-runtime/resolved-scope";
+import {
+  backofficeRouteScopePath,
+  requireBackofficeRouteScopeFromParams,
+} from "@/backoffice-runtime/route-scope";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
 import type { AutomationProjectRecord } from "../automations/data";
@@ -10,46 +16,28 @@ import { toExternalId } from "../automations/data";
 
 export type MarketplaceTab = "marketplace" | "installed" | "my-listings";
 
-export type MarketplaceUiScope =
-  | { kind: "org"; orgId: string; label: string }
-  | { kind: "project"; orgId: string; projectId: string; label: string }
-  | { kind: "user"; userId: string; label: string };
-
 export type MarketplaceScopeOption = {
   id: string;
-  kind: MarketplaceUiScope["kind"];
+  kind: BackofficeRoutableScopeSelection["kind"];
   label: string;
   description: string;
   to: string;
 };
 
-type Organisation = BackofficeMeData["organizations"][number]["organization"];
+type Organization = BackofficeMeData["organizations"][number]["organization"];
 
 const userName = (user: BackofficeMeData["user"]) => user.email ?? user.id;
 
 const projectLabel = (project: AutomationProjectRecord) =>
   project.name?.trim() || project.slug?.trim() || toExternalId(project.id) || "Untitled project";
 
-const toMarketplaceTargetScope = (scope: MarketplaceUiScope): BackofficeRoutableScope => {
-  switch (scope.kind) {
-    case "org":
-      return { kind: "org", orgId: scope.orgId };
-    case "project":
-      return { kind: "project", orgId: scope.orgId, projectId: scope.projectId };
-    case "user":
-      return { kind: "user", userId: scope.userId };
-    default: {
-      const unsupportedScope: never = scope;
-      throw new Error(`Unsupported Marketplace scope: ${String(unsupportedScope)}`);
-    }
-  }
-};
-
-const marketplaceScopeBasePath = (scope: MarketplaceUiScope) =>
-  `/backoffice/marketplace/${backofficeContextScopeRoutePath(toMarketplaceTargetScope(scope))}`;
+const marketplaceScopeBasePath = (scope: BackofficeRoutableScopeSelection) =>
+  `/backoffice/marketplace/${backofficeRouteScopePath(
+    backofficeRouteScopeFromResolvedScope(scope),
+  )}`;
 
 export const marketplaceScopeTabPath = (
-  scope: MarketplaceUiScope,
+  scope: BackofficeRoutableScopeSelection,
   tab: MarketplaceTab = "marketplace",
 ) => `${marketplaceScopeBasePath(scope)}/${tab}`;
 
@@ -59,8 +47,8 @@ const marketplaceScopeSwitchPath = ({
   pathname,
   search,
 }: {
-  destinationScope: MarketplaceUiScope;
-  selectedScope: MarketplaceUiScope;
+  destinationScope: BackofficeRoutableScopeSelection;
+  selectedScope: BackofficeRoutableScopeSelection;
   pathname: string;
   search: string;
 }) => {
@@ -72,95 +60,104 @@ const marketplaceScopeSwitchPath = ({
   return `${marketplaceScopeBasePath(destinationScope)}${nestedPath}${search}`;
 };
 
-export const marketplaceScopeFromRouteParams = (params: {
-  scopeKind?: string;
-  scopeId?: string;
-}): BackofficeRoutableScope => {
+/** Resolves a slug-backed Marketplace route into ID-backed runtime scope identity. */
+export function marketplaceRuntimeScopeFromRouteParams(
+  params: { scopeKind?: string; scopeId?: string },
+  organizations: Organization[],
+) {
+  const routeScope = requireBackofficeRouteScopeFromParams(params);
+  if (routeScope.kind === "system") {
+    throw new Response("Not Found", { status: 404 });
+  }
+  const resolvedScope = resolveBackofficeRouteScope(routeScope, organizations);
+  if (!resolvedScope) {
+    throw new Response("Not Found", { status: 404 });
+  }
+  return backofficeRuntimeScopeFromResolvedScope(resolvedScope);
+}
+
+export const resolveMarketplaceScopeSelection = ({
+  params,
+  organizations,
+  project,
+  user,
+}: {
+  params: { scopeKind?: string; scopeId?: string };
+  organizations: Organization[];
+  project: AutomationProjectRecord | null;
+  user: BackofficeMeData["user"];
+}): BackofficeRoutableScopeSelection => {
+  let resolvedScope;
   try {
-    const scope = backofficeScopeFromRouteParams(params);
-    if (!scope) {
+    const routeScope = requireBackofficeRouteScopeFromParams(params);
+    if (routeScope.kind === "system") {
       throw new Response("Not Found", { status: 404 });
     }
-    return scope;
+    resolvedScope = resolveBackofficeRouteScope(routeScope, organizations);
   } catch (error) {
     if (error instanceof Response) {
       throw error;
     }
     throw new Response("Not Found", { status: 404 });
   }
-};
-
-export const resolveMarketplaceUiScope = ({
-  params,
-  organisations,
-  project,
-  user,
-}: {
-  params: { scopeKind?: string; scopeId?: string };
-  organisations: Organisation[];
-  project: AutomationProjectRecord | null;
-  user: BackofficeMeData["user"];
-}): MarketplaceUiScope => {
-  const parsed = marketplaceScopeFromRouteParams(params);
-
-  if (parsed.kind === "org") {
-    const organisation = organisations.find((entry) => entry.id === parsed.orgId);
-    if (!organisation) {
-      throw new Response("Not Found", { status: 404 });
-    }
-    return { kind: "org", orgId: organisation.id, label: organisation.name ?? organisation.id };
+  if (!resolvedScope) {
+    throw new Response("Not Found", { status: 404 });
   }
 
-  if (parsed.kind === "project") {
-    const organisation = organisations.find((entry) => entry.id === parsed.orgId);
-    if (
-      !organisation ||
-      !project ||
-      toExternalId(project.id) !== parsed.projectId ||
-      project.archivedAt
-    ) {
+  if (resolvedScope.kind === "org") {
+    const organization = resolvedScope.organization;
+    return {
+      ...resolvedScope,
+      organization: backofficeOrganizationIdentity(organization),
+      label: organization.name ?? organization.id,
+    };
+  }
+
+  if (resolvedScope.kind === "project") {
+    const organization = resolvedScope.organization;
+    if (!project || toExternalId(project.id) !== resolvedScope.projectId || project.archivedAt) {
       throw new Response("Not Found", { status: 404 });
     }
     return {
       kind: "project",
-      orgId: organisation.id,
-      projectId: parsed.projectId,
+      organization: backofficeOrganizationIdentity(organization),
+      projectId: resolvedScope.projectId,
       label: projectLabel(project),
     };
   }
 
-  if (parsed.userId !== user.id) {
+  if (resolvedScope.userId !== user.id) {
     throw new Response("Not Found", { status: 404 });
   }
   return { kind: "user", userId: user.id, label: userName(user) };
 };
 
 export const createMarketplaceScopeOptions = ({
-  organisations,
+  organizations,
   projects,
   user,
   selectedScope,
   currentLocation,
   projectOrgId,
 }: {
-  organisations: Organisation[];
+  organizations: Organization[];
   projects: AutomationProjectRecord[];
   user: BackofficeMeData["user"];
-  selectedScope: MarketplaceUiScope;
+  selectedScope: BackofficeRoutableScopeSelection;
   currentLocation: { pathname: string; search: string };
   projectOrgId: string | null;
 }): MarketplaceScopeOption[] => {
-  const organizationOptions = organisations.map((organisation) => {
-    const scope: MarketplaceUiScope = {
+  const organizationOptions = organizations.map((organization) => {
+    const scope: BackofficeRoutableScopeSelection = {
       kind: "org",
-      orgId: organisation.id,
-      label: organisation.name ?? organisation.id,
+      organization: backofficeOrganizationIdentity(organization),
+      label: organization.name ?? organization.id,
     };
     return {
-      id: `org:${organisation.id}`,
+      id: `org:${organization.id}`,
       kind: "org" as const,
       label: scope.label,
-      description: "Organisation workspace",
+      description: "Organization workspace",
       to: marketplaceScopeSwitchPath({
         destinationScope: scope,
         selectedScope,
@@ -169,15 +166,18 @@ export const createMarketplaceScopeOptions = ({
     };
   });
 
-  const projectOptions = projectOrgId
+  const projectOrganization = projectOrgId
+    ? (organizations.find((organization) => organization.id === projectOrgId) ?? null)
+    : null;
+  const projectOptions = projectOrganization
     ? projects.flatMap((project) => {
         if (project.archivedAt) {
           return [];
         }
         const projectId = toExternalId(project.id);
-        const scope: MarketplaceUiScope = {
+        const scope: BackofficeRoutableScopeSelection = {
           kind: "project",
-          orgId: projectOrgId,
+          organization: backofficeOrganizationIdentity(projectOrganization),
           projectId,
           label: projectLabel(project),
         };
@@ -197,7 +197,7 @@ export const createMarketplaceScopeOptions = ({
       })
     : [];
 
-  const userScope: MarketplaceUiScope = {
+  const userScope: BackofficeRoutableScopeSelection = {
     kind: "user",
     userId: user.id,
     label: userName(user),

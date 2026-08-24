@@ -100,13 +100,8 @@ describe("otp identity claim helpers", () => {
 
   it("builds browser completion urls from issued otp data", () => {
     assert(
-      buildIdentityClaimCompletionUrl(
-        "https://docs.example/base",
-        "org_123",
-        "chat_123",
-        "654321",
-      ) ===
-        "https://docs.example/backoffice/automations/org_123/claims/complete?externalId=chat_123&code=654321",
+      buildIdentityClaimCompletionUrl("https://docs.example/base", "acme", "chat_123", "654321") ===
+        "https://docs.example/backoffice/automations/acme/claims/complete?externalId=chat_123&code=654321",
     );
   });
 

@@ -1,10 +1,12 @@
 import { redirect } from "react-router";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
-  backofficeContextScopeFromRouteParams,
-  BackofficeScopeCodecError,
-} from "@/backoffice-runtime/scope-codec";
+  backofficeRuntimeScopeFromResolvedScope,
+  resolveBackofficeRouteScope,
+} from "@/backoffice-runtime/resolved-scope";
+import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
+import { isBackofficeScopeCodecError } from "@/backoffice-runtime/scope-codec";
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/durable-hooks-scope-redirect";
 import {
@@ -14,27 +16,37 @@ import {
   isDurableHooksObjectAllowedForScope,
 } from "./durable-hooks-scope";
 
-export async function loader({ params, url }: Route.LoaderArgs) {
-  let scope: BackofficeContextScope | null;
+export async function loader({ request, context, params, url }: Route.LoaderArgs) {
+  let routeScope;
   try {
-    scope = backofficeContextScopeFromRouteParams(params);
+    routeScope = requireBackofficeRouteScopeFromParams(params);
   } catch (error) {
-    if (error instanceof BackofficeScopeCodecError) {
+    if (isBackofficeScopeCodecError(error)) {
       throw new Response("Not Found", { status: 404 });
     }
     throw error;
   }
-  if (!scope) {
+
+  const me = await findBackofficeMe(request, context);
+  if (!me?.user) {
+    throw new Response("Unauthorized", { status: 401 });
+  }
+  const resolvedScope = resolveBackofficeRouteScope(
+    routeScope,
+    me.organizations.map(({ organization }) => organization),
+  );
+  if (!resolvedScope) {
     throw new Response("Not Found", { status: 404 });
   }
+  const runtimeScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
 
   const requestedObject = getDurableHooksObjectDefinition(url.searchParams.get("object"));
   const objectId =
-    requestedObject && isDurableHooksObjectAllowedForScope(requestedObject.id, scope)
+    requestedObject && isDurableHooksObjectAllowedForScope(requestedObject.id, runtimeScope)
       ? requestedObject.id
-      : defaultDurableHooksObjectForScope(scope);
+      : defaultDurableHooksObjectForScope(runtimeScope);
 
-  return redirect(durableHooksScopePath(scope, objectId));
+  return redirect(durableHooksScopePath(routeScope, objectId));
 }
 
 export default function BackofficeDurableHooksScopeRedirect() {

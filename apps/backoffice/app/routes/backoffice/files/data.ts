@@ -1,6 +1,7 @@
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import type {
   FilesExplorerSelectedContent,
@@ -15,9 +16,8 @@ import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import { lookupAutomationProject } from "../automations/data.server";
 import {
-  automationScopeFromRouteParams,
-  resolveAutomationUiScope,
-  toBackofficeScope,
+  automationRuntimeScopeFromRouteParams,
+  resolveAutomationScopeSelection,
 } from "../automations/scope";
 import {
   createFilesOverviewCollections,
@@ -62,7 +62,10 @@ export async function resolveAuthorizedFilesRouteScope({
     return Response.redirect(new URL(buildBackofficeLoginPath(returnTo), request.url), 302);
   }
 
-  const parsedScope = automationScopeFromRouteParams(params);
+  const parsedScope = automationRuntimeScopeFromRouteParams(
+    params,
+    me.organizations.map(({ organization }) => organization),
+  );
   const projectLookup =
     parsedScope.kind === "project"
       ? await lookupAutomationProject(context, parsedScope.orgId, parsedScope.projectId)
@@ -74,10 +77,10 @@ export async function resolveAuthorizedFilesRouteScope({
     throw new Response("Not Found", { status: 404 });
   }
 
-  return toBackofficeScope(
-    resolveAutomationUiScope({
+  return backofficeRuntimeScopeFromResolvedScope(
+    resolveAutomationScopeSelection({
       params,
-      organisations: me.organizations.map((entry) => entry.organization),
+      organizations: me.organizations.map((entry) => entry.organization),
       project: projectLookup?.status === "found" ? projectLookup.project : null,
       user: me.user,
     }),

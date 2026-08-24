@@ -1,14 +1,19 @@
 import { useEffect, useState } from "react";
-import { Outlet, redirect } from "react-router";
+import { Outlet } from "react-router";
 
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { AutomationWorkspaceHeader } from "../../automations/shared";
 import { organizationIdFromScope, resolveIntegrationContext } from "../../integrations/scope";
-import type { Route } from "./+types/organisation-layout";
-import { fetchResendConfig } from "./data";
-import { ResendErrorBoundary, ResendTabs, type ResendConfigState, type ResendTab } from "./shared";
+import type { Route } from "./+types/organization-layout";
+import { fetchTelegramConfig } from "./data";
+import {
+  TelegramErrorBoundary,
+  TelegramTabs,
+  type TelegramConfigState,
+  type TelegramTab,
+} from "./shared";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const me = await findBackofficeMe(request, context);
@@ -19,30 +24,19 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
 
-  const integration = resolveIntegrationContext({
-    params,
-    me,
-    integration: "resend",
-    allowedScopes: ["org", "system"],
-  });
+  const integration = resolveIntegrationContext({ params, me, integration: "telegram" });
   const organizationForScope = organizationIdFromScope(integration.scope);
-  const organisation = organizationForScope
+  const organization = organizationForScope
     ? (me.organizations.find((entry) => entry.organization.id === organizationForScope)
         ?.organization ?? null)
     : null;
 
-  const { configState, configError } = await fetchResendConfig(context, integration.scope);
-  const currentPath = url.pathname.replace(/\/+$/, "");
-  const basePath = integration.basePath;
-  if (currentPath === basePath) {
-    const target = configState?.configured ? "threads" : "configuration";
-    return redirect(`${basePath}/${target}`);
-  }
+  const { configState, configError } = await fetchTelegramConfig(context, integration.scope);
 
   return {
     ...integration,
     origin: url.origin,
-    organisation,
+    organization,
     configState,
     configError,
   };
@@ -50,20 +44,20 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const label = loaderData?.label ?? "scope";
-  return [{ title: `Resend Setup · ${label}` }];
+  return [{ title: `Telegram Setup · ${label}` }];
 }
 
 export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
-  return <ResendErrorBoundary error={error} params={params} />;
+  return <TelegramErrorBoundary error={error} params={params} />;
 }
 
-export default function BackofficeOrganisationResendLayout({
+export default function BackofficeOrganizationTelegramLayout({
   loaderData,
   matches,
 }: Route.ComponentProps) {
   const {
     origin,
-    organisation,
+    organization,
     scope,
     uiScope,
     label,
@@ -73,7 +67,7 @@ export default function BackofficeOrganisationResendLayout({
     configState: initialConfigState,
     configError: initialConfigError,
   } = loaderData;
-  const [configState, setConfigState] = useState<ResendConfigState | null>(initialConfigState);
+  const [configState, setConfigState] = useState<TelegramConfigState | null>(initialConfigState);
   const [configError, setConfigError] = useState<string | null>(initialConfigError);
   const configLoading = false;
 
@@ -82,22 +76,13 @@ export default function BackofficeOrganisationResendLayout({
     setConfigError(initialConfigError);
   }, [initialConfigError, initialConfigState, scopeSegment]);
 
+  let activeTab: TelegramTab = "configuration";
   const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
   const pathSegments = currentPath.split("/").filter(Boolean);
-
-  let activeTab: ResendTab = "configuration";
-  if (pathSegments.includes("threads")) {
-    activeTab = "threads";
-  } else if (pathSegments.includes("incoming")) {
-    activeTab = "incoming";
-  } else if (
-    pathSegments.includes("outgoing") ||
-    pathSegments.includes("outgoings") ||
-    pathSegments.includes("outbox")
-  ) {
-    activeTab = "outgoing";
-  } else if (pathSegments.includes("domains")) {
-    activeTab = "domains";
+  if (pathSegments.includes("messages")) {
+    activeTab = "messages";
+  } else if (pathSegments.includes("configuration")) {
+    activeTab = "configuration";
   }
 
   return (
@@ -105,9 +90,8 @@ export default function BackofficeOrganisationResendLayout({
       <AutomationWorkspaceHeader
         selectedScope={uiScope}
         activeTab="integrations"
-        heading={`Resend setup for ${uiScope.label}`}
         subnav={
-          <ResendTabs
+          <TelegramTabs
             basePath={basePath}
             activeTab={activeTab}
             isConfigured={Boolean(configState?.configured)}
@@ -117,7 +101,7 @@ export default function BackofficeOrganisationResendLayout({
       <Outlet
         context={{
           origin,
-          organisation,
+          organization,
           scope,
           scopeSegment,
           label,

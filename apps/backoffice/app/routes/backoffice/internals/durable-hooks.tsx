@@ -15,13 +15,17 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     );
   }
 
-  const orgId =
-    me.activeOrganization?.organization.id ?? me.organizations[0]?.organization.id ?? null;
-  const scope = orgId
-    ? ({ kind: "org", orgId } as const)
+  const organization = me.activeOrganization?.organization ?? null;
+  const runtimeScope = organization
+    ? ({ kind: "org", orgId: organization.id } as const)
+    : ({ kind: "user", userId: me.user.id } as const);
+  const routeScope = organization
+    ? ({ kind: "org", orgSlug: organization.slug } as const)
     : ({ kind: "user", userId: me.user.id } as const);
 
-  return redirect(durableHooksScopePath(scope, defaultDurableHooksObjectForScope(scope)));
+  return redirect(
+    durableHooksScopePath(routeScope, defaultDurableHooksObjectForScope(runtimeScope)),
+  );
 }
 
 export default function BackofficeDurableHooksRedirect() {

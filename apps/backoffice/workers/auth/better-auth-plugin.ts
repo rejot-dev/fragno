@@ -86,10 +86,12 @@ export function createBackofficeTokenPlugin(input: {
 
           return context.json({
             expiresAt: issued.expiresAt.toISOString(),
-            organizationId:
-              grant.authority.scope.kind === "org" || grant.authority.scope.kind === "project"
-                ? grant.authority.scope.orgId
-                : null,
+            organization: grant.authority.organization
+              ? {
+                  id: grant.authority.organization.id,
+                  slug: grant.authority.organization.slug,
+                }
+              : null,
           });
         },
       ),

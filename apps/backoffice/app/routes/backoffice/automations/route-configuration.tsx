@@ -15,7 +15,7 @@ const targetLabel = (target: AutomationRouteTarget) => {
     case "system":
       return "System scope";
     case "org":
-      return "Organisation scope";
+      return "Organization scope";
     case "project":
       return "Project scope";
     case "user":
@@ -34,10 +34,10 @@ const targetRows = (target: AutomationRouteTarget) => {
     case "system":
       return [];
     case "org":
-      return [{ label: "Organisation ID", value: target.orgIdTemplate }];
+      return [{ label: "Organization ID", value: target.orgIdTemplate }];
     case "project":
       return [
-        { label: "Organisation ID", value: target.orgIdTemplate },
+        { label: "Organization ID", value: target.orgIdTemplate },
         { label: "Project ID", value: target.projectIdTemplate },
       ];
     case "user":

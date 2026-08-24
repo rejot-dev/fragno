@@ -52,7 +52,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   }
 }
 
-export default function BackofficeOrganisationReson8Configuration() {
+export default function BackofficeOrganizationReson8Configuration() {
   const { configState, configLoading, configError, setConfigState, setConfigError } =
     useOutletContext<Reson8LayoutContext>();
   const [localError, setLocalError] = useState<string | null>(null);
@@ -104,7 +104,7 @@ export default function BackofficeOrganisationReson8Configuration() {
             </p>
             <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Reson8 connection</h2>
             <p className="mt-2 text-sm text-[var(--bo-muted)]">
-              Store one API key for this organisation. That key is used for auth tokens, custom
+              Store one API key for this organization. That key is used for auth tokens, custom
               models, prerecorded transcription, and realtime speech.
             </p>
           </div>
@@ -142,7 +142,7 @@ export default function BackofficeOrganisationReson8Configuration() {
       <FormContainer
         title="Reson8 API key"
         eyebrow="Configuration"
-        description="Save the API key for this organisation. Leave it blank later if you want to keep the existing key."
+        description="Save the API key for this organization. Leave it blank later if you want to keep the existing key."
       >
         <Form method="post" onSubmit={handleSubmit} className="space-y-4">
           <FormField

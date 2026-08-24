@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { SourceRange } from "@fragno-dev/workflow-visualizer-tokens";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import {
+  backofficeRuntimeScopeFromResolvedScope,
+  type BackofficeResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import {
@@ -45,13 +48,13 @@ export function SessionWorkspacePanel({
   item,
   workflowCollections,
   workflowCollectionsError,
-  scope,
+  resolvedScope,
   onClose,
 }: {
   item: SessionWorkspaceItem;
   workflowCollections?: WorkflowRunCollections;
   workflowCollectionsError?: string | null;
-  scope: BackofficeContextScope;
+  resolvedScope: BackofficeResolvedScope;
   onClose: () => void;
 }) {
   const [display, setDisplay] = useState<WorkflowDisplay>("simple");
@@ -132,7 +135,7 @@ export function SessionWorkspacePanel({
             runReference={item.view.run}
             workflowCollections={workflowCollections}
             workflowCollectionsError={workflowCollectionsError}
-            scope={scope}
+            resolvedScope={resolvedScope}
             onGeneratedUiAvailable={showGeneratedUi}
           />
         )}
@@ -233,7 +236,7 @@ function SessionWorkflowWorkspace({
   runReference,
   workflowCollections,
   workflowCollectionsError,
-  scope,
+  resolvedScope,
   onGeneratedUiAvailable,
 }: {
   projection: WorkflowGraphProjection;
@@ -242,9 +245,10 @@ function SessionWorkflowWorkspace({
   runReference: WorkflowRunReference | null;
   workflowCollections?: WorkflowRunCollections;
   workflowCollectionsError?: string | null;
-  scope: BackofficeContextScope;
+  resolvedScope: BackofficeResolvedScope;
   onGeneratedUiAvailable: () => void;
 }) {
+  const scope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
   const [selectedSource, setSelectedSource] = useState<SourceRange>();
   const showCode = viewMode === "code" || viewMode === "split";
   const showGraph = viewMode === "graph" || viewMode === "split";
@@ -319,7 +323,7 @@ function SessionWorkflowWorkspace({
             selectedRun={workflowRun.selectedRun}
             sourceCode={projection.source}
             scrollViewport={graphViewport}
-            currentScope={scope.kind === "system" ? undefined : scope}
+            currentScope={resolvedScope.kind === "system" ? undefined : resolvedScope}
             workflowEventSender={async ({
               eventId,
               workflowName,

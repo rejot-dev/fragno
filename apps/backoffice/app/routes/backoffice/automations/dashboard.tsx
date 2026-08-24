@@ -50,7 +50,8 @@ import {
   automationRouteMatchesWorkflowInstance,
   automationRouteWorkflowName,
 } from "./route-workflow";
-import { automationScopeFromRouteParams, automationScopeTabPath, toBackofficeScope } from "./scope";
+import { automationScopeTabPath } from "./scope";
+import { requireAutomationRouteExecution } from "./scope.server";
 import { toAutomationScriptIdFromAbsolutePath } from "./script-records";
 import { AutomationNotice } from "./shared";
 
@@ -92,9 +93,8 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   return {
     workflowSource: workflowScriptId
       ? await loadAutomationScriptSource({
-          request,
           context,
-          scope: automationScopeFromRouteParams(params),
+          execution: await requireAutomationRouteExecution(request, context, params),
           scriptId: workflowScriptId,
         })
       : EMPTY_WORKFLOW_SOURCE,
@@ -374,7 +374,7 @@ const routeDestinationLabel = (route: DashboardRoute) => {
     case "system":
       return "System scope";
     case "org":
-      return `Organisation · ${route.action.targetScope.orgIdTemplate}`;
+      return `Organization · ${route.action.targetScope.orgIdTemplate}`;
     case "project":
       return `Project · ${route.action.targetScope.projectIdTemplate}`;
     case "user":
@@ -1300,7 +1300,7 @@ export function AutomationSwimlaneDashboard({
             collections={collections}
             scriptsPath={filesScopeBasePath(selectedScope)}
             eventsCatalogPath={automationScopeTabPath(selectedScope, "events-catalog")}
-            scope={toBackofficeScope(selectedScope)}
+            scope={selectedScope}
             onClear={() => {
               setSearchParams((currentSearchParams) => {
                 const nextSearchParams = new URLSearchParams(currentSearchParams);

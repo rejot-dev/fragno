@@ -50,7 +50,7 @@ import {
   WORKSPACE_STARTER_CONTENT,
 } from "@/files";
 import type { MasterFileSystem } from "@/files";
-import type { UserAuthorityFacts } from "@/fragno/auth/contracts";
+import { issueBackofficeTokenResultSchema, type UserAuthorityFacts } from "@/fragno/auth/contracts";
 import { automationFragmentSchema } from "@/fragno/automation/schema";
 import {
   createAutomationCollections,
@@ -409,6 +409,7 @@ type AuthPermissionsAssertionInput = {
 
 type OrganizationExistsInput = {
   id: string;
+  slug?: string;
   name?: string;
   ownerUserId?: string;
   ownerRoles?: readonly string[];
@@ -2045,7 +2046,7 @@ const ingestAutomationEvent = async (ctx: BackofficeScenarioContext, event: Auto
   }
 
   if (event.scope.kind !== "org") {
-    throw new Error("Automation scenario events require an organisation scope.");
+    throw new Error("Automation scenario events require an organization scope.");
   }
 
   ctx.rememberOrg(event.scope.orgId);
@@ -2404,6 +2405,7 @@ const buildStepBuilders = <
             });
             await setUpScenarioAuthOrganization(ctx.runtime, {
               id: input.id,
+              slug: input.slug,
               name: input.name,
               ownerUserId,
               ownerRoles: input.ownerRoles,
@@ -3360,8 +3362,8 @@ const buildStepBuilders = <
             if (!response.ok) {
               throw new Error(`Backoffice token exchange failed (${response.status}).`);
             }
-            const result = (await response.json()) as { organizationId?: unknown };
-            const organizationId = result.organizationId;
+            const result = issueBackofficeTokenResultSchema.parse(await response.json());
+            const organizationId = result.organization?.id;
             if (typeof organizationId !== "string") {
               throw new Error("Personal Auth organization returned no id.");
             }

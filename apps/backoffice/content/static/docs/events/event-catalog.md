@@ -56,7 +56,7 @@ fails with `EVENT_DEFINITION_INVALID` rather than shadowing product behavior.
 ## Dynamic definitions
 
 Dynamic definitions belong to one Automations scope. The same custom source and event type can have
-different definitions in different organisation, project, user, or system objects.
+different definitions in different organization, project, user, or system objects.
 
 A dynamic definition is created from:
 

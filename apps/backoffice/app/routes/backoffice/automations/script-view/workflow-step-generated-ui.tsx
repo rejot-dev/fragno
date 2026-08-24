@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 
 import { setByPath } from "@json-render/core";
 
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
-import { resolveGeneratedUiUploadScope } from "@/backoffice-ui/generated-ui-upload-scope";
+import type { BackofficeRoutableResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import {
+  resolveGeneratedUiUploadScope,
+  type GeneratedUiUploadScope,
+} from "@/backoffice-ui/generated-ui-upload-scope";
 import { uploadPreparedGeneratedUiFile } from "@/backoffice-ui/prepared-upload.client";
 import { parseBackofficeUiResult, type BackofficeUiResultV1 } from "@/backoffice-ui/result";
 
@@ -35,12 +38,14 @@ export function WorkflowStepGeneratedUi({
   standalone?: boolean;
   workflowEvents: readonly WorkflowRunEvent[];
   workflowRunRecordId?: string;
-  currentScope?: BackofficeRoutableScope;
+  currentScope?: BackofficeRoutableResolvedScope;
   workflowEventSender?: WorkflowEventSender;
   workflowInstanceId?: string;
   workflowName?: string;
   waitingEventTypes: readonly string[];
 }) {
+  const resolveUploadScope = (scope: GeneratedUiUploadScope) =>
+    resolveGeneratedUiUploadScope(scope, currentScope);
   if (state?.status !== "completed") {
     return null;
   }
@@ -61,7 +66,7 @@ export function WorkflowStepGeneratedUi({
           fillAvailableWidth={standalone}
           workflowEvents={workflowEvents}
           workflowRunRecordId={workflowRunRecordId}
-          currentScope={currentScope}
+          resolveUploadScope={resolveUploadScope}
           workflowEventSender={workflowEventSender}
           workflowInstanceId={workflowInstanceId}
           workflowName={workflowName}
@@ -80,7 +85,7 @@ function InteractiveWorkflowStepGeneratedUi({
   fillAvailableWidth,
   workflowEvents,
   workflowRunRecordId,
-  currentScope,
+  resolveUploadScope,
   workflowEventSender,
   workflowInstanceId,
   workflowName,
@@ -91,7 +96,7 @@ function InteractiveWorkflowStepGeneratedUi({
   fillAvailableWidth: boolean;
   workflowEvents: readonly WorkflowRunEvent[];
   workflowRunRecordId?: string;
-  currentScope?: BackofficeRoutableScope;
+  resolveUploadScope: (scope: GeneratedUiUploadScope) => BackofficeRoutableResolvedScope;
   workflowEventSender?: WorkflowEventSender;
   workflowInstanceId?: string;
   workflowName?: string;
@@ -176,7 +181,7 @@ function InteractiveWorkflowStepGeneratedUi({
                 activeEventTypes.has(eventType) && draft?.submittedEventType !== eventType,
               uploadFile: ({ scope, file, onProgress }) =>
                 uploadPreparedGeneratedUiFile({
-                  scope: resolveGeneratedUiUploadScope(scope, currentScope),
+                  scope: resolveUploadScope(scope),
                   file,
                   workflowName,
                   instanceId: workflowInstanceId,

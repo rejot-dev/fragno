@@ -21,7 +21,7 @@ Configuration fields:
 Cataloged automation events:
 
 - `source`: `reson8`, `eventType`: `capability.configured` — fires after Reson8 is configured for an
-  organisation for the first time.
+  organization for the first time.
 
 Treat Reson8 as a tool-backed capability: automations call Reson8 when they need speech-to-text
 output.

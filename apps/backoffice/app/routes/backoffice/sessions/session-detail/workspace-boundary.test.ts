@@ -24,8 +24,8 @@ describe("session workspace dependency boundary", () => {
   });
 
   test("keeps the session workspace within a fixed viewport with independent scroll panes", () => {
-    const organisationLayout = readFileSync(
-      new URL("../organisation-layout.tsx", import.meta.url),
+    const organizationLayout = readFileSync(
+      new URL("../organization-layout.tsx", import.meta.url),
       "utf8",
     );
     const threadSource = readFileSync(new URL("session-thread.tsx", import.meta.url), "utf8");
@@ -35,9 +35,9 @@ describe("session workspace dependency boundary", () => {
       "utf8",
     );
 
-    expect(organisationLayout).toContain("h-[calc(100dvh-6.75rem)]");
-    expect(organisationLayout).toContain("sm:h-[calc(100dvh-4rem)]");
-    expect(organisationLayout).not.toContain("min-h-[calc(100dvh");
+    expect(organizationLayout).toContain("h-[calc(100dvh-6.75rem)]");
+    expect(organizationLayout).toContain("sm:h-[calc(100dvh-4rem)]");
+    expect(organizationLayout).not.toContain("min-h-[calc(100dvh");
     expect(threadSource).toContain("overflow-y-auto overscroll-contain");
     expect(panelSource).toContain("overflow-auto overscroll-contain");
     expect(graphSource).toContain("overflow-auto overscroll-contain");

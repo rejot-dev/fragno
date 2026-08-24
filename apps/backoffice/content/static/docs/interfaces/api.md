@@ -9,7 +9,7 @@ encoding, and proxy behavior. Keep task instructions in separate how-to guides.
 
 - Route families and mount points.
 - Public, authenticated, webhook, and internal endpoints.
-- Scope path encoding for system, organisation, project, and user contexts.
+- Scope path encoding for system, organization, project, and user contexts.
 - Fragment proxy request flow.
 - OAuth callback routing.
 - Request and response conventions.

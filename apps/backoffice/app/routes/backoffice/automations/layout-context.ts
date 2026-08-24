@@ -1,11 +1,11 @@
+import { type BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import type { AutomationBrowserCollections as AutomationCollections } from "@/fragno/automation/tanstack/browser-database";
 import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
 
 import type { AutomationScriptRecord } from "./data";
-import type { AutomationUiScope } from "./scope";
 
 export type AutomationLayoutContext = {
-  selectedScope: AutomationUiScope;
+  selectedScope: BackofficeScopeSelection;
   scripts: AutomationScriptRecord[];
   scriptsError: string | null;
   collections: AutomationCollections;
