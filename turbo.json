@@ -70,6 +70,7 @@
       "cache": false
     },
     "lint:fix:package": {
+      "dependsOn": ["^build"],
       "cache": false
     },
     "//#quality:root-inputs": {
