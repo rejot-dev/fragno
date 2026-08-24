@@ -10,6 +10,8 @@ import type { FragnoExecutionContext } from "@fragno-dev/core";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import type {
+  BackofficeCliOAuthConfig,
+  BackofficeCliTokenResult,
   BackofficeMeData,
   Organization,
   OrganizationHookPayload,
@@ -170,6 +172,12 @@ export type AuthObject = FetchObject &
       userId: string;
       activeOrganizationId: string | null;
     }): Promise<BackofficeMeData | null>;
+    getBackofficeCliOAuthConfig(input: { requestUrl: string }): Promise<BackofficeCliOAuthConfig>;
+    exchangeBackofficeOAuthAccessToken(input: {
+      requestUrl: string;
+      oauthAccessToken: string;
+      scope: BackofficeContextScope | null;
+    }): Promise<BackofficeCliTokenResult>;
     getUserAuthorityFacts(input: {
       userId: string;
       organizationId?: string;

@@ -25,7 +25,8 @@ const principalFromBackofficeJwt = (
   auth: {
     transport,
     expiresAt: new Date(payload.exp * 1_000),
-    organization: payload.organization,
+    scope: payload.scope,
+    organizationRoles: payload.organizationRoles,
   },
 });
 

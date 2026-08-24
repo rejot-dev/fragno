@@ -38,6 +38,10 @@ type BackofficeLoginActionData =
       message: string;
     };
 
+function requiresBetterAuthBrowserSession(returnTo: string): boolean {
+  return new URL(returnTo, "http://localhost").pathname === "/backoffice/device";
+}
+
 const loginActionInputSchema = z.discriminatedUnion("intent", [
   z.object({
     intent: z.literal("sign_in"),
@@ -56,9 +60,11 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   }
 
   const returnTo = readBackofficeReturnTo(url);
-  const jwtMe = await getBackofficeMe(request, context);
-  if (jwtMe.status === "authenticated") {
-    return redirect(returnTo);
+  if (!requiresBetterAuthBrowserSession(returnTo)) {
+    const jwtMe = await getBackofficeMe(request, context);
+    if (jwtMe.status === "authenticated") {
+      return redirect(returnTo);
+    }
   }
 
   return {

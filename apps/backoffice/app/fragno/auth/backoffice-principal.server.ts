@@ -22,7 +22,7 @@ const assertAuthenticatedUserCanAccessScope = (
     {
       userId: auth.user.id,
       role: auth.user.role,
-      organizationId: auth.auth.organization?.id ?? null,
+      scope: auth.auth.scope,
     },
     scope,
   );
@@ -45,7 +45,7 @@ export const createBackofficeExecutionForPrincipal = (
     userId: auth.user.id,
     verifiedRequestAuthority: {
       role: auth.user.role,
-      organizationId: auth.auth.organization?.id ?? null,
+      scope: auth.auth.scope,
       expiresAt: auth.auth.expiresAt,
     },
   });

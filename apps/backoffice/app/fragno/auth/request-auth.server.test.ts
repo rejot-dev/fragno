@@ -22,7 +22,8 @@ const issueJwt = async (expirationTime: string | number = "15m") => {
   const token = await new SignJWT({
     email: "user@example.com",
     globalRole: "admin",
-    organization: { id: "org-1", roles: ["owner"] },
+    scope: { kind: "org", orgId: "org-1" },
+    organizationRoles: ["owner"],
     jti: crypto.randomUUID(),
   })
     .setProtectedHeader({ alg: "ES256", kid: crypto.randomUUID() })
@@ -58,7 +59,11 @@ describe("Backoffice request authentication", () => {
       ),
     ).resolves.toMatchObject({
       user: { id: "user-1", role: "admin" },
-      auth: { transport: "bearer", organization: { id: "org-1", roles: ["owner"] } },
+      auth: {
+        transport: "bearer",
+        scope: { kind: "org", orgId: "org-1" },
+        organizationRoles: ["owner"],
+      },
     });
   });
 
@@ -75,7 +80,9 @@ describe("Backoffice request authentication", () => {
         }),
         {} as never,
       ),
-    ).resolves.toMatchObject({ auth: { transport: "cookie", organization: { id: "org-1" } } });
+    ).resolves.toMatchObject({
+      auth: { transport: "cookie", scope: { kind: "org", orgId: "org-1" } },
+    });
   });
 
   test("does not fall back to a valid cookie after malformed authorization", () => {

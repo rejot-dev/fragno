@@ -29,7 +29,12 @@ describe("requireBackofficeContext", () => {
         email: "user@example.com",
         role: "admin",
       },
-      auth: { transport: "cookie", expiresAt, organization: { id: "org-1", roles: ["owner"] } },
+      auth: {
+        transport: "cookie",
+        expiresAt,
+        scope: { kind: "org", orgId: "org-1" },
+        organizationRoles: ["owner"],
+      },
     });
 
     await expect(
@@ -43,7 +48,7 @@ describe("requireBackofficeContext", () => {
         kind: "verified-request-authority",
         userId: "user-1",
         role: "admin",
-        organizationId: "org-1",
+        scope: { kind: "org", orgId: "org-1" },
         expiresAtEpochMs: expiresAt.getTime(),
       },
     });
@@ -58,7 +63,8 @@ describe("requireBackofficeContext", () => {
         auth: {
           transport: "cookie",
           expiresAt: new Date("2099-01-01T00:00:00.000Z"),
-          organization: { id: "org-1", roles: ["member"] },
+          scope: { kind: "org", orgId: "org-1" },
+          organizationRoles: ["member"],
         },
       },
     });
@@ -82,7 +88,8 @@ describe("requireBackofficeContext", () => {
         auth: {
           transport: "cookie",
           expiresAt,
-          organization: { id: "org-1", roles: ["member"] },
+          scope: { kind: "org", orgId: "org-1" },
+          organizationRoles: ["member"],
         },
       },
     });
@@ -105,7 +112,8 @@ describe("requireBackofficeContext", () => {
       auth: {
         transport: "cookie",
         expiresAt: new Date("2099-01-01T00:00:00.000Z"),
-        organization: null,
+        scope: { kind: "system" },
+        organizationRoles: [],
       },
     });
 

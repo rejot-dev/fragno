@@ -84,11 +84,14 @@ describe("Better Auth Durable Object SQLite", () => {
       stub,
     );
     assert(verification.ok);
-    expect(verification.payload.organization?.id).toBe(organizationId);
+    expect(verification.payload.scope).toEqual({ kind: "org", orgId: organizationId });
 
     const me = (await stub.getBackofficeMe({
       userId: verification.payload.sub,
-      activeOrganizationId: verification.payload.organization?.id ?? null,
+      activeOrganizationId:
+        verification.payload.scope.kind === "org" || verification.payload.scope.kind === "project"
+          ? verification.payload.scope.orgId
+          : null,
     })) as BackofficeMeData | null;
     expect(me?.activeOrganizationId).toBe(organizationId);
     expect(me?.activeOrganization?.organization.id).toBe(organizationId);

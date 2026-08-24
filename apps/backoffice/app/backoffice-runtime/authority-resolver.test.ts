@@ -82,7 +82,7 @@ describe("createBackofficeAuthorityResolver", () => {
       kind: "verified-request-authority" as const,
       userId: principal.id,
       role: "admin" as const,
-      organizationId: "org-1",
+      scope: { kind: "org" as const, orgId: "org-1" },
       expiresAtEpochMs: 2_000,
     };
 
@@ -134,7 +134,7 @@ describe("createBackofficeAuthorityResolver", () => {
             kind: "verified-request-authority",
             userId: principal.id,
             role: "user",
-            organizationId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             expiresAtEpochMs: 2_000,
           },
         },

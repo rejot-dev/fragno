@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  backofficeContextScopeSchema,
+  type BackofficeContextScope,
+} from "@/backoffice-runtime/context";
+
 export const BACKOFFICE_AUTH_ERROR_HEADER = "x-backoffice-auth-error";
 export const BACKOFFICE_TOKEN_EXPIRED_CODE = "backoffice_token_expired";
 
@@ -80,6 +85,34 @@ export type IssueBackofficeTokenResult = {
   organizationId: string | null;
 };
 
+export type BackofficeCliOAuthConfig = {
+  clientId: string;
+  scope: string;
+  deviceAuthorizationEndpoint: string;
+  tokenEndpoint: string;
+  verificationUri: string;
+};
+
+export type BackofficeCliTokenInput = {
+  scope: BackofficeContextScope | null;
+};
+
+export type BackofficeCliTokenResult = {
+  accessToken: string;
+  expiresAt: string;
+  scope: BackofficeContextScope;
+};
+
+/** Reports an OAuth credential that cannot authenticate the Backoffice CLI. */
+export class BackofficeCliOAuthAuthenticationError extends Error {
+  override readonly name = "BackofficeCliOAuthAuthenticationError";
+}
+
+/** Reports an authenticated user that cannot access the requested Backoffice scope. */
+export class BackofficeCliScopeAuthorizationError extends Error {
+  override readonly name = "BackofficeCliScopeAuthorizationError";
+}
+
 export type BackofficeSignOutResult = {
   sessionRevoked: true;
   credentialsCleared: true;
@@ -156,6 +189,24 @@ export const issueBackofficeTokenResultSchema = z.object({
   organizationId: z.string().nullable(),
 }) satisfies z.ZodType<IssueBackofficeTokenResult>;
 
+export const backofficeCliOAuthConfigSchema = z.object({
+  clientId: z.string().min(1),
+  scope: z.string().min(1),
+  deviceAuthorizationEndpoint: z.url(),
+  tokenEndpoint: z.url(),
+  verificationUri: z.url(),
+}) satisfies z.ZodType<BackofficeCliOAuthConfig>;
+
+export const backofficeCliTokenInputSchema = z.strictObject({
+  scope: backofficeContextScopeSchema.nullable(),
+}) satisfies z.ZodType<BackofficeCliTokenInput>;
+
+export const backofficeCliTokenResultSchema = z.strictObject({
+  accessToken: z.string().min(1),
+  expiresAt: z.iso.datetime(),
+  scope: backofficeContextScopeSchema,
+}) satisfies z.ZodType<BackofficeCliTokenResult>;
+
 export const backofficeSignOutResultSchema = z.object({
   sessionRevoked: z.literal(true),
   credentialsCleared: z.literal(true),
@@ -199,7 +250,8 @@ export type BackofficeAuthPrincipal = {
   auth: {
     transport: "cookie" | "bearer";
     expiresAt: Date;
-    organization: { id: string; roles: string[] } | null;
+    scope: BackofficeContextScope;
+    organizationRoles: string[];
   };
 };
 

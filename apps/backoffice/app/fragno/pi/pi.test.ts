@@ -151,7 +151,7 @@ describe("Backoffice Pi fragment", () => {
       userId: scope.userId,
       verifiedRequestAuthority: {
         role: "user",
-        organizationId: "org-1",
+        scope: { kind: "org", orgId: "org-1" },
         expiresAt: new Date("2099-01-01T00:00:00.000Z"),
       },
     });
