@@ -8,6 +8,7 @@ import { apiFragmentDefinition } from "./definition";
 import { apiRoutesFactory } from "./routes";
 import { apiSchema } from "./schema";
 
+const oauthRedirectUri = "https://app.test/oauth/callback";
 const onConnectionChanged = vi.fn();
 const onConnectionDeleted = vi.fn();
 const onConnectionAvailable = vi.fn();
@@ -84,8 +85,17 @@ function buildFetchRecorder() {
   return { calls, fetcher };
 }
 
-const buildApiTest = async (options?: { allowedBaseUrls?: (url: URL) => boolean }) => {
+const buildApiTest = async (
+  options: {
+    allowedBaseUrls?: (url: URL) => boolean;
+    allowedOAuthRedirectUris?: (url: URL) => boolean;
+  } = {},
+) => {
   const fetchRecorder = buildFetchRecorder();
+  const allowedOAuthRedirectUris =
+    "allowedOAuthRedirectUris" in options
+      ? options.allowedOAuthRedirectUris
+      : (url: URL) => url.toString() === oauthRedirectUri;
   const setup = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
     .withDbRoundtripGuard({ maxRoundtrips: 1 })
@@ -93,8 +103,8 @@ const buildApiTest = async (options?: { allowedBaseUrls?: (url: URL) => boolean 
       "api",
       instantiate(apiFragmentDefinition)
         .withConfig({
-          publicBaseUrl: "https://app.test",
-          allowedBaseUrls: options?.allowedBaseUrls,
+          allowedBaseUrls: options.allowedBaseUrls,
+          ...(allowedOAuthRedirectUris ? { allowedOAuthRedirectUris } : {}),
           fetch: fetchRecorder.fetcher,
           onConnectionChanged,
           onConnectionDeleted,
@@ -509,6 +519,57 @@ describe("api-fragment", () => {
     await setup.test.cleanup();
   });
 
+  test("OAuth start rejects a non-HTTP redirect URI", async () => {
+    const setup = await buildApiTest();
+    const fragment = setup.fragments.api.fragment;
+
+    const start = await fragment.callRoute("POST", "/connections/:slug/auth/oauth/start", {
+      pathParams: { slug: "oauth-api" },
+      query: { redirectUri: "javascript:alert(1)" },
+      body: {},
+    });
+
+    assert(start.type === "error");
+    assert.equal(start.status, 400);
+    assert.equal(start.error.code, "INVALID_OAUTH_REDIRECT_URI");
+
+    await setup.test.cleanup();
+  });
+
+  test("OAuth start rejects a redirect URI outside the configured allow-list", async () => {
+    const setup = await buildApiTest();
+    const fragment = setup.fragments.api.fragment;
+
+    const start = await fragment.callRoute("POST", "/connections/:slug/auth/oauth/start", {
+      pathParams: { slug: "oauth-api" },
+      query: { redirectUri: "https://attacker.example/oauth/callback" },
+      body: {},
+    });
+
+    assert(start.type === "error");
+    assert.equal(start.status, 400);
+    assert.equal(start.error.code, "OAUTH_REDIRECT_URI_NOT_ALLOWED");
+
+    await setup.test.cleanup();
+  });
+
+  test("OAuth start is denied when no redirect URI policy is configured", async () => {
+    const setup = await buildApiTest({ allowedOAuthRedirectUris: undefined });
+    const fragment = setup.fragments.api.fragment;
+
+    const start = await fragment.callRoute("POST", "/connections/:slug/auth/oauth/start", {
+      pathParams: { slug: "oauth-api" },
+      query: { redirectUri: oauthRedirectUri },
+      body: {},
+    });
+
+    assert(start.type === "error");
+    assert.equal(start.status, 400);
+    assert.equal(start.error.code, "OAUTH_REDIRECT_URI_NOT_ALLOWED");
+
+    await setup.test.cleanup();
+  });
+
   test("OAuth start and callback store tokens and make the connection available", async () => {
     const setup = await buildApiTest();
     const fragment = setup.fragments.api.fragment;
@@ -532,11 +593,13 @@ describe("api-fragment", () => {
 
     const start = await fragment.callRoute("POST", "/connections/:slug/auth/oauth/start", {
       pathParams: { slug },
+      query: { redirectUri: oauthRedirectUri },
       body: {},
     });
     assert(start.type === "json");
     const authorizationUrl = new URL(start.data.authorizationUrl);
     assert(authorizationUrl.searchParams.get("code_challenge_method") === "S256");
+    assert.equal(authorizationUrl.searchParams.get("redirect_uri"), oauthRedirectUri);
     expect(authorizationUrl.searchParams.get("state")).toBe(start.data.state);
 
     const callback = await fragment.callRoute("GET", "/oauth/callback", {

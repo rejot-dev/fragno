@@ -298,6 +298,10 @@ export default [
     route("resend/:scopeSegment/*", "routes/api/resend.ts"),
     route("reson8/:orgSlug/*", "routes/api/reson8.ts"),
     route("mcp/:scopeSegment/*", "routes/api/mcp.ts"),
+    route(
+      "http/:scopeSegment/connections/:connectionSlug/auth/oauth/start",
+      "routes/api/api-oauth-start.ts",
+    ),
     route("http/:scopeSegment/*", "routes/api/api.ts"),
     route("telegram/:scopeSegment/*", "routes/api/telegram.ts"),
     route("otp/:orgSlug/*", "routes/api/otp.ts"),

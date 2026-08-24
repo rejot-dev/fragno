@@ -17,10 +17,7 @@ const buildApiTest = async () => {
     .withFragment(
       "api",
       instantiate(apiFragmentDefinition)
-        .withConfig({
-          publicBaseUrl: "https://app.test",
-          onWebhookEndpointChanged,
-        })
+        .withConfig({ onWebhookEndpointChanged })
         .withRoutes([apiRoutesFactory]),
     )
     .build();

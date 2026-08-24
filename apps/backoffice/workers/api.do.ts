@@ -14,7 +14,10 @@ import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { createApiServer, type ApiConfig, type ApiFragment } from "@/fragno/api";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { createDurableHookRepository } from "@/fragno/durable-hooks";
-import { API_PUBLIC_PREFIX, scopedPublicBaseUrl } from "@/fragno/scoped-public-fragment-routes";
+import {
+  API_PUBLIC_PREFIX,
+  isScopedPublicOAuthRedirectUriAllowed,
+} from "@/fragno/scoped-public-fragment-routes";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
@@ -22,18 +25,6 @@ import {
   createScopedFragmentDurableObjectRuntime,
   type ScopedFragmentDurableObjectRuntime,
 } from "./lib/scoped-fragment-durable-object";
-
-type ApiObjectEnv = {
-  DOCS_PUBLIC_BASE_URL?: string;
-};
-
-function readApiPublicOrigin(env: ApiObjectEnv) {
-  const origin = env.DOCS_PUBLIC_BASE_URL?.trim();
-  if (!origin) {
-    throw new Error("API public origin is not configured.");
-  }
-  return origin;
-}
 
 function scopeSubject(scope: BackofficeRoutableScope, subject?: Record<string, unknown>) {
   return {
@@ -44,7 +35,6 @@ function scopeSubject(scope: BackofficeRoutableScope, subject?: Record<string, u
 }
 
 export class InMemoryApiObject extends RpcTarget implements ApiObject {
-  readonly #env: ApiObjectEnv;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #host: FragmentDurableObjectHost<ApiConfig, ApiFragment>;
@@ -56,17 +46,16 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
     runtime,
   }: {
     state: BackofficeObjectState;
-    env?: ApiObjectEnv;
+    env: object;
     runtime: BackofficeRuntimeServices;
   }) {
     super();
-    this.#env = env ?? {};
     this.#state = state;
     this.#runtimeServices = runtime;
     this.#host = createFragmentDurableObjectHost({
       name: "API",
       state,
-      env: this.#env,
+      env,
       createRuntime: (config) =>
         createApiServer(config, {
           adapters: this.#runtimeServices.adapters,
@@ -97,21 +86,14 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
     return this;
   }
 
-  async getPublicBaseUrl(): Promise<string> {
-    return scopedPublicBaseUrl({
-      baseUrl: readApiPublicOrigin(this.#env),
-      publicPrefix: API_PUBLIC_PREFIX,
-      scope: this.#scopedRuntime.requireOwnerScope(),
-    });
-  }
-
   #createConfig(ownerScope: BackofficeRoutableScope): ApiConfig {
     return {
-      publicBaseUrl: scopedPublicBaseUrl({
-        baseUrl: readApiPublicOrigin(this.#env),
-        publicPrefix: API_PUBLIC_PREFIX,
-        scope: ownerScope,
-      }),
+      allowedOAuthRedirectUris: (redirectUri) =>
+        isScopedPublicOAuthRedirectUriAllowed({
+          publicOrigin: this.#runtimeServices.config.docsPublicBaseUrl,
+          publicPrefix: API_PUBLIC_PREFIX,
+          redirectUri,
+        }),
       onConnectionChanged: async (payload, context) => {
         const scope = ownerScope;
         await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
@@ -263,10 +245,6 @@ export class Api extends DurableObject<CloudflareEnv> implements ApiObject {
 
   init(scope: BackofficeContextScope): ApiObject {
     return this.#object.init(scope);
-  }
-
-  async getPublicBaseUrl(): Promise<string> {
-    return await this.#object.getPublicBaseUrl();
   }
 
   async alarm(): Promise<void> {
