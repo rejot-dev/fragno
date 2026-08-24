@@ -78,7 +78,15 @@ describe("runtime tool authorization", () => {
         {},
         createToolContext({ grants: [{ namespace: "internal", permission: "read" }] }),
       ),
-    ).rejects.toMatchObject({ reason: "principal-permission-denied" });
+    ).rejects.toMatchObject({
+      message: [
+        "Permission denied for internal.testManage.",
+        "Action: Test internal permissions.",
+        "Required permission: internal.manage.",
+        "Reason: The current principal does not have the required permission.",
+      ].join("\n"),
+      reason: "principal-permission-denied",
+    });
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -154,7 +162,13 @@ describe("runtime tool authorization", () => {
 
     await expect(bash.exec("internal.test.bash")).resolves.toMatchObject({
       exitCode: 1,
-      stderr: expect.stringContaining("required permission"),
+      stderr: expect.stringContaining(
+        [
+          "Permission denied for internal.testBash.",
+          "Action: Test custom Bash adapter authorization.",
+          "Required permission: internal.manage.",
+        ].join("\n"),
+      ),
     });
     expect(executeBashAdapter).not.toHaveBeenCalled();
   });
