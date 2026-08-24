@@ -9,11 +9,12 @@ disable-model-invocation: true
 # Backoffice Codemode
 
 Treat the running Backoffice dev server as the source of truth. Use `scripts/codemode.mjs`; it
-handles Better Auth, organization-scoped JWTs, scoped dev routes, and local auth state in the
-gitignored `auth.json`.
+handles OAuth device authorization, Backoffice scope tokens, scoped dev routes, and automatic
+credential refresh.
 
-Default credentials are `wilco@rejot.dev` / `wachtwoord`. Set `BACKOFFICE_URL` or pass
-`--base-url URL` when more than one server is running.
+Set `BACKOFFICE_URL` or pass `--base-url URL` when more than one server is running. Credentials are
+stored per user at `${XDG_STATE_HOME:-~/.local/state}/fragno/backoffice-codemode/auth.json`; set
+`BACKOFFICE_CODEMODE_AUTH_FILE` to override that path.
 
 ## Required workflow
 
@@ -23,27 +24,32 @@ Default credentials are `wilco@rejot.dev` / `wachtwoord`. Set `BACKOFFICE_URL` o
    .agents/skills/backoffice-codemode/scripts/codemode.mjs login
    ```
 
-   The command probes `/api/auth/ok`, restores or creates a Better Auth session, exchanges it for a
-   Backoffice JWT, and prints the authenticated user and accessible organizations. Prefer `active`;
-   otherwise use the only organization or ask the user. Proceed only with an organization printed by
-   `login`.
+   The command probes `/api/auth/ok`, prints a device URL and code, waits for browser approval, then
+   exchanges the OAuth access token for a Backoffice JWT. Open the printed URL, sign in through the
+   browser if necessary, verify the displayed code, and explicitly approve the local CLI request. No
+   email or password is entered in the terminal.
 
-   For an explicit server or account:
+   For an explicit server and automatic browser opening:
 
    ```bash
    .agents/skills/backoffice-codemode/scripts/codemode.mjs login \
      --base-url http://localhost:5173 \
-     --email wilco@rejot.dev \
-     --password wachtwoord
+     --open
    ```
 
-   Completion: the output names the intended server, user, and organization.
+   The command prints the authenticated user and accessible organizations. Prefer `active`;
+   otherwise use the only organization or ask the user. Construct the selected Backoffice scope as
+   `org:<orgId>`. Other accepted scopes are `system`, `project:<orgId>:<projectId>`, and
+   `user:<userId>`.
+
+   Completion: the browser reports approval and terminal output names the intended server, user, and
+   accessible scopes.
 
 2. **Load runtime declarations.**
 
    ```bash
    .agents/skills/backoffice-codemode/scripts/codemode.mjs system \
-     "$ORG_ID" /tmp/backoffice-codemode-SYSTEM.md
+     "org:$ORG_ID" /tmp/backoffice-codemode-SYSTEM.md
    ```
 
    Read `/tmp/backoffice-codemode-SYSTEM.md`. Treat it as authoritative. Before using a provider,
@@ -55,16 +61,16 @@ Default credentials are `wilco@rejot.dev` / `wachtwoord`. Set `BACKOFFICE_URL` o
 3. **Execute one inspectable operation.**
 
    ```bash
-   .agents/skills/backoffice-codemode/scripts/codemode.mjs exec "$ORG_ID" \
+   .agents/skills/backoffice-codemode/scripts/codemode.mjs exec "org:$ORG_ID" \
      'async () => ({ entries: await state.readdir({ path: "/" }) })'
    ```
 
    For larger snippets, use a temporary file or stdin:
 
    ```bash
-   .agents/skills/backoffice-codemode/scripts/codemode.mjs exec "$ORG_ID" --file /tmp/snippet.js
+   .agents/skills/backoffice-codemode/scripts/codemode.mjs exec "org:$ORG_ID" --file /tmp/snippet.js
    printf '%s\n' 'async () => await state.readdir({ path: "/" })' \
-     | .agents/skills/backoffice-codemode/scripts/codemode.mjs exec "$ORG_ID" -
+     | .agents/skills/backoffice-codemode/scripts/codemode.mjs exec "org:$ORG_ID" -
    ```
 
    Return JSON-serializable observations and tool results. Completion: the executed result directly
@@ -79,8 +85,10 @@ Run the read-only end-to-end check when authentication, routing, or codemode exe
   --base-url http://localhost:5173
 ```
 
-It verifies server discovery, Better Auth restoration, JWT exchange, `/api/backoffice/me`, SYSTEM
-prompt retrieval, and a read-only codemode call.
+It refreshes the OAuth access token when necessary, exchanges it for the selected Backoffice scope
+token, verifies `/api/backoffice/me`, fetches SYSTEM.md, and performs a read-only codemode call.
+OAuth refresh-token rotation and Backoffice JWT replacement are written atomically with file mode
+`0600`; no password, Better Auth session cookie, or browser cookie is persisted.
 
 `probe` only identifies the selected server:
 
@@ -146,13 +154,13 @@ async () => await state.glob({ pattern: "/workspace/automations/**" });
 Use bash for shell-shaped filesystem inspection:
 
 ```bash
-.agents/skills/backoffice-codemode/scripts/codemode.mjs bash "$ORG_ID" 'ls /workspace'
-.agents/skills/backoffice-codemode/scripts/codemode.mjs bash "$ORG_ID" \
+.agents/skills/backoffice-codemode/scripts/codemode.mjs bash "org:$ORG_ID" 'ls /workspace'
+.agents/skills/backoffice-codemode/scripts/codemode.mjs bash "org:$ORG_ID" \
   --cwd /workspace 'find . -maxdepth 2'
 ```
 
-The helper calls the scope-aware `/__dev/codemode/org/:orgId/bash` route and returns output,
-`exitCode`, `nextCwd`, and runtime command calls.
+The helper calls the scope-aware `/__dev/codemode/:scopeKind/:scopeId/bash` route and returns
+output, `exitCode`, `nextCwd`, and runtime command calls.
 
 ## Safety
 
