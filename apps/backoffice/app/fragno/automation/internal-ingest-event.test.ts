@@ -19,7 +19,13 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
-import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+import { defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+
+const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
+  targetScope: { kind: "org", orgId: "org-1" },
+  slug: "telegram-channel",
+  version: "1.0.0",
+} as const;
 
 const telegramMessageEvent = ({
   id,
@@ -66,9 +72,9 @@ describe("automation internal ingest scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "duplicate automation event ingestion is idempotent",
-        files: backofficeFiles.workspaceStarter(),
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then }) => [
+          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
           when.automation.ingestEvent(event),
           when.automation.ingestEvent(event),
           then.workflow.instance({
@@ -83,12 +89,10 @@ describe("automation internal ingest scenarios", () => {
     );
   });
 
-  test("does not run the disabled starter Telegram Pi automation script", async () => {
+  test("does not call Pi when the Telegram chat is not linked", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: "starter Telegram Pi legacy bash script stays disabled",
-
-        files: backofficeFiles.workspaceStarter(),
+        name: "Telegram Channel skips Pi calls for an unlinked chat",
 
         fakes: ({ fake }) => ({
           telegram: fake.telegram(),
@@ -104,6 +108,7 @@ describe("automation internal ingest scenarios", () => {
         ],
 
         steps: ({ when, then }) => [
+          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
           when.automation.ingestEvent(
             telegramMessageEvent({ id: "starter-telegram-pi-1", text: "/pi" }),
           ),

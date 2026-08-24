@@ -72,6 +72,7 @@ const projectDatabaseFileSystemConfigureOutputSchema = z.object({
 
 const starterAutomationRoutesSeedOutputSchema = z.object({
   created: z.array(z.string()),
+  removed: z.array(z.string()),
   skipped: z.array(z.string()),
 });
 
@@ -269,7 +270,7 @@ const automationRoutesSeedStarterTool = defineBackofficeRuntimeTool({
   id: "internal.automations.routes.seed-starter",
   namespace: "internal",
   name: "automationsRoutesSeedStarter",
-  description: "Seed the default database-backed automation routes.",
+  description: "Reconcile the scope-appropriate database-backed starter automation routes.",
   requiredPermissions: ["manage"],
   inputSchema: z.object({}).optional().default({}),
   outputSchema: starterAutomationRoutesSeedOutputSchema,
@@ -280,7 +281,7 @@ const automationRoutesSeedStarterTool = defineBackofficeRuntimeTool({
       command: "internal.automations.routes.seed-starter",
       help: {
         summary:
-          "internal.automations.routes.seed-starter seeds the default automation route rows.",
+          "internal.automations.routes.seed-starter reconciles starter routes for the current scope.",
         options: [],
         examples: ["internal.automations.routes.seed-starter --format json"],
       },
@@ -293,7 +294,7 @@ const automationRoutesSeedStarterTool = defineBackofficeRuntimeTool({
         options.format === "json" || options.print
           ? { data: output }
           : {
-              stdout: `created=${output.created.length}\nskipped=${output.skipped.length}\n`,
+              stdout: `created=${output.created.length}\nremoved=${output.removed.length}\nskipped=${output.skipped.length}\n`,
             },
     },
   },

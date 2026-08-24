@@ -1,0 +1,15 @@
+{
+  "owner": {
+    "scope": { "kind": "system" },
+    "publisherName": "Fragno"
+  },
+  "slug": "telegram-channel",
+  "metadata": {
+    "name": "Telegram Channel",
+    "summary": "Link Telegram chats to Backoffice users and converse with Pi from Telegram.",
+    "description": "Installs Telegram identity linking and Pi session workflows together with the routes that handle /start, identity-claim completion, /pi, and ordinary chat messages.",
+    "category": "communication",
+    "tags": ["telegram", "pi", "identity", "communication"]
+  },
+  "versions": ["1.0.0"]
+}

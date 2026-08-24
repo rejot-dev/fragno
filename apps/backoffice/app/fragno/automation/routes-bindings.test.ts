@@ -9,7 +9,7 @@ import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
 import {
-  STARTER_AUTOMATION_ROUTES,
+  ORGANIZATION_STARTER_AUTOMATION_ROUTES,
   SYSTEM_STARTER_AUTOMATION_ROUTES,
 } from "./content/starter-routing";
 import type { AutomationEvent } from "./contracts";
@@ -23,7 +23,8 @@ const createAutomation = async (
     ownerScope?:
       | { kind: "system" }
       | { kind: "org"; orgId: string }
-      | { kind: "project"; orgId: string; projectId: string };
+      | { kind: "project"; orgId: string; projectId: string }
+      | { kind: "user"; userId: string };
     workflows?: AutomationWorkflowsService;
     runtime?: BackofficeRuntimeServices;
     now?: () => Date;
@@ -84,7 +85,7 @@ beforeEach(async () => {
 });
 
 describe("automation routes /routes", () => {
-  test("lists and seeds starter automation routes", async () => {
+  test("seeds the project filesystem route in organization scope", async () => {
     await fragment.inContext(async function () {
       await this.handlerTx()
         .withServiceCalls(() => [fragment.services.seedStarterAutomationRoutes()] as const)
@@ -96,20 +97,18 @@ describe("automation routes /routes", () => {
     assert(response.type === "json");
     if (response.type === "json") {
       expect(response.data.map((route) => route.id)).toEqual(
-        [...STARTER_AUTOMATION_ROUTES]
+        [...ORGANIZATION_STARTER_AUTOMATION_ROUTES]
           .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
           .map((route) => route.id),
       );
-      expect(response.data).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            id: "telegram-identity-claim-completed",
-            action: expect.objectContaining({
-              kind: "send_workflow_event",
-            }),
+      expect(response.data).toEqual([
+        expect.objectContaining({
+          id: "system-project-files-configure",
+          action: expect.objectContaining({
+            kind: "start_workflow",
           }),
-        ]),
-      );
+        }),
+      ]);
     }
   });
 
@@ -132,6 +131,46 @@ describe("automation routes /routes", () => {
       );
     }
   });
+
+  test.each([
+    {
+      scopeName: "project",
+      ownerScope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+    },
+    {
+      scopeName: "user",
+      ownerScope: { kind: "user", userId: "user-1" },
+    },
+  ] as const)(
+    "removes organization starter routes from $scopeName scope",
+    async ({ ownerScope }) => {
+      const scopedFragment = await createAutomation({ ownerScope });
+      const organizationStarterRoute = ORGANIZATION_STARTER_AUTOMATION_ROUTES[0];
+      assert(organizationStarterRoute);
+      const createResponse = await scopedFragment.callRoute("POST", "/routes", {
+        body: organizationStarterRoute,
+      });
+      assert(createResponse.type === "json");
+
+      const seedResult = await scopedFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(() => [scopedFragment.services.seedStarterAutomationRoutes()] as const)
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+
+      expect(seedResult).toEqual({
+        created: [],
+        removed: [organizationStarterRoute.id],
+        skipped: [],
+      });
+      const response = await scopedFragment.callRoute("GET", "/routes");
+      assert(response.type === "json");
+      if (response.type === "json") {
+        expect(response.data).toEqual([]);
+      }
+    },
+  );
 
   test("creates and updates automation routes", async () => {
     const createResponse = await fragment.callRoute("POST", "/routes", {

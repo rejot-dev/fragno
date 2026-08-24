@@ -2,7 +2,7 @@ import { assert, describe, test } from "vitest";
 
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { STARTER_AUTOMATION_ROUTES } from "@/fragno/automation/content/starter-routing";
+import { ORGANIZATION_STARTER_AUTOMATION_ROUTES } from "@/fragno/automation/content/starter-routing";
 
 import { resolveFilesContentRenderer, type FilesContentPreview } from "./content-renderers";
 
@@ -30,7 +30,7 @@ describe("files content rendering", () => {
 
   test("renders the configured project-created start route", () => {
     const workflowPath = "/static/automations/project-files-configure.workflow.js";
-    const route = STARTER_AUTOMATION_ROUTES.find(
+    const route = ORGANIZATION_STARTER_AUTOMATION_ROUTES.find(
       (candidate) =>
         candidate.action.kind === "start_workflow" &&
         candidate.action.workflowScriptPath === workflowPath,

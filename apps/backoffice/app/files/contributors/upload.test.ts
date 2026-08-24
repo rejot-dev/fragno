@@ -917,7 +917,7 @@ describe("upload file contributor", () => {
 
   test("force seeding resets starter file and folder permissions without deleting custom files", async () => {
     const runtime = createUploadRuntime({
-      [toUploadDirectoryMarkerFileKey("automations")]: {
+      [toUploadDirectoryMarkerFileKey("input")]: {
         content: "",
         contentType: "application/x.fragno-directory-marker",
         metadata: {
@@ -929,8 +929,8 @@ describe("upload file contributor", () => {
           },
         },
       },
-      "automations/telegram-user-linking.workflow.js": {
-        content: "stale workflow",
+      "input/notes.md": {
+        content: "stale notes",
         metadata: {
           __docsFs: {
             owner: { kind: "root" },
@@ -963,14 +963,12 @@ describe("upload file contributor", () => {
       }),
     ).resolves.toMatchObject({
       force: true,
-      overwritten: expect.arrayContaining([
-        "/workspace/automations/telegram-user-linking.workflow.js",
-      ]),
+      overwritten: expect.arrayContaining(["/workspace/input/notes.md"]),
     });
 
     expect(
       runtime.files.get(
-        composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("automations")),
+        composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("input")),
       )?.metadata,
     ).toMatchObject({
       __docsFs: {
@@ -980,12 +978,7 @@ describe("upload file contributor", () => {
       },
     });
     expect(
-      runtime.files.get(
-        composeStorageKey(
-          UPLOAD_PROVIDER_DATABASE,
-          "automations/telegram-user-linking.workflow.js",
-        ),
-      )?.metadata,
+      runtime.files.get(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "input/notes.md"))?.metadata,
     ).toMatchObject({
       __docsFs: {
         owner: { kind: "root" },
@@ -1006,8 +999,8 @@ describe("upload file contributor", () => {
           staticFileArtifacts: () => ({}),
         }),
         { provider: UPLOAD_PROVIDER_DATABASE },
-      ).readFile("/workspace/automations/telegram-user-linking.workflow.js"),
-    ).resolves.toBe(WORKSPACE_STARTER_CONTENT["automations/telegram-user-linking.workflow.js"]);
+      ).readFile("/workspace/input/notes.md"),
+    ).resolves.toBe(WORKSPACE_STARTER_CONTENT["input/notes.md"]);
     assert(
       runtime.files.has(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "automations/custom.cm.js")),
     );

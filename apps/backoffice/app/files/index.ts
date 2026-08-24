@@ -29,7 +29,6 @@ export type { UploadFileSystem, UploadFileWritePrecondition } from "./contributo
 export { WORKSPACE_STARTER_CONTENT } from "./content/starter";
 export { STATIC_AUTOMATION_SCRIPT_PATHS } from "./content/static-automations";
 export { SYSTEM_AUTOMATION_SCRIPT_PATHS } from "./content/system-automations";
-export { STARTER_AUTOMATION_SCRIPT_PATHS } from "./content/starter-automations";
 export { STATIC_FILE_CONTENT } from "./content/static";
 export { SYSTEM_FILE_CONTENT } from "./content/system";
 export { MasterFileSystem, createMasterFileSystem } from "./master-file-system";

@@ -271,11 +271,13 @@ describe("system automation scenarios", () => {
           staticFileArtifacts: () => ({}),
         }),
       );
-      const telegramPath = "/workspace/automations/telegram-user-linking.workflow.js";
+      const workspaceNotesPath = "/workspace/input/notes.md";
       await expect(
-        memberFs.writeFile(telegramPath, "// edited by org member\n"),
+        memberFs.writeFile(workspaceNotesPath, "# Edited by org member\n"),
       ).resolves.toBeUndefined();
-      await expect(memberFs.readFile(telegramPath)).resolves.toContain("edited by org member");
+      await expect(memberFs.readFile(workspaceNotesPath)).resolves.toContain(
+        "Edited by org member",
+      );
     } finally {
       await runtime.cleanup();
     }
@@ -469,11 +471,11 @@ describe("system automation scenarios", () => {
             orgId: "org-1",
             path: "/workspace/automations/router.cm.js",
           }),
-          then.files.exists({
+          then.files.missing({
             orgId: "org-1",
             path: "/workspace/automations/telegram-user-linking.workflow.js",
           }),
-          then.files.exists({
+          then.files.missing({
             orgId: "org-1",
             path: "/workspace/automations/telegram-user-pi-linking.workflow.js",
           }),
