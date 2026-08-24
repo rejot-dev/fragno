@@ -8,7 +8,7 @@ description:
 
 # Resend Connection
 
-Use this skill for organisation-scoped Resend email delivery, email thread state, and reply
+Use this skill for organization-scoped Resend email delivery, email thread state, and reply
 automation.
 
 # Resend configuration
@@ -30,7 +30,7 @@ Setup notes:
 Cataloged automation events:
 
 - `source`: `resend`, `eventType`: `capability.configured` — fires after Resend is configured for an
-  organisation for the first time.
+  organization for the first time.
 
 Resend maintains email thread state and hook work behind the `resend` hook scope.
 

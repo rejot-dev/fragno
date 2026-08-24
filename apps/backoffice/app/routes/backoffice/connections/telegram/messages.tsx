@@ -52,7 +52,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   } satisfies TelegramMessagesLoaderData;
 }
 
-export default function BackofficeOrganisationTelegramMessagesLayout() {
+export default function BackofficeOrganizationTelegramMessagesLayout() {
   const { chats, configError, chatsError } = useLoaderData<typeof loader>();
   const { basePath: integrationBasePath } = useOutletContext<TelegramLayoutContext>();
   const { chatId } = useParams();

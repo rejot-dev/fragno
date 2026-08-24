@@ -28,7 +28,7 @@ import { getScopedSandboxRuntime } from "@/worker-runtime/sandbox-manager";
 import type { Route } from "./+types/sandboxes";
 import { lookupAutomationProject } from "./data.server";
 import type { AutomationLayoutContext } from "./layout-context";
-import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope";
+import { automationRuntimeScopeFromRouteParams, automationScopeTabPath } from "./scope";
 
 type SandboxView = "new" | "detail";
 
@@ -258,11 +258,11 @@ const sandboxScopeId = (scope: AutomationLayoutContext["selectedScope"]): string
     case "system":
       return "system";
     case "org":
-      return scope.orgId;
+      return scope.organization.id;
     case "project":
       return backofficeScopeSinglePathSegment({
         kind: "project",
-        orgId: scope.orgId,
+        orgId: scope.organization.id,
         projectId: scope.projectId,
       });
     case "user":
@@ -787,7 +787,10 @@ async function requireSandboxScopeAccess({
     throw new Response("Unauthorized", { status: 401 });
   }
 
-  const scope = automationScopeFromRouteParams(params);
+  const scope = automationRuntimeScopeFromRouteParams(
+    params,
+    me.organizations.map(({ organization }) => organization),
+  );
   if (scope.kind === "system") {
     throw new Response("Not Found", { status: 404 });
   }

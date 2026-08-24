@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import type { SourceRange, StepNode } from "@fragno-dev/workflow-visualizer-tokens";
 
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
+import type { BackofficeRoutableResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 
@@ -44,7 +44,7 @@ export function WorkflowStepCard({
   runState?: WorkflowStepRunState;
   workflowEvents?: readonly WorkflowRunEvent[];
   workflowRunRecordId?: string;
-  currentScope?: BackofficeRoutableScope;
+  currentScope?: BackofficeRoutableResolvedScope;
   workflowEventSender?: WorkflowEventSender;
   workflowEventWorkflowName?: string;
   workflowInstanceId?: string;

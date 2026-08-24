@@ -52,7 +52,7 @@ const uploadProviderSchema = z.enum([
 ]);
 
 const setAdminConfigArgsSchema = z.object({
-  orgId: z.string().trim().min(1, "Missing organisation id."),
+  orgId: z.string().trim().min(1, "Missing organization id."),
 });
 
 const hookQueueOptionsSchema = z
@@ -98,7 +98,7 @@ const resolveHooksProvider = (response: UploadAdminConfigResponse): UploadProvid
 
 const uploadNotConfiguredResponse = () =>
   Response.json(
-    { message: "Upload is not configured for this organisation.", code: "NOT_CONFIGURED" },
+    { message: "Upload is not configured for this organization.", code: "NOT_CONFIGURED" },
     { status: 400 },
   );
 
@@ -114,7 +114,7 @@ const invalidProviderResponse = (provider: string) =>
 const providerNotConfiguredResponse = (provider: UploadProvider) =>
   Response.json(
     {
-      message: `Upload provider '${provider}' is not configured for this organisation.`,
+      message: `Upload provider '${provider}' is not configured for this organization.`,
       code: "PROVIDER_NOT_CONFIGURED",
     },
     { status: 400 },

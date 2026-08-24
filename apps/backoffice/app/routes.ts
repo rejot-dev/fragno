@@ -1,5 +1,7 @@
 import { type RouteConfig, index, layout, prefix, route } from "@react-router/dev/routes";
 
+import { BACKOFFICE_LAYOUT_ROUTE_ID } from "./routes/backoffice/route-ids";
+
 export default [
   index("routes/landing/index.tsx"),
 
@@ -8,16 +10,16 @@ export default [
   route("backoffice/auth/bootstrap", "routes/backoffice/auth-bootstrap.tsx"),
   route("backoffice/sign-up", "routes/backoffice/sign-up.tsx"),
   route("backoffice/verify-email", "routes/backoffice/verify-email.tsx"),
-  layout("layouts/backoffice-layout.tsx", [
+  layout("layouts/backoffice-layout.tsx", { id: BACKOFFICE_LAYOUT_ROUTE_ID }, [
     ...prefix("backoffice", [
       index("routes/backoffice/index.tsx"),
-      route("organisations", "routes/backoffice/organisations.tsx"),
+      route("organizations", "routes/backoffice/organizations.tsx"),
       route("invitations/:invitationId", "routes/backoffice/invitation-accept.tsx"),
-      route("organisations/:orgId", "routes/backoffice/organisation-layout.tsx", [
-        index("routes/backoffice/organisation-overview.tsx"),
-        route("members", "routes/backoffice/organisation-members.tsx"),
-        route("invites", "routes/backoffice/organisation-invites.tsx"),
-        route("billing", "routes/backoffice/organisation-billing.tsx"),
+      route("organizations/:orgSlug", "routes/backoffice/organization-layout.tsx", [
+        index("routes/backoffice/organization-overview.tsx"),
+        route("members", "routes/backoffice/organization-members.tsx"),
+        route("invites", "routes/backoffice/organization-invites.tsx"),
+        route("billing", "routes/backoffice/organization-billing.tsx"),
       ]),
       route("connections/resend", "routes/backoffice/connections/resend/index.tsx"),
       route("connections/mcp", "routes/backoffice/connections/mcp/index.tsx"),
@@ -54,7 +56,7 @@ export default [
       route("marketplace/:listingRef/manage", "routes/backoffice/marketplace/manage.tsx"),
       route("automations", "routes/backoffice/automations/index.tsx"),
       route(
-        "automations/:orgId/claims/complete",
+        "automations/:orgSlug/claims/complete",
         "routes/backoffice/automations/claims-complete.tsx",
       ),
       route(
@@ -64,10 +66,10 @@ export default [
       ),
       route(
         "automations/:scopeKind/:scopeId/integrations/telegram",
-        "routes/backoffice/connections/telegram/organisation-layout.tsx",
+        "routes/backoffice/connections/telegram/organization-layout.tsx",
         { id: "scoped-integrations/telegram/layout" },
         [
-          index("routes/backoffice/connections/telegram/organisation-index.tsx", {
+          index("routes/backoffice/connections/telegram/organization-index.tsx", {
             id: "scoped-integrations/telegram/index",
           }),
           route("configuration", "routes/backoffice/connections/telegram/configuration.tsx", {
@@ -90,7 +92,7 @@ export default [
       ),
       route(
         "automations/:scopeKind/:scopeId/integrations/resend",
-        "routes/backoffice/connections/resend/organisation-layout.tsx",
+        "routes/backoffice/connections/resend/organization-layout.tsx",
         { id: "scoped-integrations/resend/layout" },
         [
           route("configuration", "routes/backoffice/connections/resend/configuration.tsx", {
@@ -158,7 +160,7 @@ export default [
       ),
       route(
         "automations/:scopeKind/:scopeId/integrations/reson8",
-        "routes/backoffice/connections/reson8/organisation-layout.tsx",
+        "routes/backoffice/connections/reson8/organization-layout.tsx",
         { id: "scoped-integrations/reson8/layout" },
         [
           route("configuration", "routes/backoffice/connections/reson8/configuration.tsx", {
@@ -174,10 +176,10 @@ export default [
       ),
       route(
         "automations/:scopeKind/:scopeId/integrations/github",
-        "routes/backoffice/connections/github/organisation-layout.tsx",
+        "routes/backoffice/connections/github/organization-layout.tsx",
         { id: "scoped-integrations/github/layout" },
         [
-          index("routes/backoffice/connections/github/organisation-index.tsx", {
+          index("routes/backoffice/connections/github/organization-index.tsx", {
             id: "scoped-integrations/github/index",
           }),
           route("configuration", "routes/backoffice/connections/github/configuration.tsx", {
@@ -217,8 +219,8 @@ export default [
       ]),
 
       route(
-        "connections/upload/:orgId",
-        "routes/backoffice/connections/upload/organisation-layout.tsx",
+        "connections/upload/:orgSlug",
+        "routes/backoffice/connections/upload/organization-layout.tsx",
         [
           route("configuration", "routes/backoffice/connections/upload/configuration.tsx"),
           route("uploads", "routes/backoffice/connections/upload/uploads.tsx"),
@@ -228,8 +230,8 @@ export default [
         ],
       ),
       route("sessions", "routes/backoffice/sessions/index.tsx"),
-      route("sessions/:scopeKind/:scopeId", "routes/backoffice/sessions/organisation-layout.tsx", [
-        index("routes/backoffice/sessions/organisation-index.tsx"),
+      route("sessions/:scopeKind/:scopeId", "routes/backoffice/sessions/organization-layout.tsx", [
+        index("routes/backoffice/sessions/organization-index.tsx"),
         route("sessions", "routes/backoffice/sessions/sessions.tsx", [
           index("routes/backoffice/sessions/sessions-index.tsx"),
           route(":workflowName/:sessionId", "routes/backoffice/sessions/session-detail.tsx"),
@@ -267,12 +269,12 @@ export default [
         ),
         route(
           "workflows/:scopeKind/:scopeId",
-          "routes/backoffice/internals/workflows-organisation.tsx",
+          "routes/backoffice/internals/workflows-organization.tsx",
           [
-            index("routes/backoffice/internals/workflows-organisation-index.tsx"),
+            index("routes/backoffice/internals/workflows-organization-index.tsx"),
             route(
               ":workflowName/:instanceId",
-              "routes/backoffice/internals/workflows-organisation-detail.tsx",
+              "routes/backoffice/internals/workflows-organization-detail.tsx",
             ),
           ],
         ),
@@ -294,14 +296,14 @@ export default [
     route("backoffice/me", "routes/api/backoffice-me.ts"),
     route("cloudflare/*", "routes/api/cloudflare.ts"),
     route("resend/:scopeSegment/*", "routes/api/resend.ts"),
-    route("reson8/:orgId/*", "routes/api/reson8.ts"),
+    route("reson8/:orgSlug/*", "routes/api/reson8.ts"),
     route("mcp/:scopeSegment/*", "routes/api/mcp.ts"),
     route("http/:scopeSegment/*", "routes/api/api.ts"),
     route("telegram/:scopeSegment/*", "routes/api/telegram.ts"),
-    route("otp/:orgId/*", "routes/api/otp.ts"),
+    route("otp/:orgSlug/*", "routes/api/otp.ts"),
     route("github/webhooks", "routes/api/github-webhooks.ts"),
-    route("github/:orgId/*", "routes/api/github.ts"),
-    route("upload/:orgId/*", "routes/api/upload.ts"),
+    route("github/:orgSlug/*", "routes/api/github.ts"),
+    route("upload/:orgSlug/*", "routes/api/upload.ts"),
     route("upload-scoped/:scopeKind/:scopeId/*", "routes/api/upload-scoped.ts"),
     route("pi/:scopeSegment/*", "routes/api/pi.ts"),
     route("workflows/:scopeSegment/*", "routes/api/workflows.ts"),

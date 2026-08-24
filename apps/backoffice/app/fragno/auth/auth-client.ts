@@ -168,7 +168,7 @@ const preferredOrganization = {
   },
   setForMe(me: BackofficeMeData, organizationId: string) {
     if (!me.organizations.some((entry) => entry.organization.id === organizationId)) {
-      throw new Error("The selected organisation is not available to this user.");
+      throw new Error("The selected organization is not available to this user.");
     }
     writePreferredOrganization(organizationId);
   },
@@ -312,10 +312,10 @@ export const authClient = {
         }),
       });
       if (!response.ok) {
-        throw new Error((await response.text()) || "Unable to switch organisation.");
+        throw new Error((await response.text()) || "Unable to switch organization.");
       }
       const result = issueBackofficeTokenResultSchema.parse(await response.json());
-      writePreferredOrganization(result.organizationId);
+      writePreferredOrganization(result.organization?.id ?? null);
       recordIssuedBackofficeToken(result);
       return result;
     });
@@ -439,20 +439,27 @@ export const authClient = {
           betterAuthClient.organization.listUserInvitations(),
         );
         return {
-          invitations: (result ?? []).map((invitation) => ({
-            invitation: normalizeInvitation(invitation),
-            organization: {
-              id: invitation.organizationId,
-              name: invitation.organizationName ?? invitation.organizationId,
-              slug: invitation.organizationSlug ?? invitation.organizationId,
-              logoUrl: null,
-              metadata: null,
-              createdBy: invitation.inviterId,
-              createdAt: new Date(invitation.createdAt),
-              updatedAt: new Date(invitation.createdAt),
-              deletedAt: null,
-            },
-          })),
+          invitations: (result ?? []).map((invitation) => {
+            if (!invitation.organizationSlug) {
+              throw new Error(
+                `Invitation '${invitation.id}' did not include an organization slug.`,
+              );
+            }
+            return {
+              invitation: normalizeInvitation(invitation),
+              organization: {
+                id: invitation.organizationId,
+                name: invitation.organizationName ?? invitation.organizationId,
+                slug: invitation.organizationSlug,
+                logoUrl: null,
+                metadata: null,
+                createdBy: invitation.inviterId,
+                createdAt: new Date(invitation.createdAt),
+                updatedAt: new Date(invitation.createdAt),
+                deletedAt: null,
+              },
+            };
+          }),
         };
       },
       [],

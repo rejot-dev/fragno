@@ -57,6 +57,7 @@ import {
 import { deleteUploadFile, fetchUploadConfig, fetchUploadDownloadUrl } from "./data";
 import { formatUploadTimestamp } from "./formatting";
 import type { UploadLayoutContext } from "./layout-context";
+import { requireUploadRouteOrganization } from "./organization.server";
 import { shouldAutoStartUploads } from "./upload-queue";
 
 type ExplorerSelectionKind = "root" | "folder" | "file";
@@ -382,7 +383,7 @@ const parseSelectedNodeKind = (value?: string | null): ExplorerSelectionKind => 
 };
 
 const buildSelectionHref = (
-  orgId: string,
+  orgSlug: string,
   selection:
     | {
         kind: "root";
@@ -419,7 +420,7 @@ const buildSelectionHref = (
   }
 
   const query = searchParams.toString();
-  return `/backoffice/connections/upload/${orgId}/files${query ? `?${query}` : ""}`;
+  return `/backoffice/connections/upload/${encodeURIComponent(orgSlug)}/files${query ? `?${query}` : ""}`;
 };
 
 const createMutableFolderNode = (name: string, prefix: string): MutableUploadTreeFolderNode => ({
@@ -540,12 +541,9 @@ const createSyntheticFolderNode = (prefix: string): UploadTreeFolderNode => ({
   providers: [],
 });
 
-export async function loader({ params, context, url }: LoaderFunctionArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const { configState, configError } = await fetchUploadConfig(context, params.orgId);
+export async function loader({ request, params, context, url }: LoaderFunctionArgs) {
+  const { organization } = await requireUploadRouteOrganization(request, context, params.orgSlug);
+  const { configState, configError } = await fetchUploadConfig(context, organization.id);
   if (configError) {
     return {
       configState,
@@ -558,7 +556,9 @@ export async function loader({ params, context, url }: LoaderFunctionArgs) {
   }
 
   if (!configState?.configured) {
-    return redirect(`/backoffice/connections/upload/${params.orgId}/configuration`);
+    return redirect(
+      `/backoffice/connections/upload/${encodeURIComponent(organization.slug)}/configuration`,
+    );
   }
 
   let selectedNodeKind = parseSelectedNodeKind(url.searchParams.get("node"));
@@ -592,10 +592,7 @@ export async function loader({ params, context, url }: LoaderFunctionArgs) {
 }
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
+  const { organization } = await requireUploadRouteOrganization(request, context, params.orgSlug);
   const formData = await request.formData();
   const intent = formData.get("intent");
   const providerValue = formData.get("provider");
@@ -618,7 +615,13 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   }
 
   if (intent === "download-url") {
-    const result = await fetchUploadDownloadUrl(request, context, params.orgId, provider, fileKey);
+    const result = await fetchUploadDownloadUrl(
+      request,
+      context,
+      organization.id,
+      provider,
+      fileKey,
+    );
     if (result.error || !result.result) {
       return {
         ok: false,
@@ -637,7 +640,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   }
 
   if (intent === "delete-file") {
-    const deleted = await deleteUploadFile(request, context, params.orgId, provider, fileKey);
+    const deleted = await deleteUploadFile(request, context, organization.id, provider, fileKey);
     if (!deleted.ok) {
       return {
         ok: false,
@@ -663,7 +666,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 
 const UPLOAD_FILES_LOADING = <UploadFilesLoading />;
 
-export default function BackofficeOrganisationUploadFiles() {
+export default function BackofficeOrganizationUploadFiles() {
   const layoutContext = useOutletContext<UploadLayoutContext>();
 
   if (!layoutContext.persistenceSource) {
@@ -829,8 +832,9 @@ function useUploadFilesViewState({
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const navigate = useNavigate();
-  const { orgId } = useOutletContext<UploadLayoutContext>();
-  const uploadClient = useMemo(() => createUploadClient(orgId), [orgId]);
+  const { organization } = useOutletContext<UploadLayoutContext>();
+  const orgSlug = organization.slug;
+  const uploadClient = useMemo(() => createUploadClient(orgSlug), [orgSlug]);
   const uploadHelpers = uploadClient.useUploadHelpers();
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
@@ -969,7 +973,7 @@ function useUploadFilesViewState({
       ? actionData.downloadUrl
       : null;
   const missingFileParentHref = buildSelectionHref(
-    orgId,
+    orgSlug,
     selectedProvider && selectedPrefix
       ? { kind: "folder", provider: selectedProvider, prefix: selectedPrefix }
       : { kind: "root", provider: selectedProvider },
@@ -1212,7 +1216,7 @@ function useUploadFilesViewState({
     }
 
     void navigate(
-      buildSelectionHref(orgId, {
+      buildSelectionHref(orgSlug, {
         kind: "folder",
         provider: uploadTargetProvider,
         prefix: nextPrefix,
@@ -1266,7 +1270,7 @@ function useUploadFilesViewState({
     actionSuccess,
     uploadError,
     downloadError,
-    orgId,
+    orgSlug,
     selectedNodeKey,
     providerTrees,
     openFolders,
@@ -1344,7 +1348,7 @@ function UploadFilesView({
 }
 
 function UploadExplorerPanel({ state }: { state: ReadyUploadFilesViewState }) {
-  const { files, orgId, selectedNodeKey, providerTrees, openFolders, setFolderOpen } = state;
+  const { files, orgSlug, selectedNodeKey, providerTrees, openFolders, setFolderOpen } = state;
 
   return (
     <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
@@ -1369,7 +1373,7 @@ function UploadExplorerPanel({ state }: { state: ReadyUploadFilesViewState }) {
         className="mt-4 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3"
       >
         <Link
-          to={buildSelectionHref(orgId, { kind: "root" })}
+          to={buildSelectionHref(orgSlug, { kind: "root" })}
           aria-current={selectedNodeKey === "root" ? "page" : undefined}
           className={
             selectedNodeKey === "root"
@@ -1396,7 +1400,7 @@ function UploadExplorerPanel({ state }: { state: ReadyUploadFilesViewState }) {
               <UploadProviderRootTree
                 key={providerTree.provider}
                 providerTree={providerTree}
-                orgId={orgId}
+                orgSlug={orgSlug}
                 selectedNodeKey={selectedNodeKey}
                 openPrefixes={openFolders}
                 onOpenChange={setFolderOpen}
@@ -1801,13 +1805,13 @@ function UploadQueueCard({ item }: { item: UploadQueueItem }) {
 
 function UploadProviderRootTree({
   providerTree,
-  orgId,
+  orgSlug,
   selectedNodeKey,
   openPrefixes,
   onOpenChange,
 }: {
   providerTree: UploadProviderTree;
-  orgId: string;
+  orgSlug: string;
   selectedNodeKey: string;
   openPrefixes: ReadonlySet<string>;
   onOpenChange: (provider: string, prefix: string, open: boolean) => void;
@@ -1818,7 +1822,7 @@ function UploadProviderRootTree({
   return (
     <div className="space-y-1">
       <Link
-        to={buildSelectionHref(orgId, { kind: "root", provider: providerTree.provider })}
+        to={buildSelectionHref(orgSlug, { kind: "root", provider: providerTree.provider })}
         aria-current={isSelected ? "page" : undefined}
         className={
           isSelected
@@ -1844,7 +1848,7 @@ function UploadProviderRootTree({
               key={`${providerTree.provider}:${folder.prefix}`}
               provider={providerTree.provider}
               folder={folder}
-              orgId={orgId}
+              orgSlug={orgSlug}
               selectedNodeKey={selectedNodeKey}
               openPrefixes={openPrefixes}
               onOpenChange={onOpenChange}
@@ -1854,7 +1858,7 @@ function UploadProviderRootTree({
             <UploadFileTreeLeaf
               key={`${file.provider}:${file.fileKey}`}
               file={file}
-              orgId={orgId}
+              orgSlug={orgSlug}
               selectedNodeKey={selectedNodeKey}
             />
           ))}
@@ -1867,14 +1871,14 @@ function UploadProviderRootTree({
 function UploadFolderTreeNode({
   provider,
   folder,
-  orgId,
+  orgSlug,
   selectedNodeKey,
   openPrefixes,
   onOpenChange,
 }: {
   provider: string;
   folder: UploadTreeFolderNode;
-  orgId: string;
+  orgSlug: string;
   selectedNodeKey: string;
   openPrefixes: ReadonlySet<string>;
   onOpenChange: (provider: string, prefix: string, open: boolean) => void;
@@ -1906,7 +1910,7 @@ function UploadFolderTreeNode({
           )}
 
           <Link
-            to={buildSelectionHref(orgId, { kind: "folder", provider, prefix: folder.prefix })}
+            to={buildSelectionHref(orgSlug, { kind: "folder", provider, prefix: folder.prefix })}
             aria-current={isSelected ? "page" : undefined}
             className={
               isSelected
@@ -1937,7 +1941,7 @@ function UploadFolderTreeNode({
                   key={`${provider}:${childFolder.prefix}`}
                   provider={provider}
                   folder={childFolder}
-                  orgId={orgId}
+                  orgSlug={orgSlug}
                   selectedNodeKey={selectedNodeKey}
                   openPrefixes={openPrefixes}
                   onOpenChange={onOpenChange}
@@ -1947,7 +1951,7 @@ function UploadFolderTreeNode({
                 <UploadFileTreeLeaf
                   key={`${file.provider}:${file.fileKey}`}
                   file={file}
-                  orgId={orgId}
+                  orgSlug={orgSlug}
                   selectedNodeKey={selectedNodeKey}
                 />
               ))}
@@ -1961,11 +1965,11 @@ function UploadFolderTreeNode({
 
 function UploadFileTreeLeaf({
   file,
-  orgId,
+  orgSlug,
   selectedNodeKey,
 }: {
   file: UploadFileRecord;
-  orgId: string;
+  orgSlug: string;
   selectedNodeKey: string;
 }) {
   const isSelected = selectedNodeKey === `file:${file.provider}:${file.fileKey}`;
@@ -1974,7 +1978,7 @@ function UploadFileTreeLeaf({
 
   return (
     <Link
-      to={buildSelectionHref(orgId, {
+      to={buildSelectionHref(orgSlug, {
         kind: "file",
         provider: file.provider,
         fileKey: file.fileKey,

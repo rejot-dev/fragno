@@ -29,7 +29,7 @@ const kernel = new BackofficeKernel({
 describe("createOtpRuntime", () => {
   test("derives identity claims from the trusted external initiator", async () => {
     const issueIdentityClaim = vi.fn(async () => ({
-      url: "https://backoffice.example/claim/otp-1",
+      ok: true as const,
       otpId: "otp-1",
       externalId: "chat-123",
       code: "123456",
@@ -58,20 +58,20 @@ describe("createOtpRuntime", () => {
           sandbox: false,
         },
       },
-      orgId: "org-1",
+      scope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
       kernel,
       execution: externalExecution,
     });
 
     await expect(runtime.createClaim({ ttlMinutes: 15 })).resolves.toMatchObject({
+      url: "https://backoffice.example/backoffice/automations/acme/claims/complete?externalId=chat-123&code=123456",
       otpId: "otp-1",
       actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
     });
     expect(issueIdentityClaim).toHaveBeenCalledWith({
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1" },
       actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
       expiresInMinutes: 15,
-      publicBaseUrl: "https://backoffice.example",
     });
   });
 
@@ -100,7 +100,7 @@ describe("createOtpRuntime", () => {
           sandbox: false,
         },
       },
-      orgId: "org-1",
+      scope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
       kernel,
       execution: {
         scope: { kind: "org", orgId: "org-1" },

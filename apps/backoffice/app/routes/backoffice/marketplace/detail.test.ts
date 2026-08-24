@@ -46,8 +46,10 @@ vi.mock("./installation-workflow.client", () => ({
 }));
 
 import {
-  backofficeContextScopeRouteId,
-  backofficeContextScopeRoutePath,
+  backofficeRouteScopePath,
+  type BackofficeRoutableRouteScope,
+} from "@/backoffice-runtime/route-scope";
+import {
   backofficeScopeSinglePathSegment,
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
@@ -73,8 +75,8 @@ type IngestionActionDataFixture =
     };
 const authenticatedUser = {
   user: { id: "user-1", email: "ada@example.com" },
-  organizations: [{ organization: { id: "org-1", name: "Ada Labs" } }],
-  activeOrganization: { organization: { id: "org-1", name: "Ada Labs" } },
+  organizations: [{ organization: { id: "org-1", slug: "ada-labs", name: "Ada Labs" } }],
+  activeOrganization: { organization: { id: "org-1", slug: "ada-labs", name: "Ada Labs" } },
 };
 const automations = {
   listMarketplaceIngestions: listMarketplaceIngestionsMock,
@@ -96,12 +98,25 @@ const context = {
   }),
 };
 
+function routeScopeForTest(scope: BackofficeRoutableScope): BackofficeRoutableRouteScope {
+  if (scope.kind === "user") {
+    return scope;
+  }
+  const orgSlug =
+    scope.orgId === "org-1" ? "ada-labs" : scope.orgId === "org-2" ? "second-labs" : scope.orgId;
+  return scope.kind === "org"
+    ? { kind: "org", orgSlug }
+    : { kind: "project", orgSlug, projectId: scope.projectId };
+}
+
 const runLoader = (
   scope: BackofficeRoutableScope = { kind: "org", orgId: "org-1" },
   artifactVersion?: string,
 ) => {
+  const routeScope = routeScopeForTest(scope);
+  const routePath = backofficeRouteScopePath(routeScope);
   const url = new URL(
-    `https://example.test/backoffice/marketplace/${backofficeContextScopeRoutePath(scope)}/marketplace/${listingRef}`,
+    `https://example.test/backoffice/marketplace/${routePath}/marketplace/${listingRef}`,
   );
   if (artifactVersion) {
     url.searchParams.set("artifactVersion", artifactVersion);
@@ -110,8 +125,8 @@ const runLoader = (
     request: new Request(url),
     params: {
       listingRef,
-      scopeKind: scope.kind,
-      scopeId: backofficeContextScopeRouteId(scope),
+      scopeKind: routeScope.kind,
+      scopeId: decodeURIComponent(routePath.split("/")[1]!),
     },
     context,
     url,
@@ -124,8 +139,10 @@ const runAction = (input: {
   extraFormEntries?: Record<string, string>;
 }) => {
   const scope = input.scope ?? { kind: "org", orgId: "org-1" };
+  const routeScope = routeScopeForTest(scope);
+  const routePath = backofficeRouteScopePath(routeScope);
   const url = new URL(
-    `https://example.test/backoffice/marketplace/${backofficeContextScopeRoutePath(scope)}/marketplace/${listingRef}`,
+    `https://example.test/backoffice/marketplace/${routePath}/marketplace/${listingRef}`,
   );
   const formData = new FormData();
   if (input.version) {
@@ -141,8 +158,8 @@ const runAction = (input: {
     }),
     params: {
       listingRef,
-      scopeKind: scope.kind,
-      scopeId: backofficeContextScopeRouteId(scope),
+      scopeKind: routeScope.kind,
+      scopeId: decodeURIComponent(routePath.split("/")[1]!),
     },
     context,
     url,
@@ -190,10 +207,12 @@ beforeEach(() => {
   });
   getArtifactManifestMock.mockResolvedValue(null);
   listMarketplaceIngestionsMock.mockResolvedValue([]);
-  fetchAutomationCollectionSourceMock.mockResolvedValue({
-    scope: { kind: "org", orgId: "org-1" },
-    adapterIdentity: "automations-test-adapter",
-  });
+  fetchAutomationCollectionSourceMock.mockImplementation(
+    async (_request, _context, resolvedScope) => ({
+      resolvedScope,
+      adapterIdentity: "automations-test-adapter",
+    }),
+  );
   loadPublishedMarketplaceArtifactExplorerMock.mockResolvedValue({
     state: "unavailable",
     message: "This Marketplace listing has no published files.",
@@ -213,7 +232,7 @@ describe("marketplace detail loader", () => {
       ...authenticatedUser,
       organizations: [
         authenticatedUser.organizations[0],
-        { organization: { id: "org-2", name: "Second Labs" } },
+        { organization: { id: "org-2", slug: "second-labs", name: "Second Labs" } },
       ],
     });
     listMarketplaceIngestionsMock.mockResolvedValueOnce([
@@ -234,7 +253,8 @@ describe("marketplace detail loader", () => {
     const result = await runLoader({ kind: "org", orgId: "org-2" });
 
     assert(!(result instanceof Response));
-    assert(result.installationOrganizationId === "org-2");
+    assert(result.installationCollectionSource?.resolvedScope.kind === "org");
+    assert(result.installationCollectionSource.resolvedScope.organization.id === "org-2");
     expect(result.ingestions).toEqual([
       expect.objectContaining({
         id: "selected-installation",
@@ -257,7 +277,8 @@ describe("marketplace detail loader", () => {
     });
 
     assert(!(result instanceof Response));
-    assert(result.installationOrganizationId === "org-1");
+    assert(result.installationCollectionSource?.resolvedScope.kind === "org");
+    assert(result.installationCollectionSource.resolvedScope.organization.id === "org-1");
     expect(forOrgMock).toHaveBeenCalledWith("org-1");
   });
 
@@ -265,7 +286,8 @@ describe("marketplace detail loader", () => {
     const result = await runLoader({ kind: "user", userId: "user-1" });
 
     assert(!(result instanceof Response));
-    assert(result.installationOrganizationId === "org-1");
+    assert(result.installationCollectionSource?.resolvedScope.kind === "org");
+    assert(result.installationCollectionSource.resolvedScope.organization.id === "org-1");
     expect(forOrgMock).toHaveBeenCalledWith("org-1");
   });
 
@@ -279,7 +301,7 @@ describe("marketplace detail loader", () => {
     const result = await runLoader({ kind: "user", userId: "user-1" });
 
     assert(!(result instanceof Response));
-    assert(result.installationOrganizationId === null);
+    assert(result.installationCollectionSource === null);
     expect(forOrgMock).not.toHaveBeenCalled();
   });
 
@@ -494,9 +516,8 @@ function renderMarketplaceDetail(
     nextVersionCursor: undefined,
     hasNextVersionPage: false,
     manageOrganizationId: null,
-    installationOrganizationId: "org-1",
     installationCollectionSource: {
-      scope: { kind: "org", orgId: "org-1" },
+      resolvedScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
       adapterIdentity: "automations-test-adapter",
     },
     installationWorkflowInstanceId: "loader-workflow-id",
@@ -511,7 +532,13 @@ function renderMarketplaceDetail(
     [
       {
         element: createElement(Outlet, {
-          context: { selectedScope: { kind: "org", orgId: "org-1", label: "Ada Labs" } },
+          context: {
+            selectedScope: {
+              kind: "org",
+              organization: { id: "org-1", slug: "ada-labs" },
+              label: "Ada Labs",
+            },
+          },
         }),
         children: [
           {

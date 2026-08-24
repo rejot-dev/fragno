@@ -18,6 +18,7 @@ import { getUploadDurableObject } from "@/worker-runtime/durable-objects";
 
 import { formatUploadTimestamp } from "./formatting";
 import type { UploadConfigurableProvider, UploadLayoutContext } from "./layout-context";
+import { requireUploadRouteOrganization } from "./organization.server";
 import { UploadProviderTabs } from "./shared";
 
 type UploadConfigActionData = {
@@ -411,10 +412,7 @@ const normalizeUploadConfigInput = (
 };
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
+  const { organization } = await requireUploadRouteOrganization(request, context, params.orgSlug);
   const formData = await request.formData();
   const getValue = (key: string) => {
     const value = formData.get(key);
@@ -457,10 +455,10 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     } satisfies UploadConfigActionData;
   }
 
-  const uploadDo = getUploadDurableObject(context, params.orgId);
+  const uploadDo = getUploadDurableObject(context, organization.id);
 
   try {
-    const configState = await uploadDo.setAdminConfig(validation.payload, params.orgId);
+    const configState = await uploadDo.setAdminConfig(validation.payload, organization.id);
     return {
       ok: true,
       message: "Upload configuration saved.",
@@ -474,7 +472,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   }
 }
 
-export default function BackofficeOrganisationUploadConfiguration() {
+export default function BackofficeOrganizationUploadConfiguration() {
   const { configState, configLoading, configError, setConfigError, setConfigState } =
     useOutletContext<UploadLayoutContext>();
   const actionData = useActionData<typeof action>();
@@ -594,7 +592,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
               </p>
               <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Upload storage</h2>
               <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                Upload storage is scoped per organisation with a mandatory org storage prefix.
+                Upload storage is scoped per organization with a mandatory org storage prefix.
               </p>
             </div>
             <span
@@ -686,7 +684,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
             <p>
               Org prefix:{" "}
               <span className="text-[var(--bo-fg)]">
-                {activeProviderConfig?.orgPrefix ?? "org/<organisation-id>"}
+                {activeProviderConfig?.orgPrefix ?? "org/<organization-id>"}
               </span>
             </p>
           </div>
@@ -843,7 +841,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
               </summary>
               <div className="space-y-3 border-t border-[color:var(--bo-border)] p-3">
                 <p className="text-xs text-[var(--bo-muted)]">
-                  Defaults are prefilled for reference. Update only if your organisation needs
+                  Defaults are prefilled for reference. Update only if your organization needs
                   custom limits.
                 </p>
 

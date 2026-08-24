@@ -15,12 +15,12 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     );
   }
 
-  const organization = me.activeOrganization?.organization ?? me.organizations[0]?.organization;
+  const organization = me.activeOrganization?.organization;
   if (organization) {
     return redirect(
       marketplaceScopeTabPath({
         kind: "org",
-        orgId: organization.id,
+        organization,
         label: organization.name ?? organization.id,
       }),
     );

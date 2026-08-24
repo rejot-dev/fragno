@@ -42,7 +42,11 @@ describe("Backoffice auth bootstrap", () => {
     vi.stubEnv("MODE", "development");
     vi.mocked(getBackofficeMe).mockResolvedValue({
       status: "authenticated",
-      me: { user: { id: "user-1" } } as never,
+      me: {
+        user: { id: "user-1" },
+        activeOrganizationId: null,
+        activeOrganization: null,
+      } as never,
       expiresAt: new Date("2027-01-01T00:00:00.000Z"),
     });
 
@@ -57,36 +61,64 @@ describe("Backoffice auth bootstrap", () => {
     vi.stubEnv("MODE", "development");
     vi.mocked(getBackofficeMe).mockResolvedValue({
       status: "authenticated",
-      me: { activeOrganizationId: "org-current" } as never,
+      me: {
+        activeOrganizationId: "org-current",
+        activeOrganization: { organization: { id: "org-current" } },
+      } as never,
       expiresAt: new Date("2027-01-01T00:00:00.000Z"),
     });
 
     const result = await loader(
       createLoaderArgs(
-        "https://example.com/backoffice/auth/bootstrap?organizationId=org-next&returnTo=%2Fbackoffice%2Forganisations%2Forg-next",
+        "https://example.com/backoffice/auth/bootstrap?organizationId=org-next&returnTo=%2Fbackoffice%2Forganizations%2Forg-next",
       ),
     );
     expect(result).toMatchObject({
       data: {
         organizationId: "org-next",
-        returnTo: "/backoffice/organisations/org-next",
+        returnTo: "/backoffice/organizations/org-next",
       },
     });
   });
 
+  test("renders an exchange when JWT organization membership is stale", async () => {
+    vi.stubEnv("MODE", "development");
+    vi.mocked(getBackofficeMe).mockResolvedValue({
+      status: "authenticated",
+      me: {
+        activeOrganizationId: "org-removed",
+        activeOrganization: null,
+      } as never,
+      expiresAt: new Date("2027-01-01T00:00:00.000Z"),
+    });
+
+    const result = await loader(
+      createLoaderArgs(
+        "https://example.com/backoffice/auth/bootstrap?returnTo=%2Fbackoffice%2Fsettings",
+      ),
+    );
+    expect(result).toMatchObject({
+      data: { organizationId: null, returnTo: "/backoffice/settings" },
+    });
+  });
+
   test("exchanges the preferred organization for an HttpOnly browser JWT", async () => {
-    const fetchImplementation = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        Response.json({ expiresAt: "2026-08-11T12:15:00.000Z", organizationId: "org-1" }),
-      );
+    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        expiresAt: "2026-08-11T12:15:00.000Z",
+        organization: { id: "org-1", slug: "acme" },
+      }),
+    );
 
     await expect(
       exchangeBackofficeSessionForJwt(
         { selection: "preferred", organizationId: "org-preferred" },
         fetchImplementation,
       ),
-    ).resolves.toEqual({ expiresAt: "2026-08-11T12:15:00.000Z", organizationId: "org-1" });
+    ).resolves.toEqual({
+      expiresAt: "2026-08-11T12:15:00.000Z",
+      organization: { id: "org-1", slug: "acme" },
+    });
     expect(fetchImplementation).toHaveBeenCalledWith("/api/auth/backoffice-token", {
       method: "POST",
       credentials: "same-origin",
@@ -105,7 +137,10 @@ describe("Backoffice auth bootstrap", () => {
         Response.json({ status: "organization_provisioning", retryAfterMs: 250 }, { status: 202 }),
       )
       .mockResolvedValueOnce(
-        Response.json({ expiresAt: "2026-08-21T12:15:00.000Z", organizationId: "org-created" }),
+        Response.json({
+          expiresAt: "2026-08-21T12:15:00.000Z",
+          organization: { id: "org-created", slug: "created" },
+        }),
       );
     const sleep = vi.fn(async () => {});
 
@@ -113,7 +148,7 @@ describe("Backoffice auth bootstrap", () => {
       waitForPreferredBackofficeSessionForJwt(null, fetchImplementation, sleep),
     ).resolves.toEqual({
       expiresAt: "2026-08-21T12:15:00.000Z",
-      organizationId: "org-created",
+      organization: { id: "org-created", slug: "created" },
     });
     expect(sleep).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledWith(250);
@@ -135,16 +170,17 @@ describe("Backoffice auth bootstrap", () => {
         15_000,
         now,
       ),
-    ).rejects.toThrow("Your organisation could not be created in time");
+    ).rejects.toThrow("Your organization could not be created in time");
   });
 
   test("accepts the server fallback for a preferred organization left by another account", async () => {
     const writePreference = vi.fn();
-    const fetchImplementation = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        Response.json({ expiresAt: "2026-08-11T12:15:00.000Z", organizationId: "org-fallback" }),
-      );
+    const fetchImplementation = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        expiresAt: "2026-08-11T12:15:00.000Z",
+        organization: { id: "org-fallback", slug: "fallback" },
+      }),
+    );
 
     await bootstrapBackofficePreferredOrganization(
       "org-stale",

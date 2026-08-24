@@ -234,7 +234,7 @@ export class InMemoryGitHubWebhookRouterObject {
     if (!normalizedOrgId) {
       return {
         ok: false,
-        message: "Missing organisation id.",
+        message: "Missing organization id.",
       };
     }
 
@@ -314,7 +314,7 @@ export class InMemoryGitHubWebhookRouterObject {
       return {
         ok: false,
         code: "INVALID_STATE",
-        message: "Installation state is missing organisation context.",
+        message: "Installation state is missing organization context.",
       };
     }
 
@@ -359,7 +359,7 @@ export class InMemoryGitHubWebhookRouterObject {
     const userId = input.userId.trim();
     const orgId = input.orgId.trim();
     if (!state || !userId || !orgId) {
-      throw new Error("Missing installation claim state, user id, or organisation id.");
+      throw new Error("Missing installation claim state, user id, or organization id.");
     }
 
     await this.#state.storage.put(`${INSTALLATION_CLAIM_STATE_KEY_PREFIX}${state}`, {
@@ -454,7 +454,7 @@ export class InMemoryGitHubWebhookRouterObject {
       return { ok: false, message: "Missing installation id." };
     }
     if (!normalizedOrgId) {
-      return { ok: false, message: "Missing organisation id." };
+      return { ok: false, message: "Missing organization id." };
     }
 
     const mappingKey = `${INSTALLATION_ORG_KEY_PREFIX}${normalizedInstallationId}`;
@@ -466,7 +466,7 @@ export class InMemoryGitHubWebhookRouterObject {
         ok: false,
         code: "INSTALLATION_ORG_CONFLICT",
         existingOrgId: normalizedExistingOrgId,
-        message: "Installation is already mapped to a different organisation.",
+        message: "Installation is already mapped to a different organization.",
       };
     }
 

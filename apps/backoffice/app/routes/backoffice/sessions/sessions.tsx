@@ -5,7 +5,7 @@ import type { PiLayoutContext } from "./shared";
 
 export { createSessionAction as action } from "./create-session-action";
 
-export default function BackofficeOrganisationPiSessionsLayout() {
+export default function BackofficeOrganizationPiSessionsLayout() {
   const layoutContext = useOutletContext<PiLayoutContext>();
   return <PiSessionsWorkspace layoutContext={layoutContext} />;
 }

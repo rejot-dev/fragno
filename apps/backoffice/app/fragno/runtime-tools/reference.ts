@@ -323,7 +323,7 @@ export const renderCodemodeScopedContextTypes = (namespaces: readonly string[]) 
     "  getCurrentScope(): Promise<BackofficeCodemodeScope>;",
     "  /** Providers bound to the selected current context. */",
     "  readonly current: BackofficeCodemodeScopedProviders;",
-    "  /** Providers bound to an organisation context. */",
+    "  /** Providers bound to an organization context. */",
     "  org(orgId: string): BackofficeCodemodeScopedProviders;",
     "  /** Providers bound to a user context. */",
     "  user(userId: string): BackofficeCodemodeScopedProviders;",

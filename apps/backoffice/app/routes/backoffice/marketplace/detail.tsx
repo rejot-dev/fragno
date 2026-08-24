@@ -43,7 +43,7 @@ import {
   marketplaceListingPath,
   marketplaceListingRefSchema,
 } from "./navigation";
-import { marketplaceScopeFromRouteParams } from "./scope";
+import { marketplaceRuntimeScopeFromRouteParams } from "./scope";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -167,7 +167,10 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
 
-  const selectedScope = marketplaceScopeFromRouteParams(params);
+  const selectedScope = marketplaceRuntimeScopeFromRouteParams(
+    params,
+    me.organizations.map(({ organization }) => organization),
+  );
   const installationTarget = resolveMarketplaceInstallationTarget(me, selectedScope);
   if (installationTarget.state === "forbidden") {
     throw new Response("Not Found", { status: 404 });
@@ -240,7 +243,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     installationOrganization
       ? fetchAutomationCollectionSource(request, context, {
           kind: "org",
-          orgId: installationOrganization.id,
+          organization: installationOrganization,
         })
       : Promise.resolve(null),
   ]);
@@ -256,8 +259,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   return {
     ...detail,
-    manageOrganizationId: manageableOrganization?.organization.id ?? null,
-    installationOrganizationId: installationOrganization?.id ?? null,
+    manageOrganizationSlug: manageableOrganization?.organization.slug ?? null,
     installationCollectionSource,
     installationWorkflowInstanceId,
     artifactFiles,
@@ -281,7 +283,10 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  const targetScope = marketplaceScopeFromRouteParams(params);
+  const targetScope = marketplaceRuntimeScopeFromRouteParams(
+    params,
+    me.organizations.map(({ organization }) => organization),
+  );
   const installationTarget = resolveMarketplaceInstallationTarget(me, targetScope);
   if (installationTarget.state !== "ready") {
     return {
@@ -337,10 +342,9 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
   const {
     listing,
     versions,
-    manageOrganizationId,
+    manageOrganizationSlug,
     nextVersionCursor,
     hasNextVersionPage,
-    installationOrganizationId,
     installationCollectionSource,
     installationWorkflowInstanceId,
     artifactFiles,
@@ -418,11 +422,11 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
           </div>
 
           <div className="flex shrink-0 flex-col gap-3 xl:items-end">
-            {manageOrganizationId ? (
+            {manageOrganizationSlug ? (
               <Link
                 to={marketplaceListingManagePath({
                   listingId: listing.listingId,
-                  organizationId: manageOrganizationId,
+                  organizationSlug: manageOrganizationSlug,
                 })}
                 className="bo-control-surface inline-flex min-h-10 items-center justify-center self-start bg-[var(--bo-panel)] px-4 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96] xl:self-end"
               >
@@ -443,7 +447,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
                 hasNextVersionPage={hasNextVersionPage}
               />
 
-              {installationOrganizationId ? (
+              {installationCollectionSource ? (
                 <div className="flex min-h-11 items-center justify-between gap-3 sm:justify-end">
                   <div className="min-w-0 text-left sm:max-w-52 sm:text-right">
                     <p className="text-[9px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
@@ -503,7 +507,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
           <InstallationStartingSurface scopeLabel={selectedScope.label} />
         ) : actionData?.ok === false ? (
           <InstallationFailureSurface message={actionData.message} />
-        ) : installationOrganizationId && observedInstallationWorkflowInstanceId ? (
+        ) : installationCollectionSource && observedInstallationWorkflowInstanceId ? (
           <ClientOnly fallback={artifactContent}>
             {() => (
               <Suspense
@@ -517,10 +521,6 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
               >
                 <MarketplaceInstallationWorkflow
                   collectionSource={installationCollectionSource}
-                  coordinatorScope={{
-                    kind: "org",
-                    orgId: installationOrganizationId,
-                  }}
                   fallback={artifactContent}
                   ingestionWorkflowInstanceId={observedInstallationWorkflowInstanceId}
                   onClose={closeInstallationResult}

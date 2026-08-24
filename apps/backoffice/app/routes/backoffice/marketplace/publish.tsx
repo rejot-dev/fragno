@@ -27,22 +27,22 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 
   const organizations = me.organizations.map(({ organization }) => ({
     id: organization.id,
+    slug: organization.slug,
     name: organization.name,
   }));
-  const requestedOrganizationId = url.searchParams.get("ownerOrgId")?.trim() || null;
-  const requestedOrganization = requestedOrganizationId
-    ? organizations.find(({ id }) => id === requestedOrganizationId)
+  const requestedOrganizationSlug = url.searchParams.get("ownerOrgSlug")?.trim() || null;
+  const requestedOrganization = requestedOrganizationSlug
+    ? organizations.find(({ slug }) => slug === requestedOrganizationSlug)
     : null;
-  if (requestedOrganizationId && !requestedOrganization) {
-    throw new Response("Publisher organisation was not found.", { status: 404 });
+  if (requestedOrganizationSlug && !requestedOrganization) {
+    throw new Response("Publisher organization was not found.", { status: 404 });
   }
-  const activeOrganizationId =
-    requestedOrganization?.id ??
-    me.activeOrganization?.organization.id ??
-    organizations[0]?.id ??
+  const activeOrganization =
+    requestedOrganization ??
+    organizations.find(({ id }) => id === me.activeOrganization?.organization.id) ??
     null;
 
-  return { organizations, activeOrganizationId };
+  return { organizations, activeOrganization };
 }
 
 export async function action({ request, context, url }: Route.ActionArgs) {
@@ -52,14 +52,15 @@ export async function action({ request, context, url }: Route.ActionArgs) {
   }
 
   const formData = await request.formData();
-  const owner = marketplaceOwnerForOrganization(
-    me,
-    String(formData.get("ownerOrgId") ?? "").trim(),
-  );
+  const organizationSlug = String(formData.get("ownerOrgSlug") ?? "").trim();
+  const organization = me.organizations.find(
+    ({ organization: candidate }) => candidate.slug === organizationSlug,
+  )?.organization;
+  const owner = organization ? marketplaceOwnerForOrganization(me, organization.id) : null;
   if (!owner) {
     return {
       ok: false,
-      message: "Select an organisation you are allowed to publish for.",
+      message: "Select an organization you are allowed to publish for.",
     } satisfies PublishActionData;
   }
 
@@ -95,7 +96,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
   return redirect(
     marketplaceListingManagePath({
       listingId: result.listingId,
-      organizationId: owner.scope.orgId,
+      organizationSlug,
       result: {
         created: result.version,
         ...(result.created ? {} : { reused: "1" }),
@@ -127,15 +128,12 @@ export default function BackofficeMarketplacePublish({ loaderData }: Route.Compo
         actions={
           <Link
             to={
-              loaderData.activeOrganizationId
+              loaderData.activeOrganization
                 ? marketplaceScopeTabPath(
                     {
                       kind: "org",
-                      orgId: loaderData.activeOrganizationId,
-                      label:
-                        loaderData.organizations.find(
-                          ({ id }) => id === loaderData.activeOrganizationId,
-                        )?.name ?? loaderData.activeOrganizationId,
+                      organization: loaderData.activeOrganization,
+                      label: loaderData.activeOrganization.name,
                     },
                     "my-listings",
                   )
@@ -182,19 +180,19 @@ export default function BackofficeMarketplacePublish({ loaderData }: Route.Compo
           </label>
           <label className="flex flex-col gap-1 md:col-span-2">
             <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Publisher organisation
+              Publisher organization
             </span>
             <select
-              name="ownerOrgId"
+              name="ownerOrgSlug"
               required
-              defaultValue={loaderData.activeOrganizationId ?? ""}
+              defaultValue={loaderData.activeOrganization?.slug ?? ""}
               className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
             >
               <option value="" disabled>
-                Select an organisation
+                Select an organization
               </option>
               {loaderData.organizations.map((organization) => (
-                <option key={organization.id} value={organization.id}>
+                <option key={organization.id} value={organization.slug}>
                   {organization.name}
                 </option>
               ))}

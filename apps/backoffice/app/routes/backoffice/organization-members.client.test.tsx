@@ -18,7 +18,7 @@ vi.mock("@/fragno/auth/auth-client", () => ({
   },
 }));
 
-import BackofficeOrganisationMembers from "./organisation-members";
+import BackofficeOrganizationMembers from "./organization-members";
 
 afterEach(() => {
   cleanup();
@@ -40,14 +40,14 @@ function renderMembers() {
             />
           }
         >
-          <Route index element={<BackofficeOrganisationMembers />} />
+          <Route index element={<BackofficeOrganizationMembers />} />
         </Route>
       </Routes>
     </MemoryRouter>,
   );
 }
 
-describe("Backoffice organisation members", () => {
+describe("Backoffice organization members", () => {
   test("shows member names and email addresses instead of user IDs", async () => {
     useOrganizationMembers.mockReturnValue({
       data: {

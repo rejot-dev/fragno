@@ -3,6 +3,7 @@ import { useLoaderData, useOutletContext } from "react-router";
 
 import { and, eq, useLiveQuery } from "@tanstack/react-db";
 
+import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import {
   useCurrentBackofficeContext,
   type AutomationCollectionSourceState,
@@ -34,7 +35,7 @@ import {
   type FilesExplorerSourceSnapshot,
 } from "./data";
 import type { FilesLayoutContext } from "./layout-context";
-import { filesDownloadPath, filesExplorerPath, type FilesUiScope } from "./scope";
+import { filesDownloadPath, filesExplorerPath } from "./scope";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const scope = await resolveAuthorizedFilesRouteScope({ request, context, params, url });
@@ -220,7 +221,7 @@ type FilesExplorerRouteViewProps = {
   loadError: string | null;
   searchQuery: string;
   searchGroups: FilesExplorerSearchGroup[];
-  selectedScope: FilesUiScope;
+  selectedScope: BackofficeScopeSelection;
   workflowRouting: WorkflowFileRouting;
 };
 

@@ -1,9 +1,8 @@
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-
-import type { FilesUiScope } from "./scope";
+import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 
 export type FilesLayoutContext = {
   scope: BackofficeContextScope;
-  selectedScope: FilesUiScope;
+  selectedScope: BackofficeScopeSelection;
   origin: string;
 };

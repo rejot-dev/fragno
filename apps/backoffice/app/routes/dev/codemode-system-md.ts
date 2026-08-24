@@ -1,10 +1,10 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import { requireBackofficeContextScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
 import { createBackofficeFileSystem } from "@/files/create-file-system";
 import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-dts";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { automationScopeFromRouteParams } from "../backoffice/automations/scope";
 import type { Route } from "./+types/codemode-system-md";
 
 const localHostnames = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -41,7 +41,7 @@ const readOrgSystemGuidance = async ({
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   assertDevOnlyLocalRequest(request);
 
-  const scope = automationScopeFromRouteParams(params);
+  const scope = requireBackofficeContextScopeFromRouteParams(params);
   const authorization = await authorizeBackofficeContext(request, context, scope);
   if (!authorization.ok) {
     return authorization.response;

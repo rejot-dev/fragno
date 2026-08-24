@@ -2,7 +2,7 @@ import { Menu } from "@base-ui/react/menu";
 import { ChevronsUpDown } from "lucide-react";
 import { Link, useLocation } from "react-router";
 
-import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 
 import { scopeSwitchPath } from "./scope-switch-path";
 
@@ -17,13 +17,15 @@ const menuItemClassName = (isCurrent: boolean) =>
     : "grid min-h-11 gap-1 border border-transparent px-2.5 py-2 text-left text-[var(--bo-muted)] outline-none transition-[background-color,border-color,color] duration-150 ease-out data-[highlighted]:border-[color:var(--bo-border-strong)] data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)]";
 
 export function BackofficeProjectMenu({
-  orgId,
+  routeScope,
   currentProjectId,
   projects,
   projectsError,
   projectsLoading,
 }: {
-  orgId: string;
+  routeScope:
+    | { kind: "org"; orgSlug: string }
+    | { kind: "project"; orgSlug: string; projectId: string };
   currentProjectId: string | null;
   projects: BackofficeProjectOption[];
   projectsError: string | null;
@@ -36,10 +38,8 @@ export function BackofficeProjectMenu({
         label: currentProjectId,
       })
     : null;
-  const createProjectPath = `/backoffice/automations/${backofficeContextScopeRoutePath({
-    kind: "org",
-    orgId,
-  })}/dashboard?createProject=1`;
+  const organizationRouteScope = { kind: "org", orgSlug: routeScope.orgSlug } as const;
+  const createProjectPath = `/backoffice/automations/${backofficeRouteScopePath(organizationRouteScope)}/dashboard?createProject=1`;
 
   return (
     <Menu.Root modal={false}>
@@ -78,7 +78,7 @@ export function BackofficeProjectMenu({
                 <Menu.Item
                   render={
                     <Link
-                      to={scopeSwitchPath(location.pathname, { kind: "org", orgId })}
+                      to={scopeSwitchPath(location.pathname, organizationRouteScope)}
                       preventScrollReset
                     />
                   }
@@ -86,7 +86,7 @@ export function BackofficeProjectMenu({
                 >
                   <span className="text-sm font-medium text-[var(--bo-fg)]">No project</span>
                   <span className="text-xs text-[var(--bo-muted-2)]">
-                    Return to the organisation scope
+                    Return to the organization scope
                   </span>
                 </Menu.Item>
               ) : null}
@@ -116,7 +116,7 @@ export function BackofficeProjectMenu({
                       <Link
                         to={scopeSwitchPath(location.pathname, {
                           kind: "project",
-                          orgId,
+                          orgSlug: routeScope.orgSlug,
                           projectId: project.id,
                         })}
                         preventScrollReset
@@ -134,7 +134,7 @@ export function BackofficeProjectMenu({
                 </p>
               ) : projects.length === 0 && !projectsError ? (
                 <p className="px-2 py-1.5 text-xs text-[var(--bo-muted-2)]">
-                  This organisation has no projects yet.
+                  This organization has no projects yet.
                 </p>
               ) : null}
               {projectsError ? (

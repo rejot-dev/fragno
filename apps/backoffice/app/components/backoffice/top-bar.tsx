@@ -1,10 +1,14 @@
 import { Activity } from "lucide-react";
 import { Suspense, use } from "react";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import {
+  backofficeRouteScopeFromResolvedScope,
+  type BackofficeResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
+import type { BackofficeRouteScope } from "@/backoffice-runtime/route-scope";
 import type { AutomationCollectionSourceState } from "@/components/backoffice/current-context";
 import { ClientOnly } from "@/components/client-only";
-import type { BackofficeMeData } from "@/fragno/auth/contracts";
+import type { BackofficeMeData, Organization } from "@/fragno/auth/contracts";
 import {
   getAutomationBrowserDatabase,
   type AutomationCollectionSource,
@@ -21,7 +25,7 @@ const EMPTY_PROJECTS: BackofficeProjectOption[] = [];
 
 type BackofficeTopBarProps = {
   me: BackofficeMeData | null;
-  currentScope: BackofficeContextScope | null;
+  resolvedScope: BackofficeResolvedScope<Organization> | null;
   projectCollectionSource: AutomationCollectionSourceState | null;
   isLoading?: boolean;
   workflowDrawerOpen?: boolean;
@@ -29,17 +33,17 @@ type BackofficeTopBarProps = {
 };
 
 function LocalFirstBackofficeProjectMenu({
-  orgId,
+  routeScope,
   currentProjectId,
   sourceState,
 }: {
-  orgId: string;
+  routeScope: Extract<BackofficeRouteScope, { kind: "org" | "project" }>;
   currentProjectId: string | null;
   sourceState: AutomationCollectionSourceState | null;
 }) {
   const loadingMenu = (
     <BackofficeProjectMenu
-      orgId={orgId}
+      routeScope={routeScope}
       currentProjectId={currentProjectId}
       projects={EMPTY_PROJECTS}
       projectsError={null}
@@ -49,7 +53,7 @@ function LocalFirstBackofficeProjectMenu({
   if (!sourceState || sourceState.status === "unavailable") {
     return (
       <BackofficeProjectMenu
-        orgId={orgId}
+        routeScope={routeScope}
         currentProjectId={currentProjectId}
         projects={EMPTY_PROJECTS}
         projectsError={sourceState?.message ?? "Project synchronization is unavailable."}
@@ -64,7 +68,7 @@ function LocalFirstBackofficeProjectMenu({
     <ClientOnly fallback={loadingMenu}>
       <Suspense fallback={loadingMenu}>
         <SynchronizedBackofficeProjectMenu
-          orgId={orgId}
+          routeScope={routeScope}
           currentProjectId={currentProjectId}
           source={sourceState.source}
         />
@@ -74,11 +78,11 @@ function LocalFirstBackofficeProjectMenu({
 }
 
 function SynchronizedBackofficeProjectMenu({
-  orgId,
+  routeScope,
   currentProjectId,
   source,
 }: {
-  orgId: string;
+  routeScope: Extract<BackofficeRouteScope, { kind: "org" | "project" }>;
   currentProjectId: string | null;
   source: AutomationCollectionSource;
 }) {
@@ -91,7 +95,7 @@ function SynchronizedBackofficeProjectMenu({
 
   return (
     <BackofficeProjectMenu
-      orgId={orgId}
+      routeScope={routeScope}
       currentProjectId={currentProjectId}
       projects={projects}
       projectsError={projectsState.status === "error" ? projectsState.message : null}
@@ -102,24 +106,34 @@ function SynchronizedBackofficeProjectMenu({
 
 export function BackofficeTopBar({
   me,
-  currentScope,
+  resolvedScope,
   projectCollectionSource,
   isLoading,
   workflowDrawerOpen = false,
   onWorkflowDrawerToggle,
 }: BackofficeTopBarProps) {
+  const routeScope = resolvedScope ? backofficeRouteScopeFromResolvedScope(resolvedScope) : null;
+
   return (
     <header className="sticky top-0 z-30 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-bg)]">
       <div className="flex h-16 items-stretch">
         <div className="flex min-w-0 flex-1 items-stretch min-[960px]:w-72 min-[960px]:flex-none min-[960px]:border-r min-[960px]:border-[color:var(--bo-border)]">
-          <BackofficeScopeMenu me={me} currentScope={currentScope} />
+          <BackofficeScopeMenu me={me} currentScope={resolvedScope} />
         </div>
 
-        {currentScope?.kind === "org" || currentScope?.kind === "project" ? (
+        {resolvedScope?.kind === "org" || resolvedScope?.kind === "project" ? (
           <div className="flex min-w-0 flex-1 items-stretch min-[960px]:w-72 min-[960px]:flex-none min-[960px]:border-r min-[960px]:border-[color:var(--bo-border)]">
             <LocalFirstBackofficeProjectMenu
-              orgId={currentScope.orgId}
-              currentProjectId={currentScope.kind === "project" ? currentScope.projectId : null}
+              routeScope={
+                resolvedScope.kind === "org"
+                  ? { kind: "org", orgSlug: resolvedScope.organization.slug }
+                  : {
+                      kind: "project",
+                      orgSlug: resolvedScope.organization.slug,
+                      projectId: resolvedScope.projectId,
+                    }
+              }
+              currentProjectId={resolvedScope.kind === "project" ? resolvedScope.projectId : null}
               sourceState={projectCollectionSource}
             />
           </div>
@@ -147,7 +161,7 @@ export function BackofficeTopBar({
       </div>
 
       <div className="border-t border-[color:var(--bo-border)] min-[960px]:hidden">
-        <BackofficeMobileNav currentScope={currentScope} />
+        <BackofficeMobileNav currentScope={routeScope} />
       </div>
     </header>
   );

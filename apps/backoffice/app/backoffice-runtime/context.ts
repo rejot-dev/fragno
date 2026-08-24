@@ -63,7 +63,7 @@ export type BackofficeVerifiedRequestAuthority = Readonly<{
   kind: "verified-request-authority";
   userId: string;
   role: Role;
-  scope: BackofficeContextScope;
+  organizationId: string | null;
   expiresAtEpochMs: number;
 }>;
 
@@ -72,7 +72,7 @@ export const backofficeVerifiedRequestAuthoritySchema: z.ZodType<BackofficeVerif
     kind: z.literal("verified-request-authority"),
     userId: z.string().trim().min(1),
     role: z.enum(["user", "admin"]),
-    scope: backofficeContextScopeSchema,
+    organizationId: z.string().trim().min(1).nullable(),
     expiresAtEpochMs: z.number().int().positive(),
   });
 
@@ -109,7 +109,7 @@ export const createBackofficeUserExecution = ({
   userId: string;
   verifiedRequestAuthority?: Readonly<{
     role: Role;
-    scope: BackofficeContextScope;
+    organizationId: string | null;
     expiresAt: Date;
   }>;
 }): BackofficeExecutionContext => ({
@@ -130,7 +130,7 @@ export const createBackofficeUserExecution = ({
           kind: "verified-request-authority" as const,
           userId,
           role: verifiedRequestAuthority.role,
-          scope: verifiedRequestAuthority.scope,
+          organizationId: verifiedRequestAuthority.organizationId,
           expiresAtEpochMs: verifiedRequestAuthority.expiresAt.getTime(),
         },
       }

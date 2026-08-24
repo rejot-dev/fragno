@@ -90,23 +90,23 @@ function occupiedOrganization(slug: string, index: number): StoredOrganization {
 
 function allInitialOrganizationSlugs(): string[] {
   return [
-    "alice-examples-organisation",
-    "alice-examples-organisation-brisk-panda",
-    "alice-examples-organisation-ember-wren",
-    "alice-examples-organisation-quiet-lynx",
-    "alice-examples-organisation-amber-whale",
-    "alice-examples-organisation-crisp-fox",
-    "alice-examples-organisation-nimble-sparrow",
-    "alice-examples-organisation-vivid-comet",
-    "alice-examples-organisation-cosmic-raven",
-    "alice-examples-organisation-mint-yak",
-    "alice-examples-organisation-velvet-otter",
-    "alice-examples-organisation-cobalt-wolf",
-    "alice-examples-organisation-lunar-heron",
-    "alice-examples-organisation-solar-tiger",
-    "alice-examples-organisation-cedar-falcon",
-    "alice-examples-organisation-golden-rocket",
-    "alice-examples-organisation-silver-badger",
+    "alice-examples-organization",
+    "alice-examples-organization-brisk-panda",
+    "alice-examples-organization-ember-wren",
+    "alice-examples-organization-quiet-lynx",
+    "alice-examples-organization-amber-whale",
+    "alice-examples-organization-crisp-fox",
+    "alice-examples-organization-nimble-sparrow",
+    "alice-examples-organization-vivid-comet",
+    "alice-examples-organization-cosmic-raven",
+    "alice-examples-organization-mint-yak",
+    "alice-examples-organization-velvet-otter",
+    "alice-examples-organization-cobalt-wolf",
+    "alice-examples-organization-lunar-heron",
+    "alice-examples-organization-solar-tiger",
+    "alice-examples-organization-cedar-falcon",
+    "alice-examples-organization-golden-rocket",
+    "alice-examples-organization-silver-badger",
   ];
 }
 
@@ -133,13 +133,13 @@ describe("ensureUserHasOrganization", () => {
 
     expect(created).toEqual({
       created: true,
-      organization: { id: "organization-1", slug: "alice-examples-organisation" },
+      organization: { id: "organization-1", slug: "alice-examples-organization" },
     });
     expect(existing).toEqual({ created: false, organization: created.organization });
     expect(organizations.createInputs).toEqual([
       {
-        name: "Alice Example's Organisation",
-        slug: "alice-examples-organisation",
+        name: "Alice Example's Organization",
+        slug: "alice-examples-organization",
         userId: user.id,
       },
     ]);
@@ -148,18 +148,18 @@ describe("ensureUserHasOrganization", () => {
 
   test("uses a deterministic fallback when another organization owns the preferred slug", async () => {
     const organizations = createMemoryUserOrganizations([
-      occupiedOrganization("alice-examples-organisation", 1),
+      occupiedOrganization("alice-examples-organization", 1),
     ]);
 
     const result = await ensureUserHasOrganization(user, organizations);
 
-    assert(result.organization.slug === "alice-examples-organisation-brisk-panda");
+    assert(result.organization.slug === "alice-examples-organization-brisk-panda");
   });
 
   test("returns the concurrent organization that won a slug creation race", async () => {
     const concurrentOrganization = {
       id: "concurrent-org",
-      slug: "alice-examples-organisation",
+      slug: "alice-examples-organization",
       memberUserIds: [user.id],
     };
     const organizations = new MemoryUserOrganizations({
@@ -172,7 +172,7 @@ describe("ensureUserHasOrganization", () => {
 
     expect(result).toEqual({
       created: false,
-      organization: { id: "concurrent-org", slug: "alice-examples-organisation" },
+      organization: { id: "concurrent-org", slug: "alice-examples-organization" },
     });
     assert(organizations.creationCount === 1);
   });

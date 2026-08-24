@@ -1,7 +1,8 @@
 import { Suspense, use, useCallback, useState } from "react";
 import { Outlet, useActionData, useNavigation } from "react-router";
 
-import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 import { BackofficeSystemState } from "@/components/backoffice";
 import { ClientOnly } from "@/components/client-only";
 import { getAutomationBrowserDatabase } from "@/fragno/automation/tanstack/browser-database";
@@ -111,8 +112,10 @@ function PiSessionsWorkspaceView({
 }) {
   const actionData = useActionData() as PiCreateSessionActionData | undefined;
   const navigation = useNavigation();
-  const { scope, runtimeState } = layoutContext;
-  const basePath = `/backoffice/sessions/${backofficeContextScopeRoutePath(scope)}/sessions`;
+  const { resolvedScope, runtimeState } = layoutContext;
+  const basePath = `/backoffice/sessions/${backofficeRouteScopePath(
+    backofficeRouteScopeFromResolvedScope(resolvedScope),
+  )}/sessions`;
   const { sessions, workflowStatuses } = listingState.snapshot;
   const listingError = listingState.status === "error" ? listingState.error : null;
   const creating =
@@ -166,7 +169,7 @@ function PiSessionsWorkspaceView({
     <SessionListSplit>
       <Outlet
         context={{
-          scope,
+          resolvedScope,
           persistenceSource: source,
           basePath,
           createSessionPanel,

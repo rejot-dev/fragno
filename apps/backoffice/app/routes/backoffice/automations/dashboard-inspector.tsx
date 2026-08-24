@@ -5,8 +5,10 @@ import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens"
 
 import { eq, useLiveQuery } from "@tanstack/react-db";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
+import {
+  backofficeRuntimeScopeFromResolvedScope,
+  type BackofficeResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 import type { AutomationBrowserCollections as AutomationCollections } from "@/fragno/automation/tanstack/browser-database";
@@ -67,7 +69,7 @@ export function DashboardInspector({
   >;
   scriptsPath: string;
   eventsCatalogPath: string;
-  scope: BackofficeContextScope;
+  scope: BackofficeResolvedScope;
   onClear: () => void;
 }) {
   return (
@@ -370,7 +372,7 @@ function ActionInspector({
     "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
   >;
   scriptsPath: string;
-  scope: BackofficeContextScope;
+  scope: BackofficeResolvedScope;
 }) {
   const scriptLink = automationRouteScriptLink(route, scriptsPath);
   const scriptPath =
@@ -440,8 +442,10 @@ function WorkflowGraph({
     AutomationCollections,
     "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
   >;
-  scope: BackofficeContextScope;
+  scope: BackofficeResolvedScope;
 }) {
+  const runtimeScope = backofficeRuntimeScopeFromResolvedScope(scope);
+  const currentScope = scope.kind === "system" ? undefined : scope;
   const visualization = useMemo(
     () => visualizeWorkflowSource(absolutePath, source.script ?? ""),
     [absolutePath, source.script],
@@ -507,11 +511,11 @@ function WorkflowGraph({
         runtimeToolCallsByStepId={runtimeToolCallsByStepId}
         selectedRun={workflowRuns.selectedRun}
         scrollViewport={graphViewport}
-        currentScope={isBackofficeRoutableScope(scope) ? scope : undefined}
+        currentScope={currentScope}
         workflowEventSender={async ({ eventId, workflowName, instanceId, eventType, payload }) => {
           await sendBackofficeWorkflowEvent({
             eventId,
-            reference: { scope, workflowName, instanceId },
+            reference: { scope: runtimeScope, workflowName, instanceId },
             eventType,
             payload,
           });

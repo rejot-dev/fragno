@@ -1,6 +1,6 @@
 import { Link, useOutletContext } from "react-router";
 
-import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
@@ -9,7 +9,7 @@ import { formatTimestamp } from "../formatting";
 export function meta() {
   return [
     { title: "MCP Connection" },
-    { name: "description", content: "Manage MCP servers by organisation." },
+    { name: "description", content: "Manage MCP servers by organization." },
   ];
 }
 
@@ -28,7 +28,7 @@ export default function BackofficeConnectionsMcp() {
         ]}
         eyebrow="Integrations"
         title="MCP connection workspace."
-        description="Pick an organisation to add MCP servers, run OAuth login, and inspect available tools."
+        description="Pick an organization to add MCP servers, run OAuth login, and inspect available tools."
         actions={
           <Link
             to="/backoffice/automations"
@@ -41,7 +41,7 @@ export default function BackofficeConnectionsMcp() {
 
       {organizations.length === 0 ? (
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          No organisations are linked to this account yet.
+          No organizations are linked to this account yet.
         </div>
       ) : (
         <section className="grid gap-3 md:grid-cols-2">
@@ -83,7 +83,7 @@ export default function BackofficeConnectionsMcp() {
 
               <div className="mt-4">
                 <Link
-                  to={`/backoffice/automations/${backofficeContextScopeRoutePath({ kind: "org", orgId: organization.id })}/mcp`}
+                  to={`/backoffice/automations/${backofficeRouteScopePath({ kind: "org", orgSlug: organization.slug })}/mcp`}
                   className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                 >
                   Manage MCP

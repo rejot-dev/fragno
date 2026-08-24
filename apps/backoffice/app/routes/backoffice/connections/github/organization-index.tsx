@@ -1,7 +1,7 @@
 import { redirect } from "react-router";
 
 import { resolveOrganizationScopeFromRouteParams } from "../../integrations/scope";
-import type { Route } from "./+types/organisation-index";
+import type { Route } from "./+types/organization-index";
 import {
   fetchGitHubAdminConfig,
   fetchGitHubLinkedRepositories,
@@ -24,6 +24,6 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   return redirect(`${url.pathname.replace(/\/+$/u, "")}/${target}`);
 }
 
-export default function BackofficeOrganisationGitHubIndex() {
+export default function BackofficeOrganizationGitHubIndex() {
   return null;
 }

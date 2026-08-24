@@ -54,12 +54,12 @@ export const buildEmailVerificationUrl = (publicBaseUrl: string, userId: string,
 
 export const buildIdentityClaimCompletionUrl = (
   publicBaseUrl: string,
-  orgId: string,
+  orgSlug: string,
   externalId: string,
   code: string,
 ) => {
   const url = new URL(publicBaseUrl);
-  url.pathname = `/backoffice/automations/${encodeURIComponent(orgId)}/claims/complete`;
+  url.pathname = `/backoffice/automations/${encodeURIComponent(orgSlug)}/claims/complete`;
   url.searchParams.set("externalId", externalId);
   url.searchParams.set("code", code);
   return url.toString();

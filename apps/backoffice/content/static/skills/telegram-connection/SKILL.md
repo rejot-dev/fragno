@@ -8,7 +8,7 @@ description:
 
 # Telegram Connection
 
-Use this skill for the organisation-scoped Telegram bot integration: bot setup details, inbound
+Use this skill for the organization-scoped Telegram bot integration: bot setup details, inbound
 message semantics, Telegram hook scope, and Telegram-specific runtime tool purposes.
 
 # Telegram configuration
@@ -31,7 +31,7 @@ Setup notes:
 
 ## Message received
 
-Fires when the Telegram webhook receives a bot message for the organisation.
+Fires when the Telegram webhook receives a bot message for the organization.
 
 Catalog identity:
 
@@ -74,7 +74,7 @@ Common automation pattern: filter on `event.source === "telegram"` and
 
 ## Capability configured
 
-Fires after Telegram is configured for an organisation for the first time. Use it to bootstrap
+Fires after Telegram is configured for an organization for the first time. Use it to bootstrap
 Telegram-specific automation state.
 
 Catalog identity:

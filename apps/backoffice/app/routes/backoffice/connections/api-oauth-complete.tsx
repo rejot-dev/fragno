@@ -1,9 +1,11 @@
 import { Link, useLoaderData } from "react-router";
 
+import { findBackofficeMe } from "@/fragno/auth/auth-server";
+
 import type { Route } from "./+types/api-oauth-complete";
 
 type ApiOAuthCompleteLoaderData = {
-  orgId: string | null;
+  organization: { id: string; slug: string } | null;
   connectionSlug: string | null;
   status: "success" | "error";
   code: string | null;
@@ -25,14 +27,25 @@ const explanationFor = (message: string | null) => {
   return "The provider redirected back to Backoffice successfully, but the final token exchange failed.";
 };
 
-export function loader({ url }: Route.LoaderArgs) {
+export async function loader({ request, context, url }: Route.LoaderArgs) {
   const status = url.searchParams.get("status") === "success" ? "success" : "error";
   const orgId = url.searchParams.get("orgId")?.trim() || null;
+  const me = await findBackofficeMe(request, context);
+  const organization = orgId
+    ? (me?.organizations.find(({ organization }) => organization.id === orgId)?.organization ??
+      null)
+    : null;
   const connectionSlug = url.searchParams.get("connection")?.trim() || null;
   const code = url.searchParams.get("code")?.trim() || null;
   const message = url.searchParams.get("message")?.trim() || null;
 
-  return { orgId, connectionSlug, status, code, message } satisfies ApiOAuthCompleteLoaderData;
+  return {
+    organization,
+    connectionSlug,
+    status,
+    code,
+    message,
+  } satisfies ApiOAuthCompleteLoaderData;
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -40,10 +53,10 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export default function BackofficeApiOAuthComplete() {
-  const { orgId, connectionSlug, status, code, message } = useLoaderData<typeof loader>();
+  const { organization, connectionSlug, status, code, message } = useLoaderData<typeof loader>();
   const isSuccess = status === "success";
-  const backUrl = orgId
-    ? `/backoffice/automations/org/${encodeURIComponent(orgId)}/api`
+  const backUrl = organization
+    ? `/backoffice/automations/org/${encodeURIComponent(organization.slug)}/api`
     : "/backoffice/automations";
 
   return (
@@ -82,9 +95,9 @@ export default function BackofficeApiOAuthComplete() {
         </div>
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
           <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-            Organisation
+            Organization
           </p>
-          <p className="mt-2 font-mono text-[var(--bo-fg)]">{orgId ?? "unknown"}</p>
+          <p className="mt-2 font-mono text-[var(--bo-fg)]">{organization?.id ?? "unknown"}</p>
         </div>
       </div>
 

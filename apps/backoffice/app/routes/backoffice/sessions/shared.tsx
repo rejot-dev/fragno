@@ -1,6 +1,6 @@
 import { isRouteErrorResponse } from "react-router";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
 import type { PiRuntimeState } from "@/fragno/pi/pi-shared";
@@ -8,8 +8,8 @@ import type { PiRuntimeState } from "@/fragno/pi/pi-shared";
 import { getRouteErrorDebugDetails, getRouteErrorMessage } from "../route-errors";
 
 export type PiLayoutContext = {
-  scope: BackofficeContextScope;
-  billingOrganization?: { id: string; name: string } | null;
+  resolvedScope: BackofficeResolvedScope;
+  billingOrganization: { id: string; name: string } | null;
   persistenceSource: AutomationCollectionSource | null;
   persistenceError: string | null;
   runtimeState: PiRuntimeState | null;

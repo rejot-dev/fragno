@@ -102,7 +102,7 @@ export const uploadCapability: BackofficeCapability = {
         source: "upload",
         eventType: "capability.configured",
         label: "Upload configured",
-        description: "Fires after Upload is configured for an organisation for the first time.",
+        description: "Fires after Upload is configured for an organization for the first time.",
         payloadSchema: uploadCapabilityConfiguredPayloadSchema,
         subjectSchema: uploadCapabilityConfiguredSubjectSchema,
         example: {

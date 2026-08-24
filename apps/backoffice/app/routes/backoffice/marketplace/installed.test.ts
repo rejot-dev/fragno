@@ -13,8 +13,8 @@ import { loader } from "./installed";
 
 const authenticatedUser = {
   user: { id: "user-1", email: "ada@example.com" },
-  organizations: [{ organization: { id: "org-1", name: "Ada Labs" } }],
-  activeOrganization: { organization: { id: "org-1", name: "Ada Labs" } },
+  organizations: [{ organization: { id: "org-1", slug: "ada-labs", name: "Ada Labs" } }],
+  activeOrganization: { organization: { id: "org-1", slug: "ada-labs", name: "Ada Labs" } },
 };
 const automations = {
   listMarketplaceIngestions: listMarketplaceIngestionsMock,
@@ -34,7 +34,7 @@ const context = {
   }),
 };
 
-const runLoader = (scopeKind = "org", scopeId = "org-1") => {
+const runLoader = (scopeKind = "org", scopeId = "ada-labs") => {
   const url = new URL(
     `https://example.test/backoffice/marketplace/${scopeKind}/${scopeId}/installed`,
   );
@@ -144,7 +144,7 @@ describe("installed Marketplace loader", () => {
     findBackofficeMeMock.mockResolvedValueOnce({
       ...authenticatedUser,
       organizations: [
-        { organization: { id: "org-1", name: "Ada Labs" } },
+        { organization: { id: "org-1", slug: "ada-labs", name: "Ada Labs" } },
         { organization: { id: "org-2", name: "Second Labs" } },
       ],
     });

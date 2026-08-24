@@ -75,7 +75,7 @@ describe("static file contributor", () => {
           userId: "admin-1",
           verifiedRequestAuthority: {
             role: "admin",
-            scope: { kind: "org", orgId: "org-1" },
+            organizationId: "org-1",
             expiresAt: new Date("2027-01-01T00:00:00.000Z"),
           },
         }),
@@ -89,7 +89,7 @@ describe("static file contributor", () => {
           userId: "admin-1",
           verifiedRequestAuthority: {
             role: "admin",
-            scope: { kind: "org", orgId: "org-1" },
+            organizationId: "org-1",
             expiresAt: new Date("2027-01-01T00:00:00.000Z"),
           },
         }),

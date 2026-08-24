@@ -88,7 +88,7 @@ export type IssueBackofficeTokenInput =
 
 export type IssueBackofficeTokenResult = {
   expiresAt: string;
-  organizationId: string | null;
+  organization: Pick<Organization, "id" | "slug"> | null;
 };
 
 export type BackofficeCliOAuthConfig = {
@@ -199,7 +199,12 @@ export const issueBackofficeTokenInputSchema = z.discriminatedUnion("selection",
 
 export const issueBackofficeTokenResultSchema = z.object({
   expiresAt: z.iso.datetime(),
-  organizationId: z.string().nullable(),
+  organization: z
+    .object({
+      id: z.string(),
+      slug: z.string(),
+    })
+    .nullable(),
 }) satisfies z.ZodType<IssueBackofficeTokenResult>;
 
 export const backofficeCliOAuthConfigSchema = z.object({
@@ -263,8 +268,7 @@ export type BackofficeAuthPrincipal = {
   auth: {
     transport: "cookie" | "bearer";
     expiresAt: Date;
-    scope: BackofficeContextScope;
-    organizationRoles: string[];
+    organization: { id: string; slug: string; roles: string[] } | null;
   };
 };
 

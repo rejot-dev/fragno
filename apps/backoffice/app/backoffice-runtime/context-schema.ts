@@ -4,7 +4,7 @@ import type { BackofficeContextScope } from "./context";
 import type { BackofficeRoutableScope } from "./scope-codec";
 
 export const backofficeSystemScopeSchema = z.object({ kind: z.literal("system") });
-export const backofficeOrganisationScopeSchema = z.object({
+export const backofficeOrganizationScopeSchema = z.object({
   kind: z.literal("org"),
   orgId: z.string().trim().min(1),
 });
@@ -20,7 +20,7 @@ export const backofficeProjectScopeSchema = z.object({
 
 export const backofficeRoutableScopeSchema: z.ZodType<BackofficeRoutableScope> =
   z.discriminatedUnion("kind", [
-    backofficeOrganisationScopeSchema,
+    backofficeOrganizationScopeSchema,
     backofficeUserScopeSchema,
     backofficeProjectScopeSchema,
   ]);
@@ -29,7 +29,7 @@ export const backofficeContextScopeSchema: z.ZodType<BackofficeContextScope> = z
   "kind",
   [
     backofficeSystemScopeSchema,
-    backofficeOrganisationScopeSchema,
+    backofficeOrganizationScopeSchema,
     backofficeUserScopeSchema,
     backofficeProjectScopeSchema,
   ],

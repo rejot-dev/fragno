@@ -4,12 +4,11 @@ import type { BackofficeMeData } from "@/fragno/auth/auth-client";
 import type { UploadAdminConfigResponse } from "@/fragno/upload";
 import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
 
-type BackofficeOrganisation = BackofficeMeData["organizations"][number]["organization"];
+type BackofficeOrganization = BackofficeMeData["organizations"][number]["organization"];
 
 export type UploadLayoutContext = {
-  orgId: string;
   origin: string;
-  organisation: BackofficeOrganisation;
+  organization: BackofficeOrganization;
   configState: UploadAdminConfigResponse | null;
   configLoading: boolean;
   configError: string | null;

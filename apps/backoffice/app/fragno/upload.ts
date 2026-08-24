@@ -511,12 +511,12 @@ const readOptionalIntegerField = (
 const resolveUploadOrgPrefix = (orgId: string) => {
   const normalizedOrgId = normalizeOrgId(orgId);
   if (!normalizedOrgId) {
-    throw new Error("Missing organisation id.");
+    throw new Error("Missing organization id.");
   }
 
   const orgSegment = normalizeStoragePrefixSegment(normalizedOrgId);
   if (!orgSegment) {
-    throw new Error("Organisation id could not be converted into a storage prefix.");
+    throw new Error("Organization id could not be converted into a storage prefix.");
   }
 
   return `${ORG_PREFIX_ROOT}/${orgSegment}`;
@@ -1061,7 +1061,7 @@ export const resolveUploadAdminConfigInput = (input: {
 
   const normalizedOrgId = normalizeOrgId(input.orgId);
   if (!normalizedOrgId) {
-    return { ok: false, message: "Missing organisation id." };
+    return { ok: false, message: "Missing organization id." };
   }
 
   const record = parsedPayload.record;
@@ -1111,7 +1111,7 @@ export const resolveUploadAdminConfigInput = (input: {
       message:
         error instanceof Error
           ? error.message
-          : "Organisation id could not be converted into a storage prefix.",
+          : "Organization id could not be converted into a storage prefix.",
     };
   }
 

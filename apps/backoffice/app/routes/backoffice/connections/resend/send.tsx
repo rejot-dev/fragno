@@ -119,7 +119,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   } satisfies ResendSendActionData;
 }
 
-export default function BackofficeOrganisationResendSend() {
+export default function BackofficeOrganizationResendSend() {
   const { configState } = useOutletContext<ResendOutgoingOutletContext>();
   const fetcher = useFetcher<typeof action>();
   const formRef = useRef<HTMLFormElement | null>(null);

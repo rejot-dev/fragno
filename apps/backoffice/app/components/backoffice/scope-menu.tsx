@@ -3,27 +3,29 @@ import { ChevronsUpDown } from "lucide-react";
 import { Fragment } from "react";
 import { Link, useLocation } from "react-router";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import type { BackofficeMeData } from "@/fragno/auth/contracts";
+import {
+  backofficeRouteScopeFromResolvedScope,
+  type BackofficeResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
+import type { BackofficeMeData, Organization } from "@/fragno/auth/contracts";
 import { buildBackofficeOrganizationSwitchPath } from "@/routes/backoffice/auth-navigation";
 
 import { scopeSwitchPath } from "./scope-switch-path";
 
 const SCOPE_GROUPS = [
   { kind: "system", label: "System" },
-  { kind: "org", label: "Organisations" },
+  { kind: "org", label: "Organizations" },
   { kind: "user", label: "Personal" },
 ] as const;
 
 type ScopeMenuOption = {
   id: string;
-  kind: BackofficeContextScope["kind"];
   label: string;
   description: string;
-  scope: BackofficeContextScope;
+  scope: BackofficeResolvedScope<Organization>;
 };
 
-const scopeKindLabel = (kind: BackofficeContextScope["kind"]) => {
+const scopeKindLabel = (kind: BackofficeResolvedScope["kind"]) => {
   switch (kind) {
     case "system":
       return "System";
@@ -38,14 +40,13 @@ const scopeKindLabel = (kind: BackofficeContextScope["kind"]) => {
   throw new Error("Unsupported Backoffice scope kind.");
 };
 
-const scopeOptionId = (scope: BackofficeContextScope) => {
+const scopeOptionId = (scope: BackofficeResolvedScope) => {
   switch (scope.kind) {
     case "system":
       return "system:system";
     case "org":
-      return `org:${scope.orgId}`;
     case "project":
-      return `project:${scope.orgId}:${scope.projectId}`;
+      return `org:${scope.organization.id}`;
     case "user":
       return `user:${scope.userId}`;
   }
@@ -53,15 +54,15 @@ const scopeOptionId = (scope: BackofficeContextScope) => {
   throw new Error("Unsupported Backoffice scope kind.");
 };
 
-// While in project scope this menu keeps showing the parent organisation; the
+// While in project scope this menu keeps showing the parent organization; the
 // project itself is surfaced by the adjacent project menu.
-const triggerKindLabel = (kind: BackofficeContextScope["kind"]) => {
+const triggerKindLabel = (kind: BackofficeResolvedScope["kind"]) => {
   switch (kind) {
     case "system":
       return "Scope";
     case "org":
     case "project":
-      return "Organisation";
+      return "Organization";
     case "user":
       return "Personal";
   }
@@ -69,17 +70,13 @@ const triggerKindLabel = (kind: BackofficeContextScope["kind"]) => {
   throw new Error("Unsupported Backoffice scope kind.");
 };
 
-const currentScopeLabel = (scope: BackofficeContextScope, me: BackofficeMeData) => {
+const currentScopeLabel = (scope: BackofficeResolvedScope<Organization>, me: BackofficeMeData) => {
   switch (scope.kind) {
     case "system":
       return "System";
     case "org":
-    case "project": {
-      const organisation = me.organizations.find(
-        (entry) => entry.organization.id === scope.orgId,
-      )?.organization;
-      return organisation?.name ?? scope.orgId;
-    }
+    case "project":
+      return scope.organization.name;
     case "user":
       return me.user.email ?? scope.userId;
   }
@@ -92,7 +89,7 @@ export function BackofficeScopeMenu({
   currentScope,
 }: {
   me: BackofficeMeData | null;
-  currentScope: BackofficeContextScope | null;
+  currentScope: BackofficeResolvedScope<Organization> | null;
 }) {
   const location = useLocation();
   if (!me?.user || !currentScope) {
@@ -104,7 +101,6 @@ export function BackofficeScopeMenu({
       ? [
           {
             id: "system:system",
-            kind: "system" as const,
             label: "System",
             description: "Global system scope",
             scope: { kind: "system" as const },
@@ -113,14 +109,12 @@ export function BackofficeScopeMenu({
       : []),
     ...me.organizations.map(({ organization }) => ({
       id: `org:${organization.id}`,
-      kind: "org" as const,
-      label: organization.name ?? organization.id,
-      description: "Organisation scope",
-      scope: { kind: "org" as const, orgId: organization.id },
+      label: organization.name,
+      description: "Organization scope",
+      scope: { kind: "org" as const, organization },
     })),
     {
       id: `user:${me.user.id}`,
-      kind: "user" as const,
       label: me.user.email ?? me.user.id,
       description: "Personal user scope",
       scope: { kind: "user" as const, userId: me.user.id },
@@ -160,7 +154,7 @@ export function BackofficeScopeMenu({
               Switch scope
             </p>
             {SCOPE_GROUPS.map((group) => {
-              const groupOptions = options.filter((option) => option.kind === group.kind);
+              const groupOptions = options.filter((option) => option.scope.kind === group.kind);
               if (groupOptions.length === 0) {
                 return null;
               }
@@ -174,11 +168,14 @@ export function BackofficeScopeMenu({
                     </Menu.GroupLabel>
                     {groupOptions.map((option) => {
                       const isCurrent = option.id === selectedId;
-                      const destination = scopeSwitchPath(location.pathname, option.scope);
                       const destinationOrganizationId =
                         option.scope.kind === "org" || option.scope.kind === "project"
-                          ? option.scope.orgId
+                          ? option.scope.organization.id
                           : null;
+                      const destination = scopeSwitchPath(
+                        location.pathname,
+                        backofficeRouteScopeFromResolvedScope(option.scope),
+                      );
                       const switchPath =
                         destinationOrganizationId &&
                         destinationOrganizationId !== me.activeOrganizationId
@@ -199,7 +196,7 @@ export function BackofficeScopeMenu({
                               {option.label}
                             </span>
                             <span className="shrink-0 text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
-                              {scopeKindLabel(option.kind)}
+                              {scopeKindLabel(option.scope.kind)}
                             </span>
                           </span>
                           <span className="truncate text-xs tracking-normal text-[var(--bo-muted-2)] normal-case">

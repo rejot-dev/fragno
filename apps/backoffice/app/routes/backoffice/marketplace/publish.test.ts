@@ -14,8 +14,8 @@ import { action, loader } from "./publish";
 
 const authenticatedUser = {
   user: { id: "user-1" },
-  organizations: [{ organization: { id: "org-1", name: "Acme" } }],
-  activeOrganization: { organization: { id: "org-1", name: "Acme" } },
+  organizations: [{ organization: { id: "org-1", slug: "acme", name: "Acme" } }],
+  activeOrganization: { organization: { id: "org-1", slug: "acme", name: "Acme" } },
 };
 
 const listingId = marketplaceListingId({
@@ -32,9 +32,9 @@ const context = {
   }),
 };
 
-const publishRequest = (organizationId = "org-1") => {
+const publishRequest = (organizationSlug = "acme") => {
   const formData = new FormData();
-  formData.set("ownerOrgId", organizationId);
+  formData.set("ownerOrgSlug", organizationSlug);
   formData.set("slug", "daily-operations-brief");
   formData.set("version", "1.0.0");
   formData.set("name", "Daily operations brief");
@@ -68,7 +68,9 @@ beforeEach(() => {
 
 describe("marketplace draft loader", () => {
   test("rejects a requested organization outside the authenticated memberships", async () => {
-    const url = new URL("https://example.test/backoffice/marketplace/publish?ownerOrgId=org-other");
+    const url = new URL(
+      "https://example.test/backoffice/marketplace/publish?ownerOrgSlug=org-other",
+    );
 
     const response = await loader({
       request: new Request(url),
@@ -79,7 +81,7 @@ describe("marketplace draft loader", () => {
     expect(response).toBeInstanceOf(Response);
     assert((response as Response).status === 404);
     await expect((response as Response).text()).resolves.toBe(
-      "Publisher organisation was not found.",
+      "Publisher organization was not found.",
     );
   });
 
@@ -93,7 +95,7 @@ describe("marketplace draft loader", () => {
     } as never);
 
     assert(!(result instanceof Response));
-    assert(result.activeOrganizationId === "org-1");
+    assert(result.activeOrganization?.id === "org-1");
   });
 });
 
@@ -111,7 +113,7 @@ describe("marketplace draft creation action", () => {
       response.headers.get("location") ===
         marketplaceListingManagePath({
           listingId,
-          organizationId: "org-1",
+          organizationSlug: "acme",
           result: { created: "1.0.0" },
         }),
     );
@@ -154,7 +156,7 @@ describe("marketplace draft creation action", () => {
     });
   });
 
-  test("rejects an organisation outside the authenticated memberships", async () => {
+  test("rejects an organization outside the authenticated memberships", async () => {
     const result = await action({
       request: publishRequest("org-other"),
       context,
@@ -163,7 +165,7 @@ describe("marketplace draft creation action", () => {
 
     expect(result).toEqual({
       ok: false,
-      message: "Select an organisation you are allowed to publish for.",
+      message: "Select an organization you are allowed to publish for.",
     });
     expect(createDraftListingMock).not.toHaveBeenCalled();
   });

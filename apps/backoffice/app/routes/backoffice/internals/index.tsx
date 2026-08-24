@@ -46,7 +46,7 @@ function internalDestinations(hasOrganization: boolean): InternalDestination[] {
     {
       id: "upload",
       name: "Upload",
-      description: "Configure upload storage and inspect organisation-scoped upload operations.",
+      description: "Configure upload storage and inspect organization-scoped upload operations.",
       status: hasOrganization ? "Available" : "Planned",
       to: hasOrganization ? "/backoffice/connections/upload" : null,
     },
@@ -54,7 +54,7 @@ function internalDestinations(hasOrganization: boolean): InternalDestination[] {
       id: "durable-hooks",
       name: "Durable hooks",
       description:
-        "Inspect durable hook queues and retry state across organisation and singleton scopes.",
+        "Inspect durable hook queues and retry state across organization and singleton scopes.",
       status: "Available",
       to: "/backoffice/internals/durable-hooks",
     },

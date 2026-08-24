@@ -1,29 +1,29 @@
 import { assert, describe, test } from "vitest";
 
 import {
-  automationScopeTabPath,
-  automationUiScopeId,
-  resolveAutomationScopeTab,
-  type AutomationUiScope,
-} from "./scope";
+  type BackofficeScopeSelection,
+  backofficeResolvedScopeId,
+} from "@/backoffice-runtime/resolved-scope";
+
+import { automationScopeTabPath, resolveAutomationScopeTab } from "./scope";
 import {
   advanceAutomationScopeHistory,
   parseAutomationScopeHistory,
   type AutomationScopeHistory,
 } from "./scope-history";
 
-const projectInFirstOrganisation: AutomationUiScope = {
+const projectInFirstOrganization: BackofficeScopeSelection = {
   kind: "project",
-  orgId: "org-one",
+  organization: { id: "org-one", slug: "first-org" },
   projectId: "project-one",
   label: "First project",
 };
-const secondOrganisation: AutomationUiScope = {
+const secondOrganization: BackofficeScopeSelection = {
   kind: "org",
-  orgId: "org-two",
-  label: "Second organisation",
+  organization: { id: "org-two", slug: "second-org" },
+  label: "Second organization",
 };
-const personalScope: AutomationUiScope = {
+const personalScope: BackofficeScopeSelection = {
   kind: "user",
   userId: "user-one",
   label: "person@example.com",
@@ -32,61 +32,61 @@ const personalScope: AutomationUiScope = {
 describe("automation scope history", () => {
   test("restores the previous scope when the selected scope matches stored history", () => {
     const storedHistory: AutomationScopeHistory = {
-      version: 1,
-      current: secondOrganisation,
-      previous: projectInFirstOrganisation,
+      version: 2,
+      current: secondOrganization,
+      previous: projectInFirstOrganization,
     };
 
     assert.deepEqual(
-      advanceAutomationScopeHistory(storedHistory, secondOrganisation).previous,
-      projectInFirstOrganisation,
+      advanceAutomationScopeHistory(storedHistory, secondOrganization).previous,
+      projectInFirstOrganization,
     );
   });
 
-  test("preserves the complete previous project across organisation switches", () => {
+  test("preserves the complete previous project across organization switches", () => {
     const storedHistory: AutomationScopeHistory = {
-      version: 1,
-      current: projectInFirstOrganisation,
+      version: 2,
+      current: projectInFirstOrganization,
       previous: personalScope,
     };
 
-    assert.deepEqual(advanceAutomationScopeHistory(storedHistory, secondOrganisation), {
-      version: 1,
-      current: secondOrganisation,
-      previous: projectInFirstOrganisation,
+    assert.deepEqual(advanceAutomationScopeHistory(storedHistory, secondOrganization), {
+      version: 2,
+      current: secondOrganization,
+      previous: projectInFirstOrganization,
     });
   });
 
-  test("reconstructs a previous project destination without current organisation options", () => {
+  test("reconstructs a previous project destination without current organization options", () => {
     assert.equal(
-      automationScopeTabPath(projectInFirstOrganisation, "dashboard"),
-      "/backoffice/automations/project/org-one%3Aproject-one/dashboard",
+      automationScopeTabPath(projectInFirstOrganization, "dashboard"),
+      "/backoffice/automations/project/first-org%3Aproject-one/dashboard",
     );
     assert.notEqual(
-      automationUiScopeId(projectInFirstOrganisation),
-      automationUiScopeId({
-        ...projectInFirstOrganisation,
-        orgId: "org-two",
+      backofficeResolvedScopeId(projectInFirstOrganization),
+      backofficeResolvedScopeId({
+        ...projectInFirstOrganization,
+        organization: { id: "org-two", slug: "second-org" },
       }),
     );
   });
 
   test("falls back to scripts when a previous system scope cannot open the active tab", () => {
     assert.equal(resolveAutomationScopeTab({ kind: "system", label: "System" }, "api"), "scripts");
-    assert.equal(resolveAutomationScopeTab(secondOrganisation, "api"), "api");
+    assert.equal(resolveAutomationScopeTab(secondOrganization, "api"), "api");
   });
 
   test("reverses the history when browser navigation returns to the previous scope", () => {
     const storedHistory: AutomationScopeHistory = {
-      version: 1,
-      current: secondOrganisation,
-      previous: projectInFirstOrganisation,
+      version: 2,
+      current: secondOrganization,
+      previous: projectInFirstOrganization,
     };
 
-    assert.deepEqual(advanceAutomationScopeHistory(storedHistory, projectInFirstOrganisation), {
-      version: 1,
-      current: projectInFirstOrganisation,
-      previous: secondOrganisation,
+    assert.deepEqual(advanceAutomationScopeHistory(storedHistory, projectInFirstOrganization), {
+      version: 2,
+      current: projectInFirstOrganization,
+      previous: secondOrganization,
     });
   });
 
@@ -95,16 +95,16 @@ describe("automation scope history", () => {
     assert.isNull(
       parseAutomationScopeHistory(
         JSON.stringify({
-          version: 0,
-          current: secondOrganisation,
-          previous: projectInFirstOrganisation,
+          version: 1,
+          current: secondOrganization,
+          previous: projectInFirstOrganization,
         }),
       ),
     );
     assert.isNull(
       parseAutomationScopeHistory(
         JSON.stringify({
-          version: 1,
+          version: 2,
           current: { kind: "project", projectId: "missing-org", label: "Invalid" },
           previous: null,
         }),

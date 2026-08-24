@@ -96,7 +96,10 @@ describe("backoffice login route", () => {
       )
       .mockResolvedValueOnce(
         Response.json(
-          { expiresAt: "2026-08-11T12:15:00.000Z", organizationId: "org-1" },
+          {
+            expiresAt: "2026-08-11T12:15:00.000Z",
+            organization: { id: "org-1", slug: "acme" },
+          },
           {
             headers: {
               "set-cookie": "fragno-backoffice.access_token=jwt; Path=/; HttpOnly; SameSite=Lax",
@@ -155,7 +158,10 @@ describe("backoffice login route", () => {
       )
       .mockResolvedValueOnce(
         Response.json(
-          { expiresAt: "2026-08-11T12:15:00.000Z", organizationId: "org-current" },
+          {
+            expiresAt: "2026-08-11T12:15:00.000Z",
+            organization: { id: "org-current", slug: "current" },
+          },
           {
             headers: {
               "set-cookie": "fragno-backoffice.access_token=jwt; Path=/; HttpOnly; SameSite=Lax",

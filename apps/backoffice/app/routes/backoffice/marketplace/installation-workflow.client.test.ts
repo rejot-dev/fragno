@@ -142,9 +142,12 @@ describe("Marketplace installation generated UI selection", () => {
   test("renders generated final output after completion", () => {
     const markup = renderToStaticMarkup(
       createElement(MarketplaceInstallerGeneratedUi, {
-        coordinatorScope: { kind: "org", orgId: "org-1" },
+        collectionSource: {
+          resolvedScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
+          adapterIdentity: "adapter-1",
+        },
         instance: workflowRun({ status: "complete", output: generatedUi("Complete") }),
-        targetScope: { kind: "org", orgId: "org-1" },
+        targetScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
       }),
     );
 
@@ -155,9 +158,12 @@ describe("Marketplace installation generated UI selection", () => {
   test("renders completion in the main installation content without generated output", () => {
     const markup = renderToStaticMarkup(
       createElement(MarketplaceInstallerGeneratedUi, {
-        coordinatorScope: { kind: "org", orgId: "org-1" },
+        collectionSource: {
+          resolvedScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
+          adapterIdentity: "adapter-1",
+        },
         instance: workflowRun({ status: "complete", output: { installed: true } }),
-        targetScope: { kind: "org", orgId: "org-1" },
+        targetScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
       }),
     );
 

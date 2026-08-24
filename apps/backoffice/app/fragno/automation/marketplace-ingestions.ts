@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import {
-  backofficeOrganisationScopeSchema,
+  backofficeOrganizationScopeSchema,
   backofficeProjectScopeSchema,
   backofficeUserScopeSchema,
 } from "@/backoffice-runtime/context-schema";
@@ -18,7 +18,7 @@ import { marketplaceIngestionTargetScopeKey } from "./marketplace-ingest-identit
 import { automationFragmentSchema } from "./schema";
 
 const marketplaceIngestionTargetScopeSchema = z.discriminatedUnion("kind", [
-  backofficeOrganisationScopeSchema,
+  backofficeOrganizationScopeSchema,
   backofficeProjectScopeSchema,
   backofficeUserScopeSchema,
 ]);

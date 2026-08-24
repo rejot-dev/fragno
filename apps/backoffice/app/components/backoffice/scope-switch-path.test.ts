@@ -2,7 +2,7 @@ import { assert, describe, test } from "vitest";
 
 import { scopeSwitchPath } from "./scope-switch-path";
 
-const projectScope = { kind: "project" as const, orgId: "org-a", projectId: "proj-1" };
+const projectScope = { kind: "project" as const, orgSlug: "org-a", projectId: "proj-1" };
 
 describe("scopeSwitchPath", () => {
   test.each([
@@ -53,7 +53,7 @@ describe("scopeSwitchPath", () => {
 
   test("lands unknown sections on the automations dashboard", () => {
     assert(
-      scopeSwitchPath("/backoffice/organisations", projectScope) ===
+      scopeSwitchPath("/backoffice/organizations", projectScope) ===
         "/backoffice/automations/project/org-a%3Aproj-1/dashboard",
     );
   });

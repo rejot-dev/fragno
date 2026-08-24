@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import { isRouteErrorResponse, useSearchParams } from "react-router";
 
+import { type BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { BackofficePageHeader } from "@/components/backoffice";
 import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
 
-import { getRouteErrorMessage, isOrganisationNotFoundError } from "../route-errors";
+import { getRouteErrorMessage, getBackofficeOrganizationNotFound } from "../route-errors";
 import type { AutomationTab } from "./layout-context";
-import { automationScopeTabPath, resolveAutomationScopeTab, type AutomationUiScope } from "./scope";
+import { automationScopeTabPath, resolveAutomationScopeTab } from "./scope";
 import {
   SCRIPT_VIEW_MODE_SEARCH_PARAM,
   WORKFLOW_GRAPH_DETAIL_MODE_SEARCH_PARAM,
@@ -52,7 +53,7 @@ function AutomationTabRail({
   disabled,
   scriptPresentation,
 }: {
-  selectedScope: AutomationUiScope;
+  selectedScope: BackofficeScopeSelection;
   activeTab: AutomationTab;
   disabled: boolean;
   scriptPresentation: ReturnType<typeof useScriptPresentation>;
@@ -108,7 +109,7 @@ export function AutomationWorkspaceHeader({
   subnav,
   heading,
 }: {
-  selectedScope: AutomationUiScope;
+  selectedScope: BackofficeScopeSelection;
   isCreatingProject?: boolean;
   activeTab: AutomationTab;
   subnav?: ReactNode;
@@ -136,7 +137,7 @@ export function AutomationErrorBoundary({
   params,
 }: {
   error: unknown;
-  params: { orgId?: string; scopeId?: string; scopeKind?: string };
+  params: { orgSlug?: string; orgId?: string; scopeId?: string; scopeKind?: string };
 }) {
   let statusCode = 500;
   let message = "An unexpected error occurred.";
@@ -149,8 +150,8 @@ export function AutomationErrorBoundary({
 
   message = getRouteErrorMessage(error, message);
 
-  if (statusCode === 404 && params.orgId && isOrganisationNotFoundError(error)) {
-    message = `Organisation '${params.orgId}' could not be found.`;
+  if (statusCode === 404 && params.orgSlug && getBackofficeOrganizationNotFound(error)) {
+    message = `Organization '${params.orgSlug}' could not be found.`;
   }
 
   return (

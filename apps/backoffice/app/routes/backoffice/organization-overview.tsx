@@ -4,16 +4,16 @@ import { useOutletContext } from "react-router";
 import { FormContainer, FormField } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
 
-import type { OrganisationLayoutContext } from "./organisation-layout";
-import { Notice } from "./organisation-shared";
-import { type ActionNotice, formatDate, formatRoles, getErrorMessage } from "./organisation-utils";
+import type { OrganizationLayoutContext } from "./organization-layout";
+import { Notice } from "./organization-shared";
+import { type ActionNotice, formatDate, formatRoles, getErrorMessage } from "./organization-utils";
 
 export function meta() {
-  return [{ title: "Organisation Overview" }];
+  return [{ title: "Organization Overview" }];
 }
 
-export default function BackofficeOrganisationOverview() {
-  const { organization, member, me } = useOutletContext<OrganisationLayoutContext>();
+export default function BackofficeOrganizationOverview() {
+  const { organization, member, me } = useOutletContext<OrganizationLayoutContext>();
   const currentUserRole = me.user.role;
   const isActive = me.activeOrganization?.organization.id === organization.id;
   const canManageOrganization =
@@ -40,7 +40,7 @@ export default function BackofficeOrganisationOverview() {
 
     const nextName = nameInput.trim();
     if (!nextName) {
-      setNameNotice({ type: "error", message: "Organisation name is required." });
+      setNameNotice({ type: "error", message: "Organization name is required." });
       return;
     }
 
@@ -49,7 +49,7 @@ export default function BackofficeOrganisationOverview() {
         path: { organizationId: organization.id },
         body: { name: nextName },
       });
-      setNameNotice({ type: "success", message: "Organisation name updated." });
+      setNameNotice({ type: "success", message: "Organization name updated." });
     } catch (error) {
       setNameNotice({ type: "error", message: getErrorMessage(error) });
     }
@@ -63,7 +63,7 @@ export default function BackofficeOrganisationOverview() {
       <FormContainer
         eyebrow="Overview"
         title={organization.name}
-        description="Review core organisation details and admin status."
+        description="Review core organization details and admin status."
       >
         <div className="grid gap-3 text-sm sm:grid-cols-2">
           <div>
@@ -95,11 +95,11 @@ export default function BackofficeOrganisationOverview() {
 
       <FormContainer
         eyebrow="Identity"
-        title="Rename organisation"
+        title="Rename organization"
         description="Update the name shown across dashboards and invitations."
       >
         <form onSubmit={(event) => void handleNameSubmit(event)} className="space-y-3">
-          <FormField label="Organisation name">
+          <FormField label="Organization name">
             <input
               type="text"
               value={nameInput}

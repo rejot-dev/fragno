@@ -9,6 +9,6 @@ export async function loader({ params, url }: Route.LoaderArgs) {
   return redirect(`${url.pathname.replace(/\/+$/u, "")}/start`);
 }
 
-export default function BackofficeOrganisationResendThreadsIndex() {
+export default function BackofficeOrganizationResendThreadsIndex() {
   return null;
 }

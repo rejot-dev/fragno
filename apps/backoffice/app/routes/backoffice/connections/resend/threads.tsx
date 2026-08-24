@@ -68,7 +68,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   } satisfies ResendThreadsLoaderData;
 }
 
-export default function BackofficeOrganisationResendThreads() {
+export default function BackofficeOrganizationResendThreads() {
   const { threads, configError, threadsError, hasNextPage } = useLoaderData<typeof loader>();
   const { basePath: integrationBasePath, configState } = useOutletContext<ResendLayoutContext>();
   const { threadId } = useParams();

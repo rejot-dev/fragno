@@ -63,7 +63,7 @@ export default function BackofficeAutomationIntegrations() {
         </h2>
         <p className="mt-2 max-w-3xl text-sm text-[var(--bo-muted)]">
           Configure the channels available to this scope. GitHub is intentionally limited to
-          organisation scopes; Reson8 is organisation-scoped; Resend is available for organisations
+          organization scopes; Reson8 is organization-scoped; Resend is available for organizations
           and the admin singleton; Telegram can be configured on any scope.
         </p>
       </section>

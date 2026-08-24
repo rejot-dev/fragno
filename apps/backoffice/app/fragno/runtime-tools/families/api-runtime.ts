@@ -11,7 +11,7 @@ import type { ApiObject } from "@/backoffice-runtime/object-registry";
 import type { ApiFragment } from "@/fragno/api";
 
 import {
-  createOrganisationNotConfiguredMessage,
+  createOrganizationNotConfiguredMessage,
   isSuccessStatus,
   throwOnRouteRuntimeError,
 } from "../runtime-errors";
@@ -53,7 +53,7 @@ export type RegisteredApiCommandContext = {
   runtime: ApiRuntime;
 };
 
-const API_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("API");
+const API_NOT_CONFIGURED = createOrganizationNotConfiguredMessage("API");
 
 type CreateRouteBackedApiRuntimeOptions = {
   baseUrl: string;

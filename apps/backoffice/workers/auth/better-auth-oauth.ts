@@ -78,7 +78,7 @@ export type BackofficeTokenGrantResolution =
         email: string;
         globalRole: Role;
         scope: BackofficeContextScope;
-        organizationRoles: string[];
+        organization: { id: string; slug: string; roles: string[] } | null;
       };
     }
   | {

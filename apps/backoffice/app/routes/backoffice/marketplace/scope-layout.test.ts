@@ -44,24 +44,28 @@ describe("personal Marketplace scope", () => {
   });
 });
 
-describe("organisation Marketplace scope", () => {
-  test("resolves the organisation without fetching Automations projects", async () => {
+describe("organization Marketplace scope", () => {
+  test("resolves the organization without fetching Automations projects", async () => {
     const orgUrl = new URL("https://example.test/backoffice/marketplace/org/org-1/marketplace");
     findBackofficeMeMock.mockResolvedValue({
       user: { id: "user-1", email: "ada@example.com" },
-      organizations: [{ organization: { id: "org-1", name: "Ada Labs" } }],
-      activeOrganization: { organization: { id: "org-1", name: "Ada Labs" } },
+      organizations: [{ organization: { id: "org-1", slug: "ada-labs", name: "Ada Labs" } }],
+      activeOrganization: { organization: { id: "org-1", slug: "ada-labs", name: "Ada Labs" } },
     });
 
     const result = await loader({
       request: new Request(orgUrl),
-      params: { scopeKind: "org", scopeId: "org-1" },
+      params: { scopeKind: "org", scopeId: "ada-labs" },
       context: {},
       url: orgUrl,
     } as never);
 
     assert(!(result instanceof Response));
-    expect(result.selectedScope).toEqual({ kind: "org", orgId: "org-1", label: "Ada Labs" });
+    expect(result.selectedScope).toEqual({
+      kind: "org",
+      organization: { id: "org-1", slug: "ada-labs" },
+      label: "Ada Labs",
+    });
     expect(lookupAutomationProjectMock).not.toHaveBeenCalled();
   });
 });

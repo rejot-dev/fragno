@@ -1,4 +1,3 @@
-const LEGACY_ORGANIZATION_PREFERENCE_KEY = "fragno-auth.default-organization-id";
 const ORGANIZATION_PREFERENCE_KEY = "fragno-backoffice-default-organization";
 const ORGANIZATION_PREFERENCE_EVENT = "fragno-backoffice-default-organization-change";
 
@@ -10,21 +9,13 @@ const browserStorage = (): OrganizationPreferenceStorage | null =>
 export const readPreferredOrganizationFromStorage = (
   storage: OrganizationPreferenceStorage,
 ): string | null => {
-  const currentOrganizationId = storage.getItem(ORGANIZATION_PREFERENCE_KEY)?.trim();
-  if (currentOrganizationId) {
-    storage.removeItem(LEGACY_ORGANIZATION_PREFERENCE_KEY);
-    return currentOrganizationId;
+  const organizationId = storage.getItem(ORGANIZATION_PREFERENCE_KEY)?.trim();
+  if (organizationId) {
+    return organizationId;
   }
 
   storage.removeItem(ORGANIZATION_PREFERENCE_KEY);
-  const legacyOrganizationId = storage.getItem(LEGACY_ORGANIZATION_PREFERENCE_KEY)?.trim();
-  storage.removeItem(LEGACY_ORGANIZATION_PREFERENCE_KEY);
-  if (!legacyOrganizationId) {
-    return null;
-  }
-
-  storage.setItem(ORGANIZATION_PREFERENCE_KEY, legacyOrganizationId);
-  return legacyOrganizationId;
+  return null;
 };
 
 export const readPreferredOrganization = (): string | null => {
@@ -43,7 +34,6 @@ export const writePreferredOrganization = (organizationId: string | null): void 
   } else {
     storage.removeItem(ORGANIZATION_PREFERENCE_KEY);
   }
-  storage.removeItem(LEGACY_ORGANIZATION_PREFERENCE_KEY);
   window.dispatchEvent(new Event(ORGANIZATION_PREFERENCE_EVENT));
 };
 

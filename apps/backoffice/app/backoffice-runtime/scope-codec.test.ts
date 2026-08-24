@@ -9,6 +9,8 @@ import {
   backofficeScopeFromRouteParams,
   backofficeScopeFromSinglePathSegment,
   backofficeScopeSinglePathSegment,
+  BackofficeScopeCodecError,
+  isBackofficeScopeCodecError,
 } from "./scope-codec";
 
 describe("backoffice scope codec", () => {
@@ -75,6 +77,16 @@ describe("backoffice scope codec", () => {
     expect(() => backofficeScopeFromSinglePathSegment("system")).toThrow(
       "System scope is not routable here.",
     );
+  });
+
+  test("recognizes scope codec errors across module and HMR boundaries", () => {
+    assert(isBackofficeScopeCodecError(new BackofficeScopeCodecError("Invalid scope.")));
+    const crossModuleError = Object.assign(new Error("Invalid scope."), {
+      code: "INVALID_BACKOFFICE_SCOPE",
+    });
+    assert(isBackofficeScopeCodecError(crossModuleError));
+    assert(isBackofficeScopeCodecError({ code: "INVALID_BACKOFFICE_SCOPE" }));
+    assert(!isBackofficeScopeCodecError(new Error("Other failure.")));
   });
 
   test("throws for malformed scope segments instead of falling back to org scope", () => {

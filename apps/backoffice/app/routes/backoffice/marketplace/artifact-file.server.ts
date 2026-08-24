@@ -5,7 +5,7 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { fetchPublishedMarketplaceArtifactFile } from "./artifact-files.server";
 import { marketplaceListingRefSchema } from "./navigation";
-import { marketplaceScopeFromRouteParams } from "./scope";
+import { marketplaceRuntimeScopeFromRouteParams } from "./scope";
 
 type MarketplaceArtifactFileLoaderArgs = {
   request: Request;
@@ -25,7 +25,10 @@ export async function loadMarketplaceArtifactFile({
     throw new Response("Unauthorized", { status: 401 });
   }
 
-  const scope = marketplaceScopeFromRouteParams(params);
+  const scope = marketplaceRuntimeScopeFromRouteParams(
+    params,
+    me.organizations.map(({ organization }) => organization),
+  );
   const canAccessScope =
     scope.kind === "user"
       ? scope.userId === me.user.id

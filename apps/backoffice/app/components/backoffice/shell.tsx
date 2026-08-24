@@ -1,14 +1,19 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import {
-  backofficeContextScopeLabel,
-  type BackofficeContextScope,
-} from "@/backoffice-runtime/context";
+  backofficeRouteScopeFromResolvedScope,
+  type BackofficeResolvedScope,
+  type BackofficeScopeSelection,
+} from "@/backoffice-runtime/resolved-scope";
 import { scheduleBackofficeTokenRefresh } from "@/fragno/auth/browser-auth.client";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
 import { BackofficeClsDebugger } from "./cls-debugger";
-import { CurrentBackofficeProvider, type CurrentBackofficeContext } from "./current-context";
+import {
+  automationCollectionResolvedScope,
+  CurrentBackofficeProvider,
+  type CurrentBackofficeContext,
+} from "./current-context";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
 import { GlobalWorkflowDrawer } from "./global-workflow-drawer";
 import { QuakeTerminal } from "./quake-terminal";
@@ -23,22 +28,29 @@ type BackofficeShellProps = {
   isLoading?: boolean;
 };
 
-function backofficeTerminalScopeLabel(scope: BackofficeContextScope, me: BackofficeMeData | null) {
-  if (scope.kind === "org" || scope.kind === "project") {
-    const organization = me?.organizations.find(
-      (entry) => entry.organization.id === scope.orgId,
-    )?.organization;
-    const organizationLabel = organization?.name ?? scope.orgId;
-    return scope.kind === "project"
-      ? `${organizationLabel} / ${scope.projectId}`
-      : organizationLabel;
+type BackofficeShellResolvedScope = BackofficeResolvedScope<
+  BackofficeMeData["organizations"][number]["organization"]
+>;
+
+function backofficeTerminalScopeSelection(
+  scope: BackofficeShellResolvedScope,
+  me: BackofficeMeData | null,
+): BackofficeScopeSelection {
+  switch (scope.kind) {
+    case "system":
+      return { ...scope, label: "System" };
+    case "org":
+      return { ...scope, label: scope.organization.name };
+    case "project":
+      return { ...scope, label: `${scope.organization.name} / ${scope.projectId}` };
+    case "user":
+      return {
+        ...scope,
+        label: me?.user.id === scope.userId ? (me.user.email ?? scope.userId) : scope.userId,
+      };
   }
 
-  if (scope.kind === "user" && me?.user.id === scope.userId) {
-    return me.user.email ?? scope.userId;
-  }
-
-  return backofficeContextScopeLabel(scope);
+  throw new Error("Unsupported Backoffice resolved scope kind.");
 }
 
 export function BackofficeShell(props: BackofficeShellProps) {
@@ -63,6 +75,11 @@ function BackofficeShellFrame({
 }: BackofficeShellProps) {
   const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const resolvedScope = currentContext
+    ? automationCollectionResolvedScope(currentContext.automationCollectionSource)
+    : null;
+  const routeScope = resolvedScope ? backofficeRouteScopeFromResolvedScope(resolvedScope) : null;
+  const terminalScope = resolvedScope ? backofficeTerminalScopeSelection(resolvedScope, me) : null;
   useEffect(() => {
     if (!accessTokenExpiresAt) {
       return undefined;
@@ -99,7 +116,7 @@ function BackofficeShellFrame({
         <div className="bo-grid-backdrop pointer-events-none absolute inset-0" />
         <BackofficeTopBar
           me={me}
-          currentScope={currentContext?.scope ?? null}
+          resolvedScope={resolvedScope}
           projectCollectionSource={currentContext?.projectCollectionSource ?? null}
           isLoading={isLoading}
           workflowDrawerOpen={workflowDrawerOpen}
@@ -109,7 +126,7 @@ function BackofficeShellFrame({
         />
         <div className="flex min-w-0 flex-1">
           <BackofficeSidebarNav
-            currentScope={currentContext?.scope ?? null}
+            currentScope={routeScope}
             collapsed={sidebarCollapsed}
             onCollapsedChange={setSidebarCollapsed}
           />
@@ -125,12 +142,7 @@ function BackofficeShellFrame({
           setWorkflowDrawerOpen(false);
         }}
       />
-      {currentContext ? (
-        <QuakeTerminal
-          scope={currentContext.scope}
-          scopeLabel={backofficeTerminalScopeLabel(currentContext.scope, me)}
-        />
-      ) : null}
+      {terminalScope ? <QuakeTerminal selectedScope={terminalScope} /> : null}
     </div>
   );
 }

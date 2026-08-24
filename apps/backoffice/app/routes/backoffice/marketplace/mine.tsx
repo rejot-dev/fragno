@@ -15,18 +15,15 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     );
   }
 
-  const requestedOrganizationId = url.searchParams.get("organizationId")?.trim() || null;
-  const requestedOrganization = requestedOrganizationId
-    ? me.organizations.find(({ organization }) => organization.id === requestedOrganizationId)
+  const requestedOrganizationSlug = url.searchParams.get("organizationSlug")?.trim() || null;
+  const requestedOrganization = requestedOrganizationSlug
+    ? me.organizations.find(({ organization }) => organization.slug === requestedOrganizationSlug)
         ?.organization
     : null;
-  if (requestedOrganizationId && !requestedOrganization) {
-    throw new Response("Publisher organisation was not found.", { status: 404 });
+  if (requestedOrganizationSlug && !requestedOrganization) {
+    throw new Response("Publisher organization was not found.", { status: 404 });
   }
-  const organization =
-    requestedOrganization ??
-    me.activeOrganization?.organization ??
-    me.organizations[0]?.organization;
+  const organization = requestedOrganization ?? me.activeOrganization?.organization;
   if (!organization) {
     throw new Response("Not Found", { status: 404 });
   }
@@ -35,7 +32,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     marketplaceScopeTabPath(
       {
         kind: "org",
-        orgId: organization.id,
+        organization,
         label: organization.name ?? organization.id,
       },
       "my-listings",

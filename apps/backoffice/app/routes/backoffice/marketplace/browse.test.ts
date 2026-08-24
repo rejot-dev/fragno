@@ -15,8 +15,10 @@ import BackofficeMarketplaceBrowse, { loader } from "./browse";
 
 const authenticatedUser = {
   user: { id: "user-1", email: "ada@example.com" },
-  organizations: [{ organization: { id: "org-1", name: "Ada Labs" } }],
-  activeOrganization: { organization: { id: "org-1", name: "Ada Labs" } },
+  organizations: [{ organization: { id: "org-1", slug: "ada-labs", name: "Ada Labs" } }],
+  activeOrganization: {
+    organization: { id: "org-1", slug: "ada-labs", name: "Ada Labs" },
+  },
 };
 const marketplace = { listPublishedListings: listPublishedListingsMock };
 const context = {
@@ -56,7 +58,7 @@ beforeEach(() => {
 describe("Marketplace featured browse", () => {
   test("ignores legacy category filters and always requests the unfiltered Marketplace", async () => {
     const url = new URL(
-      "https://example.test/backoffice/marketplace/org/org-1/marketplace?category=communication",
+      "https://example.test/backoffice/marketplace/org/ada-labs/marketplace?category=communication",
     );
 
     const result = await loader({ request: new Request(url), context, url } as never);
@@ -71,14 +73,20 @@ describe("Marketplace featured browse", () => {
       [
         {
           element: createElement(Outlet, {
-            context: { selectedScope: { kind: "org", orgId: "org-1", label: "Ada Labs" } },
+            context: {
+              selectedScope: {
+                kind: "org",
+                organization: { id: "org-1", slug: "ada-labs" },
+                label: "Ada Labs",
+              },
+            },
           }),
           children: [
             {
               path: "*",
               element: createElement(BackofficeMarketplaceBrowse, {
                 loaderData: {
-                  basePath: "/backoffice/marketplace/org/org-1/marketplace",
+                  basePath: "/backoffice/marketplace/org/ada-labs/marketplace",
                   listings,
                   hasNextPage: false,
                 },
@@ -87,7 +95,7 @@ describe("Marketplace featured browse", () => {
           ],
         },
       ],
-      { initialEntries: ["/backoffice/marketplace/org/org-1/marketplace"] },
+      { initialEntries: ["/backoffice/marketplace/org/ada-labs/marketplace"] },
     );
 
     const markup = renderToStaticMarkup(createElement(RouterProvider, { router }));

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext, useRevalidator } from "react-router";
 
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
@@ -6,30 +6,30 @@ import { authClient } from "@/fragno/auth/auth-client";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 import { buildBackofficeOrganizationSwitchPath } from "@/routes/backoffice/auth-navigation";
 
-import { Notice } from "./organisation-shared";
+import { Notice } from "./organization-shared";
 import {
   type ActionNotice,
   formatDate,
   formatDateTime,
   formatRoles,
   getErrorMessage,
-} from "./organisation-utils";
+} from "./organization-utils";
 import {
   getOrganizationPreferenceState,
   sortOrganizationsByPreference,
-} from "./organisations-preference";
+} from "./organizations-preference";
 
 type UserInvitationsHook = ReturnType<typeof authClient.useUserInvitations>;
 type UserInvitation = NonNullable<UserInvitationsHook["data"]>["invitations"][number];
 
 export function meta() {
   return [
-    { title: "Backoffice Organisations" },
-    { name: "description", content: "Manage organisations for the Fragno backoffice." },
+    { title: "Backoffice Organizations" },
+    { name: "description", content: "Manage organizations for the Fragno backoffice." },
   ];
 }
 
-export default function BackofficeOrganisations() {
+export default function BackofficeOrganizations() {
   const { me: initialMe } = useOutletContext<BackofficeLayoutContext>();
   const preference = authClient.usePreferredOrganizationPreference();
   const { mutate: switchOrganization, loading: switchingOrganization } =
@@ -60,13 +60,18 @@ export default function BackofficeOrganisations() {
   const [preferredOrganizationNotice, setPreferredOrganizationNotice] =
     useState<ActionNotice>(null);
   const [activeInvitationId, setActiveInvitationId] = useState<string | null>(null);
+  const [clientPreferencesReady, setClientPreferencesReady] = useState(false);
+  useEffect(() => {
+    setClientPreferencesReady(true);
+  }, []);
   const me = initialMe;
   const organizations = me?.organizations ?? [];
-  const preferredOrganizationId =
-    preference.preferredOrganizationId ??
-    preference.storedOrganizationId ??
-    initialPreference?.resolvedOrganizationId ??
-    null;
+  const preferredOrganizationId = clientPreferencesReady
+    ? (preference.preferredOrganizationId ??
+      preference.storedOrganizationId ??
+      initialPreference?.resolvedOrganizationId ??
+      me.activeOrganizationId)
+    : me.activeOrganizationId;
   const openInvitations = userInvitationsData?.invitations ?? [];
   const sortedOrganizations = sortOrganizationsByPreference(organizations, preferredOrganizationId);
 
@@ -114,7 +119,7 @@ export default function BackofficeOrganisations() {
       await revalidator.revalidate();
       setPreferredOrganizationNotice({
         type: "success",
-        message: `${organizationName} is now the active and preferred organisation for the docs backoffice.`,
+        message: `${organizationName} is now the active and preferred organization for the docs backoffice.`,
       });
     } catch (error) {
       setPreferredOrganizationNotice({ type: "error", message: getErrorMessage(error) });
@@ -124,16 +129,16 @@ export default function BackofficeOrganisations() {
   return (
     <div className="space-y-4">
       <BackofficePageHeader
-        breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Organisations" }]}
+        breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Organizations" }]}
         eyebrow="Directory"
-        title="Organisation rosters and access levels."
-        description="Select an organisation to manage settings, members, invitations, and the preferred Backoffice scope."
+        title="Organization rosters and access levels."
+        description="Select an organization to manage settings, members, invitations, and the preferred Backoffice scope."
       />
 
       <FormContainer
         eyebrow="Invitations"
         title={`Open invitations (${openInvitations.length})`}
-        description="Invitations addressed to your account. Accepting adds you to the organisation."
+        description="Invitations addressed to your account. Accepting adds you to the organization."
       >
         {userInvitationsLoading ? (
           <p className="text-sm text-[var(--bo-muted)]">Loading invitations...</p>
@@ -147,7 +152,7 @@ export default function BackofficeOrganisations() {
               <thead className="bg-[var(--bo-panel-2)] text-left">
                 <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                   <th scope="col" className="px-3 py-2">
-                    Organisation
+                    Organization
                   </th>
                   <th scope="col" className="px-3 py-2">
                     Roles
@@ -207,7 +212,7 @@ export default function BackofficeOrganisations() {
 
       {organizations.length === 0 ? (
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          No organisations found for this account yet.
+          No organizations found for this account yet.
         </div>
       ) : (
         <section className="grid gap-3 md:grid-cols-2">
@@ -270,10 +275,10 @@ export default function BackofficeOrganisations() {
                   <Link
                     to={
                       organization.id === me.activeOrganizationId
-                        ? `/backoffice/organisations/${organization.id}`
+                        ? `/backoffice/organizations/${encodeURIComponent(organization.slug)}`
                         : buildBackofficeOrganizationSwitchPath(
                             organization.id,
-                            `/backoffice/organisations/${organization.id}`,
+                            `/backoffice/organizations/${encodeURIComponent(organization.slug)}`,
                           )
                     }
                     className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"

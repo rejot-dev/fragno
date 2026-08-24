@@ -125,7 +125,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   } satisfies Reson8CustomModelsActionData;
 }
 
-export default function BackofficeOrganisationReson8CustomModels() {
+export default function BackofficeOrganizationReson8CustomModels() {
   const { models, configError, modelsError } = useLoaderData<typeof loader>();
   const { configState } = useOutletContext<Reson8LayoutContext>();
   const actionData = useActionData<typeof action>();

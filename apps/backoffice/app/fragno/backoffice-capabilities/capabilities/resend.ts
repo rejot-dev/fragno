@@ -123,7 +123,7 @@ export const resendCapability: BackofficeCapability = {
         source: "resend",
         eventType: "capability.configured",
         label: "Resend configured",
-        description: "Fires after Resend is configured for an organisation for the first time.",
+        description: "Fires after Resend is configured for an organization for the first time.",
         payloadSchema: resendCapabilityConfiguredPayloadSchema,
         subjectSchema: resendCapabilityConfiguredSubjectSchema,
         example: {

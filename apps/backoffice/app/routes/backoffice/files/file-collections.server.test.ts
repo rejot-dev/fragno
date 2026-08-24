@@ -7,7 +7,7 @@ describe("Files overview roots", () => {
     expect(filesOverviewRootPathsForScope({ kind: "system" })).toEqual(["/system"]);
   });
 
-  test("shows static and workspace files in organisation scope", () => {
+  test("shows static and workspace files in organization scope", () => {
     expect(filesOverviewRootPathsForScope({ kind: "org", orgId: "org-1" })).toEqual([
       "/static",
       "/workspace",

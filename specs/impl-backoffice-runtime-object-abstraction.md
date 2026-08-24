@@ -541,7 +541,7 @@ export const createEventRuntime = ({ objects, event }: CreateEventRuntimeOptions
 
     const orgId = event.orgId?.trim();
     if (!orgId) {
-      throw new Error("event.emit requires an organisation id");
+      throw new Error("event.emit requires an organization id");
     }
 
     await objects.automations.forOrg(orgId).triggerIngestEvent(nextEvent);

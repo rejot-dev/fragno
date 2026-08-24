@@ -23,8 +23,8 @@ const SETUP_STEPS = [
   },
   {
     title: "Save defaults",
-    description: "Store the API key and default sender details for this organisation.",
-    helper: "Saved per organisation",
+    description: "Store the API key and default sender details for this organization.",
+    helper: "Saved per organization",
   },
 ];
 
@@ -157,7 +157,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   }
 }
 
-export default function BackofficeOrganisationResendConfiguration() {
+export default function BackofficeOrganizationResendConfiguration() {
   const { origin, scope, configState, configLoading, configError, setConfigState, setConfigError } =
     useOutletContext<ResendLayoutContext>();
   const [currentStep, setCurrentStep] = useState(0);
@@ -227,7 +227,7 @@ export default function BackofficeOrganisationResendConfiguration() {
               </p>
               <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Resend connection</h2>
               <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                Each organisation gets its own Resend fragment instance and delivery tracking.
+                Each organization gets its own Resend fragment instance and delivery tracking.
               </p>
             </div>
             <span
@@ -303,7 +303,7 @@ export default function BackofficeOrganisationResendConfiguration() {
       <FormContainer
         title="Resend credentials"
         eyebrow="Configuration"
-        description="Store API credentials for this organisation. API keys are never displayed after save."
+        description="Store API credentials for this organization. API keys are never displayed after save."
       >
         <Form method="post" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">

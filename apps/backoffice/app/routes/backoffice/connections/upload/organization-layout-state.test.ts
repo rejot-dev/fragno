@@ -1,6 +1,6 @@
 import { describe, test, assert } from "vitest";
 
-import { resolveUploadWorkspaceTab } from "./organisation-layout-state";
+import { resolveUploadWorkspaceTab } from "./organization-layout-state";
 
 describe("resolveUploadWorkspaceTab", () => {
   test("selects the files tab for the uploads alias route", () => {

@@ -36,11 +36,16 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   const returnTo = readBackofficeReturnTo(url);
   const organizationId = readBackofficeOrganizationSwitchId(url);
   const jwtMe = await getBackofficeMe(request, context);
-  if (
-    jwtMe.status === "authenticated" &&
-    (!organizationId || jwtMe.me.activeOrganizationId === organizationId)
-  ) {
-    throw redirect(returnTo);
+  if (jwtMe.status === "authenticated") {
+    const activeOrganizationId = jwtMe.me.activeOrganization?.organization.id ?? null;
+    const hasConsistentOrganizationIdentity =
+      jwtMe.me.activeOrganizationId === activeOrganizationId;
+    if (
+      hasConsistentOrganizationIdentity &&
+      (!organizationId || activeOrganizationId === organizationId)
+    ) {
+      throw redirect(returnTo);
+    }
   }
 
   return data({ returnTo, organizationId } satisfies BackofficeBootstrapLoaderData, {
@@ -73,7 +78,7 @@ export default function BackofficeAuthBootstrap() {
           return;
         }
         window.location.replace(
-          retargetBackofficeOrganizationReturnTo(returnTo, result.organizationId),
+          retargetBackofficeOrganizationReturnTo(returnTo, result.organization?.slug ?? null),
         );
       },
       (reason: unknown) => {
@@ -102,7 +107,7 @@ export default function BackofficeAuthBootstrap() {
         <div className="w-full max-w-md">
           <FormContainer
             title="Preparing backoffice"
-            description="Creating your organisation-scoped Backoffice access."
+            description="Creating your organization-scoped Backoffice access."
             eyebrow="Bootstrap"
           >
             {error ? (

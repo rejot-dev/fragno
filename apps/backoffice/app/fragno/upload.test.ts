@@ -14,7 +14,7 @@ const TEST_ACCESS_KEY_ID = "ACCESS_KEY_ID_TEST";
 const TEST_SECRET_ACCESS_KEY = "SECRET_ACCESS_KEY_TEST";
 
 describe("upload admin contract", () => {
-  test("enforces organisation-prefixed storage key namespace", () => {
+  test("enforces organization-prefixed storage key namespace", () => {
     const prefix = resolveUploadStorageKeyPrefix("org_ABC", "team/uploads");
     expect(prefix).toBe("org/org_ABC/team/uploads");
   });
@@ -125,7 +125,7 @@ describe("upload admin contract", () => {
     );
   });
 
-  test("supports configuring multiple providers in one organisation", () => {
+  test("supports configuring multiple providers in one organization", () => {
     const first = resolveUploadAdminConfigInput({
       orgId: "acme-dev",
       now: "2026-03-08T10:00:00.000Z",

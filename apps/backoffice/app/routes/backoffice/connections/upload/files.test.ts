@@ -13,6 +13,12 @@ vi.mock("@/components/backoffice", () => ({
   formatBytes: vi.fn(),
 }));
 
+vi.mock("@/fragno/auth/auth-server", () => ({
+  requireBackofficeMe: vi.fn(async () => ({
+    organizations: [{ organization: { id: "org_123", slug: "fragno" } }],
+  })),
+}));
+
 vi.mock("@/fragno/upload-client", () => ({
   createUploadClient: vi.fn(() => ({
     useUploadHelpers: () => ({}),
@@ -56,7 +62,7 @@ describe("upload files loader", () => {
     ({
       request: new Request(url),
       url: new URL(url),
-      params: { orgId: "org_123" },
+      params: { orgSlug: "fragno" },
       context: {} as never,
     }) as unknown as Parameters<typeof loader>[0];
 
@@ -72,7 +78,7 @@ describe("upload files loader", () => {
       configError: null,
     });
     const result = await loader(
-      createLoaderArgs("https://example.com/backoffice/connections/upload/org_123/files"),
+      createLoaderArgs("https://example.com/backoffice/connections/upload/fragno/files"),
     );
 
     expect(result).not.toBeInstanceOf(Response);
@@ -91,7 +97,7 @@ describe("upload files loader", () => {
     });
 
     const result = await loader(
-      createLoaderArgs("https://example.com/backoffice/connections/upload/org_123/files"),
+      createLoaderArgs("https://example.com/backoffice/connections/upload/fragno/files"),
     );
 
     expect(result).not.toBeInstanceOf(Response);

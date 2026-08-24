@@ -2,18 +2,18 @@ import { Outlet } from "react-router";
 
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
-import type { Route } from "./+types/organisation-layout";
+import type { Route } from "./+types/organization-layout";
 import { buildBackofficeLoginPath } from "./auth-navigation";
 import {
-  OrganisationErrorBoundary,
-  OrganisationHeader,
-  OrganisationTabs,
-} from "./organisation-shared";
-import type { OrganisationTab } from "./organisation-utils";
-import { throwOrganisationNotFound } from "./route-errors";
+  OrganizationErrorBoundary,
+  OrganizationHeader,
+  OrganizationTabs,
+} from "./organization-shared";
+import type { OrganizationTab } from "./organization-utils";
+import { throwBackofficeOrganizationNotFound } from "./route-errors";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  if (!params.orgId) {
+  if (!params.orgSlug) {
     throw new Response("Not Found", { status: 404 });
   }
 
@@ -25,13 +25,12 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
 
-  const entry = me.organizations.find((item) => item.organization.id === params.orgId) ?? null;
+  const entry = me.organizations.find((item) => item.organization.slug === params.orgSlug) ?? null;
   if (!entry) {
-    throwOrganisationNotFound(params.orgId);
+    throwBackofficeOrganizationNotFound(params.orgSlug);
   }
 
   return {
-    orgId: params.orgId,
     organization: entry.organization,
     member: entry.member,
     me,
@@ -39,21 +38,22 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  const organisationName = loaderData?.organization?.name ?? loaderData?.orgId ?? "Organisation";
-  return [{ title: `Organisation · ${organisationName}` }];
+  const organizationName =
+    loaderData?.organization?.name ?? loaderData?.organization?.id ?? "Organization";
+  return [{ title: `Organization · ${organizationName}` }];
 }
 
 export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
-  return <OrganisationErrorBoundary error={error} params={params} />;
+  return <OrganizationErrorBoundary error={error} params={params} />;
 }
 
-export default function BackofficeOrganisationLayout({
+export default function BackofficeOrganizationLayout({
   loaderData,
   matches,
 }: Route.ComponentProps) {
-  const { orgId, organization, member, me } = loaderData;
+  const { organization, member, me } = loaderData;
 
-  let activeTab: OrganisationTab = "overview";
+  let activeTab: OrganizationTab = "overview";
   const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
   const pathSegments = currentPath.split("/").filter(Boolean);
   if (pathSegments.includes("members")) {
@@ -66,15 +66,14 @@ export default function BackofficeOrganisationLayout({
 
   return (
     <div className="space-y-4">
-      <OrganisationHeader orgId={orgId} organisationName={organization.name} />
-      <OrganisationTabs orgId={orgId} activeTab={activeTab} />
-      <Outlet context={{ orgId, organization, member, me }} />
+      <OrganizationHeader organizationLabel={organization.name || organization.id} />
+      <OrganizationTabs orgSlug={organization.slug} activeTab={activeTab} />
+      <Outlet context={{ organization, member, me }} />
     </div>
   );
 }
 
-export type OrganisationLayoutContext = {
-  orgId: string;
+export type OrganizationLayoutContext = {
   organization: Route.ComponentProps["loaderData"]["organization"];
   member: Route.ComponentProps["loaderData"]["member"];
   me: NonNullable<Route.ComponentProps["loaderData"]["me"]>;

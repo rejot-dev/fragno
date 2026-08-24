@@ -9,7 +9,6 @@ const SECTION_CODES: Record<string, string> = {
   internals: "ADM",
   administration: "ADM",
   integrations: "CON",
-  organisations: "ORG",
   organizations: "ORG",
   settings: "CFG",
   users: "USR",

@@ -1,12 +1,12 @@
 import { z } from "zod";
 
+import { requireBackofficeContextScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
 import { createBackofficeFileSystem } from "@/files/create-file-system";
 import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { automationScopeFromRouteParams } from "../backoffice/automations/scope";
 import {
   DASHBOARD_COMMAND_TIMEOUT_MS,
   DEFAULT_CWD,
@@ -65,7 +65,7 @@ export async function loader() {
 export async function action({ request, context, params }: Route.ActionArgs) {
   assertDevOnlyLocalRequest(request);
 
-  const scope = automationScopeFromRouteParams(params);
+  const scope = requireBackofficeContextScopeFromRouteParams(params);
   const authorization = await authorizeBackofficeContext(request, context, scope);
   if (!authorization.ok) {
     return authorization.response;

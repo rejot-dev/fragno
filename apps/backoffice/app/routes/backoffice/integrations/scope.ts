@@ -2,8 +2,16 @@ import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
+  backofficeResolvedScopeFromRuntimeScope,
+  backofficeRuntimeScopeFromResolvedScope,
+  resolveBackofficeRouteScope,
+  type BackofficeScopeSelection,
+} from "@/backoffice-runtime/resolved-scope";
+import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
+import {
   backofficeContextScopeFromSinglePathSegment,
   backofficeContextScopeSinglePathSegment,
+  requireBackofficeContextScopeFromRouteParams,
 } from "@/backoffice-runtime/scope-codec";
 import type { BackofficeMeData } from "@/fragno/auth/auth-client";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
@@ -11,12 +19,10 @@ import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { AutomationProjectRecord } from "../automations/data";
 import {
   automationScopeBasePath,
-  automationScopeFromRouteParams,
   createAutomationScopeOptions,
   type AutomationScopeOption,
-  type AutomationUiScope,
 } from "../automations/scope";
-import { throwOrganisationNotFound } from "../route-errors";
+import { throwBackofficeOrganizationNotFound } from "../route-errors";
 
 export type IntegrationRouteParams = {
   scopeKind?: string;
@@ -27,7 +33,7 @@ export type IntegrationScopeSwitchOption = AutomationScopeOption;
 
 export type ScopedIntegrationContext = {
   scope: BackofficeContextScope;
-  uiScope: AutomationUiScope;
+  uiScope: BackofficeScopeSelection;
   label: string;
   basePath: string;
   integrationsPath: string;
@@ -44,8 +50,8 @@ export const scopeLabel = (scope: BackofficeContextScope, me: BackofficeMeData):
     case "system":
       return "System";
     case "org": {
-      const organisation = me.organizations.find((entry) => entry.organization.id === scope.orgId);
-      return organisation?.organization.name ?? scope.orgId;
+      const organization = me.organizations.find((entry) => entry.organization.id === scope.orgId);
+      return organization?.organization.name ?? scope.orgId;
     }
     case "project":
       return scope.projectId;
@@ -56,36 +62,26 @@ export const scopeLabel = (scope: BackofficeContextScope, me: BackofficeMeData):
   throw new Error("Unsupported Backoffice context scope kind.");
 };
 
-export const scopeToAutomationUiScope = (
+export function integrationScopeSelectionFromRuntimeScope(
   scope: BackofficeContextScope,
   me: BackofficeMeData,
-): AutomationUiScope => {
-  switch (scope.kind) {
-    case "system":
-      return { kind: "system", label: "System" };
-    case "org":
-      return { kind: "org", orgId: scope.orgId, label: scopeLabel(scope, me) };
-    case "project":
-      return {
-        kind: "project",
-        orgId: scope.orgId,
-        projectId: scope.projectId,
-        label: scope.projectId,
-      };
-    case "user":
-      return { kind: "user", userId: scope.userId, label: scopeLabel(scope, me) };
-  }
+): BackofficeScopeSelection {
+  const organization =
+    scope.kind === "org" || scope.kind === "project"
+      ? (me.organizations.find((entry) => entry.organization.id === scope.orgId)?.organization ??
+        null)
+      : null;
+  const resolvedScope = backofficeResolvedScopeFromRuntimeScope(scope, organization);
+  return { ...resolvedScope, label: scopeLabel(scope, me) };
+}
 
-  throw new Error("Unsupported Backoffice context scope kind.");
-};
-
-export const integrationBasePath = (scope: AutomationUiScope, integration: string) =>
+export const integrationBasePath = (scope: BackofficeScopeSelection, integration: string) =>
   `${automationScopeBasePath(scope)}/integrations/${integration}`;
 
 export const organizationIdFromScope = (scope: BackofficeContextScope): string | null =>
   scope.kind === "org" || scope.kind === "project" ? scope.orgId : null;
 
-export const createOrganisationScopeOptions = (organizations: BackofficeMeData["organizations"]) =>
+export const createOrganizationScopeOptions = (organizations: BackofficeMeData["organizations"]) =>
   organizations.map(({ organization }) => ({
     id: organization.id,
     label: organization.name ?? organization.id,
@@ -105,7 +101,7 @@ export const createIntegrationScopeSwitchOptions = ({
   allowedScopes?: readonly BackofficeContextScope["kind"][];
 }): IntegrationScopeSwitchOption[] => {
   const scopeOptions = createAutomationScopeOptions({
-    organisations: me.organizations.map((entry) => entry.organization),
+    organizations: me.organizations.map((entry) => entry.organization),
     projects,
     user: me.user,
     currentTab: "integrations",
@@ -131,7 +127,17 @@ export const resolveIntegrationContext = ({
   integration: string;
   allowedScopes?: readonly BackofficeContextScope["kind"][];
 }): ScopedIntegrationContext => {
-  const scope = automationScopeFromRouteParams(params);
+  const routeScope = requireBackofficeRouteScopeFromParams(params);
+  const resolvedScope = resolveBackofficeRouteScope(
+    routeScope,
+    me.organizations.map(({ organization }) => organization),
+  );
+  if (!resolvedScope) {
+    const organizationSlug =
+      routeScope.kind === "org" || routeScope.kind === "project" ? routeScope.orgSlug : undefined;
+    throwBackofficeOrganizationNotFound(organizationSlug);
+  }
+  const scope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
   const isScopedRoute = true;
 
   if (allowedScopes && !allowedScopes.includes(scope.kind)) {
@@ -142,19 +148,11 @@ export const resolveIntegrationContext = ({
     throw new Response("Not Found", { status: 404 });
   }
 
-  const organizationId = organizationIdFromScope(scope);
-  if (
-    organizationId &&
-    !me.organizations.some((entry) => entry.organization.id === organizationId)
-  ) {
-    throwOrganisationNotFound(organizationId);
-  }
-
   if (scope.kind === "user" && scope.userId !== me.user.id) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const uiScope = scopeToAutomationUiScope(scope, me);
+  const uiScope = { ...resolvedScope, label: scopeLabel(scope, me) };
   const scopedBasePath = integrationBasePath(uiScope, integration);
   return {
     scope,
@@ -223,7 +221,7 @@ export const resolveScopeFromRouteParams = (
   params: IntegrationRouteParams,
 ): BackofficeContextScope => {
   if (params.scopeKind && params.scopeId) {
-    return automationScopeFromRouteParams(params);
+    return requireBackofficeContextScopeFromRouteParams(params);
   }
 
   throw new Response("Not Found", { status: 404 });

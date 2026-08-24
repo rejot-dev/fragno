@@ -1,11 +1,15 @@
 import type { ReactNode } from "react";
 import { Link, useLoaderData, useSearchParams } from "react-router";
 
-import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import {
+  backofficeRouteScopePath,
+  requireBackofficeRouteScopeFromParams,
+} from "@/backoffice-runtime/route-scope";
+import { requireBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 
-import { automationScopeFromRouteParams } from "../automations/scope";
-import type { Route } from "./+types/workflows-organisation-detail";
+import { automationRuntimeScopeFromRouteParams } from "../automations/scope";
+import type { Route } from "./+types/workflows-organization-detail";
 import { loadWorkflowInstanceDetail, WorkflowApiError } from "./workflows-data";
 import {
   formatJson,
@@ -37,7 +41,12 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.workflowName || !params.instanceId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const scope = automationScopeFromRouteParams(params);
+  const me = await requireBackofficeMe(request, context);
+  const routeScope = requireBackofficeRouteScopeFromParams(params);
+  const scope = automationRuntimeScopeFromRouteParams(
+    params,
+    me.organizations.map(({ organization }) => organization),
+  );
   await requireBackofficeContext(request, context, scope);
   try {
     const detail = await loadWorkflowInstanceDetail({
@@ -49,7 +58,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     });
     return {
       ...detail,
-      scopePath: backofficeContextScopeRoutePath(scope),
+      scopePath: backofficeRouteScopePath(routeScope),
     } satisfies WorkflowDetailLoaderData;
   } catch (error) {
     if (error instanceof WorkflowApiError) {
@@ -59,7 +68,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 }
 
-export default function BackofficeWorkflowsOrganisationDetail() {
+export default function BackofficeWorkflowsOrganizationDetail() {
   const detail = useLoaderData<typeof loader>();
   const basePath = `/backoffice/internals/workflows/${detail.scopePath}`;
   const currentStep = detail.meta.currentStep;

@@ -1,6 +1,6 @@
 import { redirect } from "react-router";
 
-import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 import { getBackofficeMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeAuthBootstrapPath } from "../auth-navigation";
@@ -16,11 +16,11 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   }
   const me = result.me;
 
-  const scope = me.activeOrganization?.organization.id
-    ? ({ kind: "org", orgId: me.activeOrganization.organization.id } as const)
+  const scope = me.activeOrganization?.organization
+    ? ({ kind: "org", orgSlug: me.activeOrganization.organization.slug } as const)
     : ({ kind: "user", userId: me.user.id } as const);
 
-  return redirect(`/backoffice/internals/workflows/${backofficeContextScopeRoutePath(scope)}`);
+  return redirect(`/backoffice/internals/workflows/${backofficeRouteScopePath(scope)}`);
 }
 
 export default function BackofficeWorkflowsRedirect() {

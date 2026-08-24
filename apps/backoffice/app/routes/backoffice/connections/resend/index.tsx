@@ -14,9 +14,11 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }
 
-  const activeOrganizationId = me.activeOrganization?.organization.id ?? null;
-  if (activeOrganizationId) {
-    return redirect(`/backoffice/automations/org/${activeOrganizationId}/integrations/resend`);
+  const activeOrganization = me.activeOrganization?.organization ?? null;
+  if (activeOrganization) {
+    return redirect(
+      `/backoffice/automations/org/${encodeURIComponent(activeOrganization.slug)}/integrations/resend`,
+    );
   }
 
   return null;
@@ -25,7 +27,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 export function meta() {
   return [
     { title: "Resend Connection" },
-    { name: "description", content: "Manage Resend connections by organisation." },
+    { name: "description", content: "Manage Resend connections by organization." },
   ];
 }
 
@@ -44,7 +46,7 @@ export default function BackofficeConnectionsResend() {
         ]}
         eyebrow="Integrations"
         title="Resend connection workspace."
-        description="Pick an organisation to configure Resend webhooks and monitor email delivery."
+        description="Pick an organization to configure Resend webhooks and monitor email delivery."
         actions={
           <Link
             to="/backoffice/automations"
@@ -57,7 +59,7 @@ export default function BackofficeConnectionsResend() {
 
       {organizations.length === 0 ? (
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          No organisations are linked to this account yet.
+          No organizations are linked to this account yet.
         </div>
       ) : (
         <section className="grid gap-3 md:grid-cols-2">
@@ -99,7 +101,7 @@ export default function BackofficeConnectionsResend() {
 
               <div className="mt-4">
                 <Link
-                  to={`/backoffice/automations/org/${organization.id}/integrations/resend`}
+                  to={`/backoffice/automations/org/${encodeURIComponent(organization.slug)}/integrations/resend`}
                   className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                 >
                   Manage Resend

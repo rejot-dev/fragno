@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
+import {
+  automationScopeBasePath,
+  automationScopeTerminalCommandPath,
+} from "@/routes/backoffice/automations/scope";
 import { DashboardTerminalPanel } from "@/routes/backoffice/dashboard-terminal-panel";
 import { BACKOFFICE_TERMINAL_COMMAND_SPECS } from "@/routes/backoffice/terminal-commands";
 
 import { useGlobalHotkey } from "./global-hotkeys";
 
 type QuakeTerminalProps = {
-  scope: BackofficeContextScope;
-  scopeLabel: string;
+  selectedScope: BackofficeScopeSelection;
 };
 
 function isEditableKeyboardTarget(target: EventTarget | null) {
@@ -21,11 +23,10 @@ function isEditableKeyboardTarget(target: EventTarget | null) {
   );
 }
 
-export function QuakeTerminal({ scope, scopeLabel }: QuakeTerminalProps) {
+export function QuakeTerminal({ selectedScope }: QuakeTerminalProps) {
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
-  const scopePath = backofficeContextScopeRoutePath(scope);
-  const terminalActionPath = `/backoffice/automations/${scopePath}/terminal-command`;
+  const scopePath = automationScopeBasePath(selectedScope);
 
   useEffect(() => {
     setMounted(true);
@@ -114,7 +115,7 @@ export function QuakeTerminal({ scope, scopeLabel }: QuakeTerminalProps) {
       <section
         role="dialog"
         aria-modal="true"
-        aria-label={`${scopeLabel} terminal`}
+        aria-label={`${selectedScope.label} terminal`}
         className={`absolute top-0 right-0 left-0 flex h-[min(32rem,calc(100dvh-5rem))] min-h-0 flex-col overflow-visible border-b border-[color:var(--bo-border-strong)] bg-[color:color-mix(in_srgb,var(--bo-panel)_74%,transparent)] shadow-[0_28px_90px_rgba(0,0,0,0.22)] backdrop-blur-3xl transition-transform duration-200 ease-out motion-reduce:transition-none ${
           open ? "translate-y-0" : "-translate-y-[calc(100%+2rem)]"
         }`}
@@ -147,10 +148,10 @@ export function QuakeTerminal({ scope, scopeLabel }: QuakeTerminalProps) {
         <DashboardTerminalPanel
           key={scopePath}
           scopeId={scopePath}
-          scopeName={scopeLabel}
-          actionPath={terminalActionPath}
+          scopeName={selectedScope.label}
+          actionPath={automationScopeTerminalCommandPath(selectedScope)}
           commandSpecs={BACKOFFICE_TERMINAL_COMMAND_SPECS}
-          description={`Commands run directly in the ${scopeLabel} ${scope.kind} scope.`}
+          description={`Commands run directly in the ${selectedScope.label} ${selectedScope.kind} scope.`}
           presentation="quake"
           focusInput={open}
         />

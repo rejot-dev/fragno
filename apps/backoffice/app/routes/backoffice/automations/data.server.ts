@@ -2,7 +2,10 @@ import type { RouterContextProvider } from "react-router";
 
 import { extractW3CRequestPropagationContext } from "@fragno-dev/core";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type {
+  BackofficeContextScope,
+  BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import { createBackofficeFileSystem } from "@/files";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
@@ -49,24 +52,21 @@ const getScopedAutomationsObject = (
   return kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
 };
 
-const createBackofficeAutomationFileSystem = async ({
-  request,
+async function createBackofficeAutomationFileSystem({
   context,
-  scope,
+  execution,
 }: {
-  request: Request;
   context: Readonly<RouterContextProvider>;
-  scope: BackofficeContextScope;
-}) => {
+  execution: BackofficeExecutionContext;
+}) {
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
-  const execution = await requireBackofficeContext(request, context, scope);
   return createBackofficeFileSystem({
     objects: runtime.objects,
     kernel,
     execution,
     config: runtime.config,
   });
-};
+}
 
 export { toExternalId } from "./data";
 
@@ -94,11 +94,8 @@ export async function loadAutomationWorkspaceData({
     return { scripts: [], scriptsError: null };
   }
 
-  const fileSystem = await createBackofficeAutomationFileSystem({
-    request,
-    context,
-    scope: resolvedScope,
-  });
+  const execution = await requireBackofficeContext(request, context, resolvedScope);
+  const fileSystem = await createBackofficeAutomationFileSystem({ context, execution });
 
   let workspaceScripts: AutomationWorkspaceScriptEntry[] = [];
   let workspaceScriptsError: string | null = null;
@@ -128,35 +125,23 @@ export async function loadAutomationWorkspaceData({
 }
 
 export async function loadAutomationScriptSource({
-  request,
   context,
-  scope,
-  orgId,
+  execution,
   scriptId,
 }: {
-  request: Request;
   context: Readonly<RouterContextProvider>;
-  scope?: BackofficeContextScope;
-  orgId?: string;
+  execution: BackofficeExecutionContext;
   scriptId: string;
 }): Promise<AutomationScriptSourceRecord> {
-  const resolvedScope = scope ?? (orgId ? { kind: "org" as const, orgId } : null);
-  if (!resolvedScope) {
-    throw new Error("Automation scope is required.");
-  }
-  const fileSystem = await createBackofficeAutomationFileSystem({
-    request,
-    context,
-    scope: resolvedScope,
-  });
+  const fileSystem = await createBackofficeAutomationFileSystem({ context, execution });
 
   try {
     const scriptPath = fromAutomationScriptId(scriptId);
     const layer = getAutomationLayerForPath(scriptPath);
-    if (!isAutomationScriptLayerVisibleInScope(layer, resolvedScope)) {
+    if (!isAutomationScriptLayerVisibleInScope(layer, execution.scope)) {
       return {
         script: null,
-        scriptError: `Automation script '${scriptPath}' is not visible in ${resolvedScope.kind} scope.`,
+        scriptError: `Automation script '${scriptPath}' is not visible in ${execution.scope.kind} scope.`,
       };
     }
 
@@ -249,7 +234,7 @@ export async function createAutomationProject(
 export async function deleteAutomationStoreEntry(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
+  execution: BackofficeExecutionContext,
   key: string,
 ): Promise<{
   ok: boolean;
@@ -257,8 +242,7 @@ export async function deleteAutomationStoreEntry(
 }> {
   try {
     const { runtime, kernel } = context.get(BackofficeWorkerContext);
-    const execution = await requireBackofficeContext(request, context, scope);
-    const automations = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
+    const automations = kernel.scoped("AUTOMATIONS", execution.scope, runtime.objects.automations);
     const callRoute = createAutomationsRouteCaller({
       object: automations,
       context: {

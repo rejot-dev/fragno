@@ -171,7 +171,7 @@ describe("BackofficeKernel.invoke", () => {
             kind: "verified-request-authority",
             userId: "user-2",
             role: "user",
-            scope: { kind: "org", orgId: "org-1" },
+            organizationId: "org-1",
             expiresAtEpochMs: Date.now() + 60_000,
           },
         },

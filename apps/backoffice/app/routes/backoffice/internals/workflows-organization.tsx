@@ -1,12 +1,16 @@
 import { Link, Outlet, useLoaderData, useLocation, useParams } from "react-router";
 
 import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
-import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import {
+  backofficeRouteScopePath,
+  requireBackofficeRouteScopeFromParams,
+} from "@/backoffice-runtime/route-scope";
 import { BackofficePageHeader } from "@/components/backoffice";
+import { requireBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 
-import { automationScopeFromRouteParams } from "../automations/scope";
-import type { Route } from "./+types/workflows-organisation";
+import { automationRuntimeScopeFromRouteParams } from "../automations/scope";
+import type { Route } from "./+types/workflows-organization";
 import { loadWorkflowInstanceSummaries, parsePageSize, WorkflowApiError } from "./workflows-data";
 import { formatTimestamp, getWorkflowStatusBadgeClasses } from "./workflows-shared";
 
@@ -26,9 +30,14 @@ export async function loader({
   context,
   url,
 }: Route.LoaderArgs): Promise<WorkflowsOrgLoaderData> {
-  const scope = automationScopeFromRouteParams(params);
+  const me = await requireBackofficeMe(request, context);
+  const routeScope = requireBackofficeRouteScopeFromParams(params);
+  const scope = automationRuntimeScopeFromRouteParams(
+    params,
+    me.organizations.map(({ organization }) => organization),
+  );
   await requireBackofficeContext(request, context, scope);
-  const scopePath = backofficeContextScopeRoutePath(scope);
+  const scopePath = backofficeRouteScopePath(routeScope);
   const scopeLabel = backofficeContextScopeLabel(scope);
   const pageSize = parsePageSize(url.searchParams.get("pageSize"));
 
@@ -63,7 +72,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: `Workflows · ${scopeLabel}` }];
 }
 
-export default function BackofficeWorkflowsOrganisation() {
+export default function BackofficeWorkflowsOrganization() {
   const { scopePath, scopeLabel, configured, workflows, instances, warnings, error } =
     useLoaderData<typeof loader>();
   const location = useLocation();

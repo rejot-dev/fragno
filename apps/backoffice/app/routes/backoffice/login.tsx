@@ -110,7 +110,7 @@ async function exchangeSignedInSessionForBackofficeJwt(
         throw new Error(await readBackofficeSessionExchangeErrorMessage(response));
       }
       const result = issueBackofficeTokenResultSchema.parse(await response.clone().json());
-      return { response, organizationId: result.organizationId };
+      return { response, organizationId: result.organization?.id ?? null };
     }
 
     const provisioning = organizationProvisioningResponseSchema.parse(await response.json());

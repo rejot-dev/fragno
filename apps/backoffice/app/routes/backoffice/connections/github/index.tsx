@@ -18,16 +18,13 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }
 
-  const activeOrganizationId = me.activeOrganization?.organization.id;
-  const fallbackOrganizationId = me.organizations[0]?.organization.id;
-  const organizationId = activeOrganizationId ?? fallbackOrganizationId;
-
-  if (!organizationId) {
+  const activeOrganization = me.activeOrganization?.organization;
+  if (!activeOrganization) {
     return redirect("/backoffice/automations");
   }
 
   return redirect(
-    `/backoffice/automations/org/${encodeURIComponent(organizationId)}/integrations/github`,
+    `/backoffice/automations/org/${encodeURIComponent(activeOrganization.slug)}/integrations/github`,
   );
 }
 

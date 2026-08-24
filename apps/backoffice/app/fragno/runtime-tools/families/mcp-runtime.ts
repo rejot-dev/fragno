@@ -5,7 +5,7 @@ import type { McpObject } from "@/backoffice-runtime/object-registry";
 import type { McpFragment } from "@/fragno/mcp";
 
 import {
-  createOrganisationNotConfiguredMessage,
+  createOrganizationNotConfiguredMessage,
   isSuccessStatus,
   throwOnRouteRuntimeError,
 } from "../runtime-errors";
@@ -35,7 +35,7 @@ export type RegisteredMcpCommandContext = {
   runtime: McpRuntime;
 };
 
-const MCP_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("MCP");
+const MCP_NOT_CONFIGURED = createOrganizationNotConfiguredMessage("MCP");
 
 type CreateRouteBackedMcpRuntimeOptions = {
   baseUrl: string;

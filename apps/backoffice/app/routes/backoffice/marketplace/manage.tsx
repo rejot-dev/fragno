@@ -50,16 +50,15 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  const requestedOrganizationId = url.searchParams.get("organizationId")?.trim();
-  const organizationId =
-    requestedOrganizationId ??
-    me.activeOrganization?.organization.id ??
-    me.organizations[0]?.organization.id ??
-    null;
-  if (!organizationId || !marketplaceOwnerForOrganization(me, organizationId)) {
-    throw new Response("Publisher organisation was not found.", { status: 404 });
+  const requestedOrganizationSlug = url.searchParams.get("organizationSlug")?.trim();
+  const organization = requestedOrganizationSlug
+    ? me.organizations.find(
+        ({ organization: candidate }) => candidate.slug === requestedOrganizationSlug,
+      )?.organization
+    : me.activeOrganization?.organization;
+  if (!organization || !marketplaceOwnerForOrganization(me, organization.id)) {
+    throw new Response("Publisher organization was not found.", { status: 404 });
   }
-
   const versionCursor = url.searchParams.get("versionCursor")?.trim() || undefined;
   try {
     decodeMarketplaceOwnedVersionCursor({
@@ -76,14 +75,14 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   const marketplace = context.get(BackofficeWorkerContext).runtime.objects.marketplace.singleton();
   const detail = await marketplace.getOwnedListing({
     listingId: listingIdResult.data,
-    ownerScope: { kind: "org", orgId: organizationId },
+    ownerScope: { kind: "org", orgId: organization.id },
     versionCursor,
   });
   if (!detail) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  return { organizationId, ...detail };
+  return { organization: { id: organization.id, slug: organization.slug }, ...detail };
 }
 
 export async function action({ request, params, context, url }: Route.ActionArgs) {
@@ -98,12 +97,15 @@ export async function action({ request, params, context, url }: Route.ActionArgs
   }
 
   const formData = await request.formData();
-  const organizationId = String(formData.get("organizationId") ?? "").trim();
-  const owner = marketplaceOwnerForOrganization(me, organizationId);
+  const organizationSlug = String(formData.get("organizationSlug") ?? "").trim();
+  const organization = me.organizations.find(
+    ({ organization: candidate }) => candidate.slug === organizationSlug,
+  )?.organization;
+  const owner = organization ? marketplaceOwnerForOrganization(me, organization.id) : null;
   if (!owner) {
     return {
       ok: false,
-      message: "Select an organisation you can publish for.",
+      message: "Select an organization you can publish for.",
     } satisfies ManageActionData;
   }
 
@@ -139,7 +141,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     return redirect(
       marketplaceListingManagePath({
         listingId: listingIdResult.data,
-        organizationId,
+        organizationSlug,
         result: { updated: "1" },
       }),
     );
@@ -165,7 +167,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     return redirect(
       marketplaceListingManagePath({
         listingId: listingIdResult.data,
-        organizationId,
+        organizationSlug,
         result: {
           created: result.version,
           ...(result.created ? {} : { reused: "1" }),
@@ -194,7 +196,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     return redirect(
       marketplaceListingManagePath({
         listingId: listingIdResult.data,
-        organizationId,
+        organizationSlug,
         result: {
           published: result.version,
           ...(result.published ? {} : { reused: "1" }),
@@ -215,7 +217,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     return redirect(
       marketplaceListingManagePath({
         listingId: listingIdResult.data,
-        organizationId,
+        organizationSlug,
         result: {
           archived: "1",
           ...(result.archived ? {} : { reused: "1" }),
@@ -238,7 +240,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export default function BackofficeMarketplaceManage({ loaderData }: Route.ComponentProps) {
-  const { organizationId, listing, versions, nextVersionCursor, hasNextVersionPage } = loaderData;
+  const { organization, listing, versions, nextVersionCursor, hasNextVersionPage } = loaderData;
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const location = useLocation();
@@ -270,7 +272,11 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
           {
             label: "My listings",
             to: marketplaceScopeTabPath(
-              { kind: "org", orgId: organizationId, label: organizationId },
+              {
+                kind: "org",
+                organization,
+                label: organization.id,
+              },
               "my-listings",
             ),
           },
@@ -284,8 +290,8 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
             <Link
               to={marketplaceListingPath(listing.listingId, {
                 kind: "org",
-                orgId: organizationId,
-                label: organizationId,
+                organization,
+                label: organization.id,
               })}
               className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
             >
@@ -314,7 +320,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
           >
             <Form method="post" className="space-y-4">
               <input type="hidden" name="intent" value="update" />
-              <input type="hidden" name="organizationId" value={organizationId} />
+              <input type="hidden" name="organizationSlug" value={organization.slug} />
               <MetadataField label="Name" name="name" defaultValue={listing.name} />
               <MetadataField label="Summary" name="summary" defaultValue={listing.summary} />
               <label className="flex flex-col gap-1">
@@ -368,7 +374,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
           >
             <Form method="post" className="space-y-4">
               <input type="hidden" name="intent" value="add-version" />
-              <input type="hidden" name="organizationId" value={organizationId} />
+              <input type="hidden" name="organizationSlug" value={organization.slug} />
               <MetadataField label="Version" name="version" defaultValue="" />
               <button
                 type="submit"
@@ -399,7 +405,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
             {listing.status !== "archived" ? (
               <Form method="post" className="mt-5 border-t border-[color:var(--bo-border)] pt-4">
                 <input type="hidden" name="intent" value="archive" />
-                <input type="hidden" name="organizationId" value={organizationId} />
+                <input type="hidden" name="organizationSlug" value={organization.slug} />
                 <button
                   type="submit"
                   disabled={isSubmitting}
@@ -438,7 +444,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
                     {version.status === "draft" || canRestore ? (
                       <Form method="post" className="mt-3">
                         <input type="hidden" name="intent" value="publish" />
-                        <input type="hidden" name="organizationId" value={organizationId} />
+                        <input type="hidden" name="organizationSlug" value={organization.slug} />
                         <input type="hidden" name="version" value={version.version} />
                         <button
                           type="submit"
@@ -457,7 +463,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
               <Link
                 to={marketplaceListingManagePath({
                   listingId: listing.listingId,
-                  organizationId,
+                  organizationSlug: organization.slug,
                   result: { versionCursor: nextVersionCursor },
                 })}
                 className="mt-3 block border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-center text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase hover:border-[color:var(--bo-accent)]"

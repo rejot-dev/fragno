@@ -85,7 +85,7 @@ export const automationsCapability: BackofficeCapability = {
         source: "automations",
         eventType: "project.created",
         label: "Project created",
-        description: "Fires after an automation project is created in an organisation.",
+        description: "Fires after an automation project is created in an organization.",
         payloadSchema: projectPayloadSchema,
         subjectSchema: projectSubjectSchema,
         example: {

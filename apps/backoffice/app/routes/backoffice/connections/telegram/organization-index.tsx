@@ -1,7 +1,7 @@
 import { redirect } from "react-router";
 
 import { resolveScopeFromRouteParams } from "../../integrations/scope";
-import type { Route } from "./+types/organisation-index";
+import type { Route } from "./+types/organization-index";
 import { fetchTelegramConfig } from "./data";
 
 export async function loader({ params, context, url }: Route.LoaderArgs) {
@@ -11,6 +11,6 @@ export async function loader({ params, context, url }: Route.LoaderArgs) {
   return redirect(`${url.pathname.replace(/\/+$/u, "")}/${target}`);
 }
 
-export default function BackofficeOrganisationTelegramIndex() {
+export default function BackofficeOrganizationTelegramIndex() {
   return null;
 }

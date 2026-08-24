@@ -1,8 +1,9 @@
 import { z } from "zod";
 
+import type { BackofficeRoutableScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { marketplaceListingIdSchema } from "@/fragno/marketplace/contracts";
 
-import { marketplaceScopeTabPath, type MarketplaceUiScope } from "./scope";
+import { marketplaceScopeTabPath } from "./scope";
 
 const decodeMarketplaceListingRef = (listingRef: string): string => {
   if (!/^[0-9A-Za-z_-]+$/u.test(listingRef) || listingRef.length % 4 === 1) {
@@ -41,8 +42,10 @@ export const marketplaceListingRef = (listingId: string): string => {
   return base64.replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
 };
 
-export const marketplaceListingPath = (listingId: string, scope: MarketplaceUiScope): string =>
-  `${marketplaceScopeTabPath(scope, "marketplace")}/${marketplaceListingRef(listingId)}`;
+export const marketplaceListingPath = (
+  listingId: string,
+  scope: BackofficeRoutableScopeSelection,
+): string => `${marketplaceScopeTabPath(scope, "marketplace")}/${marketplaceListingRef(listingId)}`;
 
 export function buildArtifactVersionPath(
   pathname: string,
@@ -67,14 +70,14 @@ export function buildArtifactVersionPath(
 
 export const marketplaceListingManagePath = ({
   listingId,
-  organizationId,
+  organizationSlug,
   result,
 }: {
   listingId: string;
-  organizationId: string;
+  organizationSlug: string;
   result?: Readonly<Record<string, string>>;
 }): string => {
-  const search = new URLSearchParams({ organizationId });
+  const search = new URLSearchParams({ organizationSlug });
   for (const [name, value] of Object.entries(result ?? {})) {
     search.set(name, value);
   }

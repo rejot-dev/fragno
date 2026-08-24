@@ -57,7 +57,7 @@ const maskSecret = (value: string) => {
 const storedReson8ConfigSchema: z.ZodType<StoredReson8Config> = z.object({
   scope: z.object({
     kind: z.literal("org"),
-    orgId: z.string().trim().min(1, "Stored Reson8 config is missing an organisation id."),
+    orgId: z.string().trim().min(1, "Stored Reson8 config is missing an organization id."),
   }),
   apiKey: z.string().trim().min(1, "Stored Reson8 config is missing an API key."),
   createdAt: z.string().trim().min(1, "Stored Reson8 config is missing createdAt."),
@@ -177,7 +177,7 @@ export class InMemoryReson8Object implements Reson8Object {
 
   async getRealtimeOriginDiagnostic(origin: string): Promise<Reson8RealtimeOriginDiagnostic> {
     const { source: config } = this.#host.requireConfigured(
-      "Reson8 is not configured for this organisation.",
+      "Reson8 is not configured for this organization.",
     );
 
     const tokenResponse = await this.#fetch(`${RESON8_API_BASE_URL}/auth/token`, {
@@ -261,7 +261,7 @@ export class InMemoryReson8Object implements Reson8Object {
   async setAdminConfig(payload: unknown, orgId: string): Promise<ConfigResponse> {
     const normalizedOrgId = orgId.trim();
     if (!normalizedOrgId) {
-      throw new Error("Missing organisation id.");
+      throw new Error("Missing organization id.");
     }
 
     const existing = await this.#host.loadStored();

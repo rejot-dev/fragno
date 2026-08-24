@@ -7,7 +7,11 @@ import {
   type FragnoOutboxCoordinator,
 } from "@fragno-dev/tanstack-db-adapter";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import {
+  backofficeRuntimeScopeFromResolvedScope,
+  type BackofficeOrganizationIdentity,
+  type BackofficeResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
 import {
   backofficeContextScopeRoutePath,
   backofficeContextScopeSinglePathSegment,
@@ -17,8 +21,10 @@ import { backofficeFetch } from "@/fragno/auth/browser-auth.client";
 import { automationFragmentSchema } from "../schema";
 import { createAutomationCollections, type AutomationCollections } from "./collections";
 
-export type AutomationCollectionSource = {
-  scope: BackofficeContextScope;
+export type AutomationCollectionSource<
+  TOrganization extends BackofficeOrganizationIdentity = BackofficeOrganizationIdentity,
+> = {
+  resolvedScope: BackofficeResolvedScope<TOrganization>;
   adapterIdentity: string;
 };
 
@@ -42,8 +48,9 @@ export type AutomationBrowserDatabase = {
 export function describeAutomationCollectionSource(
   source: AutomationCollectionSource,
 ): AutomationCollectionSourceDescription {
-  const scopeKey = backofficeContextScopeSinglePathSegment(source.scope);
-  const baseUrl = `/api/automations-scoped/${backofficeContextScopeRoutePath(source.scope)}`;
+  const runtimeScope = backofficeRuntimeScopeFromResolvedScope(source.resolvedScope);
+  const scopeKey = backofficeContextScopeSinglePathSegment(runtimeScope);
+  const baseUrl = `/api/automations-scoped/${backofficeContextScopeRoutePath(runtimeScope)}`;
 
   return {
     resourceKey: JSON.stringify([scopeKey, source.adapterIdentity]),

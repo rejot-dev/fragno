@@ -13,7 +13,7 @@ import type { Route } from "./+types/store";
 import { deleteAutomationStoreEntry } from "./data.server";
 import { formatTimestamp } from "./formatting";
 import type { AutomationLayoutContext } from "./layout-context";
-import { automationScopeFromRouteParams } from "./scope";
+import { requireAutomationRouteExecution } from "./scope.server";
 
 type StoreActionData = {
   ok: boolean;
@@ -40,8 +40,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     } satisfies StoreActionData;
   }
 
-  const scope = automationScopeFromRouteParams(params);
-  const result = await deleteAutomationStoreEntry(request, context, scope, key);
+  const execution = await requireAutomationRouteExecution(request, context, params);
+  const result = await deleteAutomationStoreEntry(request, context, execution, key);
 
   if (!result.ok) {
     return {
@@ -58,7 +58,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   } satisfies StoreActionData;
 }
 
-export default function BackofficeOrganisationAutomationStore() {
+export default function BackofficeOrganizationAutomationStore() {
   const { collections } = useOutletContext<AutomationLayoutContext>();
   const [searchParams] = useSearchParams();
   const [storePrefix, setStorePrefix] = useState(() => searchParams.get("prefix") ?? "");

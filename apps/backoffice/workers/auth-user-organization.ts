@@ -55,7 +55,7 @@ function initialOrganizationOwnerName(user: UserOrganizationUser): string {
 }
 
 function initialOrganizationName(user: UserOrganizationUser): string {
-  return `${initialOrganizationOwnerName(user)}'s Organisation`;
+  return `${initialOrganizationOwnerName(user)}'s Organization`;
 }
 
 function initialOrganizationSlugBase(organizationName: string): string {

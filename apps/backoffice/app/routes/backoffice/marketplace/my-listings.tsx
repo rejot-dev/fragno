@@ -15,7 +15,7 @@ import { buildBackofficeLoginPath } from "../auth-navigation";
 import { lookupAutomationProject } from "../automations/data.server";
 import type { Route } from "./+types/my-listings";
 import { marketplaceListingManagePath, marketplaceListingPath } from "./navigation";
-import { marketplaceScopeFromRouteParams, resolveMarketplaceUiScope } from "./scope";
+import { marketplaceRuntimeScopeFromRouteParams, resolveMarketplaceScopeSelection } from "./scope";
 
 const updatedAtFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -49,7 +49,10 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
 
-  const routeScope = marketplaceScopeFromRouteParams(params);
+  const routeScope = marketplaceRuntimeScopeFromRouteParams(
+    params,
+    me.organizations.map(({ organization }) => organization),
+  );
   const organizations = me.organizations.map(({ organization }) => organization);
   const projectLookup =
     routeScope.kind === "project"
@@ -61,9 +64,9 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   if (projectLookup?.status === "not-found") {
     throw new Response("Not Found", { status: 404 });
   }
-  const selectedScope = resolveMarketplaceUiScope({
+  const selectedScope = resolveMarketplaceScopeSelection({
     params,
-    organisations: organizations,
+    organizations: organizations,
     project: projectLookup?.status === "found" ? projectLookup.project : null,
     user: me.user,
   });
@@ -110,7 +113,7 @@ export function meta() {
 
 export default function BackofficeMarketplaceMyListings({ loaderData }: Route.ComponentProps) {
   const { basePath, selectedScope, status, listings, hasNextPage, nextCursor } = loaderData;
-  const organizationId = selectedScope.kind === "org" ? selectedScope.orgId : null;
+  const organizationSlug = selectedScope.kind === "org" ? selectedScope.organization.slug : null;
 
   return (
     <div className="space-y-4">
@@ -125,9 +128,9 @@ export default function BackofficeMarketplaceMyListings({ loaderData }: Route.Co
               Review drafts, published versions, and archived catalog entries owned by this scope.
             </p>
           </div>
-          {organizationId ? (
+          {organizationSlug ? (
             <Link
-              to={`/backoffice/marketplace/publish?ownerOrgId=${encodeURIComponent(organizationId)}`}
+              to={`/backoffice/marketplace/publish?ownerOrgSlug=${encodeURIComponent(organizationSlug)}`}
               className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
             >
               New draft
@@ -171,8 +174,11 @@ export default function BackofficeMarketplaceMyListings({ loaderData }: Route.Co
       ) : (
         <section className="space-y-3">
           {listings.map((listing) => {
-            const listingPath = organizationId
-              ? marketplaceListingManagePath({ listingId: listing.listingId, organizationId })
+            const listingPath = organizationSlug
+              ? marketplaceListingManagePath({
+                  listingId: listing.listingId,
+                  organizationSlug,
+                })
               : listing.latestPublishedVersion
                 ? marketplaceListingPath(listing.listingId, selectedScope)
                 : null;

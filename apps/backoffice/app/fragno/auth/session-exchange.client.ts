@@ -16,7 +16,7 @@ export class BackofficeOrganizationProvisioningError extends Error {
   readonly retryAfterMs: number;
 
   constructor(retryAfterMs: number) {
-    super("Your organisation is still being created.");
+    super("Your organization is still being created.");
     this.name = "BackofficeOrganizationProvisioningError";
     this.retryAfterMs = retryAfterMs;
   }
@@ -78,7 +78,7 @@ export async function waitForPreferredBackofficeSessionForJwt(
       }
       if (now() - startedAt + error.retryAfterMs > timeoutMs) {
         throw new Error(
-          "Your organisation could not be created in time. Try again or sign out and retry.",
+          "Your organization could not be created in time. Try again or sign out and retry.",
         );
       }
       await sleep(error.retryAfterMs);

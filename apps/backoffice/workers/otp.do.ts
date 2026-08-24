@@ -23,7 +23,6 @@ import {
   IDENTITY_LINK_TYPE,
   buildEmailVerificationUrl,
   buildIdentityClaimCompletedAutomationEvent,
-  buildIdentityClaimCompletionUrl,
   createOtpServer,
   emailVerificationPayloadSchema,
   identityClaimConfirmationPayloadSchema,
@@ -75,7 +74,7 @@ export type ConfirmEmailVerificationChallengeResult =
     };
 
 export type IssueIdentityClaimInput = {
-  orgId: string;
+  scope: { kind: "org"; orgId: string };
   actor: {
     scope: "external";
     source: string;
@@ -83,7 +82,6 @@ export type IssueIdentityClaimInput = {
     id: string;
   };
   expiresInMinutes?: number;
-  publicBaseUrl: string;
 };
 
 export type IssueIdentityClaimResult = {
@@ -91,7 +89,6 @@ export type IssueIdentityClaimResult = {
   otpId: string;
   externalId: string;
   code: string;
-  url: string;
   type: typeof IDENTITY_LINK_TYPE;
 };
 
@@ -129,7 +126,10 @@ const confirmEmailVerificationChallengeInputSchema = z.object({
 });
 
 const issueIdentityClaimInputSchema = z.object({
-  orgId: z.string().trim().min(1, "orgId, actor, and publicBaseUrl are required."),
+  scope: z.object({
+    kind: z.literal("org"),
+    orgId: z.string().trim().min(1, "An organization scope is required."),
+  }),
   actor: z.object({
     scope: z.literal("external"),
     source: z.string().trim().min(1),
@@ -142,7 +142,6 @@ const issueIdentityClaimInputSchema = z.object({
       message: "expiresInMinutes must be finite.",
     })
     .optional(),
-  publicBaseUrl: z.string().trim().min(1, "orgId, actor, and publicBaseUrl are required."),
 });
 
 const confirmIdentityClaimInputSchema = z.object({
@@ -434,7 +433,7 @@ export class InMemoryOtpObject implements OtpObject {
         type: IDENTITY_LINK_TYPE,
         durationMinutes: expiresInMinutes,
         payload: {
-          orgId: parsed.orgId,
+          orgId: parsed.scope.orgId,
           actor: parsed.actor,
         },
       }),
@@ -445,12 +444,6 @@ export class InMemoryOtpObject implements OtpObject {
       otpId: issued.id,
       externalId: issued.externalId,
       code: issued.code,
-      url: buildIdentityClaimCompletionUrl(
-        parsed.publicBaseUrl,
-        parsed.orgId,
-        issued.externalId,
-        issued.code,
-      ),
       type: IDENTITY_LINK_TYPE,
     };
   }

@@ -198,7 +198,7 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
         source: AUTOMATION_SOURCE,
         eventType: AUTOMATION_EVENT_CAPABILITY_CONFIGURED,
         label: "Telegram configured",
-        description: "Fires after Telegram is configured for an organisation for the first time.",
+        description: "Fires after Telegram is configured for an organization for the first time.",
         payloadSchema: telegramCapabilityConfiguredPayloadSchema,
         subjectSchema: telegramCapabilityConfiguredSubjectSchema,
         example: {

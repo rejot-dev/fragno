@@ -10,7 +10,7 @@ import type { Reson8Fragment } from "@/fragno/reson8";
 
 import {
   NotConfiguredError,
-  createOrganisationNotConfiguredMessage,
+  createOrganizationNotConfiguredMessage,
   isSuccessStatus,
   throwOnRouteRuntimeError,
 } from "../runtime-errors";
@@ -94,7 +94,7 @@ export const createReson8RouteRuntime = ({ object }: { object: Reson8Object }): 
     fetch: object.fetch.bind(object),
   });
 
-const RESON8_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("Reson8");
+const RESON8_NOT_CONFIGURED = createOrganizationNotConfiguredMessage("Reson8");
 
 export const createUnavailableReson8Runtime = (message = RESON8_NOT_CONFIGURED): Reson8Runtime => ({
   transcribePrerecorded: async () => {

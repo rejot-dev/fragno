@@ -193,7 +193,7 @@ const forwardWebhook = async (request: Request, context: Readonly<RouterContextP
     return jsonResponse(
       {
         message:
-          "No organisation mapping found for installation id. Complete installation from backoffice first.",
+          "No organization mapping found for installation id. Complete installation from backoffice first.",
         code: "INSTALLATION_ORG_MAPPING_NOT_FOUND",
         installationId,
       },

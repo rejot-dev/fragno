@@ -102,7 +102,7 @@ describe("Backoffice token exchange", () => {
     }
     expect(await tokenResponse.clone().json()).toEqual({
       expiresAt: "2026-08-11T12:15:00.000Z",
-      organizationId,
+      organization: { id: organizationId, slug: "token-users-organization" },
     });
 
     const setCookie = getSetCookieHeaders(tokenResponse.headers).find((header) =>
@@ -127,8 +127,11 @@ describe("Backoffice token exchange", () => {
       sub: user.id,
       email: "token-user@example.com",
       globalRole: "user",
-      scope: { kind: "org", orgId: organizationId },
-      organizationRoles: ["owner"],
+      organization: {
+        id: organizationId,
+        slug: "token-users-organization",
+        roles: ["owner"],
+      },
     });
     expect(verification.payload.jti).toEqual(expect.any(String));
 
@@ -179,7 +182,9 @@ describe("Backoffice token exchange", () => {
       body: { selection: "required", organizationId: secondOrganization.id },
     });
     assert(requestedResponse.status === 200);
-    expect(await requestedResponse.json()).toMatchObject({ organizationId: secondOrganization.id });
+    expect(await requestedResponse.json()).toMatchObject({
+      organization: { id: secondOrganization.id },
+    });
 
     const rejectedResponse = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
@@ -197,7 +202,9 @@ describe("Backoffice token exchange", () => {
       body: { selection: "preferred", organizationId: "unavailable-organization" },
     });
     assert(fallbackResponse.status === 200);
-    expect(await fallbackResponse.json()).toMatchObject({ organizationId: expectedFallback });
+    expect(await fallbackResponse.json()).toMatchObject({
+      organization: { id: expectedFallback },
+    });
   });
 
   test("reports initial organization provisioning instead of issuing an unscoped token", async () => {

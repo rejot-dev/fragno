@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { MemoryRouter, Route, Routes } from "react-router";
 
@@ -44,6 +44,7 @@ beforeEach(() => {
           },
           organization: {
             id: "organization-1",
+            slug: "example-organization",
             name: "Example Organization",
           },
         },
@@ -97,6 +98,12 @@ describe("Backoffice invitation acceptance", () => {
 
     expect(await screen.findByText("Invitation accepted.")).toBeTruthy();
     expect(screen.queryByText("Accepting invitation...")).toBeNull();
+    const organizationLink = screen.getByRole("link", { name: "Open organization" });
+    const destination = new URL(organizationLink.getAttribute("href") ?? "", "https://example.com");
+    assert(destination.searchParams.get("organizationId") === "organization-1");
+    assert(
+      destination.searchParams.get("returnTo") === "/backoffice/organizations/example-organization",
+    );
     expect(respondInvitation).toHaveBeenCalledTimes(1);
   });
 });

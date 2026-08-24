@@ -1,5 +1,6 @@
 import { Outlet } from "react-router";
 
+import type { BackofficeRoutableScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
@@ -8,11 +9,10 @@ import { lookupAutomationProject } from "../automations/data.server";
 import type { Route } from "./+types/scope-layout";
 import type { MarketplaceLayoutContext } from "./layout-context";
 import {
-  marketplaceScopeFromRouteParams,
+  marketplaceRuntimeScopeFromRouteParams,
   marketplaceScopeTabPath,
-  resolveMarketplaceUiScope,
+  resolveMarketplaceScopeSelection,
   type MarketplaceTab,
-  type MarketplaceUiScope,
 } from "./scope";
 
 const MARKETPLACE_TABS = [
@@ -37,8 +37,8 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
 
-  const organisations = me.organizations.map((entry) => entry.organization);
-  const routeScope = marketplaceScopeFromRouteParams(params);
+  const organizations = me.organizations.map((entry) => entry.organization);
+  const routeScope = marketplaceRuntimeScopeFromRouteParams(params, organizations);
   const projectLookup =
     routeScope.kind === "project"
       ? await lookupAutomationProject(context, routeScope.orgId, routeScope.projectId)
@@ -50,9 +50,9 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  const selectedScope = resolveMarketplaceUiScope({
+  const selectedScope = resolveMarketplaceScopeSelection({
     params,
-    organisations,
+    organizations,
     project: projectLookup?.status === "found" ? projectLookup.project : null,
     user: me.user,
   });
@@ -88,7 +88,7 @@ function MarketplaceWorkspaceHeader({
   selectedScope,
   activeTab,
 }: {
-  selectedScope: MarketplaceUiScope;
+  selectedScope: BackofficeRoutableScopeSelection;
   activeTab: MarketplaceTab;
 }) {
   const tabs = MARKETPLACE_TABS.map((tab) => ({

@@ -240,8 +240,11 @@ describe("Backoffice OAuth device authorization", () => {
       sub: signedUp.user.id,
       email: signedUp.user.email,
       globalRole: "user",
-      scope: { kind: "org", orgId: signedUp.organizationId },
-      organizationRoles: ["owner"],
+      organization: {
+        id: signedUp.organizationId,
+        slug: expect.any(String),
+        roles: ["owner"],
+      },
     });
     expect(result).toMatchObject({
       scope: { kind: "org", orgId: signedUp.organizationId },
@@ -265,10 +268,7 @@ describe("Backoffice OAuth device authorization", () => {
       signedUp.auth,
     );
     assert(userVerification.ok);
-    expect(userVerification.payload).toMatchObject({
-      scope: userScope,
-      organizationRoles: [],
-    });
+    expect(userVerification.payload).toMatchObject({ organization: null });
 
     const projectScope = {
       kind: "project" as const,

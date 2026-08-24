@@ -133,7 +133,7 @@ const resendConfigScopeSchema: z.ZodType<ResendConfigScope> = z.union([
   z.object({ kind: z.literal("system") }),
   z.object({
     kind: z.literal("org"),
-    orgId: z.string().trim().min(1, "Stored Resend config is missing an organisation id."),
+    orgId: z.string().trim().min(1, "Stored Resend config is missing an organization id."),
   }),
 ]);
 

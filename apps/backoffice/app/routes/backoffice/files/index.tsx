@@ -14,14 +14,18 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     throw redirect(buildBackofficeLoginPath(returnTo));
   }
 
-  const orgId =
-    me.activeOrganization?.organization.id ?? me.organizations?.[0]?.organization.id ?? null;
-
-  if (!orgId) {
+  const activeOrganization = me.activeOrganization?.organization;
+  if (!activeOrganization) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  return redirect(filesScopeBasePath({ kind: "org", orgId, label: orgId }));
+  return redirect(
+    filesScopeBasePath({
+      kind: "org",
+      organization: { id: activeOrganization.id, slug: activeOrganization.slug },
+      label: activeOrganization.name,
+    }),
+  );
 }
 
 export default function BackofficeFilesIndex() {

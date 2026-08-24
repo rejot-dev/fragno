@@ -7,7 +7,7 @@ description:
 
 # Upload Connection
 
-Use this skill for organisation-scoped Upload storage configuration and hook behavior.
+Use this skill for organization-scoped Upload storage configuration and hook behavior.
 
 # Upload configuration
 
@@ -29,7 +29,7 @@ Setup notes:
 Cataloged automation events:
 
 - `source`: `upload`, `eventType`: `capability.configured` — fires after Upload is configured for an
-  organisation for the first time.
+  organization for the first time.
 
 Upload hook work is available under the `upload` hook scope.
 

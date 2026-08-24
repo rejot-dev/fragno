@@ -1,5 +1,7 @@
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import {
+  backofficeRouteScopePath,
+  type BackofficeRouteScope,
+} from "@/backoffice-runtime/route-scope";
 
 const SCOPE_ROUTE_KINDS = new Set(["system", "org", "project", "user"]);
 
@@ -21,8 +23,9 @@ const MARKETPLACE_TABS = new Set(["marketplace", "installed", "my-listings"]);
 // Rebuilds the current URL for another scope: keeps the active section, keeps
 // the section tab where scope-independent, and otherwise lands on the scoped
 // index (which redirects to the section default).
-export const scopeSwitchPath = (pathname: string, scope: BackofficeContextScope) => {
-  const scopePath = backofficeContextScopeRoutePath(scope);
+/** Builds a browser route without accepting runtime organization identity. */
+export const scopeSwitchPath = (pathname: string, scope: BackofficeRouteScope) => {
+  const scopePath = backofficeRouteScopePath(scope);
   const segments = pathname.split("/").filter(Boolean);
   const section = segments[1];
   const scoped = segments.length >= 4 && SCOPE_ROUTE_KINDS.has(segments[2] ?? "");

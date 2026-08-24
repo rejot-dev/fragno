@@ -12,9 +12,11 @@ import {
 } from "@assistant-ui/react";
 import { eq, inArray, useLiveQuery } from "@tanstack/react-db";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
-import { createPiClient } from "@/fragno/pi/pi-client";
+import { usePiClient } from "@/fragno/pi/pi-client";
 import { findPiModelOption, piSessionModel } from "@/fragno/pi/pi-shared";
 import { piSessionActivityLabel } from "@/fragno/pi/session-activity";
 import { projectPiSessionInteraction } from "@/fragno/pi/session-interaction";
@@ -109,7 +111,7 @@ function getSessionModelLabel(session: PiSession) {
     : session.workflowName;
 }
 
-function getWorkspaceStateKey(scope: PiSessionsOutletContext["scope"], session: PiSession) {
+function getWorkspaceStateKey(scope: BackofficeContextScope, session: PiSession) {
   return [backofficeContextScopeSinglePathSegment(scope), session.workflowName, session.id]
     .map(encodeURIComponent)
     .join(":");
@@ -127,9 +129,10 @@ function useSessionDisplayOptions() {
   return { displayOptions, updateDisplayOption };
 }
 
-export default function BackofficeOrganisationPiSessionDetail() {
+export default function BackofficeOrganizationPiSessionDetail() {
   const { workflowName, sessionId } = useParams();
-  const { scope, persistenceSource } = useOutletContext<PiSessionsOutletContext>();
+  const { resolvedScope, persistenceSource } = useOutletContext<PiSessionsOutletContext>();
+  const scope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
 
   if (!workflowName || !sessionId) {
     throw new Response("Not Found", { status: 404 });
@@ -138,7 +141,7 @@ export default function BackofficeOrganisationPiSessionDetail() {
   return (
     <SynchronizedPiSessionDetail
       key={`${backofficeContextScopeSinglePathSegment(scope)}:${workflowName}:${sessionId}`}
-      scope={scope}
+      resolvedScope={resolvedScope}
       source={persistenceSource}
       workflowName={workflowName}
       sessionId={sessionId}
@@ -164,12 +167,12 @@ function SessionProjectionError({ error }: { error: string | null }) {
 }
 
 function SynchronizedPiSessionDetail({
-  scope,
+  resolvedScope,
   source,
   workflowName,
   sessionId,
 }: {
-  scope: PiSessionsOutletContext["scope"];
+  resolvedScope: PiSessionsOutletContext["resolvedScope"];
   source: PiSessionsOutletContext["persistenceSource"];
   workflowName: string;
   sessionId: string;
@@ -198,7 +201,7 @@ function SynchronizedPiSessionDetail({
 
   return (
     <PiSessionDetailView
-      scope={scope}
+      resolvedScope={resolvedScope}
       session={session}
       projection={projection}
       projectionError={projectionError}
@@ -208,18 +211,19 @@ function SynchronizedPiSessionDetail({
 }
 
 function PiSessionDetailView({
-  scope,
+  resolvedScope,
   session,
   projection,
   projectionError,
   instanceStatus,
 }: {
-  scope: PiSessionsOutletContext["scope"];
+  resolvedScope: PiSessionsOutletContext["resolvedScope"];
   session: PiSession;
   projection: PiWorkflowSessionProjectionState;
   projectionError: string | null;
   instanceStatus: string | null;
 }) {
+  const scope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
   const {
     basePath,
     startNewSession,
@@ -235,7 +239,7 @@ function PiSessionDetailView({
   const [pendingCompactionCommandId, setPendingCompactionCommandId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const runtimeRef = useRef<AssistantRuntime | null>(null);
-  const pi = useMemo(() => createPiClient(scope), [scope]);
+  const pi = usePiClient(scope);
   const commandSession = pi.useCommandSession();
   const messages = projection.timelineMessages;
   const contextMessages = projection.contextMessages;
@@ -513,7 +517,7 @@ function PiSessionDetailView({
                   item={selectedWorkspaceItem}
                   workflowCollections={workflowCollections}
                   workflowCollectionsError={workflowCollectionsError}
-                  scope={scope}
+                  resolvedScope={resolvedScope}
                   onClose={closeWorkspace}
                 />
               ) : null

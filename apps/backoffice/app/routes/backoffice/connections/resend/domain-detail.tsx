@@ -38,7 +38,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   } satisfies ResendDomainDetailLoaderData;
 }
 
-export default function BackofficeOrganisationResendDomainDetail() {
+export default function BackofficeOrganizationResendDomainDetail() {
   const { domain, error } = useLoaderData<typeof loader>();
   const { basePath } = useOutletContext<ResendDomainsOutletContext>();
   const { domainId } = useParams();

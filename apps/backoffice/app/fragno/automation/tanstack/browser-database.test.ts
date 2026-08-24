@@ -10,7 +10,7 @@ afterEach(() => {
 describe("Automation collection sources", () => {
   test("describes the organization-scoped Automations Durable Object", () => {
     const description = describeAutomationCollectionSource({
-      scope: { kind: "org", orgId: "org-1" },
+      resolvedScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
       adapterIdentity: "adapter-1",
     });
 
@@ -21,9 +21,9 @@ describe("Automation collection sources", () => {
 
   test("uses the encoded route id for project-scoped outboxes", () => {
     const description = describeAutomationCollectionSource({
-      scope: {
+      resolvedScope: {
         kind: "project",
-        orgId: "org-1",
+        organization: { id: "org-1", slug: "acme" },
         projectId: "project/one",
       },
       adapterIdentity: "adapter-1",
@@ -36,9 +36,18 @@ describe("Automation collection sources", () => {
   });
 
   test("isolates persisted data when the adapter identity changes", () => {
-    const scope = { kind: "org", orgId: "org-1" } as const;
-    const first = describeAutomationCollectionSource({ scope, adapterIdentity: "adapter-1" });
-    const second = describeAutomationCollectionSource({ scope, adapterIdentity: "adapter-2" });
+    const resolvedScope = {
+      kind: "org",
+      organization: { id: "org-1", slug: "acme" },
+    } as const;
+    const first = describeAutomationCollectionSource({
+      resolvedScope,
+      adapterIdentity: "adapter-1",
+    });
+    const second = describeAutomationCollectionSource({
+      resolvedScope,
+      adapterIdentity: "adapter-2",
+    });
 
     assert.notEqual(first.resourceKey, second.resourceKey);
   });
@@ -49,7 +58,7 @@ describe("Automation collection sources", () => {
     vi.stubGlobal("fetch", fetchMock);
     const { getAutomationBrowserDatabase } = await import("./browser-database");
     const source = {
-      scope: { kind: "org", orgId: "org-1" },
+      resolvedScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
       adapterIdentity: "adapter-1",
     } as const;
 

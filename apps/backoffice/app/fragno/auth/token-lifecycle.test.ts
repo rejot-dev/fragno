@@ -17,8 +17,7 @@ const issueJwt = async (
   await new SignJWT({
     email: "user@example.com",
     globalRole: "admin",
-    scope: { kind: "org", orgId: "org-1" },
-    organizationRoles: ["owner"],
+    organization: { id: "org-1", slug: "acme", roles: ["owner"] },
     jti: crypto.randomUUID(),
   })
     .setProtectedHeader({ alg: "ES256", kid })
@@ -68,8 +67,7 @@ describe("Backoffice JWT verification", () => {
     ).resolves.toEqual({
       ok: true,
       payload: expect.objectContaining({
-        scope: { kind: "org", orgId: "org-1" },
-        organizationRoles: ["owner"],
+        organization: { id: "org-1", slug: "acme", roles: ["owner"] },
       }),
     });
     expect(fetch).toHaveBeenCalledTimes(2);

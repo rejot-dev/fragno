@@ -53,7 +53,7 @@ describe("reson8 route-backed runtime", () => {
     ).rejects.toEqual(
       expect.objectContaining({
         name: "NotConfiguredError",
-        message: "Reson8 is not configured for this organisation.",
+        message: "Reson8 is not configured for this organization.",
       }),
     );
     await expect(

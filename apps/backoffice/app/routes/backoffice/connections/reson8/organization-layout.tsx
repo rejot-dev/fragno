@@ -6,7 +6,7 @@ import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { AutomationWorkspaceHeader } from "../../automations/shared";
 import { resolveIntegrationContext } from "../../integrations/scope";
-import type { Route } from "./+types/organisation-layout";
+import type { Route } from "./+types/organization-layout";
 import { fetchReson8Config } from "./data";
 import { Reson8ErrorBoundary, Reson8Tabs, type Reson8ConfigState, type Reson8Tab } from "./shared";
 
@@ -27,9 +27,11 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   }
 
   const orgId = integration.scope.orgId;
-  const organisation =
+  const organization =
     me.organizations.find((entry) => entry.organization.id === orgId)?.organization ?? null;
-
+  if (!organization) {
+    throw new Response("Not Found", { status: 404 });
+  }
   const { configState, configError } = await fetchReson8Config(context, orgId);
   const currentPath = url.pathname.replace(/\/+$/, "");
   if (currentPath === integration.basePath) {
@@ -40,15 +42,14 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   return {
     ...integration,
-    orgId,
-    organisation,
+    organization,
     configState,
     configError,
   };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  const label = loaderData?.label ?? "organisation";
+  const label = loaderData?.label ?? "organization";
   return [{ title: `Reson8 Setup · ${label}` }];
 }
 
@@ -56,7 +57,7 @@ export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
   return <Reson8ErrorBoundary error={error} params={params} />;
 }
 
-export default function BackofficeOrganisationReson8Layout({
+export default function BackofficeOrganizationReson8Layout({
   loaderData,
   matches,
 }: Route.ComponentProps) {
@@ -77,8 +78,7 @@ function Reson8LayoutContent({
   matches: Route.ComponentProps["matches"];
 }) {
   const {
-    orgId,
-    organisation,
+    organization,
     scope,
     uiScope,
     label,
@@ -116,8 +116,7 @@ function Reson8LayoutContent({
       />
       <Outlet
         context={{
-          orgId,
-          organisation,
+          organization,
           scope,
           scopeSegment,
           label,

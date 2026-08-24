@@ -3,8 +3,10 @@ import { useSearchParams } from "react-router";
 
 import { visualizeWorkflowSource, type SourceRange } from "@fragno-dev/workflow-visualizer-tokens";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
+import {
+  backofficeRuntimeScopeFromResolvedScope,
+  type BackofficeResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import type { AutomationBrowserCollections as AutomationCollections } from "@/fragno/automation/tanstack/browser-database";
 import {
@@ -33,7 +35,7 @@ export function ScriptSourcePanel({
   source,
   runtimeToolCatalog,
   collections,
-  scope,
+  resolvedScope,
 }: {
   absolutePath: string;
   source: { script: string | null; scriptError: string | null };
@@ -42,8 +44,10 @@ export function ScriptSourcePanel({
     AutomationCollections,
     "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
   >;
-  scope: BackofficeContextScope;
+  resolvedScope: BackofficeResolvedScope;
 }) {
+  const runtimeScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
+  const currentScope = resolvedScope.kind === "system" ? undefined : resolvedScope;
   const [searchParams, setSearchParams] = useSearchParams();
   const viewMode = scriptViewModeFromSearchParam(searchParams.get(SCRIPT_VIEW_MODE_SEARCH_PARAM));
   const graphDetailMode = workflowGraphDetailModeFromSearchParam(
@@ -143,7 +147,7 @@ export function ScriptSourcePanel({
             runtimeToolCallsByStepId={runtimeToolCallsByStepId}
             selectedRun={workflowRuns.selectedRun}
             scrollViewport={graphViewport}
-            currentScope={isBackofficeRoutableScope(scope) ? scope : undefined}
+            currentScope={currentScope}
             workflowEventSender={async ({
               eventId,
               workflowName,
@@ -153,7 +157,7 @@ export function ScriptSourcePanel({
             }) => {
               await sendBackofficeWorkflowEvent({
                 eventId,
-                reference: { scope, workflowName, instanceId },
+                reference: { scope: runtimeScope, workflowName, instanceId },
                 eventType,
                 payload,
               });

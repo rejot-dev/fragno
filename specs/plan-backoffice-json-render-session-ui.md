@@ -429,7 +429,7 @@ close/reopen the workspace without disturbing the conversation.
 ### - [ ] Slice 6 — Render an inline workflow's terminal UI result
 
 **Implementation audit (July 31, 2026):** the run-handle, scoped live synchronization, graph-status,
-and tool-to-workspace foundations are implemented with organisation-scoped TanStack DB live
+and tool-to-workspace foundations are implemented with organization-scoped TanStack DB live
 collections instead of per-tab HTTP polling. Terminal output is projected and generated `$ui`
 renders in the graph; ordinary terminal output presentation remains.
 
@@ -445,10 +445,10 @@ Use the run handle already returned in `completedToolResult.details.run`:
       exists.
 - [x] Add a workflow hook used by session detail. This is implemented as the shared
       `script-view/use-workflow-run.ts` hook rather than a route-local duplicate.
-- [x] Use the active organisation/scope from the sessions route context to construct workflow data
+- [x] Use the active organization/scope from the sessions route context to construct workflow data
       access.
 - [x] Pass the required scope information into the workspace without hidden globals. The sessions
-      workspace passes organisation-scoped workflow collections through outlet context.
+      workspace passes organization-scoped workflow collections through outlet context.
 - [x] Load workflow instance status while its session workspace is mounted and refresh it when the
       workspace item is reopened.
 - [x] Subscribe while the instance is active, waiting, paused, or terminal. This is implemented with

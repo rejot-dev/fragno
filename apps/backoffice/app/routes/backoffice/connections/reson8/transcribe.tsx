@@ -216,7 +216,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 }
 
 function RealtimeSpeechSection({
-  orgId,
+  orgSlug,
   models,
   realtimeOriginDiagnostic,
   realtimeOriginDiagnosticError,
@@ -226,7 +226,7 @@ function RealtimeSpeechSection({
   clearConversationVersion,
   onClearConversationIfPrerecorded,
 }: {
-  orgId: string;
+  orgSlug: string;
   models: Reson8CustomModel[];
   realtimeOriginDiagnostic: Reson8RealtimeOriginDiagnostic | null;
   realtimeOriginDiagnosticError: string | null;
@@ -241,7 +241,7 @@ function RealtimeSpeechSection({
   const [realtimeControlError, setRealtimeControlError] = useState<string | null>(null);
   const processedRealtimeSegmentsRef = useRef(0);
 
-  const reson8 = useMemo(() => createReson8Client(orgId), [orgId]);
+  const reson8 = useMemo(() => createReson8Client(orgSlug), [orgSlug]);
   const realtime = reson8.useRealtimeTranscriber({
     query: {
       include_interim: true,
@@ -470,7 +470,7 @@ function RealtimeSpeechSectionFallback() {
   );
 }
 
-export default function BackofficeOrganisationReson8Transcribe() {
+export default function BackofficeOrganizationReson8Transcribe() {
   const {
     models,
     configError,
@@ -478,7 +478,8 @@ export default function BackofficeOrganisationReson8Transcribe() {
     realtimeOriginDiagnostic,
     realtimeOriginDiagnosticError,
   } = useLoaderData<typeof loader>();
-  const { orgId } = useOutletContext<Reson8LayoutContext>();
+  const { organization } = useOutletContext<Reson8LayoutContext>();
+  const orgSlug = organization.slug;
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -649,7 +650,7 @@ export default function BackofficeOrganisationReson8Transcribe() {
 
           {isClient ? (
             <RealtimeSpeechSection
-              orgId={orgId}
+              orgSlug={orgSlug}
               models={models}
               realtimeOriginDiagnostic={realtimeOriginDiagnostic}
               realtimeOriginDiagnosticError={realtimeOriginDiagnosticError}

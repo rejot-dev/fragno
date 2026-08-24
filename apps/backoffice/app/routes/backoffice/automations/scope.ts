@@ -1,20 +1,22 @@
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
-  backofficeContextScopeFromRouteParams,
-  backofficeContextScopeRoutePath,
-} from "@/backoffice-runtime/scope-codec";
+  backofficeOrganizationIdentity,
+  backofficeRouteScopeFromResolvedScope,
+  type BackofficeOrganizationIdentity,
+  backofficeRuntimeScopeFromResolvedScope,
+  resolveBackofficeRouteScope,
+  type BackofficeScopeSelection,
+} from "@/backoffice-runtime/resolved-scope";
+import {
+  backofficeRouteScopePath,
+  requireBackofficeRouteScopeFromParams,
+} from "@/backoffice-runtime/route-scope";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
 import type { AutomationProjectRecord } from "./data";
 import { toExternalId } from "./data";
 
 export type AutomationScopeKind = "system" | "org" | "project" | "user";
-
-export type AutomationUiScope =
-  | { kind: "system"; label: string }
-  | { kind: "org"; orgId: string; label: string }
-  | { kind: "project"; orgId: string; projectId: string; label: string }
-  | { kind: "user"; userId: string; label: string };
 
 export type AutomationScopeOption = {
   id: string;
@@ -24,7 +26,7 @@ export type AutomationScopeOption = {
   to: string;
 };
 
-type Organisation = BackofficeMeData["organizations"][number]["organization"];
+type Organization = BackofficeMeData["organizations"][number]["organization"];
 
 const SYSTEM_AUTOMATION_SCOPE_ID = "system";
 const SYSTEM_AUTOMATION_SCOPE_LABEL = "System";
@@ -35,38 +37,10 @@ const isAutomationAdmin = (user: BackofficeMeData["user"]) => user.role === "adm
 const projectLabel = (project: AutomationProjectRecord) =>
   project.name?.trim() || project.slug?.trim() || toExternalId(project.id) || "Untitled project";
 
-export const toBackofficeScope = (scope: AutomationUiScope): BackofficeContextScope => {
-  switch (scope.kind) {
-    case "system":
-      return { kind: "system" };
-    case "org":
-      return { kind: "org", orgId: scope.orgId };
-    case "project":
-      return { kind: "project", orgId: scope.orgId, projectId: scope.projectId };
-    case "user":
-      return { kind: "user", userId: scope.userId };
-  }
-
-  throw new Error("Unsupported automation UI scope kind.");
-};
-
-export const automationScopeBasePath = (scope: AutomationUiScope) =>
-  `/backoffice/automations/${backofficeContextScopeRoutePath(toBackofficeScope(scope))}`;
-
-export const automationUiScopeId = (scope: AutomationUiScope) => {
-  switch (scope.kind) {
-    case "system":
-      return "system:system";
-    case "org":
-      return `org:${scope.orgId}`;
-    case "project":
-      return `project:${scope.orgId}:${scope.projectId}`;
-    case "user":
-      return `user:${scope.userId}`;
-  }
-
-  throw new Error("Unsupported automation UI scope kind.");
-};
+export const automationScopeBasePath = (scope: BackofficeScopeSelection) =>
+  `/backoffice/automations/${backofficeRouteScopePath(
+    backofficeRouteScopeFromResolvedScope(scope),
+  )}`;
 
 type AutomationScopeTab =
   | "dashboard"
@@ -83,7 +57,7 @@ type AutomationScopeTab =
 const SYSTEM_UNAVAILABLE_AUTOMATION_TABS = new Set<AutomationScopeTab>(["api", "mcp", "sandboxes"]);
 
 export const resolveAutomationScopeTab = (
-  scope: AutomationUiScope,
+  scope: BackofficeScopeSelection,
   requestedTab: AutomationScopeTab,
 ) =>
   scope.kind === "system" && SYSTEM_UNAVAILABLE_AUTOMATION_TABS.has(requestedTab)
@@ -91,45 +65,48 @@ export const resolveAutomationScopeTab = (
     : requestedTab;
 
 export const automationScopeTabPath = (
-  scope: AutomationUiScope,
+  scope: BackofficeScopeSelection,
   tab: AutomationScopeTab = "dashboard",
 ) => `${automationScopeBasePath(scope)}/${tab}`;
 
-export const automationScopeTerminalCommandPath = (scope: AutomationUiScope) =>
+export const automationScopeTerminalCommandPath = (scope: BackofficeScopeSelection) =>
   `${automationScopeBasePath(scope)}/terminal-command`;
 
 export const createAutomationScopeOptions = ({
-  organisations,
+  organizations,
   projects,
   user,
   currentTab,
   projectOrgId,
   pathForScope,
 }: {
-  organisations: Organisation[];
+  organizations: Organization[];
   projects: AutomationProjectRecord[];
   user: BackofficeMeData["user"];
   currentTab: AutomationScopeTab;
   projectOrgId: string | null;
-  pathForScope?: (scope: AutomationUiScope) => string;
+  pathForScope?: (scope: BackofficeScopeSelection) => string;
 }): AutomationScopeOption[] => {
-  const destinationFor = (scope: AutomationUiScope) =>
+  const destinationFor = (scope: BackofficeScopeSelection) =>
     pathForScope?.(scope) ??
     automationScopeTabPath(scope, resolveAutomationScopeTab(scope, currentTab));
-  const orgOptions = organisations.map((organisation) => ({
-    id: `org:${organisation.id}`,
+  const orgOptions = organizations.map((organization) => ({
+    id: `org:${organization.id}`,
     kind: "org" as const,
-    label: organisation.name ?? organisation.id,
-    description: "Organisation scope",
+    label: organization.name ?? organization.id,
+    description: "Organization scope",
     to: destinationFor({
       kind: "org",
-      orgId: organisation.id,
-      label: organisation.name ?? organisation.id,
+      organization: backofficeOrganizationIdentity(organization),
+      label: organization.name ?? organization.id,
     }),
   }));
 
+  const projectOrganization = projectOrgId
+    ? (organizations.find((organization) => organization.id === projectOrgId) ?? null)
+    : null;
   const projectOptions = projects.flatMap((project) => {
-    if (!projectOrgId || project.archivedAt) {
+    if (!projectOrganization || project.archivedAt) {
       return [];
     }
 
@@ -141,7 +118,7 @@ export const createAutomationScopeOptions = ({
       description: project.slug?.trim() ? `Project · ${project.slug}` : "Project scope",
       to: destinationFor({
         kind: "project",
-        orgId: projectOrgId,
+        organization: backofficeOrganizationIdentity(projectOrganization),
         projectId,
         label: projectLabel(project),
       }),
@@ -178,74 +155,77 @@ export const createAutomationScopeOptions = ({
   ];
 };
 
-export const automationScopeFromRouteParams = (params: {
-  scopeKind?: string;
-  scopeId?: string;
-}): BackofficeContextScope => {
+export function automationRuntimeScopeFromRouteParams(
+  params: { scopeKind?: string; scopeId?: string },
+  organizations: readonly BackofficeOrganizationIdentity[],
+): BackofficeContextScope {
   try {
-    const scope = backofficeContextScopeFromRouteParams(params);
-    if (!scope) {
+    const routeScope = requireBackofficeRouteScopeFromParams(params);
+    const resolvedScope = resolveBackofficeRouteScope(routeScope, organizations);
+    if (!resolvedScope) {
       throw new Response("Not Found", { status: 404 });
     }
-    return scope;
+    return backofficeRuntimeScopeFromResolvedScope(resolvedScope);
   } catch (error) {
     if (error instanceof Response) {
       throw error;
     }
     throw new Response("Not Found", { status: 404 });
   }
-};
+}
 
-export const resolveAutomationUiScope = ({
+export const resolveAutomationScopeSelection = ({
   params,
-  organisations,
+  organizations,
   project,
   user,
 }: {
   params: { scopeKind?: string; scopeId?: string };
-  organisations: Organisation[];
+  organizations: Organization[];
   project: AutomationProjectRecord | null;
   user: BackofficeMeData["user"];
-}): AutomationUiScope => {
-  let parsed;
+}): BackofficeScopeSelection => {
+  let resolvedScope;
   try {
-    parsed = backofficeContextScopeFromRouteParams(params);
+    const routeScope = requireBackofficeRouteScopeFromParams(params);
+    resolvedScope = resolveBackofficeRouteScope(routeScope, organizations);
   } catch {
     throw new Response("Not Found", { status: 404 });
   }
+  if (!resolvedScope) {
+    throw new Response("Not Found", { status: 404 });
+  }
 
-  if (parsed?.kind === "system") {
+  if (resolvedScope.kind === "system") {
     if (!isAutomationAdmin(user)) {
       throw new Response("Not Found", { status: 404 });
     }
     return { kind: "system", label: SYSTEM_AUTOMATION_SCOPE_LABEL };
   }
 
-  if (parsed?.kind === "org") {
-    const organisation = organisations.find((entry) => entry.id === parsed.orgId);
-    if (!organisation) {
-      throw new Response("Not Found", { status: 404 });
-    }
-    return { kind: "org", orgId: organisation.id, label: organisation.name ?? organisation.id };
+  if (resolvedScope.kind === "org") {
+    const organization = resolvedScope.organization;
+    return {
+      ...resolvedScope,
+      organization: backofficeOrganizationIdentity(organization),
+      label: organization.name ?? organization.id,
+    };
   }
 
-  if (parsed?.kind === "project") {
-    const organisation = organisations.find((entry) => entry.id === parsed.orgId);
-    if (!organisation) {
-      throw new Response("Not Found", { status: 404 });
-    }
-    if (!project || toExternalId(project.id) !== parsed.projectId || project.archivedAt) {
+  if (resolvedScope.kind === "project") {
+    const organization = resolvedScope.organization;
+    if (!project || toExternalId(project.id) !== resolvedScope.projectId || project.archivedAt) {
       throw new Response("Not Found", { status: 404 });
     }
     return {
       kind: "project",
-      orgId: organisation.id,
-      projectId: parsed.projectId,
+      organization: backofficeOrganizationIdentity(organization),
+      projectId: resolvedScope.projectId,
       label: projectLabel(project),
     };
   }
 
-  if (parsed?.kind === "user" && parsed.userId === user.id) {
+  if (resolvedScope.kind === "user" && resolvedScope.userId === user.id) {
     return { kind: "user", userId: user.id, label: userName(user) };
   }
 

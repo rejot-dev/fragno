@@ -1,6 +1,9 @@
 import { redirect } from "react-router";
 
-import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import {
+  backofficeRouteScopePath,
+  requireBackofficeRouteScopeFromParams,
+} from "@/backoffice-runtime/route-scope";
 import { requireBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import {
@@ -10,7 +13,7 @@ import {
   resolvePiModelThinkingLevel,
 } from "@/fragno/pi/pi-shared";
 
-import { automationScopeFromRouteParams } from "../automations/scope";
+import { automationRuntimeScopeFromRouteParams } from "../automations/scope";
 import type { Route } from "./+types/sessions";
 import { createPiSession, fetchPiRuntimeState, sendPiSessionMessage } from "./data";
 import type { PiCreateSessionActionData } from "./session-types";
@@ -20,7 +23,12 @@ function actionError(message: string): PiCreateSessionActionData {
 }
 
 export async function createSessionAction({ request, params, context }: Route.ActionArgs) {
-  const scope = automationScopeFromRouteParams(params);
+  const me = await requireBackofficeMe(request, context);
+  const routeScope = requireBackofficeRouteScopeFromParams(params);
+  const scope = automationRuntimeScopeFromRouteParams(
+    params,
+    me.organizations.map(({ organization }) => organization),
+  );
   await requireBackofficeContext(request, context, scope);
   const formData = await request.formData();
   const getValue = (key: string) => {
@@ -30,9 +38,7 @@ export async function createSessionAction({ request, params, context }: Route.Ac
   const modelOption = getValue("modelOption");
   const prompt = getValue("prompt");
   const billingOrganizationId =
-    scope.kind === "user"
-      ? ((await requireBackofficeMe(request, context)).activeOrganization?.organization.id ?? null)
-      : null;
+    scope.kind === "user" ? (me.activeOrganization?.organization.id ?? null) : null;
 
   if (!prompt) {
     return actionError("Write a message to start the session.");
@@ -94,7 +100,7 @@ export async function createSessionAction({ request, params, context }: Route.Ac
     result.session.id,
     { text: prompt, commandKind: "prompt" },
   );
-  const detailPath = `/backoffice/sessions/${backofficeContextScopeRoutePath(scope)}/sessions/${encodeURIComponent(result.session.workflowName)}/${encodeURIComponent(result.session.id)}`;
+  const detailPath = `/backoffice/sessions/${backofficeRouteScopePath(routeScope)}/sessions/${encodeURIComponent(result.session.workflowName)}/${encodeURIComponent(result.session.id)}`;
 
   if (messageResult.error) {
     return redirect(`${detailPath}?initialPromptError=${encodeURIComponent(messageResult.error)}`);

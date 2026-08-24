@@ -75,7 +75,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   } satisfies GitHubRepositoryDetailLoaderData;
 }
 
-export default function BackofficeOrganisationGitHubRepositoryDetail() {
+export default function BackofficeOrganizationGitHubRepositoryDetail() {
   const { repo, pulls, pullsError, error, pageInfo } = useLoaderData<typeof loader>();
   const { basePath } = useOutletContext<GitHubRepositoriesOutletContext>();
   const { repoId } = useParams();

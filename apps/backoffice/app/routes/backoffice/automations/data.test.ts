@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
+
 const { createBackofficeFileSystemMock, requireBackofficeContextMock } = vi.hoisted(() => ({
   createBackofficeFileSystemMock: vi.fn(),
   requireBackofficeContextMock: vi.fn(),
@@ -21,19 +23,26 @@ import { loadAutomationScriptSource, loadAutomationWorkspaceData } from "./data.
 
 const mockContext = { get: () => ({ runtime: { objects: {} }, env: {} }) } as never;
 const request = new Request("https://backoffice.test/automations");
+const verifiedRequestAuthority = {
+  role: "user" as const,
+  organizationId: "acme-org",
+  expiresAt: new Date("2099-01-01T00:00:00.000Z"),
+};
+const orgExecution = createBackofficeUserExecution({
+  scope: { kind: "org", orgId: "acme-org" },
+  userId: "user-1",
+  verifiedRequestAuthority,
+});
+const projectExecution = createBackofficeUserExecution({
+  scope: { kind: "project", orgId: "acme-org", projectId: "project-1" },
+  userId: "user-1",
+  verifiedRequestAuthority,
+});
 
 beforeEach(() => {
   createBackofficeFileSystemMock.mockReset();
   requireBackofficeContextMock.mockReset();
-  requireBackofficeContextMock.mockResolvedValue({
-    actor: {
-      type: "user",
-      id: "user-1",
-      userId: "user-1",
-      organizationIds: ["acme-org"],
-    },
-    scope: { kind: "org", orgId: "acme-org" },
-  });
+  requireBackofficeContextMock.mockResolvedValue(orgExecution);
 });
 
 describe("automation backoffice workspace data", () => {
@@ -183,9 +192,8 @@ describe("automation backoffice workspace data", () => {
     createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
 
     const result = await loadAutomationScriptSource({
-      request,
       context: mockContext,
-      orgId: "acme-org",
+      execution: orgExecution,
       scriptId: "automation-script:static:project-files-configure.workflow.js",
     });
 
@@ -205,9 +213,8 @@ describe("automation backoffice workspace data", () => {
     createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
 
     const result = await loadAutomationScriptSource({
-      request,
       context: mockContext,
-      scope: { kind: "project", orgId: "acme-org", projectId: "project-1" },
+      execution: projectExecution,
       scriptId: "automation-script:static:project-files-configure.workflow.js",
     });
 
@@ -226,9 +233,8 @@ describe("automation backoffice workspace data", () => {
     createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
 
     const result = await loadAutomationScriptSource({
-      request,
       context: mockContext,
-      orgId: "acme-org",
+      execution: orgExecution,
       scriptId: "automation-script:system:workspace-file-initialization.workflow.js",
     });
 
@@ -247,9 +253,8 @@ describe("automation backoffice workspace data", () => {
     createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
 
     const result = await loadAutomationScriptSource({
-      request,
       context: mockContext,
-      orgId: "acme-org",
+      execution: orgExecution,
       scriptId: "automation-script:workspace:lazy.sh",
     });
 

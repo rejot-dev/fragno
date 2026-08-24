@@ -31,7 +31,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   } satisfies ResendIncomingDetailLoaderData;
 }
 
-export default function BackofficeOrganisationResendIncomingDetail() {
+export default function BackofficeOrganizationResendIncomingDetail() {
   const { email, error } = useLoaderData<typeof loader>();
   const { basePath } = useOutletContext<ResendIncomingOutletContext>();
   const { emailId } = useParams();
