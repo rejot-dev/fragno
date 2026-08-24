@@ -60,10 +60,6 @@ export function assertAllowedBaseUrl(baseUrl: string, config: ApiFragmentConfig)
   return url;
 }
 
-export function defaultOAuthRedirectUri(config: ApiFragmentConfig) {
-  return `${config.publicBaseUrl.replace(/\/$/, "")}/oauth/callback`;
-}
-
 function secretByKind<TSecret extends { kind: string }>(secrets: TSecret[], kind: string) {
   return secrets.find((secret) => secret.kind === kind);
 }
@@ -80,7 +76,6 @@ function secretIsUnexpired(secret: Pick<SecretRecord, "expiresAt"> | undefined) 
 }
 
 export async function createOAuthStartSnapshot(args: {
-  config: ApiFragmentConfig;
   connection: { id: { toString(): string } | string };
   auth: Extract<AuthConfig, { type: "oauth" }>;
   stateId: string;

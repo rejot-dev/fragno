@@ -4,10 +4,10 @@ import { webhookAuthConfigSchema } from "./webhooks/auth";
 import { webhookVerificationConfigSchema } from "./webhooks/verification";
 
 export interface ApiFragmentConfig {
-  /** Public URL where this fragment is mounted; used to build OAuth redirects. */
-  publicBaseUrl: string;
   /** Optional URL allow-list. If omitted, only http(s) URL syntax is checked. */
   allowedBaseUrls?: (url: URL) => boolean;
+  /** Allows OAuth callback URLs. OAuth start is rejected when this policy is omitted. */
+  allowedOAuthRedirectUris?: (url: URL) => boolean;
   /** Optional fetch implementation for tests/custom runtimes. */
   fetch?: typeof fetch;
 }
@@ -63,6 +63,14 @@ export const apiConnectionOutputSchema = z.object({
 });
 
 export const tokenAuthInputSchema = z.object({ token: z.string().min(1) });
+
+/** Query parameter carrying the OAuth callback URI for an OAuth start request. */
+export const API_OAUTH_REDIRECT_URI_QUERY_PARAMETER = "redirectUri";
+
+export const oauthRedirectUriSchema = z.url().refine((value) => {
+  const protocol = new URL(value).protocol;
+  return protocol === "https:" || protocol === "http:";
+}, "OAuth redirect URI must use HTTP or HTTPS");
 
 export const oauthStartInputSchema = z.object({
   scopes: z.array(z.string()).optional(),

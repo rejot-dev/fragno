@@ -20,7 +20,6 @@ const buildApiTest = async () => {
       "api",
       instantiate(apiFragmentDefinition)
         .withConfig({
-          publicBaseUrl: "https://app.test",
           onWebhookReceived,
         })
         .withRoutes([apiRoutesFactory]),

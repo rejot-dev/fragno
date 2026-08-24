@@ -10,7 +10,6 @@ import { apiSchema } from "./schema";
 import {
   createOAuthCallbackSnapshot,
   createOAuthStartSnapshot,
-  defaultOAuthRedirectUri,
   performApiRequest,
   resolveApiOperationAuth,
   storedAuthPayloadSchema,
@@ -163,10 +162,10 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
       startOAuth: function (input: {
         connectionId: string;
         stateId: string;
+        redirectUri: string;
         scopes?: string[];
         extraAuthorizationParams?: Record<string, string>;
       }) {
-        const redirectUri = defaultOAuthRedirectUri(config);
         return this.serviceTx(apiSchema)
           .retrieve((uow) =>
             uow
@@ -191,11 +190,10 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
               return { found: false as const, reason: "auth_not_oauth" as const };
             }
             const snapshot = await createOAuthStartSnapshot({
-              config,
               connection,
               auth,
               stateId: input.stateId,
-              redirectUri,
+              redirectUri: input.redirectUri,
               scopes: input.scopes,
               extraAuthorizationParams: input.extraAuthorizationParams,
             });

@@ -1,4 +1,7 @@
-import type { ApiRequestOutput } from "@fragno-dev/api-fragment/types";
+import {
+  API_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
+  type ApiRequestOutput,
+} from "@fragno-dev/api-fragment/types";
 import {
   webhookVerificationConfigSchema,
   type WebhookVerificationConfig,
@@ -17,9 +20,14 @@ import {
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { backofficeRouteScopeSinglePathSegmentFromParams } from "@/backoffice-runtime/route-scope";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { FormField } from "@/components/backoffice";
 import type { ApiFragment } from "@/fragno/api";
+import {
+  apiPublicAddress,
+  apiWebhookPublicUrl as buildApiWebhookPublicUrl,
+} from "@/fragno/scoped-public-fragment-routes";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/api";
@@ -186,9 +194,7 @@ const selectedWebhookPath = (endpointId: string) =>
   `?tab=webhooks&webhook=${encodeURIComponent(endpointId)}`;
 
 const webhookPublicUrl = (publicBaseUrl: string | null, endpointId: string) =>
-  publicBaseUrl && endpointId
-    ? `${publicBaseUrl}/webhooks/endpoints/${encodeURIComponent(endpointId)}/events`
-    : null;
+  publicBaseUrl && endpointId ? buildApiWebhookPublicUrl(publicBaseUrl, endpointId) : null;
 
 const appendWebhookPublicUrl = (
   endpoint: Omit<ApiWebhookEndpointSummary, "publicUrl">,
@@ -224,7 +230,7 @@ const createApiRouteCallerForScope = (
   return createRouteCaller<ApiFragment>({
     baseUrl: new URL(request.url).origin,
     mountRoute: "/api/api",
-    fetch: async (outboundRequest) => apiObject.fetch(outboundRequest),
+    fetch: (outboundRequest) => apiObject.fetch(outboundRequest),
   });
 };
 
@@ -303,7 +309,10 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   let publicBaseUrl: string | null = null;
   let configError: string | null = null;
   try {
-    publicBaseUrl = await getApiObjectForScope(context, scope).getPublicBaseUrl();
+    publicBaseUrl = apiPublicAddress(
+      context.get(BackofficeWorkerContext).runtime.config.docsPublicBaseUrl,
+      backofficeRouteScopeSinglePathSegmentFromParams(params),
+    ).baseUrl;
   } catch (error) {
     configError = error instanceof Error ? error.message : "Unable to initialize API capability.";
   }
@@ -522,6 +531,13 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       if (getFormString(formData, "authMode") === "oauth") {
         const oauthResponse = await callRoute("POST", "/connections/:slug/auth/oauth/start", {
           pathParams: { slug },
+          query: {
+            [API_OAUTH_REDIRECT_URI_QUERY_PARAMETER]: apiPublicAddress(
+              context.get(BackofficeWorkerContext).runtime.config.docsPublicBaseUrl,
+              backofficeRouteScopeSinglePathSegmentFromParams(params),
+            ).oauthRedirectUri,
+          },
+          body: {},
         });
         if (oauthResponse.type === "json" && isSuccessResponse(oauthResponse)) {
           return {
@@ -549,6 +565,12 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       );
       const response = await callRoute("POST", "/connections/:slug/auth/oauth/start", {
         pathParams: { slug },
+        query: {
+          [API_OAUTH_REDIRECT_URI_QUERY_PARAMETER]: apiPublicAddress(
+            context.get(BackofficeWorkerContext).runtime.config.docsPublicBaseUrl,
+            backofficeRouteScopeSinglePathSegmentFromParams(params),
+          ).oauthRedirectUri,
+        },
         body: {
           ...(scopes.length ? { scopes } : {}),
           ...(extraAuthorizationParams ? { extraAuthorizationParams } : {}),

@@ -3,7 +3,11 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { resolveBackofficeRuntimeScope } from "@/backoffice-runtime/resolved-scope";
+import {
+  backofficeRouteScopeFromResolvedScope,
+  resolveBackofficeRuntimeScope,
+} from "@/backoffice-runtime/resolved-scope";
+import { backofficeRouteScopeSinglePathSegment } from "@/backoffice-runtime/route-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { createBackofficeFileSystem, type IFileSystem } from "@/files";
@@ -49,6 +53,7 @@ import {
 } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createUploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
+import { apiPublicAddress } from "@/fragno/scoped-public-fragment-routes";
 
 import type { InteractiveRuntimeToolContext } from "./bash-host";
 import { getRuntimeToolNamespacesByCapability, runtimeToolFamilies } from "./tool-families";
@@ -264,7 +269,25 @@ export const createRouteBackedRuntimeContext = ({
           const object = unavailableObject(() =>
             kernel.scoped("API", execution.scope, runtime.objects.api),
           );
-          return object ? { runtime: createApiRuntime(object) } : null;
+          return object
+            ? {
+                runtime: createApiRuntime(object, async () => {
+                  const resolvedScope = await resolveBackofficeRuntimeScope(
+                    execution.scope,
+                    (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
+                  );
+                  if (resolvedScope.kind === "system") {
+                    throw new Error("API public routes require a routable scope.");
+                  }
+                  return apiPublicAddress(
+                    runtime.config.docsPublicBaseUrl,
+                    backofficeRouteScopeSinglePathSegment(
+                      backofficeRouteScopeFromResolvedScope(resolvedScope),
+                    ),
+                  );
+                }),
+              }
+            : null;
         })()
       : null,
     mcp: runtime.config.bindings.mcp

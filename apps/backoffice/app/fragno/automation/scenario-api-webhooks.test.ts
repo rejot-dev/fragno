@@ -22,6 +22,7 @@ import { migrate } from "@fragno-dev/db";
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { encodeBackofficeObjectAddress, org } from "@/backoffice-runtime/object-registry";
+import { backofficeRouteScopeSinglePathSegment } from "@/backoffice-runtime/route-scope";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { createApiServer } from "@/fragno/api";
 import { bytesToHex } from "@/lib/crypto";
@@ -36,6 +37,7 @@ import {
 } from "./scenario";
 
 const ORG_ID = "org-1";
+const ORG_SLUG = "ada-labs";
 const ENDPOINT_ID = "slack";
 const SLACK_SIGNING_SECRET = "scenario-slack-signing-secret";
 const SLACK_CHALLENGE = "scenario-slack-challenge";
@@ -151,9 +153,9 @@ const postSlackWebhook = ({
         })
       : "v0=invalid-signature";
     const publicUrl = getConfiguredWebhookPublicUrl(ctx);
-    const scopeSegment = backofficeContextScopeSinglePathSegment({
+    const scopeSegment = backofficeRouteScopeSinglePathSegment({
       kind: "org",
-      orgId: ORG_ID,
+      orgSlug: ORG_SLUG,
     });
 
     const response = await receiveApiWebhook({
@@ -229,7 +231,7 @@ const seedLegacyWebhookEndpoints = (): BackofficeScenarioStep => ({
       scope: org(ORG_ID),
     });
     const api = createApiServer(
-      { publicBaseUrl: "https://example.com" },
+      {},
       {
         adapters: ctx.runtime.adapters.forScope({
           type: "named",
@@ -578,7 +580,9 @@ describe("API webhook scenarios", () => {
           acceptedChallenge: null,
           acceptedDelivery: null,
         }),
-        setup: ({ given }) => [given.organization.exists({ id: ORG_ID, name: "Ada Labs" })],
+        setup: ({ given }) => [
+          given.organization.exists({ id: ORG_ID, slug: ORG_SLUG, name: "Ada Labs" }),
+        ],
         steps: ({ when, then }) => [
           when.codemode.run({
             orgId: ORG_ID,
@@ -624,7 +628,7 @@ describe("API webhook scenarios", () => {
           }),
           then.assert("the runtime tool returns the scoped public webhook URL", (ctx) => {
             expect(getConfiguredWebhookPublicUrl(ctx)).toBe(
-              `https://example.com/api/http/org%3A${ORG_ID}/webhooks/endpoints/${ENDPOINT_ID}/events`,
+              `https://example.com/api/http/org%3A${ORG_SLUG}/webhooks/endpoints/${ENDPOINT_ID}/events`,
             );
           }),
           postSlackWebhook({

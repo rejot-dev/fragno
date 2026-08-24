@@ -1,14 +1,19 @@
-import type {
-  ApiConnectionInput,
-  ApiRequestInput,
-  UpdateWebhookEndpointInput,
-  WebhookEndpoint,
-  WebhookEndpointInput,
+import {
+  API_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
+  type ApiConnectionInput,
+  type ApiRequestInput,
+  type UpdateWebhookEndpointInput,
+  type WebhookEndpoint,
+  type WebhookEndpointInput,
 } from "@fragno-dev/api-fragment/types";
 import { createRouteCaller } from "@fragno-dev/core/api";
 
 import type { ApiObject } from "@/backoffice-runtime/object-registry";
 import type { ApiFragment } from "@/fragno/api";
+import {
+  apiWebhookPublicUrl,
+  type ScopedPublicFragmentAddress,
+} from "@/fragno/scoped-public-fragment-routes";
 
 import {
   createOrganizationNotConfiguredMessage,
@@ -71,12 +76,10 @@ const createApiRouteCaller = (options: CreateRouteBackedApiRuntimeOptions) =>
 
 const appendWebhookPublicUrl = (
   endpoint: WebhookEndpoint,
-  publicBaseUrl: string | null,
+  publicBaseUrl: string,
 ): ApiWebhookEndpoint => ({
   ...endpoint,
-  publicUrl: publicBaseUrl
-    ? `${publicBaseUrl}/webhooks/endpoints/${encodeURIComponent(endpoint.id)}/events`
-    : null,
+  publicUrl: apiWebhookPublicUrl(publicBaseUrl, endpoint.id),
 });
 
 const normalizeSlug = (slug: string, label = "API connection slug") => {
@@ -98,7 +101,9 @@ const throwOnApiRuntimeError = (
   });
 
 export const createRouteBackedApiRuntime = (
-  options: CreateRouteBackedApiRuntimeOptions & { getPublicBaseUrl?: () => Promise<string | null> },
+  options: CreateRouteBackedApiRuntimeOptions & {
+    resolvePublicAddress: () => Promise<ScopedPublicFragmentAddress>;
+  },
 ): ApiRuntime => {
   const baseUrl = options.baseUrl.trim();
   if (!baseUrl) {
@@ -106,7 +111,6 @@ export const createRouteBackedApiRuntime = (
   }
 
   const callRoute = createApiRouteCaller({ ...options, baseUrl });
-  const getPublicBaseUrl = options.getPublicBaseUrl ?? (async () => null);
 
   return {
     listConnections: async () => {
@@ -155,8 +159,12 @@ export const createRouteBackedApiRuntime = (
       return throwOnApiRuntimeError(response, "api.auth.token");
     },
     startOAuth: async ({ slug, scopes, extraAuthorizationParams }) => {
+      const publicAddress = await options.resolvePublicAddress();
       const response = await callRoute("POST", "/connections/:slug/auth/oauth/start", {
         pathParams: { slug: normalizeSlug(slug) },
+        query: {
+          [API_OAUTH_REDIRECT_URI_QUERY_PARAMETER]: publicAddress.oauthRedirectUri,
+        },
         body: {
           ...(scopes?.length ? { scopes } : {}),
           ...(extraAuthorizationParams ? { extraAuthorizationParams } : {}),
@@ -189,11 +197,11 @@ export const createRouteBackedApiRuntime = (
     listWebhookEndpoints: async () => {
       const response = await callRoute("GET", "/webhooks/endpoints");
       if (response.type === "json" && isSuccessStatus(response.status)) {
-        const publicBaseUrl = await getPublicBaseUrl();
-        const data = response.data as { endpoints: WebhookEndpoint[] };
+        const publicAddress = await options.resolvePublicAddress();
+        const data = response.data;
         return {
           endpoints: data.endpoints.map((endpoint) =>
-            appendWebhookPublicUrl(endpoint, publicBaseUrl),
+            appendWebhookPublicUrl(endpoint, publicAddress.baseUrl),
           ),
         };
       }
@@ -204,7 +212,10 @@ export const createRouteBackedApiRuntime = (
         pathParams: { endpointId: normalizeSlug(endpointId, "Webhook endpoint id") },
       });
       if (response.type === "json" && isSuccessStatus(response.status)) {
-        return appendWebhookPublicUrl(response.data as WebhookEndpoint, await getPublicBaseUrl());
+        return appendWebhookPublicUrl(
+          response.data,
+          (await options.resolvePublicAddress()).baseUrl,
+        );
       }
       return throwOnApiRuntimeError(response, "api.webhooks.get");
     },
@@ -214,7 +225,10 @@ export const createRouteBackedApiRuntime = (
         body: body satisfies WebhookEndpointInput,
       });
       if (response.type === "json" && isSuccessStatus(response.status)) {
-        return appendWebhookPublicUrl(response.data as WebhookEndpoint, await getPublicBaseUrl());
+        return appendWebhookPublicUrl(
+          response.data,
+          (await options.resolvePublicAddress()).baseUrl,
+        );
       }
       return throwOnApiRuntimeError(response, "api.webhooks.create");
     },
@@ -224,7 +238,10 @@ export const createRouteBackedApiRuntime = (
         body: body satisfies UpdateWebhookEndpointInput,
       });
       if (response.type === "json" && isSuccessStatus(response.status)) {
-        return appendWebhookPublicUrl(response.data as WebhookEndpoint, await getPublicBaseUrl());
+        return appendWebhookPublicUrl(
+          response.data,
+          (await options.resolvePublicAddress()).baseUrl,
+        );
       }
       return throwOnApiRuntimeError(response, "api.webhooks.update");
     },
@@ -240,12 +257,17 @@ export const createRouteBackedApiRuntime = (
   };
 };
 
-export const createApiRuntime = (object: ApiObject) =>
-  createRouteBackedApiRuntime({
+export const createApiRuntime = (
+  object: ApiObject,
+  resolvePublicAddress: () => Promise<ScopedPublicFragmentAddress>,
+) => {
+  let publicAddress: Promise<ScopedPublicFragmentAddress> | null = null;
+  return createRouteBackedApiRuntime({
     baseUrl: "https://api.do",
-    fetch: async (outboundRequest) => object.fetch(outboundRequest),
-    getPublicBaseUrl: async () => object.getPublicBaseUrl(),
+    fetch: (outboundRequest) => object.fetch(outboundRequest),
+    resolvePublicAddress: () => (publicAddress ??= resolvePublicAddress()),
   });
+};
 
 export const createUnavailableApiRuntime = (message = API_NOT_CONFIGURED): ApiRuntime => ({
   listConnections: async () => {

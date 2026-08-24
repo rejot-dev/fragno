@@ -5,8 +5,8 @@ import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/frag
 
 export type ApiConfig = Pick<
   ApiFragmentConfig,
-  | "publicBaseUrl"
   | "allowedBaseUrls"
+  | "allowedOAuthRedirectUris"
   | "onConnectionChanged"
   | "onConnectionDeleted"
   | "onConnectionAvailable"
@@ -20,8 +20,8 @@ export function createApiServer(
 ): ReturnType<typeof createApiFragment> {
   return createApiFragment(
     {
-      publicBaseUrl: config.publicBaseUrl,
       allowedBaseUrls: config.allowedBaseUrls,
+      allowedOAuthRedirectUris: config.allowedOAuthRedirectUris,
       onConnectionChanged: config.onConnectionChanged,
       onConnectionDeleted: config.onConnectionDeleted,
       onConnectionAvailable: config.onConnectionAvailable,

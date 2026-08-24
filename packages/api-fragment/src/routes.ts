@@ -4,11 +4,13 @@ import { defineRoutes } from "@fragno-dev/core";
 import { isUniqueConstraintError } from "@fragno-dev/db";
 
 import {
+  API_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
   apiConnectionOutputSchema,
   apiRequestInputSchema,
   apiRequestOutputSchema,
   createApiConnectionInputSchema,
   createWebhookEndpointInputSchema,
+  oauthRedirectUriSchema,
   oauthStartInputSchema,
   tokenAuthInputSchema,
   updateWebhookEndpointInputSchema,
@@ -1065,9 +1067,39 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
       path: "/connections/:slug/auth/oauth/start",
       inputSchema: oauthStartInputSchema,
       outputSchema: oauthStartOutputSchema,
-      errorCodes: ["CONNECTION_NOT_FOUND", "AUTH_NOT_CONFIGURED", "AUTH_NOT_OAUTH", "OAUTH_ERROR"],
-      handler: async function ({ input, pathParams }, { json, error }) {
+      queryParameters: [API_OAUTH_REDIRECT_URI_QUERY_PARAMETER],
+      errorCodes: [
+        "INVALID_OAUTH_REDIRECT_URI",
+        "OAUTH_REDIRECT_URI_NOT_ALLOWED",
+        "CONNECTION_NOT_FOUND",
+        "AUTH_NOT_CONFIGURED",
+        "AUTH_NOT_OAUTH",
+        "OAUTH_ERROR",
+      ],
+      handler: async function ({ input, pathParams, query }, { json, error }) {
         const body = await input.valid();
+        const redirectUri = oauthRedirectUriSchema.safeParse(
+          query.get(API_OAUTH_REDIRECT_URI_QUERY_PARAMETER),
+        );
+        if (!redirectUri.success) {
+          return error(
+            {
+              code: "INVALID_OAUTH_REDIRECT_URI",
+              message: "OAuth redirect URI must be an HTTP or HTTPS URL",
+            },
+            400,
+          );
+        }
+        const oauthRedirectUri = new URL(redirectUri.data);
+        if (!config.allowedOAuthRedirectUris?.(oauthRedirectUri)) {
+          return error(
+            {
+              code: "OAUTH_REDIRECT_URI_NOT_ALLOWED",
+              message: "OAuth redirect URI is not allowed by the fragment configuration",
+            },
+            400,
+          );
+        }
         const state = `${pathParams.slug}:${crypto.randomUUID()}`;
         try {
           const [result] = await this.handlerTx()
@@ -1077,6 +1109,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                   services.startOAuth({
                     connectionId: pathParams.slug,
                     stateId: state,
+                    redirectUri: oauthRedirectUri.toString(),
                     scopes: body.scopes,
                     extraAuthorizationParams: body.extraAuthorizationParams,
                   }),

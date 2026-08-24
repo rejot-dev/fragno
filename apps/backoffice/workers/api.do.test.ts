@@ -34,8 +34,6 @@ describe("API system capability", () => {
     const runtime = await createRuntime();
     const api = runtime.objects.api.forOrg("org-1");
 
-    await expect(api.getPublicBaseUrl()).resolves.toContain("org-1");
-
     const response = await api.fetch(new Request("https://api.do/api/api/connections"));
     assert(response.ok);
     await expect(response.json()).resolves.toEqual({ connections: [] });

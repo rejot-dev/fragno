@@ -204,11 +204,7 @@ export type AuthObject = FetchObject &
     }): Promise<string[] | null>;
   };
 
-export type ApiObject = FetchObject &
-  AlarmableObject &
-  DurableHookObject & {
-    getPublicBaseUrl(): Promise<string>;
-  };
+export type ApiObject = FetchObject & AlarmableObject & DurableHookObject;
 
 export type BillingObject = FetchObject &
   AlarmableObject & {

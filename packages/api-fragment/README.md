@@ -15,10 +15,11 @@ executing authenticated requests through server-side routes.
 ```ts
 import { createApiFragment } from "@fragno-dev/api-fragment/server";
 
+const oauthRedirectUri = "https://app.example.com/api/integrations/oauth/callback";
 const api = createApiFragment(
   {
-    publicBaseUrl: "https://app.example.com/api/integrations",
     allowedBaseUrls: (url) => url.hostname.endsWith(".example.com"),
+    allowedOAuthRedirectUris: (url) => url.toString() === oauthRedirectUri,
     onConnectionAvailable: async ({ connectionId, connection }) => {
       console.log("API connection is ready", connectionId, connection.baseUrl);
     },
@@ -28,7 +29,8 @@ const api = createApiFragment(
 ```
 
 Always provide `allowedBaseUrls` in production so users cannot configure arbitrary server-side
-request targets.
+request targets. OAuth start is denied unless `allowedOAuthRedirectUris` explicitly accepts the
+callback URL.
 
 ## Client usage
 
@@ -59,7 +61,8 @@ Auth:
 
 - `GET /connections/:slug/auth/status`
 - `POST /connections/:slug/auth/token` - store or replace a bearer token.
-- `POST /connections/:slug/auth/oauth/start` - start authorization-code + PKCE.
+- `POST /connections/:slug/auth/oauth/start` - start authorization-code + PKCE with an explicit
+  `redirectUri` query parameter.
 - `GET /oauth/callback` - complete authorization-code + PKCE.
 - `DELETE /connections/:slug/auth`
 
@@ -132,7 +135,13 @@ await api.createConnection.mutate(
   { pathParams: { slug: "oauth-api" } },
 );
 
-const start = await api.startOAuth.mutate({}, { pathParams: { slug: "oauth-api" } });
+const start = await api.startOAuth.mutate(
+  {},
+  {
+    pathParams: { slug: "oauth-api" },
+    query: { redirectUri: oauthRedirectUri },
+  },
+);
 window.location.href = start.authorizationUrl;
 ```
 
