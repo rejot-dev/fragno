@@ -6,11 +6,16 @@ import type {
   BackofficeContextScope,
   BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
+import {
+  BackofficeForbiddenError,
+  BackofficeKernel,
+  noopBackofficeKernelObserver,
+} from "@/backoffice-runtime/kernel";
 import {
   isBackofficePermissionRequirement,
   type BackofficePermission,
   type BackofficePermissionNamespace,
+  type BackofficePermissionRequirement,
 } from "@/backoffice-runtime/permissions";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import type { BackofficeCapabilityId } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
@@ -254,6 +259,22 @@ const summarizeToolValue = (value: unknown) => {
   return summary.length > 500 ? `${summary.slice(0, 497)}...` : summary;
 };
 
+function runtimeToolAuthorizationError(
+  tool: AnyBackofficeRuntimeTool,
+  operation: BackofficePermissionRequirement,
+  cause: BackofficeForbiddenError,
+): BackofficeForbiddenError {
+  return new BackofficeForbiddenError(
+    [
+      `Permission denied for ${tool.namespace}.${tool.name}.`,
+      `Action: ${tool.description}`,
+      `Required permission: ${operation.namespace}.${operation.permission}.`,
+      `Reason: ${cause.message}`,
+    ].join("\n"),
+    cause.reason,
+  );
+}
+
 const authorizeBackofficeRuntimeTool = async (
   tool: AnyBackofficeRuntimeTool,
   parsedInput: unknown,
@@ -271,11 +292,18 @@ const authorizeBackofficeRuntimeTool = async (
       );
     }
 
-    await context.kernel.assertAuthorized({
-      execution: context.execution,
-      operation,
-      resource,
-    });
+    try {
+      await context.kernel.assertAuthorized({
+        execution: context.execution,
+        operation,
+        resource,
+      });
+    } catch (error) {
+      if (error instanceof BackofficeForbiddenError) {
+        throw runtimeToolAuthorizationError(tool, operation, error);
+      }
+      throw error;
+    }
   }
 };
 
