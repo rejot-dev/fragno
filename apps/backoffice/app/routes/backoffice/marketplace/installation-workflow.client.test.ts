@@ -1,11 +1,14 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import type { AutomationWorkflowRun } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
-import { selectMarketplaceInstallationGeneratedUi } from "./installation-workflow-presentation";
+import {
+  selectMarketplaceInstallationGeneratedUi,
+  shouldShowMarketplaceInstallationStatus,
+} from "./installation-workflow-presentation";
 import { MarketplaceInstallerGeneratedUi } from "./installation-workflow.client";
 
 const generatedUi = (label: string) => ({
@@ -39,6 +42,44 @@ const workflowRun = (input: Partial<AutomationWorkflowRun> = {}): AutomationWork
   workflowEvents: [],
   workflowStepEmissions: [],
   ...input,
+});
+
+describe("Marketplace installation status visibility", () => {
+  test("surfaces synchronization failures without a local installation request", () => {
+    assert(
+      shouldShowMarketplaceInstallationStatus({
+        requested: false,
+        synchronizationFailed: true,
+        ingestionStatus: null,
+        installerStatus: null,
+      }),
+    );
+  });
+
+  test.each(["errored", "terminated"] as const)(
+    "keeps an externally started installation visible after it becomes %s",
+    (ingestionStatus) => {
+      assert(
+        shouldShowMarketplaceInstallationStatus({
+          requested: false,
+          synchronizationFailed: false,
+          ingestionStatus,
+          installerStatus: "complete",
+        }),
+      );
+    },
+  );
+
+  test("hides a previously completed external installation", () => {
+    assert(
+      !shouldShowMarketplaceInstallationStatus({
+        requested: false,
+        synchronizationFailed: false,
+        ingestionStatus: "complete",
+        installerStatus: "complete",
+      }),
+    );
+  });
 });
 
 describe("Marketplace installation generated UI selection", () => {
@@ -108,7 +149,19 @@ describe("Marketplace installation generated UI selection", () => {
     );
 
     expect(markup).toContain("Complete");
-    expect(markup).not.toContain("Installer complete.");
+    expect(markup).not.toContain("Installation complete.");
+  });
+
+  test("renders completion in the main installation content without generated output", () => {
+    const markup = renderToStaticMarkup(
+      createElement(MarketplaceInstallerGeneratedUi, {
+        coordinatorScope: { kind: "org", orgId: "org-1" },
+        instance: workflowRun({ status: "complete", output: { installed: true } }),
+        targetScope: { kind: "org", orgId: "org-1" },
+      }),
+    );
+
+    expect(markup).toContain("Installation complete.");
   });
 
   test("ignores ordinary workflow values", () => {

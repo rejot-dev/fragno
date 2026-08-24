@@ -1,5 +1,5 @@
 import { PackageOpen } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useFetcher, useLocation } from "react-router";
 import { Streamdown } from "streamdown";
 
@@ -69,12 +69,12 @@ function ReadyMarketplaceArtifactFiles({
 }) {
   const location = useLocation();
   const overview = useFetcher<string>();
-  const [overviewRequested, setOverviewRequested] = useState(false);
+  const [requestedOverviewPath, setRequestedOverviewPath] = useState<string | null>(null);
   const requestedTab = new URLSearchParams(location.search).get("artifactTab");
   const activeTab: MarketplaceArtifactTab =
     requestedTab === "overview" || requestedTab === "workflows" || requestedTab === "files"
       ? requestedTab
-      : "files";
+      : "overview";
   const overviewPath =
     findMarketplaceArtifactEntry(data, "README.md")?.kind === "file"
       ? `${MARKETPLACE_ARTIFACT_ROOT_PATH}/README.md`
@@ -83,11 +83,21 @@ function ReadyMarketplaceArtifactFiles({
     ? buildArtifactFileResourcePath(location.pathname, overviewPath)
     : null;
   const loadOverview = () => {
-    if (overviewResourcePath) {
-      setOverviewRequested(true);
+    if (overviewResourcePath && requestedOverviewPath !== overviewResourcePath) {
+      setRequestedOverviewPath(overviewResourcePath);
       void overview.load(overviewResourcePath);
     }
   };
+  useEffect(() => {
+    if (
+      activeTab === "overview" &&
+      overviewResourcePath &&
+      requestedOverviewPath !== overviewResourcePath
+    ) {
+      setRequestedOverviewPath(overviewResourcePath);
+      void overview.load(overviewResourcePath);
+    }
+  }, [activeTab, overview, overviewResourcePath, requestedOverviewPath]);
   const tabs = (["overview", "workflows", "files"] as const).map((tab) => ({
     id: tab,
     label: tab === "overview" ? "Overview" : tab === "workflows" ? "Workflows" : "Files",
@@ -106,9 +116,13 @@ function ReadyMarketplaceArtifactFiles({
       {activeTab === "overview" ? (
         <MarketplaceArtifactOverview
           path={overviewPath}
-          requested={overviewRequested}
+          requested={requestedOverviewPath === overviewResourcePath}
           loading={overview.state !== "idle"}
-          markdown={typeof overview.data === "string" ? overview.data : null}
+          markdown={
+            requestedOverviewPath === overviewResourcePath && typeof overview.data === "string"
+              ? overview.data
+              : null
+          }
           onLoad={loadOverview}
         />
       ) : activeTab === "workflows" ? (

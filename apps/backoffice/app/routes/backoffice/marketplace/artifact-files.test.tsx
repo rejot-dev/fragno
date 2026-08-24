@@ -31,13 +31,14 @@ const artifactData: MarketplaceArtifactExplorerData = {
 };
 
 describe("MarketplaceArtifactFiles", () => {
-  test("defaults to the metadata-only files tab and omits the old badges", () => {
+  test("defaults to the overview tab and omits the old badges", () => {
     const markup = renderMarketplaceArtifacts("/backoffice/marketplace/example");
 
-    assert(markup.includes("Package contents"));
+    assert(markup.includes("No package overview"));
     assert(markup.includes("Overview"));
     assert(markup.includes("Workflows"));
     assert(markup.includes("Files"));
+    assert(!markup.includes("Package contents"));
     assert(!markup.includes("Read only"));
     assert(!markup.includes("2 releases"));
     assert(!markup.includes("could not be found"));
