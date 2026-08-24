@@ -1,4 +1,4 @@
-import { Bash as BashRuntime, type Bash } from "just-bash";
+import { Bash as BashRuntime, defineCommand, type Bash } from "just-bash";
 
 import type {
   BackofficeContextScope,
@@ -14,6 +14,7 @@ import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import type { AutomationCommandContext, BashAutomationCommandResult } from "./automation-types";
+import { createCurrentScopeBashCommand } from "./current-scope-command";
 import type { RegisteredApiCommandContext } from "./families/api-runtime";
 import type { AutomationStoreRuntime } from "./families/automations-bindings";
 import type { DurableHooksRuntime } from "./families/automations-durable-hooks";
@@ -122,6 +123,7 @@ const createRegisteredBashCommands = (input: BashCommandFactoryInput) => {
       context,
       commandCallsResult: input.commandCallsResult,
     }),
+    createCurrentScopeBashCommand(input.context.execution.scope, defineCommand),
     isomorphicGitCommand,
   ];
 };

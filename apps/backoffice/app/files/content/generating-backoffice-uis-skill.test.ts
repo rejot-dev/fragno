@@ -267,6 +267,7 @@ describe("generating Backoffice UIs skill", () => {
     expect(systemGuidance).toContain("Classify execution errors from their messages");
     expect(systemGuidance).toMatch(/Report\s+success only from an executed result/u);
     expect(systemGuidance).toContain("A scope is the ownership and authorization boundary");
+    expect(systemGuidance).toContain("context.getCurrentScope()");
     expect(systemGuidance).toContain("context.current.store.get(...)");
     expect(systemGuidance).toContain("context.org(orgId)");
     expect(systemGuidance).toContain("context.user(userId)");

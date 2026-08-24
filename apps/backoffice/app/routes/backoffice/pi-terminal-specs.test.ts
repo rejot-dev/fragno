@@ -71,7 +71,7 @@ describe("getAvailablePiTerminalCommandSpecs", () => {
   test("always includes the shell helper commands", () => {
     const commands = commandsFor({});
 
-    expect(commands).toEqual(expect.arrayContaining(["ls", "help", "find"]));
+    expect(commands).toEqual(expect.arrayContaining(["ls", "help", "find", "context.current"]));
   });
 
   test("excludes hidden families even when their runtime is wired", () => {

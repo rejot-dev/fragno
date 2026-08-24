@@ -465,10 +465,17 @@ describe("runtime tool reference generation", () => {
         };
 
         // Scoped context handles target a selected Backoffice context.
+        type BackofficeCodemodeScope =
+          | { kind: "system" }
+          | { kind: "org"; orgId: string }
+          | { kind: "user"; userId: string }
+          | { kind: "project"; orgId: string; projectId: string };
         type BackofficeCodemodeScopedProviders = {
           reson8: Reson8CodemodeProvider;
         };
         declare const context: {
+          /** Return the exact scope governing this codemode execution. */
+          getCurrentScope(): Promise<BackofficeCodemodeScope>;
           /** Providers bound to the selected current context. */
           readonly current: BackofficeCodemodeScopedProviders;
           /** Providers bound to an organisation context. */
@@ -548,10 +555,17 @@ describe("runtime tool reference generation", () => {
         };
 
         // Scoped context handles target a selected Backoffice context.
+        type BackofficeCodemodeScope =
+          | { kind: "system" }
+          | { kind: "org"; orgId: string }
+          | { kind: "user"; userId: string }
+          | { kind: "project"; orgId: string; projectId: string };
         type BackofficeCodemodeScopedProviders = {
           telegram: TelegramCodemodeProvider;
         };
         declare const context: {
+          /** Return the exact scope governing this codemode execution. */
+          getCurrentScope(): Promise<BackofficeCodemodeScope>;
           /** Providers bound to the selected current context. */
           readonly current: BackofficeCodemodeScopedProviders;
           /** Providers bound to an organisation context. */
@@ -3587,6 +3601,11 @@ describe("runtime tool reference generation", () => {
       } | null;
 
       // Scoped context handles target a selected Backoffice context.
+      type BackofficeCodemodeScope =
+        | { kind: "system" }
+        | { kind: "org"; orgId: string }
+        | { kind: "user"; userId: string }
+        | { kind: "project"; orgId: string; projectId: string };
       type BackofficeCodemodeScopedProviders = {
         state: StateCodemodeProvider;
         capabilities: CapabilitiesCodemodeProvider;
@@ -3611,6 +3630,8 @@ describe("runtime tool reference generation", () => {
         internal: InternalCodemodeProvider;
       };
       declare const context: {
+        /** Return the exact scope governing this codemode execution. */
+        getCurrentScope(): Promise<BackofficeCodemodeScope>;
         /** Providers bound to the selected current context. */
         readonly current: BackofficeCodemodeScopedProviders;
         /** Providers bound to an organisation context. */
@@ -3667,6 +3688,11 @@ describe("runtime tool reference generation", () => {
       /// <reference path="/static/codemode/providers/upload.d.ts" />
 
       // Scoped context handles target a selected Backoffice context.
+      type BackofficeCodemodeScope =
+        | { kind: "system" }
+        | { kind: "org"; orgId: string }
+        | { kind: "user"; userId: string }
+        | { kind: "project"; orgId: string; projectId: string };
       type BackofficeCodemodeScopedProviders = {
         state: StateCodemodeProvider;
         capabilities: CapabilitiesCodemodeProvider;
@@ -3690,6 +3716,8 @@ describe("runtime tool reference generation", () => {
         upload: UploadCodemodeProvider;
       };
       declare const context: {
+        /** Return the exact scope governing this codemode execution. */
+        getCurrentScope(): Promise<BackofficeCodemodeScope>;
         /** Providers bound to the selected current context. */
         readonly current: BackofficeCodemodeScopedProviders;
         /** Providers bound to an organisation context. */
@@ -4318,10 +4346,17 @@ describe("runtime tool reference generation", () => {
       } | null;
 
       // Scoped context handles target a selected Backoffice context.
+      type BackofficeCodemodeScope =
+        | { kind: "system" }
+        | { kind: "org"; orgId: string }
+        | { kind: "user"; userId: string }
+        | { kind: "project"; orgId: string; projectId: string };
       type BackofficeCodemodeScopedProviders = {
         router: RouterCodemodeProvider;
       };
       declare const context: {
+        /** Return the exact scope governing this codemode execution. */
+        getCurrentScope(): Promise<BackofficeCodemodeScope>;
         /** Providers bound to the selected current context. */
         readonly current: BackofficeCodemodeScopedProviders;
         /** Providers bound to an organisation context. */
@@ -5058,10 +5093,17 @@ describe("runtime tool reference generation", () => {
       } | null;
 
       // Scoped context handles target a selected Backoffice context.
+      type BackofficeCodemodeScope =
+        | { kind: "system" }
+        | { kind: "org"; orgId: string }
+        | { kind: "user"; userId: string }
+        | { kind: "project"; orgId: string; projectId: string };
       type BackofficeCodemodeScopedProviders = {
         router: RouterCodemodeProvider;
       };
       declare const context: {
+        /** Return the exact scope governing this codemode execution. */
+        getCurrentScope(): Promise<BackofficeCodemodeScope>;
         /** Providers bound to the selected current context. */
         readonly current: BackofficeCodemodeScopedProviders;
         /** Providers bound to an organisation context. */
@@ -5431,10 +5473,17 @@ describe("runtime tool reference generation", () => {
       } | null;
 
       // Scoped context handles target a selected Backoffice context.
+      type BackofficeCodemodeScope =
+        | { kind: "system" }
+        | { kind: "org"; orgId: string }
+        | { kind: "user"; userId: string }
+        | { kind: "project"; orgId: string; projectId: string };
       type BackofficeCodemodeScopedProviders = {
         router: RouterCodemodeProvider;
       };
       declare const context: {
+        /** Return the exact scope governing this codemode execution. */
+        getCurrentScope(): Promise<BackofficeCodemodeScope>;
         /** Providers bound to the selected current context. */
         readonly current: BackofficeCodemodeScopedProviders;
         /** Providers bound to an organisation context. */
@@ -6222,6 +6271,11 @@ describe("runtime tool reference generation", () => {
       /// <reference path="/static/codemode/providers/upload.d.ts" />
 
       // Scoped context handles target a selected Backoffice context.
+      type BackofficeCodemodeScope =
+        | { kind: "system" }
+        | { kind: "org"; orgId: string }
+        | { kind: "user"; userId: string }
+        | { kind: "project"; orgId: string; projectId: string };
       type BackofficeCodemodeScopedProviders = {
         state: StateCodemodeProvider;
         capabilities: CapabilitiesCodemodeProvider;
@@ -6245,6 +6299,8 @@ describe("runtime tool reference generation", () => {
         upload: UploadCodemodeProvider;
       };
       declare const context: {
+        /** Return the exact scope governing this codemode execution. */
+        getCurrentScope(): Promise<BackofficeCodemodeScope>;
         /** Providers bound to the selected current context. */
         readonly current: BackofficeCodemodeScopedProviders;
         /** Providers bound to an organisation context. */

@@ -77,7 +77,9 @@ A scope is the ownership and authorization boundary for files, data, connections
 configuration. The current scope is the selected system/admin, organisation, project, or user
 context.
 
-- Top-level providers and `context.current` target the current scope: for example, `store.get(...)`
+- `context.getCurrentScope()` returns the exact system, organisation, project, or user scope
+  governing the execution.
+- Top-level providers and `context.current` target that current scope: for example, `store.get(...)`
   and `context.current.store.get(...)`.
 - Explicit handles target an authorized scope: `context.org(orgId)`, `context.user(userId)`, or
   `context.project(projectId)`. A project handle requires a current organisation or project context

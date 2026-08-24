@@ -1,5 +1,6 @@
 import type { AutomationCommandOptionSpec } from "@/fragno/runtime-tools/automation-types";
 import { STANDARD_COMMAND_OPTIONS } from "@/fragno/runtime-tools/bash-cli";
+import { CURRENT_SCOPE_BASH_COMMAND_SPEC } from "@/fragno/runtime-tools/current-scope-command";
 import {
   createRuntimeToolReferenceContext,
   createRuntimeToolReferences,
@@ -24,6 +25,7 @@ const BACKOFFICE_TERMINAL_SHELL_COMMAND_SPECS = [
   { command: "find", summary: "Search for files under a directory.", options: [] },
   { command: "ls", summary: "List files and directories.", options: [] },
   { command: "pwd", summary: "Print the terminal working directory.", options: [] },
+  CURRENT_SCOPE_BASH_COMMAND_SPEC,
 ] as const;
 const appendStandardCommandOptions = (options: readonly AutomationCommandOptionSpec[]) => {
   const optionNames = new Set(options.map((option) => option.name));

@@ -310,10 +310,17 @@ export const renderCodemodeScopedContextTypes = (namespaces: readonly string[]) 
 
   return [
     "// Scoped context handles target a selected Backoffice context.",
+    "type BackofficeCodemodeScope =",
+    '  | { kind: "system" }',
+    '  | { kind: "org"; orgId: string }',
+    '  | { kind: "user"; userId: string }',
+    '  | { kind: "project"; orgId: string; projectId: string };',
     "type BackofficeCodemodeScopedProviders = {",
     ...scopedProviderEntries,
     "};",
     "declare const context: {",
+    "  /** Return the exact scope governing this codemode execution. */",
+    "  getCurrentScope(): Promise<BackofficeCodemodeScope>;",
     "  /** Providers bound to the selected current context. */",
     "  readonly current: BackofficeCodemodeScopedProviders;",
     "  /** Providers bound to an organisation context. */",

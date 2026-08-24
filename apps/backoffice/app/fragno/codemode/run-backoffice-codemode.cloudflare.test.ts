@@ -73,6 +73,20 @@ describe("runBackofficeCodemode", () => {
     assert(result.result === "hello expression");
   });
 
+  test("returns the exact current execution scope", async () => {
+    const toolContext = createTrustedSystemBackofficeToolContext({ runtimes: {} });
+    const result = await runBackofficeCodemode({
+      env,
+      families: runtimeToolFamilies,
+      toolContext: toolContext.createScopedContext({ kind: "org", orgId: "org-1" }),
+      code: `async () => await context.getCurrentScope()`,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toEqual({ kind: "org", orgId: "org-1" });
+    expect(result.toolCalls).toEqual([]);
+  });
+
   test("does not expose unsupported state tools", async () => {
     const result = await runBackofficeCodemode({
       env,
