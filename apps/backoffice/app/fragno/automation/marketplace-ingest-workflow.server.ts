@@ -649,6 +649,14 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
         "commit marketplace workspace files",
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
         async () => {
+          if (
+            preparedWrites.length === 0 &&
+            workspaceUpdate.deletions.length === 0 &&
+            workspaceUpdate.assertions.length === 0
+          ) {
+            return [];
+          }
+
           try {
             return await targetFileSystem.commitPreparedFileWrites({
               writes: preparedWrites,
@@ -772,6 +780,8 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
                 {
                   actor: CODEMODE_CAPABILITY_ACTOR,
                   permissions: [
+                    BACKOFFICE_PERMISSION.events.manage,
+                    BACKOFFICE_PERMISSION.events.read,
                     BACKOFFICE_PERMISSION.router.modify,
                     BACKOFFICE_PERMISSION.router.read,
                     BACKOFFICE_PERMISSION.store.modify,
