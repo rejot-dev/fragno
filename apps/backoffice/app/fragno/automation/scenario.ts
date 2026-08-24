@@ -304,7 +304,6 @@ export type FakeResendApi = {
 export type FakeMcpApi = {
   servers: FakeMcpServer[];
   fetch(request: Request): Promise<Response>;
-  getPublicBaseUrl(): Promise<string>;
 };
 
 export type ScenarioFakes = {
@@ -1509,7 +1508,6 @@ const createFakeMcpApi = (input: { servers?: FakeMcpServer[] } = {}): FakeMcpApi
       }
       return Response.json({ message: "Not found", code: "NOT_FOUND" }, { status: 404 });
     },
-    getPublicBaseUrl: async () => "https://backoffice.example/api/http/org/test/mcp",
   };
 };
 
@@ -4592,7 +4590,6 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
         init: () => object,
         fetch: (request: Request) => fakes.mcp!.fetch(request),
         alarm: async () => undefined,
-        getPublicBaseUrl: () => fakes.mcp!.getPublicBaseUrl(),
         getDurableHookRepository: () => ({
           getHookQueue: async () => ({
             configured: false,

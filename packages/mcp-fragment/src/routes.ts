@@ -13,6 +13,8 @@ import {
 } from "./mcp-api";
 import {
   createServerInputSchema,
+  MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
+  mcpOAuthRedirectUriSchema,
   oauthStartInputSchema,
   tokenAuthInputSchema,
   toolCallInputSchema,
@@ -335,9 +337,37 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
         path: "/servers/:slug/auth/start",
         inputSchema: oauthStartInputSchema,
         outputSchema: z.object({ authorizationUrl: z.string(), state: z.string() }),
-        errorCodes: ["SERVER_NOT_FOUND", "OAUTH_ERROR"],
-        handler: async function ({ input, pathParams }, { json, error }) {
+        queryParameters: [MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER],
+        errorCodes: [
+          "INVALID_OAUTH_REDIRECT_URI",
+          "OAUTH_REDIRECT_URI_NOT_ALLOWED",
+          "SERVER_NOT_FOUND",
+          "OAUTH_ERROR",
+        ],
+        handler: async function ({ input, pathParams, query }, { json, error }) {
           const body = await input.valid();
+          const redirectUri = mcpOAuthRedirectUriSchema.safeParse(
+            query.get(MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER),
+          );
+          if (!redirectUri.success) {
+            return error(
+              {
+                code: "INVALID_OAUTH_REDIRECT_URI",
+                message: "MCP OAuth redirect URI must be an HTTP or HTTPS URL",
+              },
+              400,
+            );
+          }
+          const oauthRedirectUri = new URL(redirectUri.data);
+          if (!config.allowedOAuthRedirectUris?.(oauthRedirectUri)) {
+            return error(
+              {
+                code: "OAUTH_REDIRECT_URI_NOT_ALLOWED",
+                message: "MCP OAuth redirect URI is not allowed by the fragment configuration",
+              },
+              400,
+            );
+          }
           const state = `${pathParams.slug}:${crypto.randomUUID()}`;
           try {
             const [result] = await this.handlerTx()
@@ -347,6 +377,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                     services.startOAuth({
                       serverId: pathParams.slug,
                       stateId: state,
+                      redirectUri: oauthRedirectUri.toString(),
                       scope: body.scope,
                       clientId: body.clientId,
                       clientSecret: body.clientSecret,

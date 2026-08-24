@@ -2,7 +2,7 @@ import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } fr
 
 import type { ResendDomain } from "@fragno-dev/resend-fragment";
 
-import { resolveScopeFromRouteParams } from "../../integrations/scope";
+import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/domains";
 import { fetchResendConfig, fetchResendDomains } from "./data";
@@ -27,7 +27,12 @@ export type ResendDomainsOutletContext = {
 };
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const scope = resolveScopeFromRouteParams(params);
+  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
+    request,
+    context,
+    params,
+    allowedScopes: ["org", "system"],
+  });
 
   const { configState, configError } = await fetchResendConfig(context, scope);
   if (configError) {

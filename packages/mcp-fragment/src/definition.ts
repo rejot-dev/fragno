@@ -8,9 +8,7 @@ import {
   createOAuthCallbackSnapshot,
   createMcpOperationAuth,
   createOAuthStartSnapshot,
-  defaultOAuthRedirectUri,
   resolveMcpOperationAuth,
-  tokenExpiry,
   type AuthPersistenceChanges,
 } from "./services";
 
@@ -188,11 +186,11 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
       startOAuth: function (input: {
         serverId: string;
         stateId: string;
+        redirectUri: string;
         scope?: string;
         clientId?: string;
         clientSecret?: string;
       }) {
-        const redirectUri = defaultOAuthRedirectUri(config);
         return this.serviceTx(mcpSchema)
           .retrieve((uow) =>
             uow
@@ -212,7 +210,7 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               server,
               secrets,
               stateId: input.stateId,
-              redirectUri,
+              redirectUri: input.redirectUri,
               scope: input.scope,
               clientId: input.clientId,
               clientSecret: input.clientSecret,
@@ -342,11 +340,11 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
             if (retrieveResult.changes.discoveryStatePayload) {
               upsertSecret("oauth-discovery", retrieveResult.changes.discoveryStatePayload, null);
             }
-            if (retrieveResult.changes.tokens && retrieveResult.changes.tokensPayload) {
+            if (retrieveResult.changes.authPayload) {
               upsertSecret(
                 "auth",
-                retrieveResult.changes.tokensPayload,
-                tokenExpiry(retrieveResult.changes.tokens),
+                retrieveResult.changes.authPayload,
+                retrieveResult.changes.authExpiresAt ?? null,
               );
               uow.update("server_configuration", retrieveResult.server.id, (b) =>
                 b.set({ authMode: "oauth", updatedAt: b.now() }).check(),

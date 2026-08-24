@@ -1,11 +1,16 @@
 import { redirect } from "react-router";
 
-import { resolveScopeFromRouteParams } from "../../integrations/scope";
+import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import type { Route } from "./+types/outbox-index";
 import { fetchResendConfig } from "./data";
 
-export async function loader({ params, context, url }: Route.LoaderArgs) {
-  const scope = resolveScopeFromRouteParams(params);
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
+  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
+    request,
+    context,
+    params,
+    allowedScopes: ["org", "system"],
+  });
 
   const { configState } = await fetchResendConfig(context, scope);
   if (!configState?.configured) {

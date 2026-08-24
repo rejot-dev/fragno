@@ -6,7 +6,7 @@ import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/frag
 
 export type McpConfig = Pick<
   McpFragmentConfig,
-  "publicBaseUrl" | "onServerConfigurationChanged" | "onServerConfigurationDeleted"
+  "allowedOAuthRedirectUris" | "onServerConfigurationChanged" | "onServerConfigurationDeleted"
 >;
 
 export function createMcpServer(
@@ -15,7 +15,7 @@ export function createMcpServer(
 ): ReturnType<typeof createMcpFragment> {
   return createMcpFragment(
     {
-      publicBaseUrl: config.publicBaseUrl,
+      allowedOAuthRedirectUris: config.allowedOAuthRedirectUris,
       onServerConfigurationChanged: config.onServerConfigurationChanged,
       onServerConfigurationDeleted: config.onServerConfigurationDeleted,
     },

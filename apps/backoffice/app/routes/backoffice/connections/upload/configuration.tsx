@@ -1,4 +1,4 @@
-import { useEffect, useState, type SubmitEvent } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction, type SubmitEvent } from "react";
 import {
   Form,
   useActionData,
@@ -472,6 +472,477 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   }
 }
 
+function UploadConfigurationStatus({
+  configState,
+  configLoading,
+  configError,
+  activeProvider,
+}: {
+  configState: UploadAdminConfigResponse | null;
+  configLoading: boolean;
+  configError: string | null;
+  activeProvider: UploadConfigurableProvider;
+}) {
+  const statusLabel = configState?.configured ? "Configured" : "Not configured";
+  const statusTone = configState?.configured
+    ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+    : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]";
+  const configuredProviders = (["database", "r2-binding", "r2"] as const).filter(
+    (provider) => configState?.providers[provider]?.configured,
+  );
+  const activeProviderConfig = configState?.providers[activeProvider]?.config;
+  const r2Config = configState?.providers.r2?.config;
+
+  return (
+    <section className="grid gap-3 lg:grid-cols-[1.1fr_1fr]">
+      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+              Status
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Upload storage</h2>
+            <p className="mt-2 text-sm text-[var(--bo-muted)]">
+              Upload storage is scoped per organization with a mandatory org storage prefix.
+            </p>
+          </div>
+          <span
+            className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${statusTone}`}
+          >
+            {statusLabel}
+          </span>
+        </div>
+
+        <div className="mt-4 space-y-2 text-sm text-[var(--bo-muted)]">
+          {configLoading ? (
+            <p>Loading configuration…</p>
+          ) : configError ? (
+            <p className="text-red-500">{configError}</p>
+          ) : configuredProviders.length > 0 ? (
+            <>
+              <p>
+                Configured providers:{" "}
+                <span className="text-[var(--bo-fg)]">
+                  {configuredProviders.map((provider) => toProviderLabel(provider)).join(", ")}
+                </span>
+              </p>
+              {activeProviderConfig?.storageKeyPrefix ? (
+                <p>
+                  Active namespace:{" "}
+                  <span className="text-[var(--bo-fg)]">
+                    {activeProviderConfig.storageKeyPrefix}
+                  </span>
+                </p>
+              ) : null}
+              <p>
+                Last updated:{" "}
+                <span className="text-[var(--bo-fg)]">
+                  {formatUploadTimestamp(activeProviderConfig?.updatedAt)}
+                </span>
+              </p>
+              {r2Config?.accessKeyIdPreview ? (
+                <p>
+                  R2 access key:{" "}
+                  <span className="text-[var(--bo-fg)]">{r2Config.accessKeyIdPreview}</span>
+                </p>
+              ) : null}
+              {r2Config?.secretAccessKeyPreview ? (
+                <p>
+                  R2 secret key:{" "}
+                  <span className="text-[var(--bo-fg)]">{r2Config.secretAccessKeyPreview}</span>
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p>Configure at least one provider to enable upload and file operations.</p>
+          )}
+        </div>
+      </div>
+
+      <FormContainer
+        title="Provider status"
+        eyebrow="Scope"
+        description="Database, R2 binding, and R2 credentials can be configured side-by-side. Saving the active tab also makes it the default provider."
+      >
+        <div className="space-y-2 text-sm text-[var(--bo-muted)]">
+          <p>
+            Active editor tab:{" "}
+            <span className="text-[var(--bo-fg)]">{toProviderLabel(activeProvider)}</span>
+          </p>
+          {(configuredProviders.length > 0
+            ? configuredProviders
+            : (["database", "r2-binding", "r2"] as const)
+          ).map((provider) => {
+            const providerState = configState?.providers[provider];
+            return (
+              <p key={provider}>
+                {toProviderLabel(provider)}:{" "}
+                <span className="text-[var(--bo-fg)]">
+                  {providerState?.configured ? "Configured" : "Not configured"}
+                </span>
+                {providerState?.config?.storageKeyPrefix ? (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <span className="text-[var(--bo-fg)]">
+                      {providerState.config.storageKeyPrefix}
+                    </span>
+                  </>
+                ) : null}
+              </p>
+            );
+          })}
+          <p>
+            Org prefix:{" "}
+            <span className="text-[var(--bo-fg)]">
+              {activeProviderConfig?.orgPrefix ?? "org/<organization-id>"}
+            </span>
+          </p>
+        </div>
+      </FormContainer>
+    </section>
+  );
+}
+
+function UploadProviderConfigurationFields({
+  formState,
+  setFormState,
+  r2Config,
+}: {
+  formState: UploadConfigForm;
+  setFormState: Dispatch<SetStateAction<UploadConfigForm>>;
+  r2Config: NonNullable<UploadAdminConfigResponse["providers"]["r2"]>["config"] | undefined;
+}) {
+  return (
+    <>
+      {formState.provider === "r2-binding" ? (
+        <div className="rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+            Hardcoded binding
+          </p>
+          <p className="mt-2">
+            Active binding: <span className="text-[var(--bo-fg)]">{formState.bindingName}</span>
+          </p>
+          <p className="mt-1 text-xs text-[var(--bo-muted-2)]">
+            Available bindings: {HARDCODED_R2_BINDINGS.join(", ")}
+          </p>
+        </div>
+      ) : null}
+
+      {formState.provider === "r2" ? (
+        <>
+          <div className="grid gap-3 md:grid-cols-2">
+            <FormField label="Bucket" hint="Lowercase bucket name.">
+              <input
+                name="bucket"
+                required={formState.provider === "r2"}
+                value={formState.bucket}
+                onChange={(event) => {
+                  setFormState((prev) => ({
+                    ...prev,
+                    bucket: event.target.value,
+                  }));
+                }}
+                placeholder="acme-upload-bucket"
+                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+              />
+            </FormField>
+            <FormField label="Endpoint" hint="R2 S3 endpoint.">
+              <input
+                name="endpoint"
+                required={formState.provider === "r2"}
+                value={formState.endpoint}
+                onChange={(event) => {
+                  setFormState((prev) => ({
+                    ...prev,
+                    endpoint: event.target.value,
+                  }));
+                }}
+                placeholder="https://<account>.r2.cloudflarestorage.com"
+                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+              />
+            </FormField>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <FormField label="Access key id" hint="Required.">
+              <input
+                name="accessKeyId"
+                required={formState.provider === "r2"}
+                value={formState.accessKeyId}
+                onChange={(event) => {
+                  setFormState((prev) => ({
+                    ...prev,
+                    accessKeyId: event.target.value,
+                  }));
+                }}
+                placeholder={r2Config?.accessKeyIdPreview || "AKIA..."}
+                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+              />
+            </FormField>
+            <FormField label="Secret access key" hint="Leave blank to keep current secret.">
+              <input
+                name="secretAccessKey"
+                type="password"
+                value={formState.secretAccessKey}
+                onChange={(event) => {
+                  setFormState((prev) => ({
+                    ...prev,
+                    secretAccessKey: event.target.value,
+                  }));
+                }}
+                placeholder={r2Config?.secretAccessKeyPreview || "••••••••"}
+                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+              />
+            </FormField>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <FormField label="Region" hint="Usually auto for R2.">
+              <input
+                name="region"
+                value={formState.region}
+                onChange={(event) => {
+                  setFormState((prev) => ({
+                    ...prev,
+                    region: event.target.value,
+                  }));
+                }}
+                placeholder="auto"
+                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+              />
+            </FormField>
+            <FormField label="Session token" hint="Optional.">
+              <input
+                name="sessionToken"
+                value={formState.sessionToken}
+                onChange={(event) => {
+                  setFormState((prev) => ({
+                    ...prev,
+                    sessionToken: event.target.value,
+                  }));
+                }}
+                placeholder="Optional session token"
+                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+              />
+            </FormField>
+          </div>
+
+          <label className="inline-flex items-center gap-2 text-sm text-[var(--bo-muted)]">
+            <input
+              name="pathStyle"
+              type="checkbox"
+              checked={formState.pathStyle}
+              onChange={(event) => {
+                setFormState((prev) => ({
+                  ...prev,
+                  pathStyle: event.target.checked,
+                }));
+              }}
+              className="h-4 w-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]"
+            />
+            Use path-style addressing
+          </label>
+        </>
+      ) : formState.provider === "r2-binding" ? (
+        <div className="rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs text-[var(--bo-muted)]">
+          R2 binding mode uses the Worker binding directly, so endpoint and credentials are not
+          required.
+        </div>
+      ) : (
+        <div className="rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs text-[var(--bo-muted)]">
+          Database mode stores upload bytes in the Upload fragment database. It only supports
+          proxied uploads and is best for small org-scoped files.
+        </div>
+      )}
+    </>
+  );
+}
+
+function UploadAdvancedLimitFields({
+  formState,
+  setFormState,
+}: {
+  formState: UploadConfigForm;
+  setFormState: Dispatch<SetStateAction<UploadConfigForm>>;
+}) {
+  return (
+    <details className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
+      <summary className="cursor-pointer px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase">
+        Advanced limits and expiry
+      </summary>
+      <div className="space-y-3 border-t border-[color:var(--bo-border)] p-3">
+        <p className="text-xs text-[var(--bo-muted)]">
+          Defaults are prefilled for reference. Update only if your organization needs custom
+          limits.
+        </p>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <ByteUnitField
+            label="Direct threshold"
+            name="directUploadThresholdBytes"
+            value={formState.directUploadThresholdBytes}
+            onChange={(directUploadThresholdBytes) => {
+              setFormState((prev) => ({
+                ...prev,
+                directUploadThresholdBytes,
+              }));
+            }}
+          />
+          <ByteUnitField
+            label="Multipart threshold"
+            name="multipartThresholdBytes"
+            value={formState.multipartThresholdBytes}
+            onChange={(multipartThresholdBytes) => {
+              setFormState((prev) => ({
+                ...prev,
+                multipartThresholdBytes,
+              }));
+            }}
+          />
+          <ByteUnitField
+            label="Multipart part size"
+            name="multipartPartSizeBytes"
+            value={formState.multipartPartSizeBytes}
+            onChange={(multipartPartSizeBytes) => {
+              setFormState((prev) => ({
+                ...prev,
+                multipartPartSizeBytes,
+              }));
+            }}
+          />
+          <TimeUnitField
+            label="Upload expiry"
+            name="uploadExpiresInSeconds"
+            value={formState.uploadExpiresInSeconds}
+            onChange={(uploadExpiresInSeconds) => {
+              setFormState((prev) => ({
+                ...prev,
+                uploadExpiresInSeconds,
+              }));
+            }}
+          />
+          <TimeUnitField
+            label="Signed URL expiry"
+            name="signedUrlExpiresInSeconds"
+            value={formState.signedUrlExpiresInSeconds}
+            onChange={(signedUrlExpiresInSeconds) => {
+              setFormState((prev) => ({
+                ...prev,
+                signedUrlExpiresInSeconds,
+              }));
+            }}
+          />
+          <ByteUnitField
+            label="Max single upload"
+            name="maxSingleUploadBytes"
+            value={formState.maxSingleUploadBytes}
+            onChange={(maxSingleUploadBytes) => {
+              setFormState((prev) => ({
+                ...prev,
+                maxSingleUploadBytes,
+              }));
+            }}
+          />
+          <ByteUnitField
+            label="Max multipart upload"
+            name="maxMultipartUploadBytes"
+            value={formState.maxMultipartUploadBytes}
+            onChange={(maxMultipartUploadBytes) => {
+              setFormState((prev) => ({
+                ...prev,
+                maxMultipartUploadBytes,
+              }));
+            }}
+          />
+          <ByteUnitField
+            label="Max metadata"
+            hint="Can be zero."
+            name="maxMetadataBytes"
+            value={formState.maxMetadataBytes}
+            onChange={(maxMetadataBytes) => {
+              setFormState((prev) => ({
+                ...prev,
+                maxMetadataBytes,
+              }));
+            }}
+          />
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function UploadConfigurationEditor({
+  formState,
+  setFormState,
+  configState,
+  saving,
+  saveError,
+  saveSuccess,
+  onSubmit,
+}: {
+  formState: UploadConfigForm;
+  setFormState: Dispatch<SetStateAction<UploadConfigForm>>;
+  configState: UploadAdminConfigResponse | null;
+  saving: boolean;
+  saveError: string | null;
+  saveSuccess: string | null;
+  onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
+}) {
+  const r2Config = configState?.providers.r2?.config;
+
+  return (
+    <div className="max-w-full lg:max-w-[50%]">
+      <FormContainer
+        title="Upload configuration"
+        eyebrow="Provider"
+        description="Use the provider tabs above to edit one provider at a time. Saving a tab also sets it as the default provider."
+      >
+        <Form method="post" className="space-y-3" onSubmit={onSubmit}>
+          <input type="hidden" name="provider" value={formState.provider} />
+          <input type="hidden" name="defaultProvider" value={formState.provider} />
+          <input type="hidden" name="bindingName" value={formState.bindingName} />
+
+          <UploadProviderConfigurationFields
+            formState={formState}
+            setFormState={setFormState}
+            r2Config={r2Config}
+          />
+
+          <FormField label="Storage suffix" hint="Optional suffix under org prefix.">
+            <input
+              name="storageKeySuffix"
+              value={formState.storageKeySuffix}
+              onChange={(event) => {
+                setFormState((prev) => ({
+                  ...prev,
+                  storageKeySuffix: event.target.value,
+                }));
+              }}
+              placeholder="uploads"
+              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+            />
+          </FormField>
+
+          <UploadAdvancedLimitFields formState={formState} setFormState={setFormState} />
+
+          {saveError ? <p className="text-xs text-red-500">{saveError}</p> : null}
+          {saveSuccess ? <p className="text-xs text-green-500">{saveSuccess}</p> : null}
+
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+          >
+            {saving ? "Saving…" : "Save configuration"}
+          </button>
+        </Form>
+      </FormContainer>
+    </div>
+  );
+}
+
 export default function BackofficeOrganizationUploadConfiguration() {
   const { configState, configLoading, configError, setConfigError, setConfigState } =
     useOutletContext<UploadLayoutContext>();
@@ -551,16 +1022,6 @@ export default function BackofficeOrganizationUploadConfiguration() {
     }
   };
 
-  const statusLabel = configState?.configured ? "Configured" : "Not configured";
-  const statusTone = configState?.configured
-    ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
-    : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]";
-  const configuredProviders = (["database", "r2-binding", "r2"] as const).filter(
-    (provider) => configState?.providers[provider]?.configured,
-  );
-  const activeProviderConfig = configState?.providers[formState.provider]?.config;
-  const r2Config = configState?.providers.r2?.config;
-
   return (
     <div className="space-y-4">
       <UploadProviderTabs
@@ -583,375 +1044,22 @@ export default function BackofficeOrganizationUploadConfiguration() {
         }}
       />
 
-      <section className="grid gap-3 lg:grid-cols-[1.1fr_1fr]">
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                Status
-              </p>
-              <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Upload storage</h2>
-              <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                Upload storage is scoped per organization with a mandatory org storage prefix.
-              </p>
-            </div>
-            <span
-              className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${statusTone}`}
-            >
-              {statusLabel}
-            </span>
-          </div>
+      <UploadConfigurationStatus
+        configState={configState}
+        configLoading={configLoading}
+        configError={configError}
+        activeProvider={formState.provider}
+      />
 
-          <div className="mt-4 space-y-2 text-sm text-[var(--bo-muted)]">
-            {configLoading ? (
-              <p>Loading configuration…</p>
-            ) : configError ? (
-              <p className="text-red-500">{configError}</p>
-            ) : configuredProviders.length > 0 ? (
-              <>
-                <p>
-                  Configured providers:{" "}
-                  <span className="text-[var(--bo-fg)]">
-                    {configuredProviders.map((provider) => toProviderLabel(provider)).join(", ")}
-                  </span>
-                </p>
-                {activeProviderConfig?.storageKeyPrefix ? (
-                  <p>
-                    Active namespace:{" "}
-                    <span className="text-[var(--bo-fg)]">
-                      {activeProviderConfig.storageKeyPrefix}
-                    </span>
-                  </p>
-                ) : null}
-                <p>
-                  Last updated:{" "}
-                  <span className="text-[var(--bo-fg)]">
-                    {formatUploadTimestamp(activeProviderConfig?.updatedAt)}
-                  </span>
-                </p>
-                {r2Config?.accessKeyIdPreview ? (
-                  <p>
-                    R2 access key:{" "}
-                    <span className="text-[var(--bo-fg)]">{r2Config.accessKeyIdPreview}</span>
-                  </p>
-                ) : null}
-                {r2Config?.secretAccessKeyPreview ? (
-                  <p>
-                    R2 secret key:{" "}
-                    <span className="text-[var(--bo-fg)]">{r2Config.secretAccessKeyPreview}</span>
-                  </p>
-                ) : null}
-              </>
-            ) : (
-              <p>Configure at least one provider to enable upload and file operations.</p>
-            )}
-          </div>
-        </div>
-
-        <FormContainer
-          title="Provider status"
-          eyebrow="Scope"
-          description="Database, R2 binding, and R2 credentials can be configured side-by-side. Saving the active tab also makes it the default provider."
-        >
-          <div className="space-y-2 text-sm text-[var(--bo-muted)]">
-            <p>
-              Active editor tab:{" "}
-              <span className="text-[var(--bo-fg)]">{toProviderLabel(formState.provider)}</span>
-            </p>
-            {(configuredProviders.length > 0
-              ? configuredProviders
-              : (["database", "r2-binding", "r2"] as const)
-            ).map((provider) => {
-              const providerState = configState?.providers[provider];
-              return (
-                <p key={provider}>
-                  {toProviderLabel(provider)}:{" "}
-                  <span className="text-[var(--bo-fg)]">
-                    {providerState?.configured ? "Configured" : "Not configured"}
-                  </span>
-                  {providerState?.config?.storageKeyPrefix ? (
-                    <>
-                      {" "}
-                      ·{" "}
-                      <span className="text-[var(--bo-fg)]">
-                        {providerState.config.storageKeyPrefix}
-                      </span>
-                    </>
-                  ) : null}
-                </p>
-              );
-            })}
-            <p>
-              Org prefix:{" "}
-              <span className="text-[var(--bo-fg)]">
-                {activeProviderConfig?.orgPrefix ?? "org/<organization-id>"}
-              </span>
-            </p>
-          </div>
-        </FormContainer>
-      </section>
-
-      <div className="max-w-full lg:max-w-[50%]">
-        <FormContainer
-          title="Upload configuration"
-          eyebrow="Provider"
-          description="Use the provider tabs above to edit one provider at a time. Saving a tab also sets it as the default provider."
-        >
-          <Form method="post" className="space-y-3" onSubmit={handleSubmit}>
-            <input type="hidden" name="provider" value={formState.provider} />
-            <input type="hidden" name="defaultProvider" value={formState.provider} />
-            <input type="hidden" name="bindingName" value={formState.bindingName} />
-
-            {formState.provider === "r2-binding" ? (
-              <div className="rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-                <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                  Hardcoded binding
-                </p>
-                <p className="mt-2">
-                  Active binding:{" "}
-                  <span className="text-[var(--bo-fg)]">{formState.bindingName}</span>
-                </p>
-                <p className="mt-1 text-xs text-[var(--bo-muted-2)]">
-                  Available bindings: {HARDCODED_R2_BINDINGS.join(", ")}
-                </p>
-              </div>
-            ) : null}
-
-            {formState.provider === "r2" ? (
-              <>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <FormField label="Bucket" hint="Lowercase bucket name.">
-                    <input
-                      name="bucket"
-                      required={formState.provider === "r2"}
-                      value={formState.bucket}
-                      onChange={(event) => {
-                        setFormState((prev) => ({ ...prev, bucket: event.target.value }));
-                      }}
-                      placeholder="acme-upload-bucket"
-                      className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-                    />
-                  </FormField>
-                  <FormField label="Endpoint" hint="R2 S3 endpoint.">
-                    <input
-                      name="endpoint"
-                      required={formState.provider === "r2"}
-                      value={formState.endpoint}
-                      onChange={(event) => {
-                        setFormState((prev) => ({ ...prev, endpoint: event.target.value }));
-                      }}
-                      placeholder="https://<account>.r2.cloudflarestorage.com"
-                      className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-                    />
-                  </FormField>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <FormField label="Access key id" hint="Required.">
-                    <input
-                      name="accessKeyId"
-                      required={formState.provider === "r2"}
-                      value={formState.accessKeyId}
-                      onChange={(event) => {
-                        setFormState((prev) => ({ ...prev, accessKeyId: event.target.value }));
-                      }}
-                      placeholder={r2Config?.accessKeyIdPreview || "AKIA..."}
-                      className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-                    />
-                  </FormField>
-                  <FormField label="Secret access key" hint="Leave blank to keep current secret.">
-                    <input
-                      name="secretAccessKey"
-                      type="password"
-                      value={formState.secretAccessKey}
-                      onChange={(event) => {
-                        setFormState((prev) => ({ ...prev, secretAccessKey: event.target.value }));
-                      }}
-                      placeholder={r2Config?.secretAccessKeyPreview || "••••••••"}
-                      className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-                    />
-                  </FormField>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <FormField label="Region" hint="Usually auto for R2.">
-                    <input
-                      name="region"
-                      value={formState.region}
-                      onChange={(event) => {
-                        setFormState((prev) => ({ ...prev, region: event.target.value }));
-                      }}
-                      placeholder="auto"
-                      className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-                    />
-                  </FormField>
-                  <FormField label="Session token" hint="Optional.">
-                    <input
-                      name="sessionToken"
-                      value={formState.sessionToken}
-                      onChange={(event) => {
-                        setFormState((prev) => ({ ...prev, sessionToken: event.target.value }));
-                      }}
-                      placeholder="Optional session token"
-                      className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-                    />
-                  </FormField>
-                </div>
-
-                <label className="inline-flex items-center gap-2 text-sm text-[var(--bo-muted)]">
-                  <input
-                    name="pathStyle"
-                    type="checkbox"
-                    checked={formState.pathStyle}
-                    onChange={(event) => {
-                      setFormState((prev) => ({ ...prev, pathStyle: event.target.checked }));
-                    }}
-                    className="h-4 w-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]"
-                  />
-                  Use path-style addressing
-                </label>
-              </>
-            ) : formState.provider === "r2-binding" ? (
-              <div className="rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs text-[var(--bo-muted)]">
-                R2 binding mode uses the Worker binding directly, so endpoint and credentials are
-                not required.
-              </div>
-            ) : (
-              <div className="rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs text-[var(--bo-muted)]">
-                Database mode stores upload bytes in the Upload fragment database. It only supports
-                proxied uploads and is best for small org-scoped files.
-              </div>
-            )}
-
-            <FormField label="Storage suffix" hint="Optional suffix under org prefix.">
-              <input
-                name="storageKeySuffix"
-                value={formState.storageKeySuffix}
-                onChange={(event) => {
-                  setFormState((prev) => ({ ...prev, storageKeySuffix: event.target.value }));
-                }}
-                placeholder="uploads"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-              />
-            </FormField>
-
-            <details className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
-              <summary className="cursor-pointer px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-                Advanced limits and expiry
-              </summary>
-              <div className="space-y-3 border-t border-[color:var(--bo-border)] p-3">
-                <p className="text-xs text-[var(--bo-muted)]">
-                  Defaults are prefilled for reference. Update only if your organization needs
-                  custom limits.
-                </p>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <ByteUnitField
-                    label="Direct threshold"
-                    name="directUploadThresholdBytes"
-                    value={formState.directUploadThresholdBytes}
-                    onChange={(directUploadThresholdBytes) => {
-                      setFormState((prev) => ({
-                        ...prev,
-                        directUploadThresholdBytes,
-                      }));
-                    }}
-                  />
-                  <ByteUnitField
-                    label="Multipart threshold"
-                    name="multipartThresholdBytes"
-                    value={formState.multipartThresholdBytes}
-                    onChange={(multipartThresholdBytes) => {
-                      setFormState((prev) => ({
-                        ...prev,
-                        multipartThresholdBytes,
-                      }));
-                    }}
-                  />
-                  <ByteUnitField
-                    label="Multipart part size"
-                    name="multipartPartSizeBytes"
-                    value={formState.multipartPartSizeBytes}
-                    onChange={(multipartPartSizeBytes) => {
-                      setFormState((prev) => ({
-                        ...prev,
-                        multipartPartSizeBytes,
-                      }));
-                    }}
-                  />
-                  <TimeUnitField
-                    label="Upload expiry"
-                    name="uploadExpiresInSeconds"
-                    value={formState.uploadExpiresInSeconds}
-                    onChange={(uploadExpiresInSeconds) => {
-                      setFormState((prev) => ({
-                        ...prev,
-                        uploadExpiresInSeconds,
-                      }));
-                    }}
-                  />
-                  <TimeUnitField
-                    label="Signed URL expiry"
-                    name="signedUrlExpiresInSeconds"
-                    value={formState.signedUrlExpiresInSeconds}
-                    onChange={(signedUrlExpiresInSeconds) => {
-                      setFormState((prev) => ({
-                        ...prev,
-                        signedUrlExpiresInSeconds,
-                      }));
-                    }}
-                  />
-                  <ByteUnitField
-                    label="Max single upload"
-                    name="maxSingleUploadBytes"
-                    value={formState.maxSingleUploadBytes}
-                    onChange={(maxSingleUploadBytes) => {
-                      setFormState((prev) => ({
-                        ...prev,
-                        maxSingleUploadBytes,
-                      }));
-                    }}
-                  />
-                  <ByteUnitField
-                    label="Max multipart upload"
-                    name="maxMultipartUploadBytes"
-                    value={formState.maxMultipartUploadBytes}
-                    onChange={(maxMultipartUploadBytes) => {
-                      setFormState((prev) => ({
-                        ...prev,
-                        maxMultipartUploadBytes,
-                      }));
-                    }}
-                  />
-                  <ByteUnitField
-                    label="Max metadata"
-                    hint="Can be zero."
-                    name="maxMetadataBytes"
-                    value={formState.maxMetadataBytes}
-                    onChange={(maxMetadataBytes) => {
-                      setFormState((prev) => ({
-                        ...prev,
-                        maxMetadataBytes,
-                      }));
-                    }}
-                  />
-                </div>
-              </div>
-            </details>
-
-            {saveError ? <p className="text-xs text-red-500">{saveError}</p> : null}
-            {saveSuccess ? <p className="text-xs text-green-500">{saveSuccess}</p> : null}
-
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-            >
-              {saving ? "Saving…" : "Save configuration"}
-            </button>
-          </Form>
-        </FormContainer>
-      </div>
+      <UploadConfigurationEditor
+        formState={formState}
+        setFormState={setFormState}
+        configState={configState}
+        saving={saving}
+        saveError={saveError}
+        saveSuccess={saveSuccess}
+        onSubmit={handleSubmit}
+      />
     </div>
   );
 }

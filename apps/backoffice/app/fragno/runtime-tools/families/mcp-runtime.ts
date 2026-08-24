@@ -1,8 +1,13 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
-import type { CreateServerInput, ToolCallInput } from "@fragno-dev/mcp-fragment/types";
+import {
+  MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
+  type CreateServerInput,
+  type ToolCallInput,
+} from "@fragno-dev/mcp-fragment/types";
 
 import type { McpObject } from "@/backoffice-runtime/object-registry";
 import type { McpFragment } from "@/fragno/mcp";
+import type { ScopedPublicFragmentAddress } from "@/fragno/scoped-public-fragment-routes";
 
 import {
   createOrganizationNotConfiguredMessage,
@@ -41,6 +46,7 @@ type CreateRouteBackedMcpRuntimeOptions = {
   baseUrl: string;
   headers?: HeadersInit;
   fetch: (request: Request) => Promise<Response>;
+  resolvePublicAddress: () => Promise<ScopedPublicFragmentAddress>;
 };
 
 const createMcpRouteCaller = (options: CreateRouteBackedMcpRuntimeOptions) =>
@@ -69,7 +75,9 @@ const throwOnMcpRuntimeError = (
     notConfiguredMessage: MCP_NOT_CONFIGURED,
   });
 
-const createRouteBackedMcpRuntime = (options: CreateRouteBackedMcpRuntimeOptions): McpRuntime => {
+export const createRouteBackedMcpRuntime = (
+  options: CreateRouteBackedMcpRuntimeOptions,
+): McpRuntime => {
   const baseUrl = options.baseUrl.trim();
   if (!baseUrl) {
     throw new Error("MCP runtime requires a base URL");
@@ -125,8 +133,12 @@ const createRouteBackedMcpRuntime = (options: CreateRouteBackedMcpRuntimeOptions
       return throwOnMcpRuntimeError(response, "mcp.tools.call");
     },
     startOAuth: async ({ slug, scope, clientId, clientSecret }) => {
+      const publicAddress = await options.resolvePublicAddress();
       const response = await callRoute("POST", "/servers/:slug/auth/start", {
         pathParams: { slug: normalizeSlug(slug) },
+        query: {
+          [MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER]: publicAddress.oauthRedirectUri,
+        },
         body: {
           ...(scope ? { scope } : {}),
           ...(clientId ? { clientId } : {}),
@@ -160,11 +172,17 @@ const createRouteBackedMcpRuntime = (options: CreateRouteBackedMcpRuntimeOptions
   };
 };
 
-export const createMcpRuntime = (object: McpObject) =>
-  createRouteBackedMcpRuntime({
+export const createMcpRuntime = (
+  object: McpObject,
+  resolvePublicAddress: () => Promise<ScopedPublicFragmentAddress>,
+) => {
+  let publicAddress: Promise<ScopedPublicFragmentAddress> | null = null;
+  return createRouteBackedMcpRuntime({
     baseUrl: "https://mcp.do",
-    fetch: async (outboundRequest) => object.fetch(outboundRequest),
+    fetch: (outboundRequest) => object.fetch(outboundRequest),
+    resolvePublicAddress: () => (publicAddress ??= resolvePublicAddress()),
   });
+};
 
 export const createUnavailableMcpRuntime = (message = MCP_NOT_CONFIGURED): McpRuntime => ({
   listServers: async () => {

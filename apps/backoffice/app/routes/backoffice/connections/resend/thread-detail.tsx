@@ -6,10 +6,8 @@ import type { ResendThreadMessage, ResendThreadReplyInput } from "@fragno-dev/re
 
 import { FormField } from "@/components/backoffice";
 
-import {
-  resolveAuthenticatedIntegrationContext,
-  resolveScopeFromRouteParams,
-} from "../../integrations/scope";
+import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
+import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/thread-detail";
 import { fetchResendThreadDetail, replyToResendThread } from "./data";
@@ -56,7 +54,12 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.threadId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const scope = resolveScopeFromRouteParams(params);
+  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
+    request,
+    context,
+    params,
+    allowedScopes: ["org", "system"],
+  });
 
   const result = await fetchResendThreadDetail(request, context, scope, params.threadId, {
     order: "desc",

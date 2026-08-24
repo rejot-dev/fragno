@@ -8,11 +8,7 @@ import {
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
-import {
-  backofficeContextScopeFromSinglePathSegment,
-  backofficeContextScopeSinglePathSegment,
-  requireBackofficeContextScopeFromRouteParams,
-} from "@/backoffice-runtime/scope-codec";
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import type { BackofficeMeData } from "@/fragno/auth/auth-client";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
@@ -215,32 +211,4 @@ export const resolveAuthenticatedOrgIntegrationContext = async ({
     integration: integrationContext,
     orgId: integrationContext.scope.orgId,
   };
-};
-
-export const resolveScopeFromRouteParams = (
-  params: IntegrationRouteParams,
-): BackofficeContextScope => {
-  if (params.scopeKind && params.scopeId) {
-    return requireBackofficeContextScopeFromRouteParams(params);
-  }
-
-  throw new Response("Not Found", { status: 404 });
-};
-
-export const resolveOrganizationScopeFromRouteParams = (
-  params: IntegrationRouteParams,
-): { scope: Extract<BackofficeContextScope, { kind: "org" }>; organizationId: string } => {
-  const scope = resolveScopeFromRouteParams(params);
-  if (scope.kind !== "org") {
-    throw new Response("Not Found", { status: 404 });
-  }
-  return { scope, organizationId: scope.orgId };
-};
-
-export const resolveScopeFromSinglePathOrOrg = (segment: string): BackofficeContextScope => {
-  try {
-    return backofficeContextScopeFromSinglePathSegment(segment);
-  } catch {
-    return { kind: "org", orgId: segment };
-  }
 };

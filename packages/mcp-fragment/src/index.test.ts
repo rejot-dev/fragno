@@ -14,24 +14,30 @@ import {
 } from "./testing/streamable-http-mcp-server";
 
 const bearerToken = "secret";
+const oauthRedirectUri = "https://app.test/oauth/callback";
 const onServerConfigurationChanged = vi.fn();
 const onServerConfigurationDeleted = vi.fn();
 
-const buildMcpTest = async () =>
-  await buildDatabaseFragmentsTest()
+const buildMcpTest = async (options: { allowedOAuthRedirectUris?: (url: URL) => boolean } = {}) => {
+  const allowedOAuthRedirectUris =
+    "allowedOAuthRedirectUris" in options
+      ? options.allowedOAuthRedirectUris
+      : (url: URL) => url.toString() === oauthRedirectUri;
+  return await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
     .withDbRoundtripGuard({ maxRoundtrips: 1 })
     .withFragment(
       "mcp",
       instantiate(mcpFragmentDefinition)
         .withConfig({
-          publicBaseUrl: "https://app.test",
+          ...(allowedOAuthRedirectUris ? { allowedOAuthRedirectUris } : {}),
           onServerConfigurationChanged,
           onServerConfigurationDeleted,
         })
         .withRoutes([mcpRoutesFactory]),
     )
     .build();
+};
 
 type McpTestFragmentResult = Awaited<ReturnType<typeof buildMcpTest>>["fragments"]["mcp"];
 
@@ -94,6 +100,7 @@ async function completeOAuthFlow(
 ) {
   const start = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
     pathParams: { slug: input.slug },
+    query: { redirectUri: oauthRedirectUri },
     body: {
       clientId: input.clientId,
       clientSecret: input.clientSecret,
@@ -590,6 +597,46 @@ describe("mcp-fragment", () => {
     expect(onServerConfigurationChanged).not.toHaveBeenCalled();
   });
 
+  test("rejects a non-HTTP OAuth redirect URI", async () => {
+    const result = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
+      pathParams: { slug: "oauth-server" },
+      query: { redirectUri: "javascript:alert(1)" },
+      body: {},
+    });
+
+    assert(result.type === "error");
+    assert.equal(result.status, 400);
+    assert.equal(result.error.code, "INVALID_OAUTH_REDIRECT_URI");
+  });
+
+  test("rejects an OAuth redirect URI outside the configured allow-list", async () => {
+    const result = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
+      pathParams: { slug: "oauth-server" },
+      query: { redirectUri: "https://attacker.example/oauth/callback" },
+      body: {},
+    });
+
+    assert(result.type === "error");
+    assert.equal(result.status, 400);
+    assert.equal(result.error.code, "OAUTH_REDIRECT_URI_NOT_ALLOWED");
+  });
+
+  test("denies OAuth start when no redirect URI policy is configured", async () => {
+    const noPolicySetup = await buildMcpTest({ allowedOAuthRedirectUris: undefined });
+    const noPolicyFragment = noPolicySetup.fragments.mcp.fragment;
+
+    const result = await noPolicyFragment.callRoute("POST", "/servers/:slug/auth/start", {
+      pathParams: { slug: "oauth-server" },
+      query: { redirectUri: oauthRedirectUri },
+      body: {},
+    });
+
+    assert(result.type === "error");
+    assert.equal(result.status, 400);
+    assert.equal(result.error.code, "OAUTH_REDIRECT_URI_NOT_ALLOWED");
+    await noPolicySetup.test.cleanup();
+  });
+
   test("refreshes OAuth server configuration from durable hook after OAuth callback", async () => {
     await createServer(fragment, {
       slug: "oauth-refresh-after-callback",
@@ -599,6 +646,7 @@ describe("mcp-fragment", () => {
 
     const start = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
       pathParams: { slug: "oauth-refresh-after-callback" },
+      query: { redirectUri: oauthRedirectUri },
       body: {
         clientId: "static-client",
         clientSecret: "static-secret",
@@ -831,6 +879,7 @@ describe("mcp-fragment", () => {
 
     const start = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
       pathParams: { slug: "static-oauth-tools" },
+      query: { redirectUri: oauthRedirectUri },
       body: {
         clientId: "static-client",
         clientSecret: "static-secret",
@@ -881,6 +930,7 @@ describe("mcp-fragment", () => {
 
       const start = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
         pathParams: { slug: "refresh-token-not-rotated" },
+        query: { redirectUri: oauthRedirectUri },
         body: {
           clientId: "no-rotate-client",
           clientSecret: "no-rotate-secret",
@@ -938,6 +988,7 @@ describe("mcp-fragment", () => {
 
     const start = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
       pathParams: { slug: "rotating-oauth-tools" },
+      query: { redirectUri: oauthRedirectUri },
       body: {
         clientId: "rotating-client",
         clientSecret: "rotating-secret",
@@ -985,6 +1036,7 @@ describe("mcp-fragment", () => {
 
     const start = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
       pathParams: { slug: "rotating-oauth-list-tools" },
+      query: { redirectUri: oauthRedirectUri },
       body: {
         clientId: "failing-rotating-client",
         clientSecret: "failing-rotating-secret",
@@ -1179,7 +1231,6 @@ describe("mcp-fragment", () => {
         "mcp",
         instantiate(mcpFragmentDefinition)
           .withConfig({
-            publicBaseUrl: "https://app.test",
             allowedEndpointUrls: () => false,
           })
           .withRoutes([mcpRoutesFactory]),

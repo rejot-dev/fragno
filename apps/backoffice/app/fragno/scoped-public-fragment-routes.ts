@@ -26,26 +26,6 @@ export const scopedPublicMountPath = ({
   scope: BackofficeContextScope;
 }) => `${publicPrefix}/${encodeURIComponent(backofficeContextScopeSinglePathSegment(scope))}`;
 
-export const scopedPublicBaseUrl = ({
-  baseUrl,
-  publicPrefix,
-  scope,
-}: {
-  baseUrl: string;
-  publicPrefix: string;
-  scope: BackofficeContextScope;
-}) => {
-  const parsed = new URL(baseUrl);
-  const mountPath = scopedPublicMountPath({ publicPrefix, scope });
-  const trimmedPath = parsed.pathname.replace(/\/+$/, "");
-  if (trimmedPath !== mountPath) {
-    parsed.pathname = `${trimmedPath}${mountPath}`.replace(/\/+/g, "/");
-  }
-  parsed.search = "";
-  parsed.hash = "";
-  return parsed.toString().replace(/\/+$/, "");
-};
-
 export const scopedPublicBaseUrlForPathSegment = ({
   baseUrl,
   publicPrefix,
@@ -66,26 +46,49 @@ export const scopedPublicBaseUrlForPathSegment = ({
   return parsed.toString().replace(/\/+$/, "");
 };
 
-function requireApiPublicOrigin(publicOrigin: string | undefined): string {
+function requirePublicFragmentOrigin(
+  publicOrigin: string | undefined,
+  fragmentName: "API" | "MCP",
+): string {
   const normalized = publicOrigin?.trim();
   if (!normalized) {
-    throw new Error("API public origin is not configured.");
+    throw new Error(`${fragmentName} public origin is not configured.`);
   }
 
   let parsed: URL;
   try {
     parsed = new URL(normalized);
   } catch {
-    throw new Error("API public origin must be a valid HTTP or HTTPS URL.");
+    throw new Error(`${fragmentName} public origin must be a valid HTTP or HTTPS URL.`);
   }
   if (
     (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
     parsed.username ||
     parsed.password
   ) {
-    throw new Error("API public origin must be a valid HTTP or HTTPS URL.");
+    throw new Error(`${fragmentName} public origin must be a valid HTTP or HTTPS URL.`);
   }
   return normalized;
+}
+
+function scopedPublicFragmentAddress({
+  publicOrigin,
+  publicPrefix,
+  scopePathSegment,
+}: {
+  publicOrigin: string;
+  publicPrefix: string;
+  scopePathSegment: string;
+}): ScopedPublicFragmentAddress {
+  const baseUrl = scopedPublicBaseUrlForPathSegment({
+    baseUrl: publicOrigin,
+    publicPrefix,
+    scopePathSegment,
+  });
+  return {
+    baseUrl,
+    oauthRedirectUri: `${baseUrl}/oauth/callback`,
+  };
 }
 
 /** Builds the slug-backed public API addresses outside the ID-backed API object. */
@@ -93,15 +96,23 @@ export function apiPublicAddress(
   publicOrigin: string | undefined,
   scopePathSegment: string,
 ): ScopedPublicFragmentAddress {
-  const baseUrl = scopedPublicBaseUrlForPathSegment({
-    baseUrl: requireApiPublicOrigin(publicOrigin),
+  return scopedPublicFragmentAddress({
+    publicOrigin: requirePublicFragmentOrigin(publicOrigin, "API"),
     publicPrefix: API_PUBLIC_PREFIX,
     scopePathSegment,
   });
-  return {
-    baseUrl,
-    oauthRedirectUri: `${baseUrl}/oauth/callback`,
-  };
+}
+
+/** Builds the slug-backed public MCP addresses outside the ID-backed MCP object. */
+export function mcpPublicAddress(
+  publicOrigin: string | undefined,
+  scopePathSegment: string,
+): ScopedPublicFragmentAddress {
+  return scopedPublicFragmentAddress({
+    publicOrigin: requirePublicFragmentOrigin(publicOrigin, "MCP"),
+    publicPrefix: MCP_PUBLIC_PREFIX,
+    scopePathSegment,
+  });
 }
 
 /** Allows only one scoped OAuth callback path on the configured Backoffice public origin. */

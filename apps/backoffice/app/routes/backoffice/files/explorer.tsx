@@ -4,10 +4,8 @@ import { useLoaderData, useOutletContext } from "react-router";
 import { and, eq, useLiveQuery } from "@tanstack/react-db";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
-import {
-  useCurrentBackofficeContext,
-  type AutomationCollectionSourceState,
-} from "@/components/backoffice/current-context";
+import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
+import type { AutomationCollectionSourceState } from "@/components/backoffice/current-context-state";
 import {
   FilesExplorerView,
   type FilesExplorerSource,

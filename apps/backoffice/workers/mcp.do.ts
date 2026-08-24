@@ -14,7 +14,10 @@ import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { createDurableHookRepository } from "@/fragno/durable-hooks";
 import { createMcpServer, type McpConfig, type McpFragment } from "@/fragno/mcp";
-import { MCP_PUBLIC_PREFIX, scopedPublicBaseUrl } from "@/fragno/scoped-public-fragment-routes";
+import {
+  isScopedPublicOAuthRedirectUriAllowed,
+  MCP_PUBLIC_PREFIX,
+} from "@/fragno/scoped-public-fragment-routes";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
@@ -23,17 +26,7 @@ import {
   type ScopedFragmentDurableObjectRuntime,
 } from "./lib/scoped-fragment-durable-object";
 
-type McpObjectEnv = {
-  DOCS_PUBLIC_BASE_URL?: string;
-};
-
-function readMcpPublicOrigin(env: McpObjectEnv) {
-  const origin = env.DOCS_PUBLIC_BASE_URL?.trim();
-  if (!origin) {
-    throw new Error("MCP OAuth redirect origin is not configured.");
-  }
-  return origin;
-}
+type McpObjectEnv = object;
 
 function scopeSubject(scope: BackofficeRoutableScope, serverId?: string) {
   return {
@@ -97,21 +90,14 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
     return this;
   }
 
-  async getPublicBaseUrl(): Promise<string> {
-    return scopedPublicBaseUrl({
-      baseUrl: readMcpPublicOrigin(this.#env),
-      publicPrefix: MCP_PUBLIC_PREFIX,
-      scope: this.#scopedRuntime.requireOwnerScope(),
-    });
-  }
-
   #createConfig(ownerScope: BackofficeRoutableScope): McpConfig {
     return {
-      publicBaseUrl: scopedPublicBaseUrl({
-        baseUrl: readMcpPublicOrigin(this.#env),
-        publicPrefix: MCP_PUBLIC_PREFIX,
-        scope: ownerScope,
-      }),
+      allowedOAuthRedirectUris: (redirectUri) =>
+        isScopedPublicOAuthRedirectUriAllowed({
+          publicOrigin: this.#runtimeServices.config.docsPublicBaseUrl,
+          publicPrefix: MCP_PUBLIC_PREFIX,
+          redirectUri,
+        }),
       onServerConfigurationChanged: async (payload, context) => {
         const scope = ownerScope;
         await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
@@ -185,10 +171,6 @@ export class Mcp extends DurableObject<CloudflareEnv> implements McpObject {
 
   init(scope: BackofficeContextScope): McpObject {
     return this.#object.init(scope);
-  }
-
-  async getPublicBaseUrl(): Promise<string> {
-    return await this.#object.getPublicBaseUrl();
   }
 
   async alarm(): Promise<void> {

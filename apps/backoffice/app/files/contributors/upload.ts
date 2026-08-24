@@ -8,7 +8,7 @@ import { z } from "zod";
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import type { UploadObject } from "@/backoffice-runtime/object-registry";
-import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import {
   UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,
@@ -1761,16 +1761,8 @@ const buildUploadContentUrl = (ctx: FilesContext, file: UploadFileRecord): strin
     return undefined;
   }
 
-  const pathnameSegments = new URL(ctx.request.url).pathname.split("/").filter(Boolean);
-  const scopeKindIndex = pathnameSegments.findIndex(
-    (segment) => segment === "org" || segment === "project",
-  );
-  const organizationSlug = pathnameSegments[scopeKindIndex + 1]?.split(":", 1)[0]?.trim();
-  if (!organizationSlug) {
-    return undefined;
-  }
   const requestUrl = new URL(
-    `/api/upload-scoped/${backofficeRouteScopePath({ kind: "org", orgSlug: organizationSlug })}/files/by-key/content`,
+    `/api/upload-scoped/${backofficeContextScopeRoutePath(ctx.execution.scope)}/files/by-key/content`,
     ctx.request.url,
   );
   requestUrl.searchParams.set("provider", file.provider);

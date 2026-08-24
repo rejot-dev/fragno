@@ -9,11 +9,11 @@ import { scheduleBackofficeTokenRefresh } from "@/fragno/auth/browser-auth.clien
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
 import { BackofficeClsDebugger } from "./cls-debugger";
+import { CurrentBackofficeProvider } from "./current-context";
 import {
   automationCollectionResolvedScope,
-  CurrentBackofficeProvider,
   type CurrentBackofficeContext,
-} from "./current-context";
+} from "./current-context-state";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
 import { GlobalWorkflowDrawer } from "./global-workflow-drawer";
 import { QuakeTerminal } from "./quake-terminal";
@@ -50,7 +50,8 @@ function backofficeTerminalScopeSelection(
       };
   }
 
-  throw new Error("Unsupported Backoffice resolved scope kind.");
+  scope satisfies never;
+  throw new Error("Backoffice terminal scope selection received an unsupported scope kind.");
 }
 
 export function BackofficeShell(props: BackofficeShellProps) {

@@ -849,7 +849,6 @@ const createScopedMcpRuntimeServices = (
       }
       return Response.json({ error: "Unexpected MCP request" }, { status: 500 });
     },
-    getPublicBaseUrl: async () => "https://backoffice.example/api/http/org/test/mcp",
     getDurableHookRepository: async () => ({}) as never,
   });
 

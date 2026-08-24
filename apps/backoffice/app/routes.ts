@@ -297,6 +297,7 @@ export default [
     route("cloudflare/*", "routes/api/cloudflare.ts"),
     route("resend/:scopeSegment/*", "routes/api/resend.ts"),
     route("reson8/:orgSlug/*", "routes/api/reson8.ts"),
+    route("mcp/:scopeSegment/servers/:serverSlug/auth/start", "routes/api/mcp-oauth-start.ts"),
     route("mcp/:scopeSegment/*", "routes/api/mcp.ts"),
     route(
       "http/:scopeSegment/connections/:connectionSlug/auth/oauth/start",

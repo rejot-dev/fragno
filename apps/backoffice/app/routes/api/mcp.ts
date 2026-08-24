@@ -1,57 +1,22 @@
-import type { McpObject } from "@/backoffice-runtime/object-registry";
-import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
-import {
-  forwardScopedPublicRequest,
-  type ScopedPublicFragmentProxy,
-} from "@/fragno/scoped-public-fragment-proxy";
-import {
-  MCP_INTERNAL_OAUTH_CALLBACK_PATH,
-  MCP_INTERNAL_PREFIX,
-  MCP_PUBLIC_PREFIX,
-} from "@/fragno/scoped-public-fragment-routes";
-import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+import { forwardPublicFragmentRequest } from "@/fragno/public-fragment-route.server";
 
 import type { Route } from "./+types/mcp";
-
-const mcpPublicProxy = {
-  publicPrefix: MCP_PUBLIC_PREFIX,
-  internalPrefix: MCP_INTERNAL_PREFIX,
-  getObjectForScope: (context, scope) =>
-    context.get(BackofficeWorkerContext).runtime.objects.mcp.for(scope),
-  oauth: {
-    internalCallbackPath: MCP_INTERNAL_OAUTH_CALLBACK_PATH,
-    invalidResponse: (message) => new Response(message, { status: 502 }),
-    redirect: ({ request, scope, status }) => {
-      const redirectUrl = new URL(
-        `/backoffice/automations/${backofficeContextScopeRoutePath(scope)}/mcp`,
-        request.url,
-      );
-      redirectUrl.searchParams.set("oauth", status);
-
-      const serverSlug = new URL(request.url).searchParams.get("state")?.split(":")[0]?.trim();
-      if (serverSlug) {
-        redirectUrl.searchParams.set("server", serverSlug);
-      }
-
-      return Response.redirect(redirectUrl, 302);
-    },
-  },
-} satisfies ScopedPublicFragmentProxy<McpObject>;
+import { mcpPublicRoute } from "./mcp-route.server";
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
-  return forwardScopedPublicRequest({
+  return forwardPublicFragmentRequest({
     request,
     context,
     scopePathSegment: params.scopeSegment,
-    proxy: mcpPublicProxy,
+    route: mcpPublicRoute,
   });
 }
 
 export async function action({ request, context, params }: Route.ActionArgs) {
-  return forwardScopedPublicRequest({
+  return forwardPublicFragmentRequest({
     request,
     context,
     scopePathSegment: params.scopeSegment,
-    proxy: mcpPublicProxy,
+    route: mcpPublicRoute,
   });
 }

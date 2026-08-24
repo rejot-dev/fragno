@@ -2,6 +2,7 @@ import {
   useEffect,
   useEffectEvent,
   useMemo,
+  useReducer,
   useRef,
   useState,
   type ChangeEvent,
@@ -69,6 +70,58 @@ type ConversationEntry = {
 type RealtimeRecordingDownload = {
   url: string;
   fileName: string;
+};
+
+type ConversationState = {
+  entries: ConversationEntry[];
+  interimTranscript: string | null;
+  recordingDownload: RealtimeRecordingDownload | null;
+  clearVersion: number;
+};
+
+type ConversationAction =
+  | { type: "replaceWithPrerecorded"; entry: ConversationEntry }
+  | { type: "appendEntries"; entries: ConversationEntry[] }
+  | { type: "setInterimTranscript"; transcript: string | null }
+  | { type: "setRecordingDownload"; download: RealtimeRecordingDownload | null }
+  | { type: "clear" };
+
+function reduceConversationState(
+  state: ConversationState,
+  action: ConversationAction,
+): ConversationState {
+  switch (action.type) {
+    case "replaceWithPrerecorded":
+      return {
+        entries: [action.entry],
+        interimTranscript: null,
+        recordingDownload: null,
+        clearVersion: state.clearVersion + 1,
+      };
+    case "appendEntries":
+      return { ...state, entries: [...state.entries, ...action.entries] };
+    case "setInterimTranscript":
+      return { ...state, interimTranscript: action.transcript };
+    case "setRecordingDownload":
+      return { ...state, recordingDownload: action.download };
+    case "clear":
+      return {
+        entries: [],
+        interimTranscript: null,
+        recordingDownload: null,
+        clearVersion: state.clearVersion + 1,
+      };
+  }
+
+  action satisfies never;
+  throw new Error("Conversation state reducer received an unsupported action.");
+}
+
+const DEFAULT_CONVERSATION_STATE: ConversationState = {
+  entries: [],
+  interimTranscript: null,
+  recordingDownload: null,
+  clearVersion: 0,
 };
 
 const DEFAULT_PRERECORDED_FORM_STATE: PrerecordedFormState = {
@@ -486,12 +539,17 @@ export default function BackofficeOrganizationReson8Transcribe() {
   const [prerecordedForm, setPrerecordedForm] = useState<PrerecordedFormState>(
     DEFAULT_PRERECORDED_FORM_STATE,
   );
-  const [conversationEntries, setConversationEntries] = useState<ConversationEntry[]>([]);
+  const [conversationState, dispatchConversation] = useReducer(
+    reduceConversationState,
+    DEFAULT_CONVERSATION_STATE,
+  );
+  const {
+    entries: conversationEntries,
+    interimTranscript: realtimeInterimTranscript,
+    recordingDownload: realtimeRecordingDownload,
+    clearVersion: clearConversationVersion,
+  } = conversationState;
   const [localError, setLocalError] = useState<string | null>(null);
-  const [realtimeInterimTranscript, setRealtimeInterimTranscript] = useState<string | null>(null);
-  const [realtimeRecordingDownload, setRealtimeRecordingDownload] =
-    useState<RealtimeRecordingDownload | null>(null);
-  const [clearConversationVersion, setClearConversationVersion] = useState(0);
   const [isClient, setIsClient] = useState(false);
   const lastProcessedActionIdRef = useRef<string | null>(null);
 
@@ -509,11 +567,9 @@ export default function BackofficeOrganizationReson8Transcribe() {
     }
 
     lastProcessedActionIdRef.current = actionData.resultId;
-    setRealtimeInterimTranscript(null);
-    setRealtimeRecordingDownload(null);
-    setClearConversationVersion((value) => value + 1);
-    setConversationEntries([
-      {
+    dispatchConversation({
+      type: "replaceWithPrerecorded",
+      entry: {
         id: actionData.resultId,
         source: "prerecorded",
         title: actionData.fileName,
@@ -521,7 +577,7 @@ export default function BackofficeOrganizationReson8Transcribe() {
         clipStartMs: actionData.transcription.start_ms,
         clipDurationMs: actionData.transcription.duration_ms,
       },
-    ]);
+    });
     setPrerecordedForm((prev) => ({
       ...prev,
       fileName: "",
@@ -540,10 +596,7 @@ export default function BackofficeOrganizationReson8Transcribe() {
   const transcriptionError =
     localError ?? (actionData && !actionData.ok ? actionData.message : null);
   const clearConversation = () => {
-    setConversationEntries([]);
-    setRealtimeInterimTranscript(null);
-    setRealtimeRecordingDownload(null);
-    setClearConversationVersion((value) => value + 1);
+    dispatchConversation({ type: "clear" });
   };
 
   if (configError) {
@@ -655,10 +708,14 @@ export default function BackofficeOrganizationReson8Transcribe() {
               realtimeOriginDiagnostic={realtimeOriginDiagnostic}
               realtimeOriginDiagnosticError={realtimeOriginDiagnosticError}
               onAppendEntries={(entries) => {
-                setConversationEntries((currentEntries) => [...currentEntries, ...entries]);
+                dispatchConversation({ type: "appendEntries", entries });
               }}
-              onInterimTranscriptChange={setRealtimeInterimTranscript}
-              onRecordedAudioChange={setRealtimeRecordingDownload}
+              onInterimTranscriptChange={(transcript) => {
+                dispatchConversation({ type: "setInterimTranscript", transcript });
+              }}
+              onRecordedAudioChange={(download) => {
+                dispatchConversation({ type: "setRecordingDownload", download });
+              }}
               clearConversationVersion={clearConversationVersion}
               onClearConversationIfPrerecorded={() => {
                 if (conversationEntries.some((e) => e.source === "prerecorded")) {
