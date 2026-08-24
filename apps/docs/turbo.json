@@ -9,6 +9,9 @@
     },
     "lint:package": {
       "dependsOn": ["$TURBO_EXTENDS$", "types:generate"]
+    },
+    "lint:fix:package": {
+      "dependsOn": ["$TURBO_EXTENDS$", "types:generate"]
     }
   }
 }

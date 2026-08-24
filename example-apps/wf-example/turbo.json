@@ -2,7 +2,7 @@
   "extends": ["//"],
   "tasks": {
     "types:generate": {
-      "outputs": ["worker-configuration.d.ts", ".react-router/types/**", ".source/**"]
+      "outputs": [".react-router/types/**"]
     },
     "types:check": {
       "dependsOn": ["^build", "types:generate"]
