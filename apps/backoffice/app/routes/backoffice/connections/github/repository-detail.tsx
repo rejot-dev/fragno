@@ -1,6 +1,6 @@
 import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
 
-import { resolveOrganizationScopeFromRouteParams } from "../../integrations/scope";
+import { resolveAuthenticatedOrgIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/repository-detail";
 import {
@@ -33,8 +33,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.repoId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const organizationScope = resolveOrganizationScopeFromRouteParams(params);
-  const organizationId = organizationScope.organizationId;
+  const { orgId: organizationId } = await resolveAuthenticatedOrgIntegrationRuntimeScope({
+    request,
+    context,
+    params,
+  });
 
   const linkedResult = await fetchGitHubLinkedRepositories(request, context, organizationId);
   if (linkedResult.reposError) {

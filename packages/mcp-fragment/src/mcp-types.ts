@@ -1,10 +1,10 @@
 import { z } from "zod";
 
 export interface McpFragmentConfig {
-  /** Public URL where this fragment is mounted; used to build OAuth redirects. */
-  publicBaseUrl: string;
   /** Optional URL allow-list. If omitted, only http(s) URL syntax is checked. */
   allowedEndpointUrls?: (url: URL) => boolean;
+  /** Allows OAuth callback URLs. OAuth start is rejected when this policy is omitted. */
+  allowedOAuthRedirectUris?: (url: URL) => boolean;
   /** Optional fetch implementation for tests/custom runtimes. */
   fetch?: typeof fetch;
 }
@@ -45,6 +45,14 @@ export const toolCallInputSchema = z.object({
 export const tokenAuthInputSchema = z.object({
   token: z.string().min(1),
 });
+
+/** Query parameter carrying the OAuth callback URI for an MCP OAuth start request. */
+export const MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER = "redirectUri";
+
+export const mcpOAuthRedirectUriSchema = z.url().refine((value) => {
+  const protocol = new URL(value).protocol;
+  return protocol === "https:" || protocol === "http:";
+}, "MCP OAuth redirect URI must use HTTP or HTTPS");
 
 export const oauthStartInputSchema = z.object({
   scope: z.string().optional(),

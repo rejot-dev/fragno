@@ -12,11 +12,13 @@ are out of scope for this package.
 ```ts
 import { createMcpFragment } from "@fragno-dev/mcp-fragment";
 
+const oauthRedirectUri = "https://app.example.com/mcp/oauth/callback";
 const fragment = createMcpFragment(
   {
-    publicBaseUrl: "https://app.example.com/mcp",
     // Optional SSRF/tenant allow-list hook.
     allowedEndpointUrls: (url) => url.protocol === "https:",
+    // OAuth start is denied unless the callback is explicitly allowed.
+    allowedOAuthRedirectUris: (url) => url.toString() === oauthRedirectUri,
   },
   {
     databaseAdapter: yourDatabaseAdapter,
@@ -101,7 +103,8 @@ Auth:
 
 - `GET /servers/:slug/auth/status` - report auth mode and whether usable auth is stored.
 - `POST /servers/:slug/auth/token` - store or replace a bearer token.
-- `POST /servers/:slug/auth/start` - start OAuth authorization-code + PKCE.
+- `POST /servers/:slug/auth/start` - start OAuth authorization-code + PKCE with an explicit
+  `redirectUri` query parameter.
 - `GET /oauth/callback` - complete OAuth authorization-code + PKCE.
 - `DELETE /servers/:slug/auth` - delete auth state and switch the server to `none` auth.
 
@@ -182,7 +185,10 @@ const start = await mcp.startOAuth.mutate(
     clientId: "...",
     clientSecret: "...",
   },
-  { pathParams: { slug: "oauth-tools" } },
+  {
+    pathParams: { slug: "oauth-tools" },
+    query: { redirectUri: oauthRedirectUri },
+  },
 );
 
 window.location.href = start.authorizationUrl;
@@ -196,8 +202,8 @@ The route:
 4. Lets the SDK discover OAuth protected-resource metadata and authorization-server metadata.
 5. Lets the SDK perform dynamic client registration when required.
 6. Generates PKCE verifier/challenge and an authorization URL.
-7. Stores the OAuth state, PKCE verifier, fragment-owned redirect URI, requested scope, discovery
-   state, and client information in the fragment DB/secret tables.
+7. Stores the OAuth state, PKCE verifier, validated redirect URI, requested scope, discovery state,
+   and client information in the fragment DB/secret tables.
 8. Returns `{ authorizationUrl, state }`.
 
 ### 2. User authorizes with the OAuth server

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { Link, useOutletContext, useRevalidator } from "react-router";
 
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
@@ -20,6 +20,10 @@ import {
 } from "./organizations-preference";
 
 type UserInvitationsHook = ReturnType<typeof authClient.useUserInvitations>;
+
+function subscribeToClientHydration() {
+  return () => {};
+}
 type UserInvitation = NonNullable<UserInvitationsHook["data"]>["invitations"][number];
 
 export function meta() {
@@ -60,10 +64,11 @@ export default function BackofficeOrganizations() {
   const [preferredOrganizationNotice, setPreferredOrganizationNotice] =
     useState<ActionNotice>(null);
   const [activeInvitationId, setActiveInvitationId] = useState<string | null>(null);
-  const [clientPreferencesReady, setClientPreferencesReady] = useState(false);
-  useEffect(() => {
-    setClientPreferencesReady(true);
-  }, []);
+  const clientPreferencesReady = useSyncExternalStore(
+    subscribeToClientHydration,
+    () => true,
+    () => false,
+  );
   const me = initialMe;
   const organizations = me?.organizations ?? [];
   const preferredOrganizationId = clientPreferencesReady

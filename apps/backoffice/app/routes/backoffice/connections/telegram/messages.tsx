@@ -2,7 +2,7 @@ import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } fr
 
 import type { TelegramChatSummary } from "@fragno-dev/telegram-fragment";
 
-import { resolveScopeFromRouteParams } from "../../integrations/scope";
+import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import type { Route } from "./+types/messages";
 import { fetchTelegramChats, fetchTelegramConfig } from "./data";
 import type { TelegramLayoutContext } from "./shared";
@@ -20,7 +20,11 @@ export type TelegramMessagesOutletContext = {
 };
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const scope = resolveScopeFromRouteParams(params);
+  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
+    request,
+    context,
+    params,
+  });
   const basePath = url.pathname.replace(/\/messages(?:\/.*)?$/u, "");
 
   const { configState, configError } = await fetchTelegramConfig(context, scope);

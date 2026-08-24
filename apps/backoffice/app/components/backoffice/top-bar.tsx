@@ -6,7 +6,7 @@ import {
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRouteScope } from "@/backoffice-runtime/route-scope";
-import type { AutomationCollectionSourceState } from "@/components/backoffice/current-context";
+import type { AutomationCollectionSourceState } from "@/components/backoffice/current-context-state";
 import { ClientOnly } from "@/components/client-only";
 import type { BackofficeMeData, Organization } from "@/fragno/auth/contracts";
 import {

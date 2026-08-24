@@ -357,11 +357,7 @@ export type Reson8Object = FetchObject &
       origin: string,
     ): Promise<AwaitedMethodReturn<Reson8, "getRealtimeOriginDiagnostic">>;
   };
-export type McpObject = FetchObject &
-  AlarmableObject &
-  DurableHookObject & {
-    getPublicBaseUrl(): Promise<string>;
-  };
+export type McpObject = FetchObject & AlarmableObject & DurableHookObject;
 export type UploadObject = FetchObject &
   AlarmableObject &
   DurableHookObject &

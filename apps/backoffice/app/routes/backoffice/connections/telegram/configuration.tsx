@@ -177,6 +177,123 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   }
 }
 
+function TelegramConnectionStatus({
+  configState,
+  configLoading,
+  configError,
+  statusLabel,
+  statusTone,
+  currentStep,
+  onStepChange,
+}: {
+  configState: TelegramConfigState | null;
+  configLoading: boolean;
+  configError: string | null;
+  statusLabel: string;
+  statusTone: string;
+  currentStep: number;
+  onStepChange: (step: number) => void;
+}) {
+  return (
+    <section className="grid gap-3 lg:grid-cols-[1.1fr_1fr]">
+      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+              Status
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Telegram connection</h2>
+            <p className="mt-2 text-sm text-[var(--bo-muted)]">
+              Each organization gets a dedicated Telegram fragment instance and database.
+            </p>
+          </div>
+          <span
+            className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${statusTone}`}
+          >
+            {statusLabel}
+          </span>
+        </div>
+
+        <div className="mt-4 space-y-2 text-sm text-[var(--bo-muted)]">
+          {configLoading ? (
+            <p>Loading configuration…</p>
+          ) : configError ? (
+            <p className="text-red-500">{configError}</p>
+          ) : configState?.configured ? (
+            <>
+              <p>
+                Bot username:{" "}
+                <span className="text-[var(--bo-fg)]">
+                  @{configState.config?.botUsername ?? "unknown"}
+                </span>
+              </p>
+              <p>
+                Last updated:{" "}
+                <span className="text-[var(--bo-fg)]">
+                  {formatTimestamp(configState.config?.updatedAt)}
+                </span>
+              </p>
+              {configState.config?.webhookBaseUrl ? (
+                <p>
+                  Webhook base URL:{" "}
+                  <span className="text-[var(--bo-fg)]">{configState.config.webhookBaseUrl}</span>
+                </p>
+              ) : null}
+              {configState.config?.botTokenPreview ? (
+                <p>
+                  Bot token:{" "}
+                  <span className="text-[var(--bo-fg)]">{configState.config.botTokenPreview}</span>
+                </p>
+              ) : null}
+              {configState.config?.webhookSecretTokenPreview ? (
+                <p>
+                  Secret token:{" "}
+                  <span className="text-[var(--bo-fg)]">
+                    {configState.config.webhookSecretTokenPreview}
+                  </span>
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p>Connect a bot to start collecting chat activity.</p>
+          )}
+        </div>
+      </div>
+
+      <FormContainer
+        title="Setup wizard"
+        eyebrow="Step-by-step"
+        description="Collect the bot credentials and register the webhook."
+      >
+        <WizardStepper steps={SETUP_STEPS} currentStep={currentStep} onStepChange={onStepChange} />
+      </FormContainer>
+    </section>
+  );
+}
+
+function TelegramAccountLinking() {
+  return (
+    <FormContainer
+      title="Account linking"
+      eyebrow="Automations"
+      description="Telegram linking now runs through the generic automations flow."
+    >
+      <div className="space-y-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
+        <p>
+          After configuring the bot, users should message it directly. Inbound Telegram messages are
+          forwarded into the automations fragment as canonical <code>message.received</code> events.
+        </p>
+        <p>
+          The docs app now ships with starter automation files under
+          <code> /workspace/automations </code> for the Telegram claim-linking flow:
+          <code> /start </code> issues a claim link and OTP confirmation finalizes the identity
+          binding.
+        </p>
+      </div>
+    </FormContainer>
+  );
+}
+
 export default function BackofficeOrganizationTelegramConfiguration() {
   const { origin, scope, configState, configLoading, configError, setConfigError } =
     useOutletContext<TelegramLayoutContext>();
@@ -263,87 +380,15 @@ export default function BackofficeOrganizationTelegramConfiguration() {
 
   return (
     <div className="space-y-4">
-      <section className="grid gap-3 lg:grid-cols-[1.1fr_1fr]">
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                Status
-              </p>
-              <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
-                Telegram connection
-              </h2>
-              <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                Each organization gets a dedicated Telegram fragment instance and database.
-              </p>
-            </div>
-            <span
-              className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${statusTone}`}
-            >
-              {statusLabel}
-            </span>
-          </div>
-
-          <div className="mt-4 space-y-2 text-sm text-[var(--bo-muted)]">
-            {configLoading ? (
-              <p>Loading configuration…</p>
-            ) : configError ? (
-              <p className="text-red-500">{configError}</p>
-            ) : configState?.configured ? (
-              <>
-                <p>
-                  Bot username:{" "}
-                  <span className="text-[var(--bo-fg)]">
-                    @{configState.config?.botUsername ?? "unknown"}
-                  </span>
-                </p>
-                <p>
-                  Last updated:{" "}
-                  <span className="text-[var(--bo-fg)]">
-                    {formatTimestamp(configState.config?.updatedAt)}
-                  </span>
-                </p>
-                {configState.config?.webhookBaseUrl ? (
-                  <p>
-                    Webhook base URL:{" "}
-                    <span className="text-[var(--bo-fg)]">{configState.config.webhookBaseUrl}</span>
-                  </p>
-                ) : null}
-                {configState.config?.botTokenPreview ? (
-                  <p>
-                    Bot token:{" "}
-                    <span className="text-[var(--bo-fg)]">
-                      {configState.config.botTokenPreview}
-                    </span>
-                  </p>
-                ) : null}
-                {configState.config?.webhookSecretTokenPreview ? (
-                  <p>
-                    Secret token:{" "}
-                    <span className="text-[var(--bo-fg)]">
-                      {configState.config.webhookSecretTokenPreview}
-                    </span>
-                  </p>
-                ) : null}
-              </>
-            ) : (
-              <p>Connect a bot to start collecting chat activity.</p>
-            )}
-          </div>
-        </div>
-
-        <FormContainer
-          title="Setup wizard"
-          eyebrow="Step-by-step"
-          description="Collect the bot credentials and register the webhook."
-        >
-          <WizardStepper
-            steps={SETUP_STEPS}
-            currentStep={currentStep}
-            onStepChange={setCurrentStep}
-          />
-        </FormContainer>
-      </section>
+      <TelegramConnectionStatus
+        configState={configState}
+        configLoading={configLoading}
+        configError={configError}
+        statusLabel={statusLabel}
+        statusTone={statusTone}
+        currentStep={currentStep}
+        onStepChange={setCurrentStep}
+      />
 
       <FormContainer
         title="Telegram credentials"
@@ -497,25 +542,7 @@ export default function BackofficeOrganizationTelegramConfiguration() {
         </Form>
       </FormContainer>
 
-      <FormContainer
-        title="Account linking"
-        eyebrow="Automations"
-        description="Telegram linking now runs through the generic automations flow."
-      >
-        <div className="space-y-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-          <p>
-            After configuring the bot, users should message it directly. Inbound Telegram messages
-            are forwarded into the automations fragment as canonical <code>message.received</code>{" "}
-            events.
-          </p>
-          <p>
-            The docs app now ships with starter automation files under
-            <code> /workspace/automations </code> for the Telegram claim-linking flow:
-            <code> /start </code> issues a claim link and OTP confirmation finalizes the identity
-            binding.
-          </p>
-        </div>
-      </FormContainer>
+      <TelegramAccountLinking />
     </div>
   );
 }

@@ -18,9 +18,6 @@ export async function prepareOAuthChanges(changes: OAuthProviderChanges) {
     discoveryStatePayload: changes.discoveryState
       ? stringifySecretPayload(changes.discoveryState)
       : undefined,
-    tokensPayload: changes.tokens
-      ? stringifySecretPayload({ type: "oauth", tokens: changes.tokens })
-      : undefined,
   };
 }
 
@@ -46,7 +43,7 @@ export type SecretRecord = {
 
 type StoredAuthPayload =
   | { type: "bearer"; token: string }
-  | { type: "oauth"; tokens?: OAuthTokens; redirectUri?: string }
+  | { type: "oauth"; tokens?: OAuthTokens; redirectUri: string }
   | {
       type: "client_credentials";
       clientId: string;
@@ -76,10 +73,6 @@ async function parseSecretKind<T>(
 ): Promise<T | undefined> {
   const secret = secretByKind(secrets, kind);
   return secret ? parseSecretPayload<T>(secret.payload) : undefined;
-}
-
-export function defaultOAuthRedirectUri(config: McpFragmentConfig) {
-  return `${config.publicBaseUrl.replace(/\/$/, "")}/oauth/callback`;
 }
 
 export async function createOAuthStartSnapshot(args: {
@@ -133,7 +126,7 @@ export async function createOAuthCallbackSnapshot(args: {
   };
   server: { id: { toString(): string } | string; endpointUrl: string };
   secrets: Pick<SecretRecord, "kind" | "payload">[];
-}): Promise<Awaited<ReturnType<typeof prepareOAuthChanges>>> {
+}): Promise<AuthPersistenceChanges> {
   const authPayload = await parseSecretKind<{ type: string; tokens?: OAuthTokens }>(
     args.secrets,
     "auth",
@@ -164,7 +157,20 @@ export async function createOAuthCallbackSnapshot(args: {
     fetchFn: args.config.fetch,
   });
   provider.consumeState();
-  return prepareOAuthChanges(provider.changes);
+  const changes = await prepareOAuthChanges(provider.changes);
+  return {
+    ...changes,
+    ...(changes.tokens
+      ? {
+          authPayload: stringifySecretPayload({
+            type: "oauth",
+            redirectUri: args.state.redirectUri,
+            tokens: changes.tokens,
+          }),
+          authExpiresAt: tokenExpiry(changes.tokens),
+        }
+      : {}),
+  };
 }
 
 const providerHasChanges = (changes: OAuthProviderChanges) =>
@@ -217,7 +223,7 @@ export async function createMcpOperationAuth(args: {
     const provider = new BufferedOAuthClientProvider({
       serverId: args.server.id.toString(),
       endpointUrl: args.server.endpointUrl,
-      redirectUrl: authPayload.redirectUri ?? defaultOAuthRedirectUri(args.config),
+      redirectUrl: authPayload.redirectUri,
       scope: authPayload.tokens.scope,
       clientInformation: clientSecret ? parseSecretPayload(clientSecret.payload) : undefined,
       tokens: authPayload.tokens,
@@ -279,7 +285,7 @@ export async function resolveMcpOperationAuth(args: {
     const provider = new BufferedOAuthClientProvider({
       serverId: args.server.id.toString(),
       endpointUrl: args.server.endpointUrl,
-      redirectUrl: authPayload.redirectUri ?? defaultOAuthRedirectUri(args.config),
+      redirectUrl: authPayload.redirectUri,
       scope: authPayload.tokens.scope,
       clientInformation: clientSecret ? parseSecretPayload(clientSecret.payload) : undefined,
       tokens: authPayload.tokens,

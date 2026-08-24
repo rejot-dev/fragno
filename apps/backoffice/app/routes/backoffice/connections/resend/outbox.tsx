@@ -10,7 +10,7 @@ import {
 
 import type { ResendEmailSummary } from "@fragno-dev/resend-fragment";
 
-import { resolveScopeFromRouteParams } from "../../integrations/scope";
+import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/outbox";
 import { fetchResendConfig, fetchResendOutbox } from "./data";
@@ -33,7 +33,12 @@ export type ResendOutgoingOutletContext = {
 };
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const scope = resolveScopeFromRouteParams(params);
+  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
+    request,
+    context,
+    params,
+    allowedScopes: ["org", "system"],
+  });
 
   const { configState, configError } = await fetchResendConfig(context, scope);
   if (configError) {

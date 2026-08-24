@@ -33,7 +33,7 @@ import {
 } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 import { WorkflowStepGeneratedUi } from "@/routes/backoffice/automations/script-view/workflow-step-generated-ui";
 
-import type { AutomationCollectionSourceState } from "./current-context";
+import type { AutomationCollectionSourceState } from "./current-context-state";
 import { workflowRunErrorText } from "./global-workflow-drawer-utils";
 
 const DEFAULT_WIDTH = 520;

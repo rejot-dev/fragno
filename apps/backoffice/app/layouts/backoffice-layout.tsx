@@ -8,7 +8,7 @@ import {
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
 import { isBackofficeScopeCodecError } from "@/backoffice-runtime/scope-codec";
-import type { CurrentBackofficeContext } from "@/components/backoffice/current-context";
+import type { CurrentBackofficeContext } from "@/components/backoffice/current-context-state";
 import { getBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { Organization } from "@/fragno/auth/contracts";

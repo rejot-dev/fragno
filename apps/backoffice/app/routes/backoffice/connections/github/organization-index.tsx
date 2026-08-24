@@ -1,6 +1,6 @@
 import { redirect } from "react-router";
 
-import { resolveOrganizationScopeFromRouteParams } from "../../integrations/scope";
+import { resolveAuthenticatedOrgIntegrationRuntimeScope } from "../../integrations/scope.server";
 import type { Route } from "./+types/organization-index";
 import {
   fetchGitHubAdminConfig,
@@ -9,8 +9,11 @@ import {
 } from "./data";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const organizationScope = resolveOrganizationScopeFromRouteParams(params);
-  const organizationId = organizationScope.organizationId;
+  const { orgId: organizationId } = await resolveAuthenticatedOrgIntegrationRuntimeScope({
+    request,
+    context,
+    params,
+  });
 
   const origin = url.origin;
   const { configState } = await fetchGitHubAdminConfig(context, organizationId, origin);

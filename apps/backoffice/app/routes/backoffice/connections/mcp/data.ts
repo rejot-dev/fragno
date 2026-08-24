@@ -119,7 +119,7 @@ const createMcpRouteCallerForScope = (
   return createRouteCaller<McpFragment>({
     baseUrl: new URL(request.url).origin,
     mountRoute: "/api/mcp",
-    fetch: async (outboundRequest) => mcpDo.fetch(outboundRequest),
+    fetch: (outboundRequest) => mcpDo.fetch(outboundRequest),
   });
 };
 

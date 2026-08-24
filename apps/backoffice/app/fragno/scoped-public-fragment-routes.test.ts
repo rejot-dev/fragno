@@ -7,6 +7,8 @@ import {
   apiPublicAddress,
   apiWebhookPublicUrl,
   isScopedPublicOAuthRedirectUriAllowed,
+  MCP_PUBLIC_PREFIX,
+  mcpPublicAddress,
   scopedPublicMountPath,
 } from "./scoped-public-fragment-routes";
 
@@ -36,7 +38,14 @@ describe("scoped public fragment routes", () => {
     );
   });
 
-  test("builds project API addresses from decoded router parameters", () => {
+  test("builds an MCP OAuth URL from a slug-backed scope segment", () => {
+    expect(mcpPublicAddress("https://backoffice.example", "org:acme")).toEqual({
+      baseUrl: "https://backoffice.example/api/mcp/org%3Aacme",
+      oauthRedirectUri: "https://backoffice.example/api/mcp/org%3Aacme/oauth/callback",
+    });
+  });
+
+  test("builds project addresses from decoded router parameters", () => {
     const scopePathSegment = backofficeRouteScopeSinglePathSegmentFromParams({
       scopeKind: "project",
       scopeId: "acme:project%2Fone",
@@ -47,18 +56,33 @@ describe("scoped public fragment routes", () => {
       oauthRedirectUri:
         "https://backoffice.example/api/http/project%3Aacme%3Aproject%252Fone/oauth/callback",
     });
+    expect(mcpPublicAddress("https://backoffice.example", scopePathSegment)).toEqual({
+      baseUrl: "https://backoffice.example/api/mcp/project%3Aacme%3Aproject%252Fone",
+      oauthRedirectUri:
+        "https://backoffice.example/api/mcp/project%3Aacme%3Aproject%252Fone/oauth/callback",
+    });
   });
 
-  test("allows only scoped API OAuth callbacks on the configured public origin", () => {
-    const redirectUri = new URL(
+  test("allows only scoped OAuth callbacks on the configured public origin", () => {
+    const apiRedirectUri = new URL(
       apiPublicAddress("https://backoffice.example", "org:acme").oauthRedirectUri,
+    );
+    const mcpRedirectUri = new URL(
+      mcpPublicAddress("https://backoffice.example", "project:acme:project-1").oauthRedirectUri,
     );
 
     assert(
       isScopedPublicOAuthRedirectUriAllowed({
         publicOrigin: "https://backoffice.example",
         publicPrefix: API_PUBLIC_PREFIX,
-        redirectUri,
+        redirectUri: apiRedirectUri,
+      }),
+    );
+    assert(
+      isScopedPublicOAuthRedirectUriAllowed({
+        publicOrigin: "https://backoffice.example",
+        publicPrefix: MCP_PUBLIC_PREFIX,
+        redirectUri: mcpRedirectUri,
       }),
     );
     assert(
@@ -77,10 +101,17 @@ describe("scoped public fragment routes", () => {
         ),
       }),
     );
+    assert(
+      !isScopedPublicOAuthRedirectUriAllowed({
+        publicOrigin: "https://backoffice.example",
+        publicPrefix: MCP_PUBLIC_PREFIX,
+        redirectUri: new URL("https://backoffice.example/api/mcp/org%3Aacme/not-oauth/callback"),
+      }),
+    );
   });
 
   test.each([undefined, "ftp://backoffice.example", "not a URL"])(
-    "rejects invalid API public origin %s",
+    "rejects invalid public origin %s",
     (publicOrigin) => {
       expect(() => apiPublicAddress(publicOrigin, "org:acme")).toThrow(
         /API public origin (is not configured|must be a valid HTTP or HTTPS URL)/,

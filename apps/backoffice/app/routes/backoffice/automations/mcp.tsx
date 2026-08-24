@@ -1,3 +1,4 @@
+import { MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER } from "@fragno-dev/mcp-fragment/types";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Form,
@@ -10,8 +11,11 @@ import {
 } from "react-router";
 import { Streamdown } from "streamdown";
 
+import { backofficeRouteScopeSinglePathSegmentFromParams } from "@/backoffice-runtime/route-scope";
 import { FormField } from "@/components/backoffice";
+import { mcpPublicAddress } from "@/fragno/scoped-public-fragment-routes";
 import { jsonSchemaToTypeScript, type JsonSchemaObject } from "@/lib/zod/zod-formatter";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import {
   createMcpActionRouteCallerForScope,
@@ -125,6 +129,12 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       const clientSecret = getFormString(formData, "clientSecret");
       const response = await callRoute("POST", "/servers/:slug/auth/start", {
         pathParams: { slug },
+        query: {
+          [MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER]: mcpPublicAddress(
+            context.get(BackofficeWorkerContext).runtime.config.docsPublicBaseUrl,
+            backofficeRouteScopeSinglePathSegmentFromParams(params),
+          ).oauthRedirectUri,
+        },
         body: {
           ...(scope ? { scope } : {}),
           ...(clientId ? { clientId } : {}),

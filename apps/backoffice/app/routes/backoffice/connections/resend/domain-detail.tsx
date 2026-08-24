@@ -2,7 +2,7 @@ import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
 
 import type { ResendDomainRecord } from "@fragno-dev/resend-fragment";
 
-import { resolveScopeFromRouteParams } from "../../integrations/scope";
+import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/domain-detail";
 import { fetchResendDomainDetail } from "./data";
@@ -29,7 +29,12 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.domainId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const scope = resolveScopeFromRouteParams(params);
+  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
+    request,
+    context,
+    params,
+    allowedScopes: ["org", "system"],
+  });
 
   const result = await fetchResendDomainDetail(request, context, scope, params.domainId);
   return {

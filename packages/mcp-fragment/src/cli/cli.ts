@@ -10,6 +10,7 @@ import { migrate } from "@fragno-dev/db";
 import { toNodeHandler } from "@fragno-dev/node";
 
 import { createMcpFragment } from "../index";
+import { MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER } from "../mcp-types";
 
 const DEFAULT_PORT = 3927;
 const DEFAULT_HOST = "127.0.0.1";
@@ -130,9 +131,13 @@ async function startServer(options: Parsed["options"], logger: Logger): Promise<
   process.env["FRAGNO_DATA_DIR"] = dir;
 
   const baseUrl = localBaseUrl(options).replace(/\/$/, "");
+  const fragmentMountRoute = mountRoute(options);
+  const oauthRedirectUri = `${baseUrl}${fragmentMountRoute}/oauth/callback`;
   const fragment = createMcpFragment(
-    { publicBaseUrl: `${baseUrl}${mountRoute(options)}` },
-    { mountRoute: mountRoute(options), databaseNamespace: "mcp-fragment" },
+    {
+      allowedOAuthRedirectUris: (url) => url.toString() === oauthRedirectUri,
+    },
+    { mountRoute: fragmentMountRoute, databaseNamespace: "mcp-fragment" },
   );
   logger.log("migrating sqlite database if needed...");
   await migrate(fragment);
@@ -219,15 +224,18 @@ export async function run(argv: string[], logger: Logger = console): Promise<num
         if (!slug) {
           throw new Error("Usage: fragno-mcp oauth <slug>");
         }
-        const result = (await requestJson(
-          "POST",
+        const startUrl = new URL(
           fragmentUrl(parsed.options, `/servers/${encodeURIComponent(slug)}/auth/start`),
-          {
-            scope: optionString(parsed.options, "scope"),
-            clientId: optionString(parsed.options, "client-id"),
-            clientSecret: optionString(parsed.options, "client-secret"),
-          },
-        )) as { authorizationUrl: string };
+        );
+        startUrl.searchParams.set(
+          MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
+          fragmentUrl(parsed.options, "/oauth/callback"),
+        );
+        const result = (await requestJson("POST", startUrl.toString(), {
+          scope: optionString(parsed.options, "scope"),
+          clientId: optionString(parsed.options, "client-id"),
+          clientSecret: optionString(parsed.options, "client-secret"),
+        })) as { authorizationUrl: string };
         logger.log(`Open this URL to authorize:\n${result.authorizationUrl}`);
         if (!optionBoolean(parsed.options, "no-open")) {
           openBrowser(result.authorizationUrl);

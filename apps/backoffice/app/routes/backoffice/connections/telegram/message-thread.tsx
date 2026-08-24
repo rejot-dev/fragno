@@ -12,10 +12,8 @@ import {
 
 import type { TelegramAttachment, TelegramMessageSummary } from "@fragno-dev/telegram-fragment";
 
-import {
-  resolveAuthenticatedIntegrationContext,
-  resolveScopeFromRouteParams,
-} from "../../integrations/scope";
+import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
+import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/message-thread";
 import {
@@ -41,7 +39,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const scope = resolveScopeFromRouteParams(params);
+  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
+    request,
+    context,
+    params,
+  });
   const messageResult = await fetchTelegramChatMessages(request, context, scope, params.chatId, {
     order: "desc",
     pageSize: 50,

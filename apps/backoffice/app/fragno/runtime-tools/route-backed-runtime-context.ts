@@ -53,7 +53,7 @@ import {
 } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createUploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
-import { apiPublicAddress } from "@/fragno/scoped-public-fragment-routes";
+import { apiPublicAddress, mcpPublicAddress } from "@/fragno/scoped-public-fragment-routes";
 
 import type { InteractiveRuntimeToolContext } from "./bash-host";
 import { getRuntimeToolNamespacesByCapability, runtimeToolFamilies } from "./tool-families";
@@ -295,7 +295,25 @@ export const createRouteBackedRuntimeContext = ({
           const object = unavailableObject(() =>
             kernel.scoped("MCP", execution.scope, runtime.objects.mcp),
           );
-          return object ? { runtime: createMcpRuntime(object) } : null;
+          return object
+            ? {
+                runtime: createMcpRuntime(object, async () => {
+                  const resolvedScope = await resolveBackofficeRuntimeScope(
+                    execution.scope,
+                    (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
+                  );
+                  if (resolvedScope.kind === "system") {
+                    throw new Error("MCP public routes require a routable scope.");
+                  }
+                  return mcpPublicAddress(
+                    runtime.config.docsPublicBaseUrl,
+                    backofficeRouteScopeSinglePathSegment(
+                      backofficeRouteScopeFromResolvedScope(resolvedScope),
+                    ),
+                  );
+                }),
+              }
+            : null;
         })()
       : null,
     otp: {

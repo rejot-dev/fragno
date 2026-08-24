@@ -1,5 +1,6 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import { backofficeRouteScopeSinglePathSegment } from "@/backoffice-runtime/route-scope";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import type { StaticFileArtifactsResolver } from "@/files/types";
 import {
@@ -16,6 +17,7 @@ import { createMcpCodemodeServers } from "@/fragno/codemode/mcp-codemode-tools";
 import { createMcpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime-tools";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
+import { mcpPublicAddress } from "@/fragno/scoped-public-fragment-routes";
 
 export type CodemodeStaticArtifactsResult = {
   path: typeof CODEMODE_SYSTEM_DTS_PATH;
@@ -74,7 +76,18 @@ export const createCodemodeStaticArtifacts = async ({
   }
 
   const mcpServers = configuredCapabilities.includes("mcp")
-    ? await createMcpRuntime(objects.mcp.forOrg(orgId))
+    ? await createMcpRuntime(objects.mcp.forOrg(orgId), async () => {
+        const organization = (await objects.auth.singleton().getAllOrganizations()).find(
+          ({ id }) => id === orgId,
+        );
+        if (!organization) {
+          throw new Error(`Organization '${orgId}' could not be found.`);
+        }
+        return mcpPublicAddress(
+          config.docsPublicBaseUrl,
+          backofficeRouteScopeSinglePathSegment({ kind: "org", orgSlug: organization.slug }),
+        );
+      })
         .listServers()
         .then(({ servers }) => createMcpCodemodeServers(servers))
     : [];

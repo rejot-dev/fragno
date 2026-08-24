@@ -17,10 +17,8 @@ import {
 } from "@/worker-runtime/durable-objects";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
-import {
-  resolveAuthenticatedIntegrationContext,
-  resolveOrganizationScopeFromRouteParams,
-} from "../../integrations/scope";
+import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
+import { resolveAuthenticatedOrgIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/configuration";
 import {
@@ -164,8 +162,11 @@ const readInstallNotice = (requestUrl: URL): InstallFlowNotice => {
 };
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const organizationScope = resolveOrganizationScopeFromRouteParams(params);
-  const organizationId = organizationScope.organizationId;
+  const { orgId: organizationId } = await resolveAuthenticatedOrgIntegrationRuntimeScope({
+    request,
+    context,
+    params,
+  });
 
   const requestUrl = url;
   const origin = requestUrl.origin;

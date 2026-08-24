@@ -1,6 +1,6 @@
 import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
 
-import { resolveScopeFromRouteParams } from "../../integrations/scope";
+import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/incoming-detail";
 import { fetchResendReceivedEmailDetail } from "./data";
@@ -22,7 +22,12 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.emailId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const scope = resolveScopeFromRouteParams(params);
+  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
+    request,
+    context,
+    params,
+    allowedScopes: ["org", "system"],
+  });
 
   const result = await fetchResendReceivedEmailDetail(request, context, scope, params.emailId);
   return {
