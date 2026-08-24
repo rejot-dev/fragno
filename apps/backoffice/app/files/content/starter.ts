@@ -1,5 +1,4 @@
 import type { FileContent } from "../interface";
-import { WORKSPACE_STARTER_AUTOMATION_CONTENT } from "./starter-automations";
 
 export const WORKSPACE_STARTER_CONTENT: Record<string, FileContent> = {
   "AGENTS.md": `# Workspace guidance
@@ -10,7 +9,8 @@ Product-owned guidance and static automations live in \`/static\` and are read-o
 `,
   "README.md": `# Workspace starter content
 
-This editable workspace contains starter automation content and scratch areas.
+This editable workspace contains starter files and scratch areas. Domain-specific automation
+channels can be installed from the Marketplace and place editable workflows under \`automations/\`.
 `,
   "input/notes.md": `# Notes
 
@@ -26,5 +26,4 @@ Describe the task you want to work on here.
 - Expected output:
 `,
   "output/.gitkeep": "",
-  ...WORKSPACE_STARTER_AUTOMATION_CONTENT,
 };

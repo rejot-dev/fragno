@@ -1,156 +1,104 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import {
-  STARTER_AUTOMATION_ROUTES,
+  ORGANIZATION_STARTER_AUTOMATION_ROUTES,
   SYSTEM_STARTER_AUTOMATION_ROUTES,
 } from "@/fragno/automation/content/starter-routing";
 import { AUTOMATION_SOURCE_EVENT_TYPES } from "@/fragno/automation/contracts";
+import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 
-import {
-  STARTER_AUTOMATION_SCRIPT_PATHS,
-  WORKSPACE_STARTER_AUTOMATION_CONTENT,
-} from "./starter-automations";
+import { WORKSPACE_STARTER_CONTENT } from "./starter";
 import { STATIC_AUTOMATION_CONTENT, STATIC_AUTOMATION_SCRIPT_PATHS } from "./static-automations";
 import { SYSTEM_AUTOMATION_CONTENT, SYSTEM_AUTOMATION_SCRIPT_PATHS } from "./system-automations";
 
-type WorkspaceAutomationPath = keyof typeof WORKSPACE_STARTER_AUTOMATION_CONTENT;
+function requireMarketplaceEntry(slug: string) {
+  const entry = getStaticMarketplaceEntry({ slug, version: "1.0.0" });
+  if (!entry) {
+    throw new Error(`Expected the built-in ${slug} Marketplace entry.`);
+  }
+  return entry;
+}
 
-type StaticAutomationPath = keyof typeof STATIC_AUTOMATION_CONTENT;
-type SystemAutomationPath = keyof typeof SYSTEM_AUTOMATION_CONTENT;
+const telegramChannelEntry = requireMarketplaceEntry("telegram-channel");
+const githubChannelEntry = requireMarketplaceEntry("github-channel");
 
-const readWorkspaceAutomation = (path: WorkspaceAutomationPath) => {
-  const content = WORKSPACE_STARTER_AUTOMATION_CONTENT[path];
+function readMarketplaceFile(entry: typeof telegramChannelEntry, path: string): string {
+  const content = entry.files[path];
   if (typeof content !== "string") {
-    throw new Error(`Expected workspace automation '${path}'.`);
+    throw new Error(`Expected Marketplace file '${path}'.`);
   }
   return content;
-};
-
-const readStaticAutomation = (path: StaticAutomationPath) => {
-  const content = STATIC_AUTOMATION_CONTENT[path];
-  if (typeof content !== "string") {
-    throw new Error(`Expected static automation '${path}'.`);
-  }
-  return content;
-};
-
-const readSystemAutomation = (path: SystemAutomationPath) => {
-  const content = SYSTEM_AUTOMATION_CONTENT[path];
-  if (typeof content !== "string") {
-    throw new Error(`Expected system automation '${path}'.`);
-  }
-  return content;
-};
+}
 
 describe("automation content", () => {
-  test("runnable workspace codemode scripts use executor-compatible nullary functions", () => {
-    const runnableCodemodeScripts = Object.keys(WORKSPACE_STARTER_AUTOMATION_CONTENT).filter(
-      (path): path is WorkspaceAutomationPath =>
-        path.endsWith(".js") && !path.endsWith(".workflow.js"),
-    );
-
-    const scriptsWithInjectedParameterSignatures = runnableCodemodeScripts.filter((path) =>
-      /^\s*async\s*\(\s*\{/u.test(readWorkspaceAutomation(path)),
-    );
-
-    expect(scriptsWithInjectedParameterSignatures).toEqual([]);
-  });
-
-  test("workflow starter scripts use the flat codemode provider APIs", () => {
-    const workflow = readWorkspaceAutomation(STARTER_AUTOMATION_SCRIPT_PATHS.telegramUserLinking);
-    const unsupportedNestedProviderCalls = Array.from(
-      workflow.matchAll(/\b(?:otp|automations)\.identity\.[A-Za-z_$][\w$]*/gu),
-      (match) => match[0],
-    );
-
-    expect(unsupportedNestedProviderCalls).toEqual([]);
-    expect(workflow).toContain("identity.resolveExternal(");
-    expect(workflow).toContain("otp.createIdentityClaim(");
-    expect(workflow).toContain("telegram/claim-workflow/");
-    expect(workflow).not.toContain('key: "telegram/" + chatId');
-    expect(workflow).toContain("claim.url");
-    expect(workflow).toContain("claim.otpId");
-    expect(workflow).toContain("Open this link to finish linking your Telegram account:");
-    expect(workflow).toContain("completedEvent.subject.userId");
-    expect(workflow).toContain("completedOtpId !== claim.otpId");
-    expect(workflow).toContain("store.set(");
-    expect(workflow).not.toContain("automationEvent.actors.principal");
-    expect(workflow).not.toContain("bind telegram user");
-  });
-
-  test("DB starter routes start user-editable workflows", () => {
-    const routes = STARTER_AUTOMATION_ROUTES;
-    const identityClaimCompleted = AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted;
-
-    expect(identityClaimCompleted).toBe("identity.claim.completed");
-    expect(routes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          trigger: expect.objectContaining({
-            source: "telegram",
-            eventType: "message.received",
-          }),
-          action: expect.objectContaining({
-            workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
-          }),
-        }),
-        expect.objectContaining({
-          trigger: expect.objectContaining({
-            source: "telegram",
-            eventType: "message.received",
-          }),
-          action: expect.objectContaining({
-            workflowScriptPath: "/workspace/automations/telegram-user-pi-linking.workflow.js",
-          }),
-        }),
-        expect.objectContaining({
-          trigger: expect.objectContaining({
-            source: "otp",
-            eventType: "identity.claim.completed",
-          }),
-          action: expect.objectContaining({
-            kind: "send_workflow_event",
-            target: {
-              kind: "stored_instance_id",
-              keyTemplate: "telegram/claim-workflow/${event.payload.otpId}",
-            },
-            eventType: "identity-claim-completed",
-          }),
-        }),
-      ]),
-    );
-  });
-
-  test("DB starter routes reclassify basic GitHub webhook events", () => {
-    const githubRoutes = STARTER_AUTOMATION_ROUTES.filter(
-      (route) => route.action.kind === "reclassify_event" && route.action.source === "github",
-    );
-
+  test("workspace starter content contains no domain automation workflows", () => {
     expect(
-      githubRoutes.map((route) =>
-        route.action.kind === "reclassify_event" ? route.action.eventType : null,
-      ),
-    ).toEqual([
-      "issues.opened",
-      "issue_comment.created",
-      "pull_request.opened",
-      "pull_request.synchronize",
-      "push",
+      Object.keys(WORKSPACE_STARTER_CONTENT).filter((path) => path.endsWith(".workflow.js")),
+    ).toEqual([]);
+  });
+
+  test("Telegram Channel contains identity linking and Pi workflows", () => {
+    const identityLinkingWorkflow = readMarketplaceFile(
+      telegramChannelEntry,
+      "automations/telegram-user-linking.workflow.js",
+    );
+    const piLinkingWorkflow = readMarketplaceFile(
+      telegramChannelEntry,
+      "automations/telegram-user-pi-linking.workflow.js",
+    );
+    const installer = readMarketplaceFile(telegramChannelEntry, ".marketplace/install.workflow.js");
+
+    expect(identityLinkingWorkflow).toContain('{ name: "telegram-user-linking" }');
+    expect(identityLinkingWorkflow).toContain("identity.resolveExternal(");
+    expect(identityLinkingWorkflow).toContain("otp.createIdentityClaim(");
+    expect(identityLinkingWorkflow).toContain("telegram/claim-workflow/");
+    expect(identityLinkingWorkflow).toContain("claim.url");
+    expect(identityLinkingWorkflow).toContain("claim.otpId");
+    expect(identityLinkingWorkflow).toContain("completedEvent.subject.userId");
+    expect(identityLinkingWorkflow).toContain("completedOtpId !== claim.otpId");
+    expect(identityLinkingWorkflow).toContain("store.set(");
+    expect(piLinkingWorkflow).toContain('{ name: "telegram-user-pi-linking" }');
+    expect(piLinkingWorkflow).toContain("pi.createSession(");
+    expect(piLinkingWorkflow).toContain("pi.runTurn(");
+
+    assert(AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted === "identity.claim.completed");
+    expect(installer).toContain('id: "telegram-start-linking"');
+    expect(installer).toContain('id: "telegram-identity-claim-completed"');
+    expect(installer).toContain('id: "telegram-pi-linking"');
+    expect(installer).toContain('keyTemplate: "telegram/claim-workflow/${event.payload.otpId}"');
+  });
+
+  test("GitHub Channel installs the basic webhook classifications", () => {
+    const installer = readMarketplaceFile(githubChannelEntry, ".marketplace/install.workflow.js");
+
+    expect(installer).toContain("`create ${definition.eventType} event definition`");
+    expect(installer).toContain("events.catalogGet({");
+    expect(installer).toContain("events.catalogCreate(definition)");
+    expect(installer).toContain("router.get({ id: route.id })");
+    expect(installer).toContain("router.create(route)");
+    expect(installer).not.toContain("router.update(");
+    expect(installer).toContain('id: "github-issues-opened-reclassify"');
+    expect(installer).toContain('eventType: "issues.opened"');
+    expect(installer).toContain('id: "github-issue-comment-created-reclassify"');
+    expect(installer).toContain('eventType: "issue_comment.created"');
+    expect(installer).toContain('id: "github-pull-request-opened-reclassify"');
+    expect(installer).toContain('eventType: "pull_request.opened"');
+    expect(installer).toContain('id: "github-pull-request-synchronize-reclassify"');
+    expect(installer).toContain('eventType: "pull_request.synchronize"');
+    expect(installer).toContain('id: "github-push-reclassify"');
+    expect(installer).toContain('eventType: "push"');
+    expect(installer).toContain('pullRequest: "$.payload.pullRequest"');
+  });
+
+  test("core starter routes contain only platform lifecycle behavior", () => {
+    expect(ORGANIZATION_STARTER_AUTOMATION_ROUTES.map((route) => route.id)).toEqual([
+      "system-project-files-configure",
     ]);
-    expect(
-      githubRoutes.find((route) => route.id === "github-pull-request-opened-reclassify")?.action,
-    ).toMatchObject({
-      payload: {
-        kind: "projection",
-        fields: {
-          deliveryId: "$.payload.deliveryId",
-          installationId: "$.payload.installationId",
-          repository: "$.payload.repository",
-          pullRequest: "$.payload.pullRequest",
-          sender: "$.payload.sender",
-        },
-      },
-    });
+    expect(SYSTEM_STARTER_AUTOMATION_ROUTES.map((route) => route.id)).toEqual([
+      "system-workspace-file-initialization",
+      "system-auth-organization-created-forward-to-org",
+      "system-auth-organization-updated-forward-to-org",
+    ]);
   });
 
   test("automation content separates static and system workflows", () => {
@@ -177,7 +125,7 @@ describe("automation content", () => {
         }),
       ]),
     );
-    expect(STARTER_AUTOMATION_ROUTES).toEqual(
+    expect(ORGANIZATION_STARTER_AUTOMATION_ROUTES).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: "system-project-files-configure",
@@ -194,9 +142,8 @@ describe("automation content", () => {
   });
 
   test("organization creation workflow configures upload database connection", () => {
-    const workflow = readSystemAutomation(
-      SYSTEM_AUTOMATION_SCRIPT_PATHS.workspaceFileInitialization,
-    );
+    const workflow =
+      SYSTEM_AUTOMATION_CONTENT[SYSTEM_AUTOMATION_SCRIPT_PATHS.workspaceFileInitialization];
 
     expect(workflow).toContain('{ name: "workspace-file-initialization" }');
     expect(workflow).toContain('automationEvent.eventType !== "organization.created"');
@@ -206,7 +153,8 @@ describe("automation content", () => {
   });
 
   test("project creation workflow configures project files", () => {
-    const workflow = readStaticAutomation(STATIC_AUTOMATION_SCRIPT_PATHS.projectFilesConfigure);
+    const workflow =
+      STATIC_AUTOMATION_CONTENT[STATIC_AUTOMATION_SCRIPT_PATHS.projectFilesConfigure];
 
     expect(workflow).toContain('{ name: "project-files-configure" }');
     expect(workflow).toContain('automationEvent.eventType !== "project.created"');

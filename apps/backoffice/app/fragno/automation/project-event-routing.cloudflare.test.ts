@@ -116,32 +116,36 @@ describe("project automation event routing", () => {
     );
 
     const projectAutomations = runtime.objects.automations.forProject({ orgId, projectId });
+    const projectRoutesUrl =
+      `https://automations.do/api/automations/routes?scopeKind=project` +
+      `&orgId=${orgId}&projectId=${projectId}`;
+    const initialRoutesResponse = await projectAutomations.fetch(new Request(projectRoutesUrl));
+    assert(initialRoutesResponse.status === 200);
+    await expect(initialRoutesResponse.json()).resolves.toEqual([]);
+
     const createRouteResponse = await projectAutomations.fetch(
-      new Request(
-        `https://automations.do/api/automations/routes?scopeKind=project&orgId=${orgId}&projectId=${projectId}`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            id: "project-store-route",
-            name: "Project store route",
-            enabled: true,
-            trigger: {
-              kind: "event",
-              source: "test",
-              eventType: "project.event",
-              matcher: null,
-            },
-            priority: 50,
-            action: {
-              kind: "start_workflow",
-              authority: { kind: "organization-automation" },
-              workflowScriptPath: "/workspace/automations/project-store.workflow.js",
-              instanceIdTemplate: "project-store-${event.id}",
-            },
-          }),
-        },
-      ),
+      new Request(projectRoutesUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          id: "project-store-route",
+          name: "Project store route",
+          enabled: true,
+          trigger: {
+            kind: "event",
+            source: "test",
+            eventType: "project.event",
+            matcher: null,
+          },
+          priority: 50,
+          action: {
+            kind: "start_workflow",
+            authority: { kind: "organization-automation" },
+            workflowScriptPath: "/workspace/automations/project-store.workflow.js",
+            instanceIdTemplate: "project-store-${event.id}",
+          },
+        }),
+      }),
     );
     assert(createRouteResponse.status === 201);
     const event: AutomationEvent = {

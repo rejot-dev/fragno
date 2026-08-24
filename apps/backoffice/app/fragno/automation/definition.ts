@@ -18,7 +18,7 @@ import { automationRouteAuthority, createAutomationRuntimeExecution } from "./au
 import { createAutomationStoreServices } from "./bindings-storage-runtime";
 import { resolveAutomationFileSystem, type AutomationFileSystemConfig } from "./catalog";
 import {
-  STARTER_AUTOMATION_ROUTES,
+  ORGANIZATION_STARTER_AUTOMATION_ROUTES,
   SYSTEM_STARTER_AUTOMATION_ROUTES,
 } from "./content/starter-routing";
 import {
@@ -70,6 +70,25 @@ export type AutomationIngestResult = {
   source: string;
   eventType: string;
 };
+
+const ALL_BUILT_IN_STARTER_AUTOMATION_ROUTES = [
+  ...SYSTEM_STARTER_AUTOMATION_ROUTES,
+  ...ORGANIZATION_STARTER_AUTOMATION_ROUTES,
+];
+
+function getStarterAutomationRoutesForScope(ownerScope: BackofficeContextScope) {
+  switch (ownerScope.kind) {
+    case "system":
+      return SYSTEM_STARTER_AUTOMATION_ROUTES;
+    case "org":
+      return ORGANIZATION_STARTER_AUTOMATION_ROUTES;
+    case "project":
+    case "user":
+      return [];
+  }
+
+  throw new Error("Unsupported Backoffice context scope kind.");
+}
 
 type AutomationWorkflowsServiceBase = WorkflowsFragmentServices;
 type AutomationWorkflowsInstanceStatus = InstanceStatus;
@@ -405,16 +424,44 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ...externalIdentityBindingServices,
       seedStarterAutomationRoutes: function () {
         return this.serviceTx(automationFragmentSchema)
-          .retrieve((uow) => uow.find("automation_route", (b) => b.whereIndex("primary")))
+          .retrieve((uow) =>
+            uow
+              .find("automation_route", (b) => b.whereIndex("primary"))
+              .find("automation_route_schedule_state", (b) => b.whereIndex("primary")),
+          )
           .mutate(
-            ({ uow, retrieveResult: [existingRoutes] }): StarterAutomationRoutesSeedResult => {
+            ({
+              uow,
+              retrieveResult: [existingRoutes, existingScheduleStates],
+            }): StarterAutomationRoutesSeedResult => {
+              const scopedStarterRoutes = getStarterAutomationRoutesForScope(config.ownerScope);
+              const scopedStarterRouteIds = new Set(scopedStarterRoutes.map((route) => route.id));
+              const allStarterRouteIds = new Set(
+                ALL_BUILT_IN_STARTER_AUTOMATION_ROUTES.map((route) => route.id),
+              );
+              const scheduleStatesByRouteId = new Map(
+                existingScheduleStates.map((state) => [state.id.externalId, state]),
+              );
               const existingIds = new Set(existingRoutes.map((route) => route.id.externalId));
               const created: string[] = [];
+              const removed: string[] = [];
               const skipped: string[] = [];
 
-              for (const route of config.ownerScope.kind === "system"
-                ? SYSTEM_STARTER_AUTOMATION_ROUTES
-                : STARTER_AUTOMATION_ROUTES) {
+              for (const existingRoute of existingRoutes) {
+                const routeId = existingRoute.id.externalId;
+                if (!allStarterRouteIds.has(routeId) || scopedStarterRouteIds.has(routeId)) {
+                  continue;
+                }
+
+                const scheduleState = scheduleStatesByRouteId.get(routeId);
+                if (scheduleState) {
+                  uow.delete("automation_route_schedule_state", scheduleState.id, (b) => b.check());
+                }
+                uow.delete("automation_route", existingRoute.id, (b) => b.check());
+                removed.push(routeId);
+              }
+
+              for (const route of scopedStarterRoutes) {
                 if (existingIds.has(route.id)) {
                   skipped.push(route.id);
                   continue;
@@ -449,7 +496,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                 created.push(route.id);
               }
 
-              return { created, skipped };
+              return { created, removed, skipped };
             },
           )
           .build();

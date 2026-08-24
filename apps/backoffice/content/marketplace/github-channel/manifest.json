@@ -1,0 +1,15 @@
+{
+  "owner": {
+    "scope": { "kind": "system" },
+    "publisherName": "Fragno"
+  },
+  "slug": "github-channel",
+  "metadata": {
+    "name": "GitHub Channel",
+    "summary": "Classify GitHub webhooks into automation-ready domain events.",
+    "description": "Creates event definitions and managed routes that project generic GitHub webhook deliveries into issues.opened, issue_comment.created, pull_request.opened, pull_request.synchronize, and push events.",
+    "category": "developer-tools",
+    "tags": ["github", "webhooks", "events", "automation"]
+  },
+  "versions": ["1.0.0"]
+}

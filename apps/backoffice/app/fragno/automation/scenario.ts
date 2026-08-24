@@ -40,6 +40,7 @@ import {
 import {
   backofficeContextScopeFromSinglePathSegment,
   backofficeContextScopeRoutePath,
+  type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
 import { createTelegramAutomationFileResponse } from "@/backoffice-runtime/telegram-file-response";
 import {
@@ -60,8 +61,10 @@ import {
   runBackofficeCodemode,
   type BackofficeCodemodeExecuteResult,
 } from "@/fragno/codemode/execute";
+import { isMarketplaceInternalArtifactPath } from "@/fragno/marketplace/artifacts";
 import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import {
   BACKOFFICE_PI_WORKFLOW_NAME,
   PI_BILLING_ORGANIZATION_ID_METADATA_KEY,
@@ -780,6 +783,17 @@ type RouterUpdateRouteInput = AutomationRouteUpdateInput & { orgId: string; labe
 
 type RouterSeedStarterInput = { orgId: string };
 
+type MarketplaceInstallTargetScope = Extract<
+  BackofficeRoutableScope,
+  { kind: "org" } | { kind: "project" }
+>;
+
+type MarketplaceInstallInput = {
+  targetScope: MarketplaceInstallTargetScope;
+  slug: string;
+  version: string;
+};
+
 type DeepPartial<T> = T extends readonly (infer TItem)[]
   ? readonly DeepPartial<TItem>[]
   : T extends object
@@ -857,6 +871,9 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
     };
     capability: {
       configured(input: CapabilityConfiguredInput): BackofficeScenarioStep;
+    };
+    marketplace: {
+      install(input: MarketplaceInstallInput): BackofficeScenarioStep;
     };
     automation: {
       ingestEvent(input: AutomationEvent): BackofficeScenarioStep;
@@ -2797,6 +2814,93 @@ const buildStepBuilders = <
           "auth.removeMember",
           `remove ${input.userId} from ${input.orgId}`,
           (ctx) => removeScenarioAuthMember(ctx.runtime, input),
+        ),
+    },
+    marketplace: {
+      install: (input) =>
+        createStep(
+          "when",
+          "marketplace.install",
+          `install Marketplace entry ${input.slug}@${input.version} into ${backofficeContextScopeRoutePath(input.targetScope)}`,
+          async (ctx) => {
+            ctx.rememberOrg(input.targetScope.orgId);
+            const entry = getStaticMarketplaceEntry({
+              slug: input.slug,
+              version: input.version,
+            });
+            if (!entry) {
+              throw new Error(
+                `Scenario Marketplace installation could not find static entry '${input.slug}@${input.version}'.`,
+              );
+            }
+
+            const listingId = marketplaceListingId({
+              ownerScope: entry.owner.scope,
+              slug: entry.slug,
+            });
+            const automations = ctx.runtime.objects.automations.forOrg(input.targetScope.orgId);
+
+            await automations.requestStaticMarketplacePublications();
+            await ctx.drain();
+
+            const requested = await automations.requestMarketplaceIngestion(
+              {
+                listingId,
+                version: entry.version,
+                targetScope: input.targetScope,
+              },
+              {
+                execution: createBackofficeSystemExecution({
+                  kind: "org",
+                  orgId: input.targetScope.orgId,
+                }),
+                propagationContext: null,
+              },
+            );
+            if (requested.state === "failed") {
+              throw new Error(
+                `Scenario Marketplace installation request failed for '${listingId}@${entry.version}': ${requested.error.message}`,
+              );
+            }
+
+            await ctx.drain();
+
+            const installed = await automations.getMarketplaceIngestion({
+              listingId,
+              targetScope: input.targetScope,
+            });
+            if (installed?.version !== entry.version) {
+              throw new Error(
+                `Scenario Marketplace installation did not complete for '${listingId}@${entry.version}'.`,
+              );
+            }
+
+            const execution = createBackofficeSystemExecution(input.targetScope);
+            const installedFileSystem = await createBackofficeFileSystem({
+              objects: ctx.runtime.objects,
+              kernel: new BackofficeKernel(ctx.runtime.services),
+              execution,
+              config: ctx.runtime.config,
+            });
+            const scenarioFileSystem =
+              input.targetScope.kind === "project"
+                ? ctx.files.forProject(input.targetScope.projectId)
+                : ctx.files.forOrg(input.targetScope.orgId);
+
+            // Scenario workflow execution uses a session filesystem, while Marketplace ingestion
+            // writes through Upload. Mirror the installed result so later steps execute those files.
+            for (const relativePath of Object.keys(entry.files)) {
+              if (isMarketplaceInternalArtifactPath(relativePath)) {
+                continue;
+              }
+              const workspacePath = `/workspace/${relativePath}`;
+              await scenarioFileSystem.writeFile(
+                workspacePath,
+                await installedFileSystem.readFileBuffer(workspacePath),
+              );
+            }
+          },
+          { drain: false },
         ),
     },
     capability: {

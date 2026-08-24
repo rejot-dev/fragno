@@ -3479,7 +3479,7 @@ describe("runtime tool reference generation", () => {
         filesSeedExecute(input: InternalFilesSeedExecuteInput): Promise<InternalFilesSeedExecuteOutput>;
         /** Configure a project-scoped database-backed workspace filesystem. */
         projectFilesConfigure(input: InternalProjectFilesConfigureInput): Promise<InternalProjectFilesConfigureOutput>;
-        /** Seed the default database-backed automation routes. */
+        /** Reconcile the scope-appropriate database-backed starter automation routes. */
         automationsRoutesSeedStarter(input: InternalAutomationsRoutesSeedStarterInput): Promise<InternalAutomationsRoutesSeedStarterOutput>;
         /** Push the bundled static entries into the marketplace. */
         marketplacePush(input: InternalMarketplacePushInput): Promise<InternalMarketplacePushOutput>;
@@ -3513,6 +3513,7 @@ describe("runtime tool reference generation", () => {
       type InternalAutomationsRoutesSeedStarterInput = Record<string, unknown>;
       type InternalAutomationsRoutesSeedStarterOutput = {
         created: string[];
+        removed: string[];
         skipped: string[];
       };
       type InternalMarketplacePushInput = {

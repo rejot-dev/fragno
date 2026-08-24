@@ -30,6 +30,7 @@ import {
   automationActorsSchema,
   BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY,
 } from "@/fragno/automation/actors";
+import type { AutomationEvent } from "@/fragno/automation/contracts";
 import {
   CODEMODE_CAPABILITY_ACTOR,
   CODEMODE_WORKFLOW,
@@ -103,6 +104,79 @@ const TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE =
   BASE_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_ARTIFACT_FILE_KEY];
 const UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE =
   UPDATED_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_ARTIFACT_FILE_KEY];
+function githubPullRequestWebhookEvent(action: "opened" | "synchronize"): AutomationEvent {
+  const repository = {
+    id: 1001,
+    name: "backoffice",
+    full_name: "ada-labs/backoffice",
+    private: false,
+    html_url: "https://github.com/ada-labs/backoffice",
+  };
+  const sender = {
+    id: 42,
+    login: "ada",
+    type: "User",
+    html_url: "https://github.com/ada",
+  };
+
+  return {
+    id: `github:pull-request:${action}:delivery-1`,
+    scope: { kind: "org", orgId: "org-1" },
+    source: "github",
+    eventType: "webhook.received",
+    occurredAt: "2026-08-24T12:00:00.000Z",
+    payload: {
+      deliveryId: `delivery-${action}`,
+      githubEvent: "pull_request",
+      action,
+      installationId: "installation-1",
+      repository,
+      pullRequest: {
+        id: 2001,
+        number: 17,
+        title: "Accept complete GitHub pull request refs",
+        state: "open",
+        head: {
+          label: "ada:feature/pull-request-refs",
+          ref: "feature/pull-request-refs",
+          sha: "head-sha",
+          user: sender,
+          repo: repository,
+        },
+        base: {
+          label: "ada-labs:main",
+          ref: "main",
+          sha: "base-sha",
+          user: sender,
+          repo: repository,
+        },
+      },
+      sender,
+      raw: {},
+    },
+    actors: {
+      initiator: {
+        scope: "external",
+        source: "github",
+        type: "user",
+        id: String(sender.id),
+        role: "initiator",
+      },
+      principal: null,
+      delegation: [],
+    },
+    subject: {
+      orgId: "org-1",
+      installationId: "installation-1",
+      accountId: String(sender.id),
+      accountLogin: sender.login,
+      repositoryId: String(repository.id),
+      repositoryFullName: repository.full_name,
+      pullRequestNumber: "17",
+    },
+  };
+}
+
 const UNAUTHORIZED_MARKETPLACE_INSTALL_WORKFLOW_SOURCE = `defineWorkflow(
   { name: "unauthorized-marketplace-install" },
   async (_event, step) => {
@@ -276,6 +350,261 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               versions: ["1.3.0", "1.2.1", "1.1.0", "1.0.0"],
             });
           }),
+        ],
+      }),
+    );
+  });
+
+  test("installs Telegram and GitHub Channel event definitions and routes", async () => {
+    const telegramChannelListingId = marketplaceListingId({
+      ownerScope: { kind: "system" },
+      slug: "telegram-channel",
+    });
+    const githubChannelListingId = marketplaceListingId({
+      ownerScope: { kind: "system" },
+      slug: "github-channel",
+    });
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "install the built-in Telegram and GitHub channels",
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ when, then, runner }) => [
+          then.assert("publish the built-in Marketplace channels", async (ctx) => {
+            await ctx.runtime.objects.automations
+              .forOrg("org-1")
+              .requestStaticMarketplacePublications();
+          }),
+          runner.drain(),
+          then.assert("request both channel installations", async (ctx) => {
+            const automations = ctx.runtime.objects.automations.forOrg("org-1");
+            const execution = {
+              execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+              propagationContext: null,
+            };
+
+            await expect(
+              automations.requestMarketplaceIngestion(
+                {
+                  listingId: telegramChannelListingId,
+                  version: "1.0.0",
+                  targetScope: { kind: "org", orgId: "org-1" },
+                },
+                execution,
+              ),
+            ).resolves.toMatchObject({ state: "requested", version: "1.0.0" });
+            await expect(
+              automations.requestMarketplaceIngestion(
+                {
+                  listingId: githubChannelListingId,
+                  version: "1.0.0",
+                  targetScope: { kind: "org", orgId: "org-1" },
+                },
+                execution,
+              ),
+            ).resolves.toMatchObject({ state: "requested", version: "1.0.0" });
+          }),
+          runner.drain(),
+          then.assert("both channels own their installed routes", async (ctx) => {
+            const automations = ctx.runtime.objects.automations.forOrg("org-1");
+            const expectedRoutes = [
+              ["telegram-start-linking", telegramChannelListingId],
+              ["telegram-identity-claim-completed", telegramChannelListingId],
+              ["telegram-pi-linking", telegramChannelListingId],
+              ["github-issues-opened-reclassify", githubChannelListingId],
+              ["github-issue-comment-created-reclassify", githubChannelListingId],
+              ["github-pull-request-opened-reclassify", githubChannelListingId],
+              ["github-pull-request-synchronize-reclassify", githubChannelListingId],
+              ["github-push-reclassify", githubChannelListingId],
+            ] as const;
+
+            for (const [routeId, listingId] of expectedRoutes) {
+              const response = await automations.fetch(
+                new Request(`https://automations.test/api/automations/routes/${routeId}`),
+              );
+              assert(response.ok);
+              await expect(response.json()).resolves.toMatchObject({
+                id: routeId,
+                metadata: {
+                  managedBy: {
+                    kind: "marketplace",
+                    listingId,
+                    version: "1.0.0",
+                  },
+                },
+              });
+            }
+
+            for (const eventType of [
+              "issues.opened",
+              "issue_comment.created",
+              "pull_request.opened",
+              "pull_request.synchronize",
+              "push",
+            ]) {
+              await expect(
+                automations.getEventDefinition({ source: "github", eventType }),
+              ).resolves.toMatchObject({
+                source: "github",
+                eventType,
+                enabled: true,
+              });
+            }
+          }),
+          then.files.exists({
+            orgId: "org-1",
+            path: "/workspace/automations/telegram-user-linking.workflow.js",
+          }),
+          then.files.exists({
+            orgId: "org-1",
+            path: "/workspace/automations/telegram-user-pi-linking.workflow.js",
+          }),
+          when.automation.ingestEvent(githubPullRequestWebhookEvent("opened")),
+          when.automation.ingestEvent(githubPullRequestWebhookEvent("synchronize")),
+          runner.drain(),
+          then.automation.event({
+            scope: { kind: "org", orgId: "org-1" },
+            where: { source: "github", eventType: "pull_request.opened" },
+            expected: {
+              payload: {
+                pullRequest: {
+                  head: {
+                    label: "ada:feature/pull-request-refs",
+                    user: { login: "ada" },
+                    repo: { full_name: "ada-labs/backoffice" },
+                  },
+                  base: {
+                    label: "ada-labs:main",
+                    user: { login: "ada" },
+                    repo: { full_name: "ada-labs/backoffice" },
+                  },
+                },
+              },
+            },
+          }),
+          then.automation.event({
+            scope: { kind: "org", orgId: "org-1" },
+            where: { source: "github", eventType: "pull_request.synchronize" },
+            expected: {
+              payload: {
+                pullRequest: {
+                  head: {
+                    label: "ada:feature/pull-request-refs",
+                    user: { login: "ada" },
+                    repo: { full_name: "ada-labs/backoffice" },
+                  },
+                  base: {
+                    label: "ada-labs:main",
+                    user: { login: "ada" },
+                    repo: { full_name: "ada-labs/backoffice" },
+                  },
+                },
+              },
+            },
+          }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
+  test("installs Telegram Channel into project and personal scopes", async () => {
+    const telegramChannelListingId = marketplaceListingId({
+      ownerScope: { kind: "system" },
+      slug: "telegram-channel",
+    });
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "install Telegram Channel outside the organization scope",
+        setup: ({ given }) => [
+          given.organization.exists({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "user-1",
+          }),
+        ],
+        steps: ({ when, then, runner }) => [
+          when.project.create({
+            orgId: "org-1",
+            slug: "telegram-project",
+            name: "Telegram Project",
+            createdByUserId: "user-1",
+            captureIdAs: "projectId",
+          }),
+          runner.drain(),
+          then.assert("publish the built-in Marketplace channels", async (ctx) => {
+            await ctx.runtime.objects.automations
+              .forOrg("org-1")
+              .requestStaticMarketplacePublications();
+          }),
+          runner.drain(),
+          then.assert("request project and personal installations", async (ctx) => {
+            const projectId = ctx.vars.projectId;
+            assert(typeof projectId === "string");
+            const automations = ctx.runtime.objects.automations.forOrg("org-1");
+            const execution = {
+              execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+              propagationContext: null,
+            };
+
+            for (const targetScope of [
+              { kind: "project", orgId: "org-1", projectId },
+              { kind: "user", userId: "user-1" },
+            ] as const) {
+              await expect(
+                automations.requestMarketplaceIngestion(
+                  {
+                    listingId: telegramChannelListingId,
+                    version: "1.0.0",
+                    targetScope,
+                  },
+                  execution,
+                ),
+              ).resolves.toMatchObject({ state: "requested", version: "1.0.0" });
+            }
+          }),
+          runner.drain(),
+          then.assert("both scopes contain the installed Telegram routes", async (ctx) => {
+            const projectId = ctx.vars.projectId;
+            assert(typeof projectId === "string");
+            const installationOwner = ctx.runtime.objects.automations.forOrg("org-1");
+
+            for (const targetScope of [
+              { kind: "project", orgId: "org-1", projectId },
+              { kind: "user", userId: "user-1" },
+            ] as const) {
+              await expect(
+                installationOwner.getMarketplaceIngestion({
+                  listingId: telegramChannelListingId,
+                  targetScope,
+                }),
+              ).resolves.toMatchObject({ version: "1.0.0" });
+
+              const targetAutomations = ctx.runtime.objects.automations.for(targetScope);
+              for (const routeId of [
+                "telegram-start-linking",
+                "telegram-identity-claim-completed",
+                "telegram-pi-linking",
+              ]) {
+                const response = await targetAutomations.fetch(
+                  new Request(`https://automations.test/api/automations/routes/${routeId}`),
+                );
+                assert(response.ok);
+                await expect(response.json()).resolves.toMatchObject({
+                  id: routeId,
+                  metadata: {
+                    managedBy: {
+                      kind: "marketplace",
+                      listingId: telegramChannelListingId,
+                      version: "1.0.0",
+                    },
+                  },
+                });
+              }
+            }
+          }),
+          then.workflow.noErrored({ orgId: "org-1" }),
         ],
       }),
     );

@@ -22,7 +22,13 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
-import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+import { defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+
+const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
+  targetScope: { kind: "org", orgId: "org-1" },
+  slug: "telegram-channel",
+  version: "1.0.0",
+} as const;
 
 const telegramMessageEvent = ({
   id,
@@ -107,7 +113,7 @@ const telegramLinkingExecution = (event: AutomationEvent) =>
     event,
     authority: {
       mode: { kind: "organization-automation" },
-      automationId: "automation-route:telegram-user-linking",
+      automationId: "automation-route:telegram-start-linking",
     },
   });
 
@@ -117,13 +123,11 @@ const telegramLinkingWorkflowRequest = (event: AutomationEvent) => ({
   execution: telegramLinkingExecution(event),
 });
 
-describe("starter OTP linking automation in memory", () => {
+describe("Telegram Channel OTP linking automation in memory", () => {
   test("routes Telegram /start through OTP confirmation and links the Telegram chat", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "starter telegram /start links a chat through OTP",
-
-        files: backofficeFiles.workspaceStarter(),
 
         fakes: ({ fake }) => ({
           telegram: fake.telegram(),
@@ -138,6 +142,7 @@ describe("starter OTP linking automation in memory", () => {
         ],
 
         steps: ({ when, then }) => [
+          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
           when.telegram.receivesMessage({
             orgId: "org-1",
             updateId: 10_001,
@@ -236,8 +241,6 @@ describe("starter OTP linking automation in memory", () => {
       defineBackofficeScenario({
         name: "starter telegram /start creates event-keyed linking workflows",
 
-        files: backofficeFiles.workspaceStarter(),
-
         fakes: ({ fake }) => ({
           telegram: fake.telegram(),
         }),
@@ -251,6 +254,7 @@ describe("starter OTP linking automation in memory", () => {
         ],
 
         steps: ({ when, then }) => [
+          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
           when.telegram.receivesMessage({
             orgId: "org-1",
             updateId: 10_001,
@@ -296,7 +300,6 @@ describe("starter OTP linking automation in memory", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "starter telegram /start resolves an already linked chat",
-        files: backofficeFiles.workspaceStarter(),
         fakes: ({ fake }) => ({ telegram: fake.telegram() }),
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
@@ -311,6 +314,7 @@ describe("starter OTP linking automation in memory", () => {
           }),
         ],
         steps: ({ when, then }) => [
+          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
           when.workflow.createInstance({
             orgId: "org-1",
             remoteWorkflowName: "telegram-user-linking",
@@ -353,8 +357,6 @@ describe("starter OTP linking automation in memory", () => {
       defineBackofficeScenario({
         name: "starter OTP completion without workflow binding is ignored",
 
-        files: backofficeFiles.workspaceStarter(),
-
         fakes: ({ fake }) => ({
           telegram: fake.telegram(),
         }),
@@ -368,6 +370,7 @@ describe("starter OTP linking automation in memory", () => {
         ],
 
         steps: ({ when, then }) => [
+          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
           when.otp.confirmClaim({
             orgId: "org-1",
             otpId: "otp-missing-binding",
@@ -388,8 +391,6 @@ describe("starter OTP linking automation in memory", () => {
       defineBackofficeScenario({
         name: "telegram-user-linking skips non-start Telegram events",
 
-        files: backofficeFiles.workspaceStarter(),
-
         fakes: ({ fake }) => ({
           telegram: fake.telegram(),
         }),
@@ -403,6 +404,7 @@ describe("starter OTP linking automation in memory", () => {
         ],
 
         steps: ({ when, then }) => [
+          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
           when.workflow.createInstance({
             orgId: "org-1",
             remoteWorkflowName: "telegram-user-linking",
@@ -430,8 +432,6 @@ describe("starter OTP linking automation in memory", () => {
       defineBackofficeScenario({
         name: "telegram-user-linking rejects a mismatched OTP claim",
 
-        files: backofficeFiles.workspaceStarter(),
-
         fakes: ({ fake }) => ({
           telegram: fake.telegram(),
         }),
@@ -445,6 +445,7 @@ describe("starter OTP linking automation in memory", () => {
         ],
 
         steps: ({ when, then }) => [
+          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
           when.workflow.createInstance({
             orgId: "org-1",
             remoteWorkflowName: "telegram-user-linking",
@@ -495,8 +496,6 @@ describe("starter OTP linking automation in memory", () => {
       defineBackofficeScenario({
         name: "telegram-user-linking claim wait times out",
 
-        files: backofficeFiles.workspaceStarter(),
-
         options: {
           allowErroredWorkflows: true,
         },
@@ -514,6 +513,7 @@ describe("starter OTP linking automation in memory", () => {
         ],
 
         steps: ({ when, then }) => [
+          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
           when.workflow.createInstance({
             orgId: "org-1",
             remoteWorkflowName: "telegram-user-linking",

@@ -9,7 +9,6 @@ import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { createFileTree } from "@/file-collection/create-file-tree";
-import { STARTER_AUTOMATION_ROUTES } from "@/fragno/automation/content/starter-routing";
 
 import {
   FilesExplorerView as FilesExplorerViewComponent,
@@ -65,13 +64,24 @@ describe("FilesExplorerView", () => {
 
   test("shows only routes that start the selected workflow path", () => {
     const workflowPath = "/workspace/automations/telegram-user-linking.workflow.js";
-    const route = STARTER_AUTOMATION_ROUTES.find(
-      (candidate) =>
-        candidate.action.kind === "start_workflow" &&
-        candidate.action.workflowScriptPath === workflowPath,
-    );
-    assert(route);
-    assert(route.action.kind === "start_workflow");
+    const route = {
+      id: "telegram-start-linking",
+      name: "Telegram /start identity linking",
+      enabled: true,
+      priority: 100,
+      trigger: {
+        kind: "event" as const,
+        source: "telegram",
+        eventType: "message.received",
+        matcher: { path: "$.payload.text", op: "eq" as const, value: "/start" },
+      },
+      action: {
+        kind: "start_workflow" as const,
+        authority: { kind: "organization-automation" as const },
+        workflowScriptPath: workflowPath,
+        instanceIdTemplate: "telegram-link-${event.id}",
+      },
+    };
     const markup = renderToStaticMarkup(
       <MemoryRouter>
         <FilesExplorerViewComponent

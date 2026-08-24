@@ -7,6 +7,31 @@ import {
 } from "./static-entries";
 
 describe("static Marketplace entries", () => {
+  test("includes the Telegram Channel and GitHub Channel", () => {
+    expect(
+      ["telegram-channel", "github-channel"].map((slug) =>
+        getStaticMarketplaceEntry({ slug, version: "1.0.0" }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        slug: "telegram-channel",
+        metadata: expect.objectContaining({ name: "Telegram Channel" }),
+        files: expect.objectContaining({
+          ".marketplace/install.workflow.js": expect.any(String),
+          "automations/telegram-user-linking.workflow.js": expect.any(String),
+          "automations/telegram-user-pi-linking.workflow.js": expect.any(String),
+        }),
+      }),
+      expect.objectContaining({
+        slug: "github-channel",
+        metadata: expect.objectContaining({ name: "GitHub Channel" }),
+        files: expect.objectContaining({
+          ".marketplace/install.workflow.js": expect.any(String),
+        }),
+      }),
+    ]);
+  });
+
   test("rejects duplicate parsed manifest versions", () => {
     expect(() =>
       marketplaceManifestSchema.parse({

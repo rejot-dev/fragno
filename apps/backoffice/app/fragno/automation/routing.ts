@@ -149,6 +149,7 @@ export type AutomationRouteDefinition = {
 
 export type StarterAutomationRoutesSeedResult = {
   created: string[];
+  removed: string[];
   skipped: string[];
 };
 
