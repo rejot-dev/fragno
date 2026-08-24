@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 
 import {
@@ -70,12 +70,38 @@ export function DashboardTerminalPanel({
   const autocompleteListId = useId();
   const autocompleteListRef = useRef<HTMLDivElement>(null);
   const autocompleteItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [quakeAutocompleteMaxHeight, setQuakeAutocompleteMaxHeight] = useState<number>();
 
   useEffect(() => {
     if (focusInput) {
       terminal.inputRef.current?.focus();
     }
   }, [focusInput, terminal.inputRef]);
+
+  useEffect(() => {
+    if (!terminal.autocompleteOpen || presentation !== "quake") {
+      setQuakeAutocompleteMaxHeight(undefined);
+      return undefined;
+    }
+
+    function fitQuakeAutocompleteToViewport() {
+      const list = autocompleteListRef.current;
+      if (!list) {
+        return;
+      }
+
+      const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+      const desiredMenuHeight = Math.min(rootFontSize * 18, window.innerHeight * 0.4);
+      const availableHeight = Math.max(window.innerHeight - list.getBoundingClientRect().top, 0);
+      setQuakeAutocompleteMaxHeight(Math.min(availableHeight, desiredMenuHeight));
+    }
+
+    fitQuakeAutocompleteToViewport();
+    window.addEventListener("resize", fitQuakeAutocompleteToViewport);
+    return () => {
+      window.removeEventListener("resize", fitQuakeAutocompleteToViewport);
+    };
+  }, [presentation, terminal.autocompleteOpen, terminal.autocompleteSuggestions.length]);
 
   useEffect(() => {
     if (!terminal.autocompleteOpen) {
@@ -92,6 +118,11 @@ export function DashboardTerminalPanel({
     const itemBottom = itemTop + item.offsetHeight;
     const visibleTop = list.scrollTop;
     const visibleBottom = visibleTop + list.clientHeight;
+
+    if (item.offsetHeight >= list.clientHeight) {
+      list.scrollTop = itemTop;
+      return;
+    }
 
     if (itemTop < visibleTop) {
       list.scrollTop = itemTop;
@@ -123,10 +154,11 @@ export function DashboardTerminalPanel({
           ref={autocompleteListRef}
           role="listbox"
           aria-label={terminal.autocompleteMode === "history" ? "Command history" : "Suggestions"}
-          className={
-            isQuakeTerminal
-              ? "max-h-[min(18rem,40vh)] overflow-auto py-1"
-              : "max-h-64 overflow-auto py-1"
+          className={isQuakeTerminal ? "overflow-auto py-1" : "max-h-64 overflow-auto py-1"}
+          style={
+            isQuakeTerminal && quakeAutocompleteMaxHeight !== undefined
+              ? { maxHeight: quakeAutocompleteMaxHeight }
+              : undefined
           }
         >
           {terminal.autocompleteSuggestions.map((suggestion, index) => {
@@ -145,7 +177,7 @@ export function DashboardTerminalPanel({
                   event.preventDefault();
                   terminal.onAutocompleteSuggestionMouseDown(suggestion);
                 }}
-                className={`flex w-full items-start gap-3 px-3 py-2 text-left font-mono text-xs transition-colors ${
+                className={`flex min-h-16 w-full items-start gap-3 px-3 py-2 text-left font-mono text-xs transition-colors ${
                   isActive
                     ? "bg-[var(--bo-accent-bg)] font-semibold text-[var(--bo-accent-fg)] shadow-[inset_3px_0_0_var(--bo-accent)]"
                     : "text-[var(--bo-fg)] hover:bg-[var(--bo-panel-2)]"
@@ -265,6 +297,14 @@ export function DashboardTerminalPanel({
               value={terminal.command}
               onChange={(event) => {
                 terminal.onCommandChange(event.target.value);
+              }}
+              onKeyDownCapture={(event) => {
+                if (event.key !== "Escape" || !terminal.autocompleteOpen) {
+                  return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                terminal.closeAutocomplete();
               }}
               onKeyDown={terminal.onCommandKeyDown}
               placeholder="Run a bash command (e.g. ls /workspace, pwd, find /static)"

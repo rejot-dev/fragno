@@ -1,18 +1,16 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { useGlobalHotkey } from "@/components/backoffice/global-hotkeys";
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
+import { DashboardTerminalPanel } from "@/routes/backoffice/dashboard-terminal-panel";
+import { BACKOFFICE_TERMINAL_COMMAND_SPECS } from "@/routes/backoffice/terminal-commands";
 
-import { DashboardTerminalPanel } from "../dashboard-terminal-panel";
-import { BACKOFFICE_TERMINAL_COMMAND_SPECS } from "../terminal-commands";
-import {
-  automationScopeBasePath,
-  automationScopeTerminalCommandPath,
-  type AutomationUiScope,
-} from "./scope";
+import { useGlobalHotkey } from "./global-hotkeys";
 
 type QuakeTerminalProps = {
-  selectedScope: AutomationUiScope;
+  scope: BackofficeContextScope;
+  scopeLabel: string;
 };
 
 function isEditableKeyboardTarget(target: EventTarget | null) {
@@ -23,10 +21,11 @@ function isEditableKeyboardTarget(target: EventTarget | null) {
   );
 }
 
-export function QuakeTerminal({ selectedScope }: QuakeTerminalProps) {
+export function QuakeTerminal({ scope, scopeLabel }: QuakeTerminalProps) {
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
-  const scopePath = automationScopeBasePath(selectedScope);
+  const scopePath = backofficeContextScopeRoutePath(scope);
+  const terminalActionPath = `/backoffice/automations/${scopePath}/terminal-command`;
 
   useEffect(() => {
     setMounted(true);
@@ -65,7 +64,14 @@ export function QuakeTerminal({ selectedScope }: QuakeTerminalProps) {
     id: "close-quake-terminal",
     key: "Escape",
     enabled: open,
-    handler() {
+    handler(event) {
+      if (
+        event.target instanceof HTMLInputElement &&
+        event.target.name === "command" &&
+        event.target.getAttribute("aria-expanded") === "true"
+      ) {
+        return;
+      }
       setOpen(false);
     },
   });
@@ -108,8 +114,8 @@ export function QuakeTerminal({ selectedScope }: QuakeTerminalProps) {
       <section
         role="dialog"
         aria-modal="true"
-        aria-label={`${selectedScope.label} terminal`}
-        className={`absolute top-0 right-0 left-0 flex h-[min(48vh,32rem)] min-h-[20rem] flex-col overflow-visible border-b border-[color:var(--bo-border-strong)] bg-[color:color-mix(in_srgb,var(--bo-panel)_74%,transparent)] shadow-[0_28px_90px_rgba(0,0,0,0.22)] backdrop-blur-3xl transition-transform duration-200 ease-out motion-reduce:transition-none ${
+        aria-label={`${scopeLabel} terminal`}
+        className={`absolute top-0 right-0 left-0 flex h-[min(32rem,calc(100dvh-5rem))] min-h-0 flex-col overflow-visible border-b border-[color:var(--bo-border-strong)] bg-[color:color-mix(in_srgb,var(--bo-panel)_74%,transparent)] shadow-[0_28px_90px_rgba(0,0,0,0.22)] backdrop-blur-3xl transition-transform duration-200 ease-out motion-reduce:transition-none ${
           open ? "translate-y-0" : "-translate-y-[calc(100%+2rem)]"
         }`}
       >
@@ -141,10 +147,10 @@ export function QuakeTerminal({ selectedScope }: QuakeTerminalProps) {
         <DashboardTerminalPanel
           key={scopePath}
           scopeId={scopePath}
-          scopeName={selectedScope.label}
-          actionPath={automationScopeTerminalCommandPath(selectedScope)}
+          scopeName={scopeLabel}
+          actionPath={terminalActionPath}
           commandSpecs={BACKOFFICE_TERMINAL_COMMAND_SPECS}
-          description={`Commands run directly in the ${selectedScope.label} ${selectedScope.kind} scope.`}
+          description={`Commands run directly in the ${scopeLabel} ${scope.kind} scope.`}
           presentation="quake"
           focusInput={open}
         />

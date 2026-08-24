@@ -650,10 +650,6 @@ export const useDashboardTerminal = ({
   }, [snapshot.entries]);
 
   useEffect(() => {
-    queueInputSelection();
-  }, []);
-
-  useEffect(() => {
     if (autocompleteOpen && autocompleteSuggestions.length === 0) {
       setAutocompleteOpen(false);
     }
@@ -703,6 +699,7 @@ export const useDashboardTerminal = ({
   };
 
   const onCommandChange = (nextValue: string) => {
+    const insertedText = nextValue.length > command.length;
     setCommand(nextValue);
 
     if (historyIndex !== -1) {
@@ -714,7 +711,7 @@ export const useDashboardTerminal = ({
       setActiveAutocompleteIndex(0);
     }
 
-    if (!disabled && (nextValue.endsWith(".") || nextValue.endsWith(" "))) {
+    if (!disabled && insertedText && (nextValue.endsWith(".") || nextValue.endsWith(" "))) {
       openAutocomplete("completion");
     }
   };

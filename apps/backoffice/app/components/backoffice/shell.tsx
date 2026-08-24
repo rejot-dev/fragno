@@ -1,5 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 
+import {
+  backofficeContextScopeLabel,
+  type BackofficeContextScope,
+} from "@/backoffice-runtime/context";
 import { scheduleBackofficeTokenRefresh } from "@/fragno/auth/browser-auth.client";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
@@ -7,6 +11,7 @@ import { BackofficeClsDebugger } from "./cls-debugger";
 import { CurrentBackofficeProvider, type CurrentBackofficeContext } from "./current-context";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
 import { GlobalWorkflowDrawer } from "./global-workflow-drawer";
+import { QuakeTerminal } from "./quake-terminal";
 import { BackofficeSidebarNav } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
 
@@ -17,6 +22,24 @@ type BackofficeShellProps = {
   currentContext: CurrentBackofficeContext | null;
   isLoading?: boolean;
 };
+
+function backofficeTerminalScopeLabel(scope: BackofficeContextScope, me: BackofficeMeData | null) {
+  if (scope.kind === "org" || scope.kind === "project") {
+    const organization = me?.organizations.find(
+      (entry) => entry.organization.id === scope.orgId,
+    )?.organization;
+    const organizationLabel = organization?.name ?? scope.orgId;
+    return scope.kind === "project"
+      ? `${organizationLabel} / ${scope.projectId}`
+      : organizationLabel;
+  }
+
+  if (scope.kind === "user" && me?.user.id === scope.userId) {
+    return me.user.email ?? scope.userId;
+  }
+
+  return backofficeContextScopeLabel(scope);
+}
 
 export function BackofficeShell(props: BackofficeShellProps) {
   const shell = (
@@ -102,6 +125,12 @@ function BackofficeShellFrame({
           setWorkflowDrawerOpen(false);
         }}
       />
+      {currentContext ? (
+        <QuakeTerminal
+          scope={currentContext.scope}
+          scopeLabel={backofficeTerminalScopeLabel(currentContext.scope, me)}
+        />
+      ) : null}
     </div>
   );
 }

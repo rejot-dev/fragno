@@ -32,7 +32,6 @@ import {
   toExternalId,
 } from "./data.server";
 import type { AutomationLayoutContext, AutomationTab } from "./layout-context";
-import { QuakeTerminal } from "./quake-terminal";
 import {
   automationScopeBasePath,
   automationScopeFromRouteParams,
@@ -442,7 +441,6 @@ export default function BackofficeAutomationScopeLayout({
           </Suspense>
         </ClientOnly>
       )}
-      <QuakeTerminal selectedScope={loaderData.selectedScope} />
     </div>
   );
 }
