@@ -1,14 +1,9 @@
-import { vi } from "vitest";
+import { vi, type Mock } from "vitest";
 
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
-import {
-  resendFragmentDefinition,
-  type ResendEmailReceivedHookPayload,
-  type ResendEmailStatusUpdatedHookPayload,
-  type ResendFragmentConfig,
-} from "./definition";
+import { resendFragmentDefinition, type ResendFragmentConfig } from "./definition";
 import {
   resendRoutesFactory,
   type ResendDomainDetail,
@@ -27,10 +22,8 @@ import type { ResendEmailMessageRow, ResendThreadRow } from "./routes/context";
 import { resendSchema } from "./schema";
 
 type MockFn = ReturnType<typeof vi.fn>;
-type OnEmailStatusUpdatedMock = MockFn &
-  ((payload: ResendEmailStatusUpdatedHookPayload) => void | Promise<void>);
-type OnEmailReceivedMock = MockFn &
-  ((payload: ResendEmailReceivedHookPayload) => void | Promise<void>);
+type OnEmailStatusUpdatedMock = Mock<NonNullable<ResendFragmentConfig["onEmailStatusUpdated"]>>;
+type OnEmailReceivedMock = Mock<NonNullable<ResendFragmentConfig["onEmailReceived"]>>;
 
 export const sendMock: MockFn = vi.fn();
 export const verifyMock: MockFn = vi.fn();
@@ -154,8 +147,8 @@ interface ResendTestCallRoute {
 }
 
 export const createResendTestContext = async () => {
-  const onEmailStatusUpdatedMock = vi.fn() as OnEmailStatusUpdatedMock;
-  const onEmailReceivedMock = vi.fn() as OnEmailReceivedMock;
+  const onEmailStatusUpdatedMock: OnEmailStatusUpdatedMock = vi.fn();
+  const onEmailReceivedMock: OnEmailReceivedMock = vi.fn();
 
   const config: ResendFragmentConfig = {
     apiKey: "re_test",
