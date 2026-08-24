@@ -216,11 +216,19 @@ export const createCodemodeDispatchers = (
 
 export type DynamicWorkerRpcTargetMap = Record<string, unknown>;
 
-export type DynamicWorkerEntrypointRunOptions<TEntrypoint, TResult> = {
+/** Preserves the disposable custom promise returned directly by a Cloudflare RPC call. */
+export type DynamicWorkerRpcCall<TResult extends object> = Promise<TResult> & {
+  [Symbol.dispose](): void;
+};
+
+export type DynamicWorkerEntrypointRunOptions<TEntrypoint, TResult extends object> = {
   bundle: WorkerBundle;
   globalOutbound?: Fetcher | null;
   rpcTargets?: DynamicWorkerRpcTargetMap;
-  run: (entrypoint: TEntrypoint, rpcTargets: DynamicWorkerRpcTargetMap) => Promise<TResult>;
+  run: (
+    entrypoint: TEntrypoint,
+    rpcTargets: DynamicWorkerRpcTargetMap,
+  ) => DynamicWorkerRpcCall<TResult>;
 };
 
 export class DynamicWorkerExecutor {
@@ -301,7 +309,7 @@ export class DynamicWorkerExecutor {
     ].join("\n");
   }
 
-  async runEntrypoint<TEntrypoint, TResult>({
+  async runEntrypoint<TEntrypoint, TResult extends object>({
     bundle,
     globalOutbound = this.#globalOutbound,
     rpcTargets = {},
@@ -324,6 +332,7 @@ export class DynamicWorkerExecutor {
       try {
         return await rpcResult;
       } finally {
+        // The in-memory WorkerLoader returns native promises; production RPC calls are disposable.
         (rpcResult as unknown as Partial<Disposable>)[Symbol.dispose]?.();
       }
     } finally {
@@ -342,7 +351,7 @@ export class DynamicWorkerExecutor {
   }> {
     return await this.runEntrypoint<
       {
-        evaluate(rpcTargets: DynamicWorkerRpcTargetMap): Promise<{
+        evaluate(rpcTargets: DynamicWorkerRpcTargetMap): DynamicWorkerRpcCall<{
           result: unknown;
           error?: string;
           logs?: string[];
@@ -358,7 +367,7 @@ export class DynamicWorkerExecutor {
     >({
       bundle,
       rpcTargets,
-      run: async (entrypoint, targets) => await entrypoint.evaluate(targets),
+      run: (entrypoint, targets) => entrypoint.evaluate(targets),
     });
   }
 }

@@ -17,6 +17,7 @@ import {
   DynamicWorkerExecutor,
   createCodemodeDispatchers,
   createCodemodeProviderProxySource,
+  type DynamicWorkerRpcCall,
 } from "./codemode-executor";
 import {
   createBackofficeCodemodeResolvedProviders,
@@ -55,7 +56,7 @@ type WorkflowWorkerEntrypoint<TParams, TOutput> = {
     stepTarget: WorkflowStepTarget,
     agentTarget: CodemodeWorkflowAgentTarget | null,
     dispatchers: Record<string, unknown>,
-  ): Promise<WorkflowWorkerResult<TOutput>>;
+  ): DynamicWorkerRpcCall<WorkflowWorkerResult<TOutput>>;
 };
 
 export type BackofficeCodemodeWorkflowOptions = {
@@ -366,8 +367,8 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
   >({
     bundle: compiled.bundle,
     rpcTargets: { agentTarget, dispatchers, stepTarget },
-    run: async (entrypoint, rpcTargets) =>
-      await entrypoint.run(
+    run: (entrypoint, rpcTargets) =>
+      entrypoint.run(
         {
           ...event,
           id: event.id ?? event.instanceId,
