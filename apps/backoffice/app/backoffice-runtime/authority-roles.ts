@@ -64,6 +64,8 @@ const INTERNAL_SERVICE_AUTHORITY_ROLE_GRANTS = {
   automation: [
     BACKOFFICE_PERMISSION.workflow.executeCode,
     BACKOFFICE_PERMISSION.connections.manage,
+    BACKOFFICE_PERMISSION.events.manage,
+    BACKOFFICE_PERMISSION.events.read,
     BACKOFFICE_PERMISSION.identity.resolve,
     BACKOFFICE_PERMISSION.internal.manage,
     BACKOFFICE_PERMISSION.otp.create,
