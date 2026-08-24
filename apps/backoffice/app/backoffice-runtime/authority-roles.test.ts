@@ -37,6 +37,7 @@ const automationRuntimePermissions = [
 ];
 
 const automationAuthoringPermissions = [
+  BACKOFFICE_PERMISSION.api.connectionsRead,
   BACKOFFICE_PERMISSION.capabilities.read,
   BACKOFFICE_PERMISSION.events.emit,
   BACKOFFICE_PERMISSION.events.manage,
@@ -100,10 +101,11 @@ describe("Backoffice authority role grants", () => {
 
   test("organization members can use organization-scoped automation authoring tools", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["organization-member"]).toEqual([
+      BACKOFFICE_PERMISSION.api.connectionsRead,
       BACKOFFICE_PERMISSION.capabilities.read,
       BACKOFFICE_PERMISSION.connections.manage,
       BACKOFFICE_PERMISSION.connections.read,
-      ...automationAuthoringPermissions.slice(1),
+      ...automationAuthoringPermissions.slice(2),
     ]);
   });
 

@@ -11,6 +11,7 @@ import {
 const USER_AUTHORITY_ROLE_GRANTS = {
   "system-administrator": allBackofficePermissionRequirements,
   "user-owner": [
+    BACKOFFICE_PERMISSION.api.connectionsRead,
     BACKOFFICE_PERMISSION.capabilities.read,
     BACKOFFICE_PERMISSION.events.emit,
     BACKOFFICE_PERMISSION.events.manage,
@@ -31,6 +32,7 @@ const USER_AUTHORITY_ROLE_GRANTS = {
     BACKOFFICE_PERMISSION.workflow.read,
   ],
   "organization-member": [
+    BACKOFFICE_PERMISSION.api.connectionsRead,
     BACKOFFICE_PERMISSION.capabilities.read,
     BACKOFFICE_PERMISSION.connections.manage,
     BACKOFFICE_PERMISSION.connections.read,
