@@ -148,6 +148,12 @@ const createScopedContextProxySource = () => String.raw`
       }
     });
     const context = {
+      getCurrentScope: async () => {
+        const resJson = await __dispatchers.__context.call("getCurrentScope", __stringifyForCodemode([]));
+        const data = __parseForCodemode(resJson);
+        if (data.error) throw new Error(data.error);
+        return data.result;
+      },
       get current() { return __createScopedContextHandle({ kind: "current" }); },
       org: (orgId) => __createScopedContextHandle({ kind: "org", orgId: String(orgId) }),
       user: (userId) => __createScopedContextHandle({ kind: "user", userId: String(userId) }),

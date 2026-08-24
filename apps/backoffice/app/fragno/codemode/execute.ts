@@ -135,6 +135,7 @@ const createBackofficeScopedCodemodeProvider = ({
 }) => ({
   name: "__context",
   fns: {
+    getCurrentScope: async () => context.execution.scope,
     callScoped: async (rawInput: unknown) => {
       const input = rawInput as ScopedCodemodeCallInput;
       const currentScope = context.execution.scope;
