@@ -4,6 +4,7 @@ packages:
   - apps/*
   - packages/*
   - packages-private/*
+  - .pi/extensions/*
   - scripts
 
 catalog:

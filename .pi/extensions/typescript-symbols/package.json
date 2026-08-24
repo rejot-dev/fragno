@@ -1,0 +1,28 @@
+{
+  "name": "@fragno-private/pi-typescript-symbols-extension",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "types:check": "tsc --noEmit",
+    "format:package": "node ../../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "dependencies": {
+    "@fragno-dev/typescript-symbols": "workspace:*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.2",
+    "@earendil-works/pi-tui": "^0.84.2",
+    "@fragno-private/typescript-config": "workspace:*",
+    "@types/node": "^22.19.7",
+    "typescript": "catalog:"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
