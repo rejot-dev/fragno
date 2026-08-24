@@ -341,7 +341,7 @@ describe("Auth session organization bootstrap", () => {
       new Request("https://backoffice.example/api/auth/backoffice-token", {
         method: "POST",
         headers: { cookie, "content-type": "application/json" },
-        body: JSON.stringify({ organizationId }),
+        body: JSON.stringify({ selection: "required", organizationId }),
       }),
     );
     assert(tokenResponse.status === 200);

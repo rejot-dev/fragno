@@ -11,13 +11,18 @@ import {
   createBackofficeIdentityChangeHeaders,
   getBackofficeMe,
 } from "@/fragno/auth/auth-server";
+import { issueBackofficeTokenResultSchema } from "@/fragno/auth/contracts";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
+import { readPreferredOrganization } from "@/fragno/auth/preferred-organization.client";
+import { readBackofficeSessionExchangeErrorMessage } from "@/fragno/auth/session-exchange-error";
+import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 
 import type { Route } from "./+types/login";
 import {
   buildBackofficeAuthBootstrapPath,
   buildBackofficeSignUpPath,
   readBackofficeReturnTo,
+  retargetBackofficeOrganizationReturnTo,
 } from "./auth-navigation";
 
 type BackofficeLoginLoaderData = {
@@ -47,12 +52,76 @@ const loginActionInputSchema = z.discriminatedUnion("intent", [
     intent: z.literal("sign_in"),
     email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
     password: z.string().min(1),
+    preferredOrganizationId: z.string().trim().default(""),
   }),
   z.object({
     intent: z.literal("resend"),
     email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
   }),
 ]);
+
+const organizationProvisioningResponseSchema = z.object({
+  status: z.literal("organization_provisioning"),
+  retryAfterMs: z.number().int().positive(),
+});
+
+function mergeRequestCookiesWithResponseCookies(request: Request, response: Response): string {
+  const cookies = new Map<string, string>();
+  for (const cookie of request.headers.get("cookie")?.split(";") ?? []) {
+    const separator = cookie.indexOf("=");
+    if (separator > 0) {
+      cookies.set(cookie.slice(0, separator).trim(), cookie.slice(separator + 1).trim());
+    }
+  }
+  for (const setCookie of getSetCookieHeaders(response.headers)) {
+    const cookie = setCookie.split(";", 1)[0];
+    const separator = cookie.indexOf("=");
+    if (separator > 0) {
+      cookies.set(cookie.slice(0, separator).trim(), cookie.slice(separator + 1).trim());
+    }
+  }
+  return [...cookies].map(([name, value]) => `${name}=${value}`).join("; ");
+}
+
+async function exchangeSignedInSessionForBackofficeJwt(
+  request: Request,
+  context: Route.ActionArgs["context"],
+  signInResponse: Response,
+  preferredOrganizationId: string | null,
+): Promise<{
+  response: Response;
+  organizationId: string | null;
+}> {
+  const headers = new Headers(request.headers);
+  headers.set("cookie", mergeRequestCookiesWithResponseCookies(request, signInResponse));
+  const sessionRequest = new Request(request.url, { headers });
+  const startedAt = Date.now();
+
+  while (true) {
+    const response = await callBetterAuth(sessionRequest, context, "/backoffice-token", {
+      method: "POST",
+      body: JSON.stringify({
+        selection: "preferred",
+        organizationId: preferredOrganizationId,
+      }),
+    });
+    if (response.status !== 202) {
+      if (!response.ok) {
+        throw new Error(await readBackofficeSessionExchangeErrorMessage(response));
+      }
+      const result = issueBackofficeTokenResultSchema.parse(await response.clone().json());
+      return { response, organizationId: result.organizationId };
+    }
+
+    const provisioning = organizationProvisioningResponseSchema.parse(await response.json());
+    if (Date.now() - startedAt + provisioning.retryAfterMs > 15_000) {
+      throw new Error("Your organisation could not be created in time. Try signing in again.");
+    }
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, provisioning.retryAfterMs);
+    });
+  }
+}
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
   if (import.meta.env.MODE !== "development") {
@@ -130,8 +199,18 @@ export async function action({ request, context, url }: Route.ActionArgs) {
             message: error?.message || "Unable to sign in.",
           } satisfies BackofficeLoginActionData);
     }
-    return redirect(buildBackofficeAuthBootstrapPath(returnTo), {
-      headers: createBackofficeIdentityChangeHeaders(response),
+    const exchange = await exchangeSignedInSessionForBackofficeJwt(
+      request,
+      context,
+      response,
+      input.data.preferredOrganizationId || null,
+    );
+    const headers = createBackofficeIdentityChangeHeaders(response);
+    for (const setCookie of getSetCookieHeaders(exchange.response.headers)) {
+      headers.append("Set-Cookie", setCookie);
+    }
+    return redirect(retargetBackofficeOrganizationReturnTo(returnTo, exchange.organizationId), {
+      headers,
     });
   } catch (error) {
     return {
@@ -241,7 +320,17 @@ export default function BackofficeLogin() {
                   GitHub access is required for release approvals.
                 </p>
               )}
-              <Form method="post" className="space-y-3">
+              <Form
+                method="post"
+                className="space-y-3"
+                onSubmit={(event) => {
+                  const input = event.currentTarget.elements.namedItem("preferredOrganizationId");
+                  if (input instanceof HTMLInputElement) {
+                    input.value = readPreferredOrganization() ?? "";
+                  }
+                }}
+              >
+                <input type="hidden" name="preferredOrganizationId" />
                 <div className="border-t border-[color:var(--bo-border)] pt-4">
                   <p className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                     Sign in with password

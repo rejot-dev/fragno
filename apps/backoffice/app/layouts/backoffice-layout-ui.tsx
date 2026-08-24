@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { Outlet, isRouteErrorResponse, useRouteError } from "react-router";
 
 import { BackofficePageHeader, BackofficeShell } from "@/components/backoffice";
+import { writePreferredOrganization } from "@/fragno/auth/preferred-organization.client";
 import { getRouteErrorDebugDetails } from "@/routes/backoffice/route-errors";
 
 import type { Route } from "./+types/backoffice-layout";
@@ -20,6 +21,11 @@ export default function BackofficeLayout({
     automationCollectionSource,
     projectCollectionSource,
   } = loaderData;
+
+  useEffect(() => {
+    writePreferredOrganization(me.activeOrganizationId);
+  }, [me.activeOrganizationId]);
+
   return (
     <BackofficeShell
       me={me}

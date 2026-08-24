@@ -3,12 +3,12 @@ import { redirect } from "react-router";
 import { getBackofficeMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/index";
-import { buildBackofficeSessionEntryPath } from "./auth-navigation";
+import { buildBackofficeAuthBootstrapPath } from "./auth-navigation";
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
   const jwtMe = await getBackofficeMe(request, context);
   if (jwtMe.status !== "authenticated") {
-    return redirect(buildBackofficeSessionEntryPath(`${url.pathname}${url.search}`));
+    return redirect(buildBackofficeAuthBootstrapPath(`${url.pathname}${url.search}`));
   }
 
   const me = jwtMe.me;

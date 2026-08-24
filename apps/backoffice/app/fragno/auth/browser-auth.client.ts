@@ -7,7 +7,7 @@ import {
   readPreferredOrganization,
   writePreferredOrganization,
 } from "./preferred-organization.client";
-import { exchangePreferredBackofficeSessionForJwt } from "./session-exchange.client";
+import { exchangeBackofficeSessionForJwt } from "./session-exchange.client";
 
 const TOKEN_REFRESH_LEEWAY_MS = 60_000;
 
@@ -24,8 +24,8 @@ export function recordIssuedBackofficeToken(result: IssueBackofficeTokenResult):
 async function issueRefreshedBackofficeAccessToken(
   fetchImplementation: typeof fetch,
 ): Promise<IssueBackofficeTokenResult> {
-  const result = await exchangePreferredBackofficeSessionForJwt(
-    readPreferredOrganization(),
+  const result = await exchangeBackofficeSessionForJwt(
+    { selection: "preferred", organizationId: readPreferredOrganization() },
     fetchImplementation,
   );
   writePreferredOrganization(result.organizationId);

@@ -3,7 +3,7 @@ import { Outlet, redirect, useOutletContext } from "react-router";
 import { getBackofficeMe } from "@/fragno/auth/auth-server";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
-import { buildBackofficeSessionEntryPath } from "../auth-navigation";
+import { buildBackofficeAuthBootstrapPath } from "../auth-navigation";
 import type { Route } from "./+types/layout";
 
 export const middleware: Route.MiddlewareFunction[] = [
@@ -11,7 +11,7 @@ export const middleware: Route.MiddlewareFunction[] = [
     const authentication = await getBackofficeMe(request, context);
     if (authentication.status !== "authenticated") {
       const url = new URL(request.url);
-      throw redirect(buildBackofficeSessionEntryPath(`${url.pathname}${url.search}`));
+      throw redirect(buildBackofficeAuthBootstrapPath(`${url.pathname}${url.search}`));
     }
 
     if (authentication.me.user.role !== "admin") {

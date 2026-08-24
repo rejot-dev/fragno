@@ -92,7 +92,11 @@ export class BackofficeTokenGrantForbiddenError extends Error {
 
 export type ResolveBackofficeScopeTokenGrant = (
   adapter: BetterAuthAdapter,
-  input: { userId: string; scope: BackofficeContextScope | null },
+  input: {
+    userId: string;
+    scope: BackofficeContextScope | null;
+    organizationSelection: "preferred" | "required";
+  },
 ) => Promise<BackofficeTokenGrantResolution>;
 
 function generateBackofficeDeviceUserCode(): string {
@@ -314,6 +318,7 @@ export async function exchangeBackofficeOAuthAccessToken(
     grant = await resolveGrant(authContext.adapter, {
       userId: oauthPayload.sub,
       scope: input.scope,
+      organizationSelection: input.scope ? "required" : "preferred",
     });
   } catch (error) {
     if (error instanceof BackofficeTokenGrantForbiddenError) {

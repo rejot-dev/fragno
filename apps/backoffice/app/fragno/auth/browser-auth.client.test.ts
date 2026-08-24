@@ -51,33 +51,26 @@ describe("Backoffice browser authentication", () => {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ organizationId: "org-1" }),
+      body: JSON.stringify({ selection: "preferred", organizationId: "org-1" }),
     });
     assert(localStorage.getItem("fragno-backoffice-default-organization") === "org-1");
   });
 
-  test("repairs a stale preferred organization during refresh", async () => {
+  test("stores the server fallback for a stale preferred organization", async () => {
     localStorage.setItem("fragno-backoffice-default-organization", "org-stale");
     const fetchImplementation = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(new Response("Organization unavailable", { status: 403 }))
-      .mockResolvedValueOnce(
+      .mockResolvedValue(
         Response.json({ expiresAt: "2026-08-11T12:15:00.000Z", organizationId: "org-current" }),
       );
 
     await refreshBackofficeAccessToken(fetchImplementation);
 
-    expect(fetchImplementation).toHaveBeenNthCalledWith(1, "/api/auth/backoffice-token", {
+    expect(fetchImplementation).toHaveBeenCalledWith("/api/auth/backoffice-token", {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ organizationId: "org-stale" }),
-    });
-    expect(fetchImplementation).toHaveBeenNthCalledWith(2, "/api/auth/backoffice-token", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ organizationId: null }),
+      body: JSON.stringify({ selection: "preferred", organizationId: "org-stale" }),
     });
     assert(localStorage.getItem("fragno-backoffice-default-organization") === "org-current");
   });

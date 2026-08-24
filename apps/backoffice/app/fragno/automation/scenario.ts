@@ -3355,7 +3355,7 @@ const buildStepBuilders = <
           async (ctx) => {
             const response = await scenarioAuthRequest(ctx, "/backoffice-token", {
               cookie: await resolveScenarioValue(ctx, input.cookie),
-              body: {},
+              body: { selection: "preferred", organizationId: null },
             });
             if (!response.ok) {
               throw new Error(`Backoffice token exchange failed (${response.status}).`);
@@ -3379,7 +3379,7 @@ const buildStepBuilders = <
             const organizationId = await resolveScenarioValue(ctx, input.organizationId);
             const response = await scenarioAuthRequest(ctx, "/backoffice-token", {
               cookie: await resolveScenarioValue(ctx, input.cookie),
-              body: { organizationId },
+              body: { selection: "required", organizationId },
             });
             if (!response.ok) {
               throw new Error(`Expected Backoffice token access to ${organizationId}.`);

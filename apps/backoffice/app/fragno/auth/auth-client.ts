@@ -306,7 +306,10 @@ export const authClient = {
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ organizationId: input.body.organizationId }),
+        body: JSON.stringify({
+          selection: "required",
+          organizationId: input.body.organizationId,
+        }),
       });
       if (!response.ok) {
         throw new Error((await response.text()) || "Unable to switch organisation.");

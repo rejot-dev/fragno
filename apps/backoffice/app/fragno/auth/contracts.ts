@@ -76,9 +76,15 @@ export type BackofficeMeData = {
   invitations: OrganizationInvitationSummary[];
 };
 
-export type IssueBackofficeTokenInput = {
-  organizationId?: string | null;
-};
+export type IssueBackofficeTokenInput =
+  | {
+      selection: "preferred";
+      organizationId: string | null;
+    }
+  | {
+      selection: "required";
+      organizationId: string;
+    };
 
 export type IssueBackofficeTokenResult = {
   expiresAt: string;
@@ -180,9 +186,16 @@ export const backofficeMeDataSchema = z.object({
   invitations: z.array(organizationInvitationSummarySchema),
 }) satisfies z.ZodType<BackofficeMeData>;
 
-export const issueBackofficeTokenInputSchema = z.object({
-  organizationId: z.string().trim().min(1).nullable().optional(),
-}) satisfies z.ZodType<IssueBackofficeTokenInput>;
+export const issueBackofficeTokenInputSchema = z.discriminatedUnion("selection", [
+  z.object({
+    selection: z.literal("preferred"),
+    organizationId: z.string().trim().min(1).nullable(),
+  }),
+  z.object({
+    selection: z.literal("required"),
+    organizationId: z.string().trim().min(1),
+  }),
+]) satisfies z.ZodType<IssueBackofficeTokenInput>;
 
 export const issueBackofficeTokenResultSchema = z.object({
   expiresAt: z.iso.datetime(),

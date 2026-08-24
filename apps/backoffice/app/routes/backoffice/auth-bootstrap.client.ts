@@ -19,11 +19,14 @@ export async function bootstrapBackofficePreferredOrganization(
 }
 
 export async function bootstrapBackofficeSession(
-  organizationId: string | null,
+  organizationId: string,
   writePreference: (organizationId: string | null) => void,
   fetchImplementation: typeof fetch = fetch,
 ) {
-  const result = await exchangeBackofficeSessionForJwt(organizationId, fetchImplementation);
+  const result = await exchangeBackofficeSessionForJwt(
+    { selection: "required", organizationId },
+    fetchImplementation,
+  );
   writePreference(result.organizationId);
   recordIssuedBackofficeToken(result);
   return result;

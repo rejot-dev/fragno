@@ -82,13 +82,16 @@ describe("Backoffice auth bootstrap", () => {
       );
 
     await expect(
-      exchangeBackofficeSessionForJwt("org-preferred", fetchImplementation),
+      exchangeBackofficeSessionForJwt(
+        { selection: "preferred", organizationId: "org-preferred" },
+        fetchImplementation,
+      ),
     ).resolves.toEqual({ expiresAt: "2026-08-11T12:15:00.000Z", organizationId: "org-1" });
     expect(fetchImplementation).toHaveBeenCalledWith("/api/auth/backoffice-token", {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ organizationId: "org-preferred" }),
+      body: JSON.stringify({ selection: "preferred", organizationId: "org-preferred" }),
     });
   });
 
@@ -135,17 +138,11 @@ describe("Backoffice auth bootstrap", () => {
     ).rejects.toThrow("Your organisation could not be created in time");
   });
 
-  test("repairs a preferred organization left behind by another account", async () => {
+  test("accepts the server fallback for a preferred organization left by another account", async () => {
     const writePreference = vi.fn();
     const fetchImplementation = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        Response.json(
-          { message: "The requested organization is not available to this user." },
-          { status: 403 },
-        ),
-      )
-      .mockResolvedValueOnce(
+      .mockResolvedValue(
         Response.json({ expiresAt: "2026-08-11T12:15:00.000Z", organizationId: "org-fallback" }),
       );
 
@@ -155,17 +152,11 @@ describe("Backoffice auth bootstrap", () => {
       fetchImplementation,
     );
 
-    expect(fetchImplementation).toHaveBeenNthCalledWith(1, "/api/auth/backoffice-token", {
+    expect(fetchImplementation).toHaveBeenCalledWith("/api/auth/backoffice-token", {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ organizationId: "org-stale" }),
-    });
-    expect(fetchImplementation).toHaveBeenNthCalledWith(2, "/api/auth/backoffice-token", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ organizationId: null }),
+      body: JSON.stringify({ selection: "preferred", organizationId: "org-stale" }),
     });
     expect(writePreference).toHaveBeenCalledWith("org-fallback");
   });

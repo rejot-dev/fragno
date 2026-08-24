@@ -10,8 +10,8 @@ import { getBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
 import {
+  buildBackofficeAuthBootstrapPath,
   buildBackofficeOrganizationSwitchPath,
-  buildBackofficeSessionEntryPath,
 } from "@/routes/backoffice/auth-navigation";
 
 import type { Route } from "./+types/backoffice-layout";
@@ -32,7 +32,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   const returnTo = `${url.pathname}${url.search}`;
   const jwtMe = await getBackofficeMe(request, context);
   if (jwtMe.status !== "authenticated") {
-    throw redirect(buildBackofficeSessionEntryPath(returnTo));
+    throw redirect(buildBackofficeAuthBootstrapPath(returnTo));
   }
   const me = jwtMe.me;
   const accessTokenExpiresAt = jwtMe.expiresAt.toISOString();

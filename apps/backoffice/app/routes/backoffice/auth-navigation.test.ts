@@ -5,7 +5,6 @@ import {
   BACKOFFICE_LOGIN_PATH,
   buildBackofficeLoginPath,
   buildBackofficeOrganizationSwitchPath,
-  buildBackofficeSessionEntryPath,
   buildBackofficeSignUpPath,
   readBackofficeOrganizationSwitchId,
   readBackofficeReturnTo,
@@ -72,14 +71,6 @@ describe("backoffice auth navigation helpers", () => {
     const signUpPath = buildBackofficeSignUpPath(returnTo);
 
     assert(readBackofficeReturnTo(signUpPath) === returnTo);
-  });
-
-  test("builds session-aware entry paths under the Better Auth cookie path", () => {
-    assert(buildBackofficeSessionEntryPath() === "/api/auth/backoffice-entry");
-    assert(
-      buildBackofficeSessionEntryPath("/backoffice/settings?tab=members") ===
-        "/api/auth/backoffice-entry?returnTo=%2Fbackoffice%2Fsettings%3Ftab%3Dmembers",
-    );
   });
 
   test("builds organization switch paths with an explicit destination", () => {

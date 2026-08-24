@@ -68,7 +68,7 @@ describe("Better Auth Durable Object SQLite", () => {
 
     const tokenResponse = await authRequest(stub, "/backoffice-token", {
       cookie,
-      body: { organizationId },
+      body: { selection: "required", organizationId },
     });
     if (!tokenResponse.ok) {
       assert.fail(await tokenResponse.text());

@@ -2,7 +2,6 @@ export const BACKOFFICE_HOME_PATH = "/backoffice";
 export const BACKOFFICE_LOGIN_PATH = "/backoffice/login";
 export const BACKOFFICE_SIGN_UP_PATH = "/backoffice/sign-up";
 export const BACKOFFICE_AUTH_BOOTSTRAP_PATH = "/backoffice/auth/bootstrap";
-export const BACKOFFICE_SESSION_ENTRY_PATH = "/api/auth/backoffice-entry";
 const BACKOFFICE_RETURN_TO_PARAM = "returnTo";
 const BACKOFFICE_ORGANIZATION_ID_PARAM = "organizationId";
 
@@ -71,10 +70,6 @@ export function buildBackofficeSignUpPath(returnTo?: string | null): string {
 
 export function buildBackofficeAuthBootstrapPath(returnTo?: string | null): string {
   return buildBackofficeAuthPath(BACKOFFICE_AUTH_BOOTSTRAP_PATH, returnTo);
-}
-
-export function buildBackofficeSessionEntryPath(returnTo?: string | null): string {
-  return buildBackofficeAuthPath(BACKOFFICE_SESSION_ENTRY_PATH, returnTo);
 }
 
 /** Exchanges the browser JWT for the destination organization before opening the return path. */

@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { issueBackofficeTokenResultSchema, type IssueBackofficeTokenResult } from "./contracts";
+import {
+  type IssueBackofficeTokenInput,
+  issueBackofficeTokenResultSchema,
+  type IssueBackofficeTokenResult,
+} from "./contracts";
+import { readBackofficeSessionExchangeErrorMessage } from "./session-exchange-error";
 
 const organizationProvisioningResponseSchema = z.object({
   status: z.literal("organization_provisioning"),
@@ -27,28 +32,15 @@ export class BackofficeSessionExchangeError extends Error {
   }
 }
 
-async function readSessionExchangeErrorMessage(response: Response): Promise<string> {
-  const responseText = (await response.text()).trim();
-  if (!responseText) {
-    return "Unable to prepare the Backoffice session.";
-  }
-  try {
-    const payload = JSON.parse(responseText) as { message?: unknown };
-    return typeof payload.message === "string" ? payload.message : responseText;
-  } catch {
-    return responseText;
-  }
-}
-
 export async function exchangeBackofficeSessionForJwt(
-  organizationId: string | null,
+  input: IssueBackofficeTokenInput,
   fetchImplementation: typeof fetch = fetch,
 ): Promise<IssueBackofficeTokenResult> {
   const response = await fetchImplementation("/api/auth/backoffice-token", {
     method: "POST",
     credentials: "same-origin",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ organizationId }),
+    body: JSON.stringify(input),
   });
   if (response.status === 202) {
     const provisioning = organizationProvisioningResponseSchema.parse(await response.json());
@@ -57,7 +49,7 @@ export async function exchangeBackofficeSessionForJwt(
   if (!response.ok) {
     throw new BackofficeSessionExchangeError(
       response.status,
-      await readSessionExchangeErrorMessage(response),
+      await readBackofficeSessionExchangeErrorMessage(response),
     );
   }
   return issueBackofficeTokenResultSchema.parse(await response.json());
@@ -76,8 +68,8 @@ export async function waitForPreferredBackofficeSessionForJwt(
   const startedAt = now();
   while (true) {
     try {
-      return await exchangePreferredBackofficeSessionForJwt(
-        preferredOrganizationId,
+      return await exchangeBackofficeSessionForJwt(
+        { selection: "preferred", organizationId: preferredOrganizationId },
         fetchImplementation,
       );
     } catch (error) {
@@ -91,23 +83,5 @@ export async function waitForPreferredBackofficeSessionForJwt(
       }
       await sleep(error.retryAfterMs);
     }
-  }
-}
-
-export async function exchangePreferredBackofficeSessionForJwt(
-  preferredOrganizationId: string | null,
-  fetchImplementation: typeof fetch = fetch,
-): Promise<IssueBackofficeTokenResult> {
-  try {
-    return await exchangeBackofficeSessionForJwt(preferredOrganizationId, fetchImplementation);
-  } catch (error) {
-    if (
-      !preferredOrganizationId ||
-      !(error instanceof BackofficeSessionExchangeError) ||
-      error.status !== 403
-    ) {
-      throw error;
-    }
-    return await exchangeBackofficeSessionForJwt(null, fetchImplementation);
   }
 }

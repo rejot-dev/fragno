@@ -487,7 +487,11 @@ const findStoreUser = async (
 
 async function resolveBackofficeScopeTokenGrant(
   adapter: BetterAuthAdapter,
-  input: { userId: string; scope: BackofficeContextScope | null },
+  input: {
+    userId: string;
+    scope: BackofficeContextScope | null;
+    organizationSelection: "preferred" | "required";
+  },
 ): Promise<BackofficeTokenGrantResolution> {
   const storedUser = await findStoreUser(adapter, input.userId);
   if (!storedUser || normalizeBoolean(storedUser.banned)) {
@@ -546,22 +550,35 @@ async function resolveBackofficeScopeTokenGrant(
   const requestedOrganizationScope =
     input.scope?.kind === "org" || input.scope?.kind === "project" ? input.scope : null;
   const defaultMembership = memberships[0];
-  if (!requestedOrganizationScope && !defaultMembership) {
+  if (!defaultMembership) {
+    if (requestedOrganizationScope && input.organizationSelection === "required") {
+      throw new BackofficeTokenGrantForbiddenError(
+        "The requested Backoffice scope is not available to this user.",
+      );
+    }
     return { status: "organization_provisioning", retryAfterMs: 250 };
   }
 
-  const selectedScope = requestedOrganizationScope ?? {
-    kind: "org" as const,
-    orgId: defaultMembership.organizationId,
-  };
-  const selectedMembership = memberships.find(
-    (membership) => membership.organizationId === selectedScope.orgId,
-  );
-  if (!selectedMembership) {
+  const requestedMembership = requestedOrganizationScope
+    ? memberships.find(
+        (membership) => membership.organizationId === requestedOrganizationScope.orgId,
+      )
+    : null;
+  if (
+    requestedOrganizationScope &&
+    !requestedMembership &&
+    input.organizationSelection === "required"
+  ) {
     throw new BackofficeTokenGrantForbiddenError(
       "The requested Backoffice scope is not available to this user.",
     );
   }
+
+  const selectedMembership = requestedMembership ?? defaultMembership;
+  const selectedScope: BackofficeContextScope =
+    requestedMembership && requestedOrganizationScope
+      ? requestedOrganizationScope
+      : { kind: "org", orgId: selectedMembership.organizationId };
 
   return {
     status: "ready",

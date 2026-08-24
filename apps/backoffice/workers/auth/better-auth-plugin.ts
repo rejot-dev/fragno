@@ -1,7 +1,6 @@
 import { type BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthEndpoint, sessionMiddleware } from "better-auth/api";
 import { deleteSessionCookie } from "better-auth/cookies";
-import { z } from "zod";
 
 import { issueBackofficeTokenInputSchema } from "@/fragno/auth/contracts";
 import {
@@ -9,10 +8,6 @@ import {
   backofficeAccessTokenCookieName,
   issueBackofficeJwt,
 } from "@/fragno/auth/token-lifecycle";
-import {
-  buildBackofficeAuthBootstrapPath,
-  buildBackofficeLoginPath,
-} from "@/routes/backoffice/auth-navigation";
 
 import {
   BackofficeTokenGrantForbiddenError,
@@ -26,33 +21,6 @@ export function createBackofficeTokenPlugin(input: {
   return {
     id: "fragno-backoffice-token",
     endpoints: {
-      enterBackoffice: createAuthEndpoint(
-        "/backoffice-entry",
-        {
-          method: "GET",
-          query: z.object({ returnTo: z.string().optional() }),
-        },
-        async function enterBackofficeWithSession(context) {
-          const returnTo = context.query.returnTo;
-          const sessionToken = await context.getSignedCookie(
-            context.context.authCookies.sessionToken.name,
-            context.context.secret,
-          );
-          const session = sessionToken
-            ? await context.context.internalAdapter.findSession(sessionToken)
-            : null;
-          const sessionIsValid = Boolean(
-            session && session.session.expiresAt.getTime() > Date.now(),
-          );
-          if (!sessionIsValid && sessionToken) {
-            deleteSessionCookie(context);
-          }
-          const destination = sessionIsValid
-            ? buildBackofficeAuthBootstrapPath(returnTo)
-            : buildBackofficeLoginPath(returnTo);
-          throw context.redirect(new URL(destination, context.context.baseURL).toString());
-        },
-      ),
       clearBackofficeToken: createAuthEndpoint(
         "/backoffice-sign-out",
         { method: "POST", requireHeaders: true },
@@ -91,6 +59,7 @@ export function createBackofficeTokenPlugin(input: {
               scope: context.body.organizationId
                 ? { kind: "org", orgId: context.body.organizationId }
                 : null,
+              organizationSelection: context.body.selection,
             });
           } catch (error) {
             if (error instanceof BackofficeTokenGrantForbiddenError) {

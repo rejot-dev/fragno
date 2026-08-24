@@ -87,42 +87,6 @@ const signUp = async () => {
   return { runtime, auth, user: result.user, sessionCookie: cookieHeader(response) };
 };
 
-describe("Backoffice session-aware entry", () => {
-  test("redirects signed-out browsers directly to login", async () => {
-    const runtime = await createInMemoryBackofficeRuntime({
-      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false" },
-    });
-    runtimes.push(runtime);
-
-    const response = await authRequest(
-      runtime.objects.auth.singleton(),
-      "/backoffice-entry?returnTo=%2Fbackoffice%2Fsettings",
-    );
-
-    assert(response.status === 302);
-    assert(
-      response.headers.get("location") ===
-        "https://backoffice.example/backoffice/login?returnTo=%2Fbackoffice%2Fsettings",
-    );
-  });
-
-  test("sends authenticated Better Auth sessions to token bootstrap", async () => {
-    const { auth, sessionCookie } = await signUp();
-
-    const response = await authRequest(
-      auth,
-      "/backoffice-entry?returnTo=%2Fbackoffice%2Fsettings",
-      { cookie: sessionCookie },
-    );
-
-    assert(response.status === 302);
-    assert(
-      response.headers.get("location") ===
-        "https://backoffice.example/backoffice/auth/bootstrap?returnTo=%2Fbackoffice%2Fsettings",
-    );
-  });
-});
-
 describe("Backoffice token exchange", () => {
   test("exchanges a session for a scoped cookie and serves current-user data with only that cookie", async () => {
     const { runtime, auth, user, sessionCookie } = await signUp();
@@ -131,7 +95,7 @@ describe("Backoffice token exchange", () => {
 
     const tokenResponse = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
-      body: { organizationId },
+      body: { selection: "required", organizationId },
     });
     if (!tokenResponse.ok) {
       assert.fail(await tokenResponse.text());
@@ -198,7 +162,7 @@ describe("Backoffice token exchange", () => {
     );
   });
 
-  test("validates an organization preference and falls back deterministically when absent", async () => {
+  test("requires explicit organizations and falls back from unavailable preferences", async () => {
     const { auth, sessionCookie } = await signUp();
     vi.advanceTimersByTime(1_000);
     const createOrganizationResponse = await authRequest(auth, "/organization/create", {
@@ -212,14 +176,14 @@ describe("Backoffice token exchange", () => {
 
     const requestedResponse = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
-      body: { organizationId: secondOrganization.id },
+      body: { selection: "required", organizationId: secondOrganization.id },
     });
     assert(requestedResponse.status === 200);
     expect(await requestedResponse.json()).toMatchObject({ organizationId: secondOrganization.id });
 
     const rejectedResponse = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
-      body: { organizationId: "unavailable-organization" },
+      body: { selection: "required", organizationId: "unavailable-organization" },
     });
     assert(rejectedResponse.status === 403);
 
@@ -230,7 +194,7 @@ describe("Backoffice token exchange", () => {
 
     const fallbackResponse = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
-      body: {},
+      body: { selection: "preferred", organizationId: "unavailable-organization" },
     });
     assert(fallbackResponse.status === 200);
     expect(await fallbackResponse.json()).toMatchObject({ organizationId: expectedFallback });
@@ -246,7 +210,7 @@ describe("Backoffice token exchange", () => {
 
     const response = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
-      body: {},
+      body: { selection: "preferred", organizationId: null },
     });
 
     assert(response.status === 202, `${response.status}: ${await response.clone().text()}`);
@@ -282,7 +246,7 @@ describe("Backoffice token exchange", () => {
 
     const revokedSessionResponse = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
-      body: {},
+      body: { selection: "preferred", organizationId: null },
     });
     assert(revokedSessionResponse.status === 401);
   });
@@ -302,7 +266,7 @@ describe("Backoffice token exchange", () => {
 
     const response = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
-      body: {},
+      body: { selection: "preferred", organizationId: null },
     });
     assert(response.status === 403);
     expect(getSetCookieHeaders(response.headers)).toEqual([]);
