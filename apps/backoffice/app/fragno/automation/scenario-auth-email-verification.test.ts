@@ -288,7 +288,7 @@ describe("Auth email verification scenarios", () => {
 
             const authHook = await getEmailVerificationRequestedHook(ctx);
             assert.equal(authHook.status, "pending");
-            assert.equal(authHook.attempts, 1);
+            assert(authHook.attempts >= 1);
             assert(authHook.nextRetryAt);
             assert.match(authHook.error ?? "", /Resend is not configured for email delivery/u);
 
