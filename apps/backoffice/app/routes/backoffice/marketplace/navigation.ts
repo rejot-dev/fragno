@@ -52,10 +52,6 @@ export function buildArtifactVersionPath(
 ): string {
   const search = new URLSearchParams(currentSearch);
   search.set("artifactVersion", nextVersion);
-  const currentTab = search.get("artifactTab");
-  if (currentTab !== "files" && currentTab !== "workflows") {
-    search.set("artifactTab", "files");
-  }
 
   const selectedPath = search.get("artifactPath")?.trim();
   const currentVersionRoot = `/artifact/${currentVersion}`;

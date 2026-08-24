@@ -1,4 +1,4 @@
-import { Link, Outlet } from "react-router";
+import { Outlet } from "react-router";
 
 import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
@@ -18,7 +18,6 @@ import {
 const MARKETPLACE_TABS = [
   { id: "marketplace" as const, label: "Marketplace" },
   { id: "installed" as const, label: "Installed" },
-  { id: "my-listings" as const, label: "My listings" },
 ];
 
 const currentTabFromPath = (pathname: string): MarketplaceTab => {
@@ -99,21 +98,10 @@ function MarketplaceWorkspaceHeader({
   }));
 
   return (
-    <section className="bo-fragment-surface bo-panel-surface overflow-hidden bg-[var(--bo-header-bg)]">
+    <section className="bo-fragment-surface overflow-hidden bg-[var(--bo-header-bg)]">
       <h1 className="sr-only">Marketplace for {selectedScope.label}</h1>
-      {selectedScope.kind === "org" ? (
-        <div className="flex justify-end border-b border-[color:var(--bo-border)] p-3 md:px-4">
-          <Link
-            to={`/backoffice/marketplace/publish?ownerOrgId=${encodeURIComponent(selectedScope.orgId)}`}
-            className="flex min-h-10 shrink-0 items-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-accent-fg)] uppercase transition-[scale,background-color,border-color,color] duration-150 ease-out hover:border-[color:var(--bo-accent-strong)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
-          >
-            New draft
-          </Link>
-        </div>
-      ) : null}
-
-      <div className="bg-[var(--bo-header-bg)] p-2">
-        <OverflowTabRow items={tabs} ariaLabel="Marketplace workspace sections" />
+      <div className="flex flex-col bg-[color:var(--bo-sidebar-bg)] px-2 pt-4">
+        <OverflowTabRow items={tabs} ariaLabel="Marketplace workspace sections" variant="browser" />
       </div>
     </section>
   );

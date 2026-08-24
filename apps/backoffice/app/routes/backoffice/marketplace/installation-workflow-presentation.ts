@@ -8,6 +8,28 @@ type MarketplaceInstallationGeneratedUi =
   | { kind: "output"; value: unknown }
   | { kind: "step"; step: WorkflowRunStep };
 
+type MarketplaceInstallationObservedStatus = AutomationWorkflowRun["status"] | null;
+
+export function shouldShowMarketplaceInstallationStatus(input: {
+  requested: boolean;
+  synchronizationFailed: boolean;
+  ingestionStatus: MarketplaceInstallationObservedStatus;
+  installerStatus: MarketplaceInstallationObservedStatus;
+}): boolean {
+  if (input.requested || input.synchronizationFailed) {
+    return true;
+  }
+
+  return [input.ingestionStatus, input.installerStatus].some(
+    (status) =>
+      status === "active" ||
+      status === "paused" ||
+      status === "waiting" ||
+      status === "errored" ||
+      status === "terminated",
+  );
+}
+
 export function selectMarketplaceInstallationGeneratedUi(
   instance: AutomationWorkflowRun,
 ): MarketplaceInstallationGeneratedUi | null {

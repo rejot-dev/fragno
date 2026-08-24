@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import { Suspense } from "react";
 import {
   Form,
@@ -6,6 +7,7 @@ import {
   redirect,
   useActionData,
   useLocation,
+  useNavigate,
   useNavigation,
   useOutletContext,
   type ShouldRevalidateFunctionArgs,
@@ -22,7 +24,7 @@ import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.ser
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { buildMarketplaceIngestionWorkflowInstanceId } from "@/fragno/automation/marketplace-ingest-identity";
 import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
-import { marketplaceListingId, marketplaceListingSlug } from "@/fragno/marketplace/owner";
+import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import {
   decodeMarketplacePublishedVersionCursor,
   MarketplaceListingCursorError,
@@ -51,6 +53,30 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 const formatDate = (value: string) => dateFormatter.format(new Date(value));
+
+type MarketplaceVersionOption = {
+  version: string;
+  publishedAt: string | null;
+};
+
+function sortMarketplaceVersionsNewestFirst(
+  versions: readonly MarketplaceVersionOption[],
+): MarketplaceVersionOption[] {
+  return versions
+    .map((version, index) => ({ version, index }))
+    .sort((left, right) => {
+      if (left.version.publishedAt === null) {
+        return right.version.publishedAt === null ? left.index - right.index : 1;
+      }
+      if (right.version.publishedAt === null) {
+        return -1;
+      }
+
+      const publishedAtOrder = right.version.publishedAt.localeCompare(left.version.publishedAt);
+      return publishedAtOrder || left.index - right.index;
+    })
+    .map(({ version }) => version);
+}
 
 type IngestionActionData =
   | { ok: false; message: string }
@@ -322,13 +348,16 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
   } = loaderData;
   const actionData = useActionData<IngestionActionData>();
   const navigation = useNavigation();
+  const navigate = useNavigate();
   const location = useLocation();
   const search = new URLSearchParams(location.search);
   const selectedArtifactVersion =
     artifactFiles.state === "ready" ? artifactFiles.selectedVersion : listing.latestVersion;
   const installationVersion = selectedArtifactVersion;
-  const installationVersions = Array.from(
-    new Set([installationVersion, ...versions.map(({ version }) => version)]),
+  const installationVersions = sortMarketplaceVersionsNewestFirst(
+    versions.some(({ version }) => version === installationVersion)
+      ? versions
+      : [...versions, { version: installationVersion, publishedAt: null }],
   );
   const publishedVersionParam = search.get("published");
   const publishedVersion = versions.some(({ version }) => version === publishedVersionParam)
@@ -337,17 +366,30 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
   const reusedPublication = publishedVersion !== null && search.get("reused") === "1";
   const hasOutdatedIngestion = ingestions.some((ingestion) => ingestion.outOfDate);
   const installationActionLabel = hasOutdatedIngestion
-    ? "Update selected scope"
+    ? "Update"
     : ingestions.length
-      ? "Re-run installation"
-      : "Add to selected scope";
+      ? "Reinstall"
+      : "Install";
   const observedInstallationWorkflowInstanceId =
     actionData?.ok === true ? actionData.workflowInstanceId : installationWorkflowInstanceId;
 
+  const installedRelease = ingestions[0] ?? null;
+  const artifactContent = (
+    <Outlet context={{ artifactFiles } satisfies MarketplaceArtifactOutletContext} />
+  );
+
+  function closeInstallationResult() {
+    const overviewSearch = new URLSearchParams(location.search);
+    overviewSearch.set("artifactTab", "overview");
+    overviewSearch.delete("artifactPath");
+    overviewSearch.delete("artifactContent");
+    void navigate(`${location.pathname}?${overviewSearch}`, { preventScrollReset: true });
+  }
+
   return (
-    <div className="grid w-full gap-5 2xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.85fr)_minmax(20rem,0.65fr)]">
-      <header className="bo-panel-surface flex h-full flex-col bg-[var(--bo-panel)] p-5 md:p-7">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+    <div className="w-full space-y-5">
+      <header className="bo-panel-surface bg-[var(--bo-panel)] p-5 md:p-7">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2.5">
               <span className="bo-product-code">PKG</span>
@@ -375,17 +417,66 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
             ) : null}
           </div>
 
-          {manageOrganizationId ? (
-            <Link
-              to={marketplaceListingManagePath({
-                listingId: listing.listingId,
-                organizationId: manageOrganizationId,
-              })}
-              className="bo-control-surface inline-flex min-h-10 shrink-0 items-center justify-center bg-[var(--bo-panel)] px-4 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
-            >
-              Manage listing
-            </Link>
-          ) : null}
+          <div className="flex shrink-0 flex-col gap-3 xl:items-end">
+            {manageOrganizationId ? (
+              <Link
+                to={marketplaceListingManagePath({
+                  listingId: listing.listingId,
+                  organizationId: manageOrganizationId,
+                })}
+                className="bo-control-surface inline-flex min-h-10 items-center justify-center self-start bg-[var(--bo-panel)] px-4 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96] xl:self-end"
+              >
+                Manage listing
+              </Link>
+            ) : null}
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-end">
+              <VersionHistoryDropdown
+                versions={installationVersions}
+                selectedVersion={selectedArtifactVersion}
+                latestVersion={listing.latestVersion}
+                selectedScope={selectedScope}
+                listingId={listing.listingId}
+                pathname={location.pathname}
+                search={location.search}
+                nextVersionCursor={nextVersionCursor}
+                hasNextVersionPage={hasNextVersionPage}
+              />
+
+              {installationOrganizationId ? (
+                <div className="flex min-h-11 items-center justify-between gap-3 sm:justify-end">
+                  <div className="min-w-0 text-left sm:max-w-52 sm:text-right">
+                    <p className="text-[9px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
+                      Install into
+                    </p>
+                    <p className="mt-1 truncate text-sm font-medium text-[var(--bo-fg)]">
+                      {selectedScope.label}
+                    </p>
+                    {installedRelease ? (
+                      <p className="mt-1 font-mono text-[9px] text-[var(--bo-muted-2)]">
+                        v{installedRelease.version}
+                        {installedRelease.outOfDate ? " · update available" : " · current"}
+                      </p>
+                    ) : null}
+                  </div>
+                  <Form method="post">
+                    <input type="hidden" name="version" value={installationVersion} />
+                    <button
+                      type="submit"
+                      disabled={navigation.state !== "idle"}
+                      className="inline-flex min-h-11 shrink-0 items-center justify-center bg-[var(--bo-btn-bg)] px-5 text-[10px] font-semibold tracking-[0.16em] text-[var(--bo-btn-fg)] uppercase shadow-[0_8px_20px_rgba(var(--bo-accent-rgb),0.2)] transition-[scale,background-color,box-shadow,opacity] duration-150 ease-out hover:bg-[var(--bo-btn-bg-hover)] hover:shadow-[0_10px_24px_rgba(var(--bo-accent-rgb),0.26)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/35 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100"
+                    >
+                      {navigation.state === "submitting" ? "Starting…" : installationActionLabel}
+                    </button>
+                  </Form>
+                </div>
+              ) : (
+                <p className="max-w-xs text-sm leading-6 text-pretty text-[var(--bo-muted)]">
+                  Join an organization to install into {selectedScope.label}.
+                </p>
+              )}
+            </div>
+          </div>
         </div>
 
         {publishedVersion ? (
@@ -398,7 +489,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
           </div>
         ) : null}
 
-        <div className="mt-auto pt-6">
+        <div className="mt-6">
           <dl className="grid gap-px bg-[var(--bo-border)] shadow-[0_0_0_1px_var(--bo-border)] sm:grid-cols-3">
             <ReleaseFact label="Latest version" value={listing.latestVersion} mono />
             <ReleaseFact label="Published" value={formatDate(listing.publishedAt)} />
@@ -407,213 +498,156 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
         </div>
       </header>
 
-      <div className="grid items-start gap-5 xl:grid-cols-[22rem_minmax(0,1fr)] 2xl:contents">
-        <aside className="space-y-5 xl:sticky xl:top-[5.5rem] 2xl:contents 2xl:space-y-0">
-          <section className="bo-panel-surface bg-[var(--bo-panel)] p-5">
-            <PanelHeading
-              title="Workspace installation"
-              detail={ingestions.length ? `${ingestions.length} installed` : undefined}
-            />
-            <p className="mt-2 text-sm leading-6 text-pretty text-[var(--bo-muted)]">
-              {ingestions.length
-                ? "Manage the release installed in the selected Marketplace scope."
-                : "Copy an immutable release into the selected Marketplace scope."}
-            </p>
-
-            {ingestions.length ? (
-              <div className="mt-4 space-y-2">
-                {ingestions.map((ingestion) => (
-                  <div
-                    key={`${ingestion.organizationName}:${ingestion.id}`}
-                    className="bg-[var(--bo-panel-2)] p-3 shadow-[inset_0_0_0_1px_var(--bo-border)]"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="min-w-0 text-xs font-medium break-all text-[var(--bo-fg)]">
-                        {ingestion.organizationName} · {ingestion.targetScopeKey}
-                      </p>
-                      <BackofficeStatusLight tone={ingestion.outOfDate ? "waiting" : "live"}>
-                        {ingestion.outOfDate ? "Update" : "Current"}
-                      </BackofficeStatusLight>
-                    </div>
-                    <p className="mt-2 font-mono text-[10px] text-[var(--bo-muted)]">
-                      v{ingestion.version}
-                      {ingestion.outOfDate ? ` → v${ingestion.latestVersion}` : " · latest"}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {hasOutdatedIngestion ? (
-              <div className="mt-3 bg-[var(--bo-waiting-bg)] px-3 py-2.5 text-xs leading-5 text-[var(--bo-waiting)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--bo-waiting)_35%,transparent)]">
-                Version {listing.latestVersion} is available. Select it below to update this scope.
-              </div>
-            ) : null}
-
-            <div className="mt-5">
-              {installationOrganizationId ? (
-                <Form method="post" className="space-y-4">
-                  <div>
-                    <p className="text-[10px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
-                      Destination
-                    </p>
-                    <div className="bo-control-surface mt-2 bg-[var(--bo-panel-2)] px-3 py-3">
-                      <p className="text-[9px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
-                        {selectedScope.kind === "org"
-                          ? "Organisation"
-                          : selectedScope.kind === "project"
-                            ? "Project"
-                            : "Personal"}
-                      </p>
-                      <p className="mt-1.5 truncate text-sm font-medium text-[var(--bo-fg)]">
-                        {selectedScope.label}
-                      </p>
-                    </div>
-                  </div>
-
-                  <label className="block">
-                    <span className="text-[10px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
-                      Release
-                    </span>
-                    <select
-                      key={installationVersion}
-                      name="version"
-                      defaultValue={installationVersion}
-                      className="mt-2 min-h-11 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 font-mono text-sm text-[var(--bo-fg)] transition-[border-color,box-shadow] duration-150 ease-out outline-none focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20"
-                    >
-                      {installationVersions.map((version) => (
-                        <option key={version} value={version}>
-                          {version}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <button
-                    type="submit"
-                    disabled={navigation.state !== "idle"}
-                    className="inline-flex min-h-11 w-full items-center justify-center bg-[var(--bo-btn-bg)] px-4 text-[10px] font-semibold tracking-[0.16em] text-[var(--bo-btn-fg)] uppercase shadow-[0_8px_20px_rgba(var(--bo-accent-rgb),0.2)] transition-[scale,background-color,box-shadow,opacity] duration-150 ease-out hover:bg-[var(--bo-btn-bg-hover)] hover:shadow-[0_10px_24px_rgba(var(--bo-accent-rgb),0.26)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/35 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100"
-                  >
-                    {navigation.state === "submitting" ? "Requesting…" : installationActionLabel}
-                  </button>
-                </Form>
-              ) : (
-                <p className="text-sm leading-6 text-pretty text-[var(--bo-muted)]">
-                  Join an organization to install this automation into the selected scope.
-                </p>
-              )}
-
-              {actionData ? (
-                <div
-                  className={`mt-4 px-3 py-2.5 text-xs leading-5 ${actionData.ok ? "bg-[var(--bo-live-bg)] text-[var(--bo-live)]" : "bg-[var(--bo-failed-bg)] text-[var(--bo-failed)]"}`}
-                >
-                  {actionData.ok
-                    ? actionData.action === "restarted"
-                      ? `Installation workflow restarted for ${marketplaceListingSlug(listing.listingId)}@${actionData.version}.`
-                      : actionData.action === "created"
-                        ? `Installation workflow started for ${marketplaceListingSlug(listing.listingId)}@${actionData.version}.`
-                        : `Installation workflow is already ${actionData.workflowStatus}.`
-                    : actionData.message}
-                </div>
-              ) : null}
-
-              {installationOrganizationId && observedInstallationWorkflowInstanceId ? (
-                <ClientOnly>
-                  {() => (
-                    <Suspense
-                      fallback={
-                        <p className="mt-4 text-xs text-[var(--bo-muted)]">Loading installer…</p>
-                      }
-                    >
-                      <MarketplaceInstallationWorkflow
-                        collectionSource={installationCollectionSource}
-                        coordinatorScope={{
-                          kind: "org",
-                          orgId: installationOrganizationId,
-                        }}
-                        ingestionWorkflowInstanceId={observedInstallationWorkflowInstanceId}
-                        requested={actionData?.ok === true}
-                        targetScope={selectedScope}
-                      />
-                    </Suspense>
-                  )}
-                </ClientOnly>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="bo-panel-surface bg-[var(--bo-panel)] p-5">
-            <PanelHeading
-              title="Version history"
-              detail={`${versions.length}${hasNextVersionPage ? "+" : ""} published`}
-            />
-            <div className="mt-4 space-y-2">
-              {versions.map((version) => {
-                const isLatest = version.version === listing.latestVersion;
-                const isSelected = version.version === selectedArtifactVersion;
-                return (
-                  <Link
-                    key={version.version}
-                    to={buildArtifactVersionPath(
-                      location.pathname,
-                      location.search,
-                      selectedArtifactVersion,
-                      version.version,
-                    )}
-                    preventScrollReset
-                    aria-current={isSelected ? "page" : undefined}
-                    className={
-                      isSelected
-                        ? "flex min-h-14 items-center justify-between gap-4 bg-[var(--bo-accent-bg)] px-3 py-3 text-[var(--bo-fg)] shadow-[inset_0_0_0_1px_var(--bo-accent)] transition-[scale,background-color,box-shadow] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
-                        : "flex min-h-14 items-center justify-between gap-4 bg-[var(--bo-panel-2)] px-3 py-3 text-[var(--bo-fg)] shadow-[inset_0_0_0_1px_var(--bo-border)] transition-[scale,background-color,box-shadow] duration-150 ease-out outline-none hover:bg-[var(--bo-panel)] hover:shadow-[inset_0_0_0_1px_var(--bo-border-strong)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
-                    }
-                  >
-                    <div className="min-w-0">
-                      <p className="font-mono text-xs font-semibold">v{version.version}</p>
-                      <p className="mt-1 text-[10px] text-[var(--bo-muted-2)]">
-                        {formatDate(version.publishedAt)}
-                      </p>
-                    </div>
-                    {isLatest ? (
-                      <BackofficeStatusLight tone="info">Latest</BackofficeStatusLight>
-                    ) : null}
-                  </Link>
-                );
-              })}
-            </div>
-            {hasNextVersionPage && nextVersionCursor ? (
-              <Link
-                to={`${marketplaceListingPath(listing.listingId, selectedScope)}?versionCursor=${encodeURIComponent(nextVersionCursor)}`}
-                className="bo-control-surface mt-3 flex min-h-10 items-center justify-center bg-[var(--bo-panel-2)] px-3 text-center text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
+      <main className="min-w-0">
+        {navigation.state === "submitting" ? (
+          <InstallationStartingSurface scopeLabel={selectedScope.label} />
+        ) : actionData?.ok === false ? (
+          <InstallationFailureSurface message={actionData.message} />
+        ) : installationOrganizationId && observedInstallationWorkflowInstanceId ? (
+          <ClientOnly fallback={artifactContent}>
+            {() => (
+              <Suspense
+                fallback={
+                  actionData?.ok ? (
+                    <InstallationStartingSurface scopeLabel={selectedScope.label} />
+                  ) : (
+                    artifactContent
+                  )
+                }
               >
-                Browse older versions →
-              </Link>
-            ) : null}
-          </section>
-        </aside>
-
-        <div className="min-w-0 space-y-5 2xl:contents 2xl:space-y-0">
-          <div className="min-w-0 2xl:col-span-3">
-            <Outlet context={{ artifactFiles } satisfies MarketplaceArtifactOutletContext} />
-          </div>
-        </div>
-      </div>
+                <MarketplaceInstallationWorkflow
+                  collectionSource={installationCollectionSource}
+                  coordinatorScope={{
+                    kind: "org",
+                    orgId: installationOrganizationId,
+                  }}
+                  fallback={artifactContent}
+                  ingestionWorkflowInstanceId={observedInstallationWorkflowInstanceId}
+                  onClose={closeInstallationResult}
+                  requested={actionData?.ok === true}
+                  targetScope={selectedScope}
+                />
+              </Suspense>
+            )}
+          </ClientOnly>
+        ) : (
+          artifactContent
+        )}
+      </main>
     </div>
   );
 }
 
-function PanelHeading({ title, detail }: { title: string; detail?: string }) {
+function VersionHistoryDropdown({
+  versions,
+  selectedVersion,
+  latestVersion,
+  selectedScope,
+  listingId,
+  pathname,
+  search,
+  nextVersionCursor,
+  hasNextVersionPage,
+}: {
+  versions: readonly MarketplaceVersionOption[];
+  selectedVersion: string;
+  latestVersion: string;
+  selectedScope: MarketplaceLayoutContext["selectedScope"];
+  listingId: string;
+  pathname: string;
+  search: string;
+  nextVersionCursor?: string;
+  hasNextVersionPage: boolean;
+}) {
   return (
-    <div className="flex items-start justify-between gap-4">
-      <h3 className="text-lg font-semibold tracking-tight text-balance text-[var(--bo-fg)]">
-        {title}
-      </h3>
-      {detail ? (
-        <span className="shrink-0 font-mono text-[9px] tracking-[0.1em] text-[var(--bo-muted-2)] uppercase">
-          {detail}
+    <details className="group relative">
+      <summary className="flex min-h-11 min-w-36 cursor-pointer list-none items-center justify-end gap-2 px-1 text-left transition-[scale,color] duration-150 ease-out hover:text-[var(--bo-accent-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96] sm:text-right [&::-webkit-details-marker]:hidden">
+        <span>
+          <span className="block text-[9px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
+            Version history
+          </span>
+          <span className="mt-1 block font-mono text-sm font-medium text-[var(--bo-fg)]">
+            v{selectedVersion}
+          </span>
         </span>
-      ) : null}
-    </div>
+        <ChevronDown
+          className="size-3.5 text-[var(--bo-muted-2)] transition-transform duration-150 ease-out group-open:rotate-180"
+          aria-hidden="true"
+        />
+      </summary>
+      <div className="absolute top-full right-0 z-30 mt-2 w-[min(20rem,calc(100vw-2rem))] bg-[var(--bo-panel)] p-2 shadow-[0_18px_48px_rgba(0,0,0,0.18),0_0_0_1px_var(--bo-border-strong)]">
+        <div className="max-h-80 space-y-1 overflow-y-auto">
+          {versions.map((version) => {
+            const isLatest = version.version === latestVersion;
+            const isSelected = version.version === selectedVersion;
+            return (
+              <Link
+                key={version.version}
+                to={buildArtifactVersionPath(pathname, search, selectedVersion, version.version)}
+                preventScrollReset
+                aria-current={isSelected ? "page" : undefined}
+                onClick={(event) => {
+                  event.currentTarget.closest("details")?.removeAttribute("open");
+                }}
+                className={
+                  isSelected
+                    ? "flex min-h-12 items-center justify-between gap-4 bg-[var(--bo-accent-bg)] px-3 py-2.5 text-[var(--bo-fg)] shadow-[inset_0_0_0_1px_var(--bo-accent)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
+                    : "flex min-h-12 items-center justify-between gap-4 px-3 py-2.5 text-[var(--bo-fg)] transition-colors duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
+                }
+              >
+                <span className="min-w-0">
+                  <span className="block font-mono text-xs font-semibold">v{version.version}</span>
+                  <span className="mt-1 block text-[10px] text-[var(--bo-muted-2)]">
+                    {version.publishedAt ? formatDate(version.publishedAt) : "Published release"}
+                  </span>
+                </span>
+                {isLatest ? (
+                  <BackofficeStatusLight tone="info">Latest</BackofficeStatusLight>
+                ) : null}
+              </Link>
+            );
+          })}
+        </div>
+        {hasNextVersionPage && nextVersionCursor ? (
+          <Link
+            to={`${marketplaceListingPath(listingId, selectedScope)}?versionCursor=${encodeURIComponent(nextVersionCursor)}`}
+            className="mt-2 flex min-h-10 items-center justify-center border-t border-[color:var(--bo-border)] px-3 pt-2 text-center text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted)] uppercase transition-colors duration-150 ease-out hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none"
+          >
+            Browse older versions →
+          </Link>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
+function InstallationStartingSurface({ scopeLabel }: { scopeLabel: string }) {
+  return (
+    <section className="bo-panel-surface flex min-h-80 items-center justify-center bg-[var(--bo-panel)] p-6 text-center md:p-10">
+      <div className="max-w-md">
+        <span className="mx-auto block size-2 animate-pulse rounded-full bg-[var(--bo-accent)] motion-reduce:animate-none" />
+        <h3 className="mt-5 text-lg font-semibold tracking-tight text-balance text-[var(--bo-fg)]">
+          Starting installation
+        </h3>
+        <p className="mt-2 text-sm leading-6 text-pretty text-[var(--bo-muted)]">
+          Preparing the selected release for {scopeLabel}.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function InstallationFailureSurface({ message }: { message: string }) {
+  return (
+    <section className="bo-panel-surface flex min-h-80 items-center justify-center bg-[var(--bo-panel)] p-6 text-center md:p-10">
+      <div className="max-w-md">
+        <span className="mx-auto block size-2 rounded-full bg-[var(--bo-failed)]" />
+        <h3 className="mt-5 text-lg font-semibold tracking-tight text-balance text-[var(--bo-fg)]">
+          Installation could not start
+        </h3>
+        <p className="mt-2 text-sm leading-6 text-pretty text-[var(--bo-failed)]">{message}</p>
+      </div>
+    </section>
   );
 }
 

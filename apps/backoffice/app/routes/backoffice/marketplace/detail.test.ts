@@ -322,10 +322,38 @@ describe("marketplace detail loader", () => {
 });
 
 describe("marketplace artifact version navigation", () => {
+  test("moves version and installation controls into the package header", () => {
+    const markup = renderMarketplaceDetail("2.0.0");
+
+    assert(markup.includes("Version history"));
+    assert(markup.includes("Install into"));
+    assert(markup.includes(">Install</button>"));
+    assert(!markup.includes("Workspace installation"));
+  });
+
   test("offers the selected artifact version when it is outside the current page", () => {
     const markup = renderMarketplaceDetail("1.0.0");
 
-    assert(markup.includes('<option value="1.0.0" selected="">1.0.0</option>'));
+    assert(markup.includes("Version history"));
+    assert(markup.includes("v1.0.0"));
+    assert(markup.includes('aria-current="page"'));
+  });
+
+  test("sorts the version dropdown from newest to oldest", () => {
+    const markup = renderMarketplaceDetail("2.0.0", undefined, [
+      { version: "1.0.0", publishedAt: "2025-01-01T00:00:00.000Z" },
+      { version: "2.0.0", publishedAt: "2026-01-01T00:00:00.000Z" },
+      { version: "1.5.0", publishedAt: "2025-06-01T00:00:00.000Z" },
+    ]);
+    const menuStart = markup.indexOf('class="absolute top-full');
+    const versionMenu = markup.slice(menuStart, markup.indexOf("</details>", menuStart));
+
+    assert(menuStart >= 0);
+    assert(versionMenu.includes("v2.0.0"));
+    assert(versionMenu.includes("v1.5.0"));
+    assert(versionMenu.includes("v1.0.0"));
+    assert(versionMenu.indexOf("v2.0.0") < versionMenu.indexOf("v1.5.0"));
+    assert(versionMenu.indexOf("v1.5.0") < versionMenu.indexOf("v1.0.0"));
   });
 
   test("observes the workflow started by the submitted release", () => {
@@ -339,6 +367,40 @@ describe("marketplace artifact version navigation", () => {
 
     assert(markup.includes("observing:submitted-workflow-id"));
     assert(!markup.includes("observing:loader-workflow-id"));
+    assert(!markup.includes("Installation workflow started"));
+  });
+
+  test("shows installation request failures in the main area", () => {
+    const markup = renderMarketplaceDetail("1.0.0", {
+      ok: false,
+      message: "Workspace file conflict.",
+    });
+
+    assert(markup.includes("Installation could not start"));
+    assert(markup.includes("Workspace file conflict."));
+  });
+
+  test("keeps the overview tab selected when changing versions", () => {
+    const explicitOverviewPath = buildArtifactVersionPath(
+      "/backoffice/marketplace/example",
+      "?artifactTab=overview&artifactVersion=1.0.0",
+      "1.0.0",
+      "2.0.0",
+    );
+    const defaultOverviewPath = buildArtifactVersionPath(
+      "/backoffice/marketplace/example",
+      "?artifactVersion=1.0.0",
+      "1.0.0",
+      "2.0.0",
+    );
+
+    assert(
+      new URL(explicitOverviewPath, "https://example.test").searchParams.get("artifactTab") ===
+        "overview",
+    );
+    assert(
+      new URL(defaultOverviewPath, "https://example.test").searchParams.get("artifactTab") === null,
+    );
   });
 
   test("retargets the selected artifact path to the next version", () => {
@@ -411,6 +473,7 @@ describe("marketplace detail revalidation", () => {
 function renderMarketplaceDetail(
   selectedVersion: string,
   actionData?: IngestionActionDataFixture,
+  versionHistory = [{ version: "2.0.0", publishedAt: "2026-01-01T00:00:00.000Z" }],
 ): string {
   const loaderData = {
     listing: {
@@ -427,7 +490,7 @@ function renderMarketplaceDetail(
       publishedAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
-    versions: [{ version: "2.0.0", publishedAt: "2026-01-01T00:00:00.000Z" }],
+    versions: versionHistory,
     nextVersionCursor: undefined,
     hasNextVersionPage: false,
     manageOrganizationId: null,

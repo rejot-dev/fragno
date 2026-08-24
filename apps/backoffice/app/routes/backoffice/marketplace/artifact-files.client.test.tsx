@@ -45,10 +45,46 @@ const secondVersionData: MarketplaceArtifactExplorerData = {
   ]),
   selectedVersion: "2.0.0",
 };
+const overviewData: MarketplaceArtifactExplorerData = {
+  state: "ready",
+  fileTree: createFileTree([
+    {
+      kind: "file",
+      path: "README.md",
+      sizeBytes: 25,
+      contentType: "text/markdown",
+      updatedAt: null,
+      metadata: null,
+    },
+  ]),
+  selectedVersion: "1.0.0",
+};
 
 afterEach(cleanup);
 
 describe("Marketplace artifact lazy content", () => {
+  test("loads the overview by default", async () => {
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/backoffice/marketplace/example",
+          element: <MarketplaceArtifactFiles data={overviewData} />,
+        },
+        {
+          path: "/backoffice/marketplace/example/artifact-file",
+          loader: () => "# Package overview\n\nReady to install.",
+        },
+      ],
+      { initialEntries: ["/backoffice/marketplace/example"] },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    await screen.findByRole("heading", { name: "Package overview" });
+    screen.getByText("Ready to install.");
+    assert(router.state.location.search === "");
+  });
+
   test("stores the selected workflow in the URL", async () => {
     const router = createMemoryRouter(
       [
