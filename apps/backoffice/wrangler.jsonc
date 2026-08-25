@@ -43,6 +43,12 @@
     "TURNSTILE_SITEKEY": "0x4AAAAAACEAKTUMl498hZ6v",
     "AUTH_EMAIL_VERIFICATION_ENABLED": "false",
   },
+  "routes": [
+    {
+      "pattern": "backoffice.rejot.dev",
+      "custom_domain": true,
+    },
+  ],
   "r2_buckets": [
     {
       "binding": "UPLOAD_BUCKET",
@@ -150,93 +156,24 @@
     ],
   },
   /**
-   * Migrations for Durable Objects
-   * https://developers.cloudflare.com/durable-objects/reference/data-location/#provide-a-class-name
+   * Durable Object class lifecycle declarations
+   * https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/
    */
-  "migrations": [
-    {
-      "tag": "v3",
-      "new_sqlite_classes": ["Auth"],
-    },
-    {
-      "tag": "v4",
-      "new_sqlite_classes": ["Telegram"],
-    },
-    {
-      "tag": "v5",
-      "new_sqlite_classes": ["Resend"],
-    },
-    {
-      "tag": "v6",
-      "new_sqlite_classes": ["Sandbox"],
-    },
-    {
-      "tag": "v7",
-      "new_sqlite_classes": ["SandboxRegistry"],
-    },
-    {
-      "tag": "v8",
-      "new_sqlite_classes": ["GitHub"],
-    },
-    {
-      "tag": "v9",
-      "new_sqlite_classes": ["GitHubWebhookRouter"],
-    },
-    {
-      "tag": "v10",
-      "new_sqlite_classes": ["Upload"],
-    },
-    {
-      "tag": "v11",
-      "new_sqlite_classes": ["CloudflareWorkers"],
-    },
-    {
-      "tag": "v12",
-      "new_sqlite_classes": ["Pi"],
-    },
-    {
-      "tag": "v13",
-      "new_sqlite_classes": ["Otp"],
-    },
-    {
-      "tag": "v14",
-      "new_sqlite_classes": ["Automations"],
-    },
-    {
-      "tag": "v15",
-      "new_sqlite_classes": ["Reson8"],
-    },
-    {
-      "tag": "v16",
-      "new_sqlite_classes": ["Mcp"],
-    },
-    {
-      "tag": "v17",
-      "new_sqlite_classes": ["Api"],
-    },
-    {
-      "tag": "v18",
-      "deleted_classes": ["SandboxRegistry"],
-    },
-    {
-      "tag": "v19",
-      "deleted_classes": ["CloudflareWorkers"],
-    },
-    {
-      "tag": "v20",
-      "new_sqlite_classes": ["Billing"],
-    },
-    {
-      "tag": "v21",
-      "new_sqlite_classes": ["Marketplace"],
-    },
-    {
-      "tag": "v22",
-      "new_sqlite_classes": ["Cloudflare"],
-    },
-    {
-      "tag": "v23",
-      "deleted_classes": ["Pi"],
-    },
-  ],
+  "exports": {
+    "Api": { "type": "durable-object", "storage": "sqlite" },
+    "Auth": { "type": "durable-object", "storage": "sqlite" },
+    "Telegram": { "type": "durable-object", "storage": "sqlite" },
+    "Resend": { "type": "durable-object", "storage": "sqlite" },
+    "Reson8": { "type": "durable-object", "storage": "sqlite" },
+    "Mcp": { "type": "durable-object", "storage": "sqlite" },
+    "Otp": { "type": "durable-object", "storage": "sqlite" },
+    "Upload": { "type": "durable-object", "storage": "sqlite" },
+    "Sandbox": { "type": "durable-object", "storage": "sqlite" },
+    "GitHub": { "type": "durable-object", "storage": "sqlite" },
+    "GitHubWebhookRouter": { "type": "durable-object", "storage": "sqlite" },
+    "Automations": { "type": "durable-object", "storage": "sqlite" },
+    "Billing": { "type": "durable-object", "storage": "sqlite" },
+    "Marketplace": { "type": "durable-object", "storage": "sqlite" },
+    "Cloudflare": { "type": "durable-object", "storage": "sqlite" },
+  },
 }
