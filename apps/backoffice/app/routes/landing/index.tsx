@@ -6,7 +6,9 @@ import { Link } from "react-router";
 import { BackofficeFragmentMark } from "@/components/backoffice/fragment-mark";
 
 import { LandingFooter } from "./landing-footer";
+import { LandingPhilosophy } from "./landing-philosophy";
 import { LandingWorkflow } from "./landing-workflow";
+import { LandingSystem } from "./system/landing-system";
 
 export function meta() {
   return [
@@ -44,17 +46,19 @@ export default function LandingPage() {
 
       <section className="mx-auto flex min-h-[clamp(430px,62svh,680px)] w-full max-w-[1180px] flex-col justify-center px-5 pt-14 pb-16 sm:px-8 lg:px-12 lg:pt-20 lg:pb-24">
         <h1 className="max-w-[1040px] text-[clamp(3.5rem,8.8vw,8.4rem)] leading-[0.88] font-[560] tracking-[-0.075em] text-balance">
-          AI is a tool,
+          Automate your
           <br />
-          <span className="text-[var(--bo-muted-2)]">not a co-worker</span>
+          <span className="text-[var(--bo-muted-2)]">business with AI</span>
         </h1>
-        <p className="mt-9 max-w-xl text-[clamp(0.95rem,1.4vw,1.1rem)] leading-7 text-pretty text-[var(--bo-muted)]">
-          Turn your intent into deterministic automation. AI builds the workflow; you inspect,
-          control, and run it.
+        <p className="mt-9 max-w-2xl text-[clamp(0.95rem,1.4vw,1.1rem)] leading-7 text-pretty text-[var(--bo-muted)]">
+          Turn business processes into workflows. Connect your tools and apps to Backoffice and let
+          AI build automations. Deterministic and auditable.
         </p>
       </section>
 
       <LandingWorkflow />
+      <LandingSystem />
+      <LandingPhilosophy />
 
       <LandingFooter />
     </main>

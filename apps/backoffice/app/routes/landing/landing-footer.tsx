@@ -21,7 +21,7 @@ export function LandingFooter() {
               Backoffice by ReJot
             </Link>
             <p className="max-w-xs font-mono text-[11px] leading-6 text-pretty text-[var(--bo-muted)]">
-              A controlled workspace for AI workflows, files, events, and integrations.
+              A controlled workspace for AI workflows.
             </p>
           </div>
 

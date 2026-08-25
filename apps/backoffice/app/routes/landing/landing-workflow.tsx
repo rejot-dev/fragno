@@ -97,7 +97,7 @@ const ACTIVITY_ITEMS = [
   { action: "Skill loaded", detail: "configuring-connections" },
   { action: "Skill loaded", detail: "reson8-connection" },
   { action: "read", detail: "/static/codemode/providers/connections.d.ts" },
-  { action: "created", detail: "automations/configure-reson8.workflow.js" },
+  { action: "write", detail: "automations/configure-reson8.workflow.js" },
 ] as const;
 
 const DISPLAY_OPTIONS = [
@@ -281,8 +281,11 @@ export function LandingWorkflow() {
               </p>
             </div>
 
-            <div className="border-l-2 border-[color:var(--bo-accent)] px-4 py-2">
-              <p className="text-xs leading-5 text-[var(--bo-muted)]">
+            <div className="border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] px-4 py-3">
+              <p className="text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+                Thinking
+              </p>
+              <p className="mt-2 text-xs leading-5 text-[var(--bo-muted)]">
                 I’ll request the credential, configure the connection, and verify it before
                 completing.
               </p>
@@ -305,6 +308,13 @@ export function LandingWorkflow() {
                   </code>
                 </div>
               ))}
+            </div>
+
+            <div className="max-w-[92%] py-2">
+              <p className="text-sm leading-6 text-[var(--bo-fg)]">
+                I generated a UI-based workflow that requests the API key, configures the Reson8
+                connection, and verifies the result before completing.
+              </p>
             </div>
           </div>
         </div>
