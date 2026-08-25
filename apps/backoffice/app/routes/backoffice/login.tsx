@@ -124,10 +124,6 @@ async function exchangeSignedInSessionForBackofficeJwt(
 }
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  if (import.meta.env.MODE !== "development") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const returnTo = readBackofficeReturnTo(url);
   if (!requiresBetterAuthBrowserSession(returnTo)) {
     const jwtMe = await getBackofficeMe(request, context);
@@ -144,10 +140,6 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context, url }: Route.ActionArgs) {
-  if (import.meta.env.MODE !== "development") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const formData = await request.formData();
   const returnTo = readBackofficeReturnTo(url);
   const input = loginActionInputSchema.safeParse(Object.fromEntries(formData));

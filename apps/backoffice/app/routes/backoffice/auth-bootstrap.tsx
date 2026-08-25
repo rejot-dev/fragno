@@ -29,10 +29,6 @@ type BackofficeBootstrapLoaderData = {
 };
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  if (import.meta.env.MODE !== "development") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const returnTo = readBackofficeReturnTo(url);
   const organizationId = readBackofficeOrganizationSwitchId(url);
   const jwtMe = await getBackofficeMe(request, context);

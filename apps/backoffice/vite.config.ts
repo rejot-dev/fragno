@@ -47,7 +47,7 @@ export default defineConfig(({ mode }) => {
         }
       : undefined,
     preview: {
-      allowedHosts: [".trycloudflare.com"],
+      allowedHosts: [".trycloudflare.com", "local-wilco.recivo.email"],
     },
     server: {
       hmr: false,

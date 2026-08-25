@@ -8,6 +8,7 @@ import { BackofficeWorkerContext } from "../app/worker-runtime/router-context";
 import { Api } from "./api.do";
 import { Auth } from "./auth.do";
 import { Automations } from "./automations.do";
+import { handleBackofficeAdminGrantRequest } from "./backoffice-admin-grant";
 import { Billing } from "./billing.do";
 import { Cloudflare } from "./cloudflare.do";
 import { GitHubWebhookRouter } from "./github-webhook-router.do";
@@ -63,6 +64,13 @@ System.Settings.Set({ useAcceleration: false });
 export default {
   async fetch(request, env, ctx) {
     const runtime = createCloudflareBackofficeRuntimeServices(env);
+    if (new URL(request.url).pathname === "/api/admin/grant") {
+      return await handleBackofficeAdminGrantRequest(request, {
+        configuredToken: env.AUTH_ADMIN_GRANT_TOKEN,
+        auth: runtime.objects.auth.singleton(),
+      });
+    }
+
     const context = new RouterContextProvider();
     context.set(BackofficeWorkerContext, {
       runtime,
