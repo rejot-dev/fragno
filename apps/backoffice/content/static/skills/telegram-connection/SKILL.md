@@ -17,15 +17,23 @@ Configuration fields:
 
 - `botToken`: Telegram BotFather token. Secret.
 - `webhookSecretToken`: long random token Telegram includes with webhook requests. Secret.
-- `webhookBaseUrl`: public Backoffice origin or tunnel URL used to register the Telegram webhook.
 - `botUsername`: optional bot username, with or without `@`.
 - `apiBaseUrl`: optional Telegram API base URL override.
 
-Setup notes:
+Setup procedure:
 
-- Create the bot in BotFather before configuring the connection.
-- The webhook secret must match the token sent by Telegram on webhook requests.
-- The webhook base URL must be reachable by Telegram.
+1. Tell the user how to register a bot with Telegram:
+   - Open a chat with the verified `@BotFather` account in Telegram.
+   - Send `/newbot` and follow the prompts to choose a display name and a unique username.
+   - Copy the bot token BotFather returns and enter it in the Backoffice Telegram connection.
+   - Treat the bot token like a password and regenerate it in BotFather if it is exposed.
+2. Generate a cryptographically secure, high-entropy `webhookSecretToken` automatically. Do not ask
+   the user to invent or supply this secret.
+3. Save the connection configuration. Backoffice derives and registers the organisation-scoped
+   webhook URL with Telegram and supplies the generated secret as Telegram's `secret_token`.
+
+The stored secret must match the `X-Telegram-Bot-Api-Secret-Token` header Telegram sends to the
+webhook.
 
 # Telegram events
 

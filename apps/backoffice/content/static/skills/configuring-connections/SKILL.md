@@ -3,7 +3,7 @@ name: configuring-connections
 description:
   "Set up any Backoffice integration, connection, or named provider. Always use for setup requests
   such as \u2018help me set up Reson8\u2019, even when a provider-specific skill also applies; also
-  use when credentials or a public origin are missing, or connection status must be verified."
+  use when required configuration is missing or connection status must be verified."
 ---
 
 # Configuring Connections
@@ -39,14 +39,13 @@ Treat connection setup as a handshake: **inspect → collect → configure → v
    `step.do` calls so the user can finish the handshake through the rendered interface. When every
    required value was already supplied in the request, proceed directly without an input workflow.
 
-   Collect secrets, sender identities, account ids, bucket details, and public webhook origins
-   exactly as supplied. Use submitted values only as the configuration payload; keep secrets out of
-   labels, summaries, final output, and follow-up prose. **Complete when** a waiting workflow
-   displays controls for every missing required field, or every required field already has a
-   user-supplied or configured value.
+   Collect the missing values identified by the live schema exactly as supplied. Use submitted
+   values only as the configuration payload; keep secrets out of labels, summaries, final output,
+   and follow-up prose. **Complete when** a waiting workflow displays controls for every missing
+   required field, or every required field already has a user-supplied or configured value.
 
 3. Configure with a payload that matches the live schema, inside the setup workflow when step 2
-   created one. Supply `origin` only when setup instructions require a public Backoffice origin:
+   created one:
 
    ```js
    async () => {
@@ -55,7 +54,6 @@ Treat connection setup as a handshake: **inspect → collect → configure → v
        payload: {
          botToken: "...",
          webhookSecretToken: "...",
-         webhookBaseUrl: "https://public.example.com",
        },
      });
    };

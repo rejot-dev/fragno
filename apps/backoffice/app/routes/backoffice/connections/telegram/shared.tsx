@@ -15,7 +15,6 @@ export type TelegramConfigState = {
   config?: {
     botUsername?: string | null;
     apiBaseUrl?: string | null;
-    webhookBaseUrl?: string | null;
     botTokenPreview?: string;
     webhookSecretTokenPreview?: string;
     createdAt?: string;
@@ -28,7 +27,8 @@ export type TelegramConfigState = {
 };
 
 export type TelegramLayoutContext = {
-  origin: string;
+  publicBaseUrl: string;
+  generatedWebhookSecretToken: string;
   organization: BackofficeOrganization | null;
   scope: BackofficeContextScope;
   scopeSegment: string;
