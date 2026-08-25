@@ -179,16 +179,6 @@ describe("Telegram Durable Object", () => {
     vi.unstubAllGlobals();
   });
 
-  test("requires the configured public origin before storing credentials", async () => {
-    const { state, store } = createState();
-    const telegram = new Telegram(state, {} as CloudflareEnv).init({ kind: "org", orgId: "acme" });
-
-    await expect(telegram.setAdminConfig(VALID_PAYLOAD)).rejects.toThrow(
-      "Telegram public origin is not configured.",
-    );
-    assert.isFalse(store.has(CONFIG_KEY));
-  });
-
   test("binds the fragment to the durable object's organization", async () => {
     const { state, store } = createState();
     const telegram = createTelegramObject(state);

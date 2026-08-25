@@ -27,8 +27,6 @@ export type TelegramConfigState = {
 };
 
 export type TelegramLayoutContext = {
-  publicBaseUrl: string;
-  generatedWebhookSecretToken: string;
   organization: BackofficeOrganization | null;
   scope: BackofficeContextScope;
   scopeSegment: string;

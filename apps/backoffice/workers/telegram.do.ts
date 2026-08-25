@@ -78,11 +78,23 @@ type TelegramAdminApi = {
 const DEFAULT_TELEGRAM_API_BASE_URL = "https://api.telegram.org";
 
 function readTelegramPublicOrigin(env: TelegramObjectEnv) {
-  const origin = env.DOCS_PUBLIC_BASE_URL?.trim();
-  if (!origin) {
+  const configuredOrigin = env.DOCS_PUBLIC_BASE_URL?.trim();
+  if (!configuredOrigin) {
     throw new Error("Telegram public origin is not configured.");
   }
-  return origin;
+
+  let origin: URL;
+  try {
+    origin = new URL(configuredOrigin);
+  } catch (cause) {
+    throw new Error("Telegram public origin must be an absolute HTTP or HTTPS URL.", { cause });
+  }
+
+  if (origin.protocol !== "http:" && origin.protocol !== "https:") {
+    throw new Error("Telegram public origin must be an absolute HTTP or HTTPS URL.");
+  }
+
+  return origin.toString();
 }
 
 const maskSecret = (value: string) => {

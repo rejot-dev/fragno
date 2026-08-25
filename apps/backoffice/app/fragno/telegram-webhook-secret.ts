@@ -1,4 +1,4 @@
-export const generateSecretToken = () => {
+export function generateTelegramWebhookSecretToken() {
   const cryptoApi = globalThis.crypto;
   if (cryptoApi?.randomUUID) {
     return `tg_${cryptoApi.randomUUID().replace(/-/g, "")}`;
@@ -10,4 +10,4 @@ export const generateSecretToken = () => {
     return `tg_${token}`;
   }
   throw new Error("Secure crypto API unavailable for generating a Telegram secret token.");
-};
+}
