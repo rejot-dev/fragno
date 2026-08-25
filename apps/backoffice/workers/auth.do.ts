@@ -7,7 +7,11 @@ import { Kysely } from "kysely";
 import { extractW3CRequestPropagationContext } from "@fragno-dev/core";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import type { AuthObject, ScenarioAuthFixture } from "@/backoffice-runtime/object-registry";
+import type {
+  AuthObject,
+  GrantBackofficeAdminResult,
+  ScenarioAuthFixture,
+} from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
@@ -183,6 +187,7 @@ const toIsoString = (date: Date | string): string =>
   date instanceof Date ? date.toISOString() : new Date(date).toISOString();
 const normalizeRole = (role: string | null | undefined): Role =>
   role?.split(",").includes("admin") ? "admin" : "user";
+const isRejotEmail = (email: string): boolean => email.trim().toLowerCase().endsWith("@rejot.dev");
 const normalizeBoolean = (value: boolean | number | null | undefined): boolean =>
   value === true || value === 1;
 
@@ -862,18 +867,15 @@ export class InMemoryAuthObject implements AuthObject {
       databaseHooks: {
         user: {
           create: {
-            before: async (user: Record<string, unknown> & { email: string }) => {
-              const isRejotAccount = user.email.trim().toLowerCase().endsWith("@rejot.dev");
-              if (isRejotAccount && import.meta.env.MODE !== "development") {
-                throw new Error("Rejot accounts can only be created in development.");
-              }
-              return {
-                data: {
-                  ...user,
-                  role: isRejotAccount ? "admin" : "user",
-                },
-              };
-            },
+            before: async (user: Record<string, unknown> & { email: string }) => ({
+              data: {
+                ...user,
+                role:
+                  isRejotEmail(user.email) && import.meta.env.MODE === "development"
+                    ? "admin"
+                    : "user",
+              },
+            }),
           },
         },
       },
@@ -1156,6 +1158,31 @@ export class InMemoryAuthObject implements AuthObject {
       input,
       resolveBackofficeScopeTokenGrant,
     );
+  }
+
+  async grantBackofficeAdminByEmail(input: { email: string }): Promise<GrantBackofficeAdminResult> {
+    const { adapter } = await this.#authContext();
+    const email = input.email.trim().toLowerCase();
+    const user = await adapter.findOne<StoreUser>({
+      model: "user",
+      where: [{ field: "email", value: email }],
+    });
+    if (!user) {
+      return { status: "user_not_found" };
+    }
+    if (normalizeBoolean(user.banned)) {
+      return { status: "user_not_active" };
+    }
+    if (normalizeRole(user.role) === "admin") {
+      return { status: "already_admin", userId: user.id };
+    }
+
+    await adapter.update<StoreUser>({
+      model: "user",
+      where: [{ field: "id", value: user.id }],
+      update: { role: "admin", updatedAt: new Date() },
+    });
+    return { status: "granted", userId: user.id };
   }
 
   async getUserAuthorityFacts(input: {
@@ -1455,6 +1482,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   async getUserAuthorityFacts(input: { userId: string; organizationId?: string }) {
     return await this.#object.getUserAuthorityFacts(input);
+  }
+
+  async grantBackofficeAdminByEmail(input: { email: string }) {
+    return await this.#object.grantBackofficeAdminByEmail(input);
   }
 
   async getAllOrganizations() {

@@ -80,7 +80,7 @@ afterEach(async () => {
 });
 
 describe("Auth Durable Object account creation policy", () => {
-  test("rejects rejot.dev account creation outside development", async () => {
+  test("creates rejot.dev accounts as users outside development", async () => {
     vi.stubEnv("MODE", "production");
     const runtime = await createInMemoryBackofficeRuntime();
     runtimes.push(runtime);
@@ -97,7 +97,10 @@ describe("Auth Durable Object account creation policy", () => {
       }),
     );
 
-    assert(!response.ok);
+    assert(response.ok);
+    expect(await response.json()).toMatchObject({
+      user: { role: "user" },
+    });
   });
 
   test("creates rejot.dev administrators in development", async () => {
@@ -121,6 +124,47 @@ describe("Auth Durable Object account creation policy", () => {
     expect(await response.json()).toMatchObject({
       user: { role: "admin" },
     });
+  });
+});
+
+describe("Auth Durable Object administrator granting", () => {
+  test("promotes an existing verified account and remains idempotent", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+    const auth = runtime.objects.auth.singleton();
+    await auth.applyScenarioFixture({
+      users: [
+        {
+          id: "user-1",
+          email: "admin@rejot.dev",
+          role: "user",
+          status: "active",
+        },
+      ],
+    });
+
+    await expect(auth.grantBackofficeAdminByEmail({ email: "ADMIN@rejot.dev" })).resolves.toEqual({
+      status: "granted",
+      userId: "user-1",
+    });
+    await expect(auth.grantBackofficeAdminByEmail({ email: "admin@rejot.dev" })).resolves.toEqual({
+      status: "already_admin",
+      userId: "user-1",
+    });
+    await expect(auth.getUserAuthorityFacts({ userId: "user-1" })).resolves.toMatchObject({
+      role: "admin",
+    });
+  });
+
+  test("reports a missing rejot.dev account", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+
+    await expect(
+      runtime.objects.auth.singleton().grantBackofficeAdminByEmail({
+        email: "missing@rejot.dev",
+      }),
+    ).resolves.toEqual({ status: "user_not_found" });
   });
 });
 

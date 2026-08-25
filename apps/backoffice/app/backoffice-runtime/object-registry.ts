@@ -155,6 +155,12 @@ export type ScenarioAuthFixture = {
   removedMembers?: ReadonlyArray<{ organizationId: string; userId: string }>;
 };
 
+export type GrantBackofficeAdminResult =
+  | { status: "granted"; userId: string }
+  | { status: "already_admin"; userId: string }
+  | { status: "user_not_found" }
+  | { status: "user_not_active" };
+
 export type AuthObject = FetchObject &
   AlarmableObject &
   DurableHookObject & {
@@ -182,6 +188,8 @@ export type AuthObject = FetchObject &
       userId: string;
       organizationId?: string;
     }): Promise<UserAuthorityFacts>;
+    /** Grants global administrator access to an existing, verified account. */
+    grantBackofficeAdminByEmail(input: { email: string }): Promise<GrantBackofficeAdminResult>;
     getAllOrganizations(): Promise<Organization[]>;
     getOrganizationBySlug(slug: string): Promise<Pick<Organization, "id" | "slug"> | null>;
     hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean>;

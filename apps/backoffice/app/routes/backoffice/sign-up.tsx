@@ -48,10 +48,6 @@ const signUpActionInputSchema = z.discriminatedUnion("intent", [
 ]);
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  if (import.meta.env.MODE !== "development") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const returnTo = readBackofficeReturnTo(url);
   const me = await getBackofficeMe(request, context);
   if (me.status === "authenticated") {
@@ -62,10 +58,6 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context, url }: Route.ActionArgs) {
-  if (import.meta.env.MODE !== "development") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const formData = await request.formData();
   const returnTo = readBackofficeReturnTo(url);
   const input = signUpActionInputSchema.safeParse(Object.fromEntries(formData));
@@ -136,7 +128,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
 export function meta() {
   return [
     { title: "Fragno Backoffice Sign Up" },
-    { name: "description", content: "Create a backoffice account for local development." },
+    { name: "description", content: "Create a Fragno Backoffice account." },
   ];
 }
 
@@ -162,10 +154,10 @@ export default function BackofficeSignUp() {
             Fragno Backoffice
           </p>
           <h1 className="text-3xl leading-tight font-semibold text-[var(--bo-fg)] md:text-4xl">
-            Create a backoffice account for local development access.
+            Create a Fragno Backoffice account.
           </h1>
           <p className="text-sm text-[var(--bo-muted)]">
-            Set up an email and password to enter the backoffice and configure fragments locally.
+            Register your email to enter the backoffice and configure fragments.
           </p>
           <div className="flex flex-wrap gap-2">
             <Link

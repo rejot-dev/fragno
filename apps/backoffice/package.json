@@ -9,6 +9,7 @@
   "type": "module",
   "scripts": {
     "auth:migration:generate": "auth generate --config scripts/better-auth-cli.ts --output workers/auth/migrations/better-auth.sql --yes",
+    "admin:grant": "bash scripts/grant-admin.sh",
     "build": "react-router build",
     "deploy": "pnpm run build && wrangler deploy",
     "dev": "react-router dev",

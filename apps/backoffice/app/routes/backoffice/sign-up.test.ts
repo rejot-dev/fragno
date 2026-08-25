@@ -40,6 +40,19 @@ describe("backoffice sign-up route", () => {
     vi.unstubAllEnvs();
   });
 
+  it("allows registration in production", async () => {
+    vi.stubEnv("MODE", "production");
+    vi.mocked(callBetterAuth).mockResolvedValue(
+      Response.json({ user: { id: "user_123", email: "new-user@example.com" } }),
+    );
+
+    await expect(action(createActionArgs(validSignUpForm))).resolves.toEqual({
+      state: "verification_required",
+      email: "new-user@example.com",
+      resend: "available",
+    });
+  });
+
   it("shows verification-required when Better Auth does not issue a session", async () => {
     vi.stubEnv("MODE", "development");
     vi.mocked(callBetterAuth).mockResolvedValue(
