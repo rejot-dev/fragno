@@ -74,6 +74,106 @@ describe("Backoffice codemode scenarios", () => {
     );
   });
 
+  test("leaves Telegram unconfigured when the public origin is missing", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "telegram configuration requires a public origin",
+
+        env: { DOCS_PUBLIC_BASE_URL: undefined },
+        files: backofficeFiles.workspaceStarter(),
+
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+
+        steps: ({ then }) => [
+          then.assert("Telegram configuration fails through the runtime tool", async (ctx) => {
+            await expect(
+              ctx.runCodemode({
+                orgId: "org-1",
+                label: "configure Telegram without a public origin",
+                code: `async () => {
+  return await connections.configure({
+    id: "telegram",
+    payload: { botToken: "123456:telegram-bot-token" },
+  });
+}`,
+              }),
+            ).rejects.toThrow("Telegram public origin is not configured.");
+          }),
+          then.connection.unconfigured({ orgId: "org-1", id: "telegram" }),
+        ],
+      }),
+    );
+  });
+
+  test.each(["not-a-url", "/relative", "ftp://example.com"])(
+    "leaves Telegram unconfigured when the public origin is %s",
+    async (publicOrigin) => {
+      await runBackofficeScenario(
+        defineBackofficeScenario({
+          name: `telegram configuration rejects public origin ${publicOrigin}`,
+
+          env: { DOCS_PUBLIC_BASE_URL: publicOrigin },
+          files: backofficeFiles.workspaceStarter(),
+
+          setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+
+          steps: ({ then }) => [
+            then.assert("Telegram configuration rejects the invalid origin", async (ctx) => {
+              await expect(
+                ctx.runCodemode({
+                  orgId: "org-1",
+                  label: `configure Telegram with public origin ${publicOrigin}`,
+                  code: `async () => {
+  return await connections.configure({
+    id: "telegram",
+    payload: { botToken: "123456:telegram-bot-token" },
+  });
+}`,
+                }),
+              ).rejects.toThrow("Telegram public origin must be an absolute HTTP or HTTPS URL.");
+            }),
+            then.connection.unconfigured({ orgId: "org-1", id: "telegram" }),
+          ],
+        }),
+      );
+    },
+  );
+
+  test("generates the Telegram webhook secret during runtime-tool configuration", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "telegram runtime configuration generates its webhook secret",
+
+        files: backofficeFiles.workspaceStarter(),
+        fakes: ({ fake }) => ({ telegram: fake.telegram() }),
+
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+
+        steps: ({ when, then }) => [
+          when.codemode.run({
+            orgId: "org-1",
+            label: "configure Telegram with only user-supplied fields",
+            code: `async () => {
+  return await connections.configure({
+    id: "telegram",
+    payload: { botToken: "123456:telegram-bot-token" },
+  });
+}`,
+            assertToolCalls: ["connections.configure"],
+          }),
+          then.connection.configured({ orgId: "org-1", id: "telegram" }),
+          then.assert("Telegram receives a generated webhook secret", (ctx) => {
+            expect(ctx.fakes.telegram?.setWebhookCalls).toEqual([
+              expect.objectContaining({
+                secretToken: expect.stringMatching(/^tg_[a-f0-9]{32}$/),
+              }),
+            ]);
+          }),
+        ],
+      }),
+    );
+  });
+
   test("runs codemode through scoped context handles", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({

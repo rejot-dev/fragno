@@ -39,10 +39,12 @@ Treat connection setup as a handshake: **inspect → collect → configure → v
    `step.do` calls so the user can finish the handshake through the rendered interface. When every
    required value was already supplied in the request, proceed directly without an input workflow.
 
-   Collect the missing values identified by the live schema exactly as supplied. Use submitted
-   values only as the configuration payload; keep secrets out of labels, summaries, final output,
-   and follow-up prose. **Complete when** a waiting workflow displays controls for every missing
-   required field, or every required field already has a user-supplied or configured value.
+   Treat the live fields list as the complete set of user inputs. Providers generate managed values
+   such as webhook secrets during configuration, so do not add controls or payload properties that
+   are absent from that list. Use submitted values only as the configuration payload; keep secrets
+   out of labels, summaries, final output, and follow-up prose. **Complete when** a waiting workflow
+   displays controls for every missing required field, or every required field already has a
+   user-supplied or configured value.
 
 3. Configure with a payload that matches the live schema, inside the setup workflow when step 2
    created one:
@@ -53,7 +55,6 @@ Treat connection setup as a handshake: **inspect → collect → configure → v
        id: "telegram",
        payload: {
          botToken: "...",
-         webhookSecretToken: "...",
        },
      });
    };
