@@ -726,7 +726,7 @@ const connectionsConfigureTool = defineBackofficeRuntimeTool({
         ],
         examples: [
           'connections.configure --id reson8 --json \'{"apiKey":"..."}\' --format json',
-          'connections.configure --id telegram --json \'{"botToken":"...","webhookSecretToken":"...","webhookBaseUrl":"https://example.com"}\' --format json',
+          'connections.configure --id telegram --json \'{"botToken":"...","webhookSecretToken":"..."}\' --format json',
         ],
       },
       parse: parseConfigure,

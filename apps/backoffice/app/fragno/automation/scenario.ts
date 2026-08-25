@@ -420,7 +420,6 @@ type TelegramConfiguredInput = {
   botToken?: string;
   webhookSecretToken?: string;
   apiBaseUrl?: string;
-  webhookBaseUrl?: string;
 };
 
 type TelegramMessageInput = {
@@ -2449,18 +2448,13 @@ const buildStepBuilders = <
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
             const webhookSecretToken = input.webhookSecretToken ?? "telegram-webhook-secret";
-            const webhookBaseUrl = input.webhookBaseUrl ?? "https://example.com";
-            await ctx.runtime.objects.telegram.forOrg(input.orgId).setAdminConfig(
-              {
-                orgId: input.orgId,
-                botToken: input.botToken ?? "123456:telegram-bot-token",
-                webhookSecretToken,
-                botUsername: input.botUsername,
-                apiBaseUrl: input.apiBaseUrl ?? "https://telegram.test",
-                webhookBaseUrl,
-              },
-              webhookBaseUrl,
-            );
+            await ctx.runtime.objects.telegram.forOrg(input.orgId).setAdminConfig({
+              orgId: input.orgId,
+              botToken: input.botToken ?? "123456:telegram-bot-token",
+              webhookSecretToken,
+              botUsername: input.botUsername,
+              apiBaseUrl: input.apiBaseUrl ?? "https://telegram.test",
+            });
             ctx.vars[`telegram:${input.orgId}:webhookSecretToken`] = webhookSecretToken;
           },
         ),
@@ -4445,7 +4439,7 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
   const objectFactories: InMemoryObjectFactoryOverrides = {};
 
   if (fakes.telegram) {
-    objectFactories.TELEGRAM = ({ state, runtime }) => {
+    objectFactories.TELEGRAM = ({ state, env, runtime }) => {
       const fakeTelegram = fakes.telegram!;
       return new (class extends InMemoryTelegramObject {
         async getAutomationFile(input: {
@@ -4473,6 +4467,7 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
         }
       })({
         state,
+        env,
         runtime,
         api: fakeTelegram.api,
         adminApi: fakeTelegram.adminApi,

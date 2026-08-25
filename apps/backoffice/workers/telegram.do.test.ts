@@ -70,13 +70,13 @@ const VALID_PAYLOAD = {
   botToken: "123456:telegram-bot-token",
   webhookSecretToken: "telegram-webhook-secret",
   botUsername: "fragno_bot",
-  webhookBaseUrl: "https://example.com",
 };
 
 const createTelegramObject = (
   state: DurableObjectState,
   scope: Parameters<Telegram["init"]>[0] = { kind: "org", orgId: "acme" },
-) => new Telegram(state, {} as CloudflareEnv).init(scope);
+) =>
+  new Telegram(state, { DOCS_PUBLIC_BASE_URL: "https://example.com" } as CloudflareEnv).init(scope);
 
 const createState = (initialEntries?: Array<[string, unknown]>) => {
   const store = new Map<string, unknown>(initialEntries);
@@ -179,11 +179,21 @@ describe("Telegram Durable Object", () => {
     vi.unstubAllGlobals();
   });
 
+  test("requires the configured public origin before storing credentials", async () => {
+    const { state, store } = createState();
+    const telegram = new Telegram(state, {} as CloudflareEnv).init({ kind: "org", orgId: "acme" });
+
+    await expect(telegram.setAdminConfig(VALID_PAYLOAD)).rejects.toThrow(
+      "Telegram public origin is not configured.",
+    );
+    assert.isFalse(store.has(CONFIG_KEY));
+  });
+
   test("binds the fragment to the durable object's organization", async () => {
     const { state, store } = createState();
     const telegram = createTelegramObject(state);
 
-    await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
+    await telegram.setAdminConfig(VALID_PAYLOAD);
 
     expect(store.get(CONFIG_KEY)).toMatchObject({ scope: { kind: "org", orgId: "acme" } });
     expect(createTelegramServerMock).toHaveBeenCalledWith(
@@ -209,10 +219,10 @@ describe("Telegram Durable Object", () => {
     const { state } = createState();
     const telegram = createTelegramObject(state);
 
-    await telegram.setAdminConfig(
-      { ...VALID_PAYLOAD, apiBaseUrl: "https://telegram.example" },
-      "https://example.com",
-    );
+    await telegram.setAdminConfig({
+      ...VALID_PAYLOAD,
+      apiBaseUrl: "https://telegram.example",
+    });
 
     expect(fetch).toHaveBeenCalledWith(
       "https://telegram.example/bot123456:telegram-bot-token/setWebhook",
@@ -224,7 +234,7 @@ describe("Telegram Durable Object", () => {
     const { state, store } = createState();
     const telegram = createTelegramObject(state, { kind: "system" });
 
-    await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
+    await telegram.setAdminConfig(VALID_PAYLOAD);
 
     expect(store.get(CONFIG_KEY)).toMatchObject({ scope: { kind: "system" } });
     expect(fetch).toHaveBeenCalledWith(
@@ -239,7 +249,7 @@ describe("Telegram Durable Object", () => {
     const { state, store } = createState();
     const telegram = createTelegramObject(state, { kind: "user", userId: "user-1" });
 
-    await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
+    await telegram.setAdminConfig(VALID_PAYLOAD);
 
     expect(store.get(CONFIG_KEY)).toMatchObject({ scope: { kind: "user", userId: "user-1" } });
     expect(fetch).toHaveBeenCalledWith(
@@ -265,7 +275,7 @@ describe("Telegram Durable Object", () => {
     const { state } = createState();
     const telegram = createTelegramObject(state);
 
-    await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
+    await telegram.setAdminConfig(VALID_PAYLOAD);
 
     const response = await telegram.fetch(
       new Request("https://example.com/api/telegram/webhook?scope=org:other-org"),
@@ -304,7 +314,7 @@ describe("Telegram Durable Object", () => {
     const { state } = createState();
     const telegram = createTelegramObject(state);
 
-    await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
+    await telegram.setAdminConfig(VALID_PAYLOAD);
 
     await expect(telegram.getAutomationFile({ fileId: "telegram-file-1" })).resolves.toEqual({
       fileId: "telegram-file-1",
@@ -318,7 +328,7 @@ describe("Telegram Durable Object", () => {
     const { state } = createState();
     const telegram = createTelegramObject(state);
 
-    await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
+    await telegram.setAdminConfig(VALID_PAYLOAD);
 
     const response = await telegram.downloadAutomationFile({ fileId: "telegram-file-1" });
     expect(response).toBeInstanceOf(Response);

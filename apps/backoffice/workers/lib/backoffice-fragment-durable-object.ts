@@ -139,8 +139,8 @@ export type BackofficeFragmentDurableObjectOptions<
    * Derives the runtime input from the full stored config.
    *
    * `source` is intentionally narrower than `stored`: it should contain only values that affect
-   * fragment runtime construction/migration. Example: Telegram stores `webhookBaseUrl`, `createdAt`,
-   * and `updatedAt`, but only `botToken`, `webhookSecretToken`, `botUsername`, and `apiBaseUrl` are
+   * fragment runtime construction/migration. Example: Telegram stores `scope`, `createdAt`, and
+   * `updatedAt`, but only `botToken`, `webhookSecretToken`, `botUsername`, and `apiBaseUrl` are
    * needed to create the Telegram fragment. Keeping those storage-only fields out of `source` avoids
    * unnecessary rebuilds/migrations when they change.
    *

@@ -32,9 +32,12 @@ import {
   type BackofficeFragmentDurableObject,
 } from "./lib/backoffice-fragment-durable-object";
 
+type TelegramObjectEnv = {
+  DOCS_PUBLIC_BASE_URL?: string;
+};
+
 type StoredTelegramConfig = TelegramConfig & {
   scope: BackofficeContextScope;
-  webhookBaseUrl?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -44,7 +47,6 @@ export type TelegramAdminConfigResponse = {
   config?: {
     botUsername?: string | null;
     apiBaseUrl?: string | null;
-    webhookBaseUrl?: string | null;
     botTokenPreview?: string;
     webhookSecretTokenPreview?: string;
     createdAt?: string;
@@ -74,6 +76,14 @@ type TelegramAdminApi = {
 };
 
 const DEFAULT_TELEGRAM_API_BASE_URL = "https://api.telegram.org";
+
+function readTelegramPublicOrigin(env: TelegramObjectEnv) {
+  const origin = env.DOCS_PUBLIC_BASE_URL?.trim();
+  if (!origin) {
+    throw new Error("Telegram public origin is not configured.");
+  }
+  return origin;
+}
 
 const maskSecret = (value: string) => {
   if (!value) {
@@ -136,7 +146,6 @@ function buildConfigResponse(config: StoredTelegramConfig | null): TelegramAdmin
     config: {
       botUsername: config.botUsername ?? null,
       apiBaseUrl: config.apiBaseUrl ?? null,
-      webhookBaseUrl: config.webhookBaseUrl ?? null,
       botTokenPreview: maskSecret(config.botToken),
       webhookSecretTokenPreview: maskSecret(config.webhookSecretToken),
       createdAt: config.createdAt,
@@ -145,9 +154,8 @@ function buildConfigResponse(config: StoredTelegramConfig | null): TelegramAdmin
   };
 }
 
-const resolveWebhookUrl = (origin: string, scope: BackofficeContextScope, baseUrl?: string) => {
-  const resolvedOrigin = baseUrl ?? origin;
-  const trimmed = resolvedOrigin.replace(/\/+$/, "");
+const resolveWebhookUrl = (origin: string, scope: BackofficeContextScope) => {
+  const trimmed = origin.replace(/\/+$/, "");
   return `${trimmed}/api/telegram/${backofficeContextScopeSinglePathSegment(scope)}/telegram/webhook`;
 };
 
@@ -266,6 +274,7 @@ const createFetchTelegramAdminApi = (): TelegramAdminApi => ({
 });
 
 export class InMemoryTelegramObject extends RpcTarget implements TelegramObject {
+  readonly #env: TelegramObjectEnv;
   readonly #state: BackofficeObjectState;
   readonly #runtime: BackofficeRuntimeServices;
   readonly #api?: TelegramApi;
@@ -279,16 +288,19 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
 
   constructor({
     state,
+    env,
     runtime,
     api,
     adminApi,
   }: {
     state: BackofficeObjectState;
+    env?: TelegramObjectEnv;
     runtime: BackofficeRuntimeServices;
     api?: TelegramApi;
     adminApi?: TelegramAdminApi;
   }) {
     super();
+    this.#env = env ?? {};
     this.#state = state;
     this.#runtime = runtime;
     this.#api = api;
@@ -490,9 +502,10 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
     return { configured: false };
   }
 
-  async setAdminConfig(payload: unknown, origin: string): Promise<TelegramAdminConfigResponse> {
+  async setAdminConfig(payload: unknown): Promise<TelegramAdminConfigResponse> {
     const config = setAdminConfigInputSchema.parse(payload);
     const scope = this.#requireScope();
+    const webhookUrl = resolveWebhookUrl(readTelegramPublicOrigin(this.#env), scope);
 
     const existing = await this.#host.loadStored();
     this.#host.assertSameScope(existing, scope);
@@ -502,7 +515,6 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
     const stored: StoredTelegramConfig = {
       ...config,
       scope,
-      webhookBaseUrl: config.webhookBaseUrl,
       createdAt,
       updatedAt: now,
     };
@@ -521,7 +533,6 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
       throw new Error("Failed to migrate Telegram schema.");
     }
 
-    const webhookUrl = resolveWebhookUrl(origin, scope, stored.webhookBaseUrl);
     const webhookResult = await (this.#adminApi ?? createFetchTelegramAdminApi()).setWebhook({
       botToken: stored.botToken,
       apiBaseUrl: stored.apiBaseUrl,
@@ -535,7 +546,6 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
       config: {
         botUsername: stored.botUsername ?? null,
         apiBaseUrl: stored.apiBaseUrl ?? null,
-        webhookBaseUrl: stored.webhookBaseUrl ?? null,
         botTokenPreview: maskSecret(stored.botToken),
         webhookSecretTokenPreview: maskSecret(stored.webhookSecretToken),
         createdAt: stored.createdAt,
@@ -563,6 +573,7 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     super(state, env);
     this.#object = new InMemoryTelegramObject({
       state,
+      env,
       runtime: createCloudflareDurableObjectRuntimeServices(env, state),
     });
   }

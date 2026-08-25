@@ -24,28 +24,11 @@ const absoluteUrl = optionalTrimmedString.refine((value) => !value || URL.canPar
   message: "Must be a valid absolute URL.",
 });
 
-const requiredHttpUrl = z
-  .string()
-  .trim()
-  .min(1, "Webhook base URL is required.")
-  .refine(
-    (value) => {
-      try {
-        const parsed = new URL(value);
-        return parsed.protocol === "http:" || parsed.protocol === "https:";
-      } catch {
-        return false;
-      }
-    },
-    { message: "Webhook base URL must include http:// or https://." },
-  );
-
 export const telegramConfigureInputSchema = z.object({
   botToken: z.string().trim().min(1, "Bot token is required."),
   webhookSecretToken: z.string().trim().min(1, "Webhook secret token is required."),
   botUsername: optionalTrimmedString,
   apiBaseUrl: absoluteUrl,
-  webhookBaseUrl: requiredHttpUrl,
 });
 
 const telegramAutomationExternalEntities = {
@@ -98,7 +81,7 @@ const toTelegramStatus = (response: TelegramAdminConfigResponse): ConnectionStat
     return {
       ...connectionStatusIdentity,
       configured: false,
-      missing: ["botToken", "webhookSecretToken", "webhookBaseUrl"],
+      missing: ["botToken", "webhookSecretToken"],
     };
   }
 
@@ -133,11 +116,6 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
         },
         { name: "botUsername", description: "Optional bot username, with or without @." },
         { name: "apiBaseUrl", description: "Optional Telegram API base URL override." },
-        {
-          name: "webhookBaseUrl",
-          required: true,
-          description: "Public http(s) base URL used when registering the Telegram webhook.",
-        },
       ],
       getStatus: async ({ objects, orgId }) =>
         toTelegramStatus(await getTelegramDo(objects, orgId).getAdminConfig()),
@@ -145,11 +123,10 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
         toTelegramStatus(await getTelegramDo(objects, orgId).getAdminConfig()),
       reset: async ({ objects, orgId }) =>
         toTelegramStatus(await getTelegramDo(objects, orgId).resetAdminConfig()),
-      configure: async ({ objects, orgId, origin, payload }) =>
+      configure: async ({ objects, orgId, payload }) =>
         toTelegramStatus(
           await getTelegramDo(objects, orgId).setAdminConfig(
             telegramConfigureInputSchema.parse(payload),
-            origin,
           ),
         ),
     },

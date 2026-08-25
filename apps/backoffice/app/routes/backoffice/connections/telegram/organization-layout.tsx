@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { Outlet } from "react-router";
 
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { AutomationWorkspaceHeader } from "../../automations/shared";
 import { organizationIdFromScope, resolveIntegrationContext } from "../../integrations/scope";
 import type { Route } from "./+types/organization-layout";
 import { fetchTelegramConfig } from "./data";
+import { generateSecretToken } from "./secret-token";
 import {
   TelegramErrorBoundary,
   TelegramTabs,
@@ -31,11 +33,13 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
         ?.organization ?? null)
     : null;
 
+  const { runtime } = context.get(BackofficeWorkerContext);
   const { configState, configError } = await fetchTelegramConfig(context, integration.scope);
 
   return {
     ...integration,
-    origin: url.origin,
+    publicBaseUrl: runtime.config.docsPublicBaseUrl ?? "",
+    generatedWebhookSecretToken: generateSecretToken(),
     organization,
     configState,
     configError,
@@ -56,7 +60,8 @@ export default function BackofficeOrganizationTelegramLayout({
   matches,
 }: Route.ComponentProps) {
   const {
-    origin,
+    publicBaseUrl,
+    generatedWebhookSecretToken,
     organization,
     scope,
     uiScope,
@@ -100,7 +105,8 @@ export default function BackofficeOrganizationTelegramLayout({
       />
       <Outlet
         context={{
-          origin,
+          publicBaseUrl,
+          generatedWebhookSecretToken,
           organization,
           scope,
           scopeSegment,

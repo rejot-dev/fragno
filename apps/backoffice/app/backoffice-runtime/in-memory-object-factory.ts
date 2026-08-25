@@ -199,9 +199,10 @@ const inMemoryObjectFactories = {
       runtime,
       database: createInMemoryAuthDatabase(),
     }),
-  TELEGRAM: ({ state, runtime }) =>
+  TELEGRAM: ({ state, env, runtime }) =>
     new InMemoryTelegramObject({
       state,
+      env,
       runtime,
     }),
   RESEND: ({ state, env, runtime }) =>

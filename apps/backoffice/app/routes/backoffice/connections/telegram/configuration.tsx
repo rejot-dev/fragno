@@ -2,42 +2,19 @@ import { useEffect, useState, type SubmitEvent } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
 
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
-import { FormContainer, FormField, WizardStepper } from "@/components/backoffice";
+import { FormContainer, FormField } from "@/components/backoffice";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
-import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/configuration";
 import { generateSecretToken } from "./secret-token";
 import type { TelegramConfigState, TelegramLayoutContext } from "./shared";
-
-const SETUP_STEPS = [
-  {
-    title: "Create a bot",
-    description:
-      "Use BotFather in Telegram to create a bot, set its name, and copy the bot token + username.",
-    helper: "BotFather: /newbot",
-  },
-  {
-    title: "Configure webhook",
-    description:
-      "Generate a webhook secret, then register the webhook URL with Telegram so updates flow in.",
-    helper: "setWebhook with secret_token",
-  },
-  {
-    title: "Store credentials",
-    description:
-      "Save the bot token and secret for this organization. The fragment will start ingesting chats.",
-    helper: "Saved per organization",
-  },
-];
 
 type TelegramConfigForm = {
   botToken: string;
   webhookSecretToken: string;
   botUsername: string;
   apiBaseUrl: string;
-  webhookBaseUrl: string;
 };
 
 type TelegramConfigActionData = {
@@ -70,13 +47,6 @@ const validateOptionalUrl = (value: string, label: string) => {
   return null;
 };
 
-const validateRequiredUrl = (value: string, label: string) => {
-  if (!value) {
-    return `${label} is required.`;
-  }
-  return validateOptionalUrl(value, label);
-};
-
 const normalizeTelegramConfigInput = (
   input: TelegramConfigForm,
 ): TelegramConfigValidationResult => {
@@ -84,7 +54,6 @@ const normalizeTelegramConfigInput = (
   const webhookSecretToken = input.webhookSecretToken.trim();
   const botUsername = input.botUsername.trim().replace(/^@/, "");
   const apiBaseUrl = input.apiBaseUrl.trim();
-  const webhookBaseUrl = input.webhookBaseUrl.trim();
 
   if (!botToken || !webhookSecretToken) {
     return {
@@ -98,11 +67,6 @@ const normalizeTelegramConfigInput = (
     return { ok: false, message: apiBaseUrlError };
   }
 
-  const webhookBaseUrlError = validateRequiredUrl(webhookBaseUrl, "Webhook base URL");
-  if (webhookBaseUrlError) {
-    return { ok: false, message: webhookBaseUrlError };
-  }
-
   return {
     ok: true,
     payload: {
@@ -110,7 +74,6 @@ const normalizeTelegramConfigInput = (
       webhookSecretToken,
       botUsername,
       apiBaseUrl,
-      webhookBaseUrl,
     },
   };
 };
@@ -136,7 +99,6 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     webhookSecretToken: getValue("webhookSecretToken"),
     botUsername: getValue("botUsername"),
     apiBaseUrl: getValue("apiBaseUrl"),
-    webhookBaseUrl: getValue("webhookBaseUrl"),
   };
 
   const validation = normalizeTelegramConfigInput(payload);
@@ -148,12 +110,11 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     } satisfies TelegramConfigActionData;
   }
 
-  const origin = new URL(request.url).origin;
   const { runtime } = context.get(BackofficeWorkerContext);
 
   try {
     const telegramDo = runtime.objects.telegram.for(scope);
-    const status = await telegramDo.setAdminConfig(validation.payload, origin);
+    const status = await telegramDo.setAdminConfig(validation.payload);
 
     if (status.webhook && !status.webhook.ok) {
       return {
@@ -177,147 +138,23 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   }
 }
 
-function TelegramConnectionStatus({
-  configState,
-  configLoading,
-  configError,
-  statusLabel,
-  statusTone,
-  currentStep,
-  onStepChange,
-}: {
-  configState: TelegramConfigState | null;
-  configLoading: boolean;
-  configError: string | null;
-  statusLabel: string;
-  statusTone: string;
-  currentStep: number;
-  onStepChange: (step: number) => void;
-}) {
-  return (
-    <section className="grid gap-3 lg:grid-cols-[1.1fr_1fr]">
-      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-              Status
-            </p>
-            <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Telegram connection</h2>
-            <p className="mt-2 text-sm text-[var(--bo-muted)]">
-              Each organization gets a dedicated Telegram fragment instance and database.
-            </p>
-          </div>
-          <span
-            className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${statusTone}`}
-          >
-            {statusLabel}
-          </span>
-        </div>
-
-        <div className="mt-4 space-y-2 text-sm text-[var(--bo-muted)]">
-          {configLoading ? (
-            <p>Loading configuration…</p>
-          ) : configError ? (
-            <p className="text-red-500">{configError}</p>
-          ) : configState?.configured ? (
-            <>
-              <p>
-                Bot username:{" "}
-                <span className="text-[var(--bo-fg)]">
-                  @{configState.config?.botUsername ?? "unknown"}
-                </span>
-              </p>
-              <p>
-                Last updated:{" "}
-                <span className="text-[var(--bo-fg)]">
-                  {formatTimestamp(configState.config?.updatedAt)}
-                </span>
-              </p>
-              {configState.config?.webhookBaseUrl ? (
-                <p>
-                  Webhook base URL:{" "}
-                  <span className="text-[var(--bo-fg)]">{configState.config.webhookBaseUrl}</span>
-                </p>
-              ) : null}
-              {configState.config?.botTokenPreview ? (
-                <p>
-                  Bot token:{" "}
-                  <span className="text-[var(--bo-fg)]">{configState.config.botTokenPreview}</span>
-                </p>
-              ) : null}
-              {configState.config?.webhookSecretTokenPreview ? (
-                <p>
-                  Secret token:{" "}
-                  <span className="text-[var(--bo-fg)]">
-                    {configState.config.webhookSecretTokenPreview}
-                  </span>
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <p>Connect a bot to start collecting chat activity.</p>
-          )}
-        </div>
-      </div>
-
-      <FormContainer
-        title="Setup wizard"
-        eyebrow="Step-by-step"
-        description="Collect the bot credentials and register the webhook."
-      >
-        <WizardStepper steps={SETUP_STEPS} currentStep={currentStep} onStepChange={onStepChange} />
-      </FormContainer>
-    </section>
-  );
-}
-
-function TelegramAccountLinking() {
-  return (
-    <FormContainer
-      title="Account linking"
-      eyebrow="Automations"
-      description="Telegram linking now runs through the generic automations flow."
-    >
-      <div className="space-y-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-        <p>
-          After configuring the bot, users should message it directly. Inbound Telegram messages are
-          forwarded into the automations fragment as canonical <code>message.received</code> events.
-        </p>
-        <p>
-          The docs app now ships with starter automation files under
-          <code> /workspace/automations </code> for the Telegram claim-linking flow:
-          <code> /start </code> issues a claim link and OTP confirmation finalizes the identity
-          binding.
-        </p>
-      </div>
-    </FormContainer>
-  );
-}
-
 export default function BackofficeOrganizationTelegramConfiguration() {
-  const { origin, scope, configState, configLoading, configError, setConfigError } =
+  const { publicBaseUrl, generatedWebhookSecretToken, scope, configState, setConfigError } =
     useOutletContext<TelegramLayoutContext>();
-  const [currentStep, setCurrentStep] = useState(0);
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const saving = navigation.state === "submitting";
   const [localError, setLocalError] = useState<string | null>(null);
   const [formState, setFormState] = useState<TelegramConfigForm>({
     botToken: "",
-    webhookSecretToken: "",
+    webhookSecretToken: generatedWebhookSecretToken,
     botUsername: "",
     apiBaseUrl: "",
-    webhookBaseUrl: origin,
   });
 
-  const webhookBaseUrl = formState.webhookBaseUrl.trim();
   const telegramScopeSegment = backofficeContextScopeSinglePathSegment(scope);
-  const webhookUrl = `${webhookBaseUrl.replace(/\/+$/, "")}/api/telegram/${telegramScopeSegment}/telegram/webhook`;
+  const webhookUrl = `${publicBaseUrl.replace(/\/+$/, "")}/api/telegram/${telegramScopeSegment}/telegram/webhook`;
   const apiBaseUrlError = validateOptionalUrl(formState.apiBaseUrl.trim(), "API base URL");
-  const webhookBaseUrlError = validateRequiredUrl(
-    formState.webhookBaseUrl.trim(),
-    "Webhook base URL",
-  );
   const botTokenPlaceholder = formState.botToken
     ? "<REDACTED_BOT_TOKEN>"
     : "<BOT_TOKEN_FROM_BOTFATHER>";
@@ -331,12 +168,10 @@ export default function BackofficeOrganizationTelegramConfiguration() {
       return;
     }
 
-    setCurrentStep(2);
     setFormState((prev) => ({
       ...prev,
       botUsername: prev.botUsername || configState.config?.botUsername || "",
       apiBaseUrl: prev.apiBaseUrl || configState.config?.apiBaseUrl || "",
-      webhookBaseUrl: prev.webhookBaseUrl || configState.config?.webhookBaseUrl || "",
     }));
   }, [configState]);
 
@@ -373,23 +208,8 @@ export default function BackofficeOrganizationTelegramConfiguration() {
     }
   };
 
-  const statusLabel = configState?.configured ? "Configured" : "Not configured";
-  const statusTone = configState?.configured
-    ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
-    : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]";
-
   return (
     <div className="space-y-4">
-      <TelegramConnectionStatus
-        configState={configState}
-        configLoading={configLoading}
-        configError={configError}
-        statusLabel={statusLabel}
-        statusTone={statusTone}
-        currentStep={currentStep}
-        onStepChange={setCurrentStep}
-      />
-
       <FormContainer
         title="Telegram credentials"
         eyebrow="Configuration"
@@ -480,30 +300,6 @@ export default function BackofficeOrganizationTelegramConfiguration() {
               />
               {apiBaseUrlError ? <p className="text-xs text-red-500">{apiBaseUrlError}</p> : null}
             </FormField>
-
-            <FormField
-              label="Webhook base URL"
-              hint="Required. Use the public Backoffice origin or a tunnel URL."
-            >
-              <input
-                type="url"
-                name="webhookBaseUrl"
-                value={formState.webhookBaseUrl}
-                onChange={(event) => {
-                  setLocalError(null);
-                  setFormState((prev) => ({
-                    ...prev,
-                    webhookBaseUrl: event.target.value,
-                  }));
-                }}
-                placeholder={origin}
-                required
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-              />
-              {webhookBaseUrlError ? (
-                <p className="text-xs text-red-500">{webhookBaseUrlError}</p>
-              ) : null}
-            </FormField>
           </div>
 
           <div className="space-y-3">
@@ -541,8 +337,6 @@ export default function BackofficeOrganizationTelegramConfiguration() {
           </button>
         </Form>
       </FormContainer>
-
-      <TelegramAccountLinking />
     </div>
   );
 }
