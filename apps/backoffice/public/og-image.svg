@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f5f2ed" />
+  <path d="M0 1H1200M0 629H1200" stroke="#d8d2c9" />
+
+  <g transform="translate(72 64)">
+    <rect width="25" height="25" fill="#ea580c" />
+    <rect x="33" width="25" height="25" fill="#12856f" />
+    <rect y="33" width="25" height="25" fill="#f29a6d" />
+    <rect x="33" y="33" width="25" height="25" fill="#a7650c" />
+    <text x="82" y="38" fill="#24211e" font-family="Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="3">REJOT BACKOFFICE</text>
+  </g>
+
+  <text x="72" y="250" fill="#24211e" font-family="Arial, sans-serif" font-size="86" font-weight="700" letter-spacing="-5">
+    <tspan x="72" dy="0">Automate your</tspan>
+    <tspan x="72" dy="88" fill="#8a837b">business with AI</tspan>
+  </text>
+
+
+  <g transform="translate(72 494)">
+    <rect width="310" height="72" fill="#fffdf9" stroke="#d8d2c9" />
+    <rect x="18" y="20" width="32" height="32" fill="#ea580c" fill-opacity="0.1" />
+    <path d="M31 26L24 37H32L29 46L42 33H34L38 26Z" fill="#c2410c" />
+    <text x="66" y="31" fill="#8a837b" font-family="monospace" font-size="11" letter-spacing="1.5">TRIGGER</text>
+    <text x="66" y="51" fill="#24211e" font-family="monospace" font-size="14">github.pull_request.opened</text>
+
+    <path d="M332 36H372" stroke="#b8b0a7" stroke-width="2" />
+    <path d="M365 29L372 36L365 43" fill="none" stroke="#b8b0a7" stroke-width="2" />
+
+    <rect x="394" width="310" height="72" fill="#fffdf9" stroke="#d8d2c9" />
+    <rect x="412" y="20" width="32" height="32" fill="#7f1d1d" fill-opacity="0.08" />
+    <path d="M421 28H435V42H421ZM425 32V38M431 32V38" fill="none" stroke="#7f1d1d" stroke-width="1.5" />
+    <text x="460" y="31" fill="#8a837b" font-family="monospace" font-size="11" letter-spacing="1.5">WORKFLOW</text>
+    <text x="460" y="51" fill="#24211e" font-family="monospace" font-size="14">pull-request-review.js</text>
+  </g>
+</svg>

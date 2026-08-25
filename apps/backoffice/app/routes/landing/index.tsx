@@ -11,12 +11,25 @@ import { LandingWorkflow } from "./landing-workflow";
 import { LandingSystem } from "./system/landing-system";
 
 export function meta() {
+  const title = "ReJot Backoffice — Automate your business with AI";
+  const description =
+    "Turn business processes into deterministic workflows that connect tools, route events, preserve context, and run under your control.";
+  const ogImage = "https://backoffice.rejot.dev/og-image.png";
+
   return [
-    { title: "Backoffice" },
-    {
-      name: "description",
-      content: "A controlled workspace for AI workflows, files, events, and integrations.",
-    },
+    { title },
+    { name: "description", content: description },
+    { property: "og:title", content: title },
+    { property: "og:description", content: description },
+    { property: "og:type", content: "website" },
+    { property: "og:image", content: ogImage },
+    { property: "og:image:width", content: "1200" },
+    { property: "og:image:height", content: "630" },
+    { property: "og:image:alt", content: "ReJot Backoffice — Automate your business with AI" },
+    { name: "twitter:card", content: "summary_large_image" },
+    { name: "twitter:title", content: title },
+    { name: "twitter:description", content: description },
+    { name: "twitter:image", content: ogImage },
   ];
 }
 
