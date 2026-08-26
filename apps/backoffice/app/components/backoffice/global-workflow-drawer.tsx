@@ -91,6 +91,7 @@ export function GlobalWorkflowDrawer({
       typeof nextWidth === "function" ? nextWidth(getDrawerWidthSnapshot()) : nextWidth;
     setDrawerWidthSnapshot(resolvedWidth);
   }, []);
+  const [activeTab, setActiveTab] = useState<"events" | "workflows">("events");
   const draggingRef = useRef(false);
   const clampWidth = useCallback(
     (value: number) =>
@@ -156,7 +157,7 @@ export function GlobalWorkflowDrawer({
 
   return (
     <aside
-      aria-label="Recent workflow runs"
+      aria-label="Recent automation activity"
       aria-hidden={!open}
       inert={!open}
       style={{ "--global-workflow-drawer-width": `${width}px` } as CSSProperties}
@@ -185,21 +186,33 @@ export function GlobalWorkflowDrawer({
         <span className="absolute inset-y-0 -left-5 w-10 bg-transparent transition-colors duration-150 group-hover:bg-[color:var(--bo-accent-bg)]/45" />
       </div>
 
-      <header className="flex min-h-14 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] px-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex size-8 shrink-0 items-center justify-center bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
-            <Activity className="size-4" aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
-              Live activity
-            </p>
-            <h2 className="truncate text-xs font-semibold text-[var(--bo-fg)]">Recent workflows</h2>
-          </div>
+      <header className="flex min-h-14 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] pr-2 pl-3">
+        <div role="tablist" aria-label="Automation activity" className="flex min-w-0 self-stretch">
+          {(["events", "workflows"] as const).map((tab) => {
+            const isActive = activeTab === tab;
+            return (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => {
+                  setActiveTab(tab);
+                }}
+                className={`relative min-h-14 px-3 text-[10px] font-semibold tracking-[0.16em] uppercase transition-colors ${
+                  isActive
+                    ? "text-[var(--bo-fg)] after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-[var(--bo-accent)]"
+                    : "text-[var(--bo-muted-2)] hover:text-[var(--bo-fg)]"
+                }`}
+              >
+                {tab}
+              </button>
+            );
+          })}
         </div>
         <button
           type="button"
-          aria-label="Close workflow drawer"
+          aria-label="Close activity drawer"
           onClick={onClose}
           className="inline-flex size-10 items-center justify-center text-[var(--bo-muted)] transition-[background-color,color,scale] duration-150 hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
         >
@@ -215,7 +228,7 @@ export function GlobalWorkflowDrawer({
               fallback={<DrawerState message="Workflow synchronization failed." tone="error" />}
             >
               <Suspense fallback={<DrawerState message="Mounting workflow database…" />}>
-                <GlobalWorkflowDrawerData source={sourceState.source} />
+                <GlobalWorkflowDrawerData source={sourceState.source} activeTab={activeTab} />
               </Suspense>
             </WorkflowDrawerErrorBoundary>
           ) : (
@@ -245,9 +258,94 @@ class WorkflowDrawerErrorBoundary extends Component<
   }
 }
 
-function GlobalWorkflowDrawerData({ source }: { source: AutomationCollectionSource }) {
+function GlobalWorkflowDrawerData({
+  source,
+  activeTab,
+}: {
+  source: AutomationCollectionSource;
+  activeTab: "events" | "workflows";
+}) {
   const database = use(getAutomationBrowserDatabase(source));
-  return <RecentWorkflowRuns database={database} source={source} />;
+  return activeTab === "events" ? (
+    <RecentAutomationEvents database={database} />
+  ) : (
+    <RecentWorkflowRuns database={database} source={source} />
+  );
+}
+
+function RecentAutomationEvents({ database }: { database: AutomationBrowserDatabase }) {
+  const { collections, coordinator } = database;
+  const statusQuery = useLiveQuery(
+    (builder) => builder.from({ status: coordinator.internal.collection }),
+    [coordinator.internal.collection],
+  );
+  const query = useLiveQuery(
+    (builder) =>
+      builder
+        .from({ event: collections.events })
+        .orderBy(({ event }) => event.occurredAt, "desc")
+        .orderBy(({ event }) => event.id, "desc")
+        .limit(50)
+        .select(({ event }) => ({
+          id: event.id,
+          source: event.source,
+          eventType: event.eventType,
+          occurredAt: event.occurredAt,
+          payload: event.payload,
+        })),
+    [collections.events],
+  );
+  const events = query.data ?? [];
+
+  if (query.isLoading && events.length === 0) {
+    return <DrawerState message="Synchronizing recent events…" />;
+  }
+  const synchronizationStatus = statusQuery.data?.[0];
+  if (query.isError || synchronizationStatus?.state === "failed") {
+    return (
+      <DrawerState
+        message={synchronizationStatus?.error?.message ?? "Event synchronization failed."}
+        tone="error"
+      />
+    );
+  }
+  if (events.length === 0) {
+    return <DrawerState message="No events yet. New events will appear here live." />;
+  }
+
+  return (
+    <div className="backoffice-scroll min-h-0 flex-1 overflow-y-auto">
+      {events.map((event) => (
+        <details
+          key={event.id}
+          className="group border-b border-[color:var(--bo-border)] px-3 py-3"
+        >
+          <summary className="cursor-pointer list-none marker:content-none">
+            <div className="flex items-start gap-3">
+              <Activity
+                className="mt-0.5 size-3.5 shrink-0 text-[var(--bo-accent-fg)]"
+                aria-hidden="true"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="font-mono text-xs font-semibold break-all text-[var(--bo-fg)]">
+                  {event.source}.{event.eventType}
+                </p>
+                <p className="mt-1 truncate font-mono text-[9px] text-[var(--bo-muted-2)]">
+                  {event.id}
+                </p>
+              </div>
+              <span className="shrink-0 text-[9px] text-[var(--bo-muted-2)] tabular-nums">
+                {formatRelativeTime(event.occurredAt)}
+              </span>
+            </div>
+          </summary>
+          <pre className="backoffice-scroll mt-3 max-h-80 overflow-auto bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
+            {JSON.stringify(event.payload, null, 2)}
+          </pre>
+        </details>
+      ))}
+    </div>
+  );
 }
 
 function RecentWorkflowRuns({

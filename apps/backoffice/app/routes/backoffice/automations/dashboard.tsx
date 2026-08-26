@@ -1112,7 +1112,7 @@ export function AutomationSwimlaneDashboard({
           : selectionKind === "action" && selectedRoute
             ? { kind: "action", route: selectedRoute }
             : null;
-  const showInspector = view === "events" || inspectorSelection !== null;
+  const showInspector = inspectorSelection !== null;
   const errors = [
     routesState.status === "error" ? routesState.message : null,
     eventSourcesQuery.isError ? "Event source synchronization failed." : null,
@@ -1178,7 +1178,9 @@ export function AutomationSwimlaneDashboard({
       >
         <div className="min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
           <div className="backoffice-scroll overflow-x-auto">
-            <div className="w-full min-w-[1100px]">
+            <div
+              className={`min-w-[1100px] ${showInspector ? "xl:w-[calc(100%+28.75rem)]" : "w-full"}`}
+            >
               <div className="grid grid-cols-[18rem_minmax(20rem,1fr)_minmax(22rem,1.1fr)] gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3">
                 <LaneHeader
                   dotClassName="bg-[#94a86d]"
