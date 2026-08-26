@@ -8,16 +8,16 @@ import { automationEventCatalogLink, automationRouteScriptLink } from "./route-l
 
 export function AutomationRouteDetail({
   route,
-  scriptsPath,
+  filesScopePath,
   eventsCatalogPath,
   compact = false,
 }: {
   route: AutomationRouteDefinition;
-  scriptsPath: string;
+  filesScopePath: string;
   eventsCatalogPath: string;
   compact?: boolean;
 }) {
-  const scriptLink = automationRouteScriptLink(route, scriptsPath);
+  const scriptLink = automationRouteScriptLink(route, filesScopePath);
 
   return (
     <div className="space-y-3">

@@ -9,7 +9,6 @@ import {
   useSearchParams,
 } from "react-router";
 
-import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { backofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
 import { BackofficeSystemState } from "@/components/backoffice";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
@@ -21,19 +20,12 @@ import {
   getAutomationCatchUpProgress,
   subscribeAutomationCatchUpProgress,
 } from "@/fragno/automation/tanstack/browser-database";
-import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
-import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import { throwBackofficeOrganizationNotFound } from "../route-errors";
 import type { Route } from "./+types/scope-layout";
 import { AutomationBrowserPersistenceDiagnosticPanel } from "./browser-persistence-diagnostics";
-import {
-  createAutomationProject,
-  loadAutomationWorkspaceData,
-  lookupAutomationProject,
-  toExternalId,
-} from "./data.server";
+import { createAutomationProject, lookupAutomationProject, toExternalId } from "./data.server";
 import type { AutomationLayoutContext, AutomationTab } from "./layout-context";
 import {
   automationScopeBasePath,
@@ -73,23 +65,14 @@ const currentTabFromPath = (pathname: string): AutomationTab => {
   if (segments.includes("integrations")) {
     return "integrations";
   }
-  if (segments.includes("router")) {
-    return "router";
-  }
   if (segments.includes("api")) {
     return "api";
   }
   if (segments.includes("events-catalog")) {
     return "events-catalog";
   }
-  if (segments.includes("events")) {
-    return "events";
-  }
   if (segments.includes("store")) {
     return "store";
-  }
-  if (segments.includes("scripts")) {
-    return "scripts";
   }
   return "dashboard";
 };
@@ -143,59 +126,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     project: projectLookup?.status === "found" ? projectLookup.project : null,
     user: me.user,
   });
-  const backofficeScope = backofficeRuntimeScopeFromResolvedScope(selectedScope);
-  const currentTab = currentTabFromPath(url.pathname);
-  const serverScriptLayers =
-    selectedScope.kind === "org"
-      ? (["static"] as const)
-      : selectedScope.kind === "system"
-        ? (["system"] as const)
-        : undefined;
-  const uploadCollectionStatePromise =
-    selectedScope.kind === "org" && currentTab === "scripts"
-      ? fetchUploadAdapterIdentity(request, context, {
-          kind: "org",
-          orgId: selectedScope.organization.id,
-        })
-          .then(
-            (
-              adapterIdentity,
-            ): {
-              source: UploadCollectionSource;
-              error: null;
-            } => ({
-              source: {
-                scope: { kind: "org", orgId: selectedScope.organization.id },
-                adapterIdentity,
-              },
-              error: null,
-            }),
-          )
-          .catch((error: unknown) => ({
-            source: null,
-            error:
-              error instanceof Error
-                ? error.message
-                : "Local workspace script metadata is unavailable.",
-          }))
-      : Promise.resolve({ source: null, error: null });
-  const [workspaceResult, uploadCollectionState] = await Promise.all([
-    loadAutomationWorkspaceData({
-      request,
-      context,
-      scope: backofficeScope,
-      layers: serverScriptLayers,
-    }),
-    uploadCollectionStatePromise,
-  ]);
-
-  return {
-    selectedScope,
-    scripts: workspaceResult.scripts,
-    scriptsError: workspaceResult.scriptsError,
-    uploadCollectionSource: uploadCollectionState.source,
-    uploadCollectionError: uploadCollectionState.error,
-  };
+  return { selectedScope };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -402,11 +333,7 @@ function AutomationClientOutlet({
   const outletKey = describeAutomationCollectionSource(collectionSource).resourceKey;
   const outletContext = {
     selectedScope: loaderData.selectedScope,
-    scripts: loaderData.scripts,
-    scriptsError: loaderData.scriptsError,
     collections,
-    uploadCollectionSource: loaderData.uploadCollectionSource,
-    uploadCollectionError: loaderData.uploadCollectionError,
   } satisfies AutomationLayoutContext;
 
   return <Outlet key={outletKey} context={outletContext} />;

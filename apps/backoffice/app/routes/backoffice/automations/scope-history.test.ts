@@ -71,8 +71,11 @@ describe("automation scope history", () => {
     );
   });
 
-  test("falls back to scripts when a previous system scope cannot open the active tab", () => {
-    assert.equal(resolveAutomationScopeTab({ kind: "system", label: "System" }, "api"), "scripts");
+  test("falls back to the dashboard when a system scope cannot open the active tab", () => {
+    assert.equal(
+      resolveAutomationScopeTab({ kind: "system", label: "System" }, "api"),
+      "dashboard",
+    );
     assert.equal(resolveAutomationScopeTab(secondOrganization, "api"), "api");
   });
 

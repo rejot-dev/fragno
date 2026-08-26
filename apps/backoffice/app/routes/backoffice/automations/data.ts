@@ -1,5 +1,3 @@
-import type { AutomationScriptEngine, AutomationScriptLayer } from "@/fragno/automation/catalog";
-
 type AutomationIdLike =
   | string
   | {
@@ -8,20 +6,6 @@ type AutomationIdLike =
     }
   | null
   | undefined;
-
-export type AutomationScriptRecord = {
-  id: string;
-  key: string;
-  name: string;
-  engine: AutomationScriptEngine;
-  layer: AutomationScriptLayer;
-  readOnly: boolean;
-  path: string;
-  absolutePath: string;
-  version: number | null;
-  scriptLoadError: string | null;
-  enabled: boolean;
-};
 
 export type AutomationProjectRecord = {
   id?: AutomationIdLike;

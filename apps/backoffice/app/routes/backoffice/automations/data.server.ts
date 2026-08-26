@@ -8,27 +8,13 @@ import type {
 } from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import { createBackofficeFileSystem } from "@/files";
-import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import {
-  getAutomationLayerForPath,
-  listAutomationWorkspaceScripts,
-  readAutomationWorkspaceScript,
-  type AutomationWorkspaceScriptEntry,
-} from "@/fragno/automation";
+import { getAutomationLayerForPath, readAutomationWorkspaceScript } from "@/fragno/automation";
 import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { booleanActionResultFromCaughtError } from "../action-result";
-import type {
-  AutomationProjectRecord,
-  AutomationScriptRecord,
-  AutomationScriptSourceRecord,
-} from "./data";
-import {
-  buildAutomationScriptRecord,
-  fromAutomationScriptId,
-  isAutomationScriptLayerVisibleInScope,
-} from "./script-records";
+import type { AutomationProjectRecord, AutomationScriptSourceRecord } from "./data";
+import { fromAutomationScriptId, isAutomationScriptLayerVisibleInScope } from "./script-records";
 
 const formatErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
@@ -69,60 +55,6 @@ async function createBackofficeAutomationFileSystem({
 }
 
 export { toExternalId } from "./data";
-
-export async function loadAutomationWorkspaceData({
-  request,
-  context,
-  scope,
-  orgId,
-  layers,
-}: {
-  request: Request;
-  context: Readonly<RouterContextProvider>;
-  scope?: BackofficeContextScope;
-  orgId?: string;
-  layers?: readonly AutomationWorkspaceScriptEntry["layer"][];
-}): Promise<{
-  scripts: AutomationScriptRecord[];
-  scriptsError: string | null;
-}> {
-  const resolvedScope = scope ?? (orgId ? { kind: "org" as const, orgId } : null);
-  if (!resolvedScope) {
-    throw new Error("Automation scope is required.");
-  }
-  if (layers?.length === 0) {
-    return { scripts: [], scriptsError: null };
-  }
-
-  const execution = await requireBackofficeContext(request, context, resolvedScope);
-  const fileSystem = await createBackofficeAutomationFileSystem({ context, execution });
-
-  let workspaceScripts: AutomationWorkspaceScriptEntry[] = [];
-  let workspaceScriptsError: string | null = null;
-  try {
-    workspaceScripts = await listAutomationWorkspaceScripts(fileSystem, { layers });
-  } catch (error) {
-    workspaceScriptsError = formatErrorMessage(error, "Failed to list automation scripts.");
-  }
-
-  const scripts: AutomationScriptRecord[] = [];
-  for (const workspaceScript of workspaceScripts) {
-    if (isAutomationScriptLayerVisibleInScope(workspaceScript.layer, resolvedScope)) {
-      scripts.push(buildAutomationScriptRecord(workspaceScript));
-    }
-  }
-  scripts.sort(
-    (left, right) =>
-      left.layer.localeCompare(right.layer) ||
-      left.name.localeCompare(right.name) ||
-      left.path.localeCompare(right.path),
-  );
-
-  return {
-    scripts,
-    scriptsError: workspaceScriptsError,
-  };
-}
 
 export async function loadAutomationScriptSource({
   context,

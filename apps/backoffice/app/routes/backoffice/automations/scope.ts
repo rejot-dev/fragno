@@ -44,11 +44,8 @@ export const automationScopeBasePath = (scope: BackofficeScopeSelection) =>
 
 type AutomationScopeTab =
   | "dashboard"
-  | "scripts"
-  | "router"
   | "store"
   | "api"
-  | "events"
   | "events-catalog"
   | "integrations"
   | "mcp"
@@ -61,7 +58,7 @@ export const resolveAutomationScopeTab = (
   requestedTab: AutomationScopeTab,
 ) =>
   scope.kind === "system" && SYSTEM_UNAVAILABLE_AUTOMATION_TABS.has(requestedTab)
-    ? "scripts"
+    ? "dashboard"
     : requestedTab;
 
 export const automationScopeTabPath = (

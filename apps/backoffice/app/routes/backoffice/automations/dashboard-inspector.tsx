@@ -55,7 +55,7 @@ export function DashboardInspector({
   workflowSource,
   runtimeToolCatalog,
   collections,
-  scriptsPath,
+  filesScopePath,
   eventsCatalogPath,
   scope,
   onClear,
@@ -67,7 +67,7 @@ export function DashboardInspector({
     AutomationCollections,
     "events" | "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
   >;
-  scriptsPath: string;
+  filesScopePath: string;
   eventsCatalogPath: string;
   scope: BackofficeResolvedScope;
   onClear: () => void;
@@ -102,7 +102,7 @@ export function DashboardInspector({
           <div className="p-3">
             <AutomationRouteDetail
               route={selection.route}
-              scriptsPath={scriptsPath}
+              filesScopePath={filesScopePath}
               eventsCatalogPath={eventsCatalogPath}
               compact
             />
@@ -114,7 +114,7 @@ export function DashboardInspector({
             source={workflowSource}
             runtimeToolCatalog={runtimeToolCatalog}
             collections={collections}
-            scriptsPath={scriptsPath}
+            filesScopePath={filesScopePath}
             scope={scope}
           />
         ) : null}
@@ -293,7 +293,7 @@ function ActionInspector({
   source,
   runtimeToolCatalog,
   collections,
-  scriptsPath,
+  filesScopePath,
   scope,
 }: {
   route: AutomationRouteDefinition;
@@ -303,10 +303,10 @@ function ActionInspector({
     AutomationCollections,
     "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
   >;
-  scriptsPath: string;
+  filesScopePath: string;
   scope: BackofficeResolvedScope;
 }) {
-  const scriptLink = automationRouteScriptLink(route, scriptsPath);
+  const scriptLink = automationRouteScriptLink(route, filesScopePath);
   const scriptPath =
     route.action.kind === "start_workflow" ? route.action.workflowScriptPath : null;
   const detailRows = automationRouteActionDetailRows(route, {

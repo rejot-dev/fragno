@@ -2,9 +2,8 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 
-const { createBackofficeFileSystemMock, requireBackofficeContextMock } = vi.hoisted(() => ({
+const { createBackofficeFileSystemMock } = vi.hoisted(() => ({
   createBackofficeFileSystemMock: vi.fn(),
-  requireBackofficeContextMock: vi.fn(),
 }));
 
 vi.mock("@/files", async (importOriginal) => {
@@ -15,14 +14,9 @@ vi.mock("@/files", async (importOriginal) => {
   };
 });
 
-vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
-  requireBackofficeContext: requireBackofficeContextMock,
-}));
-
-import { loadAutomationScriptSource, loadAutomationWorkspaceData } from "./data.server";
+import { loadAutomationScriptSource } from "./data.server";
 
 const mockContext = { get: () => ({ runtime: { objects: {} }, env: {} }) } as never;
-const request = new Request("https://backoffice.test/automations");
 const verifiedRequestAuthority = {
   role: "user" as const,
   organizationId: "acme-org",
@@ -41,150 +35,9 @@ const projectExecution = createBackofficeUserExecution({
 
 beforeEach(() => {
   createBackofficeFileSystemMock.mockReset();
-  requireBackofficeContextMock.mockReset();
-  requireBackofficeContextMock.mockResolvedValue(orgExecution);
 });
 
 describe("automation backoffice workspace data", () => {
-  test("shows org filesystem scripts from the workspace root", async () => {
-    const fileSystem = createStubAutomationFileSystem({
-      "/static/automations/project-files-configure.workflow.js":
-        "defineWorkflow({ name: 'project-files-configure' }, async () => {})",
-      "/system/automations/workspace-file-initialization.workflow.js":
-        "defineWorkflow({ name: 'workspace-file-initialization' }, async () => {})",
-      "/workspace/automations/custom.cm.js": "async () => true",
-      "/workspace/automations/unbound.sh": 'echo "unbound"',
-      "/workspace/automations/workflow.workflow.js":
-        "defineWorkflow({ name: 'x' }, async () => {})",
-    });
-    createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
-
-    const result = await loadAutomationWorkspaceData({
-      request,
-      context: mockContext,
-      orgId: "acme-org",
-    });
-
-    expect(result.scriptsError).toBeNull();
-    expect(result.scripts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "automation-script:workspace:custom.cm.js",
-          key: "custom.cm",
-          layer: "workspace",
-          readOnly: false,
-          path: "custom.cm.js",
-          enabled: true,
-        }),
-        expect.objectContaining({
-          id: "automation-script:workspace:unbound.sh",
-          key: "unbound",
-          path: "unbound.sh",
-          enabled: true,
-        }),
-        expect.objectContaining({
-          id: "automation-script:workspace:workflow.workflow.js",
-          path: "workflow.workflow.js",
-          enabled: false,
-        }),
-      ]),
-    );
-    expect(result.scripts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "automation-script:static:project-files-configure.workflow.js",
-          key: "project-files-configure.workflow",
-          layer: "static",
-          readOnly: true,
-          path: "project-files-configure.workflow.js",
-          enabled: false,
-        }),
-      ]),
-    );
-    expect(result.scripts).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "automation-script:system:workspace-file-initialization.workflow.js",
-        }),
-      ]),
-    );
-    expect(fileSystem.readFileCalls).toEqual([]);
-  });
-
-  test("can load static scripts without traversing upload-backed workspace metadata", async () => {
-    const fileSystem = createStubAutomationFileSystem({
-      "/static/automations/project-files-configure.workflow.js": "configure",
-      "/workspace/automations/local.cm.js": "async () => true",
-    });
-    createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
-
-    const result = await loadAutomationWorkspaceData({
-      request,
-      context: mockContext,
-      orgId: "acme-org",
-      layers: ["static"],
-    });
-
-    expect(result.scripts).toEqual([
-      expect.objectContaining({
-        id: "automation-script:static:project-files-configure.workflow.js",
-      }),
-    ]);
-    expect(fileSystem.readdirCalls).not.toContain("/workspace/automations");
-  });
-
-  test("shows project workspace scripts without org static scripts in project scope", async () => {
-    const fileSystem = createStubAutomationFileSystem({
-      "/static/automations/project-files-configure.workflow.js":
-        "defineWorkflow({ name: 'project-files-configure' }, async () => {})",
-      "/workspace/automations/project-only.cm.js": "async () => true",
-    });
-    createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
-
-    const result = await loadAutomationWorkspaceData({
-      request,
-      context: mockContext,
-      scope: { kind: "project", orgId: "acme-org", projectId: "project-1" },
-    });
-
-    expect(result.scripts).toEqual([
-      expect.objectContaining({
-        id: "automation-script:workspace:project-only.cm.js",
-        layer: "workspace",
-        readOnly: false,
-        path: "project-only.cm.js",
-      }),
-    ]);
-  });
-
-  test("shows system scripts in system scope", async () => {
-    const fileSystem = createStubAutomationFileSystem({
-      "/static/automations/project-files-configure.workflow.js":
-        "defineWorkflow({ name: 'project-files-configure' }, async () => {})",
-      "/system/automations/workspace-file-initialization.workflow.js":
-        "defineWorkflow({ name: 'workspace-file-initialization' }, async () => {})",
-      "/workspace/automations/custom.cm.js": "async () => true",
-    });
-    createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
-
-    const result = await loadAutomationWorkspaceData({
-      request,
-      context: mockContext,
-      scope: { kind: "system" },
-    });
-
-    expect(result.scripts).toEqual([
-      expect.objectContaining({
-        id: "automation-script:system:workspace-file-initialization.workflow.js",
-        key: "workspace-file-initialization.workflow",
-        layer: "system",
-        readOnly: true,
-        path: "workspace-file-initialization.workflow.js",
-        enabled: false,
-      }),
-    ]);
-  });
-
   test("reads visible static script source from org scope", async () => {
     const fileSystem = createStubAutomationFileSystem({
       "/static/automations/project-files-configure.workflow.js": "configure",

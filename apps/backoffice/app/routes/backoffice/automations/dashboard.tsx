@@ -1300,7 +1300,7 @@ export function AutomationSwimlaneDashboard({
             workflowSource={loaderData.workflowSource}
             runtimeToolCatalog={loaderData.runtimeToolCatalog}
             collections={collections}
-            scriptsPath={filesScopeBasePath(selectedScope)}
+            filesScopePath={filesScopeBasePath(selectedScope)}
             eventsCatalogPath={automationScopeTabPath(selectedScope, "events-catalog")}
             scope={selectedScope}
             onClear={() => {

@@ -16,15 +16,25 @@ describe("scopeSwitchPath", () => {
 
   test("keeps a scope-independent automation tab", () => {
     assert(
-      scopeSwitchPath("/backoffice/automations/org/org-a/scripts", projectScope) ===
-        "/backoffice/automations/project/org-a%3Aproj-1/scripts",
+      scopeSwitchPath("/backoffice/automations/org/org-a/store", projectScope) ===
+        "/backoffice/automations/project/org-a%3Aproj-1/store",
     );
   });
+
+  test.each(["scripts", "router", "events"])(
+    "falls back from removed automation tab %s",
+    (removedTab) => {
+      assert(
+        scopeSwitchPath(`/backoffice/automations/org/org-a/${removedTab}`, projectScope) ===
+          "/backoffice/automations/project/org-a%3Aproj-1/dashboard",
+      );
+    },
+  );
 
   test("falls back from a system-unavailable automation tab", () => {
     assert(
       scopeSwitchPath("/backoffice/automations/org/org-a/api", { kind: "system" }) ===
-        "/backoffice/automations/system/system/scripts",
+        "/backoffice/automations/system/system/dashboard",
     );
   });
 

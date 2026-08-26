@@ -7,11 +7,8 @@ const SCOPE_ROUTE_KINDS = new Set(["system", "org", "project", "user"]);
 
 const AUTOMATION_TABS = new Set([
   "dashboard",
-  "scripts",
-  "router",
   "store",
   "api",
-  "events",
   "events-catalog",
   "integrations",
   "mcp",
@@ -36,7 +33,7 @@ export const scopeSwitchPath = (pathname: string, scope: BackofficeRouteScope) =
       const requestedTab = rest[0] && AUTOMATION_TABS.has(rest[0]) ? rest[0] : "dashboard";
       const tab =
         scope.kind === "system" && SYSTEM_UNAVAILABLE_AUTOMATION_TABS.has(requestedTab)
-          ? "scripts"
+          ? "dashboard"
           : requestedTab;
       return `/backoffice/automations/${scopePath}/${tab}`;
     }
