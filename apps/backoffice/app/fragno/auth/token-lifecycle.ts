@@ -126,24 +126,155 @@ type JwksFetchObject = {
   fetch(request: Request): Promise<Response>;
 };
 
-const jwksByAuthObject = new WeakMap<object, JSONWebKeySet>();
+type DurableObjectJwksFetchObject = JwksFetchObject & {
+  readonly id: { toString(): string };
+};
+
+function hasDurableObjectId(
+  authObject: JwksFetchObject,
+): authObject is DurableObjectJwksFetchObject {
+  return "id" in authObject;
+}
+
+const BACKOFFICE_JWKS_CACHE_MAX_AGE_MS = 10 * 60 * 1_000;
+const BACKOFFICE_JWKS_UNKNOWN_KEY_REFRESH_COOLDOWN_MS = 30 * 1_000;
+const BACKOFFICE_JWKS_CACHE_MAX_AUTHORITIES = 8;
+
+type BackofficeJwksResolver = ReturnType<typeof createLocalJWKSet>;
+
+type BackofficeJwksCacheEntry = {
+  resolver: BackofficeJwksResolver;
+  refreshedAtEpochMs: number;
+};
+
+const backofficeJwksCacheByAuthority = new Map<string, BackofficeJwksCacheEntry>();
+const backofficeJwksRefreshByAuthority = new Map<string, Promise<BackofficeJwksCacheEntry>>();
+const backofficeUnknownKeyRefreshAtByAuthority = new Map<string, number>();
+const backofficeJwksLocalAuthorityByAuthObject = new WeakMap<object, number>();
+let nextBackofficeJwksLocalAuthority = 1;
+
+function resolveBackofficeJwksCacheAuthority(
+  authObject: JwksFetchObject,
+  requestOrigin: string,
+): string {
+  // Request assembly creates a new Durable Object stub each time, but its id remains stable across
+  // the Worker isolate. Local collaborators without an id stay isolated by object identity.
+  if (hasDurableObjectId(authObject)) {
+    return `${requestOrigin}#${authObject.id.toString()}`;
+  }
+
+  let localAuthority = backofficeJwksLocalAuthorityByAuthObject.get(authObject);
+  if (localAuthority === undefined) {
+    localAuthority = nextBackofficeJwksLocalAuthority;
+    nextBackofficeJwksLocalAuthority += 1;
+    backofficeJwksLocalAuthorityByAuthObject.set(authObject, localAuthority);
+  }
+  return `${requestOrigin}#local-${localAuthority}`;
+}
 
 const loadBackofficeJwks = async (
   authObject: JwksFetchObject,
-  baseUrl: string,
+  requestOrigin: string,
 ): Promise<JSONWebKeySet> => {
-  const response = await authObject.fetch(new Request(new URL("/api/auth/jwks", baseUrl)));
+  const response = await authObject.fetch(new Request(new URL("/api/auth/jwks", requestOrigin)));
   if (!response.ok) {
     throw new Error(`Better Auth JWKS request failed with status ${response.status}.`);
   }
   return betterAuthJwksSchema.parse(await response.json()) as JSONWebKeySet;
 };
 
+function cacheBackofficeJwks(
+  cacheAuthority: string,
+  entry: BackofficeJwksCacheEntry,
+): BackofficeJwksCacheEntry {
+  backofficeJwksCacheByAuthority.delete(cacheAuthority);
+  backofficeJwksCacheByAuthority.set(cacheAuthority, entry);
+
+  while (backofficeJwksCacheByAuthority.size > BACKOFFICE_JWKS_CACHE_MAX_AUTHORITIES) {
+    const oldestAuthority = backofficeJwksCacheByAuthority.keys().next().value;
+    if (oldestAuthority === undefined) {
+      break;
+    }
+    backofficeJwksCacheByAuthority.delete(oldestAuthority);
+    backofficeUnknownKeyRefreshAtByAuthority.delete(oldestAuthority);
+  }
+
+  return entry;
+}
+
+async function refreshBackofficeJwks(
+  authObject: JwksFetchObject,
+  cacheAuthority: string,
+  requestOrigin: string,
+): Promise<BackofficeJwksCacheEntry> {
+  const activeRefresh = backofficeJwksRefreshByAuthority.get(cacheAuthority);
+  if (activeRefresh) {
+    return await activeRefresh;
+  }
+
+  const refresh = (async () => {
+    const jwks = await loadBackofficeJwks(authObject, requestOrigin);
+    return cacheBackofficeJwks(cacheAuthority, {
+      resolver: createLocalJWKSet(jwks),
+      refreshedAtEpochMs: Date.now(),
+    });
+  })();
+  backofficeJwksRefreshByAuthority.set(cacheAuthority, refresh);
+
+  try {
+    return await refresh;
+  } finally {
+    if (backofficeJwksRefreshByAuthority.get(cacheAuthority) === refresh) {
+      backofficeJwksRefreshByAuthority.delete(cacheAuthority);
+    }
+  }
+}
+
+async function resolveBackofficeJwks(
+  authObject: JwksFetchObject,
+  cacheAuthority: string,
+  requestOrigin: string,
+): Promise<BackofficeJwksCacheEntry> {
+  const cached = backofficeJwksCacheByAuthority.get(cacheAuthority);
+  if (cached && Date.now() - cached.refreshedAtEpochMs < BACKOFFICE_JWKS_CACHE_MAX_AGE_MS) {
+    return cached;
+  }
+  return await refreshBackofficeJwks(authObject, cacheAuthority, requestOrigin);
+}
+
+async function refreshBackofficeJwksForUnknownKey(
+  authObject: JwksFetchObject,
+  cacheAuthority: string,
+  requestOrigin: string,
+  attemptedEntry: BackofficeJwksCacheEntry,
+): Promise<BackofficeJwksCacheEntry | null> {
+  const activeRefresh = backofficeJwksRefreshByAuthority.get(cacheAuthority);
+  if (activeRefresh) {
+    return await activeRefresh;
+  }
+
+  const currentEntry = backofficeJwksCacheByAuthority.get(cacheAuthority);
+  if (currentEntry && currentEntry !== attemptedEntry) {
+    return currentEntry;
+  }
+
+  const now = Date.now();
+  const previousRefreshAt = backofficeUnknownKeyRefreshAtByAuthority.get(cacheAuthority);
+  if (
+    previousRefreshAt !== undefined &&
+    now - previousRefreshAt < BACKOFFICE_JWKS_UNKNOWN_KEY_REFRESH_COOLDOWN_MS
+  ) {
+    return null;
+  }
+
+  return await refreshBackofficeJwks(authObject, cacheAuthority, requestOrigin);
+}
+
 const verifyBackofficeJwtWithJwks = async (
   token: string,
-  jwks: JSONWebKeySet,
+  resolver: BackofficeJwksResolver,
 ): Promise<BackofficeJwtPayload> => {
-  const verification = await jwtVerify(token, createLocalJWKSet(jwks), {
+  const verification = await jwtVerify(token, resolver, {
     issuer: ACCESS_TOKEN_ISSUER,
     audience: ACCESS_TOKEN_AUDIENCE,
   });
@@ -163,14 +294,15 @@ export const verifyBackofficeJwt = async (
     return { ok: false, reason: "missing" };
   }
 
-  let jwks = jwksByAuthObject.get(authObject);
-  if (!jwks) {
-    jwks = await loadBackofficeJwks(authObject, new URL(requestUrl).origin);
-    jwksByAuthObject.set(authObject, jwks);
-  }
+  const requestOrigin = new URL(requestUrl).origin;
+  const cacheAuthority = resolveBackofficeJwksCacheAuthority(authObject, requestOrigin);
+  const jwksEntry = await resolveBackofficeJwks(authObject, cacheAuthority, requestOrigin);
 
   try {
-    return { ok: true, payload: await verifyBackofficeJwtWithJwks(token, jwks) };
+    return {
+      ok: true,
+      payload: await verifyBackofficeJwtWithJwks(token, jwksEntry.resolver),
+    };
   } catch (error) {
     if (error instanceof errors.JWTExpired) {
       return { ok: false, reason: "expired" };
@@ -180,19 +312,31 @@ export const verifyBackofficeJwt = async (
     }
   }
 
-  const refreshedJwks = await loadBackofficeJwks(authObject, new URL(requestUrl).origin);
-  jwksByAuthObject.set(authObject, refreshedJwks);
+  const refreshedEntry = await refreshBackofficeJwksForUnknownKey(
+    authObject,
+    cacheAuthority,
+    requestOrigin,
+    jwksEntry,
+  );
+  if (!refreshedEntry) {
+    return { ok: false, reason: "invalid" };
+  }
 
   try {
     return {
       ok: true,
-      payload: await verifyBackofficeJwtWithJwks(token, refreshedJwks),
+      payload: await verifyBackofficeJwtWithJwks(token, refreshedEntry.resolver),
     };
   } catch (error) {
-    return {
-      ok: false,
-      reason: error instanceof errors.JWTExpired ? "expired" : "invalid",
-    };
+    if (error instanceof errors.JWTExpired) {
+      return { ok: false, reason: "expired" };
+    }
+    if (error instanceof errors.JWKSNoMatchingKey) {
+      // The JWT kid is attacker-controlled, so repeated misses must not turn signature verification
+      // into an unbounded stream of requests to the singleton Auth Durable Object.
+      backofficeUnknownKeyRefreshAtByAuthority.set(cacheAuthority, Date.now());
+    }
+    return { ok: false, reason: "invalid" };
   }
 };
 

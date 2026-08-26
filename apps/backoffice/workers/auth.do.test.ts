@@ -169,6 +169,20 @@ describe("Auth Durable Object administrator granting", () => {
 });
 
 describe("Auth Durable Object rate limiting", () => {
+  test("does not rate limit the public JWKS endpoint", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+    const auth = runtime.objects.auth.singleton();
+
+    const responses = await Promise.all(
+      Array.from({ length: 101 }, () =>
+        auth.fetch(new Request("https://backoffice.example/api/auth/jwks")),
+      ),
+    );
+
+    assert(responses.every((response) => response.status === 200));
+  });
+
   test("blocks the fourth authentication attempt within the rate-limit window", async () => {
     const runtime = await createInMemoryBackofficeRuntime();
     runtimes.push(runtime);
