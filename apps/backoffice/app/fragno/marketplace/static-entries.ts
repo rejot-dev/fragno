@@ -29,13 +29,11 @@ const manifests = import.meta.glob<string>("../../../content/marketplace/*/manif
 });
 const artifacts = Object.entries(
   import.meta.glob<string>(
-    [
-      "../../../content/marketplace/**/*",
-      "../../../content/marketplace/**/.marketplace/**/*",
-      "!../../../content/marketplace/*/manifest.json",
-    ],
+    ["../../../content/marketplace/**/*", "!../../../content/marketplace/*/manifest.json"],
     {
       eager: true,
+      // Install workflows live under .marketplace and must survive production glob expansion.
+      exhaustive: true,
       query: "?raw",
       import: "default",
     },
