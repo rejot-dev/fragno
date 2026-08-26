@@ -239,6 +239,14 @@ describe("Backoffice JWT verification", () => {
         authObjectWithFailedRefresh,
       ),
     ).rejects.toThrow("Better Auth JWKS request failed with status 503.");
+
+    await expect(
+      verifyBackofficeJwtRequest(
+        cookieRequest(rotatedToken, failedRefreshRequestUrl),
+        authObjectWithFailedRefresh,
+      ),
+    ).resolves.toEqual({ ok: false, reason: "invalid" });
+    expect(authObjectWithFailedRefresh.fetch).toHaveBeenCalledTimes(2);
   });
 
   test("distinguishes missing, expired, and invalid credentials", async () => {

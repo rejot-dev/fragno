@@ -1,10 +1,12 @@
 import "../../backoffice.css";
 
+import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import { z } from "zod";
 
 import { FormContainer, FormField } from "@/components/backoffice";
+import { BackofficeFragmentMark } from "@/components/backoffice/fragment-mark";
 import { authClient } from "@/fragno/auth/auth-client";
 import {
   callBetterAuth,
@@ -214,8 +216,8 @@ export async function action({ request, context, url }: Route.ActionArgs) {
 
 export function meta() {
   return [
-    { title: "Fragno Backoffice Login" },
-    { name: "description", content: "Access the Fragno backoffice." },
+    { title: "Backoffice Login" },
+    { name: "description", content: "Sign in to Backoffice." },
   ];
 }
 
@@ -268,50 +270,52 @@ export default function BackofficeLogin() {
       className="relative isolate min-h-screen bg-[var(--bo-bg)] text-[var(--bo-fg)]"
     >
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(0deg,rgba(var(--bo-overlay),0.96),rgba(var(--bo-overlay),0.96)),linear-gradient(90deg,rgba(var(--bo-grid),0.45)_1px,transparent_1px),linear-gradient(0deg,rgba(var(--bo-grid),0.45)_1px,transparent_1px)] bg-[size:100%_100%,28px_28px,28px_28px]" />
-      <div className="relative mx-auto flex min-h-screen max-w-5xl flex-col items-center justify-center gap-6 px-4 py-8 lg:flex-row lg:items-center lg:justify-between">
-        <div className="w-full max-w-xl space-y-4">
-          <p className="text-[11px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-            Fragno Backoffice
-          </p>
-          <h1 className="text-3xl leading-tight font-semibold text-[var(--bo-fg)] md:text-4xl">
-            Technical control for docs, fragments, and team readiness.
-          </h1>
-          <p className="text-sm text-[var(--bo-muted)]">
-            Review releases, audit changes, and coordinate framework owners without leaving the docs
-            ecosystem.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              to="/docs"
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-            >
-              Return to docs
-            </Link>
-          </div>
-        </div>
+      <header className="relative mx-auto flex min-h-16 w-full max-w-[1180px] items-center justify-between px-5 sm:px-8 lg:px-12">
+        <Link
+          to="/"
+          className="flex min-h-11 items-center gap-3 text-[10px] font-bold tracking-[0.16em] text-[var(--bo-fg)] uppercase no-underline"
+          aria-label="ReJot Backoffice home"
+        >
+          <BackofficeFragmentMark size="md" />
+          ReJot Backoffice
+        </Link>
+        <Link
+          to="/"
+          className="inline-flex min-h-11 items-center gap-2 text-[10px] font-bold tracking-[0.14em] text-[var(--bo-muted)] uppercase no-underline transition-colors duration-150 hover:text-[var(--bo-fg)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--bo-accent)]"
+        >
+          <ArrowLeft className="size-3.5" aria-hidden="true" />
+          Back to home
+        </Link>
+      </header>
 
-        <div className="w-full max-w-md">
+      <div className="relative mx-auto grid w-full max-w-[1180px] items-start gap-8 px-5 py-6 sm:px-8 sm:py-8 lg:min-h-[calc(100svh-4rem)] lg:grid-cols-[minmax(0,1fr)_28rem] lg:items-center lg:gap-12 lg:px-12 lg:py-12">
+        <section className="hidden lg:order-1 lg:block">
+          <h1 className="max-w-2xl text-[clamp(3rem,6vw,6rem)] leading-[0.92] font-[560] tracking-[-0.065em] text-balance">
+            AI is a tool,
+            <br />
+            <span className="text-[var(--bo-muted-2)]">not a co-worker.</span>
+          </h1>
+          <p className="mt-7 max-w-xl text-sm leading-7 text-pretty text-[var(--bo-muted)]">
+            Backoffice uses models to translate intent, generate interfaces, and write workflows.
+            Execution remains deterministic, inspectable, and governed by your systems.
+          </p>
+        </section>
+
+        <div className="order-1 w-full lg:order-2">
           <FormContainer
             title="Sign in"
-            description="Use GitHub or your backoffice credentials to access the backoffice."
-            eyebrow="Access"
+            description="Continue with GitHub or use your email and password."
           >
             <div className="space-y-3">
               <button
                 type="button"
                 onClick={() => void handleGithubSignIn()}
                 disabled={oauthPending}
-                className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+                className="flex w-full items-center justify-center gap-2 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
               >
                 {oauthPending ? "Redirecting…" : "Continue with GitHub"}
               </button>
-              {oauthError ? (
-                <p className="text-xs text-red-400">{oauthError}</p>
-              ) : (
-                <p className="text-xs text-[var(--bo-muted-2)]">
-                  GitHub access is required for release approvals.
-                </p>
-              )}
+              {oauthError ? <p className="text-xs text-red-400">{oauthError}</p> : null}
               <Form
                 method="post"
                 className="space-y-3"
@@ -323,26 +327,26 @@ export default function BackofficeLogin() {
                 }}
               >
                 <input type="hidden" name="preferredOrganizationId" />
-                <div className="border-t border-[color:var(--bo-border)] pt-4">
-                  <p className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                    Sign in with password
-                  </p>
-                  <p className="mt-1 text-xs text-[var(--bo-muted)]">
-                    Use your backoffice email and password.
-                  </p>
+                <div
+                  className="flex items-center gap-3 pt-2 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase"
+                  role="separator"
+                >
+                  <span className="h-px flex-1 bg-[var(--bo-border)]" aria-hidden="true" />
+                  <span>Or use a password</span>
+                  <span className="h-px flex-1 bg-[var(--bo-border)]" aria-hidden="true" />
                 </div>
-                <FormField label="Email address" hint="Your backoffice username uses email.">
+                <FormField label="Email address">
                   <input
                     type="email"
                     name="email"
                     autoComplete="username"
                     defaultValue={verificationRequired?.email ?? ""}
                     required
-                    placeholder="team@fragno.dev"
+                    placeholder="you@example.com"
                     className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                   />
                 </FormField>
-                <FormField label="Password" hint="Minimum 8 characters.">
+                <FormField label="Password">
                   <input
                     type="password"
                     name="password"
@@ -362,11 +366,7 @@ export default function BackofficeLogin() {
                   >
                     {passwordError}
                   </p>
-                ) : (
-                  <p className="text-xs text-[var(--bo-muted-2)]">
-                    Password sign-in is enabled for local development.
-                  </p>
-                )}
+                ) : null}
                 {verificationRequired?.email ? (
                   <button
                     type="submit"
@@ -379,20 +379,15 @@ export default function BackofficeLogin() {
                     {resendPending ? "Requesting…" : "Resend verification email"}
                   </button>
                 ) : null}
-                <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
-                  <button
-                    type="submit"
-                    name="intent"
-                    value="sign_in"
-                    disabled={passwordPending}
-                    className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-                  >
-                    {passwordPending ? "Signing in…" : "Sign in"}
-                  </button>
-                  <span className="text-xs text-[var(--bo-muted-2)]">
-                    Contact an admin if you need access.
-                  </span>
-                </div>
+                <button
+                  type="submit"
+                  name="intent"
+                  value="sign_in"
+                  disabled={passwordPending}
+                  className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+                >
+                  {passwordPending ? "Signing in…" : "Sign in"}
+                </button>
               </Form>
               <p className="border-t border-[color:var(--bo-border)] pt-4 text-xs text-[var(--bo-muted-2)]">
                 Need an account?{" "}

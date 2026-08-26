@@ -267,6 +267,9 @@ async function refreshBackofficeJwksForUnknownKey(
     return null;
   }
 
+  // The JWT kid is attacker-controlled. Record before awaiting I/O so failed refreshes are
+  // throttled along with successful refreshes that still lack the requested key.
+  backofficeUnknownKeyRefreshAtByAuthority.set(cacheAuthority, now);
   return await refreshBackofficeJwks(authObject, cacheAuthority, requestOrigin);
 }
 
@@ -323,20 +326,17 @@ export const verifyBackofficeJwt = async (
   }
 
   try {
-    return {
-      ok: true,
-      payload: await verifyBackofficeJwtWithJwks(token, refreshedEntry.resolver),
-    };
+    const payload = await verifyBackofficeJwtWithJwks(token, refreshedEntry.resolver);
+    backofficeUnknownKeyRefreshAtByAuthority.delete(cacheAuthority);
+    return { ok: true, payload };
   } catch (error) {
-    if (error instanceof errors.JWTExpired) {
-      return { ok: false, reason: "expired" };
+    if (!(error instanceof errors.JWKSNoMatchingKey)) {
+      backofficeUnknownKeyRefreshAtByAuthority.delete(cacheAuthority);
     }
-    if (error instanceof errors.JWKSNoMatchingKey) {
-      // The JWT kid is attacker-controlled, so repeated misses must not turn signature verification
-      // into an unbounded stream of requests to the singleton Auth Durable Object.
-      backofficeUnknownKeyRefreshAtByAuthority.set(cacheAuthority, Date.now());
-    }
-    return { ok: false, reason: "invalid" };
+    return {
+      ok: false,
+      reason: error instanceof errors.JWTExpired ? "expired" : "invalid",
+    };
   }
 };
 

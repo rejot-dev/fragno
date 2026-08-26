@@ -46,6 +46,58 @@ export function refreshBackofficeAccessToken(
   return activeRefresh;
 }
 
+function normalizeBackofficeAuthRejection(reason: unknown): Error {
+  return reason instanceof Error
+    ? reason
+    : new Error("Backoffice authentication rejected with a non-Error reason.", { cause: reason });
+}
+
+async function waitForBackofficeAccessTokenRefresh(
+  fetchImplementation: typeof fetch,
+  requestSignal: AbortSignal | null,
+): Promise<void> {
+  requestSignal?.throwIfAborted();
+  const refresh = refreshBackofficeAccessToken(fetchImplementation);
+  if (!requestSignal) {
+    await refresh;
+    return;
+  }
+
+  const activeRequestSignal = requestSignal;
+  await new Promise<void>((resolve, reject) => {
+    function stopWaitingForAbortedRequest(): void {
+      activeRequestSignal.removeEventListener("abort", stopWaitingForAbortedRequest);
+      try {
+        activeRequestSignal.throwIfAborted();
+      } catch (error) {
+        reject(normalizeBackofficeAuthRejection(error));
+      }
+    }
+
+    activeRequestSignal.addEventListener("abort", stopWaitingForAbortedRequest, { once: true });
+    void refresh.then(
+      () => {
+        activeRequestSignal.removeEventListener("abort", stopWaitingForAbortedRequest);
+        resolve();
+      },
+      (error: unknown) => {
+        activeRequestSignal.removeEventListener("abort", stopWaitingForAbortedRequest);
+        reject(normalizeBackofficeAuthRejection(error));
+      },
+    );
+  });
+}
+
+function resolveBackofficeRequestAbortSignal(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): AbortSignal | null {
+  if (init && "signal" in init) {
+    return init.signal ?? null;
+  }
+  return input instanceof Request ? input.signal : null;
+}
+
 function isExpiredBackofficeTokenResponse(response: Response): boolean {
   return (
     response.status === 401 &&
@@ -69,11 +121,12 @@ export async function backofficeFetch(
   init?: RequestInit,
   fetchImplementation: typeof fetch = fetch,
 ): Promise<Response> {
+  const requestSignal = resolveBackofficeRequestAbortSignal(input, init);
   if (
     knownAccessTokenExpiresAtEpochMs !== null &&
     knownAccessTokenExpiresAtEpochMs - Date.now() <= TOKEN_REFRESH_LEEWAY_MS
   ) {
-    await refreshBackofficeAccessToken(fetchImplementation);
+    await waitForBackofficeAccessTokenRefresh(fetchImplementation, requestSignal);
   }
 
   const response = await fetchImplementation(input, init);
@@ -81,7 +134,7 @@ export async function backofficeFetch(
     return response;
   }
 
-  await refreshBackofficeAccessToken(fetchImplementation);
+  await waitForBackofficeAccessTokenRefresh(fetchImplementation, requestSignal);
   return await fetchImplementation(input, init);
 }
 
