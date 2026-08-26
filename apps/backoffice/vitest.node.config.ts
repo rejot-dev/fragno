@@ -9,6 +9,7 @@ export default defineProject({
     environment: "node",
     globals: true,
     include: [
+      "*.test.ts",
       "app/**/*.test.ts",
       "app/**/*.test.tsx",
       "workers/**/*.test.ts",

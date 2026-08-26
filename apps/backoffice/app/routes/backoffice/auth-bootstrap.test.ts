@@ -27,8 +27,8 @@ describe("Backoffice auth bootstrap", () => {
     vi.unstubAllEnvs();
   });
 
-  test("renders without reading the path-restricted Better Auth session cookie", async () => {
-    vi.stubEnv("MODE", "development");
+  test("renders in production without reading the path-restricted Better Auth session cookie", async () => {
+    vi.stubEnv("MODE", "production");
     vi.mocked(getBackofficeMe).mockResolvedValue({ status: "missing" });
     const result = await loader(
       createLoaderArgs(

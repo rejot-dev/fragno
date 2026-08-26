@@ -147,9 +147,12 @@ describe("Auth Durable Object administrator granting", () => {
     const auth = runtime.objects.auth.singleton();
     await signUpUnverifiedBackofficeUser(auth, "first-admin@rejot.dev");
 
-    await expect(
-      auth.grantBackofficeAdminByEmail({ email: "FIRST-ADMIN@rejot.dev" }),
-    ).resolves.toMatchObject({ status: "granted" });
+    const result = await auth.grantBackofficeAdminByEmail({ email: "FIRST-ADMIN@rejot.dev" });
+
+    assert(result.status === "granted");
+    await expect(auth.getUserAuthorityFacts({ userId: result.userId })).resolves.toMatchObject({
+      role: "admin",
+    });
   });
 
   test("requires subsequent administrators to have verified their email", async () => {
@@ -171,7 +174,10 @@ describe("Auth Durable Object administrator granting", () => {
 
     const result = await auth.grantBackofficeAdminByEmail({ email: "next-admin@rejot.dev" });
 
-    expect(result).toMatchObject({ status: "email_not_verified" });
+    assert(result.status === "email_not_verified");
+    await expect(auth.getUserAuthorityFacts({ userId: result.userId })).resolves.toMatchObject({
+      role: "user",
+    });
   });
 
   test("promotes a verified account when an administrator already exists", async () => {
@@ -198,6 +204,9 @@ describe("Auth Durable Object administrator granting", () => {
     await expect(
       auth.grantBackofficeAdminByEmail({ email: "NEXT-ADMIN@rejot.dev" }),
     ).resolves.toEqual({ status: "granted", userId: "user-1" });
+    await expect(auth.getUserAuthorityFacts({ userId: "user-1" })).resolves.toMatchObject({
+      role: "admin",
+    });
     await expect(
       auth.grantBackofficeAdminByEmail({ email: "next-admin@rejot.dev" }),
     ).resolves.toEqual({ status: "already_admin", userId: "user-1" });
@@ -216,8 +225,14 @@ describe("Auth Durable Object administrator granting", () => {
       auth.grantBackofficeAdminByEmail({ email: "next-admin@rejot.dev" }),
     ]);
 
-    expect(firstResult).toMatchObject({ status: "granted" });
-    expect(nextResult).toMatchObject({ status: "email_not_verified" });
+    assert(firstResult.status === "granted");
+    assert(nextResult.status === "email_not_verified");
+    await expect(auth.getUserAuthorityFacts({ userId: firstResult.userId })).resolves.toMatchObject(
+      { role: "admin" },
+    );
+    await expect(auth.getUserAuthorityFacts({ userId: nextResult.userId })).resolves.toMatchObject({
+      role: "user",
+    });
   });
 
   test("reports a missing rejot.dev account", async () => {

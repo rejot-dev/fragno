@@ -1,6 +1,9 @@
 import { z } from "zod";
 
 import type { AuthObject } from "@/backoffice-runtime/object-registry";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+
+import type { Route } from "./+types/admin-grant";
 
 const grantBackofficeAdminInputSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
@@ -21,8 +24,7 @@ async function adminGrantTokensMatch(providedToken: string, configuredToken: str
   return difference === 0;
 }
 
-/** Handles the secret-token production operation for granting global administrator access. */
-export async function handleBackofficeAdminGrantRequest(
+async function handleBackofficeAdminGrantRequest(
   request: Request,
   input: {
     configuredToken: string | undefined;
@@ -59,4 +61,20 @@ export async function handleBackofficeAdminGrantRequest(
 
   const result = await input.auth.grantBackofficeAdminByEmail({ email: parsedInput.data.email });
   return Response.json(result);
+}
+
+function handleAdminGrantRoute({ request, context }: Route.ActionArgs | Route.LoaderArgs) {
+  const { env, runtime } = context.get(BackofficeWorkerContext);
+  return handleBackofficeAdminGrantRequest(request, {
+    configuredToken: env.AUTH_ADMIN_GRANT_TOKEN,
+    auth: runtime.objects.auth.singleton(),
+  });
+}
+
+export function loader(args: Route.LoaderArgs) {
+  return handleAdminGrantRoute(args);
+}
+
+export function action(args: Route.ActionArgs) {
+  return handleAdminGrantRoute(args);
 }

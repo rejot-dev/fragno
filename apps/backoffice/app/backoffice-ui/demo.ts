@@ -1,5 +1,5 @@
 import { backofficeUiComponentDefinitions } from "./catalog";
-import { parseBackofficeUiResult, type BackofficeUiResultV1 } from "./result";
+import type { BackofficeUiResultV1 } from "./result";
 
 export type BackofficeUiDemoCategory = "Layout" | "Content" | "Data" | "Input";
 
@@ -244,7 +244,7 @@ const componentDemoInputs: ComponentDemoInput[] = [
 export const BACKOFFICE_UI_COMPONENT_DEMOS = componentDemoInputs.map(
   ({ component, category, props, children = {} }): BackofficeUiComponentDemo => {
     const childIds = Object.keys(children);
-    const parsedResult = parseBackofficeUiResult({
+    const result = {
       component,
       $ui: {
         version: 1,
@@ -257,21 +257,13 @@ export const BACKOFFICE_UI_COMPONENT_DEMOS = componentDemoInputs.map(
           },
         },
       },
-    });
-
-    if (parsedResult.kind !== "valid") {
-      const validationFailure =
-        parsedResult.kind === "invalid"
-          ? `${parsedResult.code}: ${parsedResult.message}`
-          : "the fixture was not recognized as a tagged generated UI result";
-      throw new Error(`${component} demo must remain valid: ${validationFailure}`);
-    }
+    } as BackofficeUiResultV1;
 
     return {
       component,
       category,
       description: backofficeUiComponentDefinitions[component].description,
-      result: parsedResult.value,
+      result,
     };
   },
 );

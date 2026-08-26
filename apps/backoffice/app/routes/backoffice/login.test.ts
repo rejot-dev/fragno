@@ -46,6 +46,18 @@ describe("backoffice login route", () => {
     vi.unstubAllEnvs();
   });
 
+  it("renders sign-in in production", async () => {
+    vi.stubEnv("MODE", "production");
+
+    await expect(loader(createLoaderArgs("https://example.com/backoffice/login"))).resolves.toEqual(
+      {
+        authenticated: false,
+        returnTo: "/backoffice",
+        bootstrapError: null,
+      },
+    );
+  });
+
   it("redirects an authenticated JWT user", async () => {
     vi.stubEnv("MODE", "development");
     vi.mocked(getBackofficeMe).mockResolvedValue({
@@ -86,7 +98,7 @@ describe("backoffice login route", () => {
   });
 
   it("signs in, exchanges the session, and redirects with both credentials", async () => {
-    vi.stubEnv("MODE", "development");
+    vi.stubEnv("MODE", "production");
     vi.mocked(callBetterAuth)
       .mockResolvedValueOnce(
         Response.json(
