@@ -1,28 +1,23 @@
-import System from "typebox/system";
+import * as serverBuild from "virtual:react-router/server-build";
 
-import {
-  BACKOFFICE_WORKER_TOPOLOGY,
-  type BackofficeRouteServiceBinding,
-} from "../backoffice-worker-topology";
 import { Api } from "./api.do";
 import { Auth } from "./auth.do";
 import { Automations } from "./automations.do";
 import { Billing } from "./billing.do";
 import { Cloudflare } from "./cloudflare.do";
+import { createReactRouterRouteService } from "./create-react-router-worker-handler";
 import { GitHubWebhookRouter } from "./github-webhook-router.do";
 import { GitHub } from "./github.do";
 import { Marketplace } from "./marketplace.do";
 import { Mcp } from "./mcp.do";
 import { Otp } from "./otp.do";
 import { OutboundProxy } from "./outbound-proxy";
-import { selectReactRouterServerBundle } from "./react-router-worker-routing";
 import { Resend } from "./resend.do";
 import { Reson8 } from "./reson8.do";
 import { Sandbox } from "./sandbox.do";
 import { Telegram } from "./telegram.do";
 import { Upload } from "./upload.do";
 
-// Export Durable Object classes
 export { Api };
 export { Auth };
 export { Automations };
@@ -40,13 +35,6 @@ export { Otp };
 export { Reson8 };
 export { OutboundProxy };
 
-System.Settings.Set({ useAcceleration: false });
-
-export default {
-  fetch(request, env) {
-    const serverBundleId = selectReactRouterServerBundle(new URL(request.url).pathname);
-    const routeWorker = BACKOFFICE_WORKER_TOPOLOGY.reactRouterWorkers[serverBundleId];
-    const routeServices = env as CloudflareEnv & Record<BackofficeRouteServiceBinding, Fetcher>;
-    return routeServices[routeWorker.serviceBinding].fetch(request);
-  },
-} satisfies ExportedHandler<CloudflareEnv>;
+// Production needs route-isolated Workers for platform limits; development keeps one
+// live React Router graph so dependency optimization and HMR happen only once.
+export default createReactRouterRouteService(serverBuild);

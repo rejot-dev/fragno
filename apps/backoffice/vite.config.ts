@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import path from "node:path";
 
@@ -10,9 +10,13 @@ import devtoolsJson from "vite-plugin-devtools-json";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 
+import { BACKOFFICE_WORKER_TOPOLOGY } from "./backoffice-worker-topology";
+import { reactRouterServerBundleVitePlugin } from "./scripts/react-router-server-bundle-vite-plugin";
+import { getReactRouterWorkerEntries } from "./workers/react-router-worker-routing";
+
 // Warm the Cloudflare worker entry so the Durable Object graph is transformed
 // during dev-server boot instead of on the first SSR request.
-const workerWarmupFiles = ["./workers/app.ts"];
+const workerWarmupFiles = ["./workers/backoffice-development-worker.ts"];
 const waSqliteWasmUrl = new URL(import.meta.resolve("@journeyapps/wa-sqlite/dist/wa-sqlite.wasm"));
 
 function emitWaSqliteWasmAssetPlugin(): Plugin {
@@ -34,8 +38,12 @@ function emitWaSqliteWasmAssetPlugin(): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => {
-  const isDev = mode === "development";
+export default defineConfig(({ command }) => {
+  const isDevServer = command === "serve";
+  if (!isDevServer) {
+    rmSync(path.resolve(__dirname, "./dist"), { recursive: true, force: true });
+  }
+
   return {
     resolve: {
       tsconfigPaths: true,
@@ -49,16 +57,89 @@ export default defineConfig(({ mode }) => {
       },
     },
     plugins: [
-      cloudflare({ viteEnvironment: { name: "ssr" }, inspectorPort: false }),
+      cloudflare({
+        viteEnvironment: {
+          name: "ssr",
+        },
+        config: function configureBackofficeEntryWorker() {
+          if (isDevServer) {
+            return {
+              main: "./workers/backoffice-development-worker.ts",
+            };
+          }
+
+          return {
+            services: getReactRouterWorkerEntries().map(([, worker]) => ({
+              binding: worker.serviceBinding,
+              service: worker.name,
+            })),
+            secrets: {
+              required: [...BACKOFFICE_WORKER_TOPOLOGY.entryWorker.environment.secrets.required],
+            },
+          };
+        },
+        auxiliaryWorkers: isDevServer
+          ? []
+          : getReactRouterWorkerEntries().map(([bundleId, worker]) => ({
+              viteEnvironment: {
+                name: `routes_${bundleId}`,
+                childEnvironments: [`ssrBundle_${bundleId}`],
+              },
+              config: function configureReactRouterRoutesWorker(_, { entryWorkerConfig }) {
+                const vars = Object.fromEntries(
+                  worker.environment.variables.flatMap((variableName) =>
+                    variableName in entryWorkerConfig.vars
+                      ? [[variableName, entryWorkerConfig.vars[variableName]]]
+                      : [],
+                  ),
+                );
+
+                return {
+                  name: worker.name,
+                  main: "./workers/react-router-route-worker.ts",
+                  compatibility_date: entryWorkerConfig.compatibility_date,
+                  compatibility_flags: entryWorkerConfig.compatibility_flags,
+                  observability: entryWorkerConfig.observability,
+                  preview_urls: false,
+                  workers_dev: false,
+                  vars,
+                  ...(worker.environment.secrets.required.length > 0
+                    ? {
+                        secrets: {
+                          required: [...worker.environment.secrets.required],
+                        },
+                      }
+                    : {}),
+                  durable_objects: {
+                    bindings: entryWorkerConfig.durable_objects.bindings.map((binding) => ({
+                      ...binding,
+                      script_name: BACKOFFICE_WORKER_TOPOLOGY.entryWorker.name,
+                    })),
+                  },
+                  r2_buckets: entryWorkerConfig.r2_buckets,
+                  worker_loaders: entryWorkerConfig.worker_loaders,
+                  services: [
+                    {
+                      binding: "OUTBOUND",
+                      service: BACKOFFICE_WORKER_TOPOLOGY.entryWorker.name,
+                      entrypoint: "OutboundProxy",
+                    },
+                  ],
+                };
+              },
+            })),
+        inspectorPort: false,
+      }),
       tailwindcss(),
       reactRouter(),
+      reactRouterServerBundleVitePlugin(),
       devtoolsJson(),
       emitWaSqliteWasmAssetPlugin(),
     ],
     ssr: {
       noExternal: ["@earendil-works/pi-ai"],
     },
-    environments: isDev
+    environments: isDevServer
       ? {
           ssr: {
             dev: {
@@ -75,12 +156,12 @@ export default defineConfig(({ mode }) => {
       allowedHosts: ["local-wilco.recivo.email"],
       // Tunnel/proxy layers were caching /@fs workspace modules and preserving stale
       // Vite dep hashes across restarts, which can split React between old/new chunks.
-      headers: isDev
+      headers: isDevServer
         ? {
             "Cache-Control": "no-store",
           }
         : undefined,
-      warmup: isDev
+      warmup: isDevServer
         ? {
             ssrFiles: workerWarmupFiles,
           }

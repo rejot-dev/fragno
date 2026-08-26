@@ -290,6 +290,7 @@ export default [
   route("__dev/codemode/:scopeKind/:scopeId", "routes/dev/codemode.ts"),
 
   ...prefix("api", [
+    route("admin/grant", "routes/api/admin-grant.ts"),
     route("auth/*", "routes/api/auth.ts"),
     route("backoffice/cli-config", "routes/api/backoffice-cli-config.ts"),
     route("backoffice/cli-token", "routes/api/backoffice-cli-token.ts"),

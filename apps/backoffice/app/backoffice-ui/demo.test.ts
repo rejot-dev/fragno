@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { backofficeUiComponentDefinitions } from "./catalog";
 import { BACKOFFICE_UI_COMPONENT_DEMOS } from "./demo";
 import { BackofficeUiRenderer } from "./renderer";
+import { parseBackofficeUiResult } from "./result";
 
 test("the catalog demo has one card fixture per production component", () => {
   const demonstratedComponents = BACKOFFICE_UI_COMPONENT_DEMOS.map((demo) => demo.component);
@@ -17,6 +18,12 @@ test("the catalog demo has one card fixture per production component", () => {
 
   for (const demo of BACKOFFICE_UI_COMPONENT_DEMOS) {
     expect(demo.result.$ui.spec.elements[demo.result.$ui.spec.root]?.type).toBe(demo.component);
+  }
+});
+
+test("every component card fixture passes production validation", () => {
+  for (const demo of BACKOFFICE_UI_COMPONENT_DEMOS) {
+    expect(parseBackofficeUiResult(demo.result)).toMatchObject({ kind: "valid" });
   }
 });
 
