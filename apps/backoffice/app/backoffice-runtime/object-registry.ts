@@ -158,6 +158,7 @@ export type ScenarioAuthFixture = {
 export type GrantBackofficeAdminResult =
   | { status: "granted"; userId: string }
   | { status: "already_admin"; userId: string }
+  | { status: "email_not_verified"; userId: string }
   | { status: "user_not_found" }
   | { status: "user_not_active" };
 
@@ -188,7 +189,7 @@ export type AuthObject = FetchObject &
       userId: string;
       organizationId?: string;
     }): Promise<UserAuthorityFacts>;
-    /** Grants global administrator access to an existing, verified account. */
+    /** Grants global administrator access; only the first administrator may be unverified. */
     grantBackofficeAdminByEmail(input: { email: string }): Promise<GrantBackofficeAdminResult>;
     getAllOrganizations(): Promise<Organization[]>;
     getOrganizationBySlug(slug: string): Promise<Pick<Organization, "id" | "slug"> | null>;

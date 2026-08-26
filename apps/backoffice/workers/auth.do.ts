@@ -688,6 +688,7 @@ export class InMemoryAuthObject implements AuthObject {
   readonly #ready: Promise<void>;
   readonly #authByBaseUrl = new Map<string, BetterAuthInstance>();
   readonly #rateLimits = new Map<string, { key: string; count: number; windowStartedAt: number }>();
+  #adminGrantQueue: Promise<void> = Promise.resolve();
   #processingHooks: Promise<void> | null = null;
 
   constructor({
@@ -1161,12 +1162,38 @@ export class InMemoryAuthObject implements AuthObject {
   }
 
   async grantBackofficeAdminByEmail(input: { email: string }): Promise<GrantBackofficeAdminResult> {
+    let releaseGrant: () => void = () => undefined;
+    const previousGrant = this.#adminGrantQueue;
+    this.#adminGrantQueue = new Promise((resolve) => {
+      releaseGrant = resolve;
+    });
+    await previousGrant;
+
+    try {
+      return await this.#grantBackofficeAdminByEmail(input);
+    } finally {
+      releaseGrant();
+    }
+  }
+
+  async #grantBackofficeAdminByEmail(input: {
+    email: string;
+  }): Promise<GrantBackofficeAdminResult> {
     const { adapter } = await this.#authContext();
     const email = input.email.trim().toLowerCase();
-    const user = await adapter.findOne<StoreUser>({
-      model: "user",
-      where: [{ field: "email", value: email }],
-    });
+    const candidateUsers = await this.#database
+      .selectFrom("user")
+      .selectAll()
+      .where((expressionBuilder) =>
+        expressionBuilder.or([
+          expressionBuilder("email", "=", email),
+          expressionBuilder("role", "like", "%admin%"),
+        ]),
+      )
+      .execute();
+    const user = candidateUsers.find(
+      (candidateUser) => candidateUser.email.trim().toLowerCase() === email,
+    );
     if (!user) {
       return { status: "user_not_found" };
     }
@@ -1175,6 +1202,13 @@ export class InMemoryAuthObject implements AuthObject {
     }
     if (normalizeRole(user.role) === "admin") {
       return { status: "already_admin", userId: user.id };
+    }
+
+    const hasExistingAdmin = candidateUsers.some(
+      (candidateUser) => normalizeRole(candidateUser.role) === "admin",
+    );
+    if (hasExistingAdmin && !normalizeBoolean(user.emailVerified)) {
+      return { status: "email_not_verified", userId: user.id };
     }
 
     await adapter.update<StoreUser>({

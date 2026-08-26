@@ -8,7 +8,8 @@ GITHUB_CLIENT_SECRET=
 # For auth access-token cookies. Set a strong secret in production.
 AUTH_ACCESS_TOKEN_SECRET=dev-auth-access-token-secret-replace-me
 
-# Allows POST /api/admin/grant to promote an existing verified account.
+# Allows POST /api/admin/grant to promote an existing account.
+# The first administrator may be unverified; every subsequent administrator must be verified.
 # Leave unset to disable administrator granting entirely.
 AUTH_ADMIN_GRANT_TOKEN=
 

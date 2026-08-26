@@ -95,6 +95,9 @@ if (response.status === "granted") {
   process.stdout.write(`Granted administrator access to ${response.userId}.`);
 } else if (response.status === "already_admin") {
   process.stdout.write(`Account ${response.userId} is already an administrator.`);
+} else if (response.status === "email_not_verified") {
+  process.stderr.write(`Account ${response.userId} must verify its email before becoming an administrator.\n`);
+  process.exit(1);
 } else {
   process.stderr.write(`Administrator access was not granted: ${response.status}.\n`);
   process.exit(1);
