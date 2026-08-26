@@ -91,7 +91,6 @@ export function DashboardInspector({
       </div>
 
       <div className="backoffice-scroll xl:max-h-[calc(100vh-10.25rem)] xl:overflow-y-auto">
-        {!selection ? <FullEventLogInspector collections={collections} /> : null}
         {selection?.kind === "source" ? <SourceInspector selection={selection} /> : null}
         {selection?.kind === "event" ? (
           <RecentEventInspector
@@ -152,73 +151,6 @@ function SourceInspector({
       ) : (
         <p className="mt-3 py-6 text-center text-sm text-[var(--bo-muted)]">
           No registered events.
-        </p>
-      )}
-    </div>
-  );
-}
-
-const RECENT_EVENT_LOG_LIMIT = 50;
-
-function FullEventLogInspector({
-  collections,
-}: {
-  collections: Pick<AutomationCollections, "events">;
-}) {
-  const eventsQuery = useLiveQuery(
-    (query) =>
-      query
-        .from({ event: collections.events })
-        .orderBy(({ event }) => event.occurredAt, "desc")
-        .orderBy(({ event }) => event.id, "desc")
-        .limit(RECENT_EVENT_LOG_LIMIT)
-        .select(({ event }) => ({
-          id: event.id,
-          source: event.source,
-          eventType: event.eventType,
-          occurredAt: event.occurredAt,
-          payload: event.payload,
-        })),
-    [collections.events],
-  );
-  const events = eventsQuery.data ?? [];
-
-  return (
-    <div className="p-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-semibold tracking-[0.18em] text-orange-700 uppercase dark:text-orange-300">
-            Event log
-          </p>
-          <h2 className="mt-1 text-sm font-semibold text-[var(--bo-fg)]">Recent events</h2>
-        </div>
-        <span className="text-xs text-[var(--bo-muted-2)] tabular-nums">{events.length}</span>
-      </div>
-
-      {events.length > 0 ? (
-        <div className="mt-3 divide-y divide-[color:var(--bo-border)] border-y border-[color:var(--bo-border)]">
-          {events.map((event) => (
-            <details key={event.id} className="group py-2.5">
-              <summary className="cursor-pointer list-none marker:content-none">
-                <p className="font-mono text-xs font-semibold break-all text-[var(--bo-fg)]">
-                  {event.source}.{event.eventType}
-                </p>
-                <p className="mt-1 font-mono text-[10px] break-all text-[var(--bo-muted-2)]">
-                  {event.id}
-                </p>
-                <p className="mt-1 text-[10px] text-[var(--bo-muted-2)] tabular-nums">
-                  {formatTimestamp(event.occurredAt)}
-                </p>
-              </summary>
-              <pre className="backoffice-scroll mt-2 max-h-64 overflow-auto bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
-                {JSON.stringify(event.payload, null, 2)}
-              </pre>
-            </details>
-          ))}
-        </div>
-      ) : (
-        <p className="py-8 text-center text-sm text-[var(--bo-muted)]">
-          {eventsQuery.isLoading ? "Loading event log…" : "No events have been recorded."}
         </p>
       )}
     </div>
