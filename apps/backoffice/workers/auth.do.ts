@@ -824,6 +824,10 @@ export class InMemoryAuthObject implements AuthObject {
       },
       rateLimit: {
         enabled: true,
+        // JWKS is public key material fetched by every application request when a Worker isolate
+        // has a cold cache. Applying per-IP auth throttling here can log out a valid user during a
+        // burst of concurrent route loaders.
+        customRules: { "/jwks": false },
         customStorage: {
           consume: async (key: string, rule: { window: number; max: number }) => {
             const now = Date.now();

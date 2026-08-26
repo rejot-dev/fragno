@@ -14,8 +14,10 @@ const TOKEN_REFRESH_LEEWAY_MS = 60_000;
 type TokenIssuedListener = (result: IssueBackofficeTokenResult) => void;
 const tokenIssuedListeners = new Set<TokenIssuedListener>();
 let activeRefresh: Promise<IssueBackofficeTokenResult> | null = null;
+let knownAccessTokenExpiresAtEpochMs: number | null = null;
 
 export function recordIssuedBackofficeToken(result: IssueBackofficeTokenResult): void {
+  knownAccessTokenExpiresAtEpochMs = Date.parse(result.expiresAt);
   for (const listener of tokenIssuedListeners) {
     listener(result);
   }
@@ -67,6 +69,13 @@ export async function backofficeFetch(
   init?: RequestInit,
   fetchImplementation: typeof fetch = fetch,
 ): Promise<Response> {
+  if (
+    knownAccessTokenExpiresAtEpochMs !== null &&
+    knownAccessTokenExpiresAtEpochMs - Date.now() <= TOKEN_REFRESH_LEEWAY_MS
+  ) {
+    await refreshBackofficeAccessToken(fetchImplementation);
+  }
+
   const response = await fetchImplementation(input, init);
   if (!isExpiredBackofficeTokenResponse(response) || !isReplayableRequest(input, init)) {
     return response;
@@ -108,6 +117,7 @@ export const scheduleBackofficeTokenRefresh = (
     schedule(result.expiresAt);
   };
   tokenIssuedListeners.add(listener);
+  knownAccessTokenExpiresAtEpochMs = Date.parse(initialExpiresAt);
   schedule(initialExpiresAt);
 
   return () => {
