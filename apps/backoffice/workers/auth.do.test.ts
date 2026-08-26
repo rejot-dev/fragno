@@ -31,6 +31,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
+import type { AuthObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED } from "@/fragno/backoffice-capabilities/capabilities/auth";
 
@@ -64,6 +65,17 @@ class RecordingResendObject {
 
 const toTimestamp = (value: Date | string): number =>
   value instanceof Date ? value.getTime() : new Date(value).getTime();
+
+async function signUpUnverifiedBackofficeUser(auth: Pick<AuthObject, "fetch">, email: string) {
+  const response = await auth.fetch(
+    new Request("https://backoffice.example/api/auth/sign-up/email", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: email.split("@", 1)[0], email, password: "password123" }),
+    }),
+  );
+  assert(response.ok);
+}
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -128,32 +140,84 @@ describe("Auth Durable Object account creation policy", () => {
 });
 
 describe("Auth Durable Object administrator granting", () => {
-  test("promotes an existing verified account and remains idempotent", async () => {
+  test("allows an unverified account to become the first administrator", async () => {
+    vi.stubEnv("MODE", "production");
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+    const auth = runtime.objects.auth.singleton();
+    await signUpUnverifiedBackofficeUser(auth, "first-admin@rejot.dev");
+
+    await expect(
+      auth.grantBackofficeAdminByEmail({ email: "FIRST-ADMIN@rejot.dev" }),
+    ).resolves.toMatchObject({ status: "granted" });
+  });
+
+  test("requires subsequent administrators to have verified their email", async () => {
+    vi.stubEnv("MODE", "production");
     const runtime = await createInMemoryBackofficeRuntime();
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
     await auth.applyScenarioFixture({
       users: [
         {
+          id: "admin-1",
+          email: "first-admin@rejot.dev",
+          role: "admin",
+          status: "active",
+        },
+      ],
+    });
+    await signUpUnverifiedBackofficeUser(auth, "next-admin@rejot.dev");
+
+    const result = await auth.grantBackofficeAdminByEmail({ email: "next-admin@rejot.dev" });
+
+    expect(result).toMatchObject({ status: "email_not_verified" });
+  });
+
+  test("promotes a verified account when an administrator already exists", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+    const auth = runtime.objects.auth.singleton();
+    await auth.applyScenarioFixture({
+      users: [
+        {
+          id: "admin-1",
+          email: "first-admin@rejot.dev",
+          role: "admin",
+          status: "active",
+        },
+        {
           id: "user-1",
-          email: "admin@rejot.dev",
+          email: "next-admin@rejot.dev",
           role: "user",
           status: "active",
         },
       ],
     });
 
-    await expect(auth.grantBackofficeAdminByEmail({ email: "ADMIN@rejot.dev" })).resolves.toEqual({
-      status: "granted",
-      userId: "user-1",
-    });
-    await expect(auth.grantBackofficeAdminByEmail({ email: "admin@rejot.dev" })).resolves.toEqual({
-      status: "already_admin",
-      userId: "user-1",
-    });
-    await expect(auth.getUserAuthorityFacts({ userId: "user-1" })).resolves.toMatchObject({
-      role: "admin",
-    });
+    await expect(
+      auth.grantBackofficeAdminByEmail({ email: "NEXT-ADMIN@rejot.dev" }),
+    ).resolves.toEqual({ status: "granted", userId: "user-1" });
+    await expect(
+      auth.grantBackofficeAdminByEmail({ email: "next-admin@rejot.dev" }),
+    ).resolves.toEqual({ status: "already_admin", userId: "user-1" });
+  });
+
+  test("allows only one concurrent unverified grant to bootstrap administration", async () => {
+    vi.stubEnv("MODE", "production");
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+    const auth = runtime.objects.auth.singleton();
+    await signUpUnverifiedBackofficeUser(auth, "first-admin@rejot.dev");
+    await signUpUnverifiedBackofficeUser(auth, "next-admin@rejot.dev");
+
+    const [firstResult, nextResult] = await Promise.all([
+      auth.grantBackofficeAdminByEmail({ email: "first-admin@rejot.dev" }),
+      auth.grantBackofficeAdminByEmail({ email: "next-admin@rejot.dev" }),
+    ]);
+
+    expect(firstResult).toMatchObject({ status: "granted" });
+    expect(nextResult).toMatchObject({ status: "email_not_verified" });
   });
 
   test("reports a missing rejot.dev account", async () => {
