@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import path from "node:path";
 
@@ -13,6 +13,26 @@ import tailwindcss from "@tailwindcss/vite";
 // Warm the Cloudflare worker entry so the Durable Object graph is transformed
 // during dev-server boot instead of on the first SSR request.
 const workerWarmupFiles = ["./workers/app.ts"];
+const waSqliteWasmUrl = new URL(import.meta.resolve("@journeyapps/wa-sqlite/dist/wa-sqlite.wasm"));
+
+function emitWaSqliteWasmAssetPlugin(): Plugin {
+  return {
+    name: "emit-wa-sqlite-wasm-asset",
+    apply: "build",
+    generateBundle() {
+      if (this.environment.name !== "client") {
+        return;
+      }
+
+      // The packaged OPFS worker loads this exact sibling URL but does not publish the WASM asset.
+      this.emitFile({
+        type: "asset",
+        fileName: "assets/wa-sqlite.wasm",
+        source: readFileSync(waSqliteWasmUrl),
+      });
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   const isDev = mode === "development";
@@ -33,6 +53,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       reactRouter(),
       devtoolsJson(),
+      emitWaSqliteWasmAssetPlugin(),
     ],
     ssr: {
       noExternal: ["@earendil-works/pi-ai"],
