@@ -184,6 +184,58 @@ describe("Backoffice browser authentication", () => {
     ).toHaveLength(1);
   });
 
+  test("aborted requests stop waiting without cancelling the shared refresh", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2027-08-11T12:16:00.000Z"));
+    recordIssuedBackofficeToken({
+      expiresAt: "2027-08-11T12:15:00.000Z",
+      organization: null,
+    });
+
+    let completeRefresh!: (response: Response) => void;
+    const refreshResponse = new Promise<Response>((resolve) => {
+      completeRefresh = resolve;
+    });
+    const applicationRequests: string[] = [];
+    const fetchImplementation = vi.fn<typeof fetch>().mockImplementation(async (input) => {
+      if (input === "/api/auth/backoffice-token") {
+        return await refreshResponse;
+      }
+      applicationRequests.push(String(input));
+      return Response.json({ ok: true });
+    });
+    const abortController = new AbortController();
+
+    const abortedRequest = backofficeFetch(
+      "/api/backoffice/aborted",
+      { signal: abortController.signal },
+      fetchImplementation,
+    );
+    const continuingRequest = backofficeFetch(
+      "/api/backoffice/continuing",
+      undefined,
+      fetchImplementation,
+    );
+    await vi.waitFor(() => expect(fetchImplementation).toHaveBeenCalledTimes(1));
+
+    abortController.abort();
+    await expect(abortedRequest).rejects.toMatchObject({ name: "AbortError" });
+    expect(applicationRequests).toEqual([]);
+
+    completeRefresh(
+      Response.json({
+        expiresAt: "2027-08-11T12:31:00.000Z",
+        organization: null,
+      }),
+    );
+
+    await expect(continuingRequest).resolves.toMatchObject({ status: 200 });
+    expect(applicationRequests).toEqual(["/api/backoffice/continuing"]);
+    expect(
+      fetchImplementation.mock.calls.filter(([input]) => input === "/api/auth/backoffice-token"),
+    ).toHaveLength(1);
+  });
+
   test("schedules refresh from the issued expiry", () => {
     vi.useFakeTimers();
     const setTimeoutImplementation = vi.fn(
