@@ -866,6 +866,48 @@ describe("runtime tool reference generation", () => {
         algorithm?: "md5" | "sha1" | "sha256";
       };
 
+      // admin tools
+      type AdminCodemodeProvider = {
+        /** Create an organization and assign its owner. */
+        organisationCreate(input: AdminOrganisationCreateInput): Promise<AdminOrganisationCreateOutput>;
+        /** Add a user to an organization with explicit roles. */
+        organisationMembersAdd(input: AdminOrganisationMembersAddInput): Promise<AdminOrganisationMembersAddOutput>;
+        /** Remove a user from an organization. */
+        organisationMembersRemove(input: AdminOrganisationMembersRemoveInput): Promise<AdminOrganisationMembersRemoveOutput>;
+      };
+      declare const admin: AdminCodemodeProvider;
+
+      type AdminOrganisationCreateInput = {
+        name: string;
+        slug: string;
+        ownerEmail: string;
+      };
+      type AdminOrganisationCreateOutput = {
+        organizationId: string;
+        name: string;
+        slug: string;
+        ownerUserId: string;
+      };
+      type AdminOrganisationMembersAddInput = {
+        organizationId: string;
+        userId: string;
+        roles: string[];
+      };
+      type AdminOrganisationMembersAddOutput = {
+        organizationId: string;
+        userId: string;
+        roles: string[];
+      };
+      type AdminOrganisationMembersRemoveInput = {
+        organizationId: string;
+        userId: string;
+      };
+      type AdminOrganisationMembersRemoveOutput = {
+        organizationId: string;
+        userId: string;
+        roles: string[];
+      };
+
       // capabilities tools
       type CapabilitiesCodemodeProvider = {
         /** List Backoffice capabilities and availability/configuration status. */
@@ -3613,6 +3655,7 @@ describe("runtime tool reference generation", () => {
         | { kind: "project"; orgId: string; projectId: string };
       interface BackofficeCodemodeScopedProviders {
         state: StateCodemodeProvider;
+        admin: AdminCodemodeProvider;
         capabilities: CapabilitiesCodemodeProvider;
         hooks: HooksCodemodeProvider;
         connections: ConnectionsCodemodeProvider;
@@ -3672,6 +3715,7 @@ describe("runtime tool reference generation", () => {
       {
         "index": "/// <reference path="/static/codemode/workflow-authoring.d.ts" />
       /// <reference path="/static/codemode/providers/state.d.ts" />
+      /// <reference path="/static/codemode/providers/admin.d.ts" />
       /// <reference path="/static/codemode/providers/capabilities.d.ts" />
       /// <reference path="/static/codemode/providers/hooks.d.ts" />
       /// <reference path="/static/codemode/providers/connections.d.ts" />
@@ -3701,6 +3745,7 @@ describe("runtime tool reference generation", () => {
         | { kind: "project"; orgId: string; projectId: string };
       interface BackofficeCodemodeScopedProviders {
         state: StateCodemodeProvider;
+        admin: AdminCodemodeProvider;
         capabilities: CapabilitiesCodemodeProvider;
         hooks: HooksCodemodeProvider;
         connections: ConnectionsCodemodeProvider;
@@ -6256,6 +6301,7 @@ describe("runtime tool reference generation", () => {
     expect(types).toMatchInlineSnapshot(`
       "/// <reference path="/static/codemode/workflow-authoring.d.ts" />
       /// <reference path="/static/codemode/providers/state.d.ts" />
+      /// <reference path="/static/codemode/providers/admin.d.ts" />
       /// <reference path="/static/codemode/providers/capabilities.d.ts" />
       /// <reference path="/static/codemode/providers/hooks.d.ts" />
       /// <reference path="/static/codemode/providers/connections.d.ts" />
@@ -6285,6 +6331,7 @@ describe("runtime tool reference generation", () => {
         | { kind: "project"; orgId: string; projectId: string };
       interface BackofficeCodemodeScopedProviders {
         state: StateCodemodeProvider;
+        admin: AdminCodemodeProvider;
         capabilities: CapabilitiesCodemodeProvider;
         hooks: HooksCodemodeProvider;
         connections: ConnectionsCodemodeProvider;

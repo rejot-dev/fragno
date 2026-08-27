@@ -28,6 +28,7 @@ import {
   type BackofficeStateBackend,
 } from "@/fragno/codemode/state-backend";
 import { createCodemodeStaticArtifactsResolver } from "@/fragno/codemode/static-codemode-artifacts";
+import { createAdminRuntime } from "@/fragno/runtime-tools/families/admin-runtime";
 import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 import { createCloudflareRuntime } from "@/fragno/runtime-tools/families/cloudflare-runtime";
@@ -159,6 +160,10 @@ export const createRouteBackedRuntimeContext = ({
     execution,
     backofficeKernel: kernel,
     stateBackend: createExecutionStateBackend({ runtime, kernel, execution }),
+    admin:
+      runtime.config.bindings.auth && execution.scope.kind === "system"
+        ? { runtime: createAdminRuntime(runtime.objects.auth.singleton()) }
+        : null,
     createBackofficeScopedContext: (scope) => {
       kernel.assertScopedContextAccess(execution, scope);
       return createRouteBackedRuntimeContext({

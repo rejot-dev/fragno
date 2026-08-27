@@ -91,6 +91,102 @@ afterEach(async () => {
   }
 });
 
+describe("Auth Durable Object administration", () => {
+  test("creates organizations and manages members through privileged operations", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+    const auth = runtime.objects.auth.singleton();
+    await auth.applyScenarioFixture({
+      users: [
+        { id: "owner-1", email: "owner@example.com", role: "user", status: "active" },
+        { id: "member-1", email: "member@example.com", role: "user", status: "active" },
+      ],
+    });
+
+    await expect(
+      auth.createAdminOrganization({
+        name: "Acme",
+        slug: "acme",
+        ownerEmail: "OWNER@example.com",
+      }),
+    ).resolves.toEqual({
+      organizationId: expect.any(String),
+      name: "Acme",
+      slug: "acme",
+      ownerUserId: "owner-1",
+    });
+    const organization = (await auth.getAllOrganizations()).find(({ slug }) => slug === "acme");
+    assert(organization);
+
+    await expect(
+      auth.addAdminOrganizationMember({
+        organizationId: organization.id,
+        userId: "member-1",
+        roles: ["member"],
+      }),
+    ).resolves.toEqual({
+      organizationId: organization.id,
+      userId: "member-1",
+      roles: ["member"],
+    });
+    await expect(
+      auth.removeAdminOrganizationMember({
+        organizationId: organization.id,
+        userId: "member-1",
+      }),
+    ).resolves.toEqual({
+      organizationId: organization.id,
+      userId: "member-1",
+      roles: ["member"],
+    });
+    await expect(
+      auth.hasOrganizationMember({ organizationId: organization.id, userId: "member-1" }),
+    ).resolves.toBe(false);
+  });
+
+  test("preserves at least one owner when removing organization members", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+    const auth = runtime.objects.auth.singleton();
+    await auth.applyScenarioFixture({
+      users: [
+        { id: "owner-1", email: "owner@example.com", role: "user", status: "active" },
+        { id: "owner-2", email: "replacement@example.com", role: "user", status: "active" },
+      ],
+    });
+    const created = await auth.createAdminOrganization({
+      name: "Owner invariant",
+      slug: "owner-invariant",
+      ownerEmail: "owner@example.com",
+    });
+
+    await expect(
+      auth.removeAdminOrganizationMember({
+        organizationId: created.organizationId,
+        userId: "owner-1",
+      }),
+    ).rejects.toThrow(
+      `Admin organization member remove cannot remove the last owner from organization '${created.organizationId}'.`,
+    );
+
+    await auth.addAdminOrganizationMember({
+      organizationId: created.organizationId,
+      userId: "owner-2",
+      roles: ["owner"],
+    });
+    await expect(
+      auth.removeAdminOrganizationMember({
+        organizationId: created.organizationId,
+        userId: "owner-1",
+      }),
+    ).resolves.toEqual({
+      organizationId: created.organizationId,
+      userId: "owner-1",
+      roles: ["owner"],
+    });
+  });
+});
+
 describe("Auth Durable Object account creation policy", () => {
   test("creates rejot.dev accounts as users outside development", async () => {
     vi.stubEnv("MODE", "production");

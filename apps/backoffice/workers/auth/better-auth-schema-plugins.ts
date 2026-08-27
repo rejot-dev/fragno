@@ -1,4 +1,4 @@
-import { type BetterAuthPlugin } from "better-auth";
+import type { BetterAuthPlugin } from "better-auth";
 import { admin } from "better-auth/plugins/admin";
 import { jwt } from "better-auth/plugins/jwt";
 import { organization, type OrganizationOptions } from "better-auth/plugins/organization";
@@ -7,6 +7,9 @@ import { createBackofficeOAuthPlugins } from "./better-auth-oauth";
 
 type BetterAuthOrganizationHooks = NonNullable<OrganizationOptions["organizationHooks"]>;
 
+/** Role whose membership must remain present for every Backoffice organization. */
+export const BACKOFFICE_ORGANIZATION_OWNER_ROLE = "owner";
+
 /** Creates every Better Auth plugin that contributes to the persisted auth schema. */
 export function createBackofficeBetterAuthSchemaPlugins(input: {
   baseURL: string;
@@ -14,7 +17,7 @@ export function createBackofficeBetterAuthSchemaPlugins(input: {
 }): BetterAuthPlugin[] {
   const organizationOptions = {
     allowUserToCreateOrganization: true,
-    creatorRole: "owner",
+    creatorRole: BACKOFFICE_ORGANIZATION_OWNER_ROLE,
     schema: {
       organization: {
         additionalFields: {

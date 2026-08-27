@@ -8,6 +8,8 @@ import { extractW3CRequestPropagationContext } from "@fragno-dev/core";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type {
+  AdminOrganizationMemberRecord,
+  AdminOrganizationRecord,
   AuthObject,
   GrantBackofficeAdminResult,
   ScenarioAuthFixture,
@@ -66,7 +68,10 @@ import {
   initializeBackofficeCodemodeOAuthClient,
 } from "./auth/better-auth-oauth";
 import { createBackofficeTokenPlugin } from "./auth/better-auth-plugin";
-import { createBackofficeBetterAuthSchemaPlugins } from "./auth/better-auth-schema-plugins";
+import {
+  BACKOFFICE_ORGANIZATION_OWNER_ROLE,
+  createBackofficeBetterAuthSchemaPlugins,
+} from "./auth/better-auth-schema-plugins";
 import {
   completeBetterAuthDurableHook,
   deleteBetterAuthDurableHooksForFixture,
@@ -401,11 +406,35 @@ type BetterAuthContext = Awaited<ReturnType<typeof betterAuth>["$context"]>;
 type CreateOrganizationEndpoint = (input: {
   body: { name: string; slug: string; userId: string };
 }) => Promise<{ id: string; slug: string }>;
-// Better Auth erases plugin endpoints when options are returned from a runtime factory. Keep the
-// assertion at the plugin boundary instead of widening the type of the complete auth instance.
-const getCreateOrganizationEndpoint = (auth: BetterAuthInstance): CreateOrganizationEndpoint =>
-  (auth as unknown as { api: { createOrganization: CreateOrganizationEndpoint } }).api
-    .createOrganization;
+type AddOrganizationMemberEndpoint = (input: {
+  body: { userId: string; role: string[]; organizationId: string };
+}) => Promise<StoreMember>;
+type OrganizationAdminEndpoints = {
+  createOrganization: CreateOrganizationEndpoint;
+  addMember: AddOrganizationMemberEndpoint;
+};
+
+function hasOrganizationAdminEndpoints(
+  auth: BetterAuthInstance,
+): auth is BetterAuthInstance & { api: OrganizationAdminEndpoints } {
+  if (!("api" in auth) || typeof auth.api !== "object" || auth.api === null) {
+    return false;
+  }
+  return (
+    "createOrganization" in auth.api &&
+    typeof auth.api.createOrganization === "function" &&
+    "addMember" in auth.api &&
+    typeof auth.api.addMember === "function"
+  );
+}
+
+function getOrganizationAdminEndpoints(auth: BetterAuthInstance): OrganizationAdminEndpoints {
+  if (!hasOrganizationAdminEndpoints(auth)) {
+    throw new Error("Better Auth organization administration endpoints are not configured.");
+  }
+  return auth.api;
+}
+
 const getAuthContext = async (auth: BetterAuthInstance): Promise<BetterAuthContext> =>
   await auth.$context;
 
@@ -969,7 +998,7 @@ export class InMemoryAuthObject implements AuthObject {
         record.payload.user,
         createBetterAuthUserOrganizationDependencies(
           authContext.adapter,
-          getCreateOrganizationEndpoint(auth),
+          getOrganizationAdminEndpoints(auth).createOrganization,
         ),
       );
       if (this.#runtime.config.authEmailVerification.enabled) {
@@ -1221,6 +1250,104 @@ export class InMemoryAuthObject implements AuthObject {
       update: { role: "admin", updatedAt: new Date() },
     });
     return { status: "granted", userId: user.id };
+  }
+
+  async createAdminOrganization(input: {
+    name: string;
+    slug: string;
+    ownerEmail: string;
+  }): Promise<AdminOrganizationRecord> {
+    const { adapter } = await this.#authContext();
+    const ownerEmail = input.ownerEmail.trim().toLowerCase();
+    const owner = await adapter.findOne<StoreUser>({
+      model: "user",
+      where: [{ field: "email", value: ownerEmail }],
+    });
+    if (!owner) {
+      throw new Error(`Admin organization create could not find user '${ownerEmail}'.`);
+    }
+    const organization = await getOrganizationAdminEndpoints(
+      this.#getAuth("http://localhost"),
+    ).createOrganization({
+      body: {
+        name: input.name,
+        slug: input.slug,
+        userId: owner.id,
+      },
+    });
+    return {
+      organizationId: organization.id,
+      name: input.name,
+      slug: organization.slug,
+      ownerUserId: owner.id,
+    };
+  }
+
+  async addAdminOrganizationMember(input: {
+    organizationId: string;
+    userId: string;
+    roles: readonly string[];
+  }): Promise<AdminOrganizationMemberRecord> {
+    await this.#ready;
+    const member = await getOrganizationAdminEndpoints(this.#getAuth("http://localhost")).addMember(
+      {
+        body: {
+          organizationId: input.organizationId,
+          userId: input.userId,
+          role: [...input.roles],
+        },
+      },
+    );
+    return {
+      organizationId: member.organizationId,
+      userId: member.userId,
+      roles: splitOrganizationRoles(member.role),
+    };
+  }
+
+  async removeAdminOrganizationMember(input: {
+    organizationId: string;
+    userId: string;
+  }): Promise<AdminOrganizationMemberRecord> {
+    const { adapter } = await this.#authContext();
+    const member = await adapter.findOne<StoreMember>({
+      model: "member",
+      where: [
+        { field: "organizationId", value: input.organizationId },
+        { field: "userId", value: input.userId },
+      ],
+    });
+    if (!member) {
+      throw new Error(
+        `Admin organization member remove could not find user '${input.userId}' in organization '${input.organizationId}'.`,
+      );
+    }
+    const memberRoles = splitOrganizationRoles(member.role);
+    if (memberRoles.includes(BACKOFFICE_ORGANIZATION_OWNER_ROLE)) {
+      const organizationMembers = await adapter.findMany<StoreMember>({
+        model: "member",
+        where: [{ field: "organizationId", value: input.organizationId }],
+      });
+      const ownerCount = organizationMembers.filter((organizationMember) =>
+        splitOrganizationRoles(organizationMember.role).includes(
+          BACKOFFICE_ORGANIZATION_OWNER_ROLE,
+        ),
+      ).length;
+      if (ownerCount <= 1) {
+        throw new Error(
+          `Admin organization member remove cannot remove the last owner from organization '${input.organizationId}'.`,
+        );
+      }
+    }
+    await adapter.delete({
+      model: "member",
+      where: [{ field: "id", value: member.id }],
+    });
+    return {
+      organizationId: input.organizationId,
+      userId: input.userId,
+      roles: memberRoles,
+    };
   }
 
   async getUserAuthorityFacts(input: {
@@ -1524,6 +1651,22 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   async grantBackofficeAdminByEmail(input: { email: string }) {
     return await this.#object.grantBackofficeAdminByEmail(input);
+  }
+
+  async createAdminOrganization(input: { name: string; slug: string; ownerEmail: string }) {
+    return await this.#object.createAdminOrganization(input);
+  }
+
+  async addAdminOrganizationMember(input: {
+    organizationId: string;
+    userId: string;
+    roles: readonly string[];
+  }) {
+    return await this.#object.addAdminOrganizationMember(input);
+  }
+
+  async removeAdminOrganizationMember(input: { organizationId: string; userId: string }) {
+    return await this.#object.removeAdminOrganizationMember(input);
   }
 
   async getAllOrganizations() {
