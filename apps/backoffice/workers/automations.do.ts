@@ -271,7 +271,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
   >;
   readonly #getAutomationFileSystem?: AutomationsFileSystemResolver;
   readonly #createPiRuntime?: (execution: BackofficeExecutionContext) => PiRuntime;
-  readonly #sessionFileSystems = new Map<string, Promise<MasterFileSystem>>();
   #scope: BackofficeContextScope | null = null;
   private readonly automationRoutePrefix = "/api/automations";
 
@@ -457,18 +456,8 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
   }
 
   #createPiRuntimeOptions(scope: BackofficeContextScope) {
-    const execution = createAutomationsObjectExecution(scope);
-
     return {
       apiKeys: piApiKeys(this.#env),
-      sessionFileSystems: this.#sessionFileSystems,
-      sessionFileSystemContext: {
-        scope,
-        objects: this.#runtimeServices.objects,
-        kernel: this.#kernel,
-        execution,
-        runtimeConfig: this.#runtimeServices.config,
-      },
       codemode: this.#env
         ? createPiCodemodeRuntime(this.#env)
         : createUnavailablePiCodemodeRuntime(),

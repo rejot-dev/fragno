@@ -10,14 +10,12 @@ import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/aut
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
-import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import type { FileSearchMatch } from "@/file-collection/file-collection";
+import { createBackofficeStaticFileCollection } from "@/files/content/static";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
-import { UPLOAD_PROVIDER_DATABASE, type UploadAdminConfigResponse } from "@/fragno/upload";
-import type { UploadFileRecord } from "@/fragno/upload/file-record";
 
-import { createTestMasterFileSystem } from "../automation/engine/test-master-file-system.test-utils";
+import { createBackofficeSystemStateBackend } from "../codemode/state-backend";
 import { createTestStateBackend, MemoryUploadObject } from "../codemode/state-backend.test-utils";
 import { createBackofficePiSessionExecution, createPiRuntimeDefinition } from "./pi-runtime";
 import { BACKOFFICE_PI_WORKFLOW_NAME } from "./pi-shared";
@@ -27,33 +25,13 @@ import {
   createPiToolRegistry,
   formatSearchMatches,
   type PiRuntimeToolContext,
-  type PiSessionFileSystemContext,
 } from "./pi-tools";
 
-const testRuntimeConfig: BackofficeRuntimeConfig = {
-  authEmailVerification: { enabled: false },
-  bindings: {
-    api: false,
-    auth: false,
-    automations: false,
-    billing: false,
-    marketplace: false,
-    telegram: false,
-    otp: false,
-    resend: false,
-    reson8: false,
-    mcp: false,
-    upload: false,
-    github: false,
-    githubWebhookRouter: false,
-    cloudflare: false,
-    sandbox: false,
-  },
-};
-
-const createMockRuntimeToolContext = (): PiRuntimeToolContext => ({
+const createMockRuntimeToolContext = (
+  stateBackend = createTestStateBackend(),
+): PiRuntimeToolContext => ({
   ...EMPTY_BASH_HOST_CONTEXT,
-  stateBackend: createTestStateBackend(),
+  stateBackend,
   automation: null,
   automations: {
     runtime: {
@@ -178,8 +156,6 @@ describe("Backoffice Pi fragment", () => {
       scope,
       kernel: context.kernel,
       apiKeys: { openai: "test-key" },
-      sessionFileSystems: new Map(),
-      sessionFileSystemContext: context,
       runtimeToolContext: createMockRuntimeToolContext(),
       codemode: {
         execute: async () => {
@@ -244,8 +220,6 @@ describe("Backoffice Pi fragment", () => {
       scope: { kind: "org", orgId: "acme-org" },
       kernel: context.kernel,
       apiKeys: { openai: "test-key" },
-      sessionFileSystems: new Map(),
-      sessionFileSystemContext: context,
       runtimeToolContext: createMockRuntimeToolContext(),
       codemode: {
         execute: async () => {
@@ -322,7 +296,9 @@ describe("Backoffice Pi search output", () => {
     `);
   });
 
-  test("paginates the combined upload and static match budget", async () => {
+  test("paginates the combined scoped and static match budget", async () => {
+    const context = createContext();
+    const sessionId = "search-pagination";
     const stateBackend = createTestStateBackend({
       upload: new MemoryUploadObject({
         "upload-a.ts": "needle",
@@ -333,12 +309,9 @@ describe("Backoffice Pi search output", () => {
         "static-b.ts": "needle",
       },
     });
-    const context = createContext();
     const tools = await createPiToolFactory({
-      sessionFileSystems: new Map(),
-      sessionFileSystemContext: context,
-      runtimeToolContext: { ...createMockRuntimeToolContext(), stateBackend },
-    })({ sessionId: "search-pagination", execution: context.execution });
+      runtimeToolContext: createMockRuntimeToolContext(stateBackend),
+    })({ sessionId, execution: context.execution });
     assert(tools.search, "search tool should be configured");
 
     const firstPage = await tools.search.execute("search-1", {
@@ -347,10 +320,10 @@ describe("Backoffice Pi search output", () => {
     } as never);
     const firstDetails = firstPage.details as {
       matches: FileSearchMatch[];
-      cursor: { upload?: string; static?: string };
+      cursor: { scope?: string; static?: string };
     };
     expect(firstDetails.matches).toHaveLength(3);
-    expect(firstDetails.cursor.upload).toBeUndefined();
+    expect(firstDetails.cursor.scope).toBeUndefined();
     expect(firstDetails.cursor.static).toBeDefined();
 
     const secondPage = await tools.search.execute("search-2", {
@@ -360,7 +333,7 @@ describe("Backoffice Pi search output", () => {
     } as never);
     const secondDetails = secondPage.details as {
       matches: FileSearchMatch[];
-      cursor: { upload?: string; static?: string };
+      cursor: { scope?: string; static?: string };
     };
     expect(secondDetails.matches).toHaveLength(1);
     assert(secondDetails.matches[0]?.path === "/static/static-b.ts");
@@ -431,6 +404,39 @@ describe("Backoffice Pi execution", () => {
     }
   });
 
+  test("uses the system state backend when Upload-backed state is unavailable", async () => {
+    const sessionId = "system-session";
+    const execution = createBackofficeUserExecution({
+      scope: { kind: "system" },
+      userId: "admin-1",
+    });
+    const runtimeToolContext = createMockRuntimeToolContext(
+      createBackofficeSystemStateBackend({
+        staticFileCollection: createBackofficeStaticFileCollection(() => ({
+          "SYSTEM.md": "Static guidance",
+        })),
+      }),
+    );
+    const createTools = createPiToolFactory({ runtimeToolContext });
+
+    const tools = await createTools({ sessionId, execution });
+    await expect(
+      tools.read?.execute("read-system-file", { path: "/system/README.md" }),
+    ).resolves.toMatchObject({
+      content: [{ type: "text", text: expect.stringContaining("admin-only system-scope") }],
+    });
+    await expect(
+      tools.search?.execute("search-system-files", {
+        query: "admin-only system-scope",
+        glob: "/system/**",
+      }),
+    ).resolves.toMatchObject({
+      details: {
+        matches: [{ path: "/system/README.md" }],
+      },
+    });
+  });
+
   test("builds runtime tools from the session creator execution", async () => {
     const sessionExecution = createBackofficeUserExecution({
       scope: { kind: "org", orgId: "acme-org" },
@@ -441,8 +447,6 @@ describe("Backoffice Pi execution", () => {
     let contextResolutionCount = 0;
     const sessionId = "session-execution";
     const createTools = createPiToolFactory({
-      sessionFileSystems: new Map([[sessionId, Promise.resolve(createTestMasterFileSystem({}))]]),
-      sessionFileSystemContext: createContext(),
       runtimeToolContext: (execution, metadata) => {
         contextResolutionCount += 1;
         receivedExecution = execution;
@@ -486,27 +490,18 @@ describe("Backoffice Pi skills", () => {
     expect(skills["generating-backoffice-uis"]?.body).toContain("## Result contract");
   });
 
-  test("falls back to static skills when workspace uploads are not configured", async () => {
-    const staticSkill = `---
+  test("loads static skills when the workspace skills directory is absent", async () => {
+    const state = createTestStateBackend({
+      staticFiles: {
+        "skills/static-only/SKILL.md": `---
 name: static-only
 description: Static fallback skill.
 ---
 
 # Static fallback
-`;
-    const uploadNotConfigured = Object.assign(
-      new Error("Upload is not configured for this organization."),
-      { name: "UploadFileListingError", code: "NOT_CONFIGURED" },
-    );
-    const state = {
-      glob: async (pattern: string) => {
-        if (pattern.startsWith("/workspace/")) {
-          throw uploadNotConfigured;
-        }
-        return ["/static/skills/static-only/SKILL.md"];
+`,
       },
-      readFile: async () => staticSkill,
-    };
+    });
 
     await expect(loadBackofficePiSkills(state)).resolves.toMatchObject({
       "static-only": {
@@ -517,97 +512,77 @@ description: Static fallback skill.
   });
 
   test("skips malformed skill files while loading remaining static and workspace skills", async () => {
-    const contentsByPath: Record<string, string> = {
-      "/static/skills/static-valid/SKILL.md": `---
+    const state = createTestStateBackend({
+      staticFiles: {
+        "skills/static-valid/SKILL.md": `---
 name: static-valid
 description: Valid static skill.
 ---
 
 # Static
 `,
-      "/workspace/skills/malformed/SKILL.md": `---
+      },
+      upload: new MemoryUploadObject({
+        "skills/malformed/SKILL.md": `---
 name: malformed
 ---
 
 # Missing description
 `,
-      "/workspace/skills/workspace-valid/SKILL.md": `---
+        "skills/workspace-valid/SKILL.md": `---
 name: workspace-valid
 description: Valid workspace skill.
 ---
 
 # Workspace
 `,
-    };
-    const state = {
-      glob: async (pattern: string) =>
-        pattern.startsWith("/static/")
-          ? ["/static/skills/static-valid/SKILL.md"]
-          : ["/workspace/skills/malformed/SKILL.md", "/workspace/skills/workspace-valid/SKILL.md"],
-      readFile: async (path: string) => contentsByPath[path] ?? "",
-    };
+      }),
+    });
 
     const skills = await loadBackofficePiSkills(state);
 
-    expect(Object.keys(skills).sort()).toEqual(["static-valid", "workspace-valid"]);
-  });
-
-  test("propagates workspace skill listing failures", async () => {
-    const listingFailure = Object.assign(new Error("Upload database is unavailable."), {
-      name: "UploadFileListingError",
-      code: "DATABASE_UNAVAILABLE",
+    expect(skills).toMatchObject({
+      "static-valid": { name: "static-valid" },
+      "workspace-valid": { name: "workspace-valid" },
     });
-    const state = {
-      glob: async (pattern: string) => {
-        if (pattern.startsWith("/workspace/")) {
-          throw listingFailure;
-        }
-        return [];
-      },
-      readFile: async () => "",
-    };
-
-    await expect(loadBackofficePiSkills(state)).rejects.toBe(listingFailure);
+    expect(skills.malformed).toBeUndefined();
   });
 
-  test("reflects skills from mounted Backoffice state", async () => {
-    const state = createTestStateBackend();
-    await state.writeFile(
-      "/workspace/skills/custom/SKILL.md",
-      `---
+  test("reflects skills from the Upload-backed workspace", async () => {
+    const state = createTestStateBackend({
+      upload: new MemoryUploadObject({
+        "skills/custom/SKILL.md": `---
 name: custom
-description: Use custom filesystem skill.
+description: Use custom collection skill.
 ---
 
 # Custom Skill
 
 Filesystem-defined instructions.
 `,
-    );
+      }),
+    });
 
     const skills = await loadBackofficePiSkills(state);
 
     expect(Object.keys(skills)).toEqual(expect.arrayContaining(["custom"]));
     expect(skills.custom).toMatchObject({
       name: "custom",
-      description: "Use custom filesystem skill.",
+      description: "Use custom collection skill.",
       location: "/workspace/skills/custom/SKILL.md",
     });
   });
 
   test("exposes codemode, declaration-reading, and file-search tools", () => {
-    const tools = createPiToolRegistry({
-      sessionFileSystems: new Map(),
-      sessionFileSystemContext: createContext(),
-    });
+    const tools = createPiToolRegistry({ execution: createContext().execution });
 
     expect(Object.keys(tools)).toEqual(["read", "search", "execCodeMode"]);
   });
 
   test("exposes a read tool that can load starter skill files", async () => {
+    const sessionId = "session-skill-read";
     const tools = createPiToolRegistry({
-      sessionFileSystems: new Map(),
-      sessionFileSystemContext: createContext(),
+      execution: createContext().execution,
       runtimeToolContext: createMockRuntimeToolContext(),
     });
 
@@ -617,7 +592,7 @@ Filesystem-defined instructions.
     }
 
     const readTool = await readFactory({
-      session: { id: "session-skill-read" },
+      session: { id: sessionId },
       turnId: "turn-1",
       toolConfig: null,
       messages: [],
@@ -641,329 +616,13 @@ Filesystem-defined instructions.
   });
 });
 
-type UploadSeed = Record<
-  string,
-  | string
-  | Uint8Array
-  | {
-      content: string | Uint8Array;
-      contentType?: string;
-      metadata?: Record<string, unknown> | null;
-      status?: UploadFileRecord["status"];
-    }
->;
-
-const createContext = (
-  options: { uploadSeed?: UploadSeed; resend?: boolean } = {},
-): PiSessionFileSystemContext => {
-  const upload = createUploadStub(options.uploadSeed ?? {});
-  const resend = options.resend ? createResendStub() : createEmptyStub();
-  const automations = createEmptyStub();
-
-  const objects = {
-    upload: { forOrg: () => upload },
-    resend: { forOrg: () => resend },
-    automations: { forOrg: () => automations },
-  } as unknown as PiSessionFileSystemContext["objects"];
-
-  return {
-    scope: { kind: "org", orgId: "acme-org" },
-    objects,
-    kernel: new BackofficeKernel({
-      authorityResolver: unavailableBackofficeAuthorityResolver,
-      kernelObserver: noopBackofficeKernelObserver,
-    }),
-    runtimeConfig: testRuntimeConfig,
-    execution: createBackofficeUserExecution({
-      scope: { kind: "org", orgId: "acme-org" },
-      userId: "test-user",
-    }),
-  };
-};
-
-const createEmptyStub = () => ({
-  fetch: async () => new Response("Not Found", { status: 404 }),
-  getHookQueue: async () => ({
-    configured: false,
-    hooksEnabled: false,
-    namespace: null,
-    items: [],
-    cursor: undefined,
-    hasNextPage: false,
+const createContext = () => ({
+  kernel: new BackofficeKernel({
+    authorityResolver: unavailableBackofficeAuthorityResolver,
+    kernelObserver: noopBackofficeKernelObserver,
   }),
-  getAdminConfig: async () => null,
+  execution: createBackofficeUserExecution({
+    scope: { kind: "org", orgId: "acme-org" },
+    userId: "test-user",
+  }),
 });
-
-const createUploadConfig = (): UploadAdminConfigResponse => ({
-  configured: true,
-  defaultProvider: UPLOAD_PROVIDER_DATABASE,
-  providers: {
-    [UPLOAD_PROVIDER_DATABASE]: {
-      provider: UPLOAD_PROVIDER_DATABASE,
-      configured: true,
-      config: {},
-    },
-  },
-});
-
-const createUploadStub = (seed: UploadSeed) => {
-  const now = new Date("2026-03-18T12:00:00.000Z").toISOString();
-  const files = new Map<string, UploadFileRecord>();
-  const contents = new Map<string, Uint8Array>();
-
-  const setFile = (
-    fileKey: string,
-    input:
-      | string
-      | Uint8Array
-      | {
-          content: string | Uint8Array;
-          contentType?: string;
-          metadata?: Record<string, unknown> | null;
-          status?: UploadFileRecord["status"];
-        },
-  ) => {
-    const normalizedInput =
-      typeof input === "string" || input instanceof Uint8Array ? { content: input } : input;
-    const bytes =
-      normalizedInput.content instanceof Uint8Array
-        ? normalizedInput.content
-        : new TextEncoder().encode(normalizedInput.content);
-    files.set(fileKey, {
-      provider: UPLOAD_PROVIDER_DATABASE,
-      fileKey,
-      status: normalizedInput.status ?? "ready",
-      sizeBytes: bytes.byteLength,
-      filename: fileKey.split("/").at(-1) ?? fileKey,
-      contentType: normalizedInput.contentType ?? guessContentType(fileKey),
-      metadata: normalizedInput.metadata ?? null,
-      createdAt: now,
-      updatedAt: now,
-    });
-    contents.set(fileKey, bytes);
-  };
-
-  for (const [fileKey, content] of Object.entries(seed)) {
-    setFile(fileKey, content);
-  }
-
-  return {
-    getAdminConfig: async () => (Object.keys(seed).length > 0 ? createUploadConfig() : null),
-    async fetch(request: Request) {
-      const url = new URL(request.url);
-
-      if (request.method === "GET" && url.pathname === "/api/upload/files") {
-        const provider = url.searchParams.get("provider");
-        const status = url.searchParams.get("status");
-        const prefix = url.searchParams.get("prefix") ?? "";
-        const delimiter = url.searchParams.get("delimiter");
-        const matchedFiles = Array.from(files.values()).filter(
-          (file) =>
-            (!provider || file.provider === provider) &&
-            (!status || file.status === status) &&
-            file.fileKey.startsWith(prefix),
-        );
-
-        if (delimiter === "/") {
-          const directories = new Map<
-            string,
-            {
-              name: string;
-              prefix: string;
-              updatedAt: string;
-              contentType: string | null;
-              metadata: Record<string, unknown> | null;
-            }
-          >();
-          const directFiles: UploadFileRecord[] = [];
-          for (const file of matchedFiles) {
-            const remainder = file.fileKey.slice(prefix.length);
-            const delimiterIndex = remainder.indexOf("/");
-            if (delimiterIndex === -1) {
-              directFiles.push(file);
-              continue;
-            }
-
-            const name = remainder.slice(0, delimiterIndex);
-            directories.set(`${prefix}${name}/`, {
-              name,
-              prefix: `${prefix}${name}/`,
-              updatedAt: String(file.updatedAt ?? now),
-              contentType: file.contentType ?? null,
-              metadata: file.metadata ?? null,
-            });
-          }
-
-          return Response.json({
-            files: directFiles,
-            directories: Array.from(directories.values()),
-            hasNextPage: false,
-          });
-        }
-
-        return Response.json({
-          files: matchedFiles,
-          hasNextPage: false,
-        });
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/upload/files/by-key") {
-        const key = url.searchParams.get("key") ?? "";
-        const file = files.get(key);
-        if (!file) {
-          return Response.json({ message: "File not found." }, { status: 404 });
-        }
-        return Response.json(file);
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/upload/files/by-key/content") {
-        const key = url.searchParams.get("key") ?? "";
-        const file = files.get(key);
-        const content = contents.get(key);
-        if (!file || file.status === "deleted" || !content) {
-          return Response.json({ message: "File not found." }, { status: 404 });
-        }
-
-        return new Response(new Uint8Array(content), {
-          status: 200,
-          headers: {
-            "content-type": file.contentType,
-          },
-        });
-      }
-
-      if (request.method === "PATCH" && url.pathname === "/api/upload/files/by-key") {
-        const key = url.searchParams.get("key") ?? "";
-        const file = files.get(key);
-        if (!file) {
-          return Response.json({ message: "File not found." }, { status: 404 });
-        }
-
-        const payload = (await request.json()) as {
-          filename?: string;
-          visibility?: string | null;
-          tags?: string[] | null;
-          metadata?: Record<string, unknown> | null;
-        };
-        const nextFile = {
-          ...file,
-          ...(payload.filename ? { filename: payload.filename } : {}),
-          ...(payload.visibility !== undefined ? { visibility: payload.visibility } : {}),
-          ...(payload.tags !== undefined ? { tags: payload.tags ?? [] } : {}),
-          ...(payload.metadata !== undefined ? { metadata: payload.metadata } : {}),
-          updatedAt: now,
-        } satisfies UploadFileRecord;
-        files.set(key, nextFile);
-        return Response.json(nextFile);
-      }
-
-      if (request.method === "DELETE" && url.pathname === "/api/upload/files/by-key") {
-        const key = url.searchParams.get("key") ?? "";
-        files.delete(key);
-        contents.delete(key);
-        return Response.json({ ok: true });
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/upload/files") {
-        const formData = await request.formData();
-        const fileKey = String(formData.get("fileKey") ?? "");
-        const metadataValue = formData.get("metadata");
-        const metadata =
-          typeof metadataValue === "string" && metadataValue
-            ? ((JSON.parse(metadataValue) as Record<string, unknown>) ?? null)
-            : null;
-        const blob = formData.get("file");
-        if (!(blob instanceof Blob)) {
-          return Response.json({ message: "File is required." }, { status: 400 });
-        }
-
-        setFile(fileKey, {
-          content: new Uint8Array(await blob.arrayBuffer()),
-          contentType: blob.type || guessContentType(fileKey),
-          metadata,
-        });
-        return Response.json(files.get(fileKey));
-      }
-
-      return new Response("Not Found", { status: 404 });
-    },
-  };
-};
-
-const createResendStub = () => ({
-  async fetch(request: Request) {
-    const url = new URL(request.url);
-
-    if (request.method === "GET" && url.pathname === "/api/resend/threads") {
-      return Response.json({
-        threads: [
-          {
-            id: "thread-1",
-            subject: "Invoice Update",
-            normalizedSubject: "invoice update",
-            participants: ["customer@example.com", "support@example.com"],
-            messageCount: 1,
-            firstMessageAt: "2026-03-18T12:00:00.000Z",
-            lastMessageAt: "2026-03-18T12:00:00.000Z",
-            lastDirection: "outbound",
-            lastMessagePreview: "Hello there",
-            createdAt: "2026-03-18T12:00:00.000Z",
-            updatedAt: "2026-03-18T12:00:00.000Z",
-          },
-        ],
-        hasNextPage: false,
-      });
-    }
-
-    if (request.method === "GET" && url.pathname === "/api/resend/threads/thread-1/messages") {
-      return Response.json({
-        messages: [
-          {
-            id: "message-1",
-            threadId: "thread-1",
-            direction: "outbound",
-            status: "sent",
-            from: "support@example.com",
-            to: ["customer@example.com"],
-            cc: [],
-            bcc: [],
-            replyTo: [],
-            subject: "Invoice Update",
-            normalizedSubject: "invoice update",
-            participants: ["customer@example.com", "support@example.com"],
-            messageId: null,
-            inReplyTo: null,
-            references: [],
-            providerEmailId: "provider-1",
-            attachments: [],
-            html: null,
-            text: "Hello there",
-            headers: null,
-            occurredAt: "2026-03-18T12:00:00.000Z",
-            scheduledAt: null,
-            sentAt: "2026-03-18T12:00:00.000Z",
-            lastEventType: null,
-            lastEventAt: null,
-            errorCode: null,
-            errorMessage: null,
-            createdAt: "2026-03-18T12:00:00.000Z",
-            updatedAt: "2026-03-18T12:00:00.000Z",
-          },
-        ],
-        hasNextPage: false,
-      });
-    }
-
-    return Response.json({ message: "Not found.", code: "THREAD_NOT_FOUND" }, { status: 404 });
-  },
-});
-
-const guessContentType = (fileKey: string): string => {
-  if (/\.(md|mdx)$/i.test(fileKey)) {
-    return "text/markdown";
-  }
-  if (/\.json$/i.test(fileKey)) {
-    return "application/json";
-  }
-  return "text/plain";
-};

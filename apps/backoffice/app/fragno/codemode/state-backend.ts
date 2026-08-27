@@ -24,6 +24,7 @@ import type {
   FileTree,
   FileTreeEntry,
 } from "@/file-collection/file-collection";
+import { systemFileCollection } from "@/files/content/system";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller, type UploadRouteCaller } from "@/fragno/upload-server";
 import type { JsonValue } from "@/lib/zod/json-value";
@@ -186,6 +187,297 @@ export const createBackofficeStateBackend = (input: {
     },
   });
 };
+
+export const createBackofficeSystemStateBackend = (input: {
+  staticFileCollection: FileCollection;
+}): BackofficeStateBackend =>
+  new SystemStaticStateBackend({
+    system: { mountPoint: "/system", collection: systemFileCollection },
+    static: { mountPoint: STATIC_MOUNT_POINT, collection: input.staticFileCollection },
+  });
+
+class SystemStaticStateBackend implements BackofficeStateBackend {
+  readonly #system: StateMount;
+  readonly #static: StateMount;
+
+  constructor(options: { system: StateMount; static: StateMount }) {
+    this.#system = options.system;
+    this.#static = options.static;
+  }
+
+  async readFile(path: string): Promise<string> {
+    return await new Response((await this.#getFile(path)).body).text();
+  }
+
+  async readFileBytes(path: string): Promise<Uint8Array> {
+    return new Uint8Array(await new Response((await this.#getFile(path)).body).arrayBuffer());
+  }
+
+  async writeFile(path: string, _content: string): Promise<void> {
+    this.#throwReadOnly("write", path);
+  }
+
+  async writeFileBytes(path: string, _content: Uint8Array): Promise<void> {
+    this.#throwReadOnly("write", path);
+  }
+
+  async appendFile(path: string, _content: string | Uint8Array): Promise<void> {
+    this.#throwReadOnly("append", path);
+  }
+
+  async exists(path: string): Promise<boolean> {
+    if (isStateRoot(path)) {
+      return true;
+    }
+    return (await this.#getEntry(this.#resolvePath(path))) !== null;
+  }
+
+  async stat(path: string): Promise<StateStat | null> {
+    if (isStateRoot(path)) {
+      return { type: "directory", size: 0, mtime: new Date(0), mode: 0o555 };
+    }
+    const resolved = this.#resolvePath(path);
+    const entry = await this.#getEntry(resolved);
+    if (!entry) {
+      return null;
+    }
+    return {
+      type: entry.kind,
+      size: entry.kind === "file" ? (entry.sizeBytes ?? 0) : 0,
+      mtime: entry.updatedAt ? new Date(entry.updatedAt) : new Date(0),
+      mode: entry.kind === "directory" ? 0o555 : 0o444,
+    };
+  }
+
+  lstat(path: string): Promise<StateStat | null> {
+    return this.stat(path);
+  }
+
+  async mkdir(path: string): Promise<void> {
+    this.#throwReadOnly("mkdir", path);
+  }
+
+  async readdir(path: string): Promise<string[]> {
+    return (await this.readdirWithFileTypes(path)).map((entry) => entry.name);
+  }
+
+  async readdirWithFileTypes(path: string): Promise<StateDirent[]> {
+    if (isStateRoot(path)) {
+      return [this.#system.mountPoint, this.#static.mountPoint]
+        .map((mountPoint) => ({ name: posix.basename(mountPoint), type: "directory" as const }))
+        .sort((left, right) => left.name.localeCompare(right.name));
+    }
+
+    const resolved = this.#resolvePath(path);
+    const tree = await this.#collectionFor(resolved.kind).getTree();
+    const entry = resolved.relativePath
+      ? tree.entries.find((candidate) => candidate.path === resolved.relativePath)
+      : { kind: "directory" as const };
+    if (!entry) {
+      throw stateError("ENOENT", "readdir", resolved.absolutePath);
+    }
+    if (entry.kind !== "directory") {
+      throw stateError("ENOTDIR", "readdir", resolved.absolutePath);
+    }
+
+    const parentPrefix = resolved.relativePath ? `${resolved.relativePath}/` : "";
+    return tree.entries
+      .flatMap<StateDirent>((candidate) => {
+        if (!candidate.path.startsWith(parentPrefix)) {
+          return [];
+        }
+        const remainder = candidate.path.slice(parentPrefix.length);
+        if (!remainder || remainder.includes("/")) {
+          return [];
+        }
+        return [{ name: remainder, type: candidate.kind }];
+      })
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  async rm(path: string, _options?: { force?: boolean }): Promise<void> {
+    this.#throwReadOnly("rm", path);
+  }
+
+  async cp(_src: string, dest: string): Promise<void> {
+    this.#throwReadOnly("cp", dest);
+  }
+
+  async mv(_src: string, dest: string): Promise<void> {
+    this.#throwReadOnly("mv", dest);
+  }
+
+  symlink(_target: string, linkPath: string): never {
+    this.#throwReadOnly("symlink", linkPath);
+  }
+
+  readlink(path: string): never {
+    throw stateError("ENOTSUP", "readlink", path);
+  }
+
+  async realpath(path: string): Promise<string> {
+    if (isStateRoot(path)) {
+      return "/";
+    }
+    const resolved = this.#resolvePath(path);
+    if (!(await this.#getEntry(resolved))) {
+      throw stateError("ENOENT", "realpath", resolved.absolutePath);
+    }
+    return resolved.absolutePath;
+  }
+
+  resolvePath(base: string, path: string): string {
+    const normalizedBase = base.startsWith("/") ? base : posix.join(this.#system.mountPoint, base);
+    return posix.resolve(normalizedBase, path);
+  }
+
+  async glob(pattern: string): Promise<string[]> {
+    const absolutePattern =
+      pattern.startsWith("/") || pattern.startsWith("**/")
+        ? pattern
+        : posix.join(this.#system.mountPoint, pattern);
+    const expression = globToRegExp(absolutePattern);
+    const [systemTree, staticTree] = await Promise.all([
+      patternCanMatchMount(absolutePattern, this.#system.mountPoint)
+        ? this.#system.collection.getTree()
+        : null,
+      patternCanMatchMount(absolutePattern, this.#static.mountPoint)
+        ? this.#static.collection.getTree()
+        : null,
+    ]);
+    return [
+      this.#system.mountPoint,
+      this.#static.mountPoint,
+      ...(systemTree?.entries.map((entry) => joinMountPath(this.#system.mountPoint, entry.path)) ??
+        []),
+      ...(staticTree?.entries.map((entry) => joinMountPath(this.#static.mountPoint, entry.path)) ??
+        []),
+    ]
+      .filter((path) => expression.test(path.replace(/^\/+/, "")))
+      .sort();
+  }
+
+  async readJson(path: string): Promise<JsonValue> {
+    return JSON.parse(await this.readFile(path)) as JsonValue;
+  }
+
+  async writeJson(path: string, _value: JsonValue, _options?: { spaces?: number }): Promise<void> {
+    this.#throwReadOnly("write", path);
+  }
+
+  async applyEdits(edits: StateFileEditOperation[]): Promise<ApplyStateFileEditsResult> {
+    this.#throwReadOnly("applyEdits", edits[0]?.path ?? this.#system.mountPoint);
+  }
+
+  async searchText(
+    path: string,
+    query: string,
+    options: StateSearchOptions = {},
+  ): Promise<StateTextMatch[]> {
+    return toStateTextMatches(await this.readFile(path), query, options);
+  }
+
+  async searchFiles(
+    pattern: string,
+    query: string,
+    options?: StateFileSearchOptions,
+  ): Promise<StateFileSearchPage> {
+    const searchMount = async (
+      mount: StateMount,
+      mountOptions: StateMountSearchOptions | undefined,
+      shouldSearch: boolean,
+    ): Promise<StateMountSearchPage> => {
+      if (!shouldSearch || !patternCanMatchMount(pattern, mount.mountPoint)) {
+        return { results: [], hasMore: false };
+      }
+      const { cursor, ...searchOptions } = mountOptions ?? {};
+      const page = await mount.collection.searchFiles(
+        stripMountFromPattern(pattern, mount.mountPoint),
+        query,
+        searchOptions,
+        cursor,
+      );
+      return {
+        results: groupStateFileSearchMatches(mount.mountPoint, page.matches),
+        ...(page.cursor ? { cursor: page.cursor } : {}),
+        hasMore: page.hasMore,
+      };
+    };
+
+    const hasMountSelection = options?.upload !== undefined || options?.static !== undefined;
+    const [system, staticFiles] = await Promise.all([
+      searchMount(
+        this.#system,
+        options?.upload,
+        !hasMountSelection || options?.upload !== undefined,
+      ),
+      searchMount(
+        this.#static,
+        options?.static,
+        !hasMountSelection || options?.static !== undefined,
+      ),
+    ]);
+    return { upload: system, static: staticFiles };
+  }
+
+  async hashFile(path: string, algorithm: "md5" | "sha1" | "sha256"): Promise<string> {
+    return createHash(algorithm)
+      .update(await this.readFileBytes(path))
+      .digest("hex");
+  }
+
+  async #getFile(path: string) {
+    const resolved = this.#resolvePath(path);
+    if (!resolved.relativePath) {
+      throw stateError("EISDIR", "read", resolved.absolutePath);
+    }
+    const file = await this.#collectionFor(resolved.kind).getFile(resolved.relativePath);
+    if (file) {
+      return file;
+    }
+    const entry = await this.#getEntry(resolved);
+    if (entry?.kind === "directory") {
+      throw stateError("EISDIR", "read", resolved.absolutePath);
+    }
+    throw stateError("ENOENT", "read", resolved.absolutePath);
+  }
+
+  async #getEntry(resolved: ResolvedStatePath): Promise<FileTreeEntry | null> {
+    if (!resolved.relativePath) {
+      return { kind: "directory", path: "", updatedAt: null, metadata: null };
+    }
+    const tree = await this.#collectionFor(resolved.kind).getTree();
+    return tree.entries.find((entry) => entry.path === resolved.relativePath) ?? null;
+  }
+
+  #collectionFor(kind: ResolvedStatePath["kind"]): FileCollection {
+    return kind === "upload" ? this.#system.collection : this.#static.collection;
+  }
+
+  #resolvePath(path: string): ResolvedStatePath {
+    const absolutePath = path.startsWith("/")
+      ? posix.resolve("/", path)
+      : posix.resolve(this.#system.mountPoint, path);
+    const systemRelativePath = relativePathWithinMount(absolutePath, this.#system.mountPoint);
+    if (systemRelativePath !== null) {
+      return { kind: "upload", absolutePath, relativePath: systemRelativePath };
+    }
+    const staticRelativePath = relativePathWithinMount(absolutePath, this.#static.mountPoint);
+    if (staticRelativePath !== null) {
+      return { kind: "static", absolutePath, relativePath: staticRelativePath };
+    }
+    throw new Error(
+      `State path '${path}' is outside '${this.#system.mountPoint}' and '${this.#static.mountPoint}'.`,
+    );
+  }
+
+  #throwReadOnly(operation: string, path: string): never {
+    const absolutePath = path.startsWith("/")
+      ? posix.resolve("/", path)
+      : posix.resolve(this.#system.mountPoint, path);
+    throw stateError("EROFS", operation, absolutePath);
+  }
+}
 
 class UploadStaticStateBackend implements BackofficeStateBackend {
   readonly #upload: UploadStateMount;
