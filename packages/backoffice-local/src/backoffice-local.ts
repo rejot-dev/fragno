@@ -1,6 +1,7 @@
+import { Buffer } from "node:buffer";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { dirname, posix, resolve } from "node:path";
 
 import {
   fetchBackofficeWithoutRedirect,
@@ -192,16 +193,22 @@ export function parseBackofficeScope(segment: string): BackofficeScope {
   );
 }
 
+function backofficeScopeRouteId(scope: BackofficeScope): string {
+  return scope.kind === "system"
+    ? "system"
+    : scope.kind === "org"
+      ? encodeURIComponent(scope.orgId)
+      : scope.kind === "user"
+        ? encodeURIComponent(scope.userId)
+        : `${encodeURIComponent(scope.orgId)}:${encodeURIComponent(scope.projectId)}`;
+}
+
 function backofficeScopePath(scope: BackofficeScope, suffix = ""): string {
-  const routeId =
-    scope.kind === "system"
-      ? "system"
-      : scope.kind === "org"
-        ? encodeURIComponent(scope.orgId)
-        : scope.kind === "user"
-          ? encodeURIComponent(scope.userId)
-          : `${encodeURIComponent(scope.orgId)}:${encodeURIComponent(scope.projectId)}`;
-  return `/api/backoffice/codemode/${scope.kind}/${encodeURIComponent(routeId)}${suffix}`;
+  return `/api/backoffice/codemode/${scope.kind}/${encodeURIComponent(backofficeScopeRouteId(scope))}${suffix}`;
+}
+
+function backofficeScopedUploadPath(scope: BackofficeScope, suffix = ""): string {
+  return `/api/upload-scoped/${scope.kind}/${encodeURIComponent(backofficeScopeRouteId(scope))}/files${suffix}`;
 }
 
 function isStoredAuthState(value: unknown): value is StoredAuthState {
@@ -747,14 +754,18 @@ async function authedFetch(
   const fetchWithAuth = (credentials: StoredAuthState) => {
     const headers = new Headers(fetchOptions.headers);
     headers.set("authorization", `Bearer ${credentials.backoffice.accessToken}`);
-    return fetchBackofficeWithoutRedirect(`${credentials.baseUrl}${path}`, {
+    const requestInit: RequestInit & { duplex?: "half" } = {
       ...fetchOptions,
       headers,
-    });
+    };
+    if (fetchOptions.body instanceof ReadableStream) {
+      requestInit.duplex = "half";
+    }
+    return fetchBackofficeWithoutRedirect(`${credentials.baseUrl}${path}`, requestInit);
   };
 
   const response = await fetchWithAuth(auth);
-  if (response.status !== 401) {
+  if (response.status !== 401 || fetchOptions.body instanceof ReadableStream) {
     return response;
   }
 
@@ -903,6 +914,107 @@ export async function executeBackofficeCodemode(options: {
   const body = await assertOk(response, "Codemode execution");
   assertBackofficeCodemodeSucceeded(body);
   return body;
+}
+
+function requireSafeBackofficeWorkspaceFileKey(fileKey: string): string {
+  const normalized = fileKey.replace(/^\/+/, "");
+  if (!normalized || normalized.split("/").includes("..")) {
+    throw new Error("Backoffice workspace operation requires a safe file key.");
+  }
+  return normalized;
+}
+
+function requireBackofficeWorkspaceScope(scope: BackofficeScope): void {
+  if (scope.kind === "system") {
+    throw new Error("Backoffice system scope does not have a /workspace filesystem.");
+  }
+}
+
+/** Downloads bytes from an absolute path in the selected Backoffice filesystem. */
+export async function downloadBackofficeFile(options: {
+  baseUrl: string;
+  scope: BackofficeScope;
+  path: string;
+  signal?: AbortSignal;
+}): Promise<Uint8Array> {
+  if (!options.path.startsWith("/")) {
+    throw new Error("Backoffice download requires a safe absolute file path.");
+  }
+  const path = posix.normalize(options.path);
+  if (path.startsWith("/workspace/")) {
+    requireBackofficeWorkspaceScope(options.scope);
+    const fileKey = requireSafeBackofficeWorkspaceFileKey(path.slice("/workspace/".length));
+    const query = new URLSearchParams({ provider: "database", key: fileKey });
+    const response = await authedFetch(
+      backofficeScopedUploadPath(options.scope, `/by-key/content?${query}`),
+      options.scope,
+      {
+        baseUrl: options.baseUrl,
+        signal: options.signal,
+      },
+    );
+    if (!response.ok) {
+      await assertOk(response, `Download Backoffice file '${path}'`);
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  const response = await executeBackofficeCodemode({
+    baseUrl: options.baseUrl,
+    scope: options.scope,
+    signal: options.signal,
+    code: `async () => {
+      const bytes = await state.readFileBytes({ path: ${JSON.stringify(path)} });
+      let binary = "";
+      for (let offset = 0; offset < bytes.length; offset += 32768) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
+      }
+      return { base64: btoa(binary) };
+    }`,
+  });
+  if (!response || typeof response !== "object") {
+    throw new Error(`Download Backoffice file '${path}' returned an invalid response.`);
+  }
+  const result = (response as Record<string, unknown>)["result"];
+  if (!result || typeof result !== "object") {
+    throw new Error(`Download Backoffice file '${path}' returned an invalid result.`);
+  }
+  const base64 = (result as Record<string, unknown>)["base64"];
+  if (typeof base64 !== "string") {
+    throw new Error(`Download Backoffice file '${path}' returned invalid file content.`);
+  }
+  return Uint8Array.from(Buffer.from(base64, "base64"));
+}
+
+/** Uploads bytes into the persistent Backoffice workspace for the selected scope. */
+export async function uploadBackofficeWorkspaceFile(options: {
+  baseUrl: string;
+  scope: BackofficeScope;
+  fileKey: string;
+  content: ReadableStream<Uint8Array>;
+  sizeBytes: number;
+  contentType: string;
+  signal?: AbortSignal;
+}): Promise<unknown> {
+  requireBackofficeWorkspaceScope(options.scope);
+  const fileKey = requireSafeBackofficeWorkspaceFileKey(options.fileKey);
+  const path = `/workspace/${fileKey}`;
+  const query = new URLSearchParams({ path });
+  const response = await authedFetch(
+    `/api/files-scoped/${options.scope.kind}/${encodeURIComponent(backofficeScopeRouteId(options.scope))}/workspace?${query}`,
+    options.scope,
+    {
+      baseUrl: options.baseUrl,
+      method: "POST",
+      headers: {
+        "content-length": String(options.sizeBytes),
+        "content-type": options.contentType,
+      },
+      body: options.content,
+      signal: options.signal,
+    },
+  );
+  return await assertOk(response, `Upload Backoffice workspace file '${fileKey}'`);
 }
 
 export async function executeBackofficeBash(options: {

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { parseBackofficeScope } from "./backoffice-local.js";
+import {
+  downloadBackofficeFile,
+  parseBackofficeScope,
+  uploadBackofficeWorkspaceFile,
+} from "./backoffice-local.js";
 
 describe("parseBackofficeScope", () => {
   it("parses encoded organization and project identifiers", () => {
@@ -16,4 +20,32 @@ describe("parseBackofficeScope", () => {
       "Invalid Backoffice scope",
     );
   });
+});
+
+describe("Backoffice workspace file transfers", () => {
+  it("rejects uploads in system scope before making a request", async () => {
+    await expect(
+      uploadBackofficeWorkspaceFile({
+        baseUrl: "https://backoffice.invalid",
+        scope: { kind: "system" },
+        fileKey: "report.txt",
+        content: new Blob([]).stream(),
+        sizeBytes: 0,
+        contentType: "application/octet-stream",
+      }),
+    ).rejects.toThrow("system scope does not have a /workspace filesystem");
+  });
+
+  it.each(["/workspace/report.txt", "/./workspace/report.txt", "//workspace/report.txt"])(
+    "rejects the canonical workspace path %s in system scope before making a request",
+    async (path) => {
+      await expect(
+        downloadBackofficeFile({
+          baseUrl: "https://backoffice.invalid",
+          scope: { kind: "system" },
+          path,
+        }),
+      ).rejects.toThrow("system scope does not have a /workspace filesystem");
+    },
+  );
 });

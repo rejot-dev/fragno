@@ -313,6 +313,7 @@ export default [
     route("github/webhooks", "routes/api/github-webhooks.ts"),
     route("github/:orgSlug/*", "routes/api/github.ts"),
     route("upload/:orgSlug/*", "routes/api/upload.ts"),
+    route("files-scoped/:scopeKind/:scopeId/workspace", "routes/api/files-scoped-workspace.ts"),
     route("upload-scoped/:scopeKind/:scopeId/*", "routes/api/upload-scoped.ts"),
     route("pi/:scopeSegment/*", "routes/api/pi.ts"),
     route("workflows/:scopeSegment/*", "routes/api/workflows.ts"),

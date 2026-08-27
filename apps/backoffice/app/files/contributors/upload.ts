@@ -260,6 +260,11 @@ export type UploadFileAssertion = {
 };
 
 export interface UploadFileSystem extends IFileSystem {
+  writeFileStream(
+    path: string,
+    content: ReadableStream<Uint8Array>,
+    options: { sizeBytes: number; contentType: string },
+  ): Promise<void>;
   writeFileConditional(
     path: string,
     content: FileContent,
@@ -452,6 +457,76 @@ const createUploadFileSystemForContext = (
     };
   };
 
+  const resolveUploadFileStreamWriteInput = async (
+    path: string,
+    options: { sizeBytes: number; contentType: string },
+  ) => {
+    const { fileKey, isRoot } = toRelativeUploadPath(mountPoint, path);
+    if (isRoot || !fileKey) {
+      throw new Error(`Cannot write to the mounted upload root '${mountPoint}'.`);
+    }
+
+    const principal = ctx.filePrincipal ?? ROOT_FILE_PRINCIPAL;
+    const existing = await fetchUploadFileFromRuntime(ctx, provider, fileKey);
+    if (existing && !isUploadDirectoryMarker(existing)) {
+      const fsMetadata = readUploadFsMetadata(existing.metadata);
+      assertFileWritable({
+        principal,
+        node: {
+          owner: fsMetadata.owner ?? ROOT_FILE_NODE_PERMISSIONS.owner,
+          group: fsMetadata.group ?? ROOT_FILE_NODE_PERMISSIONS.group,
+          mode: normalizeUploadMode(fsMetadata.mode ?? DEFAULT_FILE_MODE),
+        },
+        operation: "write",
+        path,
+      });
+    }
+    if (!existing) {
+      await assertUploadContainingDirectoryWritable(
+        ctx,
+        provider,
+        mountPoint,
+        getParentUploadFileKey(fileKey),
+        principal,
+        "write",
+        path,
+      );
+    }
+    for (const folderKey of getAncestorFolderKeys(getParentUploadFileKey(fileKey))) {
+      await ensureUploadDirectoryMarker(ctx, provider, folderKey, principal);
+    }
+
+    const contentType =
+      isGenericBinaryContentType(options.contentType) && existing
+        ? (resolveUploadContentType(existing) ?? options.contentType)
+        : (resolveUploadContentType({ fileKey, contentType: options.contentType }) ??
+          options.contentType);
+
+    return {
+      body: {
+        provider,
+        fileKey,
+        filename: getLeafSegment(fileKey),
+        sizeBytes: options.sizeBytes,
+        contentType,
+        metadata: existing
+          ? preserveUploadMetadataForRewrite(existing.metadata)
+          : mergeUploadFsMetadata(null, {
+              owner: principal.subject,
+              group: principal.primaryGroup,
+              mode: DEFAULT_FILE_MODE,
+            }),
+        publicationMode: "batch" as const,
+      },
+      precondition: existing
+        ? ({
+            kind: "revision",
+            revision: requireUploadFileRevision(existing, path),
+          } as const)
+        : ({ kind: "absent" } as const),
+    };
+  };
+
   const writeUploadFile = async (
     path: string,
     content: FileContent,
@@ -578,6 +653,45 @@ const createUploadFileSystemForContext = (
     },
     async writeFile(path, content, options) {
       await writeUploadFile(path, content, options);
+    },
+    async writeFileStream(path, content, options) {
+      const prepared = await resolveUploadFileStreamWriteInput(path, options);
+      const createdResponse = await requestUpload(ctx, "POST", "/uploads", {
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(prepared.body),
+      });
+      if (!createdResponse.ok) {
+        throw await createUploadFileSystemRequestError(
+          createdResponse,
+          "Unable to prepare streamed upload-backed file.",
+        );
+      }
+      const created = (await createdResponse.json()) as { uploadId: string };
+      const uploadedResponse = await requestUpload(
+        ctx,
+        "PUT",
+        `/uploads/${encodeURIComponent(created.uploadId)}/content`,
+        {
+          headers: { "content-type": "application/octet-stream" },
+          body: content,
+        },
+      );
+      if (!uploadedResponse.ok) {
+        throw await createUploadFileSystemRequestError(
+          uploadedResponse,
+          "Unable to stream upload-backed file content.",
+        );
+      }
+      const uploaded = (await uploadedResponse.json()) as {
+        kind: "prepared";
+        write: PreparedFileWrite;
+      };
+      if (uploaded.kind !== "prepared") {
+        throw new Error("Streamed upload did not produce a prepared file write.");
+      }
+      await fs.commitPreparedFileWrites({
+        writes: [{ ...uploaded.write, precondition: prepared.precondition }],
+      });
     },
     async writeFileConditional(path, content, options) {
       await writeUploadFile(path, content, options, options.precondition);
@@ -1360,6 +1474,13 @@ const preserveUploadMetadataForRewrite = (
   return Object.keys(nextMetadata).length > 0 ? nextMetadata : null;
 };
 
+const requireUploadFileRevision = (file: UploadFileRecord, path: string): number => {
+  if (!Number.isSafeInteger(file.revision) || file.revision === undefined || file.revision < 1) {
+    throw new Error(`Unable to write '${path}': the current file revision is unavailable.`);
+  }
+  return file.revision;
+};
+
 const normalizeUploadMode = (mode: number): number => mode & 0o7777;
 
 const normalizeUploadMtime = (mtime: Date, path: string): string => {
@@ -1722,13 +1843,15 @@ const requestUpload = async (
     headers.delete("content-type");
   }
 
-  return uploadObject.fetch(
-    new Request(url, {
-      method,
-      headers,
-      body: options.body ?? undefined,
-    }),
-  );
+  const requestInit: RequestInit & { duplex?: "half" } = {
+    method,
+    headers,
+    body: options.body ?? undefined,
+  };
+  if (options.body instanceof ReadableStream) {
+    requestInit.duplex = "half";
+  }
+  return uploadObject.fetch(new Request(url, requestInit));
 };
 
 const createUploadFileSystemRequestError = async (

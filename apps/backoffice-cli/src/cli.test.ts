@@ -1,6 +1,6 @@
 import { describe, expect, it, assert } from "vitest";
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,6 +18,20 @@ describe("backoffice CLI", () => {
     expect(output).toContain("backoffice login");
     expect(output).toContain("--force");
     expect(output).toContain("Scopes:");
+  });
+
+  it("rejects absolute upload destinations outside /workspace", () => {
+    const result = spawnSync(
+      process.execPath,
+      [executable, "upload", "org:org-1", "source.txt", "/static/report.txt"],
+      {
+        cwd: packageDirectory,
+        encoding: "utf8",
+      },
+    );
+
+    assert.equal(result.status, 1);
+    expect(result.stderr).toContain("Workspace path must identify a file inside /workspace.");
   });
 
   it("prints the package version", () => {
