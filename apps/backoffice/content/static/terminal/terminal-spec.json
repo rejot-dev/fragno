@@ -1,0 +1,3334 @@
+[
+  {
+    "command": "cat",
+    "summary": "Print file contents.",
+    "options": []
+  },
+  {
+    "command": "cd",
+    "summary": "Change the terminal working directory.",
+    "options": []
+  },
+  {
+    "command": "find",
+    "summary": "Search for files under a directory.",
+    "options": []
+  },
+  {
+    "command": "ls",
+    "summary": "List files and directories.",
+    "options": []
+  },
+  {
+    "command": "pwd",
+    "summary": "Print the terminal working directory.",
+    "options": []
+  },
+  {
+    "command": "context.current",
+    "summary": "Print the exact scope governing the current execution.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "capabilities.list",
+    "summary": "capabilities.list lists Backoffice capabilities and status.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "hooks.scopes.list",
+    "summary": "hooks.scopes.list lists hook scopes available to hooks.list --fragment.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "connections.list",
+    "summary": "connections.list lists configurable Backoffice connections.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "connections.get",
+    "summary": "connections.get shows one connection status.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Connection id"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "connections.setup",
+    "summary": "connections.setup prints manual setup steps for a connection.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Connection id"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "connections.schema",
+    "summary": "connections.schema prints configuration fields for a connection.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Connection id"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "connections.verify",
+    "summary": "connections.verify checks one connection status/health.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Connection id"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "connections.reset",
+    "summary": "connections.reset clears one connection configuration.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Connection id"
+      },
+      {
+        "name": "confirm",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Must exactly match --id"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "connections.configure",
+    "summary": "connections.configure configures a connection from a JSON payload.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Connection id"
+      },
+      {
+        "name": "json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Connection configuration JSON payload"
+      },
+      {
+        "name": "origin",
+        "valueRequired": true,
+        "valueName": "url",
+        "description": "Provider-specific public origin; currently used by Resend"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "store.get",
+    "summary": "store.get checks whether a key is present in the automation store.",
+    "options": [
+      {
+        "name": "key",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "key",
+        "description": "Store key"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "store.set",
+    "summary": "store.set creates or updates a key/value automation store entry.",
+    "options": [
+      {
+        "name": "key",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "key",
+        "description": "Store key"
+      },
+      {
+        "name": "value",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "value",
+        "description": "Value to store"
+      },
+      {
+        "name": "description",
+        "valueRequired": true,
+        "valueName": "text",
+        "description": "Optional human-readable description of this entry"
+      },
+      {
+        "name": "category",
+        "valueRequired": true,
+        "valueName": "category",
+        "description": "Optional category tag; repeat to provide multiple categories"
+      },
+      {
+        "name": "verification",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Optional JSON verification list, for example json-schema checks"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "store.delete",
+    "summary": "store.delete deletes an entry from the automation store.",
+    "options": [
+      {
+        "name": "key",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "key",
+        "description": "Store key"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "store.list",
+    "summary": "store.list lists automation store entries, optionally filtered by key prefix.",
+    "options": [
+      {
+        "name": "prefix",
+        "valueRequired": true,
+        "valueName": "prefix",
+        "description": "Optional store key prefix"
+      },
+      {
+        "name": "limit",
+        "valueRequired": true,
+        "valueName": "count",
+        "description": "Maximum number of entries to return"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "identity.external.resolve",
+    "summary": "Resolve an active external identity binding from workflow logic.",
+    "options": [
+      {
+        "name": "source",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "source",
+        "description": "External identity source, such as telegram"
+      },
+      {
+        "name": "type",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "type",
+        "description": "External identity type, such as chat"
+      },
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "External identity identifier"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "router.list",
+    "summary": "router.list lists database-backed automation routes.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "router.get",
+    "summary": "router.get shows one automation route.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Automation route id"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "router.create",
+    "summary": "router.create creates an automation route from a JSON payload.",
+    "options": [
+      {
+        "name": "json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Automation route JSON payload"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "router.update",
+    "summary": "router.update patches an automation route from a JSON payload.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Automation route id"
+      },
+      {
+        "name": "json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Partial route JSON payload"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "router.delete",
+    "summary": "router.delete ensures an automation route is absent.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Route id"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "router.trigger-now",
+    "summary": "router.trigger-now triggers a scheduled automation route immediately.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Route id"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "workflow.instances.create",
+    "summary": "workflow.instances.create starts a saved workflow file by path.",
+    "options": [
+      {
+        "name": "path",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "path",
+        "description": "Saved .workflow.js path under an automation root."
+      },
+      {
+        "name": "instance-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Stable workflow instance id to reuse across isolated calls."
+      },
+      {
+        "name": "payload-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Optional domain payload delivered directly to the authored workflow event."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "workflow.instances.list",
+    "summary": "workflow.instances.list lists durable saved-workflow instances.",
+    "options": [
+      {
+        "name": "status",
+        "valueRequired": true,
+        "valueName": "status",
+        "description": "Optional status filter."
+      },
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "number",
+        "description": "Optional page size."
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Optional pagination cursor."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "workflow.instances.get",
+    "summary": "workflow.instances.get gets durable workflow instance details.",
+    "options": [
+      {
+        "name": "instance-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Workflow instance id."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "workflow.instances.history",
+    "summary": "workflow.instances.history gets durable workflow history.",
+    "options": [
+      {
+        "name": "instance-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Workflow instance id."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "workflow.instances.send-event",
+    "summary": "workflow.instances.send-event sends an event to a durable workflow instance.",
+    "options": [
+      {
+        "name": "instance-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Workflow instance id."
+      },
+      {
+        "name": "type",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "type",
+        "description": "Event type."
+      },
+      {
+        "name": "payload-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Optional event payload JSON."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "workflow.instances.retry-failed-step",
+    "summary": "workflow.instances.retry-failed-step retries an errored instance's failed top-level step.",
+    "options": [
+      {
+        "name": "instance-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Workflow instance id."
+      },
+      {
+        "name": "delay-ms",
+        "valueRequired": true,
+        "valueName": "ms",
+        "description": "Optional delay before retry processing in milliseconds."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "hooks.list",
+    "summary": "hooks.list lists durable hook queue entries.",
+    "options": [
+      {
+        "name": "fragment",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "fragment",
+        "description": "Fragment scope. Run hooks.scopes.list to discover values. Current values: api, telegram, mcp, resend, upload, pi, otp, automations, workflows, github, auth."
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Optional pagination cursor."
+      },
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "number",
+        "description": "Optional page size."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "hooks.get",
+    "summary": "hooks.get returns one durable hook entry by id.",
+    "options": [
+      {
+        "name": "fragment",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "fragment",
+        "description": "Fragment scope."
+      },
+      {
+        "name": "hook-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Durable hook id."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "events.fire",
+    "summary": "events.fire triggers another Fragno automation event.",
+    "options": [
+      {
+        "name": "event-type",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "event-type",
+        "description": "Event type to emit"
+      },
+      {
+        "name": "source",
+        "valueRequired": true,
+        "valueName": "source",
+        "description": "Event source override. Defaults to current source"
+      },
+      {
+        "name": "subject-user-id",
+        "valueRequired": true,
+        "valueName": "subject-user-id",
+        "description": "Subject user id for emitted event"
+      },
+      {
+        "name": "payload-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Event payload as JSON object"
+      },
+      {
+        "name": "target-scope-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Target scope as JSON, e.g. {\"kind\":\"org\",\"orgId\":\"org-1\"}"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "events.catalog.list",
+    "summary": "events.catalog.list lists known automation event source/type pairs.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "events.catalog.get",
+    "summary": "events.catalog.get returns one automation event descriptor and its JSON schemas.",
+    "options": [
+      {
+        "name": "source",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "source",
+        "description": "Automation event source."
+      },
+      {
+        "name": "event-type",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "event-type",
+        "description": "Automation event type."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "events.catalog.create",
+    "summary": "events.catalog.create creates a dynamic automation event definition.",
+    "options": [
+      {
+        "name": "json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Event definition JSON payload."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "cloudflare.browser-run.capture",
+    "summary": "Capture a page and emit the PDF or image bytes to stdout.",
+    "options": [
+      {
+        "name": "action",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "action",
+        "description": "pdf or screenshot."
+      },
+      {
+        "name": "input-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Browser Run page input JSON."
+      },
+      {
+        "name": "output",
+        "valueRequired": true,
+        "valueName": "path",
+        "description": "Write the capture directly to a file instead of stdout."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "cloudflare.browser-run.crawl",
+    "summary": "Start, inspect, or cancel a Browser Run crawl job.",
+    "options": [
+      {
+        "name": "action",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "action",
+        "description": "start, get, or cancel."
+      },
+      {
+        "name": "input-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Crawl input JSON for the start action."
+      },
+      {
+        "name": "job-id",
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Crawl job ID for get and cancel."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "web.extract",
+    "summary": "Extract content or Markdown from a page.",
+    "options": [
+      {
+        "name": "action",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "action",
+        "description": "content or markdown."
+      },
+      {
+        "name": "input-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Page input JSON containing a URL or HTML and browser options."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "api.connections.list",
+    "summary": "api.connections.list lists configured API connections.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "api.connections.create",
+    "summary": "api.connections.create configures an outbound HTTP API connection.",
+    "options": [
+      {
+        "name": "slug",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Stable connection slug"
+      },
+      {
+        "name": "base-url",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "url",
+        "description": "Base URL for the upstream API"
+      },
+      {
+        "name": "name",
+        "valueRequired": true,
+        "valueName": "name",
+        "description": "Display name"
+      },
+      {
+        "name": "auth",
+        "valueRequired": true,
+        "valueName": "mode",
+        "description": "none|bearer|basic|oauth|client_credentials"
+      },
+      {
+        "name": "token",
+        "valueRequired": true,
+        "valueName": "token",
+        "description": "Bearer token"
+      },
+      {
+        "name": "username",
+        "valueRequired": true,
+        "valueName": "username",
+        "description": "Basic auth username"
+      },
+      {
+        "name": "password",
+        "valueRequired": true,
+        "valueName": "password",
+        "description": "Basic auth password"
+      },
+      {
+        "name": "authorization-endpoint",
+        "valueRequired": true,
+        "valueName": "url",
+        "description": "OAuth authorization endpoint"
+      },
+      {
+        "name": "token-endpoint",
+        "valueRequired": true,
+        "valueName": "url",
+        "description": "OAuth token endpoint"
+      },
+      {
+        "name": "client-id",
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "OAuth client id"
+      },
+      {
+        "name": "client-secret",
+        "valueRequired": true,
+        "valueName": "secret",
+        "description": "OAuth client secret"
+      },
+      {
+        "name": "scope",
+        "valueRequired": true,
+        "valueName": "scopes",
+        "description": "Space/comma separated scopes"
+      },
+      {
+        "name": "audience",
+        "valueRequired": true,
+        "valueName": "audience",
+        "description": "Client credentials audience"
+      },
+      {
+        "name": "token-endpoint-auth-method",
+        "valueRequired": true,
+        "valueName": "method",
+        "description": "client_secret_basic|client_secret_post|none"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "api.connections.delete",
+    "summary": "api.connections.delete removes a configured API connection.",
+    "options": [
+      {
+        "name": "connection",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "API connection slug"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "api.auth.status",
+    "summary": "api.auth.status shows auth status for an API connection.",
+    "options": [
+      {
+        "name": "connection",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "API connection slug"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "api.auth.token",
+    "summary": "api.auth.token stores a bearer token for an API connection.",
+    "options": [
+      {
+        "name": "connection",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "API connection slug"
+      },
+      {
+        "name": "token",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "token",
+        "description": "Bearer token"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "api.oauth.start",
+    "summary": "api.oauth.start starts OAuth login for an API connection.",
+    "options": [
+      {
+        "name": "connection",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "API connection slug"
+      },
+      {
+        "name": "scope",
+        "valueRequired": true,
+        "valueName": "scopes",
+        "description": "Override configured scopes with a space/comma separated list"
+      },
+      {
+        "name": "extra-authorization-params-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Extra OAuth authorization URL params as JSON object"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "api.auth.delete",
+    "summary": "api.auth.delete removes stored auth for an API connection.",
+    "options": [
+      {
+        "name": "connection",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "API connection slug"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "api.webhooks.list",
+    "summary": "api.webhooks.list lists configured API webhook endpoints.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "api.webhooks.get",
+    "summary": "api.webhooks.get shows an API webhook endpoint.",
+    "options": [
+      {
+        "name": "endpoint",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Endpoint id"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "api.webhooks.create",
+    "summary": "api.webhooks.create configures an API webhook endpoint.",
+    "options": [
+      {
+        "name": "endpoint",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Endpoint id"
+      },
+      {
+        "name": "name",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "name",
+        "description": "Display name"
+      },
+      {
+        "name": "status",
+        "valueRequired": true,
+        "valueName": "draft|active|disabled",
+        "description": "Endpoint status"
+      },
+      {
+        "name": "delivery-identity-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Delivery id extractor"
+      },
+      {
+        "name": "auth-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Webhook auth config with secret values"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "api.webhooks.update",
+    "summary": "api.webhooks.update updates an API webhook endpoint.",
+    "options": [
+      {
+        "name": "endpoint",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Endpoint id"
+      },
+      {
+        "name": "name",
+        "valueRequired": true,
+        "valueName": "name",
+        "description": "Display name"
+      },
+      {
+        "name": "status",
+        "valueRequired": true,
+        "valueName": "draft|active|disabled",
+        "description": "Endpoint status"
+      },
+      {
+        "name": "delivery-identity-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Delivery id extractor"
+      },
+      {
+        "name": "auth-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Webhook auth config with secret values"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "api.webhooks.delete",
+    "summary": "api.webhooks.delete removes an API webhook endpoint.",
+    "options": [
+      {
+        "name": "endpoint",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Endpoint id"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "api.request",
+    "summary": "api.request executes an HTTP request through a configured API connection.",
+    "options": [
+      {
+        "name": "connection",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "API connection slug"
+      },
+      {
+        "name": "method",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "method",
+        "description": "HTTP method"
+      },
+      {
+        "name": "path",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "path",
+        "description": "Relative request path"
+      },
+      {
+        "name": "query-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Query params as JSON object"
+      },
+      {
+        "name": "headers-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Request headers as JSON object"
+      },
+      {
+        "name": "json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "JSON request body"
+      },
+      {
+        "name": "body",
+        "valueRequired": true,
+        "valueName": "text",
+        "description": "Text request body"
+      },
+      {
+        "name": "timeout-ms",
+        "valueRequired": true,
+        "valueName": "ms",
+        "description": "Request timeout in milliseconds"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "mcp.servers.list",
+    "summary": "mcp.servers.list lists configured MCP servers.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "mcp.servers.add",
+    "summary": "mcp.servers.add registers a remote MCP server.",
+    "options": [
+      {
+        "name": "slug",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Stable server slug"
+      },
+      {
+        "name": "endpoint-url",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "url",
+        "description": "Streamable HTTP MCP endpoint URL"
+      },
+      {
+        "name": "name",
+        "valueRequired": true,
+        "valueName": "name",
+        "description": "Display name"
+      },
+      {
+        "name": "auth",
+        "valueRequired": true,
+        "valueName": "mode",
+        "description": "none|bearer|oauth|client_credentials"
+      },
+      {
+        "name": "token",
+        "valueRequired": true,
+        "valueName": "token",
+        "description": "Bearer token for --auth bearer"
+      },
+      {
+        "name": "scope",
+        "valueRequired": true,
+        "valueName": "scopes",
+        "description": "Space/comma separated OAuth scopes"
+      },
+      {
+        "name": "client-id",
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "OAuth client id"
+      },
+      {
+        "name": "client-secret",
+        "valueRequired": true,
+        "valueName": "secret",
+        "description": "OAuth client secret"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "mcp.servers.delete",
+    "summary": "mcp.servers.delete removes a configured MCP server and its auth state.",
+    "options": [
+      {
+        "name": "server",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "MCP server slug"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "mcp.servers.refresh",
+    "summary": "mcp.servers.refresh refreshes a configured MCP server's cached tool list.",
+    "options": [
+      {
+        "name": "server",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "MCP server slug"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "mcp.tools.call",
+    "summary": "mcp.tools.call invokes a tool on a configured MCP server.",
+    "options": [
+      {
+        "name": "server",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "MCP server slug"
+      },
+      {
+        "name": "name",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "tool",
+        "description": "Tool name"
+      },
+      {
+        "name": "arguments-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Tool arguments as a JSON object"
+      },
+      {
+        "name": "timeout-ms",
+        "valueRequired": true,
+        "valueName": "ms",
+        "description": "Request timeout in milliseconds"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "mcp.oauth.start",
+    "summary": "mcp.oauth.start starts OAuth login for an MCP server.",
+    "options": [
+      {
+        "name": "server",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "MCP server slug"
+      },
+      {
+        "name": "scope",
+        "valueRequired": true,
+        "valueName": "scope",
+        "description": "OAuth scopes"
+      },
+      {
+        "name": "client-id",
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "OAuth client id"
+      },
+      {
+        "name": "client-secret",
+        "valueRequired": true,
+        "valueName": "secret",
+        "description": "OAuth client secret"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "mcp.auth.token",
+    "summary": "mcp.auth.token stores a bearer token for an MCP server.",
+    "options": [
+      {
+        "name": "server",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "MCP server slug"
+      },
+      {
+        "name": "token",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "token",
+        "description": "Bearer token"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "otp.identity.create-claim",
+    "summary": "otp.identity.create-claim creates a short-lived identity claim URL for the trusted external initiator.",
+    "options": [
+      {
+        "name": "ttl-minutes",
+        "valueRequired": true,
+        "valueName": "minutes",
+        "description": "Optional claim TTL, in minutes"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "pi.session.create",
+    "summary": "pi.session.create creates a new Pi session via the existing Pi session route.",
+    "options": [
+      {
+        "name": "billing-organization-id",
+        "valueRequired": true,
+        "valueName": "organization-id",
+        "description": "Organization billed for a user-scoped session; inherited from the current Pi session when available"
+      },
+      {
+        "name": "model-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Optional model selection; defaults to the first available supported model"
+      },
+      {
+        "name": "name",
+        "valueRequired": true,
+        "valueName": "name",
+        "description": "Optional display name for the session"
+      },
+      {
+        "name": "system-message",
+        "valueRequired": true,
+        "valueName": "text",
+        "description": "Additional system message to append to the configured agent system prompt for this session"
+      },
+      {
+        "name": "tag",
+        "valueRequired": true,
+        "valueName": "tag",
+        "description": "Repeatable session tag"
+      },
+      {
+        "name": "metadata-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Arbitrary JSON metadata object"
+      },
+      {
+        "name": "steering-mode",
+        "valueRequired": true,
+        "valueName": "steering-mode",
+        "description": "Set the session steering mode (all|one-at-a-time)"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "pi.session.get",
+    "summary": "pi.session.get retrieves a Pi session detail by id.",
+    "options": [
+      {
+        "name": "session-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "session-id",
+        "description": "Pi session id to retrieve"
+      },
+      {
+        "name": "events",
+        "valueRequired": false,
+        "description": "Include event history in response"
+      },
+      {
+        "name": "trace",
+        "valueRequired": false,
+        "description": "Include runtime trace in response"
+      },
+      {
+        "name": "turns",
+        "valueRequired": false,
+        "description": "Include turn records in response"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "pi.session.list",
+    "summary": "pi.session.list lists Pi sessions ordered by creation time.",
+    "options": [
+      {
+        "name": "limit",
+        "valueRequired": true,
+        "valueName": "limit",
+        "description": "Maximum number of sessions to return"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "pi.session.turn",
+    "summary": "pi.session.turn sends one prompt command through the active-session stream and returns the settled result.",
+    "options": [
+      {
+        "name": "session-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "session-id",
+        "description": "Pi session id to send the turn to"
+      },
+      {
+        "name": "text",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "text",
+        "description": "User message text to send for this turn"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "resend.threads.get",
+    "summary": "resend.threads.get loads one Resend thread with its current page of messages and renders a Markdown snapshot by default.",
+    "options": [
+      {
+        "name": "thread-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "thread-id",
+        "description": "Resend thread id to retrieve"
+      },
+      {
+        "name": "order",
+        "valueRequired": true,
+        "valueName": "order",
+        "description": "Message sort order (asc|desc)"
+      },
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "page-size",
+        "description": "Maximum number of messages to return (1-100)"
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Opaque message pagination cursor"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "resend.threads.list",
+    "summary": "resend.threads.list lists Resend email threads.",
+    "options": [
+      {
+        "name": "order",
+        "valueRequired": true,
+        "valueName": "order",
+        "description": "Thread sort order (asc|desc)"
+      },
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "page-size",
+        "description": "Maximum number of threads to return (1-100)"
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Opaque pagination cursor"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "resend.threads.reply",
+    "summary": "resend.threads.reply sends a text reply into an existing Resend thread.",
+    "options": [
+      {
+        "name": "thread-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "thread-id",
+        "description": "Resend thread id to reply to"
+      },
+      {
+        "name": "subject",
+        "valueRequired": true,
+        "valueName": "subject",
+        "description": "Optional reply subject override"
+      },
+      {
+        "name": "body",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "body",
+        "description": "Reply body as plain text"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "reson8.prerecorded.transcribe",
+    "summary": "reson8.prerecorded.transcribe transcribes a prerecorded audio file via the Reson8 fragment /speech-to-text/prerecorded route.",
+    "options": [
+      {
+        "name": "input",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "path",
+        "description": "Path to the audio file inside the bash filesystem"
+      },
+      {
+        "name": "encoding",
+        "valueRequired": true,
+        "valueName": "encoding",
+        "description": "Audio encoding (\"auto\" or \"pcm_s16le\")"
+      },
+      {
+        "name": "sample-rate",
+        "valueRequired": true,
+        "valueName": "hz",
+        "description": "Sample rate as a positive integer (e.g. 16000)"
+      },
+      {
+        "name": "channels",
+        "valueRequired": true,
+        "valueName": "channels",
+        "description": "Channel count as a positive integer (e.g. 1)"
+      },
+      {
+        "name": "custom-model-id",
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Optional Reson8 custom model id"
+      },
+      {
+        "name": "include-timestamps",
+        "valueRequired": false,
+        "description": "Include segment timestamps (\"true\"|\"false\" or flag for true)"
+      },
+      {
+        "name": "include-words",
+        "valueRequired": false,
+        "description": "Include word-level details (\"true\"|\"false\" or flag for true)"
+      },
+      {
+        "name": "include-confidence",
+        "valueRequired": false,
+        "description": "Include confidence values (\"true\"|\"false\" or flag for true)"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "sandbox.start",
+    "summary": "sandbox.start starts a Cloudflare sandbox.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Sandbox id."
+      },
+      {
+        "name": "keep-alive",
+        "valueRequired": true,
+        "valueName": "boolean",
+        "description": "Whether to keep the sandbox alive."
+      },
+      {
+        "name": "sleep-after",
+        "valueRequired": true,
+        "valueName": "duration",
+        "description": "Idle timeout, for example 15m."
+      },
+      {
+        "name": "startup-command",
+        "valueRequired": true,
+        "valueName": "command",
+        "description": "Startup health command."
+      },
+      {
+        "name": "startup-timeout-ms",
+        "valueRequired": true,
+        "valueName": "ms",
+        "description": "Startup timeout in milliseconds."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "sandbox.list",
+    "summary": "sandbox.list lists Backoffice-managed Cloudflare sandbox instances.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "sandbox.kill",
+    "summary": "sandbox.kill destroys a Cloudflare sandbox.",
+    "options": [
+      {
+        "name": "sandbox-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Sandbox id."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "sandbox.exec",
+    "summary": "sandbox.exec executes a command inside a sandbox.",
+    "options": [
+      {
+        "name": "sandbox-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Sandbox id."
+      },
+      {
+        "name": "command",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "command",
+        "description": "Command to execute."
+      },
+      {
+        "name": "timeout-ms",
+        "valueRequired": true,
+        "valueName": "ms",
+        "description": "Execution timeout in milliseconds."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "telegram.file.get",
+    "summary": "telegram.file.get resolves Telegram attachment metadata through the Telegram Durable Object.",
+    "options": [
+      {
+        "name": "file-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "file-id",
+        "description": "Telegram file id to resolve"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "telegram.file.download",
+    "summary": "telegram.file.download fetches a Telegram file. Use --output (-o) to write directly to a path, or pipe stdout for shell redirections.",
+    "options": [
+      {
+        "name": "file-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "file-id",
+        "description": "Telegram file id to download"
+      },
+      {
+        "name": "output",
+        "valueRequired": true,
+        "valueName": "path",
+        "description": "Write file directly to this path instead of stdout (-o shorthand)"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "telegram.chat.send",
+    "summary": "telegram.chat.send queues a message to be sent to a Telegram chat.",
+    "options": [
+      {
+        "name": "chat-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "chat-id",
+        "description": "Telegram chat id to send to"
+      },
+      {
+        "name": "text",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "text",
+        "description": "Message text"
+      },
+      {
+        "name": "parse-mode",
+        "valueRequired": true,
+        "valueName": "mode",
+        "description": "Parse mode (Markdown|MarkdownV2|HTML). Defaults to Markdown."
+      },
+      {
+        "name": "disable-web-page-preview",
+        "description": "Disable web page previews for links"
+      },
+      {
+        "name": "reply-to-message-id",
+        "valueRequired": true,
+        "valueName": "message-id",
+        "description": "Reply to this Telegram message id"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "telegram.chat.actions",
+    "summary": "telegram.chat.actions sends a chat action (only typing is supported currently).",
+    "options": [
+      {
+        "name": "chat-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "chat-id",
+        "description": "Telegram chat id"
+      },
+      {
+        "name": "action",
+        "valueRequired": true,
+        "valueName": "action",
+        "description": "Action to send (typing only for now)"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "telegram.message.edit",
+    "summary": "telegram.message.edit queues an edit of an existing Telegram message.",
+    "options": [
+      {
+        "name": "chat-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "chat-id",
+        "description": "Telegram chat id"
+      },
+      {
+        "name": "message-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "message-id",
+        "description": "Telegram message id to edit"
+      },
+      {
+        "name": "text",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "text",
+        "description": "New message text"
+      },
+      {
+        "name": "parse-mode",
+        "valueRequired": true,
+        "valueName": "mode",
+        "description": "Parse mode (MarkdownV2|Markdown|HTML)"
+      },
+      {
+        "name": "disable-web-page-preview",
+        "description": "Disable web page previews for links"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "upload.prepared.read",
+    "summary": "Read one prepared upload as UTF-8, base64, or bytes.",
+    "options": [
+      {
+        "name": "file-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Prepared-upload reference as JSON."
+      },
+      {
+        "name": "encoding",
+        "valueRequired": true,
+        "valueName": "utf8|base64|bytes",
+        "description": "Content encoding; defaults to utf8."
+      },
+      {
+        "name": "max-bytes",
+        "valueRequired": true,
+        "valueName": "number",
+        "description": "Maximum bytes to read."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "upload.prepared.commit",
+    "summary": "Commit one prepared upload.",
+    "options": [
+      {
+        "name": "file-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Prepared-upload reference as JSON."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "upload.prepared.discard",
+    "summary": "Discard one prepared upload.",
+    "options": [
+      {
+        "name": "file-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Prepared-upload reference as JSON."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "internal.files.seed.execute",
+    "summary": "internal.files.seed.execute seeds missing workspace starter files.",
+    "options": [
+      {
+        "name": "force",
+        "description": "Replace starter files and repair starter file/folder permissions."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "internal.project.files.configure",
+    "summary": "internal.project.files.configure configures a db-backed project workspace.",
+    "options": [
+      {
+        "name": "projectId",
+        "description": "Project id to configure."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "internal.automations.routes.seed-starter",
+    "summary": "internal.automations.routes.seed-starter reconciles starter routes for the current scope.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "internal.marketplace.push",
+    "summary": "internal.marketplace.push publishes the bundled static marketplace entries.",
+    "options": [
+      {
+        "name": "force",
+        "description": "Publish with fresh workflow IDs and overwrite existing artifact files."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "internal.hooks.list",
+    "summary": "internal.hooks.list lists durable hook queue entries.",
+    "options": [
+      {
+        "name": "fragment",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "fragment",
+        "description": "Fragment scope, e.g. automations."
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Optional pagination cursor."
+      },
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "number",
+        "description": "Optional page size."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "internal.hooks.get",
+    "summary": "internal.hooks.get returns one durable hook entry by id.",
+    "options": [
+      {
+        "name": "fragment",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "fragment",
+        "description": "Fragment scope."
+      },
+      {
+        "name": "hook-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Durable hook id."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  }
+]

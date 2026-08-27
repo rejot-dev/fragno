@@ -4,21 +4,9 @@ import { CURRENT_SCOPE_BASH_COMMAND_SPEC } from "@/fragno/runtime-tools/current-
 import {
   createRuntimeToolReferenceContext,
   createRuntimeToolReferences,
-  renderDashboardCommandGroups,
 } from "@/fragno/runtime-tools/reference";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
-const BACKOFFICE_TERMINAL_COMMAND_REFERENCES = createRuntimeToolReferences({
-  families: runtimeToolFamilies,
-  context: createRuntimeToolReferenceContext(),
-});
-const BACKOFFICE_TERMINAL_VISIBLE_COMMAND_REFERENCES = createRuntimeToolReferences({
-  families: runtimeToolFamilies.filter((family) => !family.hidden),
-  context: createRuntimeToolReferenceContext(),
-});
-export const BACKOFFICE_TERMINAL_COMMAND_GROUPS = renderDashboardCommandGroups(
-  BACKOFFICE_TERMINAL_VISIBLE_COMMAND_REFERENCES,
-);
 const BACKOFFICE_TERMINAL_SHELL_COMMAND_SPECS = [
   { command: "cat", summary: "Print file contents.", options: [] },
   { command: "cd", summary: "Change the terminal working directory.", options: [] },
@@ -27,26 +15,37 @@ const BACKOFFICE_TERMINAL_SHELL_COMMAND_SPECS = [
   { command: "pwd", summary: "Print the terminal working directory.", options: [] },
   CURRENT_SCOPE_BASH_COMMAND_SPEC,
 ] as const;
-const appendStandardCommandOptions = (options: readonly AutomationCommandOptionSpec[]) => {
+
+function appendStandardCommandOptions(options: readonly AutomationCommandOptionSpec[]) {
   const optionNames = new Set(options.map((option) => option.name));
   return [
     ...options,
     ...STANDARD_COMMAND_OPTIONS.filter((option) => !optionNames.has(option.name)),
   ];
-};
+}
 
-export const BACKOFFICE_TERMINAL_COMMAND_SPECS = [
-  ...BACKOFFICE_TERMINAL_SHELL_COMMAND_SPECS,
-  ...BACKOFFICE_TERMINAL_COMMAND_REFERENCES.flatMap((reference) => {
-    if (!reference.bash) {
-      return [];
-    }
+/** Generates client-safe terminal metadata without shipping executable runtime tools to the app. */
+export function generateBackofficeTerminalCommandSpecJson(): string {
+  const references = createRuntimeToolReferences({
+    families: runtimeToolFamilies,
+    context: createRuntimeToolReferenceContext(),
+  });
+  const commandSpecs = [
+    ...BACKOFFICE_TERMINAL_SHELL_COMMAND_SPECS,
+    ...references.flatMap((reference) => {
+      if (!reference.bash) {
+        return [];
+      }
 
-    return [
-      {
-        ...reference.bash,
-        options: appendStandardCommandOptions(reference.bash.options),
-      },
-    ];
-  }),
-];
+      return [
+        {
+          command: reference.bash.command,
+          summary: reference.bash.summary,
+          options: appendStandardCommandOptions(reference.bash.options),
+        },
+      ];
+    }),
+  ].map(({ command, summary, options }) => ({ command, summary, options }));
+
+  return `${JSON.stringify(commandSpecs, null, 2)}\n`;
+}

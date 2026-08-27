@@ -19,11 +19,15 @@ const EMPTY_WORKFLOW_RUNTIME_TOOL_CALLS: ReadonlyMap<
   readonly ResolvedWorkflowRuntimeToolCall[]
 > = new Map();
 
-const configureReson8Visualization = visualizeWorkflowSource(
-  "configure-reson8.workflow.js",
-  configureReson8WorkflowSource,
-  { fallbackName: "configure-reson8" },
-);
+type ConfigureReson8WorkflowPresentation = {
+  visualization: ReturnType<typeof visualizeWorkflowSource>;
+  requestApiKeyStepId: string;
+  waitForCredentialsStepId: string;
+  configureReson8StepId: string;
+  verifyReson8StepId: string;
+};
+
+let cachedConfigureReson8WorkflowPresentation: ConfigureReson8WorkflowPresentation | null = null;
 
 const RESON8_SETUP_RESULT = {
   $ui: {
@@ -76,23 +80,6 @@ const RESON8_SETUP_RESULT = {
   },
 };
 
-const requestApiKeyStepId = findWorkflowStepNodeId(
-  (step) => step.stepType === "do" && step.label === "request Reson8 API key",
-  "request Reson8 API key",
-);
-const waitForCredentialsStepId = findWorkflowStepNodeId(
-  (step) => step.stepType === "waitForEvent" && step.meta.eventType === "reson8-credentials",
-  "wait for reson8-credentials",
-);
-const configureReson8StepId = findWorkflowStepNodeId(
-  (step) => step.stepType === "do" && step.label === "configure Reson8",
-  "configure Reson8",
-);
-const verifyReson8StepId = findWorkflowStepNodeId(
-  (step) => step.stepType === "do" && step.label === "verify Reson8",
-  "verify Reson8",
-);
-
 const ACTIVITY_ITEMS = [
   { action: "Skill loaded", detail: "configuring-connections" },
   { action: "Skill loaded", detail: "reson8-connection" },
@@ -115,14 +102,46 @@ type DemoExecutionPhase =
   | "verifying"
   | "complete";
 
-function findWorkflowStepNodeId(matches: (step: StepNode) => boolean, description: string): string {
-  const step = configureReson8Visualization.graph.nodes.find(
-    (node): node is StepNode => node.kind === "step" && matches(node),
-  );
-  if (!step) {
-    throw new Error(`Configure Reson8 workflow is missing the ${description} step.`);
+function getConfigureReson8WorkflowPresentation(): ConfigureReson8WorkflowPresentation {
+  if (cachedConfigureReson8WorkflowPresentation) {
+    return cachedConfigureReson8WorkflowPresentation;
   }
-  return step.id;
+
+  const visualization = visualizeWorkflowSource(
+    "configure-reson8.workflow.js",
+    configureReson8WorkflowSource,
+    { fallbackName: "configure-reson8" },
+  );
+  function findStepNodeId(matches: (step: StepNode) => boolean, description: string): string {
+    const step = visualization.graph.nodes.find(
+      (node): node is StepNode => node.kind === "step" && matches(node),
+    );
+    if (!step) {
+      throw new Error(`Configure Reson8 workflow is missing the ${description} step.`);
+    }
+    return step.id;
+  }
+
+  cachedConfigureReson8WorkflowPresentation = {
+    visualization,
+    requestApiKeyStepId: findStepNodeId(
+      (step) => step.stepType === "do" && step.label === "request Reson8 API key",
+      "request Reson8 API key",
+    ),
+    waitForCredentialsStepId: findStepNodeId(
+      (step) => step.stepType === "waitForEvent" && step.meta.eventType === "reson8-credentials",
+      "wait for reson8-credentials",
+    ),
+    configureReson8StepId: findStepNodeId(
+      (step) => step.stepType === "do" && step.label === "configure Reson8",
+      "configure Reson8",
+    ),
+    verifyReson8StepId: findStepNodeId(
+      (step) => step.stepType === "do" && step.label === "verify Reson8",
+      "verify Reson8",
+    ),
+  };
+  return cachedConfigureReson8WorkflowPresentation;
 }
 
 function completedStepState(result: unknown): WorkflowStepRunState {
@@ -145,7 +164,16 @@ function activeStepState(): WorkflowStepRunState {
   };
 }
 
-function createConfigureReson8Run(phase: DemoExecutionPhase): ScriptWorkflowRun {
+function createConfigureReson8Run(
+  phase: DemoExecutionPhase,
+  presentation: ConfigureReson8WorkflowPresentation,
+): ScriptWorkflowRun {
+  const {
+    requestApiKeyStepId,
+    waitForCredentialsStepId,
+    configureReson8StepId,
+    verifyReson8StepId,
+  } = presentation;
   const stepStatesByNodeId = new Map<string, WorkflowStepRunState>([
     [requestApiKeyStepId, completedStepState(RESON8_SETUP_RESULT)],
   ]);
@@ -209,7 +237,7 @@ export function LandingWorkflow() {
   const [executionPhase, setExecutionPhase] = useState<DemoExecutionPhase>("waiting");
   const executionTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const flowPanelRef = useRef<HTMLDivElement>(null);
-  const selectedRun = createConfigureReson8Run(executionPhase);
+  const workflowPresentation = display === "flow" ? getConfigureReson8WorkflowPresentation() : null;
 
   function clearExecutionTimers() {
     for (const timer of executionTimers.current) {
@@ -362,11 +390,12 @@ export function LandingWorkflow() {
                 onSubmit={submitApiKey}
               />
             ) : null}
-            {display === "flow" ? (
+            {workflowPresentation ? (
               <LandingWorkflowGraph
                 executionPhase={executionPhase}
                 panelRef={flowPanelRef}
-                selectedRun={selectedRun}
+                selectedRun={createConfigureReson8Run(executionPhase, workflowPresentation)}
+                visualization={workflowPresentation.visualization}
               />
             ) : null}
             {display === "code" ? <LandingWorkflowCode /> : null}
@@ -452,10 +481,12 @@ function LandingWorkflowGraph({
   executionPhase,
   panelRef,
   selectedRun,
+  visualization,
 }: {
   executionPhase: DemoExecutionPhase;
   panelRef: RefObject<HTMLDivElement | null>;
   selectedRun: ScriptWorkflowRun;
+  visualization: ConfigureReson8WorkflowPresentation["visualization"];
 }) {
   const collapseRequestUi = !["waiting", "submitted"].includes(executionPhase);
   const hasCollapsedRequestUi = useRef(false);
@@ -525,7 +556,7 @@ function LandingWorkflowGraph({
       ) : null}
       <div className="min-h-0 flex-1">
         <ScriptWorkflowGraph
-          visualization={configureReson8Visualization}
+          visualization={visualization}
           detailMode="simple"
           runtimeToolCallsByStepId={EMPTY_WORKFLOW_RUNTIME_TOOL_CALLS}
           selectedRun={selectedRun}

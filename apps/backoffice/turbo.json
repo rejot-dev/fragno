@@ -7,6 +7,7 @@
     "codemode:generate": {
       "dependsOn": ["^build"],
       "outputs": [
+        "content/static/terminal/terminal-spec.json",
         "content/static/codemode/system.d.ts",
         "content/static/codemode/providers/**",
         "content/static/codemode/sources/mcp.d.ts"

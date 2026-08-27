@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { format, type FormatOptions } from "oxfmt";
 import { createServer } from "vite";
 
-type GeneratedCodemodeStaticTypeFile = {
+type GeneratedBackofficeRuntimeToolStaticFile = {
   path: string;
   content: string;
 };
@@ -14,17 +14,22 @@ const SCRIPT_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const BACKOFFICE_DIRECTORY = resolve(SCRIPT_DIRECTORY, "..");
 const REPOSITORY_DIRECTORY = resolve(BACKOFFICE_DIRECTORY, "../..");
 const OXFMT_CONFIG_PATH = resolve(REPOSITORY_DIRECTORY, ".oxfmtrc.json");
-const CODEMODE_STATIC_DIRECTORY = resolve(BACKOFFICE_DIRECTORY, "content/static/codemode");
+const STATIC_CONTENT_DIRECTORY = resolve(BACKOFFICE_DIRECTORY, "content/static");
+const CODEMODE_STATIC_DIRECTORY = resolve(STATIC_CONTENT_DIRECTORY, "codemode");
+const TERMINAL_COMMAND_SPECS_PATH = resolve(
+  STATIC_CONTENT_DIRECTORY,
+  "terminal/terminal-spec.json",
+);
 
-function staticOutputPathForCodemodeFile(path: string) {
-  const staticPrefix = "/static/codemode/";
+function backofficeRuntimeToolStaticOutputPath(path: string) {
+  const staticPrefix = "/static/";
   if (!path.startsWith(staticPrefix)) {
-    throw new Error(`Codemode static type generation received an invalid path: ${path}`);
+    throw new Error(`Backoffice runtime tool static generation received an invalid path: ${path}`);
   }
-  return resolve(CODEMODE_STATIC_DIRECTORY, path.slice(staticPrefix.length));
+  return resolve(STATIC_CONTENT_DIRECTORY, path.slice(staticPrefix.length));
 }
 
-async function createExpectedCodemodeStaticFiles() {
+async function createExpectedBackofficeRuntimeToolStaticFiles() {
   const vite = await createServer({
     root: BACKOFFICE_DIRECTORY,
     configFile: false,
@@ -41,16 +46,16 @@ async function createExpectedCodemodeStaticFiles() {
     const generationModule = (await vite.ssrLoadModule(
       "/app/fragno/codemode/codemode-static-type-generation.ts",
     )) as {
-      generateBackofficeCodemodeStaticTypeFiles(): GeneratedCodemodeStaticTypeFile[];
+      generateBackofficeRuntimeToolStaticFiles(): GeneratedBackofficeRuntimeToolStaticFile[];
     };
     const formatOptions = JSON.parse(await readFile(OXFMT_CONFIG_PATH, "utf8")) as FormatOptions;
     const expectedFiles = await Promise.all(
-      generationModule.generateBackofficeCodemodeStaticTypeFiles().map(async (file) => {
-        const outputPath = staticOutputPathForCodemodeFile(file.path);
+      generationModule.generateBackofficeRuntimeToolStaticFiles().map(async (file) => {
+        const outputPath = backofficeRuntimeToolStaticOutputPath(file.path);
         const result = await format(outputPath, file.content, formatOptions);
         if (result.errors.length > 0) {
           throw new Error(
-            `Unable to format generated codemode static type file '${file.path}': ${result.errors
+            `Unable to format generated Backoffice runtime tool static file '${file.path}': ${result.errors
               .map((error) => error.message)
               .join("; ")}`,
           );
@@ -64,10 +69,11 @@ async function createExpectedCodemodeStaticFiles() {
   }
 }
 
-async function findManagedCodemodeStaticFiles() {
+async function findManagedBackofficeRuntimeToolStaticFiles() {
   const managedFiles = new Set<string>([
     resolve(CODEMODE_STATIC_DIRECTORY, "system.d.ts"),
     resolve(CODEMODE_STATIC_DIRECTORY, "sources/mcp.d.ts"),
+    TERMINAL_COMMAND_SPECS_PATH,
   ]);
   const providerDirectory = resolve(CODEMODE_STATIC_DIRECTORY, "providers");
 
@@ -86,10 +92,10 @@ async function findManagedCodemodeStaticFiles() {
   return managedFiles;
 }
 
-async function findStaleCodemodeStaticTypePaths(
+async function findStaleBackofficeRuntimeToolStaticPaths(
   expectedFiles: ReadonlyMap<string, string>,
 ): Promise<string[]> {
-  const actualFiles = await findManagedCodemodeStaticFiles();
+  const actualFiles = await findManagedBackofficeRuntimeToolStaticFiles();
   const stalePaths: string[] = [];
 
   for (const [path, expectedContent] of expectedFiles) {
@@ -110,22 +116,22 @@ async function findStaleCodemodeStaticTypePaths(
   return [...stalePaths, ...actualFiles].sort();
 }
 
-function formatCodemodeStaticTypePaths(paths: readonly string[]) {
+function formatBackofficeRuntimeToolStaticPaths(paths: readonly string[]) {
   return paths.map((path) => `  - ${relative(BACKOFFICE_DIRECTORY, path)}`).join("\n");
 }
 
-async function checkCodemodeStaticTypes(expectedFiles: ReadonlyMap<string, string>) {
-  const stalePaths = await findStaleCodemodeStaticTypePaths(expectedFiles);
+async function checkBackofficeRuntimeToolStaticFiles(expectedFiles: ReadonlyMap<string, string>) {
+  const stalePaths = await findStaleBackofficeRuntimeToolStaticPaths(expectedFiles);
   if (stalePaths.length === 0) {
     return;
   }
 
   throw new Error(
-    `Codemode static type check failed. Run 'pnpm codemode:generate' in apps/backoffice.\n${formatCodemodeStaticTypePaths(stalePaths)}`,
+    `Backoffice runtime tool static file check failed. Run 'pnpm codemode:generate' in apps/backoffice.\n${formatBackofficeRuntimeToolStaticPaths(stalePaths)}`,
   );
 }
 
-async function writeCodemodeStaticTypes(expectedFiles: ReadonlyMap<string, string>) {
+async function writeBackofficeRuntimeToolStaticFiles(expectedFiles: ReadonlyMap<string, string>) {
   await rm(resolve(CODEMODE_STATIC_DIRECTORY, "providers"), { recursive: true, force: true });
 
   for (const [path, content] of expectedFiles) {
@@ -141,25 +147,25 @@ async function main() {
     throw new Error("Codemode static type generation accepts either --check or --fix, not both.");
   }
 
-  const expectedFiles = await createExpectedCodemodeStaticFiles();
+  const expectedFiles = await createExpectedBackofficeRuntimeToolStaticFiles();
   if (check) {
-    await checkCodemodeStaticTypes(expectedFiles);
+    await checkBackofficeRuntimeToolStaticFiles(expectedFiles);
     return;
   }
   if (fix) {
-    const stalePaths = await findStaleCodemodeStaticTypePaths(expectedFiles);
+    const stalePaths = await findStaleBackofficeRuntimeToolStaticPaths(expectedFiles);
     if (stalePaths.length === 0) {
       return;
     }
 
-    await writeCodemodeStaticTypes(expectedFiles);
+    await writeBackofficeRuntimeToolStaticFiles(expectedFiles);
     console.error(
-      `Updated stale codemode static type files. Review and stage these changes:\n${formatCodemodeStaticTypePaths(stalePaths)}`,
+      `Updated stale Backoffice runtime tool static files. Review and stage these changes:\n${formatBackofficeRuntimeToolStaticPaths(stalePaths)}`,
     );
     process.exitCode = 1;
     return;
   }
-  await writeCodemodeStaticTypes(expectedFiles);
+  await writeBackofficeRuntimeToolStaticFiles(expectedFiles);
 }
 
 await main();

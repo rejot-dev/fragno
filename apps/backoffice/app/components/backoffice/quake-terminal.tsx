@@ -6,14 +6,17 @@ import {
   automationScopeBasePath,
   automationScopeTerminalCommandPath,
 } from "@/routes/backoffice/automations/scope";
+import type { DashboardCommandSpec } from "@/routes/backoffice/dashboard-terminal";
 import { DashboardTerminalPanel } from "@/routes/backoffice/dashboard-terminal-panel";
-import { BACKOFFICE_TERMINAL_COMMAND_SPECS } from "@/routes/backoffice/terminal-commands";
+import { loadBackofficeTerminalCommandSpecs } from "@/routes/backoffice/terminal-command-spec-loader.client";
 
 import { useGlobalHotkey } from "./global-hotkeys";
 
 type QuakeTerminalProps = {
   selectedScope: BackofficeScopeSelection;
 };
+
+const EMPTY_TERMINAL_COMMAND_SPECS: readonly DashboardCommandSpec[] = [];
 
 function isEditableKeyboardTarget(target: EventTarget | null) {
   return (
@@ -26,6 +29,7 @@ function isEditableKeyboardTarget(target: EventTarget | null) {
 export function QuakeTerminal({ selectedScope }: QuakeTerminalProps) {
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
+  const [commandSpecs, setCommandSpecs] = useState<readonly DashboardCommandSpec[] | null>(null);
   const scopePath = automationScopeBasePath(selectedScope);
 
   useEffect(() => {
@@ -76,6 +80,26 @@ export function QuakeTerminal({ selectedScope }: QuakeTerminalProps) {
       setOpen(false);
     },
   });
+
+  useEffect(() => {
+    if (!open || commandSpecs) {
+      return undefined;
+    }
+
+    let active = true;
+    void loadBackofficeTerminalCommandSpecs()
+      .then((loadedCommandSpecs) => {
+        if (active) {
+          setCommandSpecs(loadedCommandSpecs);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error("Backoffice terminal command metadata failed to load", error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [commandSpecs, open]);
 
   useEffect(() => {
     if (!open) {
@@ -150,7 +174,7 @@ export function QuakeTerminal({ selectedScope }: QuakeTerminalProps) {
           scopeId={scopePath}
           scopeName={selectedScope.label}
           actionPath={automationScopeTerminalCommandPath(selectedScope)}
-          commandSpecs={BACKOFFICE_TERMINAL_COMMAND_SPECS}
+          commandSpecs={commandSpecs ?? EMPTY_TERMINAL_COMMAND_SPECS}
           description={`Commands run directly in the ${selectedScope.label} ${selectedScope.kind} scope.`}
           presentation="quake"
           focusInput={open}
