@@ -77,6 +77,10 @@ const loadDurableHookQueue = async ({
       const repository = await objects.auth.for(runtimeScope).getDurableHookRepository();
       return repository.getHookQueue(queueOptions);
     }
+    case "forms": {
+      const repository = await objects.forms.singleton().getDurableHookRepository();
+      return repository.getHookQueue(queueOptions);
+    }
     case "automations": {
       const repository = await objects.automations
         .for(runtimeScope)

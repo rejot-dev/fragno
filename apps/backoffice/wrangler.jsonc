@@ -157,6 +157,10 @@
         "name": "CLOUDFLARE",
         "class_name": "Cloudflare",
       },
+      {
+        "name": "FORMS",
+        "class_name": "Forms",
+      },
     ],
   },
   /**
@@ -179,5 +183,6 @@
     "Billing": { "type": "durable-object", "storage": "sqlite" },
     "Marketplace": { "type": "durable-object", "storage": "sqlite" },
     "Cloudflare": { "type": "durable-object", "storage": "sqlite" },
+    "Forms": { "type": "durable-object", "storage": "sqlite" },
   },
 }

@@ -5,6 +5,7 @@ import type {
   ApiObject,
   AuthObject,
   AutomationsObject,
+  FormsObject,
   GitHubObject,
   GitHubWebhookRouterObject,
   MarketplaceObject,
@@ -79,6 +80,9 @@ export const getScopedAutomationsDurableObject = (
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
 ): BackofficeRpcObject<AutomationsObject> => getBackofficeObjects(context).automations.for(scope);
+
+export const getFormsDurableObject = (context: Readonly<RouterContextProvider>): FormsObject =>
+  getBackofficeObjects(context).forms.singleton();
 
 export const getGitHubDurableObject = (
   context: Readonly<RouterContextProvider>,

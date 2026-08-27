@@ -14,7 +14,16 @@ describe("Capability contributions", () => {
       listCapabilityEventSources()
         .map((eventSource) => eventSource.source)
         .sort(),
-    ).toEqual(["auth", "automations", "github", "otp", "sandbox", "scheduler", "telegram"]);
+    ).toEqual([
+      "auth",
+      "automations",
+      "forms",
+      "github",
+      "otp",
+      "sandbox",
+      "scheduler",
+      "telegram",
+    ]);
 
     const automationEventSources = new Set(
       listAutomationEventDescriptors().map((event) => event.source),

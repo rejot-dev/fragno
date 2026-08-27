@@ -34,6 +34,7 @@ import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 import { createCloudflareRuntime } from "@/fragno/runtime-tools/families/cloudflare-runtime";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
+import { createFormsRuntime } from "@/fragno/runtime-tools/families/forms-runtime";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import { createMcpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import {
@@ -161,6 +162,8 @@ export const createRouteBackedRuntimeContext = ({
     runtime.objects.automations,
   );
 
+  const formsObjects = runtime.objects.forms;
+
   return {
     execution,
     backofficeKernel: kernel,
@@ -267,6 +270,10 @@ export const createRouteBackedRuntimeContext = ({
           }),
         }
       : null,
+    forms:
+      execution.scope.kind === "system" && formsObjects
+        ? { runtime: createFormsRuntime(formsObjects.singleton()) }
+        : null,
     internal: org
       ? {
           runtime: createInternalRuntime({

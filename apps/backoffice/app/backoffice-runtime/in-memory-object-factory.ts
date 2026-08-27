@@ -6,6 +6,7 @@ import { InMemoryAuthObject } from "../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../workers/automations.do";
 import { InMemoryBillingObject } from "../../workers/billing.do";
 import { InMemoryCloudflareObject } from "../../workers/cloudflare.do";
+import { InMemoryFormsObject } from "../../workers/forms.do";
 import { InMemoryGitHubWebhookRouterObject } from "../../workers/github-webhook-router.do";
 import { InMemoryGitHubObject } from "../../workers/github.do";
 import { createInMemoryAuthDatabase } from "../../workers/in-memory-auth-database";
@@ -249,6 +250,12 @@ const inMemoryObjectFactories = {
     }),
   CLOUDFLARE: ({ state, env, runtime }) =>
     new InMemoryCloudflareObject({
+      state,
+      env,
+      runtime,
+    }),
+  FORMS: ({ state, env, runtime }) =>
+    new InMemoryFormsObject({
       state,
       env,
       runtime,

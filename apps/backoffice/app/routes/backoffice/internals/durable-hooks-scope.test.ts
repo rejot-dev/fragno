@@ -118,7 +118,7 @@ describe("durable hook selectors", () => {
       createDurableHooksObjectOptions(
         resolveSelection({ scope: { kind: "system" }, objectId: "auth" }),
       ).map((option) => option.id),
-    ).toEqual(["auth", "automations", "telegram", "otp", "resend", "pi", "workflows"]);
+    ).toEqual(["auth", "forms", "automations", "telegram", "otp", "resend", "pi", "workflows"]);
 
     expect(
       createDurableHooksObjectOptions(

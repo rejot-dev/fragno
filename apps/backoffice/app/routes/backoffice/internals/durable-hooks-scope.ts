@@ -22,6 +22,7 @@ import { internalsScopeBasePath } from "./internals-scope";
 export const DURABLE_HOOK_OBJECT_DEFINITIONS = [
   { id: "api", binding: "API", label: "API" },
   { id: "auth", binding: "AUTH", label: "Auth" },
+  { id: "forms", binding: "FORMS", label: "Forms" },
   { id: "automations", binding: "AUTOMATIONS", label: "Automations" },
   { id: "telegram", binding: "TELEGRAM", label: "Telegram" },
   { id: "otp", binding: "OTP", label: "OTP" },
