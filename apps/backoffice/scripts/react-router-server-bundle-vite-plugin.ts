@@ -8,12 +8,14 @@ import {
   type ReactRouterServerBundleId,
 } from "../workers/react-router-worker-routing";
 
-const REACT_ROUTER_SERVER_BUILD_MODULE_ID = "virtual:react-router/server-build";
-const BACKOFFICE_CURRENT_SERVER_BUILD_MODULE_ID =
-  "virtual:backoffice/react-router-current-server-build";
-const BACKOFFICE_SERVER_BUNDLE_MODULE_PREFIX = "virtual:backoffice/react-router-server-build/";
+const BACKOFFICE_CURRENT_ROUTE_WORKER_MODULE_ID =
+  "virtual:backoffice/react-router-current-route-worker";
+const BACKOFFICE_ROUTE_WORKER_MODULE_PREFIX = "virtual:backoffice/react-router-route-worker/";
 const BACKOFFICE_SERVER_BUILD_DIRECTORY = fileURLToPath(
   new URL("../build/server/", import.meta.url),
+);
+const BACKOFFICE_SERVER_BUNDLE_WORKER_ENTRY = fileURLToPath(
+  new URL("../workers/react-router-server-bundle-worker.ts", import.meta.url),
 );
 const reactRouterServerBundleEnvironmentSet = new Set(REACT_ROUTER_SERVER_BUNDLE_ENVIRONMENTS);
 
@@ -41,14 +43,14 @@ export function reactRouterServerBundleVitePlugin(): Plugin {
           build: {
             outDir: `${BACKOFFICE_SERVER_BUILD_DIRECTORY}${bundleId}`,
             rolldownOptions: {
-              input: REACT_ROUTER_SERVER_BUILD_MODULE_ID,
+              input: BACKOFFICE_SERVER_BUNDLE_WORKER_ENTRY,
               output: {
                 entryFileNames: "index.js",
                 format: "es",
               },
             },
             rollupOptions: {
-              input: REACT_ROUTER_SERVER_BUILD_MODULE_ID,
+              input: BACKOFFICE_SERVER_BUNDLE_WORKER_ENTRY,
               output: {
                 entryFileNames: "index.js",
                 format: "es",
@@ -59,40 +61,42 @@ export function reactRouterServerBundleVitePlugin(): Plugin {
       },
     },
     resolveId(source) {
-      if (source === BACKOFFICE_CURRENT_SERVER_BUILD_MODULE_ID) {
+      if (source === BACKOFFICE_CURRENT_ROUTE_WORKER_MODULE_ID) {
         const environmentName = this.environment.name;
         if (!environmentName.startsWith("routes_")) {
           throw new Error(
-            `Backoffice route Worker server build was imported by unexpected Vite environment '${environmentName}'`,
+            `Backoffice route Worker build was imported by unexpected Vite environment '${environmentName}'`,
           );
         }
         const bundleId = environmentName.slice("routes_".length);
         assertReactRouterServerBundleId(bundleId);
-        return `\0${BACKOFFICE_SERVER_BUNDLE_MODULE_PREFIX}${bundleId}`;
+        return `\0${BACKOFFICE_ROUTE_WORKER_MODULE_PREFIX}${bundleId}`;
       }
-      if (source.startsWith(BACKOFFICE_SERVER_BUNDLE_MODULE_PREFIX)) {
+      if (source.startsWith(BACKOFFICE_ROUTE_WORKER_MODULE_PREFIX)) {
         return `\0${source}`;
       }
       return undefined;
     },
     load(id) {
-      if (!id.startsWith(`\0${BACKOFFICE_SERVER_BUNDLE_MODULE_PREFIX}`)) {
+      if (!id.startsWith(`\0${BACKOFFICE_ROUTE_WORKER_MODULE_PREFIX}`)) {
         return undefined;
       }
 
-      const bundleId = id.slice(`\0${BACKOFFICE_SERVER_BUNDLE_MODULE_PREFIX}`.length);
+      const bundleId = id.slice(`\0${BACKOFFICE_ROUTE_WORKER_MODULE_PREFIX}`.length);
       assertReactRouterServerBundleId(bundleId);
       if (viteCommand !== "build") {
-        return `export * from ${JSON.stringify(REACT_ROUTER_SERVER_BUILD_MODULE_ID)};`;
+        throw new Error(
+          "Backoffice route Worker artifacts are only available during production builds.",
+        );
       }
 
       const serverBuildPath = `${BACKOFFICE_SERVER_BUILD_DIRECTORY}${bundleId}/index.js`;
       if (!existsSync(serverBuildPath)) {
         throw new Error(
-          `Backoffice React Router server bundle was not built before the Cloudflare Worker: ${serverBuildPath}`,
+          `Backoffice React Router route Worker was not built before the Cloudflare Worker: ${serverBuildPath}`,
         );
       }
-      return `export * from ${JSON.stringify(serverBuildPath)};`;
+      return `export { default } from ${JSON.stringify(serverBuildPath)};`;
     },
   };
 }
