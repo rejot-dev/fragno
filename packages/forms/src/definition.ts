@@ -1,11 +1,22 @@
 import { z } from "zod";
 
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase } from "@fragno-dev/db";
+import { withDatabase, type Cursor, type HookFn } from "@fragno-dev/db";
 
 import type { FormsConfig } from ".";
-import type { JSONSchema, NewForm, UpdateForm, FormStatus, UIElementSchema } from "./models";
-import { formsSchema } from "./schema";
+import type {
+  Form,
+  FormCreatedHookPayload,
+  FormDeletedHookPayload,
+  FormResponseSubmittedHookPayload,
+  JSONSchema,
+  StoredFormHookPayload,
+  NewForm,
+  UpdateForm,
+  FormStatus,
+  UIElementSchema,
+} from "./models";
+import { formsSchema, FORM_RESPONSE_PAGINATION_INDEX_NAME } from "./schema";
 
 export type ValidatedData<T = Record<string, unknown>> = T;
 export type ValidationResult =
@@ -44,18 +55,62 @@ const asExternalResponse = <
   data: response.data as Record<string, unknown>,
 });
 
-export interface SubmissionSortOptions {
-  field: "submittedAt";
-  order: "asc" | "desc";
+/** Cursor pagination options for reading submissions in stable submitted-at order. */
+export interface SubmissionListOptions {
+  sortOrder: "asc" | "desc";
+  pageSize: number;
+  cursor: Cursor | null;
+}
+
+type FormsHooksMap = {
+  onFormCreated: HookFn<FormCreatedHookPayload>;
+  onFormUpdated: HookFn<StoredFormHookPayload>;
+  onFormDeleted: HookFn<FormDeletedHookPayload>;
+  onResponseSubmitted: HookFn<FormResponseSubmittedHookPayload>;
+};
+
+function serializeStoredFormHookPayload(form: Form): StoredFormHookPayload {
+  return {
+    ...form,
+    createdAt: form.createdAt.toISOString(),
+    updatedAt: form.updatedAt.toISOString(),
+  };
 }
 
 export const formsFragmentDef = defineFragment<FormsConfig>("forms")
   .extend(withDatabase(formsSchema))
+  .provideHooks<FormsHooksMap>(({ defineHook, config }) => ({
+    onFormCreated: defineHook(async function (payload) {
+      await config.onFormCreated?.(payload, this);
+    }),
+    onFormUpdated: defineHook(async function (payload) {
+      await config.onFormUpdated?.(payload, this);
+    }),
+    onFormDeleted: defineHook(async function (payload) {
+      await config.onFormDeleted?.(payload, this);
+    }),
+    onResponseSubmitted: defineHook(async function (payload) {
+      await config.onResponseSubmitted?.(payload, this);
+    }),
+  }))
   .providesBaseService(({ defineService }) =>
     defineService({
       createForm: function (input: NewForm) {
         return this.serviceTx(formsSchema)
-          .mutate(({ uow }) => uow.create("form", input))
+          .mutate(({ uow }) => {
+            const createdAt = new Date();
+            const formId = uow.create("form", {
+              ...input,
+              createdAt,
+              updatedAt: createdAt,
+            });
+            uow.triggerHook("onFormCreated", {
+              ...input,
+              id: formId.externalId,
+              createdAt: createdAt.toISOString(),
+            });
+            return formId;
+          })
           .transform(({ mutateResult }) => mutateResult.externalId)
           .build();
       },
@@ -95,10 +150,18 @@ export const formsFragmentDef = defineFragment<FormsConfig>("forms")
 
             // Only increment version if changing data schema
             const newVersion = input.dataSchema ? currentForm.version + 1 : currentForm.version;
+            const updatedAt = new Date();
+            const updatedForm = asExternalForm({
+              ...currentForm,
+              ...input,
+              version: newVersion,
+              updatedAt,
+            });
 
             uow.update("form", currentForm.id, (b) => {
-              b.set({ ...input, version: newVersion, updatedAt: new Date() }).check();
+              b.set({ ...input, version: newVersion, updatedAt }).check();
             });
+            uow.triggerHook("onFormUpdated", serializeStoredFormHookPayload(updatedForm));
 
             return { success: true };
           })
@@ -114,8 +177,21 @@ export const formsFragmentDef = defineFragment<FormsConfig>("forms")
 
       deleteForm: function (id: string) {
         return this.serviceTx(formsSchema)
-          .mutate(({ uow }) => {
-            uow.delete("form", id);
+          .retrieve((uow) =>
+            uow.findFirst("form", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id))),
+          )
+          .mutate(({ uow, retrieveResult: [currentForm] }) => {
+            if (!currentForm) {
+              return { success: false };
+            }
+
+            const deletedAt = new Date();
+            uow.delete("form", currentForm.id);
+            uow.triggerHook("onFormDeleted", {
+              ...serializeStoredFormHookPayload(asExternalForm(currentForm)),
+              deletedAt: deletedAt.toISOString(),
+            });
+            return { success: true };
           })
           .build();
       },
@@ -147,15 +223,27 @@ export const formsFragmentDef = defineFragment<FormsConfig>("forms")
         metadata?: { ip?: string | null; userAgent?: string | null },
       ) {
         return this.serviceTx(formsSchema)
-          .mutate(({ uow }) =>
-            uow.create("response", {
+          .mutate(({ uow }) => {
+            const submittedAt = new Date();
+            const responseId = uow.create("response", {
               formId,
               formVersion,
               data,
+              submittedAt,
               ip: metadata?.ip ?? null,
               userAgent: metadata?.userAgent ?? null,
-            }),
-          )
+            });
+            uow.triggerHook("onResponseSubmitted", {
+              id: responseId.externalId,
+              formId,
+              formVersion,
+              data,
+              submittedAt: submittedAt.toISOString(),
+              ip: metadata?.ip ?? null,
+              userAgent: metadata?.userAgent ?? null,
+            });
+            return responseId;
+          })
           .transform(({ mutateResult }) => mutateResult.externalId)
           .build();
       },
@@ -169,19 +257,26 @@ export const formsFragmentDef = defineFragment<FormsConfig>("forms")
           .build();
       },
 
-      listResponses: function (
-        formId: string,
-        sort: SubmissionSortOptions = { field: "submittedAt", order: "desc" },
-      ) {
+      listResponses: function (formId: string, options: SubmissionListOptions) {
+        const effectivePageSize = options.cursor?.pageSize ?? options.pageSize;
+        const effectiveSortOrder = options.cursor?.orderDirection ?? options.sortOrder;
+
         return this.serviceTx(formsSchema)
           .retrieve((uow) =>
-            uow.find("response", (b) =>
-              b
-                .whereIndex("idx_response_form", (eb) => eb("formId", "=", formId))
-                .orderByIndex("idx_response_submitted_at", sort.order),
-            ),
+            uow.findWithCursor("response", (b) => {
+              const query = b
+                .whereIndex(FORM_RESPONSE_PAGINATION_INDEX_NAME, (eb) => eb("formId", "=", formId))
+                .orderByIndex(FORM_RESPONSE_PAGINATION_INDEX_NAME, effectiveSortOrder)
+                .pageSize(effectivePageSize);
+
+              return options.cursor ? query.after(options.cursor) : query;
+            }),
           )
-          .transformRetrieve(([responses]) => responses.map(asExternalResponse))
+          .transformRetrieve(([responses]) => ({
+            submissions: responses.items.map(asExternalResponse),
+            cursor: responses.cursor,
+            hasNextPage: responses.hasNextPage,
+          }))
           .build();
       },
 

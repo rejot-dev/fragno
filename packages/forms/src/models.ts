@@ -42,6 +42,13 @@ export const FormResponseSchema = z.object({
   userAgent: z.string().max(512).nullable(),
 });
 
+/** Validates one bounded page of form submissions and its continuation cursor. */
+export const FormSubmissionsPageSchema = z.object({
+  submissions: z.array(FormResponseSchema),
+  nextCursor: z.string().nullable(),
+  hasNextPage: z.boolean(),
+});
+
 export const NewFormResponseSchema = FormResponseSchema.omit({
   id: true,
   submittedAt: true,
@@ -59,6 +66,25 @@ export type Form = z.infer<typeof FormSchema>;
 export type NewFormResponse = z.infer<typeof NewFormResponseSchema>;
 export type FormResponse = z.infer<typeof FormResponseSchema>;
 export type FormResponseMetadata = z.infer<typeof ResponseMetadataSchema>;
+/** One bounded page of form submissions returned by admin reads. */
+export type FormSubmissionsPage = z.infer<typeof FormSubmissionsPageSchema>;
 export type FormStatus = z.infer<typeof FormStatusSchema>;
+/** Form creation facts with source time preserved across durable hook retries. */
+export type FormCreatedHookPayload = Omit<Form, "version" | "createdAt" | "updatedAt"> & {
+  /** Form creation time captured in the committing mutation, not durable hook delivery time. */
+  createdAt: string;
+};
+export type StoredFormHookPayload = Omit<Form, "createdAt" | "updatedAt"> & {
+  createdAt: string;
+  updatedAt: string;
+};
+/** Deleted form facts with deletion time preserved across durable hook retries. */
+export type FormDeletedHookPayload = StoredFormHookPayload & {
+  /** Form deletion time captured in the committing mutation, not durable hook delivery time. */
+  deletedAt: string;
+};
+export type FormResponseSubmittedHookPayload = Omit<FormResponse, "submittedAt"> & {
+  submittedAt: string;
+};
 export type JSONSchema = z.infer<typeof JSONSchemaSchema>;
 export type UIElementSchema = z.infer<typeof UISchemaElementSchema>;

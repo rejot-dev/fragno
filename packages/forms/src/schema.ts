@@ -1,5 +1,8 @@
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 
+/** Stable form response ordering index used by submission cursors. */
+export const FORM_RESPONSE_PAGINATION_INDEX_NAME = "idx_response_form_submitted_at_id";
+
 export const formsSchema = schema("forms", (s) => {
   return s
     .addTable("form", (t) => {
@@ -41,7 +44,6 @@ export const formsSchema = schema("forms", (s) => {
         )
         .addColumn("userAgent", column("string").nullable())
         .addColumn("ip", column("string").nullable())
-        .createIndex("idx_response_form", ["formId"])
-        .createIndex("idx_response_submitted_at", ["submittedAt"]);
+        .createIndex(FORM_RESPONSE_PAGINATION_INDEX_NAME, ["formId", "submittedAt", "id"]);
     });
 });
