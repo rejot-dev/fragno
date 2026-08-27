@@ -12,7 +12,7 @@ import { automationActorsSchema } from "@/fragno/automation/actors";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { createPiCodemodeRuntime } from "@/fragno/pi/pi-codemode";
 import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
-import { createPiToolFactory, type PiSessionFileSystemContext } from "@/fragno/pi/pi-tools";
+import { createPiToolFactory } from "@/fragno/pi/pi-tools";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -95,16 +95,7 @@ const createScenarioPiExecCodeMode = async (
   }
 
   const kernel = new BackofficeKernel(ctx.runtime.services);
-  const sessionFileSystemContext: PiSessionFileSystemContext = {
-    scope: execution.scope,
-    objects: ctx.runtime.services.objects,
-    kernel,
-    execution,
-    runtimeConfig: ctx.runtime.services.config,
-  };
   const createTools = createPiToolFactory({
-    sessionFileSystems: new Map([[sessionId, Promise.resolve(ctx.files.forOrg(orgId))]]),
-    sessionFileSystemContext,
     codemode: createPiCodemodeRuntime({
       LOADER: loader,
       compileWorker: ctx.runtime.env.compileWorker,
@@ -308,6 +299,38 @@ describe("scenario Pi boundary", () => {
               assert(response.status === 404);
             },
           ),
+        ],
+      }),
+    );
+  });
+
+  test("runs Pi sessions in system scope", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario<{ sessionId?: string }>({
+        name: "Pi system session",
+        vars: () => ({}),
+        setup: ({ given }) => [
+          given.auth.user({ id: "admin-1", role: "admin" }),
+          given.pi.configured({ scope: { kind: "system" } }),
+        ],
+        steps: ({ when, then }) => [
+          when.pi.createSession({
+            scope: { kind: "system" },
+            userId: "admin-1",
+            captureSessionIdAs: "sessionId",
+          }),
+          when.pi.promptSession({
+            scope: { kind: "system" },
+            userId: "admin-1",
+            sessionId: (ctx) => ctx.vars.sessionId!,
+            text: "Reply with the word system.",
+          }),
+          then.pi.session({
+            scope: { kind: "system" },
+            userId: "admin-1",
+            sessionId: (ctx) => ctx.vars.sessionId!,
+            workflow: { status: "waiting" },
+          }),
         ],
       }),
     );

@@ -25,6 +25,7 @@ import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/ro
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import {
   createBackofficeStateBackend,
+  createBackofficeSystemStateBackend,
   type BackofficeStateBackend,
 } from "@/fragno/codemode/state-backend";
 import { createCodemodeStaticArtifactsResolver } from "@/fragno/codemode/static-codemode-artifacts";
@@ -100,19 +101,23 @@ const createExecutionStateBackend = ({
 }: Pick<RouteBackedRuntimeContextOptions, "runtime" | "kernel" | "execution">):
   | BackofficeStateBackend
   | undefined => {
+  const staticFileCollection = createBackofficeStaticFileCollection(
+    createCodemodeStaticArtifactsResolver({
+      objects: runtime.objects,
+      config: runtime.config,
+      execution,
+    }),
+  );
+  if (execution.scope.kind === "system") {
+    return createBackofficeSystemStateBackend({ staticFileCollection });
+  }
   if (!runtime.config.bindings.upload || !isBackofficeRoutableScope(execution.scope)) {
     return undefined;
   }
 
   return createBackofficeStateBackend({
     uploadObject: kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload),
-    staticFileCollection: createBackofficeStaticFileCollection(
-      createCodemodeStaticArtifactsResolver({
-        objects: runtime.objects,
-        config: runtime.config,
-        execution,
-      }),
-    ),
+    staticFileCollection,
   });
 };
 

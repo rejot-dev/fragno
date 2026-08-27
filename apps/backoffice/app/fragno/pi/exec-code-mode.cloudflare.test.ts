@@ -3,17 +3,12 @@ import { describe, expect, test, assert } from "vitest";
 import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 import { env } from "cloudflare:workers";
-import { InMemoryFs } from "just-bash";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
-import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
-import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
-import { MasterFileSystem } from "@/files/master-file-system";
-import type { ResolvedFileMount } from "@/files/types";
 import { codemodeWorkflowParamsSchema } from "@/fragno/automation/engine/codemode-invocation";
 
 import { MemoryUploadObject, createTestStateBackend } from "../codemode/state-backend.test-utils";
@@ -52,13 +47,8 @@ const testRuntimeConfig: BackofficeRuntimeConfig = {
   },
 };
 
-const createPiSessionFileSystemContext = () => ({
-  scope: { kind: "org" as const, orgId: "org-1" },
+const createPiSystemFileContext = () => ({
   objects: unusedObjects,
-  kernel: new BackofficeKernel({
-    authorityResolver: unavailableBackofficeAuthorityResolver,
-    kernelObserver: noopBackofficeKernelObserver,
-  }),
   runtimeConfig: testRuntimeConfig,
   execution: createBackofficeUserExecution({
     scope: { kind: "org", orgId: "org-1" },
@@ -107,17 +97,12 @@ const createPiWorkflowRuntime = (
 
 describe("Pi execCodeMode tool", () => {
   test("runs codemode against the session Upload mount and persists writes", async () => {
-    const fs = createTestMasterFileSystem({});
     const stateBackend = createTestStateBackend({
       upload: new MemoryUploadObject({ "input.txt": "hello" }),
     });
-    const sessionFileSystems = new Map<string, Promise<MasterFileSystem>>([
-      ["session-1", Promise.resolve(fs)],
-    ]);
 
     const tools = createPiToolRegistry({
-      sessionFileSystems,
-      sessionFileSystemContext: createPiSessionFileSystemContext(),
+      execution: createPiSystemFileContext().execution,
       codemode: createPiCodemodeRuntime(env),
       runtimeToolContext: { ...EMPTY_BASH_HOST_CONTEXT, stateBackend } as never,
     });
@@ -237,11 +222,7 @@ describe("Pi execCodeMode tool", () => {
   });
 
   test("schedules and runs a workflow defined from execCodeMode", async () => {
-    const fs = createTestMasterFileSystem({});
     const stateBackend = createTestStateBackend();
-    const sessionFileSystems = new Map<string, Promise<MasterFileSystem>>([
-      ["session-1", Promise.resolve(fs)],
-    ]);
     const workflow = defineRemoteWorkflow({ name: "codemode-script" }, async (event, remote) => {
       const params = codemodeWorkflowParamsSchema.parse(event.payload);
       const result = await runBackofficeCodemodeWorkflow({
@@ -273,8 +254,7 @@ describe("Pi execCodeMode tool", () => {
     });
 
     const tools = createPiToolRegistry({
-      sessionFileSystems,
-      sessionFileSystemContext: createPiSessionFileSystemContext(),
+      execution: createPiSystemFileContext().execution,
       codemode: {
         ...createPiCodemodeRuntime(env),
         workflow: createPiWorkflowRuntime({
@@ -338,10 +318,6 @@ describe("Pi execCodeMode tool", () => {
   });
 
   test("schedules and runs a workflow with an npm dependency", async () => {
-    const fs = createTestMasterFileSystem({});
-    const sessionFileSystems = new Map<string, Promise<MasterFileSystem>>([
-      ["session-1", Promise.resolve(fs)],
-    ]);
     const workflow = defineRemoteWorkflow({ name: "codemode-script" }, async (event, remote) => {
       const params = codemodeWorkflowParamsSchema.parse(event.payload);
       const result = await runBackofficeCodemodeWorkflow({
@@ -371,8 +347,7 @@ describe("Pi execCodeMode tool", () => {
     });
 
     const tools = createPiToolRegistry({
-      sessionFileSystems,
-      sessionFileSystemContext: createPiSessionFileSystemContext(),
+      execution: createPiSystemFileContext().execution,
       codemode: {
         ...createPiCodemodeRuntime(env),
         workflow: createPiWorkflowRuntime({
@@ -618,15 +593,9 @@ const createExecCodeModeTool = async ({
   automationsRuntime?: RegisteredAutomationsRuntime;
   workflowRuntime?: PiWorkflowRuntime;
 }) => {
-  const fs = createTestMasterFileSystem({});
-  const sessionFileSystems = new Map<string, Promise<MasterFileSystem>>([
-    ["session-1", Promise.resolve(fs)],
-  ]);
-
   const stateBackend = createTestStateBackend();
   const tools = createPiToolRegistry({
-    sessionFileSystems,
-    sessionFileSystemContext: createPiSessionFileSystemContext(),
+    execution: createPiSystemFileContext().execution,
     codemode: { ...createPiCodemodeRuntime(env), workflow: workflowRuntime },
     runtimeToolContext: automationsRuntime
       ? ({
@@ -648,51 +617,4 @@ const createExecCodeModeTool = async ({
     toolConfig: null,
     messages: [],
   } as never);
-};
-
-const createTestMasterFileSystem = (files: Record<string, string | Uint8Array>): MasterFileSystem =>
-  new MasterFileSystem({
-    mounts: [createMount("workspace", "/workspace", files)],
-  });
-
-const createMount = (
-  id: string,
-  mountPoint: string,
-  files: Record<string, string | Uint8Array>,
-): ResolvedFileMount => ({
-  id,
-  kind: "custom",
-  mountPoint,
-  title: id,
-  readOnly: false,
-  persistence: "session",
-  fs: createMountedInMemoryFs(files),
-});
-
-const createMountedInMemoryFs = (files: Record<string, string | Uint8Array>) => {
-  const fs = new InMemoryFs(files);
-
-  return {
-    readFile: (path: string) => fs.readFile(path),
-    readFileBuffer: (path: string) => fs.readFileBuffer(path),
-    writeFile: (path: string, content: string | Uint8Array) => fs.writeFile(path, content),
-    appendFile: (path: string, content: string | Uint8Array) => fs.appendFile(path, content),
-    exists: (path: string) => fs.exists(path),
-    stat: (path: string) => fs.stat(path),
-    mkdir: (path: string, options?: { recursive?: boolean }) => fs.mkdir(path, options),
-    readdir: (path: string) => fs.readdir(path),
-    readdirWithFileTypes: (path: string) => fs.readdirWithFileTypes(path),
-    rm: (path: string, options?: { recursive?: boolean; force?: boolean }) => fs.rm(path, options),
-    cp: (src: string, dest: string, options?: { recursive?: boolean }) => fs.cp(src, dest, options),
-    mv: (src: string, dest: string) => fs.mv(src, dest),
-    resolvePath: (base: string, path: string) => fs.resolvePath(base, path),
-    getAllPaths: () => fs.getAllPaths(),
-    chmod: (path: string, mode: number) => fs.chmod(path, mode),
-    symlink: (target: string, linkPath: string) => fs.symlink(target, linkPath),
-    link: (existingPath: string, newPath: string) => fs.link(existingPath, newPath),
-    readlink: (path: string) => fs.readlink(path),
-    lstat: (path: string) => fs.lstat(path),
-    realpath: (path: string) => fs.realpath(path),
-    utimes: (path: string, atime: Date, mtime: Date) => fs.utimes(path, atime, mtime),
-  };
 };

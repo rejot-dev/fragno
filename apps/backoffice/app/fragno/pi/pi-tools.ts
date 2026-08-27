@@ -5,14 +5,8 @@ import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens"
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 
-import type {
-  BackofficeContextScope,
-  BackofficeExecutionContext,
-} from "@/backoffice-runtime/context";
-import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { FileSearchMatch } from "@/file-collection/file-collection";
-import type { MasterFileSystem } from "@/files";
 import {
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
@@ -51,14 +45,6 @@ export type PiRuntimeToolContext = InteractiveRuntimeToolContext & {
   reson8: { runtime: Reson8Runtime };
   resend: { runtime: ResendRuntime };
   telegram: { runtime: TelegramRuntime };
-};
-
-export type PiSessionFileSystemContext = {
-  scope: BackofficeContextScope;
-  objects: BackofficeObjectRegistry;
-  kernel: BackofficeKernel;
-  execution: BackofficeExecutionContext;
-  runtimeConfig: import("@/backoffice-runtime/runtime-services").BackofficeRuntimeConfig;
 };
 
 export type PiCodemodeRuntime = {
@@ -552,8 +538,6 @@ export type PiRuntimeToolContextSource =
     ) => PiRuntimeToolContext);
 
 export type CreatePiToolFactoryOptions = {
-  sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
-  sessionFileSystemContext: PiSessionFileSystemContext;
   codemode?: PiCodemodeRuntime;
   runtimeToolContext?: PiRuntimeToolContextSource;
 };
@@ -597,7 +581,9 @@ export const createPiToolFactory =
     };
   };
 
-export const createPiToolRegistry = (options: CreatePiToolFactoryOptions) => {
+export const createPiToolRegistry = (
+  options: CreatePiToolFactoryOptions & { execution: BackofficeExecutionContext },
+) => {
   const createTools = createPiToolFactory(options);
   const createSessionTool =
     (toolId: PiToolId) =>
@@ -605,7 +591,7 @@ export const createPiToolRegistry = (options: CreatePiToolFactoryOptions) => {
       const tool = (
         await createTools({
           sessionId: context.session.id,
-          execution: options.sessionFileSystemContext.execution,
+          execution: options.execution,
           metadata: null,
         })
       )[toolId];

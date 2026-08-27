@@ -1,13 +1,36 @@
 import { assert, describe, expect, test } from "vitest";
 
+import { createBackofficeStaticFileCollection } from "@/files/content/static";
 import { createCodemodeStateRuntime } from "@/fragno/runtime-tools/codemode-state-runtime";
 import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
 
+import { createBackofficeSystemStateBackend } from "./state-backend";
 import { MemoryUploadObject, createTestStateBackend } from "./state-backend.test-utils";
 
 const UNIQUE_SEARCH_TEXT = "state-backend-unique-telegram-token";
 
 describe("BackofficeStateBackend", () => {
+  test("provides read-only system and static mounts without Upload", async () => {
+    const state = createBackofficeSystemStateBackend({
+      staticFileCollection: createBackofficeStaticFileCollection(() => ({
+        "codemode/sources/mcp.d.ts": UNIQUE_SEARCH_TEXT,
+      })),
+    });
+
+    await expect(state.readdir("/")).resolves.toEqual(["static", "system"]);
+    await expect(state.readFile("/system/README.md")).resolves.toContain("admin-only system-scope");
+    await expect(state.readFile("/static/codemode/sources/mcp.d.ts")).resolves.toBe(
+      UNIQUE_SEARCH_TEXT,
+    );
+    await expect(state.searchFiles("/system/**", "admin-only system-scope")).resolves.toMatchObject(
+      {
+        upload: { results: [{ path: "/system/README.md" }] },
+        static: { results: [] },
+      },
+    );
+    await expect(state.writeFile("/system/generated.txt", "blocked")).rejects.toThrow("EROFS");
+  });
+
   test("uses the selected scope's state backend", async () => {
     const rootState = createTestStateBackend();
     const otherState = createTestStateBackend();

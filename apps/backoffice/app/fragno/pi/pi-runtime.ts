@@ -20,7 +20,6 @@ import type {
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
 import { BackofficeForbiddenError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
-import type { MasterFileSystem } from "@/files";
 import {
   BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY,
   automationActorsSchema,
@@ -49,7 +48,6 @@ import {
   type BackofficePiToolFactory,
   type PiCodemodeRuntime,
   type PiRuntimeToolContextSource,
-  type PiSessionFileSystemContext,
 } from "./pi-tools";
 
 export type PiFragment = ReturnType<typeof createPiHarness<BackofficeExecutionContext>>;
@@ -267,8 +265,6 @@ export type CreatePiRuntimeDefinitionOptions = {
   scope: BackofficeContextScope;
   apiKeys: PiApiKeys;
   kernel: BackofficeKernel;
-  sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
-  sessionFileSystemContext: PiSessionFileSystemContext;
   runtimeToolContext: PiRuntimeToolContextSource;
   codemode: PiCodemodeRuntime;
   onOperationCompleted?: PiFragmentConfig["onOperationCompleted"];
@@ -279,8 +275,6 @@ export const createPiRuntimeDefinition = (
 ): PiRuntimeDefinition => {
   const codemode = options.codemode;
   const createTools = createPiToolFactory({
-    sessionFileSystems: options.sessionFileSystems,
-    sessionFileSystemContext: options.sessionFileSystemContext,
     codemode,
     runtimeToolContext: options.runtimeToolContext,
   });
