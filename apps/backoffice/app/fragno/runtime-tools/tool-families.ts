@@ -26,6 +26,7 @@ import {
 } from "./families/backoffice-capabilities";
 import { cloudflareToolFamily, type CloudflareRuntime } from "./families/cloudflare";
 import { eventCatalogToolFamily, eventFireToolFamily, type EventRuntime } from "./families/event";
+import { formsToolFamily, type FormsRuntime } from "./families/forms";
 import { internalToolFamily, type InternalRuntime } from "./families/internal";
 import { mcpToolFamily, type McpRuntime } from "./families/mcp";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
@@ -52,6 +53,7 @@ export type CoreBackofficeRuntimeMap = {
   workflow?: AutomationWorkflowRuntime;
   durableHooks?: DurableHooksRuntime;
   event?: EventRuntime;
+  forms?: FormsRuntime;
   cloudflare?: CloudflareRuntime;
   internal?: InternalRuntime;
   api?: ApiRuntime;
@@ -79,6 +81,7 @@ export const runtimeToolFamilies = [
   hooksToolFamily,
   eventFireToolFamily,
   eventCatalogToolFamily,
+  formsToolFamily,
   cloudflareToolFamily,
   webToolFamily,
   apiToolFamily,
@@ -103,6 +106,7 @@ const namespaceCapabilityIds = {
   workflow: "automations",
   hooks: "automations",
   events: "automations",
+  forms: "forms",
   api: "api",
   mcp: "mcp",
   otp: "otp",

@@ -4,6 +4,7 @@ import { BACKOFFICE_LAYOUT_ROUTE_ID } from "./routes/backoffice/route-ids";
 
 export default [
   index("routes/landing/index.tsx"),
+  route("forms/:scopeKind/:scopeId/:slug", "routes/forms/form.tsx"),
 
   route("backoffice/login", "routes/backoffice/login.tsx"),
   route("backoffice/device", "routes/backoffice/device.tsx"),
@@ -210,6 +211,10 @@ export default [
         ]),
         route("api", "routes/backoffice/automations/api.tsx"),
         route("integrations", "routes/backoffice/automations/integrations.tsx"),
+        route("integrations/forms", "routes/backoffice/connections/forms/index.tsx", {
+          id: "scoped-integrations/forms",
+        }),
+        route("integrations/forms/:formId", "routes/backoffice/connections/forms/detail.tsx"),
         route("events-catalog", "routes/backoffice/automations/events-catalog.tsx"),
         route("mcp", "routes/backoffice/automations/mcp.tsx"),
         route("sandboxes", "routes/backoffice/automations/sandboxes.tsx"),
@@ -291,6 +296,7 @@ export default [
     route("backoffice/cli-token", "routes/api/backoffice-cli-token.ts"),
     route("backoffice/me", "routes/api/backoffice-me.ts"),
     route("cloudflare/*", "routes/api/cloudflare.ts"),
+    route("forms/*", "routes/api/forms.ts"),
     route("resend/:scopeSegment/*", "routes/api/resend.ts"),
     route("reson8/:orgSlug/*", "routes/api/reson8.ts"),
     route("mcp/:scopeSegment/servers/:serverSlug/auth/start", "routes/api/mcp-oauth-start.ts"),

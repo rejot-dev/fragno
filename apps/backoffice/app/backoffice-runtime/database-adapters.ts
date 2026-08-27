@@ -11,6 +11,7 @@ export type BackofficeDatabaseAdapterKind =
   | "automations"
   | "billing"
   | "cloudflare"
+  | "forms"
   | "marketplace"
   | "github"
   | "mcp"

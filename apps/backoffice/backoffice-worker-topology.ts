@@ -97,6 +97,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
         "routes/backoffice/sign-up.tsx",
         "routes/backoffice/users.tsx",
         "routes/backoffice/verify-email.tsx",
+        "routes/forms/form.tsx",
       ],
       routeModulePrefixes: ["routes/landing/"],
       requestPathPrefixes: [],
@@ -193,9 +194,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
       routeModules: ["routes/backoffice/internals/cloudflare-browser-run.tsx"],
       routeModulePrefixes: [],
       requestPathPrefixes: [],
-      requestPathRegularExpressions: [
-        "^/backoffice/internals/[^/]+/[^/]+/cloudflare(?:/|$)",
-      ],
+      requestPathRegularExpressions: ["^/backoffice/internals/[^/]+/[^/]+/cloudflare(?:/|$)"],
       excludedRequestPathPrefixes: [],
       excludedRequestPathRegularExpressions: [],
       environment: {
@@ -209,9 +208,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
       routeModules: [],
       routeModulePrefixes: ["routes/backoffice/internals/durable-hooks"],
       requestPathPrefixes: [],
-      requestPathRegularExpressions: [
-        "^/backoffice/internals/[^/]+/[^/]+/durable-hooks(?:/|$)",
-      ],
+      requestPathRegularExpressions: ["^/backoffice/internals/[^/]+/[^/]+/durable-hooks(?:/|$)"],
       excludedRequestPathPrefixes: [],
       excludedRequestPathRegularExpressions: [],
       environment: {
@@ -247,6 +244,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
         "routes/api/backoffice-me.ts",
         "routes/api/cloudflare.ts",
         "routes/api/files-scoped-workspace.ts",
+        "routes/api/forms.ts",
         "routes/api/github-webhooks.ts",
         "routes/api/github.ts",
         "routes/api/marketplace.ts",

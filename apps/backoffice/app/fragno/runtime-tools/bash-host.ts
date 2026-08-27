@@ -25,6 +25,7 @@ import type { AutomationWorkflowRuntime } from "./families/automations-workflow"
 import type { BackofficeCapabilitiesRuntime } from "./families/backoffice-capabilities";
 import type { CloudflareRuntime } from "./families/cloudflare-runtime";
 import type { EventRuntime } from "./families/event-runtime";
+import type { FormsRuntime } from "./families/forms-runtime";
 import type { InternalRuntime } from "./families/internal";
 import type { RegisteredMcpCommandContext } from "./families/mcp-runtime";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
@@ -57,6 +58,7 @@ export type BashHostContext = {
   automation: RegisteredEventBashCommandContext | null;
   cloudflare?: { runtime: CloudflareRuntime } | null;
   event?: { runtime: EventRuntime } | null;
+  forms?: { runtime: FormsRuntime } | null;
   automations: RegisteredAutomationsBashCommandContext | null;
   identity?: { runtime: AutomationIdentityRuntime } | null;
   workflow?: { runtime: AutomationWorkflowRuntime } | null;
@@ -79,6 +81,7 @@ export type InteractiveRuntimeToolContext = Omit<BashHostContext, "automation"> 
   automations: NonNullable<BashHostContext["automations"]>;
   workflow?: BashHostContext["workflow"];
   durableHooks?: BashHostContext["durableHooks"];
+  forms?: BashHostContext["forms"];
   api?: BashHostContext["api"];
   mcp?: BashHostContext["mcp"];
   otp: NonNullable<BashHostContext["otp"]>;

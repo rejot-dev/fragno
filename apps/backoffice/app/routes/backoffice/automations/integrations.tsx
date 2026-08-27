@@ -68,6 +68,10 @@ export default function BackofficeAutomationIntegrations() {
         </p>
       </section>
 
+      {selectedScope.kind === "system" ? (
+        <SystemFormsIntegration managePath={integrationBasePath(selectedScope, "forms")} />
+      ) : null}
+
       <section className="grid gap-3 md:grid-cols-2">
         {integrations.map((integration) => {
           const id = integration.id as ScopedIntegrationId;
@@ -121,5 +125,28 @@ export default function BackofficeAutomationIntegrations() {
         })}
       </section>
     </div>
+  );
+}
+
+function SystemFormsIntegration({ managePath }: { managePath: string }) {
+  return (
+    <section className="bo-fragment-surface bo-panel-surface bg-[var(--bo-panel)] p-4">
+      <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+        System integration
+      </p>
+      <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Forms</h3>
+      <p className="mt-2 text-sm text-[var(--bo-muted)]">
+        Create and inspect schema-backed forms in the global system scope. Organisation, project,
+        and user scopes are intentionally unavailable for now.
+      </p>
+      <div className="mt-4">
+        <Link
+          to={managePath}
+          className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
+        >
+          Manage
+        </Link>
+      </div>
+    </section>
   );
 }

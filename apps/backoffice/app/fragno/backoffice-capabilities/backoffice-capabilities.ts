@@ -18,6 +18,14 @@ import {
   authCapability,
 } from "./capabilities/auth";
 import { automationsCapability } from "./capabilities/automations";
+import {
+  FORMS_AUTOMATION_EVENT_FORM_CREATED,
+  FORMS_AUTOMATION_EVENT_FORM_DELETED,
+  FORMS_AUTOMATION_EVENT_FORM_UPDATED,
+  FORMS_AUTOMATION_EVENT_RESPONSE_SUBMITTED,
+  FORMS_AUTOMATION_SOURCE,
+  formsCapability,
+} from "./capabilities/forms";
 import { githubCapability } from "./capabilities/github";
 import { mcpCapability } from "./capabilities/mcp";
 import { otpCapability } from "./capabilities/otp";
@@ -34,6 +42,7 @@ export type BackofficeCapabilityId =
   | "api"
   | "automations"
   | "auth"
+  | "forms"
   | "github"
   | "mcp"
   | "otp"
@@ -192,6 +201,7 @@ export const backofficeCapabilities: readonly BackofficeCapability[] = [
   automationsCapability,
   githubCapability,
   authCapability,
+  formsCapability,
 ];
 
 export type BackofficeConnectionCatalogEntry = {
@@ -314,6 +324,7 @@ export function getHookScope(id: string) {
 
 export const AUTOMATION_SOURCES = {
   auth: AUTH_AUTOMATION_SOURCE,
+  forms: FORMS_AUTOMATION_SOURCE,
   telegram: "telegram",
   otp: "otp",
   pi: "pi",
@@ -323,6 +334,12 @@ export const AUTOMATION_SOURCE_EVENT_TYPES = {
   [AUTOMATION_SOURCES.auth]: {
     organizationCreated: AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
     organizationUpdated: AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED,
+  },
+  [AUTOMATION_SOURCES.forms]: {
+    formCreated: FORMS_AUTOMATION_EVENT_FORM_CREATED,
+    formUpdated: FORMS_AUTOMATION_EVENT_FORM_UPDATED,
+    formDeleted: FORMS_AUTOMATION_EVENT_FORM_DELETED,
+    responseSubmitted: FORMS_AUTOMATION_EVENT_RESPONSE_SUBMITTED,
   },
   [AUTOMATION_SOURCES.telegram]: {
     messageReceived: "message.received",
