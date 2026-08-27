@@ -1,0 +1,51 @@
+{
+  "name": "@rejot-dev/backoffice-cli",
+  "version": "0.1.0",
+  "private": true,
+  "homepage": "https://backoffice.rejot.dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "apps/backoffice-cli"
+  },
+  "bin": {
+    "backoffice": "./bin/run.js"
+  },
+  "type": "module",
+  "main": "./dist/cli.js",
+  "module": "./dist/cli.js",
+  "types": "./dist/cli.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.js"
+    }
+  },
+  "scripts": {
+    "backoffice-cli": "tsx ./src/cli.ts",
+    "build": "tsdown",
+    "types:check": "tsc --noEmit",
+    "pretest": "pnpm --filter @rejot-dev/backoffice-local build && pnpm run build",
+    "test": "vitest run",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix",
+    "build:watch": "tsdown --watch",
+    "test:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "@rejot-dev/backoffice-local": "workspace:*"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^22.19.7",
+    "@vitest/coverage-istanbul": "^4.1.0",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

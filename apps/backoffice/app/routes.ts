@@ -282,10 +282,6 @@ export default [
     ]),
   ]),
 
-  route("__dev/codemode/:scopeKind/:scopeId/SYSTEM.md", "routes/dev/codemode-system-md.ts"),
-  route("__dev/codemode/:scopeKind/:scopeId/bash", "routes/dev/codemode-bash.ts"),
-  route("__dev/codemode/:scopeKind/:scopeId", "routes/dev/codemode.ts"),
-
   route(
     "api/backoffice/codemode/:scopeKind/:scopeId/SYSTEM.md",
     "routes/api/backoffice-codemode-system-md.ts",

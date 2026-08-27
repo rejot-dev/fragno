@@ -1,0 +1,36 @@
+{
+  "name": "@rejot-dev/backoffice-local",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/backoffice-local.js",
+  "module": "./dist/backoffice-local.js",
+  "types": "./dist/backoffice-local.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/backoffice-local.d.ts",
+      "default": "./dist/backoffice-local.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^22.19.7",
+    "@vitest/coverage-istanbul": "^4.1.0",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
