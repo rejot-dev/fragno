@@ -12,7 +12,12 @@ import {
   type ImplicitDatabaseDependencies,
 } from "../db-fragment-definition-builder";
 import { isHookStatus, type DurableHookPropagationContext, type HookStatus } from "../hooks/hooks";
-import type { OutboxOperation, OutboxPayload } from "../outbox/outbox";
+import {
+  encodeVersionstamp,
+  versionstampToHex,
+  type OutboxOperation,
+  type OutboxPayload,
+} from "../outbox/outbox";
 import type { Cursor } from "../query/cursor";
 import { dbNow, type DbNow } from "../query/db-now";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
@@ -85,6 +90,22 @@ const coerceHookStatus = (status: string, context: string): HookStatus => {
   }
   throw new Error(`Invalid hook status from database (${context}): ${status}`);
 };
+
+function outboxVersionstampRangeEnd(
+  afterVersionstamp: string | undefined,
+  limit: number | undefined,
+): string | undefined {
+  if (limit === undefined) {
+    return undefined;
+  }
+
+  const afterTransactionVersion = afterVersionstamp
+    ? BigInt(`0x${afterVersionstamp.slice(0, 20)}`)
+    : -1n;
+
+  // Outbox versions are reserved contiguously, so a count-based page has a known inclusive end.
+  return versionstampToHex(encodeVersionstamp(afterTransactionVersion + BigInt(limit), 0));
+}
 
 const mapHookRecord = <
   TEvent extends { id: FragnoId; hookName: string; status: string; propagationContext: unknown },
@@ -597,46 +618,76 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       list({ afterVersionstamp, limit }: { afterVersionstamp?: string; limit?: number } = {}) {
         const afterValue = afterVersionstamp?.toLowerCase();
+        const rangeEnd = outboxVersionstampRangeEnd(afterValue, limit);
 
         return this.serviceTx(internalSchema, { name: "internal.outbox.list" })
           .retrieve((uow) =>
-            uow.find("fragno_db_outbox", (b) => {
-              let builder = afterValue
-                ? b.whereIndex("idx_outbox_versionstamp", (eb) =>
-                    eb("versionstamp", ">", afterValue),
-                  )
-                : b.whereIndex("idx_outbox_versionstamp");
+            uow
+              .find("fragno_db_outbox", (b) => {
+                let builder = afterValue
+                  ? b.whereIndex("idx_outbox_versionstamp", (eb) =>
+                      eb("versionstamp", ">", afterValue),
+                    )
+                  : b.whereIndex("idx_outbox_versionstamp");
 
-              builder = builder.orderByIndex("idx_outbox_versionstamp", "asc");
-              if (limit !== undefined) {
-                builder = builder.pageSize(limit);
+                builder = builder.orderByIndex("idx_outbox_versionstamp", "asc");
+                if (limit !== undefined) {
+                  builder = builder.pageSize(limit);
+                }
+
+                return builder;
+              })
+              .find("fragno_db_outbox_mutations", (b) => {
+                const builder =
+                  afterValue && rangeEnd
+                    ? b.whereIndex("idx_outbox_mutations_entry_order", (eb) =>
+                        eb.and(
+                          eb("entryVersionstamp", ">", afterValue),
+                          eb("entryVersionstamp", "<=", rangeEnd),
+                        ),
+                      )
+                    : afterValue
+                      ? b.whereIndex("idx_outbox_mutations_entry_order", (eb) =>
+                          eb("entryVersionstamp", ">", afterValue),
+                        )
+                      : rangeEnd
+                        ? b.whereIndex("idx_outbox_mutations_entry_order", (eb) =>
+                            eb("entryVersionstamp", "<=", rangeEnd),
+                          )
+                        : b.whereIndex("idx_outbox_mutations_entry_order");
+
+                return builder
+                  .orderByIndex("idx_outbox_mutations_entry_order", "asc")
+                  .select(["entryVersionstamp", "payload"]);
+              }),
+          )
+          .transformRetrieve(([entries, mutationRows]) => {
+            let mutationIndex = 0;
+
+            return entries.map((entry) => {
+              const operations: OutboxOperation[] = [];
+              while (mutationIndex < mutationRows.length) {
+                const mutation = mutationRows[mutationIndex];
+                if (!mutation || mutation.entryVersionstamp !== entry.versionstamp) {
+                  break;
+                }
+
+                operations.push(
+                  superjson.deserialize<OutboxOperation>(mutation.payload as SuperJSONResult),
+                );
+                mutationIndex += 1;
               }
 
-              return builder.joinMany("mutations", "fragno_db_outbox_mutations", (mutations) =>
-                mutations
-                  .onIndex("idx_outbox_mutations_entry_order", (eb) =>
-                    eb("entryVersionstamp", "=", eb.parent("versionstamp")),
-                  )
-                  .orderByIndex("idx_outbox_mutations_entry_order", "asc")
-                  .select(["payload"]),
-              );
-            }),
-          )
-          .transformRetrieve(([entries]) =>
-            entries.map((entry) => ({
-              id: entry.id,
-              versionstamp: entry.versionstamp,
-              uowId: entry.uowId,
-              payload: superjson.serialize({
-                version: 2,
-                operations: entry.mutations.map((row) =>
-                  superjson.deserialize<OutboxOperation>(row.payload as SuperJSONResult),
-                ),
-              } satisfies OutboxPayload),
-              refMap: entry.refMap ?? undefined,
-              createdAt: entry.createdAt,
-            })),
-          )
+              return {
+                id: entry.id,
+                versionstamp: entry.versionstamp,
+                uowId: entry.uowId,
+                payload: superjson.serialize({ version: 2, operations } satisfies OutboxPayload),
+                refMap: entry.refMap ?? undefined,
+                createdAt: entry.createdAt,
+              };
+            });
+          })
           .build();
       },
     });
