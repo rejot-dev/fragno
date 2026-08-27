@@ -51,6 +51,21 @@ describe("DriverConfig.normalizeError", () => {
     });
   });
 
+  it("excludes trailing SQLite result details from unique-constraint columns", () => {
+    const config = new CloudflareDurableObjectsDriverConfig();
+    const normalized = config.normalizeError(
+      new Error(
+        "UNIQUE constraint failed: form_forms.slug: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)",
+      ),
+    );
+
+    expect(normalized).toMatchObject({
+      kind: "unique",
+      table: "form_forms",
+      columns: ["slug"],
+    });
+  });
+
   it("extracts columns from prefixed sqlite-wasm unique errors", () => {
     const config = new SQLocalDriverConfig();
     const normalized = config.normalizeError(

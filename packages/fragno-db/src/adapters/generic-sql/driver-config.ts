@@ -64,6 +64,7 @@ function parseSqliteUniqueColumns(message: string): { table?: string; columns?: 
   }
 
   const refs = match[1]
+    .replace(/:\s*SQLITE_CONSTRAINT(?:_[A-Z]+)?(?:\s+\(extended:.*\))?\.?$/, "")
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
