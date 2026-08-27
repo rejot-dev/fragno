@@ -51,3 +51,4 @@ minimumReleaseAgeExclude:
   - "@tanstack/db@0.8.1"
   - "@tanstack/node-db-sqlite-persistence@0.2.14"
   - "@tanstack/react-db@0.3.1"
+  - pi-mcp-adapter@2.29.0

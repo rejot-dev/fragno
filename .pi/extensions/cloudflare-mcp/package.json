@@ -1,0 +1,29 @@
+{
+  "name": "@fragno-private/pi-cloudflare-mcp-extension",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsdown index.ts --format esm --out-dir dist --no-dts --deps.never-bundle pi-mcp-adapter",
+    "types:check": "tsc --noEmit",
+    "format:package": "node ../../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "dependencies": {
+    "pi-mcp-adapter": "2.29.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.2",
+    "@fragno-private/typescript-config": "workspace:*",
+    "@types/node": "^22.19.7",
+    "tsdown": "^0.22.4",
+    "typescript": "catalog:"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

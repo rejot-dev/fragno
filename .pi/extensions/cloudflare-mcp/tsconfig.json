@@ -1,0 +1,13 @@
+{
+  "extends": "@fragno-private/typescript-config/tsconfig.node.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "pi-mcp-adapter": ["./pi-mcp-adapter.d.ts"]
+    }
+  },
+  "include": ["index.ts", "pi-mcp-adapter.d.ts"],
+  "exclude": ["node_modules"]
+}
