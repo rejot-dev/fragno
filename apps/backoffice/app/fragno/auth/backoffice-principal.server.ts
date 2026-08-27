@@ -60,19 +60,19 @@ export const requireBackofficeContext = async (
   return createBackofficeExecutionForPrincipal(auth, scope);
 };
 
-export const authorizeBackofficeContext = async (
-  request: Request,
-  routerContext: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
-): Promise<
+type BackofficeContextAuthorization =
   | { ok: true; execution: BackofficeExecutionContext; headers: Array<[string, string]> }
-  | { ok: false; response: Response }
-> => {
-  const authorization = await authorizeBackofficePrincipal(request, routerContext);
-  if (!authorization.ok) {
-    return authorization;
-  }
+  | { ok: false; response: Response };
 
+type AuthorizedBackofficePrincipal = Extract<
+  Awaited<ReturnType<typeof authorizeBackofficePrincipal>>,
+  { ok: true }
+>;
+
+function authorizePrincipalForBackofficeScope(
+  authorization: AuthorizedBackofficePrincipal,
+  scope: BackofficeContextScope,
+): BackofficeContextAuthorization {
   try {
     return {
       ok: true,
@@ -91,4 +91,36 @@ export const authorizeBackofficeContext = async (
     }
     throw error;
   }
-};
+}
+
+export async function authorizeBackofficeContext(
+  request: Request,
+  routerContext: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+): Promise<BackofficeContextAuthorization> {
+  const authorization = await authorizeBackofficePrincipal(request, routerContext);
+  return authorization.ok
+    ? authorizePrincipalForBackofficeScope(authorization, scope)
+    : authorization;
+}
+
+export async function authorizeBackofficeCodemodeContext(
+  request: Request,
+  routerContext: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+): Promise<BackofficeContextAuthorization> {
+  const authorization = await authorizeBackofficePrincipal(request, routerContext);
+  if (!authorization.ok) {
+    return authorization;
+  }
+  if (!authorization.principal.user.email.trim().toLowerCase().endsWith("@rejot.dev")) {
+    return {
+      ok: false,
+      response: new Response("Backoffice codemode requires a @rejot.dev account.", {
+        status: 403,
+        headers: authorization.headers,
+      }),
+    };
+  }
+  return authorizePrincipalForBackofficeScope(authorization, scope);
+}

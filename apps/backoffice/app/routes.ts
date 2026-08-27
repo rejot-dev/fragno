@@ -286,6 +286,16 @@ export default [
   route("__dev/codemode/:scopeKind/:scopeId/bash", "routes/dev/codemode-bash.ts"),
   route("__dev/codemode/:scopeKind/:scopeId", "routes/dev/codemode.ts"),
 
+  route(
+    "api/backoffice/codemode/:scopeKind/:scopeId/SYSTEM.md",
+    "routes/api/backoffice-codemode-system-md.ts",
+  ),
+  route(
+    "api/backoffice/codemode/:scopeKind/:scopeId/bash",
+    "routes/api/backoffice-codemode-bash.ts",
+  ),
+  route("api/backoffice/codemode/:scopeKind/:scopeId", "routes/api/backoffice-codemode.ts"),
+
   ...prefix("api", [
     route("admin/grant", "routes/api/admin-grant.ts"),
     route("auth/*", "routes/api/auth.ts"),
