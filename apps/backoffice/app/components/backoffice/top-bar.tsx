@@ -156,7 +156,7 @@ export function BackofficeTopBar({
         </div>
 
         <div className="flex shrink-0 items-center min-[960px]:border-l min-[960px]:border-[color:var(--bo-border)]">
-          <BackofficeAccountMenu me={me} isLoading={isLoading} />
+          <BackofficeAccountMenu me={me} currentScope={routeScope} isLoading={isLoading} />
         </div>
       </div>
 

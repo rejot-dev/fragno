@@ -170,28 +170,28 @@ describe("durable hook selectors", () => {
         kind: "singleton",
         label: "Singleton",
         description: "Global durable object scope",
-        to: "/backoffice/internals/durable-hooks/system/system/telegram",
+        to: "/backoffice/internals/system/system/durable-hooks/telegram",
       },
       {
         id: "org/org_123",
         kind: "org",
         label: "Acme",
         description: "Organization · acme",
-        to: "/backoffice/internals/durable-hooks/org/acme/telegram",
+        to: "/backoffice/internals/org/acme/durable-hooks/telegram",
       },
       {
         id: "project/org_123%3Aproject_1",
         kind: "project",
         label: "Launch Plan",
         description: "Project · launch-plan",
-        to: "/backoffice/internals/durable-hooks/project/acme%3Aproject_1/telegram",
+        to: "/backoffice/internals/project/acme%3Aproject_1/durable-hooks/telegram",
       },
       {
         id: "user/user_1",
         kind: "user",
         label: "operator@example.com",
         description: "Personal user scope",
-        to: "/backoffice/internals/durable-hooks/user/user_1/telegram",
+        to: "/backoffice/internals/user/user_1/durable-hooks/telegram",
       },
     ]);
   });
@@ -205,11 +205,11 @@ describe("durable hook selectors", () => {
 
     assert.equal(
       options.find((option) => option.kind === "user")?.to,
-      "/backoffice/internals/durable-hooks/user/user_1/api",
+      "/backoffice/internals/user/user_1/durable-hooks/api",
     );
     assert.equal(
       options.find((option) => option.kind === "singleton")?.to,
-      "/backoffice/internals/durable-hooks/system/system/auth",
+      "/backoffice/internals/system/system/durable-hooks/auth",
     );
   });
 });

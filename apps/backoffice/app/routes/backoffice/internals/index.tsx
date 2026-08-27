@@ -1,7 +1,9 @@
 import { Link, useOutletContext } from "react-router";
 
 import { BackofficePageHeader, BackofficeStatusLight } from "@/components/backoffice";
-import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
+
+import { internalsScopeBasePath } from "./internals-scope";
+import type { InternalsLayoutContext } from "./layout";
 
 type InternalDestination = {
   id: string;
@@ -11,14 +13,17 @@ type InternalDestination = {
   to: string | null;
 };
 
-function internalDestinations(hasOrganization: boolean): InternalDestination[] {
+function internalDestinations(
+  hasOrganization: boolean,
+  internalsBasePath: string,
+): InternalDestination[] {
   return [
     {
       id: "users",
       name: "Users",
       description: "Review every system account and manage global administrator access.",
       status: "Available",
-      to: "/backoffice/internals/users",
+      to: `${internalsBasePath}/users`,
     },
     {
       id: "github",
@@ -26,14 +31,14 @@ function internalDestinations(hasOrganization: boolean): InternalDestination[] {
       description:
         "Inspect GitHub App runtime configuration and singleton installation routing state.",
       status: "Available",
-      to: "/backoffice/internals/github",
+      to: `${internalsBasePath}/github`,
     },
     {
       id: "cloudflare-browser-run",
       name: "Cloudflare Browser Run",
       description: "Create Browser Run sessions and exercise their target lifecycle APIs.",
       status: "Available",
-      to: "/backoffice/internals/cloudflare/browser-run",
+      to: `${internalsBasePath}/cloudflare/browser-run`,
     },
     {
       id: "generated-ui",
@@ -41,7 +46,7 @@ function internalDestinations(hasOrganization: boolean): InternalDestination[] {
       description:
         "Preview every component and semantic variant in the production codemode presentation catalog.",
       status: "Available",
-      to: "/backoffice/internals/generated-ui",
+      to: `${internalsBasePath}/generated-ui`,
     },
     {
       id: "upload",
@@ -56,7 +61,7 @@ function internalDestinations(hasOrganization: boolean): InternalDestination[] {
       description:
         "Inspect durable hook queues and retry state across organization and singleton scopes.",
       status: "Available",
-      to: "/backoffice/internals/durable-hooks",
+      to: `${internalsBasePath}/durable-hooks`,
     },
     {
       id: "workflows",
@@ -64,7 +69,7 @@ function internalDestinations(hasOrganization: boolean): InternalDestination[] {
       description:
         "Inspect workflow instances, state transitions, and step/event history by fragment.",
       status: "Available",
-      to: "/backoffice/internals/workflows",
+      to: `${internalsBasePath}/workflows`,
     },
   ];
 }
@@ -77,9 +82,10 @@ export function meta() {
 }
 
 export default function BackofficeInternals() {
-  const { me } = useOutletContext<BackofficeLayoutContext>();
+  const { me, selectedRouteScope } = useOutletContext<InternalsLayoutContext>();
   const hasOrganization = me.organizations.length > 0;
-  const destinations = internalDestinations(hasOrganization);
+  const internalsBasePath = internalsScopeBasePath(selectedRouteScope);
+  const destinations = internalDestinations(hasOrganization, internalsBasePath);
 
   return (
     <div className="space-y-4">

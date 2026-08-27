@@ -10,6 +10,7 @@ describe("scopeSwitchPath", () => {
     ["/backoffice/sessions", "/backoffice/sessions/project/org-a%3Aproj-1/sessions"],
     ["/backoffice/files", "/backoffice/files/project/org-a%3Aproj-1"],
     ["/backoffice/marketplace", "/backoffice/marketplace/project/org-a%3Aproj-1/marketplace"],
+    ["/backoffice/internals", "/backoffice/internals/project/org-a%3Aproj-1"],
   ])("carries the scope into the section root %s", (pathname, expectedPath) => {
     assert(scopeSwitchPath(pathname, projectScope) === expectedPath);
   });
@@ -40,24 +41,24 @@ describe("scopeSwitchPath", () => {
 
   test("switches the scope used by the durable hooks inspector", () => {
     assert(
-      scopeSwitchPath("/backoffice/internals/durable-hooks/org/org-a/api/hook-1", projectScope) ===
-        "/backoffice/internals/durable-hooks/project/org-a%3Aproj-1/api",
+      scopeSwitchPath("/backoffice/internals/org/org-a/durable-hooks/api/hook-1", projectScope) ===
+        "/backoffice/internals/project/org-a%3Aproj-1/durable-hooks/api",
     );
   });
 
   test("switches the scope used by the workflows inspector", () => {
     assert(
       scopeSwitchPath(
-        "/backoffice/internals/workflows/org/org-a/example/instance-1",
+        "/backoffice/internals/org/org-a/workflows/example/instance-1",
         projectScope,
-      ) === "/backoffice/internals/workflows/project/org-a%3Aproj-1",
+      ) === "/backoffice/internals/project/org-a%3Aproj-1/workflows",
     );
   });
 
-  test("keeps unscoped internals tools in place", () => {
+  test("switches the scope while keeping an internals tool", () => {
     assert(
-      scopeSwitchPath("/backoffice/internals/users", projectScope) ===
-        "/backoffice/internals/users",
+      scopeSwitchPath("/backoffice/internals/org/org-a/users", projectScope) ===
+        "/backoffice/internals/project/org-a%3Aproj-1/users",
     );
   });
 

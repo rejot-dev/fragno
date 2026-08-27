@@ -70,7 +70,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
 export default function BackofficeWorkflowsOrganizationDetail() {
   const detail = useLoaderData<typeof loader>();
-  const basePath = `/backoffice/internals/workflows/${detail.scopePath}`;
+  const basePath = `/backoffice/internals/${detail.scopePath}/workflows`;
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = resolveDetailTab(searchParams.get("tab"));
   const setActiveTab = (tab: WorkflowDetailTab) => {

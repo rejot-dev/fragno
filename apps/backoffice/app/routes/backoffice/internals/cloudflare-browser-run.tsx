@@ -1,5 +1,5 @@
 import { useState, type SubmitEvent } from "react";
-import { Link } from "react-router";
+import { Link, useOutletContext } from "react-router";
 
 import type { BrowserRunSessions } from "@fragno-dev/cloudflare-fragment";
 
@@ -13,6 +13,8 @@ import { cloudflareClient } from "@/fragno/cloudflare-client";
 
 import type { Route } from "./+types/cloudflare-browser-run";
 import { CloudflareCdpInspector } from "./cloudflare-cdp-inspector";
+import { internalsScopeBasePath } from "./internals-scope";
+import type { InternalsLayoutContext } from "./layout";
 
 type BrowserSession = Awaited<ReturnType<BrowserRunSessions["list"]>>[number];
 type BrowserTarget = Awaited<ReturnType<BrowserRunSessions["listTargets"]>>[number];
@@ -305,6 +307,8 @@ function SessionInspector({ session }: { session: BrowserSession }) {
 }
 
 export default function CloudflareBrowserRunInternals() {
+  const { selectedRouteScope } = useOutletContext<InternalsLayoutContext>();
+  const internalsBasePath = internalsScopeBasePath(selectedRouteScope);
   const sessionsQuery = cloudflareClient.useBrowserRunSessions({
     query: { limit: "100", offset: "0" },
   });
@@ -353,14 +357,14 @@ export default function CloudflareBrowserRunInternals() {
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
-          { label: "Internals", to: "/backoffice/internals" },
+          { label: "Internals", to: internalsBasePath },
           { label: "Browser Run" },
         ]}
         eyebrow="Cloudflare"
         title="Browser Run session console"
         description="Exercise the fragment's HTTP session and target lifecycle APIs without loading Playwright."
         actions={
-          <Link className={secondaryButtonClassName} to="/backoffice/internals">
+          <Link className={secondaryButtonClassName} to={internalsBasePath}>
             Back to internals
           </Link>
         }

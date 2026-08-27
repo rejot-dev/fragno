@@ -58,7 +58,17 @@ const renderUsers = (currentUserId = "current-user") =>
   render(
     <MemoryRouter>
       <Routes>
-        <Route element={<Outlet context={{ me: { user: { id: currentUserId } } }} />}>
+        <Route
+          element={
+            <Outlet
+              context={{
+                me: { user: { id: currentUserId } },
+                selectedScope: { kind: "org", orgId: "org-1" },
+                selectedRouteScope: { kind: "org", orgSlug: "acme" },
+              }}
+            />
+          }
+        >
           <Route index element={<BackofficeInternalUsers />} />
         </Route>
       </Routes>

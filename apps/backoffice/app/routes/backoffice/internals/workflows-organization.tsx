@@ -11,6 +11,7 @@ import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.ser
 
 import { automationRuntimeScopeFromRouteParams } from "../automations/scope";
 import type { Route } from "./+types/workflows-organization";
+import { internalsScopeBasePath } from "./internals-scope";
 import { loadWorkflowInstanceSummaries, parsePageSize, WorkflowApiError } from "./workflows-data";
 import { formatTimestamp, getWorkflowStatusBadgeClasses } from "./workflows-shared";
 
@@ -73,7 +74,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export default function BackofficeWorkflowsOrganization() {
-  const { scopePath, scopeLabel, configured, workflows, instances, warnings, error } =
+  const { scopeLabel, configured, workflows, instances, warnings, error } =
     useLoaderData<typeof loader>();
   const location = useLocation();
   const params = useParams();
@@ -85,14 +86,15 @@ export default function BackofficeWorkflowsOrganization() {
   const listVisibility = isDetailRoute ? "hidden lg:block" : "block";
   const detailVisibility = isDetailRoute ? "block" : "hidden lg:block";
 
-  const baseScopePath = `/backoffice/internals/workflows/${scopePath}`;
+  const internalsBasePath = internalsScopeBasePath(requireBackofficeRouteScopeFromParams(params));
+  const baseScopePath = `${internalsBasePath}/workflows`;
 
   return (
     <div className="min-w-0 space-y-4">
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
-          { label: "Internals", to: "/backoffice/internals" },
+          { label: "Internals", to: internalsBasePath },
           { label: "Workflows" },
         ]}
         eyebrow="Internals"
