@@ -15,6 +15,7 @@ import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import type { AutomationCommandContext, BashAutomationCommandResult } from "./automation-types";
 import { createCurrentScopeBashCommand } from "./current-scope-command";
+import type { AdminRuntime } from "./families/admin";
 import type { RegisteredApiCommandContext } from "./families/api-runtime";
 import type { AutomationStoreRuntime } from "./families/automations-bindings";
 import type { DurableHooksRuntime } from "./families/automations-durable-hooks";
@@ -51,6 +52,7 @@ export type BashHostContext = {
   backofficeKernel: BackofficeKernel;
   stateBackend?: BackofficeStateBackend;
   createBackofficeScopedContext(scope: BackofficeContextScope): BashHostContext;
+  admin?: { runtime: AdminRuntime } | null;
   backoffice: { runtime: BackofficeCapabilitiesRuntime } | null;
   automation: RegisteredEventBashCommandContext | null;
   cloudflare?: { runtime: CloudflareRuntime } | null;

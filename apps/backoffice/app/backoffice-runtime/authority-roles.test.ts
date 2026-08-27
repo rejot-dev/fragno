@@ -125,6 +125,16 @@ describe("Backoffice authority role grants", () => {
     },
   );
 
+  test("restricts organization administration to system administrators", () => {
+    for (const [role, grants] of Object.entries(BACKOFFICE_AUTHORITY_ROLE_GRANTS)) {
+      if (role === "system-administrator") {
+        expect(grants).toContain(BACKOFFICE_PERMISSION.admin.organizationsManage);
+      } else {
+        expect(grants).not.toContain(BACKOFFICE_PERMISSION.admin.organizationsManage);
+      }
+    }
+  });
+
   test("restricts human internal maintenance access to system administrators", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["system-administrator"]).toContain(
       BACKOFFICE_PERMISSION.internal.manage,

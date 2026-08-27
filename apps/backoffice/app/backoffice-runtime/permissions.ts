@@ -6,6 +6,9 @@
  * permission to any role automatically.
  */
 export const BACKOFFICE_PERMISSION = {
+  admin: {
+    organizationsManage: { namespace: "admin", permission: "organizations.manage" },
+  },
   api: {
     connectionsCreate: { namespace: "api", permission: "connections.create" },
     connectionsDelete: { namespace: "api", permission: "connections.delete" },

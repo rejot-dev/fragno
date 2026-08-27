@@ -1,6 +1,7 @@
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 
 import { codemodeStateToolFamily } from "./codemode-state-runtime";
+import { adminToolFamily, type AdminRuntime } from "./families/admin";
 import { apiToolFamily, type ApiRuntime } from "./families/api";
 import {
   automationStoreToolFamily,
@@ -44,6 +45,7 @@ import {
 
 export type CoreBackofficeRuntimeMap = {
   state?: BackofficeStateBackend;
+  admin?: AdminRuntime;
   backoffice?: BackofficeCapabilitiesRuntime;
   automations?: AutomationStoreRuntime & AutomationRouterRuntime;
   identity?: AutomationIdentityRuntime;
@@ -68,6 +70,7 @@ export type CoreBackofficeToolContext = BackofficeToolContext<CoreBackofficeRunt
 
 export const runtimeToolFamilies = [
   codemodeStateToolFamily,
+  adminToolFamily,
   backofficeCapabilitiesToolFamily,
   automationStoreToolFamily,
   automationIdentityToolFamily,

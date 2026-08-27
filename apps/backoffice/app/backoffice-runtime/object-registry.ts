@@ -162,6 +162,19 @@ export type GrantBackofficeAdminResult =
   | { status: "user_not_found" }
   | { status: "user_not_active" };
 
+export type AdminOrganizationRecord = {
+  organizationId: string;
+  name: string;
+  slug: string;
+  ownerUserId: string;
+};
+
+export type AdminOrganizationMemberRecord = {
+  organizationId: string;
+  userId: string;
+  roles: string[];
+};
+
 export type AuthObject = FetchObject &
   AlarmableObject &
   DurableHookObject & {
@@ -191,6 +204,20 @@ export type AuthObject = FetchObject &
     }): Promise<UserAuthorityFacts>;
     /** Grants global administrator access; only the first administrator may be unverified. */
     grantBackofficeAdminByEmail(input: { email: string }): Promise<GrantBackofficeAdminResult>;
+    createAdminOrganization(input: {
+      name: string;
+      slug: string;
+      ownerEmail: string;
+    }): Promise<AdminOrganizationRecord>;
+    addAdminOrganizationMember(input: {
+      organizationId: string;
+      userId: string;
+      roles: readonly string[];
+    }): Promise<AdminOrganizationMemberRecord>;
+    removeAdminOrganizationMember(input: {
+      organizationId: string;
+      userId: string;
+    }): Promise<AdminOrganizationMemberRecord>;
     getAllOrganizations(): Promise<Organization[]>;
     getOrganizationBySlug(slug: string): Promise<Pick<Organization, "id" | "slug"> | null>;
     hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean>;
