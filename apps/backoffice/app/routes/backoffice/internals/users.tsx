@@ -3,8 +3,10 @@ import { useOutletContext } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
-import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 import { cn } from "@/lib/utils";
+
+import { internalsScopeBasePath } from "./internals-scope";
+import type { InternalsLayoutContext } from "./layout";
 
 const USERS_PAGE_SIZE = 50;
 const GLOBAL_ROLES = ["user", "admin"] as const;
@@ -91,7 +93,8 @@ export function meta() {
 }
 
 export default function BackofficeInternalUsers() {
-  const { me } = useOutletContext<BackofficeLayoutContext>();
+  const { me, selectedRouteScope } = useOutletContext<InternalsLayoutContext>();
+  const internalsBasePath = internalsScopeBasePath(selectedRouteScope);
   const [searchInput, setSearchInput] = useState("");
   const [directory, dispatchDirectory] = useReducer(
     usersDirectoryReducer,
@@ -143,7 +146,7 @@ export default function BackofficeInternalUsers() {
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
-          { label: "Internals", to: "/backoffice/internals" },
+          { label: "Internals", to: internalsBasePath },
           { label: "Users" },
         ]}
         eyebrow="Identity control"

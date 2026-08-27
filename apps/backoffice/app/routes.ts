@@ -244,37 +244,29 @@ export default [
         index("routes/backoffice/files/explorer.tsx"),
         route("*", "routes/backoffice/files/explorer-path.tsx"),
       ]),
-      route("internals", "routes/backoffice/internals/layout.tsx", [
+      route("internals", "routes/backoffice/internals/redirect.tsx"),
+      route("internals/:scopeKind/:scopeId", "routes/backoffice/internals/layout.tsx", [
         index("routes/backoffice/internals/index.tsx"),
         route("users", "routes/backoffice/internals/users.tsx"),
         route("github", "routes/backoffice/internals/github.tsx"),
         route("cloudflare/browser-run", "routes/backoffice/internals/cloudflare-browser-run.tsx"),
         route("generated-ui", "routes/backoffice/internals/generated-ui.tsx"),
-        route("durable-hooks", "routes/backoffice/internals/durable-hooks.tsx"),
-        route("workflows", "routes/backoffice/internals/workflows.tsx"),
+        route("durable-hooks", "routes/backoffice/internals/durable-hooks-scope-redirect.tsx"),
         route(
-          "durable-hooks/:scopeKind/:scopeId",
-          "routes/backoffice/internals/durable-hooks-scope-redirect.tsx",
-        ),
-        route(
-          "durable-hooks/:scopeKind/:scopeId/:objectId",
+          "durable-hooks/:objectId",
           "routes/backoffice/internals/durable-hooks-scope-layout.tsx",
           [
             index("routes/backoffice/internals/durable-hooks-scope-index.tsx"),
             route(":hookId", "routes/backoffice/internals/durable-hooks-scope-detail.tsx"),
           ],
         ),
-        route(
-          "workflows/:scopeKind/:scopeId",
-          "routes/backoffice/internals/workflows-organization.tsx",
-          [
-            index("routes/backoffice/internals/workflows-organization-index.tsx"),
-            route(
-              ":workflowName/:instanceId",
-              "routes/backoffice/internals/workflows-organization-detail.tsx",
-            ),
-          ],
-        ),
+        route("workflows", "routes/backoffice/internals/workflows-organization.tsx", [
+          index("routes/backoffice/internals/workflows-organization-index.tsx"),
+          route(
+            ":workflowName/:instanceId",
+            "routes/backoffice/internals/workflows-organization-detail.tsx",
+          ),
+        ]),
       ]),
       route("users", "routes/backoffice/users.tsx"),
       route("settings", "routes/backoffice/settings.tsx"),

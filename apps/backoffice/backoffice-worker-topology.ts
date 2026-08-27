@@ -171,16 +171,17 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
         "routes/backoffice/internals/generated-ui.tsx",
         "routes/backoffice/internals/github.tsx",
         "routes/backoffice/internals/index.tsx",
+        "routes/backoffice/internals/redirect.tsx",
         "routes/backoffice/internals/users.tsx",
       ],
       routeModulePrefixes: ["routes/backoffice/internals/workflows"],
       requestPathPrefixes: ["/backoffice/internals"],
       requestPathRegularExpressions: [],
-      excludedRequestPathPrefixes: [
-        "/backoffice/internals/cloudflare",
-        "/backoffice/internals/durable-hooks",
+      excludedRequestPathPrefixes: [],
+      excludedRequestPathRegularExpressions: [
+        "^/backoffice/internals/[^/]+/[^/]+/cloudflare(?:/|$)",
+        "^/backoffice/internals/[^/]+/[^/]+/durable-hooks(?:/|$)",
       ],
-      excludedRequestPathRegularExpressions: [],
       environment: {
         variables: sharedReactRouterVariables,
         secrets: { required: [], optional: [] },
@@ -191,8 +192,10 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
       serviceBinding: "ROUTES_INTERNALS_BROWSER",
       routeModules: ["routes/backoffice/internals/cloudflare-browser-run.tsx"],
       routeModulePrefixes: [],
-      requestPathPrefixes: ["/backoffice/internals/cloudflare"],
-      requestPathRegularExpressions: [],
+      requestPathPrefixes: [],
+      requestPathRegularExpressions: [
+        "^/backoffice/internals/[^/]+/[^/]+/cloudflare(?:/|$)",
+      ],
       excludedRequestPathPrefixes: [],
       excludedRequestPathRegularExpressions: [],
       environment: {
@@ -205,8 +208,10 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
       serviceBinding: "ROUTES_INTERNALS_DURABLE_HOOKS",
       routeModules: [],
       routeModulePrefixes: ["routes/backoffice/internals/durable-hooks"],
-      requestPathPrefixes: ["/backoffice/internals/durable-hooks"],
-      requestPathRegularExpressions: [],
+      requestPathPrefixes: [],
+      requestPathRegularExpressions: [
+        "^/backoffice/internals/[^/]+/[^/]+/durable-hooks(?:/|$)",
+      ],
       excludedRequestPathPrefixes: [],
       excludedRequestPathRegularExpressions: [],
       environment: {

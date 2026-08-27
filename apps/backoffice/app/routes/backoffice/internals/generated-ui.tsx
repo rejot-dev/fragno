@@ -1,6 +1,11 @@
+import { useOutletContext } from "react-router";
+
 import { BACKOFFICE_UI_COMPONENT_DEMOS, type BackofficeUiDemoCategory } from "@/backoffice-ui/demo";
 import { BackofficeUiErrorBoundary, BackofficeUiRenderer } from "@/backoffice-ui/renderer";
 import { BackofficePageHeader, BackofficeStatusLight } from "@/components/backoffice";
+
+import { internalsScopeBasePath } from "./internals-scope";
+import type { InternalsLayoutContext } from "./layout";
 
 const DEMO_CATEGORIES: BackofficeUiDemoCategory[] = ["Layout", "Content", "Data", "Input"];
 
@@ -15,12 +20,15 @@ export function meta() {
 }
 
 export default function BackofficeGeneratedUiCatalogDemo() {
+  const { selectedRouteScope } = useOutletContext<InternalsLayoutContext>();
+  const internalsBasePath = internalsScopeBasePath(selectedRouteScope);
+
   return (
     <div className="space-y-4">
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
-          { label: "Internals", to: "/backoffice/internals" },
+          { label: "Internals", to: internalsBasePath },
           { label: "Generated UI" },
         ]}
         eyebrow="Presentation system"

@@ -12,11 +12,16 @@ import {
 import { useMemo } from "react";
 import { Link } from "react-router";
 
+import {
+  backofficeRouteScopePath,
+  type BackofficeRouteScope,
+} from "@/backoffice-runtime/route-scope";
 import { authClient } from "@/fragno/auth/auth-client";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
 type BackofficeAccountMenuProps = {
   me: BackofficeMeData | null;
+  currentScope: BackofficeRouteScope | null;
   isLoading?: boolean;
 };
 
@@ -40,13 +45,16 @@ function userInitials(email: string) {
 const menuItemClassName =
   "flex min-h-10 cursor-default items-center gap-3 px-2.5 text-sm text-[var(--bo-muted)] outline-none transition-[scale,background-color,color] duration-150 ease-out data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)] active:scale-[0.96]";
 
-export function BackofficeAccountMenu({ me, isLoading }: BackofficeAccountMenuProps) {
+export function BackofficeAccountMenu({ me, currentScope, isLoading }: BackofficeAccountMenuProps) {
   const { mutate: signOut, loading: signingOut, error: signOutError } = authClient.useSignOut();
   const user = me?.user ?? null;
   const activeOrganization = me?.activeOrganization?.organization ?? null;
   const activeOrganizationPath = activeOrganization
     ? `/backoffice/organizations/${encodeURIComponent(activeOrganization.slug)}`
     : null;
+  const internalsPath = currentScope
+    ? `/backoffice/internals/${backofficeRouteScopePath(currentScope)}`
+    : "/backoffice/internals";
   const displayName = useMemo(() => (user ? userDisplayName(user.email) : null), [user]);
   const initials = useMemo(() => (user ? userInitials(user.email) : "--"), [user]);
 
@@ -181,10 +189,7 @@ export function BackofficeAccountMenu({ me, isLoading }: BackofficeAccountMenuPr
                   >
                     Administration
                   </p>
-                  <Menu.Item
-                    render={<Link to="/backoffice/internals" />}
-                    className={menuItemClassName}
-                  >
+                  <Menu.Item render={<Link to={internalsPath} />} className={menuItemClassName}>
                     <Shield className="size-4 shrink-0" aria-hidden="true" />
                     Internals
                   </Menu.Item>

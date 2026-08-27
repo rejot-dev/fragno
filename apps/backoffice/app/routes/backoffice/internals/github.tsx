@@ -1,4 +1,4 @@
-import { Link, useLoaderData } from "react-router";
+import { Link, useLoaderData, useOutletContext } from "react-router";
 
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
@@ -8,6 +8,8 @@ import {
 } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/github";
+import { internalsScopeBasePath } from "./internals-scope";
+import type { InternalsLayoutContext } from "./layout";
 
 type GitHubAdminConfigState = {
   configured: boolean;
@@ -122,13 +124,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 export default function BackofficeInternalsGitHub() {
   const { configState, configError, snapshot, snapshotError, setupUrl, organizationSlugs } =
     useLoaderData<typeof loader>();
+  const { selectedRouteScope } = useOutletContext<InternalsLayoutContext>();
+  const internalsBasePath = internalsScopeBasePath(selectedRouteScope);
 
   return (
     <div className="space-y-4">
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
-          { label: "Internals", to: "/backoffice/internals" },
+          { label: "Internals", to: internalsBasePath },
           { label: "GitHub" },
         ]}
         eyebrow="Internals"
@@ -136,7 +140,7 @@ export default function BackofficeInternalsGitHub() {
         description="Runtime setup and singleton webhook routing state."
         actions={
           <Link
-            to="/backoffice/internals"
+            to={internalsBasePath}
             className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
             Back to internals

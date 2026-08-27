@@ -17,6 +17,8 @@ import {
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import type { BackofficeMeData } from "@/fragno/auth/auth-client";
 
+import { internalsScopeBasePath } from "./internals-scope";
+
 export const DURABLE_HOOK_OBJECT_DEFINITIONS = [
   { id: "api", binding: "API", label: "API" },
   { id: "auth", binding: "AUTH", label: "Auth" },
@@ -147,7 +149,7 @@ export const durableHooksScopePath = (
   ) {
     throw new Error(`Durable hook object ${objectId} does not support ${scope.kind} scope.`);
   }
-  return `/backoffice/internals/durable-hooks/${backofficeRouteScopePath(scope)}/${objectId}`;
+  return `${internalsScopeBasePath(scope)}/durable-hooks/${objectId}`;
 };
 
 export const durableHooksSelectionPath = (selection: DurableHooksScopeSelection) =>

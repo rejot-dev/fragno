@@ -19,6 +19,7 @@ import { lookupAutomationProject, toExternalId } from "../automations/data.serve
 import type { Route } from "./+types/durable-hooks-scope-layout";
 import {
   createDurableHooksObjectOptions,
+  defaultDurableHooksObjectForScope,
   durableHooksSelectionPath,
   DURABLE_HOOKS_OBJECT_CONFIGURE_META,
   getDurableHooksLoaderErrorMessage,
@@ -29,6 +30,7 @@ import {
   type DurableHooksScopeSelection,
 } from "./durable-hooks-scope";
 import { formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";
+import { internalsScopeBasePath } from "./internals-scope";
 
 export type DurableHooksScopeOutletContext = {
   hooks: DurableHookQueueEntry[];
@@ -39,6 +41,7 @@ type DurableHooksScopeLoaderData = DurableHookQueueResponse & {
   error: string | null;
   selection: DurableHooksScopeSelection;
   objectOptions: DurableHooksObjectOption[];
+  objectNotFound: boolean;
 };
 
 const parsePageSize = (value: string | null) => {
@@ -187,13 +190,22 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       ? normalizeProject(runtimeScope.orgId, projectLookup)
       : [];
 
-  const selection = resolveDurableHooksScopeSelection({
+  const requestedSelection = resolveDurableHooksScopeSelection({
     scope: runtimeScope,
     objectId: params.objectId,
     organizations,
     projects,
     user: me.user,
   });
+  const selection =
+    requestedSelection ??
+    resolveDurableHooksScopeSelection({
+      scope: runtimeScope,
+      objectId: defaultDurableHooksObjectForScope(runtimeScope),
+      organizations,
+      projects,
+      user: me.user,
+    });
   if (!selection) {
     throw new Response("Not Found", { status: 404 });
   }
@@ -203,7 +215,21 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   const inspectorData = {
     selection,
     objectOptions: createDurableHooksObjectOptions(selection),
+    objectNotFound: requestedSelection === null,
   };
+
+  if (!requestedSelection) {
+    return {
+      configured: false,
+      hooksEnabled: false,
+      namespace: null,
+      items: [],
+      cursor: undefined,
+      hasNextPage: false,
+      error: null,
+      ...inspectorData,
+    } satisfies DurableHooksScopeLoaderData;
+  }
 
   try {
     const queue = await loadDurableHookQueue({ context, selection, cursor, pageSize });
@@ -238,7 +264,7 @@ function DurableHooksObjectPicker({
   selectedObjectId,
   options,
 }: {
-  selectedObjectId: DurableHooksScopeSelection["objectId"];
+  selectedObjectId: DurableHooksScopeSelection["objectId"] | null;
   options: DurableHooksObjectOption[];
 }) {
   return (
@@ -289,6 +315,7 @@ export default function BackofficeDurableHooksScopeLayout({ loaderData }: Route.
     hasNextPage,
     selection,
     objectOptions,
+    objectNotFound,
   } = loaderData;
   const location = useLocation();
   const navigate = useNavigate();
@@ -322,6 +349,9 @@ export default function BackofficeDurableHooksScopeLayout({ loaderData }: Route.
   newestSearchParams.delete("cursor");
   const newestSearch = newestSearchParams.toString();
   const newestPageHref = newestSearch ? `${objectBasePath}?${newestSearch}` : objectBasePath;
+  const internalsBasePath = internalsScopeBasePath(
+    backofficeRouteScopeFromResolvedScope(selection.resolvedScope),
+  );
 
   useEffect(() => {
     if (!selectedHookId || items.some((item) => item.id === selectedHookId)) {
@@ -336,8 +366,8 @@ export default function BackofficeDurableHooksScopeLayout({ loaderData }: Route.
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
-          { label: "Internals", to: "/backoffice/internals" },
-          { label: "Durable hooks", to: "/backoffice/internals/durable-hooks" },
+          { label: "Internals", to: internalsBasePath },
+          { label: "Durable hooks", to: `${internalsBasePath}/durable-hooks` },
           { label: selection.label },
         ]}
         eyebrow="Internals"
@@ -345,201 +375,218 @@ export default function BackofficeDurableHooksScopeLayout({ loaderData }: Route.
         description={`Review queued hooks and retry state for durable objects in this ${selection.kind} scope.`}
       />
 
-      <DurableHooksObjectPicker selectedObjectId={selection.objectId} options={objectOptions} />
+      <DurableHooksObjectPicker
+        selectedObjectId={objectNotFound ? null : selection.objectId}
+        options={objectOptions}
+      />
 
-      <section className="grid min-w-0 gap-4 lg:grid-cols-[1.5fr_1fr]">
-        <div
-          className={`${listVisibility} min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                Queue
-              </p>
-              <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
-                {objectLabel} durable hooks
-              </h2>
-              <p className="mt-1 text-xs text-[var(--bo-muted-2)]">
-                Namespace: {namespace ?? "Unavailable"}
-              </p>
+      {objectNotFound ? (
+        <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-6">
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">404</p>
+          <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
+            Durable object not found
+          </h2>
+          <p className="mt-2 text-sm text-[var(--bo-muted)]">
+            This fragment or Durable Object is not available in the selected scope.
+          </p>
+        </section>
+      ) : (
+        <section className="grid min-w-0 gap-4 lg:grid-cols-[1.5fr_1fr]">
+          <div
+            className={`${listVisibility} min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+                  Queue
+                </p>
+                <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
+                  {objectLabel} durable hooks
+                </h2>
+                <p className="mt-1 text-xs text-[var(--bo-muted-2)]">
+                  Namespace: {namespace ?? "Unavailable"}
+                </p>
+              </div>
+              <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
+                {queueCount} shown
+              </span>
             </div>
-            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-              {queueCount} shown
-            </span>
-          </div>
 
-          <div className="mt-4 space-y-3">
-            {error ? (
-              <div className="border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-                {error}
-              </div>
-            ) : !configured ? (
-              <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-                {objectLabel} durable hooks are not configured for this {selection.kind} scope.
-                {configureMeta && configurePath ? (
-                  <Link
-                    to={configurePath}
-                    className="ml-2 inline-flex text-[var(--bo-accent)] hover:text-[var(--bo-accent-strong)]"
-                  >
-                    {configureMeta.label}
-                  </Link>
-                ) : null}
-              </div>
-            ) : !hooksEnabled ? (
-              <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-                Durable hooks are disabled for this object. Enable durable hooks to begin queueing
-                work.
-              </div>
-            ) : queueCount === 0 ? (
-              <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
-                No durable hooks are queued right now.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="backoffice-scroll overflow-x-auto border border-[color:var(--bo-border)]">
-                  <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
-                    <thead className="bg-[var(--bo-panel-2)] text-left">
-                      <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                        <th scope="col" className="px-3 py-2">
-                          Hook
-                        </th>
-                        <th scope="col" className="px-3 py-2">
-                          Status
-                        </th>
-                        <th scope="col" className="px-3 py-2">
-                          Attempts
-                        </th>
-                        <th scope="col" className="px-3 py-2">
-                          Last attempt
-                        </th>
-                        <th scope="col" className="px-3 py-2">
-                          Next retry
-                        </th>
-                        <th scope="col" className="px-3 py-2">
-                          Created
-                        </th>
-                        <th scope="col" className="px-3 py-2 text-right">
-                          Detail
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-                      {items.map((hook) => {
-                        const isSelected = hook.id === selectedHookId;
-                        const detailHref = `${objectBasePath}/${encodeURIComponent(hook.id)}${location.search}`;
-                        return (
-                          <tr
-                            key={hook.id}
-                            role="button"
-                            tabIndex={0}
-                            aria-label={`View durable hook ${hook.hookName}`}
-                            onClick={() => void navigate(detailHref)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                void navigate(detailHref);
-                              }
-                            }}
-                            className={
-                              isSelected
-                                ? "cursor-pointer bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
-                                : "cursor-pointer text-[var(--bo-muted)] hover:bg-[var(--bo-panel-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
-                            }
-                          >
-                            <td className="px-3 py-2">
-                              <div>
-                                <span
-                                  className={
-                                    isSelected
-                                      ? "font-semibold text-[var(--bo-accent-fg)]"
-                                      : "font-semibold text-[var(--bo-fg)]"
-                                  }
-                                >
-                                  {hook.hookName}
-                                </span>
-                                <p
-                                  className={
-                                    isSelected
-                                      ? "text-xs text-[var(--bo-accent-fg)]/80"
-                                      : "text-xs text-[var(--bo-muted-2)]"
-                                  }
-                                >
-                                  ID: {hook.id}
-                                </p>
-                              </div>
-                            </td>
-                            <td className="px-3 py-2">
-                              <span
-                                className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${getStatusBadgeClasses(hook.status)}`}
-                              >
-                                {hook.status}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2">
-                              {hook.attempts} / {hook.maxAttempts}
-                            </td>
-                            <td className="px-3 py-2">
-                              {formatTimestamp(hook.lastAttemptAt) || "-"}
-                            </td>
-                            <td className="px-3 py-2">
-                              {formatTimestamp(hook.nextRetryAt) || "-"}
-                            </td>
-                            <td className="px-3 py-2">{formatTimestamp(hook.createdAt) || "-"}</td>
-                            <td className="px-3 py-2 text-right">
-                              <Link
-                                to={detailHref}
-                                onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
-                                  event.stopPropagation();
-                                }}
-                                className={
-                                  isSelected
-                                    ? "text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"
-                                    : "text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase hover:text-[var(--bo-fg)]"
-                                }
-                              >
-                                View
-                              </Link>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+            <div className="mt-4 space-y-3">
+              {error ? (
+                <div className="border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+                  {error}
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--bo-muted-2)]">
-                  <span>
-                    {queueCount} hook{queueCount === 1 ? "" : "s"} shown
-                  </span>
-                  <div className="flex items-center gap-2">
-                    {currentCursor ? (
-                      <Link
-                        to={newestPageHref}
-                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                      >
-                        Newest
-                      </Link>
-                    ) : null}
-                    {hasNextPage && nextPageHref ? (
-                      <Link
-                        to={nextPageHref}
-                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                      >
-                        Next page
-                      </Link>
-                    ) : null}
+              ) : !configured ? (
+                <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
+                  {objectLabel} durable hooks are not configured for this {selection.kind} scope.
+                  {configureMeta && configurePath ? (
+                    <Link
+                      to={configurePath}
+                      className="ml-2 inline-flex text-[var(--bo-accent)] hover:text-[var(--bo-accent-strong)]"
+                    >
+                      {configureMeta.label}
+                    </Link>
+                  ) : null}
+                </div>
+              ) : !hooksEnabled ? (
+                <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
+                  Durable hooks are disabled for this object. Enable durable hooks to begin queueing
+                  work.
+                </div>
+              ) : queueCount === 0 ? (
+                <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]">
+                  No durable hooks are queued right now.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="backoffice-scroll overflow-x-auto border border-[color:var(--bo-border)]">
+                    <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
+                      <thead className="bg-[var(--bo-panel-2)] text-left">
+                        <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                          <th scope="col" className="px-3 py-2">
+                            Hook
+                          </th>
+                          <th scope="col" className="px-3 py-2">
+                            Status
+                          </th>
+                          <th scope="col" className="px-3 py-2">
+                            Attempts
+                          </th>
+                          <th scope="col" className="px-3 py-2">
+                            Last attempt
+                          </th>
+                          <th scope="col" className="px-3 py-2">
+                            Next retry
+                          </th>
+                          <th scope="col" className="px-3 py-2">
+                            Created
+                          </th>
+                          <th scope="col" className="px-3 py-2 text-right">
+                            Detail
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
+                        {items.map((hook) => {
+                          const isSelected = hook.id === selectedHookId;
+                          const detailHref = `${objectBasePath}/${encodeURIComponent(hook.id)}${location.search}`;
+                          return (
+                            <tr
+                              key={hook.id}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`View durable hook ${hook.hookName}`}
+                              onClick={() => void navigate(detailHref)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  void navigate(detailHref);
+                                }
+                              }}
+                              className={
+                                isSelected
+                                  ? "cursor-pointer bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
+                                  : "cursor-pointer text-[var(--bo-muted)] hover:bg-[var(--bo-panel-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
+                              }
+                            >
+                              <td className="px-3 py-2">
+                                <div>
+                                  <span
+                                    className={
+                                      isSelected
+                                        ? "font-semibold text-[var(--bo-accent-fg)]"
+                                        : "font-semibold text-[var(--bo-fg)]"
+                                    }
+                                  >
+                                    {hook.hookName}
+                                  </span>
+                                  <p
+                                    className={
+                                      isSelected
+                                        ? "text-xs text-[var(--bo-accent-fg)]/80"
+                                        : "text-xs text-[var(--bo-muted-2)]"
+                                    }
+                                  >
+                                    ID: {hook.id}
+                                  </p>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2">
+                                <span
+                                  className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${getStatusBadgeClasses(hook.status)}`}
+                                >
+                                  {hook.status}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2">
+                                {hook.attempts} / {hook.maxAttempts}
+                              </td>
+                              <td className="px-3 py-2">
+                                {formatTimestamp(hook.lastAttemptAt) || "-"}
+                              </td>
+                              <td className="px-3 py-2">
+                                {formatTimestamp(hook.nextRetryAt) || "-"}
+                              </td>
+                              <td className="px-3 py-2">
+                                {formatTimestamp(hook.createdAt) || "-"}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <Link
+                                  to={detailHref}
+                                  onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
+                                    event.stopPropagation();
+                                  }}
+                                  className={
+                                    isSelected
+                                      ? "text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"
+                                      : "text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase hover:text-[var(--bo-fg)]"
+                                  }
+                                >
+                                  View
+                                </Link>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--bo-muted-2)]">
+                    <span>
+                      {queueCount} hook{queueCount === 1 ? "" : "s"} shown
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {currentCursor ? (
+                        <Link
+                          to={newestPageHref}
+                          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                        >
+                          Newest
+                        </Link>
+                      ) : null}
+                      {hasNextPage && nextPageHref ? (
+                        <Link
+                          to={nextPageHref}
+                          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                        >
+                          Next page
+                        </Link>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
 
-        <div
-          className={`${detailVisibility} min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
-        >
-          <Outlet context={{ hooks: items, objectBasePath }} />
-        </div>
-      </section>
+          <div
+            className={`${detailVisibility} min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4`}
+          >
+            <Outlet context={{ hooks: items, objectBasePath }} />
+          </div>
+        </section>
+      )}
     </div>
   );
 }
