@@ -1024,10 +1024,14 @@ const createPreset = (
   ),
 });
 
+const SCENARIO_STATIC_FILE_CONTENT = Object.fromEntries(
+  Object.entries(STATIC_FILE_CONTENT).filter(([path]) => path !== "codemode/sources/mcp.d.ts"),
+);
+
 export const backofficeFiles = {
   systemOnly: () =>
     createPreset({
-      ...mapContentToMountedFiles("/static", STATIC_FILE_CONTENT),
+      ...mapContentToMountedFiles("/static", SCENARIO_STATIC_FILE_CONTENT),
       ...mapContentToMountedFiles("/system", SYSTEM_FILE_CONTENT),
     }),
   workspaceStarter: (additionalFiles: Record<string, string | Uint8Array> = {}) =>
@@ -1039,7 +1043,7 @@ export const backofficeFiles = {
     ),
   fullStarter: () =>
     createPreset({
-      ...mapContentToMountedFiles("/static", STATIC_FILE_CONTENT),
+      ...mapContentToMountedFiles("/static", SCENARIO_STATIC_FILE_CONTENT),
       ...mapContentToMountedFiles("/system", SYSTEM_FILE_CONTENT),
       ...mapContentToMountedFiles("/workspace", WORKSPACE_STARTER_CONTENT),
     }),

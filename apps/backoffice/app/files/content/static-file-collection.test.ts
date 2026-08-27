@@ -3,9 +3,9 @@ import { describe, expect, test, vi, assert } from "vitest";
 import { STATIC_FILE_CONTENT, createBackofficeStaticFileCollection } from "./static";
 
 describe("Backoffice static file collection", () => {
-  test("combines built-in files with loaded static artifacts", async () => {
+  test("loads organization-specific MCP declarations without blocking the static tree", async () => {
     const loadStaticFileArtifacts = vi.fn(() => ({
-      "codemode/system.d.ts": "declare const configured: true;",
+      "codemode/sources/mcp.d.ts": "declare const configured: true;",
     }));
     const collection = createBackofficeStaticFileCollection(loadStaticFileArtifacts);
 
@@ -15,13 +15,16 @@ describe("Backoffice static file collection", () => {
         "SYSTEM.md",
         "codemode",
         "codemode/system.d.ts",
+        "codemode/providers/telegram.d.ts",
+        "codemode/sources/mcp.d.ts",
         "docs/README.md",
         "docs/automations/scripts.md",
         "skills/generating-backoffice-uis/SKILL.md",
       ]),
     );
+    expect(loadStaticFileArtifacts).not.toHaveBeenCalled();
 
-    const loadedFile = await collection.getFile("codemode/system.d.ts");
+    const loadedFile = await collection.getFile("codemode/sources/mcp.d.ts");
     expect(loadedFile).not.toBeNull();
     assert((await new Response(loadedFile!.body).text()) === "declare const configured: true;");
     expect(loadStaticFileArtifacts).toHaveBeenCalledTimes(1);
@@ -29,14 +32,14 @@ describe("Backoffice static file collection", () => {
 
   test("searches built-in and loaded static file contents", async () => {
     const collection = createBackofficeStaticFileCollection(() => ({
-      "codemode/system.d.ts": "declare const configured: true;",
+      "codemode/sources/mcp.d.ts": "declare const configured: true;",
     }));
 
     const { matches } = await collection.searchFiles("**", "configured");
 
     expect(matches).toContainEqual(
       expect.objectContaining({
-        path: "codemode/system.d.ts",
+        path: "codemode/sources/mcp.d.ts",
         line: 1,
         column: 15,
         text: "configured",

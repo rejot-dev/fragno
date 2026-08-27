@@ -1,5 +1,5 @@
 defineWorkflow({ name: "telegram-user-linking" }, async (event, step) => {
-  const automationEvent = event;
+  const automationEvent = /** @type {WorkflowEvent<{text?: string; chatId: string}>} */ (event);
   const workflowInstanceId = event.instanceId;
   const chatId = automationEvent.payload.chatId;
 
@@ -70,7 +70,11 @@ defineWorkflow({ name: "telegram-user-linking" }, async (event, step) => {
     type: "identity-claim-completed",
     timeout: "15 minutes",
   });
-  const completedEvent = completed.payload;
+  const completedEvent = /** @type {{
+   *   payload: {otpId: string};
+   *   actors: {initiator: {source: string; type: string; id: string}};
+   *   subject: {userId: string};
+   * }} */ (completed.payload);
   const completedOtpId = completedEvent.payload.otpId;
   const completedActor = completedEvent.actors.initiator;
   const completedActorId = completedActor.id;

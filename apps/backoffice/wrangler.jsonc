@@ -16,6 +16,9 @@
     },
   },
   "preview_urls": true,
+  "dev": {
+    "enable_containers": false,
+  },
   "containers": [
     {
       "class_name": "Sandbox",

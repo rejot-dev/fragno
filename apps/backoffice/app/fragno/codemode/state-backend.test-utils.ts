@@ -3,6 +3,9 @@ import { globToRegExp, searchTextContent } from "@fragno-dev/upload/text-index";
 import { applyFileEditOperation, diffContent, type FileEditOperation } from "@fragno-dev/upload";
 
 import type { FetchObject } from "@/backoffice-runtime/object-registry";
+import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
+import type { FileCollection } from "@/file-collection/file-collection";
+import { STATIC_FILE_CONTENT } from "@/files/content/static";
 
 import { createBackofficeStateBackend, type BackofficeStateBackend } from "./state-backend";
 
@@ -17,11 +20,38 @@ export const createTestStateBackend = ({
 } = {}): BackofficeStateBackend =>
   createBackofficeStateBackend({
     uploadObject: upload,
-    staticFileArtifacts: () => {
-      onResolveStaticFiles?.();
-      return staticFiles;
-    },
+    staticFileCollection: createTestStaticFileCollection(staticFiles, onResolveStaticFiles),
   });
+
+function createTestStaticFileCollection(
+  staticFiles: Record<string, string | Uint8Array>,
+  onResolveStaticFiles: (() => void) | undefined,
+): FileCollection {
+  let collection: FileCollection | undefined;
+
+  function getCollection(): FileCollection {
+    if (!collection) {
+      onResolveStaticFiles?.();
+      collection = createStaticFileCollection({
+        ...STATIC_FILE_CONTENT,
+        ...staticFiles,
+      });
+    }
+    return collection;
+  }
+
+  return {
+    async getTree() {
+      return getCollection().getTree();
+    },
+    async getFile(path) {
+      return getCollection().getFile(path);
+    },
+    async searchFiles(pattern, query, options, cursor) {
+      return getCollection().searchFiles(pattern, query, options, cursor);
+    },
+  };
+}
 
 type MemoryUploadRecord = {
   fileKey: string;

@@ -1,5 +1,3 @@
-/// <reference path="/static/codemode/workflow-authoring.d.ts" />
-
 defineWorkflow(
   { name: "install-telegram-test-command" },
   async (/** @type {WorkflowEvent<any>} */ event, step) => {
@@ -10,7 +8,6 @@ defineWorkflow(
     }
 
     const existingMessage = await step.do("load current test message", async () => {
-      // @ts-expect-error -- store is injected into the workflow runtime.
       const storedMessage = await store.get({
         key: "marketplace/telegram-test-command/message",
       });
@@ -77,7 +74,6 @@ defineWorkflow(
     }
 
     await step.do("store test message", async () => {
-      // @ts-expect-error -- store is injected into the workflow runtime.
       return await store.set({
         key: "marketplace/telegram-test-command/message",
         value: configuredMessage.trim(),
@@ -87,6 +83,7 @@ defineWorkflow(
     });
 
     await step.do("ensure Telegram /test route", async () => {
+      /** @satisfies {RouterCreateInput} */
       const desired = {
         id: "telegram-test-command",
         name: "Telegram /test command",
@@ -110,10 +107,8 @@ defineWorkflow(
           version: event.payload.version,
         },
       };
-      // @ts-expect-error -- router is injected into the workflow runtime.
       const existing = await router.get({ id: desired.id });
       if (!existing) {
-        // @ts-expect-error -- router is injected into the workflow runtime.
         return await router.create({ ...desired, enabled: true });
       }
 
@@ -128,7 +123,6 @@ defineWorkflow(
         );
       }
 
-      // @ts-expect-error -- router is injected into the workflow runtime.
       return await router.update({
         ...desired,
         enabled: existing.enabled,

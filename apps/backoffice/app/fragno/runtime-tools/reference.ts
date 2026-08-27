@@ -1,6 +1,5 @@
 import { zodSchemaToTypeScriptRender } from "@/lib/zod/zod-formatter";
 
-import workflowAuthoringTypes from "../../../content/static/codemode/workflow-authoring.d.ts?raw";
 import type { AutomationCommandOptionSpec } from "./automation-types";
 import {
   createTrustedSystemBackofficeToolContext,
@@ -204,8 +203,6 @@ const renderJSDoc = (value: string, spaces = 0) => {
   return [`${prefix}/**`, ...lines.map((line) => `${prefix} * ${line}`), `${prefix} */`].join("\n");
 };
 
-export const renderCodemodeWorkflowTypes = () => workflowAuthoringTypes.trimEnd();
-
 const INLINE_CODEMODE_TYPES = new Set([
   "boolean",
   "never",
@@ -315,9 +312,9 @@ export const renderCodemodeScopedContextTypes = (namespaces: readonly string[]) 
     '  | { kind: "org"; orgId: string }',
     '  | { kind: "user"; userId: string }',
     '  | { kind: "project"; orgId: string; projectId: string };',
-    "type BackofficeCodemodeScopedProviders = {",
+    "interface BackofficeCodemodeScopedProviders {",
     ...scopedProviderEntries,
-    "};",
+    "}",
     "declare const context: {",
     "  /** Return the exact scope governing this codemode execution. */",
     "  getCurrentScope(): Promise<BackofficeCodemodeScope>;",
@@ -333,7 +330,7 @@ export const renderCodemodeScopedContextTypes = (namespaces: readonly string[]) 
   ].join("\n");
 };
 
-export const renderCodemodeProviderTypes = (references: readonly RuntimeToolReference[]) => {
+function renderCodemodeProviderSections(references: readonly RuntimeToolReference[]) {
   const byNamespace = groupReferencesByNamespace(references);
   const renderedSharedTypeDeclarations = new Set<string>();
   const providerSections = [...byNamespace.entries()].map(([namespace, namespaceReferences]) =>
@@ -343,11 +340,28 @@ export const renderCodemodeProviderTypes = (references: readonly RuntimeToolRefe
       renderedSharedTypeDeclarations,
     }),
   );
+  return { namespaces: [...byNamespace.keys()], providerSections };
+}
 
+/** Renders providers that merge additional namespaces into the base scoped context interface. */
+export function renderCodemodeProviderExtensionTypes(references: readonly RuntimeToolReference[]) {
+  const { namespaces, providerSections } = renderCodemodeProviderSections(references);
+  const scopedProviderEntries = namespaces.map(
+    (namespace) => `  ${namespace}: ${pascalCase(namespace)}CodemodeProvider;`,
+  );
   return [
     "// ── Backoffice domain tool providers ───────────────────────────────────",
     ...providerSections,
-    renderCodemodeScopedContextTypes([...byNamespace.keys()]),
+    ["interface BackofficeCodemodeScopedProviders {", ...scopedProviderEntries, "}"].join("\n"),
+  ].join("\n\n");
+}
+
+export const renderCodemodeProviderTypes = (references: readonly RuntimeToolReference[]) => {
+  const { namespaces, providerSections } = renderCodemodeProviderSections(references);
+  return [
+    "// ── Backoffice domain tool providers ───────────────────────────────────",
+    ...providerSections,
+    renderCodemodeScopedContextTypes(namespaces),
   ].join("\n\n");
 };
 

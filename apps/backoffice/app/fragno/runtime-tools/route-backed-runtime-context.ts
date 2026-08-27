@@ -11,6 +11,7 @@ import { backofficeRouteScopeSinglePathSegment } from "@/backoffice-runtime/rout
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { createBackofficeFileSystem, type IFileSystem } from "@/files";
+import { createBackofficeStaticFileCollection } from "@/files/content/static";
 import type { AutomationActors } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
 import { readAutomationWorkspaceScript } from "@/fragno/automation/catalog";
@@ -104,11 +105,13 @@ const createExecutionStateBackend = ({
 
   return createBackofficeStateBackend({
     uploadObject: kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload),
-    staticFileArtifacts: createCodemodeStaticArtifactsResolver({
-      objects: runtime.objects,
-      config: runtime.config,
-      execution,
-    }),
+    staticFileCollection: createBackofficeStaticFileCollection(
+      createCodemodeStaticArtifactsResolver({
+        objects: runtime.objects,
+        config: runtime.config,
+        execution,
+      }),
+    ),
   });
 };
 

@@ -17,10 +17,14 @@ export const staticFileMount: FileMountMetadata = {
     "Immutable product-owned guidance, skills, codemode declarations, and static automations.",
 };
 
-const createStaticFileSystem = (ctx: FilesContext) =>
-  createReadOnlyContentFileSystem(STATIC_FILE_MOUNT_POINT, STATIC_FILE_CONTENT, {
-    lazyArtifacts: [{ pathPrefix: "codemode", load: ctx.staticFileArtifacts }],
+const createStaticFileSystem = (ctx: FilesContext) => {
+  let dynamicArtifactsPromise: ReturnType<FilesContext["staticFileArtifacts"]> | undefined;
+  const loadDynamicArtifacts = () => (dynamicArtifactsPromise ??= ctx.staticFileArtifacts());
+
+  return createReadOnlyContentFileSystem(STATIC_FILE_MOUNT_POINT, STATIC_FILE_CONTENT, {
+    lazyArtifacts: [{ pathPrefix: "codemode/sources", load: loadDynamicArtifacts }],
   });
+};
 
 export const staticFileContributor: FileContributor = {
   ...staticFileMount,

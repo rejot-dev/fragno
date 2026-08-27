@@ -7,7 +7,7 @@ import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-servi
 import { createCodemodeStaticArtifactsResolver } from "./static-codemode-artifacts";
 
 describe("createCodemodeStaticArtifactsResolver", () => {
-  test("provides codemode declarations for user-scoped sessions", async () => {
+  test("does not resolve organization-specific MCP declarations for user scope", async () => {
     const resolveArtifacts = createCodemodeStaticArtifactsResolver({
       objects: {} as BackofficeObjectRegistry,
       config: {} as BackofficeRuntimeConfig,
@@ -15,12 +15,8 @@ describe("createCodemodeStaticArtifactsResolver", () => {
         scope: { kind: "user", userId: "user-1" },
         userId: "user-1",
       }),
-      families: [],
     });
 
-    await expect(resolveArtifacts()).resolves.toMatchObject({
-      "codemode/system.d.ts": expect.any(String),
-      "codemode/workflow-authoring.d.ts": expect.any(String),
-    });
+    await expect(resolveArtifacts()).resolves.toEqual({});
   });
 });

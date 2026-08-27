@@ -267,7 +267,10 @@ const resolveContentArtifactsForDirectory = async (
     return artifacts;
   }
 
-  if (!relativePath) {
+  if (
+    !relativePath ||
+    lazyArtifacts.some((entry) => entry.pathPrefix.startsWith(`${relativePath}/`))
+  ) {
     return withLazyRootPlaceholders(artifacts, lazyArtifacts);
   }
 

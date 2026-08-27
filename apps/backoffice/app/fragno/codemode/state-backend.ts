@@ -24,10 +24,6 @@ import type {
   FileTree,
   FileTreeEntry,
 } from "@/file-collection/file-collection";
-import {
-  createBackofficeStaticFileCollection,
-  type StaticFileArtifactsLoader,
-} from "@/files/content/static";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller, type UploadRouteCaller } from "@/fragno/upload-server";
 import type { JsonValue } from "@/lib/zod/json-value";
@@ -160,7 +156,7 @@ export interface BackofficeStateBackend {
 
 export const createBackofficeStateBackend = (input: {
   uploadObject: FetchObject;
-  staticFileArtifacts: StaticFileArtifactsLoader;
+  staticFileCollection: FileCollection;
 }): BackofficeStateBackend => {
   const routes = createUploadRouteCaller(input.uploadObject);
 
@@ -186,7 +182,7 @@ export const createBackofficeStateBackend = (input: {
     },
     static: {
       mountPoint: STATIC_MOUNT_POINT,
-      collection: createBackofficeStaticFileCollection(input.staticFileArtifacts),
+      collection: input.staticFileCollection,
     },
   });
 };

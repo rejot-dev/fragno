@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "strict": true
   },
-  "include": ["marketplace/**/.marketplace/**/*.js", "static/codemode/**/*.d.ts"]
+  "include": ["**/*.js", "static/codemode/**/*.d.ts"]
 }

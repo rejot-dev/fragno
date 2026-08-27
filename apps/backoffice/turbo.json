@@ -1,6 +1,16 @@
 {
   "extends": ["//"],
   "tasks": {
+    "build": {
+      "dependsOn": ["$TURBO_EXTENDS$", "codemode:generate"]
+    },
+    "codemode:generate": {
+      "outputs": [
+        "content/static/codemode/system.d.ts",
+        "content/static/codemode/providers/**",
+        "content/static/codemode/sources/mcp.d.ts"
+      ]
+    },
     "types:generate": {
       "outputs": ["worker-configuration.d.ts", ".react-router/types/**", ".source/**"]
     },

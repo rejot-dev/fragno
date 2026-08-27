@@ -1,16 +1,19 @@
 defineWorkflow({ name: "project-files-configure" }, async (event, step) => {
-  const automationEvent = event;
+  const automationEvent = /** @type {WorkflowEvent<{project?: {id?: string}}>} */ (event);
 
   if (automationEvent.source !== "automations" || automationEvent.eventType !== "project.created") {
     return { skipped: true, reason: "not-project-created" };
   }
 
-  const projectId = automationEvent.subject?.projectId ?? automationEvent.payload.project?.id;
+  const subjectProjectId = automationEvent.subject?.projectId;
+  const projectId =
+    typeof subjectProjectId === "string" ? subjectProjectId : automationEvent.payload.project?.id;
   if (!projectId) {
     throw new Error("project.created event is missing subject.projectId.");
   }
 
   return await step.do("configure project database filesystem", async () => {
+    // @ts-expect-error -- internal is intentionally excluded from public codemode declarations.
     return await internal.projectFilesConfigure({ projectId });
   });
 });

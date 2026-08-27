@@ -11,6 +11,8 @@ pre-commit:
       run:
         sh -c 'node scripts/format-files.mjs --staged --check; code=$?; node
         scripts/format-files.mjs --staged; exit $code'
+    - name: "codemode static types: update generated files"
+      run: pnpm --filter @fragno-apps/backoffice-rr run codemode:fix
     - name: "changeset status: validate frontmatter"
       run: pnpm exec changeset status
       glob: ".changeset/**"

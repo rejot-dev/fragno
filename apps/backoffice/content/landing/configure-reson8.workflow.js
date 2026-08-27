@@ -53,7 +53,8 @@ defineWorkflow({ name: "configure-reson8" }, async (_event, step) => {
   const submitted = await step.waitForEvent("reson8-credentials", {
     type: "reson8-credentials",
   });
-  const apiKey = String(submitted.payload?.apiKey ?? "").trim();
+  const submittedPayload = /** @type {{apiKey?: unknown}} */ (submitted.payload);
+  const apiKey = String(submittedPayload.apiKey ?? "").trim();
   if (!apiKey) {
     throw new Error("A Reson8 API key is required.");
   }

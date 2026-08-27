@@ -112,17 +112,24 @@ describe("static file contributor", () => {
     await expect(fs.readdir("/static")).resolves.toEqual(
       expect.arrayContaining(["SYSTEM.md", "codemode"]),
     );
-    await expect(fs.readFile("/static/codemode/system.d.ts")).rejects.toThrow(
+    await expect(fs.readFile("/static/codemode/system.d.ts")).resolves.toContain(
+      "/static/codemode/providers/telegram.d.ts",
+    );
+    await expect(fs.readFile("/static/codemode/sources/mcp.d.ts")).rejects.toThrow(
       "codemode unavailable",
     );
   });
 
-  test("loads codemode artifacts only for codemode paths", async () => {
-    const fs = createStaticFs(() => ({ "codemode/system.d.ts": "declare const ok: true;" }));
+  test("loads organization-specific artifacts only for the codemode sources directory", async () => {
+    const fs = createStaticFs(() => ({
+      "codemode/sources/mcp.d.ts": "declare const ok: true;",
+    }));
 
-    await expect(fs.readFile("/static/codemode/system.d.ts")).resolves.toBe(
+    await expect(fs.readFile("/static/codemode/sources/mcp.d.ts")).resolves.toBe(
       "declare const ok: true;",
     );
-    await expect(fs.readdir("/static/codemode")).resolves.toEqual(["system.d.ts"]);
+    await expect(fs.readdir("/static/codemode")).resolves.toEqual(
+      expect.arrayContaining(["providers", "sources", "system.d.ts"]),
+    );
   });
 });
