@@ -2,12 +2,18 @@ import { createClientBuilder } from "@fragno-dev/core/client";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
 import { instantiate } from "@fragno-dev/core";
-import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import type { FragnoPublicConfigWithDatabase, HookContext } from "@fragno-dev/db";
 
 import type { UISchemaElement } from "@jsonforms/core";
 
 import { formsFragmentDef } from "./definition";
-import type { Form, JSONSchema, FormResponse } from "./models";
+import type {
+  FormCreatedHookPayload,
+  FormDeletedHookPayload,
+  FormResponseSubmittedHookPayload,
+  JSONSchema,
+  StoredFormHookPayload,
+} from "./models";
 import { publicRoutes, adminRoutes } from "./routes";
 
 // Forms that exist in code, but submissions are stored in the DB
@@ -23,8 +29,13 @@ export interface StaticForm {
 }
 
 export interface FormsConfig {
-  onFormCreated?: (form: Omit<Form, "version" | "createdAt" | "updatedAt">) => Promise<void>;
-  onResponseSubmitted?: (response: FormResponse) => Promise<void>;
+  onFormCreated?: (form: FormCreatedHookPayload, context: HookContext) => Promise<void> | void;
+  onFormUpdated?: (form: StoredFormHookPayload, context: HookContext) => Promise<void> | void;
+  onFormDeleted?: (form: FormDeletedHookPayload, context: HookContext) => Promise<void> | void;
+  onResponseSubmitted?: (
+    response: FormResponseSubmittedHookPayload,
+    context: HookContext,
+  ) => Promise<void> | void;
   staticForms?: StaticForm[];
 }
 
@@ -64,7 +75,7 @@ export function createFormsClients(fragnoConfig: FragnoPublicClientConfig) {
 }
 
 export { formsFragmentDef } from "./definition";
-export type { SubmissionSortOptions } from "./definition";
+export type { SubmissionListOptions } from "./definition";
 export type { FragnoRouteConfig } from "@fragno-dev/core";
 export type {
   NewForm,
@@ -73,5 +84,10 @@ export type {
   NewFormResponse,
   FormResponse,
   FormResponseMetadata,
+  FormSubmissionsPage,
   FormStatus,
+  FormCreatedHookPayload,
+  FormDeletedHookPayload,
+  StoredFormHookPayload,
+  FormResponseSubmittedHookPayload,
 } from "./models";

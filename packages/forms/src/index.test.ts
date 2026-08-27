@@ -1,10 +1,11 @@
-import { describe, test, expect, afterAll, assert } from "vitest";
+import { describe, test, expect, afterAll, assert, vi } from "vitest";
 
 import { instantiate } from "@fragno-dev/core";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { Cursor } from "@fragno-dev/db";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
 import { formsFragmentDef, routes } from "./index";
-import { formsSchema } from "./schema";
+import { formsSchema, FORM_RESPONSE_PAGINATION_INDEX_NAME } from "./schema";
 
 // Example JSON Schema from jsonforms.io - Person form
 const personDataSchema = {
@@ -193,6 +194,24 @@ describe("Forms Fragment", () => {
       expect(response.data).toEqual(expect.any(String));
     });
 
+    test("should return a conflict when creating a form with an existing slug", async () => {
+      const response = await formsFragment.callRoute("POST", "/admin/forms", {
+        body: {
+          title: "Duplicate Contact Form",
+          slug: "contact-form",
+          description: null,
+          status: "draft",
+          dataSchema: personDataSchema,
+          uiSchema: personUiSchema,
+        },
+      });
+
+      assert(response.type === "error");
+      assert(response.status === 409);
+      assert(response.error.code === "SLUG_ALREADY_EXISTS");
+      assert(response.error.message === 'A form with slug "contact-form" already exists');
+    });
+
     test("should list all forms", async () => {
       const response = await formsFragment.callRoute("GET", "/admin/forms");
 
@@ -210,7 +229,7 @@ describe("Forms Fragment", () => {
           title: "Survey Form",
           slug: "survey",
           description: null,
-          status: "draft",
+          status: "open",
           dataSchema: surveyDataSchema,
           uiSchema: surveyUiSchema,
         },
@@ -272,9 +291,9 @@ describe("Forms Fragment", () => {
         }
       }
 
-      // Verify update via GET (public route uses slug)
-      const getResponse = await formsFragment.callRoute("GET", "/:slug", {
-        pathParams: { slug: "test-form" },
+      // Verify update through the authenticated admin route.
+      const getResponse = await formsFragment.callRoute("GET", "/admin/forms/:id", {
+        pathParams: { id: formId },
       });
 
       assert(getResponse.type === "json");
@@ -282,6 +301,39 @@ describe("Forms Fragment", () => {
       assert(getResponse.data.title === "Updated Test Form");
       assert(getResponse.data.description === "Now with a description");
       assert(getResponse.data.version === 2);
+    });
+
+    test("should return a conflict when updating a form to an existing slug", async () => {
+      const firstCreateResponse = await formsFragment.callRoute("POST", "/admin/forms", {
+        body: {
+          title: "First Unique Form",
+          slug: "first-unique-form",
+          description: null,
+          status: "draft",
+          dataSchema: { type: "object" },
+        },
+      });
+      const secondCreateResponse = await formsFragment.callRoute("POST", "/admin/forms", {
+        body: {
+          title: "Second Unique Form",
+          slug: "second-unique-form",
+          description: null,
+          status: "draft",
+          dataSchema: { type: "object" },
+        },
+      });
+      assert(firstCreateResponse.type === "json");
+      assert(secondCreateResponse.type === "json");
+
+      const response = await formsFragment.callRoute("PUT", "/admin/forms/:id", {
+        pathParams: { id: secondCreateResponse.data },
+        body: { slug: "first-unique-form" },
+      });
+
+      assert(response.type === "error");
+      assert(response.status === 409);
+      assert(response.error.code === "SLUG_ALREADY_EXISTS");
+      assert(response.error.message === 'A form with slug "first-unique-form" already exists');
     });
 
     test("should delete a form", async () => {
@@ -328,6 +380,30 @@ describe("Forms Fragment", () => {
       assert(response.status === 404);
       assert(response.error.code === "NOT_FOUND");
     });
+
+    test.each(["draft", "closed"] as const)(
+      "should not expose %s form definitions through the public route",
+      async (status) => {
+        const createResponse = await formsFragment.callRoute("POST", "/admin/forms", {
+          body: {
+            title: `${status} private form`,
+            slug: `${status}-private-form`,
+            description: null,
+            status,
+            dataSchema: { type: "object", properties: { privateAnswer: { type: "string" } } },
+          },
+        });
+        assert(createResponse.type === "json");
+
+        const response = await formsFragment.callRoute("GET", "/:slug", {
+          pathParams: { slug: `${status}-private-form` },
+        });
+
+        assert(response.type === "error");
+        assert(response.status === 404);
+        assert(response.error.code === "NOT_FOUND");
+      },
+    );
 
     test("should reject form creation with invalid JSON Schema", async () => {
       const response = await formsFragment.callRoute("POST", "/admin/forms", {
@@ -533,7 +609,7 @@ describe("Forms Fragment", () => {
       expect(submitResponse.data).toEqual(expect.any(String));
     });
 
-    test("should list submissions for a form", async () => {
+    test("should paginate submissions for a form", async () => {
       // Submit another response to the published form (public route uses slug)
       await formsFragment.callRoute("POST", "/:slug/submit", {
         pathParams: { slug: "published-form" },
@@ -542,14 +618,46 @@ describe("Forms Fragment", () => {
         },
       });
 
-      // List submissions
-      const response = await formsFragment.callRoute("GET", "/admin/forms/:id/submissions", {
+      const firstPage = await formsFragment.callRoute("GET", "/admin/forms/:id/submissions", {
         pathParams: { id: publishedFormId },
+        query: { pageSize: "1", sortOrder: "desc" },
       });
 
-      assert(response.type === "json");
-      assert(response.status === 200);
-      expect(response.data.length).toBeGreaterThanOrEqual(2);
+      assert(firstPage.type === "json");
+      assert(firstPage.status === 200);
+      expect(firstPage.data.submissions).toHaveLength(1);
+      assert(firstPage.data.hasNextPage);
+      assert(firstPage.data.nextCursor);
+
+      const secondPage = await formsFragment.callRoute("GET", "/admin/forms/:id/submissions", {
+        pathParams: { id: publishedFormId },
+        query: { pageSize: "1", sortOrder: "desc", cursor: firstPage.data.nextCursor },
+      });
+
+      assert(secondPage.type === "json");
+      assert(secondPage.status === 200);
+      expect(secondPage.data.submissions).toHaveLength(1);
+      expect(secondPage.data.submissions[0]?.id).not.toBe(firstPage.data.submissions[0]?.id);
+    });
+
+    test("should reject invalid or oversized submission cursors", async () => {
+      const oversizedCursor = new Cursor({
+        indexName: FORM_RESPONSE_PAGINATION_INDEX_NAME,
+        orderDirection: "desc",
+        pageSize: 101,
+        indexValues: { formId: publishedFormId },
+      }).encode();
+
+      for (const cursor of ["not-a-valid-cursor", oversizedCursor]) {
+        const response = await formsFragment.callRoute("GET", "/admin/forms/:id/submissions", {
+          pathParams: { id: publishedFormId },
+          query: { cursor },
+        });
+
+        assert(response.type === "error");
+        assert(response.status === 400);
+        assert(response.error.code === "INVALID_CURSOR");
+      }
     });
 
     test("should get a single submission by ID", async () => {
@@ -796,5 +904,119 @@ describe("Forms Fragment", () => {
         });
       }
     });
+  });
+});
+
+describe("Forms durable hooks", async () => {
+  const onFormCreated = vi.fn();
+  const onFormUpdated = vi.fn();
+  const onFormDeleted = vi.fn();
+  const onResponseSubmitted = vi.fn();
+  const { fragments, test: testCtx } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "kysely-sqlite" })
+    .withFragment(
+      "forms-hooks",
+      instantiate(formsFragmentDef)
+        .withConfig({ onFormCreated, onFormUpdated, onFormDeleted, onResponseSubmitted })
+        .withRoutes(routes),
+    )
+    .build();
+  const fragment = fragments["forms-hooks"];
+  let hookFormId: string;
+
+  afterAll(async () => {
+    await testCtx.cleanup();
+  });
+
+  test("delivers form creation after commit through a durable hook", async () => {
+    const response = await fragment.callRoute("POST", "/admin/forms", {
+      body: {
+        title: "Hook form",
+        slug: "hook-form",
+        description: null,
+        status: "open",
+        dataSchema: { type: "object", properties: { answer: { type: "string" } } },
+      },
+    });
+    assert(response.type === "json");
+    hookFormId = response.data;
+    expect(onFormCreated).not.toHaveBeenCalled();
+
+    await drainDurableHooks(fragment.fragment);
+
+    expect(onFormCreated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: response.data,
+        slug: "hook-form",
+        status: "open",
+        createdAt: expect.stringMatching(/Z$/),
+      }),
+      expect.objectContaining({ idempotencyKey: expect.any(String) }),
+    );
+  });
+
+  test("delivers form updates after commit through a durable hook", async () => {
+    const response = await fragment.callRoute("PUT", "/admin/forms/:id", {
+      pathParams: { id: hookFormId },
+      body: { title: "Updated hook form" },
+    });
+    assert(response.type === "json");
+    expect(onFormUpdated).not.toHaveBeenCalled();
+
+    await drainDurableHooks(fragment.fragment);
+
+    expect(onFormUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: hookFormId,
+        title: "Updated hook form",
+        status: "open",
+        createdAt: expect.stringMatching(/Z$/),
+        updatedAt: expect.stringMatching(/Z$/),
+      }),
+      expect.objectContaining({ idempotencyKey: expect.any(String) }),
+    );
+  });
+
+  test("delivers stored responses after commit through a durable hook", async () => {
+    const response = await fragment.callRoute("POST", "/:slug/submit", {
+      pathParams: { slug: "hook-form" },
+      body: { data: { answer: "yes" } },
+    });
+    assert(response.type === "json");
+    expect(onResponseSubmitted).not.toHaveBeenCalled();
+
+    await drainDurableHooks(fragment.fragment);
+
+    expect(onResponseSubmitted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: response.data,
+        data: { answer: "yes" },
+        formVersion: 1,
+        submittedAt: expect.stringMatching(/Z$/),
+      }),
+      expect.objectContaining({ idempotencyKey: expect.any(String) }),
+    );
+  });
+
+  test("delivers form deletion after commit through a durable hook", async () => {
+    const response = await fragment.callRoute("DELETE", "/admin/forms/:id", {
+      pathParams: { id: hookFormId },
+    });
+    assert(response.type === "json");
+    expect(onFormDeleted).not.toHaveBeenCalled();
+
+    await drainDurableHooks(fragment.fragment);
+
+    expect(onFormDeleted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: hookFormId,
+        title: "Updated hook form",
+        status: "open",
+        createdAt: expect.stringMatching(/Z$/),
+        updatedAt: expect.stringMatching(/Z$/),
+        deletedAt: expect.stringMatching(/Z$/),
+      }),
+      expect.objectContaining({ idempotencyKey: expect.any(String) }),
+    );
   });
 });

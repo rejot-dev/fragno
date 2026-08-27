@@ -57,8 +57,14 @@ import { fragmentDbAdapter } from "./db";
 
 export const formsFragment = createFormsFragment(
   {
-    onFormCreated: (form) => console.log("Form created:", form.title),
-    onResponseSubmitted: (response) => console.log("Response submitted:", response.id),
+    onFormCreated: (form, context) =>
+      console.log("Form created:", form.title, context.idempotencyKey),
+    onFormUpdated: (form, context) =>
+      console.log("Form updated:", form.title, context.idempotencyKey),
+    onFormDeleted: (form, context) =>
+      console.log("Form deleted:", form.title, context.idempotencyKey),
+    onResponseSubmitted: (response, context) =>
+      console.log("Response submitted:", response.id, context.idempotencyKey),
   },
   { databaseAdapter: fragmentDbAdapter },
 );
@@ -75,6 +81,10 @@ import { formsFragment } from "@/lib/forms";
 const app = new Hono();
 app.all("/api/forms/*", (c) => formsFragment.handler(c.req.raw));
 ```
+
+Lifecycle callbacks are delivered through durable hooks after the transaction commits. Configure a
+durable-hooks dispatcher in production so retries and scheduled processing continue outside
+requests.
 
 ### 4. Generate schemas
 
@@ -115,7 +125,12 @@ export const formsClient = createFormsClient();
 const { data: form } = formsClient.useForm({ slug: "my-form" });
 const { mutate: submitForm } = formsClient.useSubmitForm({ slug: "my-form" });
 // For admins
-const { data: submissions } = formsClient.useSubmissions({ id });
+const { data: submissionPage } = formsClient.useSubmissions({
+  path: { id: "form_123" },
+  query: { pageSize: "25", sortOrder: "desc" },
+});
+const submissions = submissionPage?.submissions ?? [];
+// Pass submissionPage.nextCursor as cursor to load the next page.
 ```
 
 ### Form Builder

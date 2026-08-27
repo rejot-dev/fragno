@@ -1,11 +1,13 @@
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
+import { decodeCursor, isUniqueConstraintError, type Cursor } from "@fragno-dev/db";
 
 import type { StaticForm } from ".";
 import { formsFragmentDef } from "./definition";
 import {
   FormSchema,
+  FormSubmissionsPageSchema,
   NewFormSchema,
   NewFormResponseSchema,
   ResponseMetadataSchema,
@@ -13,6 +15,7 @@ import {
   UpdateFormSchema,
 } from "./models";
 import type { Form } from "./models";
+import { FORM_RESPONSE_PAGINATION_INDEX_NAME } from "./schema";
 
 /** Extract and validate request metadata from headers (untrusted input) */
 function extractRequestMetadata(headers: Headers) {
@@ -29,6 +32,49 @@ function extractRequestMetadata(headers: Headers) {
 
   // Return validated data or null values if validation fails
   return result.success ? result.data : { ip: null, userAgent: null };
+}
+
+function isFormSlugUniqueConstraintError(error: unknown): boolean {
+  return (
+    isUniqueConstraintError(error) &&
+    (error.constraint === "idx_form_slug" || error.columns?.includes("slug") === true)
+  );
+}
+
+const DEFAULT_SUBMISSION_PAGE_SIZE = 25;
+const MAX_SUBMISSION_PAGE_SIZE = 100;
+
+const listSubmissionsQuerySchema = z.object({
+  sortOrder: z.enum(["asc", "desc"]).catch("desc"),
+  pageSize: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_SUBMISSION_PAGE_SIZE)
+    .catch(DEFAULT_SUBMISSION_PAGE_SIZE),
+  cursor: z.string().nullable(),
+});
+
+type ParsedSubmissionCursor = { ok: true; cursor: Cursor | null } | { ok: false };
+
+function parseSubmissionCursor(cursorParam: string | null, formId: string): ParsedSubmissionCursor {
+  if (cursorParam === null) {
+    return { ok: true, cursor: null };
+  }
+
+  try {
+    const cursor = decodeCursor(cursorParam);
+    if (
+      cursor.indexName !== FORM_RESPONSE_PAGINATION_INDEX_NAME ||
+      cursor.indexValues["formId"] !== formId ||
+      cursor.pageSize > MAX_SUBMISSION_PAGE_SIZE
+    ) {
+      return { ok: false };
+    }
+    return { ok: true, cursor };
+  } catch {
+    return { ok: false };
+  }
 }
 
 const staticAsRegularForm = (sf: StaticForm): Form => ({
@@ -64,7 +110,7 @@ export const publicRoutes = defineRoutes(formsFragmentDef).create(
             .withServiceCalls(() => [services.getFormBySlug(pathParams.slug)] as const)
             .transform(({ serviceResult: [result] }) => result)
             .execute();
-          if (!form) {
+          if (!form || (form.status !== "open" && form.status !== "static")) {
             return error({ message: "Form not found", code: "NOT_FOUND" }, 404);
           }
 
@@ -121,18 +167,6 @@ export const publicRoutes = defineRoutes(formsFragmentDef).create(
             .transform(({ serviceResult: [result] }) => result)
             .execute();
 
-          if (config.onResponseSubmitted) {
-            await config.onResponseSubmitted({
-              id: responseId,
-              formId: form.id,
-              formVersion: form.version,
-              data,
-              submittedAt: new Date(),
-              ip: metadata?.ip,
-              userAgent: metadata?.userAgent,
-            });
-          }
-
           return json(responseId);
         },
       }),
@@ -187,7 +221,7 @@ export const adminRoutes = defineRoutes(formsFragmentDef).create(
         path: "/admin/forms",
         inputSchema: NewFormSchema,
         outputSchema: z.string(),
-        errorCodes: ["CREATE_FAILED", "INVALID_JSON_SCHEMA"] as const,
+        errorCodes: ["SLUG_ALREADY_EXISTS", "INVALID_JSON_SCHEMA"] as const,
         handler: async function ({ input }, { json, error }) {
           const data = await input.valid();
 
@@ -199,14 +233,34 @@ export const adminRoutes = defineRoutes(formsFragmentDef).create(
             return error({ message, code: "INVALID_JSON_SCHEMA" }, 400);
           }
 
-          const formId = await this.handlerTx()
-            .withServiceCalls(() => [services.createForm(data)] as const)
-            .transform(({ serviceResult: [result] }) => result)
-            .execute();
-          if (config.onFormCreated) {
-            await config.onFormCreated({ ...data, id: formId });
+          if (config.staticForms?.some((form) => form.slug === data.slug)) {
+            return error(
+              {
+                message: `A form with slug "${data.slug}" already exists`,
+                code: "SLUG_ALREADY_EXISTS",
+              },
+              409,
+            );
           }
-          return json(formId);
+
+          try {
+            const formId = await this.handlerTx()
+              .withServiceCalls(() => [services.createForm(data)] as const)
+              .transform(({ serviceResult: [result] }) => result)
+              .execute();
+            return json(formId);
+          } catch (cause) {
+            if (isFormSlugUniqueConstraintError(cause)) {
+              return error(
+                {
+                  message: `A form with slug "${data.slug}" already exists`,
+                  code: "SLUG_ALREADY_EXISTS",
+                },
+                409,
+              );
+            }
+            throw cause;
+          }
         },
       }),
 
@@ -214,7 +268,12 @@ export const adminRoutes = defineRoutes(formsFragmentDef).create(
         method: "PUT",
         path: "/admin/forms/:id",
         inputSchema: UpdateFormSchema,
-        errorCodes: ["NOT_FOUND", "STATIC_FORM_READ_ONLY", "INVALID_JSON_SCHEMA"] as const,
+        errorCodes: [
+          "NOT_FOUND",
+          "STATIC_FORM_READ_ONLY",
+          "SLUG_ALREADY_EXISTS",
+          "INVALID_JSON_SCHEMA",
+        ] as const,
         handler: async function ({ input, pathParams }, { json, error }) {
           const isStatic = config.staticForms?.some((f) => f.id === pathParams.id);
           if (isStatic) {
@@ -235,14 +294,37 @@ export const adminRoutes = defineRoutes(formsFragmentDef).create(
             }
           }
 
-          const { success } = await this.handlerTx()
-            .withServiceCalls(() => [services.updateForm(pathParams.id, data)] as const)
-            .transform(({ serviceResult: [result] }) => result)
-            .execute();
-          if (!success) {
-            return error({ message: "Form not found", code: "NOT_FOUND" }, 404);
+          if (data.slug && config.staticForms?.some((form) => form.slug === data.slug)) {
+            return error(
+              {
+                message: `A form with slug "${data.slug}" already exists`,
+                code: "SLUG_ALREADY_EXISTS",
+              },
+              409,
+            );
           }
-          return json(true);
+
+          try {
+            const { success } = await this.handlerTx()
+              .withServiceCalls(() => [services.updateForm(pathParams.id, data)] as const)
+              .transform(({ serviceResult: [result] }) => result)
+              .execute();
+            if (!success) {
+              return error({ message: "Form not found", code: "NOT_FOUND" }, 404);
+            }
+            return json(true);
+          } catch (cause) {
+            if (data.slug && isFormSlugUniqueConstraintError(cause)) {
+              return error(
+                {
+                  message: `A form with slug "${data.slug}" already exists`,
+                  code: "SLUG_ALREADY_EXISTS",
+                },
+                409,
+              );
+            }
+            throw cause;
+          }
         },
       }),
 
@@ -258,13 +340,13 @@ export const adminRoutes = defineRoutes(formsFragmentDef).create(
               403,
             );
           }
-          await this.handlerTx()
+          const { success } = await this.handlerTx()
             .withServiceCalls(() => [services.deleteForm(pathParams.id)] as const)
+            .transform(({ serviceResult: [result] }) => result)
             .execute();
-          // TODO: 404 when form not found
-          // if (!deleted) {
-          //   return error({ message: "Form not found", code: "NOT_FOUND" }, 404);
-          // }
+          if (!success) {
+            return error({ message: "Form not found", code: "NOT_FOUND" }, 404);
+          }
           return json(true);
         },
       }),
@@ -272,23 +354,38 @@ export const adminRoutes = defineRoutes(formsFragmentDef).create(
       defineRoute({
         method: "GET",
         path: "/admin/forms/:id/submissions",
-        queryParameters: ["sortOrder"] as const,
-        outputSchema: z.array(FormResponseSchema),
-        handler: async function ({ pathParams, query }, { json }) {
-          const sortOrder = query.get("sortOrder") === "asc" ? "asc" : "desc";
-          const responses = await this.handlerTx()
+        queryParameters: ["sortOrder", "pageSize", "cursor"] as const,
+        outputSchema: FormSubmissionsPageSchema,
+        errorCodes: ["INVALID_CURSOR"] as const,
+        handler: async function ({ pathParams, query }, { json, error }) {
+          const params = listSubmissionsQuerySchema.parse({
+            sortOrder: query.get("sortOrder"),
+            pageSize: query.get("pageSize"),
+            cursor: query.get("cursor"),
+          });
+          const parsedCursor = parseSubmissionCursor(params.cursor, pathParams.id);
+          if (!parsedCursor.ok) {
+            return error({ message: "Invalid submission cursor", code: "INVALID_CURSOR" }, 400);
+          }
+
+          const result = await this.handlerTx()
             .withServiceCalls(
               () =>
                 [
                   services.listResponses(pathParams.id, {
-                    field: "submittedAt",
-                    order: sortOrder,
+                    sortOrder: params.sortOrder,
+                    pageSize: params.pageSize,
+                    cursor: parsedCursor.cursor,
                   }),
                 ] as const,
             )
             .transform(({ serviceResult: [result] }) => result)
             .execute();
-          return json(responses);
+          return json({
+            submissions: result.submissions,
+            nextCursor: result.cursor?.encode() ?? null,
+            hasNextPage: result.hasNextPage,
+          });
         },
       }),
 
