@@ -1,11 +1,14 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { createReadStream, readFileSync } from "node:fs";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
 import {
   backofficeErrorMessage,
   connectToBackoffice,
+  downloadBackofficeFile,
   executeBackofficeBash,
   executeBackofficeCodemode,
   fetchBackofficeSystemPrompt,
@@ -13,6 +16,7 @@ import {
   probeBackofficeServer,
   resolveBackofficeAuthFile,
   resolveBackofficeDefaultScopeForServer,
+  uploadBackofficeWorkspaceFile,
 } from "@rejot-dev/backoffice-local";
 
 import { writeBackofficeSystemPrompt } from "./system-prompt-output.js";
@@ -37,6 +41,10 @@ Commands:
   system [scope] [file]  Print SYSTEM.md or create an owner-only output file
   exec <scope> <code>    Execute a JavaScript codemode function
   bash <scope> <command> Execute a shell command in the scoped runtime
+  upload <scope> <local-file> <workspace-path>
+                         Upload a local file into Backoffice /workspace
+  download <scope> <backoffice-path> <local-file>
+                         Download a Backoffice file locally
 
 Scopes:
   system
@@ -59,6 +67,8 @@ Examples:
   backoffice system org:org_123 ./SYSTEM.md
   backoffice exec org:org_123 'async () => await state.readdir({ path: "/" })'
   backoffice bash org:org_123 --cwd /workspace 'find . -maxdepth 2'
+  backoffice upload org:org_123 ./report.pdf /workspace/reports/report.pdf
+  backoffice download org:org_123 /workspace/reports/report.pdf ./report.pdf
 
 Environment:
   BACKOFFICE_URL          Default Backoffice server URL
@@ -235,6 +245,65 @@ async function execCodemode(args: string[]): Promise<void> {
   console.log(JSON.stringify(result, null, 2));
 }
 
+function backofficeWorkspaceFileKey(path: string): string {
+  if (path.startsWith("/") && !path.startsWith("/workspace/")) {
+    throw new Error("Workspace path must identify a file inside /workspace.");
+  }
+  const fileKey = path.replace(/^\/workspace\//, "").replace(/^\/+/, "");
+  if (!fileKey || fileKey.split("/").includes("..")) {
+    throw new Error("Workspace path must identify a file inside /workspace.");
+  }
+  return fileKey;
+}
+
+async function uploadFile(args: string[]): Promise<void> {
+  const requestedBaseUrl = getFlag(args, "--base-url", configuredBaseUrl);
+  const scopeArg = args.shift();
+  const localFile = args.shift();
+  const workspacePath = args.shift();
+  if (!scopeArg || !localFile || !workspacePath || args.length > 0) {
+    usage();
+  }
+
+  const fileKey = backofficeWorkspaceFileKey(workspacePath);
+  const sourcePath = resolve(localFile);
+  const sourceStat = await stat(sourcePath);
+  if (!sourceStat.isFile()) {
+    throw new Error(`Local upload source is not a file: ${sourcePath}`);
+  }
+  const baseUrl = await resolveCliBaseUrl(requestedBaseUrl);
+  await uploadBackofficeWorkspaceFile({
+    baseUrl,
+    scope: parseBackofficeScope(scopeArg),
+    fileKey,
+    content: Readable.toWeb(createReadStream(sourcePath)) as ReadableStream<Uint8Array>,
+    sizeBytes: sourceStat.size,
+    contentType: "application/octet-stream",
+  });
+  console.log(`Uploaded ${sourcePath} to /workspace/${fileKey} (${sourceStat.size} bytes).`);
+}
+
+async function downloadFile(args: string[]): Promise<void> {
+  const requestedBaseUrl = getFlag(args, "--base-url", configuredBaseUrl);
+  const scopeArg = args.shift();
+  const backofficePath = args.shift();
+  const localFile = args.shift();
+  if (!scopeArg || !backofficePath || !localFile || args.length > 0) {
+    usage();
+  }
+
+  const baseUrl = await resolveCliBaseUrl(requestedBaseUrl);
+  const content = await downloadBackofficeFile({
+    baseUrl,
+    scope: parseBackofficeScope(scopeArg),
+    path: backofficePath,
+  });
+  const destination = resolve(localFile);
+  await mkdir(dirname(destination), { recursive: true });
+  await writeFile(destination, content);
+  console.log(`Downloaded ${backofficePath} to ${destination} (${content.byteLength} bytes).`);
+}
+
 async function execBash(args: string[]): Promise<void> {
   const requestedBaseUrl = getFlag(args, "--base-url", configuredBaseUrl);
   const timeout = parsePositiveInteger(getFlag(args, "--timeout", undefined), "--timeout");
@@ -288,6 +357,10 @@ export async function runBackofficeCli(argv = process.argv.slice(2)): Promise<vo
       await execCodemode(args);
     } else if (command === "bash") {
       await execBash(args);
+    } else if (command === "upload") {
+      await uploadFile(args);
+    } else if (command === "download") {
+      await downloadFile(args);
     } else {
       console.error(`Unknown command: ${command}\n`);
       usage();

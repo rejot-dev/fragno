@@ -1,27 +1,55 @@
+import { createReadStream } from "node:fs";
+import { mkdir, stat, writeFile } from "node:fs/promises";
+import { dirname, posix, resolve } from "node:path";
+import { Readable } from "node:stream";
+
 import { Type } from "typebox";
 
 import {
   backofficeErrorMessage,
   connectToBackoffice,
+  downloadBackofficeFile,
   executeBackofficeCodemode,
   fetchBackofficeSystemPrompt,
   findBackofficeServers,
   parseBackofficeScope,
+  uploadBackofficeWorkspaceFile,
   type BackofficeScope,
 } from "@rejot-dev/backoffice-local";
 
 import {
+  createBashToolDefinition,
+  createEditToolDefinition,
+  createFindToolDefinition,
+  createGrepToolDefinition,
+  createLsToolDefinition,
+  createReadToolDefinition,
+  createWriteToolDefinition,
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
   formatSize,
   getMarkdownTheme,
   truncateHead,
+  withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Text } from "@earendil-works/pi-tui";
 
 const BACKOFFICE_SESSION_ENTRY = "backoffice-session";
-const BACKOFFICE_TOOL_NAMES = ["read", "search", "execCodeMode"];
+const BACKOFFICE_TOOL_NAMES = [
+  "read",
+  "search",
+  "execCodeMode",
+  "upload",
+  "download",
+  "localRead",
+  "localBash",
+  "localEdit",
+  "localWrite",
+  "localGrep",
+  "localFind",
+  "localLs",
+];
 const CLOUD_BACKOFFICE_URL = "https://backoffice.rejot.dev";
 
 type BackofficeSession = {
@@ -129,6 +157,18 @@ function boundBackofficeToolOutput(
   };
 }
 
+function backofficeWorkspaceFileKey(destinationPath: string): string {
+  if (destinationPath.startsWith("/") && !destinationPath.startsWith("/workspace/")) {
+    throw new Error("Upload destination must be a file path inside /workspace.");
+  }
+  const normalized = posix.normalize(destinationPath.replace(/^\/workspace\//, ""));
+  const fileKey = normalized.replace(/^\/+/, "");
+  if (!fileKey || fileKey === "." || fileKey.startsWith("../")) {
+    throw new Error("Upload destination must be a file path inside /workspace.");
+  }
+  return fileKey;
+}
+
 function findSearchContinuation(result: unknown): Record<string, unknown> | null {
   if (!result || typeof result !== "object") {
     return null;
@@ -165,15 +205,65 @@ async function executeBackofficeCode(
   );
 }
 
-/** Registers `/backoffice` and Backoffice's read, search, and execCodeMode tools. */
+/** Registers `/backoffice` and tools for Backoffice state, local files, search, and codemode. */
 export default function registerBackofficeExtension(pi: ExtensionAPI) {
   let toolsRegistered = false;
 
-  function registerBackofficeTools() {
+  function registerBackofficeTools(cwd: string) {
     if (toolsRegistered) {
       return;
     }
     toolsRegistered = true;
+
+    const localRead = createReadToolDefinition(cwd);
+    pi.registerTool({
+      ...localRead,
+      name: "localRead",
+      label: "Local Read",
+      description: `Read from the local filesystem relative to ${cwd}. ${localRead.description}`,
+    });
+    const localBash = createBashToolDefinition(cwd);
+    pi.registerTool({
+      ...localBash,
+      name: "localBash",
+      label: "Local Bash",
+      description: `Run a local shell command from ${cwd}. ${localBash.description}`,
+    });
+    const localEdit = createEditToolDefinition(cwd);
+    pi.registerTool({
+      ...localEdit,
+      name: "localEdit",
+      label: "Local Edit",
+      description: `Edit a local file relative to ${cwd}. ${localEdit.description}`,
+    });
+    const localWrite = createWriteToolDefinition(cwd);
+    pi.registerTool({
+      ...localWrite,
+      name: "localWrite",
+      label: "Local Write",
+      description: `Write a local file relative to ${cwd}. ${localWrite.description}`,
+    });
+    const localGrep = createGrepToolDefinition(cwd);
+    pi.registerTool({
+      ...localGrep,
+      name: "localGrep",
+      label: "Local Grep",
+      description: `Search local file contents relative to ${cwd}. ${localGrep.description}`,
+    });
+    const localFind = createFindToolDefinition(cwd);
+    pi.registerTool({
+      ...localFind,
+      name: "localFind",
+      label: "Local Find",
+      description: `Find local files relative to ${cwd}. ${localFind.description}`,
+    });
+    const localLs = createLsToolDefinition(cwd);
+    pi.registerTool({
+      ...localLs,
+      name: "localLs",
+      label: "Local LS",
+      description: `List local files relative to ${cwd}. ${localLs.description}`,
+    });
 
     pi.registerTool({
       name: "read",
@@ -200,6 +290,92 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
         return {
           content: [{ type: "text", text: output.text }],
           details: output.details,
+        };
+      },
+    });
+
+    pi.registerTool({
+      name: "upload",
+      label: "Upload",
+      description:
+        "Upload one local file into the persistent /workspace filesystem of the active Backoffice scope.",
+      parameters: Type.Object({
+        localPath: Type.String({
+          description: "Local file path, relative to the Pi working directory or absolute.",
+        }),
+        destinationPath: Type.String({
+          description: "Destination path inside Backoffice /workspace.",
+        }),
+      }),
+      async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+        const session = findBackofficeSession(ctx);
+        if (!session) {
+          throw new Error("Run /backoffice before using Backoffice tools.");
+        }
+        const sourcePath = resolve(cwd, params.localPath);
+        const sourceStat = await stat(sourcePath);
+        if (!sourceStat.isFile()) {
+          throw new Error(`Local upload source is not a file: ${sourcePath}`);
+        }
+        const fileKey = backofficeWorkspaceFileKey(params.destinationPath);
+        const result = await uploadBackofficeWorkspaceFile({
+          baseUrl: session.baseUrl,
+          scope: parseBackofficeScope(session.scope),
+          fileKey,
+          content: Readable.toWeb(createReadStream(sourcePath)) as ReadableStream<Uint8Array>,
+          sizeBytes: sourceStat.size,
+          contentType: "application/octet-stream",
+          signal,
+        });
+        const output = boundBackofficeToolOutput(result, null);
+        return {
+          content: [{ type: "text", text: output.text }],
+          details: output.details,
+        };
+      },
+    });
+
+    pi.registerTool({
+      name: "download",
+      label: "Download",
+      description:
+        "Download one file from the active Backoffice scope's filesystem to the local filesystem, including /workspace and /static files.",
+      parameters: Type.Object({
+        sourcePath: Type.String({ description: "Absolute Backoffice file path." }),
+        localPath: Type.String({
+          description: "Local destination path, relative to the Pi working directory or absolute.",
+        }),
+      }),
+      async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+        const session = findBackofficeSession(ctx);
+        if (!session) {
+          throw new Error("Run /backoffice before using Backoffice tools.");
+        }
+        const sourcePath = posix.normalize(params.sourcePath);
+        const localPath = resolve(cwd, params.localPath);
+        const content = await withFileMutationQueue(localPath, async () => {
+          const downloaded = await downloadBackofficeFile({
+            baseUrl: session.baseUrl,
+            scope: parseBackofficeScope(session.scope),
+            path: sourcePath,
+            signal,
+          });
+          await mkdir(dirname(localPath), { recursive: true });
+          await writeFile(localPath, downloaded);
+          return downloaded;
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Downloaded ${sourcePath} to ${localPath} (${formatSize(content.byteLength)}).`,
+            },
+          ],
+          details: {
+            sourcePath,
+            localPath,
+            bytesWritten: content.byteLength,
+          },
         };
       },
     });
@@ -325,7 +501,7 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
     if (!session) {
       return;
     }
-    registerBackofficeTools();
+    registerBackofficeTools(ctx.cwd);
     pi.setActiveTools(BACKOFFICE_TOOL_NAMES);
     ctx.ui.setStatus("backoffice", `backoffice:${new URL(session.baseUrl).host}`);
   });

@@ -241,6 +241,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
         "routes/api/backoffice-cli-token.ts",
         "routes/api/backoffice-me.ts",
         "routes/api/cloudflare.ts",
+        "routes/api/files-scoped-workspace.ts",
         "routes/api/github-webhooks.ts",
         "routes/api/github.ts",
         "routes/api/marketplace.ts",
