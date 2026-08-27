@@ -5,6 +5,7 @@
       "dependsOn": ["$TURBO_EXTENDS$", "codemode:generate"]
     },
     "codemode:generate": {
+      "dependsOn": ["^build"],
       "outputs": [
         "content/static/codemode/system.d.ts",
         "content/static/codemode/providers/**",

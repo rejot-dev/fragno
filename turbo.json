@@ -103,10 +103,11 @@
       "inputs": ["$TURBO_ROOT$/package.json"]
     },
     "//#lint:root": {
-      "dependsOn": ["//#quality:root-inputs"],
+      "dependsOn": ["//#quality:root-inputs", "@rejot-dev/backoffice-local#build"],
       "inputs": ["$TURBO_ROOT$/package.json"]
     },
     "//#lint:fix:root": {
+      "dependsOn": ["@rejot-dev/backoffice-local#build"],
       "cache": false
     }
   }
