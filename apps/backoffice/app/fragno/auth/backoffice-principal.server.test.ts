@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
 const { authorizeBackofficePrincipalMock, requireBackofficePrincipalMock } = vi.hoisted(() => ({
   authorizeBackofficePrincipalMock: vi.fn(),
@@ -11,6 +11,7 @@ vi.mock("./request-auth.server", () => ({
 }));
 
 import {
+  authorizeBackofficeCodemodeContext,
   authorizeBackofficeContext,
   requireBackofficeContext,
 } from "./backoffice-principal.server";
@@ -101,6 +102,56 @@ describe("requireBackofficeContext", () => {
       headers: [["Set-Cookie", "access-token=refreshed"]],
       execution: { scope: { kind: "org", orgId: "org-1" } },
     });
+  });
+
+  test("allows rejot.dev accounts to use codemode", async () => {
+    authorizeBackofficePrincipalMock.mockResolvedValue({
+      ok: true,
+      headers: [],
+      principal: {
+        user: { id: "user-1", email: "Developer@Rejot.dev", role: "user" },
+        auth: {
+          transport: "bearer",
+          expiresAt: new Date("2099-01-01T00:00:00.000Z"),
+          organization: { id: "org-1", slug: "acme", roles: ["member"] },
+        },
+      },
+    });
+
+    await expect(
+      authorizeBackofficeCodemodeContext(
+        new Request("https://backoffice.example/api/backoffice/codemode/org/org-1"),
+        {} as never,
+        { kind: "org", orgId: "org-1" },
+      ),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  test("forbids non-rejot.dev accounts from using codemode", async () => {
+    authorizeBackofficePrincipalMock.mockResolvedValue({
+      ok: true,
+      headers: [["Set-Cookie", "access-token=refreshed"]],
+      principal: {
+        user: { id: "user-1", email: "user@example.com", role: "user" },
+        auth: {
+          transport: "cookie",
+          expiresAt: new Date("2099-01-01T00:00:00.000Z"),
+          organization: { id: "org-1", slug: "acme", roles: ["member"] },
+        },
+      },
+    });
+
+    const result = await authorizeBackofficeCodemodeContext(
+      new Request("https://backoffice.example/api/backoffice/codemode/org/org-1"),
+      {} as never,
+      { kind: "org", orgId: "org-1" },
+    );
+
+    expect(result).toMatchObject({ ok: false, response: { status: 403 } });
+    if (result.ok) {
+      throw new Error("Expected codemode authorization to be forbidden.");
+    }
+    assert(result.response.headers.get("Set-Cookie") === "access-token=refreshed");
   });
 
   test("does not let an administrator enter another user's private scope", async () => {
