@@ -30,6 +30,7 @@ const CLOUDFLARE_MCP_SERVERS = {
 
 const CLOUDFLARE_MCP_SERVER_NAMES = Object.keys(CLOUDFLARE_MCP_SERVERS);
 const CLOUDFLARE_MCP_STATUS_WAIT_MS = 15_000;
+const CLOUDFLARE_MODE_SYSTEM_PROMPT = `The user explicitly launched Cloudflare mode for this session. Use the Cloudflare MCP tools for Cloudflare API operations, documentation lookup, and observability tasks.`;
 
 function hasEveryCloudflareMcpServer(snapshot: McpStatusSnapshot): boolean {
   const reportedServerNames = new Set(snapshot.servers.map((server) => server.name));
@@ -107,6 +108,16 @@ export default function registerCloudflareMcpCommand(pi: ExtensionAPI) {
       statusWaiters.add(handleStatus);
     });
   }
+
+  pi.on("before_agent_start", (event) => {
+    if (!cloudflareMcpEnabled) {
+      return undefined;
+    }
+
+    return {
+      systemPrompt: `${event.systemPrompt}\n\n${CLOUDFLARE_MODE_SYSTEM_PROMPT}`,
+    };
+  });
 
   pi.registerCommand("cloudflare", {
     description: "Connect the Cloudflare API, documentation, and observability MCP servers",
