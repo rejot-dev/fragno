@@ -347,11 +347,17 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
             const emissionBusHandle = workflowsService.observeStepEmissions<PiHarnessEmission>({
               workflowName,
               instanceId: sessionId,
-              handlerTx: this.handlerTx.bind(this),
             });
 
+            const handlerTx = this.handlerTx.bind(this);
+            const schedulerAbortController = new AbortController();
+            const schedulerLease = emissionBusHandle.runWhile({
+              kind: "observer",
+              signal: schedulerAbortController.signal,
+              handlerTx,
+            });
             try {
-              const emissionSnapshot = await emissionBusHandle.pump.snapshot();
+              const emissionSnapshot = await emissionBusHandle.pump.snapshot(handlerTx);
               await emissionBusHandle.pump.waitForObserved(
                 (emission) =>
                   emission.payload.kind === "harness-event" &&
@@ -372,6 +378,8 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
 
               return json(toSessionDetail(result));
             } finally {
+              schedulerAbortController.abort();
+              await schedulerLease;
               await emissionBusHandle.close();
             }
           } catch (err) {

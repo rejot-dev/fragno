@@ -67,23 +67,24 @@ export class ResponseStream<TArray> {
     });
   }
 
-  async writeRaw(input: Uint8Array | string): Promise<void> {
+  async writeRaw(input: Uint8Array | string): Promise<boolean> {
     try {
       if (typeof input === "string") {
         input = this.#encoder.encode(input);
       }
       await this.#writer.write(input);
+      return true;
     } catch {
-      // Do nothing.
+      return false;
     }
   }
 
-  write(
+  async write(
     input: TArray extends (infer U)[]
       ? U
       : Error<"To use a streaming response, outputSchema must be an array.">,
   ): Promise<void> {
-    return this.writeRaw(JSON.stringify(input) + "\n");
+    await this.writeRaw(JSON.stringify(input) + "\n");
   }
 
   sleep(ms: number): Promise<unknown> {

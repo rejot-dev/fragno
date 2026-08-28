@@ -707,7 +707,7 @@ export const startFauxPiHarnessPrompt = (
     checkpoints,
     getMutations: () => mutations,
     flushEmissions: async () => {
-      await stepEmissions.get(pumpKey)?.flushNow();
+      await stepEmissions.get(pumpKey)?.waitForNextWritableFlush();
     },
     fauxProviderOptions: options.fauxProviderOptions,
   });

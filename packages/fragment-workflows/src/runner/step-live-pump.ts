@@ -99,7 +99,6 @@ type LogicalStepEmissionRow = {
 };
 
 export type WorkflowStepLivePumpOptions = {
-  handlerTx: DatabaseRequestContext["handlerTx"];
   workflowName: string;
   instanceId: string;
 };
@@ -118,7 +117,6 @@ export function createWorkflowStepLivePump<TOutEmission = unknown, TInEvent = un
     WorkflowStepEvent<TInEvent>,
     StepEmissionOpenScopeMeta
   >({
-    handlerTx: options.handlerTx,
     intervalMs: WORKFLOW_STEP_EMISSION_PUMP_INTERVAL_MS,
     onError: (error) => {
       console.error(

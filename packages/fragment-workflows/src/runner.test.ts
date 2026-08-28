@@ -32,16 +32,18 @@ import { defineWorkflow, NonRetryableError, type WorkflowEnqueuedHookPayload } f
 function openBus<TOutEmission = unknown, TInEmission = unknown>(
   registry: WorkflowStepLivePumpRegistry,
   options: {
-    handlerTx: DatabaseRequestContext["handlerTx"];
     workflowName: string;
     instanceId: string;
   },
 ) {
   const handle = registry.getOrCreate(
     workflowStepLivePumpKey(options.workflowName, options.instanceId),
-    () => createWorkflowStepLivePump(options),
+    () =>
+      createWorkflowStepLivePump({
+        workflowName: options.workflowName,
+        instanceId: options.instanceId,
+      }),
   );
-  handle.pump.setHandlerTx(options.handlerTx);
   return handle.pump as WorkflowStepLivePump<TOutEmission, TInEmission>;
 }
 
@@ -58,7 +60,7 @@ describe("Workflows Runner", () => {
       registries.flatMap((registry) =>
         registry
           .values()
-          .filter((bus) => bus.isRunning())
+          .filter((bus) => bus.activeSchedulerLeaseCount() > 0)
           .map((bus) => bus.debugLabel()),
       ),
     ).toEqual([]);
@@ -158,7 +160,6 @@ describe("Workflows Runner", () => {
 
     const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(stepEmissions, {
-        handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-workflow",
         instanceId,
       });
@@ -178,7 +179,6 @@ describe("Workflows Runner", () => {
     } finally {
       releaseStep.resolve();
       await tick;
-      emissionBus.stop();
       await drainDurableHooks(harness.fragment);
     }
 
@@ -618,7 +618,6 @@ describe("Workflows Runner", () => {
 
     const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(stepEmissions, {
-        handlerTx: this.handlerTx,
         workflowName: "central-message-bus-outbound-workflow",
         instanceId,
       });
@@ -643,7 +642,6 @@ describe("Workflows Runner", () => {
       assert(observed.pendingCount() === 0);
     } finally {
       unsubscribe();
-      emissionBus.stop();
       releaseStep.resolve();
       await tick;
     }
@@ -684,7 +682,6 @@ describe("Workflows Runner", () => {
 
     const emissionBus = harness.fragment.inContext(function () {
       return openBus(stepEmissions, {
-        handlerTx: this.handlerTx,
         workflowName: "central-message-bus-commit-flush-workflow",
         instanceId,
       });
@@ -694,14 +691,13 @@ describe("Workflows Runner", () => {
     });
     let flushCount = 0;
     const originalFlushNow = emissionBus.flushNow.bind(emissionBus);
-    emissionBus.flushNow = async () => {
+    emissionBus.flushNow = async (handlerTx) => {
       flushCount += 1;
-      await originalFlushNow();
+      await originalFlushNow(handlerTx);
     };
 
     try {
       await harness.tick(buildPayload(instance!, "create"));
-      emissionBus.stop();
 
       expect(observed).toEqual(
         expect.arrayContaining([expect.objectContaining({ control: "step-committed" })]),
@@ -709,7 +705,6 @@ describe("Workflows Runner", () => {
       expect(flushCount).toBe(1);
     } finally {
       unsubscribe();
-      emissionBus.stop();
     }
   });
 
@@ -745,9 +740,10 @@ describe("Workflows Runner", () => {
     )[0];
     expect(instance).toBeTruthy();
 
+    let handlerTx!: DatabaseRequestContext["handlerTx"];
     const emissionBus = harness.fragment.inContext(function () {
+      handlerTx = this.handlerTx.bind(this);
       return openBus(stepEmissions, {
-        handlerTx: this.handlerTx,
         workflowName: "central-message-bus-commit-snapshot-workflow",
         instanceId,
       });
@@ -755,25 +751,21 @@ describe("Workflows Runner", () => {
     const flushNow = emissionBus.flushNow.bind(emissionBus);
     const publishObserved = emissionBus.publishObserved.bind(emissionBus);
     emissionBus.publishObserved = async (messages) => {
-      await flushNow();
+      await flushNow(handlerTx);
       await publishObserved(messages);
     };
 
-    try {
-      await harness.tick(buildPayload(instance!, "create"));
+    await harness.tick(buildPayload(instance!, "create"));
 
-      const snapshot = await emissionBus.snapshot();
-      const commitMarkers = snapshot.filter(
-        (message) =>
-          typeof message.payload === "object" &&
-          message.payload !== null &&
-          "control" in message.payload &&
-          message.payload.control === "step-committed",
-      );
-      expect(commitMarkers).toHaveLength(1);
-    } finally {
-      emissionBus.stop();
-    }
+    const snapshot = await snapshotBus(harness, emissionBus);
+    const commitMarkers = snapshot.filter(
+      (message) =>
+        typeof message.payload === "object" &&
+        message.payload !== null &&
+        "control" in message.payload &&
+        message.payload.control === "step-committed",
+    );
+    expect(commitMarkers).toHaveLength(1);
   });
 
   test("central step emission bus drains emissions queued behind an in-flight flush before step close", async () => {
@@ -814,7 +806,6 @@ describe("Workflows Runner", () => {
 
     const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string; text?: string }>(stepEmissions, {
-        handlerTx: this.handlerTx,
         workflowName: "central-message-bus-drain-before-close-workflow",
         instanceId,
       });
@@ -842,7 +833,6 @@ describe("Workflows Runner", () => {
       assert(observed.pendingCount() === 0);
     } finally {
       unsubscribe();
-      emissionBus.stop();
     }
   });
 
@@ -885,7 +875,6 @@ describe("Workflows Runner", () => {
     const remoteRegistry = createStepEmissions();
     const remoteBus = harness.fragment.inContext(function () {
       return openBus<{ type: string; text?: string }>(remoteRegistry, {
-        handlerTx: this.handlerTx,
         workflowName: "central-message-bus-close-remote-outbound-workflow",
         instanceId,
       });
@@ -907,7 +896,6 @@ describe("Workflows Runner", () => {
       assert(observed.pendingCount() === 0);
     } finally {
       unsubscribe();
-      remoteBus.stop();
     }
   });
 
@@ -950,7 +938,6 @@ describe("Workflows Runner", () => {
 
     const localBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(localRegistry, {
-        handlerTx: this.handlerTx,
         workflowName: "central-message-bus-remote-outbound-workflow",
         instanceId,
       });
@@ -960,7 +947,6 @@ describe("Workflows Runner", () => {
     const remoteRegistry = createStepEmissions();
     const remoteBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(remoteRegistry, {
-        handlerTx: this.handlerTx,
         workflowName: "central-message-bus-remote-outbound-workflow",
         instanceId,
       });
@@ -989,8 +975,6 @@ describe("Workflows Runner", () => {
       assert(observed.pendingCount() === 0);
     } finally {
       unsubscribe();
-      remoteBus.stop();
-      localBus.stop();
       releaseStep.resolve();
       await tick;
     }
@@ -1221,19 +1205,29 @@ describe("Workflows Runner", () => {
         .execute();
 
       const busHandle = harness.services.observeStepEmissions({
-        handlerTx: this.handlerTx,
         workflowName: params.workflowName,
         instanceId: params.instanceId,
       });
-      await busHandle.flushAndClose();
+      await busHandle.flushAndClose(this.handlerTx);
     });
   };
 
-  const flushBus = async (harness: WorkflowsTestHarness, bus: { flushNow(): Promise<void> }) => {
+  const flushBus = async (
+    harness: WorkflowsTestHarness,
+    bus: { flushNow(handlerTx: DatabaseRequestContext["handlerTx"]): Promise<void> },
+  ) => {
     await harness.fragment.inContext(async function () {
-      await bus.flushNow();
+      await bus.flushNow(this.handlerTx);
     });
   };
+
+  const snapshotBus = async <T>(
+    harness: WorkflowsTestHarness,
+    bus: { snapshot(handlerTx: DatabaseRequestContext["handlerTx"]): Promise<T[]> },
+  ): Promise<T[]> =>
+    await harness.fragment.inContext(async function () {
+      return await bus.snapshot(this.handlerTx);
+    });
 
   const deferred = <T = void>() => Promise.withResolvers<T>();
 

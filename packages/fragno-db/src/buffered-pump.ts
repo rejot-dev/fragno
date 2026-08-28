@@ -24,6 +24,11 @@ import type { DatabaseHandlerTx } from "./db-fragment-definition-builder";
  *    On each flush, the caller reads inbound records from the DB, decides which
  *    active scopes should receive them, and returns `scopeDeliveries`. The pump
  *    only routes those deliveries to registered scope handlers.
+ *
+ * Polling never starts from buffered state or observer registration. Actors
+ * register explicit writer or observer scheduler leases through `runWhile()`.
+ * The pump elects one lease at a time, prioritizes writers, and restricts
+ * observer-owned passes to read-only refreshes.
  */
 
 export class BufferedPumpScopeAlreadyOpenError extends Error {
@@ -33,6 +38,18 @@ export class BufferedPumpScopeAlreadyOpenError extends Error {
     super("BUFFERED_PUMP_SCOPE_ALREADY_OPEN");
     this.name = "BufferedPumpScopeAlreadyOpenError";
     this.scopeKey = scopeKey;
+  }
+}
+
+export class BufferedPumpSchedulerLeaseActiveError extends Error {
+  readonly pumpKey: string;
+  readonly activeLeaseCount: number;
+
+  constructor(pumpKey: string, activeLeaseCount: number) {
+    super("BUFFERED_PUMP_SCHEDULER_LEASE_ACTIVE");
+    this.name = "BufferedPumpSchedulerLeaseActiveError";
+    this.pumpKey = pumpKey;
+    this.activeLeaseCount = activeLeaseCount;
   }
 }
 
@@ -57,6 +74,21 @@ const normalizeError = (error: unknown): Error =>
 type QueuedBufferedItem<TItem, TOutgoing, TScopeMeta> =
   | { kind: "value"; value: TItem }
   | { kind: "factory"; factory: BufferedItemFactory<TItem, TOutgoing, TScopeMeta> };
+
+type BufferedPumpObserver<TObserved> = {
+  handler: (message: TObserved) => void | Promise<void>;
+  cursors: Set<string>;
+  deliveryTail: Promise<void>;
+};
+
+export type BufferedPumpSchedulerLeaseKind = "writer" | "observer";
+
+type BufferedPumpSchedulerLease = {
+  kind: BufferedPumpSchedulerLeaseKind;
+  signal: AbortSignal;
+  handlerTx: DatabaseHandlerTx;
+  leadership: PromiseWithResolvers<void>;
+};
 
 export type BufferedItemFactory<TItem = unknown, TOutgoing = TItem, TScopeMeta = unknown> = (
   context: BufferedItemContext<TOutgoing, TScopeMeta>,
@@ -131,7 +163,7 @@ export type BufferedPumpScope<
   readonly meta: TScopeMeta;
   enqueueOutgoing(item: TOutgoing | BufferedItemFactory<TOutgoing, TOutgoing, TScopeMeta>): void;
   onDelivery(handler: (message: TScopeDelivery) => void | Promise<void>): () => void;
-  flushAndClose(): Promise<void>;
+  flushAndClose(handlerTx: DatabaseHandlerTx): Promise<void>;
 };
 
 class BufferedScopeState<TOutgoing, TScopeDelivery, TScopeMeta> {
@@ -151,106 +183,25 @@ class BufferedScopeState<TOutgoing, TScopeDelivery, TScopeMeta> {
   }
 }
 
-class SerializedIntervalLoop {
-  readonly #intervalMs: number;
-  readonly #onTick: () => Promise<void>;
-  readonly #afterTick: () => void;
-  #abortController: AbortController | undefined;
-  readonly #waiters: Array<{ resolve: () => void; reject: (error: unknown) => void }> = [];
-
-  constructor(options: { intervalMs: number; onTick: () => Promise<void>; afterTick: () => void }) {
-    this.#intervalMs = options.intervalMs;
-    this.#onTick = options.onTick;
-    this.#afterTick = options.afterTick;
-  }
-
-  start(): void {
-    if (this.isRunning()) {
-      return;
-    }
-
-    const abortController = new AbortController();
-    this.#abortController = abortController;
-    void this.#run(abortController.signal).finally(() => {
-      if (this.#abortController === abortController) {
-        this.#abortController = undefined;
-      }
-    });
-  }
-
-  stop(): void {
-    this.#abortController?.abort();
-    this.#resolveWaiters();
-  }
-
-  isRunning(): boolean {
-    return !!this.#abortController && !this.#abortController.signal.aborted;
-  }
-
-  async waitForNextTick(): Promise<void> {
-    this.start();
-    await new Promise<void>((resolve, reject) => {
-      this.#waiters.push({ resolve, reject });
-    });
-  }
-
-  async #run(signal: AbortSignal): Promise<void> {
-    for await (const _ of this.#ticks(signal)) {
-      let tickError: unknown;
-      try {
-        await this.#onTick();
-      } catch (error) {
-        tickError = error;
-      } finally {
-        this.#resolveWaiters(tickError);
-        this.#afterTick();
-      }
-    }
-  }
-
-  async *#ticks(signal: AbortSignal): AsyncGenerator<void> {
-    while (!signal.aborted) {
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, this.#intervalMs);
-        timer.unref?.();
-        signal.addEventListener(
-          "abort",
-          () => {
-            clearTimeout(timer);
-            resolve();
-          },
-          { once: true },
-        );
-      });
-      if (!signal.aborted) {
-        yield;
-      }
-    }
-  }
-
-  #resolveWaiters(error?: unknown): void {
-    const waiters = this.#waiters.splice(0);
-    for (const waiter of waiters) {
-      if (error) {
-        waiter.reject(error);
-      } else {
-        waiter.resolve();
-      }
-    }
-  }
-}
-
 type BufferedPumpLifecycle = {
-  stopAndDrain(): Promise<void>;
-  flushNow(): Promise<void>;
-  waitForNextFlush(): Promise<void>;
+  drain(): Promise<void>;
+  flushNow(handlerTx: DatabaseHandlerTx): Promise<void>;
+  runWhile(options: {
+    kind: BufferedPumpSchedulerLeaseKind;
+    signal: AbortSignal;
+    handlerTx: DatabaseHandlerTx;
+  }): Promise<void>;
 };
 
 export type BufferedPumpHandle<TPump extends BufferedPumpLifecycle> = {
   readonly pump: TPump;
+  runWhile(options: {
+    kind: BufferedPumpSchedulerLeaseKind;
+    signal: AbortSignal;
+    handlerTx: DatabaseHandlerTx;
+  }): Promise<void>;
   close(): Promise<void>;
-  flushAndClose(): Promise<void>;
-  waitForNextFlushAndClose(): Promise<void>;
+  flushAndClose(handlerTx: DatabaseHandlerTx): Promise<void>;
 };
 
 export class BufferedPumpRegistry<TPump extends BufferedPumpLifecycle> {
@@ -265,27 +216,35 @@ export class BufferedPumpRegistry<TPump extends BufferedPumpLifecycle> {
     entry.handles += 1;
 
     let closed = false;
+    const schedulerLeases = new Set<Promise<void>>();
     const close = async () => {
       if (closed) {
         return;
+      }
+      if (schedulerLeases.size > 0) {
+        throw new BufferedPumpSchedulerLeaseActiveError(key, schedulerLeases.size);
       }
       closed = true;
       entry.handles -= 1;
       if (entry.handles === 0) {
         this.#entries.delete(key);
-        await entry.pump.stopAndDrain();
+        await entry.pump.drain();
       }
     };
 
     return {
       pump: entry.pump,
-      close,
-      flushAndClose: async () => {
-        await entry.pump.flushNow();
-        await close();
+      runWhile: (options) => {
+        let schedulerLease: Promise<void>;
+        schedulerLease = entry.pump.runWhile(options).finally(() => {
+          schedulerLeases.delete(schedulerLease);
+        });
+        schedulerLeases.add(schedulerLease);
+        return schedulerLease;
       },
-      waitForNextFlushAndClose: async () => {
-        await entry.pump.waitForNextFlush();
+      close,
+      flushAndClose: async (handlerTx) => {
+        await entry.pump.flushNow(handlerTx);
         await close();
       },
     };
@@ -307,16 +266,12 @@ export class BufferedDatabasePump<
   TScopeDelivery = unknown,
   TOpenScopeMeta = TScopeMeta,
 > {
-  #handlerTx: DatabaseHandlerTx;
   readonly #flush: (
     context: BufferedFlushContext<TOutgoing, TScopeMeta>,
   ) => Promise<BufferedFlushResult<TObserved, TScopeDelivery>>;
   readonly #onError: (error: Error) => void;
   readonly #scopes = new Map<string, BufferedScopeState<TOutgoing, TScopeDelivery, TScopeMeta>>();
-  readonly #observers = new Set<{
-    handler: (message: TObserved) => void | Promise<void>;
-    cursors: Set<string>;
-  }>();
+  readonly #observers = new Set<BufferedPumpObserver<TObserved>>();
   readonly #cursorForObservedItem: BufferedPumpCursorFor<TObserved> | undefined;
   readonly #resolveScopeMeta: BufferedResolveScopeMeta<TOpenScopeMeta, TScopeMeta> | undefined;
   readonly #debugLabel: (() => string) | undefined;
@@ -325,10 +280,17 @@ export class BufferedDatabasePump<
   #hasFlushed = false;
   #lastError: Error | undefined;
   #pumpTail = Promise.resolve();
-  readonly #loop: SerializedIntervalLoop;
+  readonly #writableFlushWaiters: Array<{
+    minimumSequence: number;
+    resolve: () => void;
+    reject: (error: unknown) => void;
+  }> = [];
+  #writableFlushStartedSequence = 0;
+  readonly #intervalMs: number;
+  readonly #schedulerLeases: BufferedPumpSchedulerLease[] = [];
+  #schedulerLeader: BufferedPumpSchedulerLease | undefined;
 
   constructor(options: {
-    handlerTx: DatabaseHandlerTx;
     flush: (
       context: BufferedFlushContext<TOutgoing, TScopeMeta>,
     ) => Promise<BufferedFlushResult<TObserved, TScopeDelivery>>;
@@ -338,7 +300,6 @@ export class BufferedDatabasePump<
     resolveScopeMeta?: BufferedResolveScopeMeta<TOpenScopeMeta, TScopeMeta>;
     debugLabel?: () => string;
   }) {
-    this.#handlerTx = options.handlerTx;
     this.#flush = options.flush;
     this.#cursorForObservedItem = options.cursorForObservedItem;
     this.#resolveScopeMeta = options.resolveScopeMeta;
@@ -348,17 +309,7 @@ export class BufferedDatabasePump<
       ((error) => {
         console.error("[buffered-pump] flush failed", error);
       });
-    this.#loop = new SerializedIntervalLoop({
-      intervalMs: options.intervalMs ?? DEFAULT_BUFFERED_PUMP_INTERVAL_MS,
-      onTick: () => this.flushNow(),
-      afterTick: () => {
-        this.#stopIfIdle();
-      },
-    });
-  }
-
-  setHandlerTx(handlerTx: DatabaseHandlerTx): void {
-    this.#handlerTx = handlerTx;
+    this.#intervalMs = options.intervalMs ?? DEFAULT_BUFFERED_PUMP_INTERVAL_MS;
   }
 
   openScope(
@@ -380,7 +331,6 @@ export class BufferedDatabasePump<
       : (meta as unknown as TScopeMeta);
     const state = new BufferedScopeState<TOutgoing, TScopeDelivery, TScopeMeta>(key, scopeMeta);
     this.#scopes.set(key, state);
-    this.start();
 
     return {
       get key() {
@@ -394,7 +344,6 @@ export class BufferedDatabasePump<
           return;
         }
         state.queue.push(this.#queuedItem(item));
-        this.start();
       },
       onDelivery: (handler) => {
         if (state.closed) {
@@ -405,42 +354,113 @@ export class BufferedDatabasePump<
           state.handlers.delete(handler);
         };
       },
-      flushAndClose: async () => {
+      flushAndClose: async (handlerTx) => {
         await this.#pumpTail;
-        await this.flushNow();
+        await this.flushNow(handlerTx);
         state.closed = true;
         this.#scopes.delete(state.key);
         this.#scopeDeliveryCursors.delete(state.key);
-        this.#stopIfIdle();
       },
     };
   }
 
-  async flushNow(): Promise<void> {
-    const run = this.#pumpTail.then(() => this.#runPumpOnce());
+  async flushNow(handlerTx: DatabaseHandlerTx): Promise<void> {
+    let writableFlushSequence = 0;
+    const run = this.#pumpTail.then(async () => {
+      writableFlushSequence = ++this.#writableFlushStartedSequence;
+      await this.#runPumpOnce(handlerTx, true);
+    });
+    this.#pumpTail = run.catch(() => {});
+    try {
+      await run;
+      this.#resolveWritableFlushWaiters(writableFlushSequence);
+    } catch (error) {
+      this.#resolveWritableFlushWaiters(writableFlushSequence, error);
+      throw error;
+    }
+  }
+
+  async refreshObserved(handlerTx: DatabaseHandlerTx): Promise<void> {
+    const run = this.#pumpTail.then(() => this.#runPumpOnce(handlerTx, false));
     this.#pumpTail = run.catch(() => {});
     await run;
   }
 
-  async waitForNextFlush(): Promise<void> {
-    await this.#loop.waitForNextTick();
+  /** Wait for a writable flush that starts after this call, excluding an in-progress flush. */
+  async waitForNextWritableFlush(): Promise<void> {
+    const minimumSequence = this.#writableFlushStartedSequence + 1;
+    await new Promise<void>((resolve, reject) => {
+      this.#writableFlushWaiters.push({ minimumSequence, resolve, reject });
+    });
   }
 
-  start(): void {
-    this.#loop.start();
+  async runWhile(options: {
+    kind: BufferedPumpSchedulerLeaseKind;
+    signal: AbortSignal;
+    handlerTx: DatabaseHandlerTx;
+  }): Promise<void> {
+    const lease: BufferedPumpSchedulerLease = {
+      kind: options.kind,
+      signal: options.signal,
+      handlerTx: options.handlerTx,
+      leadership: Promise.withResolvers<void>(),
+    };
+    this.#schedulerLeases.push(lease);
+    this.#electSchedulerLeader();
+
+    try {
+      while (!lease.signal.aborted) {
+        if (!(await this.#waitForSchedulerLeadership(lease))) {
+          return;
+        }
+        while (!lease.signal.aborted && this.#schedulerLeader === lease) {
+          if (this.#preferredSchedulerLeader() !== lease) {
+            this.#yieldSchedulerLeadership(lease);
+            break;
+          }
+          if (!(await this.#waitForSchedulerTick(lease.signal))) {
+            break;
+          }
+          if (this.#preferredSchedulerLeader() !== lease) {
+            this.#yieldSchedulerLeadership(lease);
+            break;
+          }
+          try {
+            if (lease.kind === "writer") {
+              await this.flushNow(lease.handlerTx);
+            } else {
+              // Observer traces are passive only while a local writer lease exists. Without one,
+              // the elected observer owns fallback polling, including its recurring storage spans.
+              await this.refreshObserved(lease.handlerTx);
+            }
+          } catch {
+            // flushNow reports through onError and restores outgoing work. The owning
+            // actor keeps polling so transient storage failures can recover.
+          }
+        }
+      }
+    } finally {
+      const leaseIndex = this.#schedulerLeases.indexOf(lease);
+      if (leaseIndex >= 0) {
+        this.#schedulerLeases.splice(leaseIndex, 1);
+      }
+      if (this.#schedulerLeader === lease) {
+        this.#schedulerLeader = undefined;
+        this.#electSchedulerLeader();
+      }
+    }
   }
 
-  stop(): void {
-    this.#loop.stop();
-  }
-
-  async stopAndDrain(): Promise<void> {
-    this.stop();
+  async drain(): Promise<void> {
     await this.#pumpTail;
   }
 
-  isRunning(): boolean {
-    return this.#loop.isRunning();
+  activeSchedulerLeaseCount(): number {
+    return this.#schedulerLeases.length;
+  }
+
+  activeSchedulerLoopCount(): number {
+    return this.#schedulerLeader ? 1 : 0;
   }
 
   hasScope(key: string): boolean {
@@ -467,65 +487,83 @@ export class BufferedDatabasePump<
     handler: (message: TObserved) => void | Promise<void>,
     options?: BufferedPumpObserveOptions<TObserved>,
   ): () => void {
-    const observer = {
-      handler,
-      cursors: this.#cursorsFor(options?.after ?? []),
-    };
-    this.#observers.add(observer);
-    this.start();
-    return () => {
-      this.#observers.delete(observer);
-      this.#stopIfIdle();
-    };
+    return this.#registerObserver(handler, options).unsubscribe;
   }
 
-  waitForObserved(
+  async observeWithReplay(
+    handler: (message: TObserved) => void | Promise<void>,
+    options?: BufferedPumpObserveOptions<TObserved>,
+  ): Promise<() => void> {
+    const registered = this.#registerObserver(handler, options);
+    try {
+      await this.#deliverObservedToObserver(registered.observer, this.#lastSnapshot);
+      return registered.unsubscribe;
+    } catch (error) {
+      registered.unsubscribe();
+      throw error;
+    }
+  }
+
+  async waitForObserved(
     predicate: (message: TObserved) => boolean | Promise<boolean>,
     options: BufferedPumpWaitForObservedOptions<TObserved> = {},
   ): Promise<TObserved> {
-    return new Promise<TObserved>((resolve, reject) => {
-      let isSettled = false;
-      let timeout: ReturnType<typeof setTimeout> | undefined;
-      const unsubscribe = this.observe(
-        (message) => {
-          void (async () => {
-            try {
-              if (!(await predicate(message))) {
-                return;
-              }
-              settle(() => {
-                resolve(message);
-              });
-            } catch (error) {
-              settle(() => {
-                reject(normalizeError(error));
-              });
-            }
-          })();
-        },
-        { after: options.after },
-      );
-
-      const settle = (complete: () => void) => {
-        if (isSettled) {
-          return;
-        }
-        isSettled = true;
-        if (timeout) {
-          clearTimeout(timeout);
-        }
-        unsubscribe();
-        complete();
-      };
-
-      if (options.timeoutMs !== undefined) {
-        timeout = setTimeout(() => {
-          settle(() => {
-            reject(new BufferedPumpObserveTimeoutError(options.timeoutMs!, options.timeoutMessage));
-          });
-        }, options.timeoutMs);
-      }
+    let isSettled = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let resolveResult!: (message: TObserved) => void;
+    let rejectResult!: (error: Error) => void;
+    const result = new Promise<TObserved>((resolve, reject) => {
+      resolveResult = resolve;
+      rejectResult = reject;
     });
+    const settle = (complete: () => void) => {
+      if (isSettled) {
+        return;
+      }
+      isSettled = true;
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      registered.unsubscribe();
+      complete();
+    };
+    const registered = this.#registerObserver(
+      async (message) => {
+        try {
+          if (!(await predicate(message))) {
+            return;
+          }
+          settle(() => {
+            resolveResult(message);
+          });
+        } catch (error) {
+          settle(() => {
+            rejectResult(normalizeError(error));
+          });
+        }
+      },
+      { after: options.after },
+    );
+
+    if (options.timeoutMs !== undefined) {
+      timeout = setTimeout(() => {
+        settle(() => {
+          rejectResult(
+            new BufferedPumpObserveTimeoutError(options.timeoutMs!, options.timeoutMessage),
+          );
+        });
+      }, options.timeoutMs);
+      timeout.unref?.();
+    }
+
+    try {
+      await this.#deliverObservedToObserver(registered.observer, this.#lastSnapshot);
+    } catch (error) {
+      settle(() => {
+        rejectResult(normalizeError(error));
+      });
+    }
+    return await result;
   }
 
   async publishObserved(messages: readonly TObserved[]): Promise<void> {
@@ -544,26 +582,28 @@ export class BufferedDatabasePump<
     await this.#deliverObserved(messagesToPublish);
   }
 
-  async snapshotState(): Promise<BufferedPumpSnapshot<TObserved>> {
+  async snapshotState(handlerTx: DatabaseHandlerTx): Promise<BufferedPumpSnapshot<TObserved>> {
     if (!this.#hasFlushed) {
-      await this.flushNow();
+      await this.refreshObserved(handlerTx);
     }
     return { items: this.#lastSnapshot.slice() };
   }
 
-  async snapshot(): Promise<TObserved[]> {
-    return (await this.snapshotState()).items;
+  async snapshot(handlerTx: DatabaseHandlerTx): Promise<TObserved[]> {
+    return (await this.snapshotState(handlerTx)).items;
   }
 
-  async #runPumpOnce(): Promise<void> {
+  async #runPumpOnce(handlerTx: DatabaseHandlerTx, includeWritableScopes: boolean): Promise<void> {
     const drainedOutgoingByScope = new Map<
       string,
       Array<QueuedBufferedItem<TOutgoing, TOutgoing, TScopeMeta>>
     >();
-    for (const [scopeKey, scope] of this.#scopes) {
-      const drained = scope.queue.splice(0);
-      if (drained.length > 0) {
-        drainedOutgoingByScope.set(scopeKey, drained);
+    if (includeWritableScopes) {
+      for (const [scopeKey, scope] of this.#scopes) {
+        const drained = scope.queue.splice(0);
+        if (drained.length > 0) {
+          drainedOutgoingByScope.set(scopeKey, drained);
+        }
       }
     }
 
@@ -571,12 +611,14 @@ export class BufferedDatabasePump<
 
     try {
       const result = await this.#flush({
-        handlerTx: this.#handlerTx,
-        scopes: this.#scopeSnapshots(),
+        handlerTx,
+        scopes: includeWritableScopes ? this.#scopeSnapshots() : new Map(),
         batch,
       });
       const observedItems = result.observedItems ?? [];
-      await this.#deliverToScopes(result.scopeDeliveries ?? []);
+      if (includeWritableScopes) {
+        await this.#deliverToScopes(result.scopeDeliveries ?? []);
+      }
       this.#lastSnapshot = (result.snapshot ?? observedItems).slice();
       this.#hasFlushed = true;
       this.#lastError = undefined;
@@ -674,12 +716,43 @@ export class BufferedDatabasePump<
   async #deliverObserved(messages: readonly TObserved[]): Promise<void> {
     for (const message of messages) {
       for (const observer of this.#observers) {
-        if (this.#isAlreadyObserved(observer.cursors, message)) {
-          continue;
-        }
-        await observer.handler(message);
+        await this.#deliverObservedToObserver(observer, [message]);
       }
     }
+  }
+
+  async #deliverObservedToObserver(
+    observer: BufferedPumpObserver<TObserved>,
+    messages: readonly TObserved[],
+  ): Promise<void> {
+    for (const message of messages) {
+      if (this.#isAlreadyObserved(observer.cursors, message)) {
+        continue;
+      }
+      const delivery = observer.deliveryTail.then(async () => {
+        await observer.handler(message);
+      });
+      observer.deliveryTail = delivery.catch(() => {});
+      await delivery;
+    }
+  }
+
+  #registerObserver(
+    handler: (message: TObserved) => void | Promise<void>,
+    options?: BufferedPumpObserveOptions<TObserved>,
+  ): { observer: BufferedPumpObserver<TObserved>; unsubscribe: () => void } {
+    const observer: BufferedPumpObserver<TObserved> = {
+      handler,
+      cursors: this.#cursorsFor(options?.after ?? []),
+      deliveryTail: Promise.resolve(),
+    };
+    this.#observers.add(observer);
+    return {
+      observer,
+      unsubscribe: () => {
+        this.#observers.delete(observer);
+      },
+    };
   }
 
   #isAlreadyObserved(cursors: Set<string>, message: TObserved): boolean {
@@ -709,14 +782,99 @@ export class BufferedDatabasePump<
     return cursors;
   }
 
-  #hasPendingWork(): boolean {
-    return [...this.#scopes.values()].some((scope) => scope.queue.length > 0);
+  #resolveWritableFlushWaiters(completedSequence: number, error?: unknown): void {
+    const waiters = this.#writableFlushWaiters.splice(0);
+    for (const waiter of waiters) {
+      if (waiter.minimumSequence > completedSequence) {
+        this.#writableFlushWaiters.push(waiter);
+      } else if (error) {
+        waiter.reject(error);
+      } else {
+        waiter.resolve();
+      }
+    }
   }
 
-  #stopIfIdle(): void {
-    if (!this.#hasPendingWork() && this.#scopes.size === 0 && this.#observers.size === 0) {
-      this.stop();
+  #preferredSchedulerLeader(): BufferedPumpSchedulerLease | undefined {
+    return (
+      this.#schedulerLeases.find((lease) => lease.kind === "writer" && !lease.signal.aborted) ??
+      this.#schedulerLeases.find((lease) => !lease.signal.aborted)
+    );
+  }
+
+  #electSchedulerLeader(): void {
+    if (this.#schedulerLeader) {
+      return;
     }
+    const nextLeader = this.#preferredSchedulerLeader();
+    if (!nextLeader) {
+      return;
+    }
+    this.#schedulerLeader = nextLeader;
+    nextLeader.leadership.resolve();
+  }
+
+  #yieldSchedulerLeadership(lease: BufferedPumpSchedulerLease): void {
+    if (this.#schedulerLeader !== lease) {
+      return;
+    }
+    lease.leadership = Promise.withResolvers<void>();
+    this.#schedulerLeader = undefined;
+    this.#electSchedulerLeader();
+  }
+
+  async #waitForSchedulerLeadership(lease: BufferedPumpSchedulerLease): Promise<boolean> {
+    if (lease.signal.aborted) {
+      return false;
+    }
+    if (this.#schedulerLeader === lease) {
+      return true;
+    }
+
+    return await new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (isLeader: boolean) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        lease.signal.removeEventListener("abort", abort);
+        resolve(isLeader);
+      };
+      const abort = () => {
+        finish(false);
+      };
+      lease.signal.addEventListener("abort", abort, { once: true });
+      lease.leadership.promise
+        .then(() => {
+          finish(!lease.signal.aborted);
+        })
+        .catch(() => {
+          finish(false);
+        });
+    });
+  }
+
+  async #waitForSchedulerTick(signal: AbortSignal): Promise<boolean> {
+    if (signal.aborted) {
+      return false;
+    }
+
+    return await new Promise<boolean>((resolve) => {
+      const finish = (shouldFlush: boolean) => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", abort);
+        resolve(shouldFlush);
+      };
+      const abort = () => {
+        finish(false);
+      };
+      const timer = setTimeout(() => {
+        finish(!signal.aborted);
+      }, this.#intervalMs);
+      timer.unref?.();
+      signal.addEventListener("abort", abort, { once: true });
+    });
   }
 
   #queuedItem<TItem>(
