@@ -27,6 +27,7 @@ describe("cloudflareDatabaseTransactionInstrumentation", () => {
       {
         fragmentName: "billing",
         transactionKind: "service",
+        requestSource: "route",
         transactionName: "billing.recordEvent",
         idempotencyKey: "uow-123",
         callback: "mutate",
@@ -43,6 +44,7 @@ describe("cloudflareDatabaseTransactionInstrumentation", () => {
     expect(setAttribute.mock.calls).toEqual([
       ["fragno.db.transaction.kind", "service"],
       ["fragno.db.transaction.name", "billing.recordEvent"],
+      ["fragno.db.request.source", "route"],
       ["fragno.db.transaction.idempotency_key", "uow-123"],
       ["fragno.db.fragment.name", "billing"],
       ["fragno.db.transaction.callback", "mutate"],
@@ -55,6 +57,7 @@ describe("cloudflareDatabaseTransactionInstrumentation", () => {
       cloudflareDatabaseTransactionInstrumentation.run(
         {
           transactionKind: "handler",
+          requestSource: "route",
           transactionName: "billing.recordEvent",
           callback,
         },
@@ -73,7 +76,7 @@ describe("cloudflareDatabaseTransactionInstrumentation", () => {
 
     assert.equal(
       cloudflareDatabaseTransactionInstrumentation.run(
-        { fragmentName: "billing", transactionKind: "handler" },
+        { fragmentName: "billing", transactionKind: "handler", requestSource: "route" },
         execute,
       ),
       "done",
@@ -87,11 +90,64 @@ describe("cloudflareDatabaseTransactionInstrumentation", () => {
 
     assert.equal(
       cloudflareDatabaseTransactionInstrumentation.run(
-        { transactionKind: "handler", transactionName: "billing.recordEvent" },
+        {
+          transactionKind: "handler",
+          requestSource: "route",
+          transactionName: "billing.recordEvent",
+        },
         execute,
       ),
       "done",
     );
     expect(execute).toHaveBeenCalledOnce();
+  });
+
+  test("executes stream transactions without entering the ambient foreground trace", () => {
+    const execute = vi.fn(() => "done");
+
+    assert(
+      cloudflareDatabaseTransactionInstrumentation.run(
+        {
+          fragmentName: "internal",
+          transactionKind: "handler",
+          requestSource: "stream",
+          transactionName: "internal.outbox.list",
+        },
+        execute,
+      ) === "done",
+    );
+    expect(execute).toHaveBeenCalledOnce();
+    expect(enterSpan).not.toHaveBeenCalled();
+  });
+
+  test("does not let an overlapping stream transaction contaminate a foreground span", async () => {
+    let finishStream!: () => void;
+    const streamExecution = cloudflareDatabaseTransactionInstrumentation.run(
+      {
+        transactionKind: "handler",
+        requestSource: "stream",
+        transactionName: "internal.outbox.list",
+      },
+      () =>
+        new Promise<void>((resolve) => {
+          finishStream = resolve;
+        }),
+    );
+
+    assert(
+      cloudflareDatabaseTransactionInstrumentation.run(
+        {
+          transactionKind: "handler",
+          requestSource: "route",
+          transactionName: "files.load",
+        },
+        () => "foreground",
+      ) === "foreground",
+    );
+
+    expect(enterSpan).toHaveBeenCalledTimes(1);
+    expect(enterSpan).toHaveBeenCalledWith("fragno.db.handler.files.load", expect.any(Function));
+    finishStream();
+    await streamExecution;
   });
 });

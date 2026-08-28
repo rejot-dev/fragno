@@ -17,6 +17,14 @@ type CreateDispatcherContext<TEnv> = {
   onProcessError?: (error: unknown) => void;
 };
 
+export type FragmentDurableObjectInitializationContext =
+  | { phase: "createRuntime"; hostName: string }
+  | { phase: "migrate"; hostName: string; fragmentName: string };
+
+export interface FragmentDurableObjectInitializationInstrumentation {
+  run<T>(context: FragmentDurableObjectInitializationContext, execute: () => T): T;
+}
+
 type CommonHostOptions<TEnv, TSource, TRuntime> = {
   /** Human-readable runtime name used in diagnostics. */
   name?: string;
@@ -59,6 +67,8 @@ type CommonHostOptions<TEnv, TSource, TRuntime> = {
   onDispatcherError?: (error: unknown) => void;
   /** Overrides instrumentation for every durable-hook fragment hosted by this Durable Object. */
   durableHooksInstrumentation?: DurableHooksInstrumentation;
+  /** Instruments runtime construction and each fragment migration. */
+  initializationInstrumentation?: FragmentDurableObjectInitializationInstrumentation;
   /** Called by the durable hook dispatcher when processing or alarm scheduling fails. */
   onProcessError?: (error: unknown) => void;
   /** @internal Override low-level operations in tests or advanced integrations. */
@@ -261,6 +271,7 @@ export function createFragmentDurableObjectHost<TEnv, TSource, TRuntime>(
     | undefined;
   const mounts = options.mounts as readonly FragmentDurableObjectMount<TRuntime>[] | undefined;
   const usesSingleFragmentDefault = !getMigrationFragments;
+  const hostName = options.name ?? "fragment";
 
   const resolveMigrationFragments = (runtime: TRuntime) => {
     if (getMigrationFragments) {
@@ -333,16 +344,28 @@ export function createFragmentDurableObjectHost<TEnv, TSource, TRuntime>(
   const migrateFragments = async (fragments: readonly AnyFragnoInstantiatedDatabaseFragment[]) => {
     const migrateFragment = options.operations?.migrateFragment ?? migrate;
     for (const fragment of fragments) {
-      await migrateFragment(fragment);
+      await (options.initializationInstrumentation
+        ? options.initializationInstrumentation.run(
+            { phase: "migrate", hostName, fragmentName: fragment.name },
+            () => migrateFragment(fragment),
+          )
+        : migrateFragment(fragment));
     }
   };
 
   const initialize = async (source: TSource): Promise<TRuntime> => {
     try {
-      const runtime = (await options.createRuntime(source, {
-        state: options.state,
-        env: options.env,
-      })) as TRuntime;
+      const createRuntime = () =>
+        options.createRuntime(source, {
+          state: options.state,
+          env: options.env,
+        });
+      const runtime = (await (options.initializationInstrumentation
+        ? options.initializationInstrumentation.run(
+            { phase: "createRuntime", hostName },
+            createRuntime,
+          )
+        : createRuntime())) as TRuntime;
       const migrationFragments = resolveMigrationFragments(runtime);
 
       await migrateFragments(migrationFragments);

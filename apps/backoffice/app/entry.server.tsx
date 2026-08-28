@@ -3,6 +3,11 @@ import { renderToReadableStream } from "react-dom/server";
 import type { EntryContext, HandleErrorFunction } from "react-router";
 import { ServerRouter } from "react-router";
 
+import { cloudflareReactRouterServerInstrumentation } from "./worker-runtime/cloudflare-react-router-instrumentation";
+
+/** Observes React Router request and route-handler boundaries without changing route behavior. */
+export const instrumentations = [cloudflareReactRouterServerInstrumentation];
+
 export default async function handleRequest(
   request: Request,
   responseStatusCode: number,

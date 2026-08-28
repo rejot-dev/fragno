@@ -72,6 +72,35 @@ describe("createFragmentDurableObjectHost", () => {
     ]);
   });
 
+  it("instruments runtime creation and each fragment migration", async () => {
+    const first = createFragment("first");
+    const second = createFragment("second");
+    const recording = createRecordingOperations();
+    const contexts: unknown[] = [];
+    const host = createFragmentDurableObjectHost({
+      name: "Automations",
+      state: { storage: { setAlarm: async () => {} } },
+      env: {},
+      createRuntime: () => ({ first, second }),
+      getMigrationFragments: (runtime) => [runtime.first, runtime.second],
+      initializationInstrumentation: {
+        run: <T>(context: unknown, execute: () => T): T => {
+          contexts.push(context);
+          return execute();
+        },
+      },
+      operations: recording.operations,
+    });
+
+    await host.initialize({});
+
+    expect(contexts).toEqual([
+      { phase: "createRuntime", hostName: "Automations" },
+      { phase: "migrate", hostName: "Automations", fragmentName: "first" },
+      { phase: "migrate", hostName: "Automations", fragmentName: "second" },
+    ]);
+  });
+
   it("creates a fresh runtime for every initialization", async () => {
     const runtimeBuilds: string[] = [];
     const recording = createRecordingOperations();

@@ -15,7 +15,7 @@ const runCloudflareTransactionSpan = <T>(
   context: DatabaseTransactionInstrumentationContext,
   execute: () => T,
 ): T => {
-  if (!context.transactionName) {
+  if (!context.transactionName || context.requestSource === "stream") {
     return execute();
   }
 
@@ -25,6 +25,7 @@ const runCloudflareTransactionSpan = <T>(
       enteredSpan = true;
       span.setAttribute("fragno.db.transaction.kind", context.transactionKind);
       span.setAttribute("fragno.db.transaction.name", context.transactionName);
+      span.setAttribute("fragno.db.request.source", context.requestSource);
       if (context.idempotencyKey) {
         span.setAttribute("fragno.db.transaction.idempotency_key", context.idempotencyKey);
       }

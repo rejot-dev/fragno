@@ -529,6 +529,8 @@ function createServiceTx<
 
 export type DatabaseTransactionKind = "handler" | "service";
 
+export type DatabaseTransactionRequestSource = "route" | "context" | "stream";
+
 export type DatabaseTransactionCallback =
   | "serviceCalls"
   | "retrieve"
@@ -541,6 +543,7 @@ export type DatabaseTransactionCallback =
 export type DatabaseTransactionInstrumentationContext = {
   fragmentName?: string;
   transactionKind: DatabaseTransactionKind;
+  requestSource: DatabaseTransactionRequestSource;
   transactionName?: string;
   idempotencyKey?: string;
   callback?: DatabaseTransactionCallback;
@@ -583,6 +586,9 @@ export interface ExecuteTxOptions {
 
   /** Fragment name attached to transaction instrumentation. */
   fragmentName?: string;
+
+  /** @internal Request lifecycle source attached by the fragment instantiator. */
+  requestSource?: DatabaseTransactionRequestSource;
 
   /** Optional tracing integration for the transaction and its user-defined callbacks. */
   transactionInstrumentation?: DatabaseTransactionInstrumentation;
@@ -628,6 +634,7 @@ export interface ExecuteTxOptions {
 
 type DatabaseTransactionInstrumentationOptions = {
   fragmentName?: string;
+  requestSource?: DatabaseTransactionRequestSource;
   transactionName?: string;
   idempotencyKey?: string;
   transactionInstrumentation?: DatabaseTransactionInstrumentation;
@@ -681,6 +688,7 @@ const runWithTransactionInstrumentation = <T>(
       {
         fragmentName: options.fragmentName,
         transactionKind,
+        requestSource: options.requestSource ?? "context",
         transactionName: options.transactionName,
         idempotencyKey: options.idempotencyKey,
         callback,

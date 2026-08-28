@@ -49,6 +49,7 @@ import {
   type AwaitedPromisesInObject,
   type ExtractServiceFinalResults,
   type DatabaseTransactionInstrumentation,
+  type DatabaseTransactionRequestSource,
   type ExecuteTxOptions,
   type ServiceTxOptions,
   type TxResult,
@@ -384,6 +385,13 @@ const requestSourceSymbol = Symbol.for("fragno-request-source");
 const requestRouteSymbol = Symbol.for("fragno-request-route");
 const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
 const roundtripGuardDocsUrl = "https://fragno.dev/docs/fragno/for-library-authors/rules-of-fragno";
+
+const getDatabaseTransactionRequestSource = (
+  storage: DatabaseContextStorage,
+): DatabaseTransactionRequestSource =>
+  ((storage as Record<symbol, unknown>)[requestSourceSymbol] as
+    | DatabaseTransactionRequestSource
+    | undefined) ?? "context";
 
 type DbRoundtripGuardState = {
   retrieveCount: number;
@@ -1546,17 +1554,23 @@ export class DatabaseFragmentDefinitionBuilder<
         schema: TSchema,
         transactionOptions: ServiceTxOptions = {},
       ) {
-        const uow = storage.getStore()?.uow;
-        if (!uow) {
+        const currentStorage = storage.getStore();
+        if (!currentStorage?.uow) {
           throw new Error(
             "No UnitOfWork in context. Service must be called within a route handler OR using `withUnitOfWork`.",
           );
         }
-        return createServiceTxBuilder<TSchema, THooks>(schema, uow, hooksConfig?.hooks, {
-          fragmentName: baseDef.name,
-          transactionName: transactionOptions.name,
-          transactionInstrumentation: options.transactionInstrumentation,
-        });
+        return createServiceTxBuilder<TSchema, THooks>(
+          schema,
+          currentStorage.uow,
+          hooksConfig?.hooks,
+          {
+            fragmentName: baseDef.name,
+            requestSource: getDatabaseTransactionRequestSource(currentStorage),
+            transactionName: transactionOptions.name,
+            transactionInstrumentation: options.transactionInstrumentation,
+          },
+        );
       }
 
       const serviceContext: DatabaseServiceContext<THooks> = {
@@ -1676,6 +1690,7 @@ export class DatabaseFragmentDefinitionBuilder<
           {
             ...execOptions,
             fragmentName: baseDef.name,
+            requestSource: getDatabaseTransactionRequestSource(currentStorage),
             transactionInstrumentation:
               execOptions?.transactionInstrumentation ?? options.transactionInstrumentation,
             createUnitOfWork: () => {

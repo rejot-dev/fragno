@@ -1043,6 +1043,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(callArgs[2]).toHaveProperty("onUserCreated");
       expect(callArgs[3]).toEqual({
         fragmentName: "db-frag-with-hooks",
+        requestSource: "context",
         transactionName: "users.create",
         transactionInstrumentation,
       });

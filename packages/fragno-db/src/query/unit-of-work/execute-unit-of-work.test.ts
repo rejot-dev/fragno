@@ -672,6 +672,7 @@ describe("Unified Tx API", () => {
         {
           fragmentName: "users-fragment",
           transactionKind: "handler",
+          requestSource: "context",
           transactionName: "users.list",
           idempotencyKey: expect.any(String),
           callback: undefined,
@@ -679,6 +680,7 @@ describe("Unified Tx API", () => {
         {
           fragmentName: "users-fragment",
           transactionKind: "handler",
+          requestSource: "context",
           transactionName: "users.list",
           idempotencyKey: expect.any(String),
           callback: "retrieve",
@@ -686,6 +688,7 @@ describe("Unified Tx API", () => {
         {
           fragmentName: "users-fragment",
           transactionKind: "handler",
+          requestSource: "context",
           transactionName: "users.list",
           idempotencyKey: expect.any(String),
           callback: "transformRetrieve",
@@ -789,6 +792,7 @@ describe("Unified Tx API", () => {
         {
           fragmentName: "users-fragment",
           transactionKind: "service",
+          requestSource: "context",
           transactionName: "users.find",
           idempotencyKey: expect.any(String),
           callback: "retrieve",
@@ -796,6 +800,7 @@ describe("Unified Tx API", () => {
         {
           fragmentName: "users-fragment",
           transactionKind: "service",
+          requestSource: "context",
           transactionName: "users.find",
           idempotencyKey: expect.any(String),
           callback: "transformRetrieve",
