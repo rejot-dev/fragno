@@ -44,11 +44,10 @@ import {
   AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED,
   AUTH_AUTOMATION_SOURCE,
 } from "@/fragno/backoffice-capabilities/capabilities/auth";
-import {
-  createDurableHookRepositoryRpcTarget,
-  type DurableHookQueueEntry,
-  type DurableHookQueueResponse,
-  type DurableHookRepository,
+import type {
+  DurableHookQueueEntry,
+  DurableHookQueueOptions,
+  DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
 import { buildUserEmailVerificationEmail } from "@/transactional-emails/user-email-verification";
 
@@ -352,7 +351,7 @@ const dispatchOrganizationEvent = async (
       ? organization.createdAt
       : organization.updatedAt,
   );
-  await runtime.objects.automations.singleton().ingestEvent(
+  await runtime.objects.automations.singleton().commands.ingestEvent(
     {
       id: context.hookId.toString(),
       scope: { kind: "system" },
@@ -1028,16 +1027,18 @@ export class InMemoryAuthObject implements AuthObject {
       if (!emailVerification.enabled) {
         return;
       }
-      const verification = await this.#runtime.objects.otp.singleton().issueEmailVerification({
-        userId: payload.user.id,
-        email: payload.user.email,
-        publicBaseUrl: emailVerification.publicBaseUrl,
-        requestId: record.id,
-      });
+      const verification = await this.#runtime.objects.otp
+        .singleton()
+        .commands.issueEmailVerification({
+          userId: payload.user.id,
+          email: payload.user.email,
+          publicBaseUrl: emailVerification.publicBaseUrl,
+          requestId: record.id,
+        });
       if (!verification.deliverable) {
         return;
       }
-      await this.#runtime.objects.resend.singleton().queueEmail(
+      await this.#runtime.objects.resend.singleton().commands.queueEmail(
         buildUserEmailVerificationEmail({
           email: payload.user.email,
           verificationUrl: verification.url,
@@ -1108,33 +1109,31 @@ export class InMemoryAuthObject implements AuthObject {
     await this.#processHooks();
   }
 
-  getDurableHookRepository(): DurableHookRepository {
-    return createDurableHookRepositoryRpcTarget({
-      getHookQueue: async (options = {}): Promise<DurableHookQueueResponse> => {
-        const pageSize = Math.min(200, Math.max(1, options.pageSize ?? 50));
-        const hooks = (
-          await listBetterAuthDurableHooks(this.#database, {
-            cursor: options.cursor ?? null,
-            limit: pageSize + 1,
-          })
-        ).map(deserializeBetterAuthDurableHook);
-        const start = 0;
-        const items = hooks.slice(start, start + pageSize);
-        const hasNextPage = hooks.length > start + pageSize;
-        return {
-          configured: true,
-          hooksEnabled: true,
-          namespace: "better-auth",
-          items,
-          cursor: hasNextPage ? items.at(-1)?.id : undefined,
-          hasNextPage,
-        };
-      },
-      getHook: async (hookId) => {
-        const hook = await getBetterAuthDurableHook(this.#database, hookId);
-        return hook ? deserializeBetterAuthDurableHook(hook) : null;
-      },
-    });
+  async getDurableHookQueue(
+    options: DurableHookQueueOptions = {},
+  ): Promise<DurableHookQueueResponse> {
+    const pageSize = Math.min(200, Math.max(1, options.pageSize ?? 50));
+    const hooks = (
+      await listBetterAuthDurableHooks(this.#database, {
+        cursor: options.cursor ?? null,
+        limit: pageSize + 1,
+      })
+    ).map(deserializeBetterAuthDurableHook);
+    const items = hooks.slice(0, pageSize);
+    const hasNextPage = hooks.length > pageSize;
+    return {
+      configured: true,
+      hooksEnabled: true,
+      namespace: "better-auth",
+      items,
+      cursor: hasNextPage ? items.at(-1)?.id : undefined,
+      hasNextPage,
+    };
+  }
+
+  async getDurableHook(hookId: string): Promise<DurableHookQueueEntry | null> {
+    const hook = await getBetterAuthDurableHook(this.#database, hookId);
+    return hook ? deserializeBetterAuthDurableHook(hook) : null;
   }
 
   async #authContext(baseURL = "http://localhost") {
@@ -1601,8 +1600,12 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
     await this.#object.alarm();
   }
 
-  getDurableHookRepository() {
-    return this.#object.getDurableHookRepository();
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await this.#object.getDurableHookQueue(options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await this.#object.getDurableHook(hookId);
   }
 
   async enqueueEmailVerificationHook(

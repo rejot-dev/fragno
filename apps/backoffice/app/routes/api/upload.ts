@@ -24,7 +24,7 @@ const forwardToUpload = async (
   url.searchParams.set("orgId", orgId);
 
   const proxyRequest = new Request(url.toString(), request);
-  return uploadDo.fetch(proxyRequest);
+  return uploadDo.http.fetch(proxyRequest);
 };
 
 /**

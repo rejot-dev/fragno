@@ -48,7 +48,7 @@ const whenIdentityIsBound = (claimId: string): BackofficeScenarioStep => ({
   drain: true,
   run: async (ctx) => {
     ctx.rememberOrg(orgId);
-    await ctx.runtime.objects.automations.for(scope).bindExternalIdentity(
+    await ctx.runtime.objects.automations.for(scope).commands.bindExternalIdentity(
       {
         identity,
         userId,
@@ -66,7 +66,7 @@ const whenIdentityIsRevoked = (label: string, expectedVersion = 0): BackofficeSc
   drain: true,
   run: async (ctx) => {
     ctx.rememberOrg(orgId);
-    await ctx.runtime.objects.automations.for(scope).revokeExternalIdentity(
+    await ctx.runtime.objects.automations.for(scope).commands.revokeExternalIdentity(
       {
         identity,
         expectedUserId: userId,
@@ -83,7 +83,7 @@ const thenStaleRevocationIsRejected = (expectedVersion: number): BackofficeScena
   label: "the stale revocation is rejected",
   run: async (ctx) => {
     await expect(
-      ctx.runtime.objects.automations.for(scope).revokeExternalIdentity(
+      ctx.runtime.objects.automations.for(scope).commands.revokeExternalIdentity(
         {
           identity,
           expectedUserId: userId,

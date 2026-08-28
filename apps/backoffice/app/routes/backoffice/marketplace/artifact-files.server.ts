@@ -1,4 +1,8 @@
-import type { BackofficeObjectRegistry, UploadObject } from "@/backoffice-runtime/object-registry";
+import type {
+  BackofficeObjectHandle,
+  BackofficeObjectRegistry,
+  UploadObject,
+} from "@/backoffice-runtime/object-registry";
 import { createFileTree } from "@/file-collection/create-file-tree";
 import { createUploadFileCollection } from "@/file-collection/create-upload-file-collection";
 import type { FileCollection, FileContent } from "@/file-collection/file-collection";
@@ -79,7 +83,7 @@ function createPublishedMarketplaceArtifactCollection(input: {
 }): FileCollection {
   const uploadObject = input.objects.upload.forName(input.manifest.uploadName);
   const uploadCollection = createUploadFileCollection({
-    routes: createUploadRouteCaller(uploadObject, input.request),
+    routes: createUploadRouteCaller(uploadObject.http, input.request),
     provider: UPLOAD_PROVIDER_DATABASE,
     getFileResponse: ({ provider, fileKey }) =>
       fetchUploadFile(uploadObject, input.request, provider, fileKey),
@@ -108,7 +112,7 @@ function createPublishedMarketplaceArtifactCollection(input: {
 }
 
 function fetchUploadFile(
-  object: UploadObject,
+  object: BackofficeObjectHandle<UploadObject>,
   request: Request,
   provider: string,
   fileKey: string,
@@ -116,7 +120,7 @@ function fetchUploadFile(
   const url = new URL("/api/upload/files/by-key/content", request.url);
   url.searchParams.set("provider", provider);
   url.searchParams.set("key", fileKey);
-  return object.fetch(new Request(url, { headers: request.headers }));
+  return object.http.fetch(new Request(url, { headers: request.headers }));
 }
 
 function createFileContentResponse(content: FileContent): Response {

@@ -6,7 +6,10 @@ import type {
   BackofficeContextScope,
   BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
+import type {
+  AutomationsObject,
+  BackofficeObjectHandle,
+} from "@/backoffice-runtime/object-registry";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   BACKOFFICE_PI_WORKFLOW_NAME,
@@ -87,7 +90,7 @@ const createPiRouteCaller = ({
   scope,
   execution,
 }: {
-  object: AutomationsObject;
+  object: BackofficeObjectHandle<AutomationsObject>;
   scope: BackofficeContextScope;
   execution: BackofficeExecutionContext;
 }) =>
@@ -98,7 +101,7 @@ const createPiRouteCaller = ({
     fetch: async (outboundRequest) => {
       const url = new URL(outboundRequest.url);
       url.searchParams.set("scope", backofficeContextScopeSinglePathSegment(scope));
-      return object.fetchWithContext(new Request(url.toString(), outboundRequest), {
+      return object.http.fetchAuthorized(new Request(url.toString(), outboundRequest), {
         execution,
         propagationContext: null,
       });
@@ -253,7 +256,7 @@ export const createPiRouteRuntime = ({
   scope,
   execution,
 }: {
-  object: AutomationsObject;
+  object: BackofficeObjectHandle<AutomationsObject>;
   scope: BackofficeContextScope;
   execution: BackofficeExecutionContext;
 }): PiRuntime => createPiRuntime(createPiRouteCaller({ object, scope, execution }));

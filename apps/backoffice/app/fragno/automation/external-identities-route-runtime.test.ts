@@ -28,7 +28,7 @@ describe("route-backed external identity runtime", () => {
   test("forwards the workflow identity choice with trusted execution", async () => {
     const resolveExternalIdentity = vi.fn(async () => ({ userId: "user-1" }));
     const runtime = createRouteBackedAutomationIdentityRuntime({
-      object: { resolveExternalIdentity } as never,
+      object: { commands: { resolveExternalIdentity } } as never,
       execution,
     });
 

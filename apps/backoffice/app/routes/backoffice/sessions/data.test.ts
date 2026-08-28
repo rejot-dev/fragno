@@ -70,11 +70,15 @@ describe("Pi session route caller", () => {
         runtime: { objects: { pi: {} } },
         kernel: {
           scoped: () => ({
-            fetchWithContext: async () =>
-              Response.json(
-                { message: "Permission denied", code: "principal-permission-denied" },
-                { status: 403 },
-              ),
+            commands: {},
+            http: {
+              fetch: async () => new Response(),
+              fetchAuthorized: async () =>
+                Response.json(
+                  { message: "Permission denied", code: "principal-permission-denied" },
+                  { status: 403 },
+                ),
+            },
           }),
         },
       }),
@@ -109,15 +113,18 @@ describe("Pi session route caller", () => {
   });
 
   test("forwards session creation with trusted execution context", async () => {
-    const fetchWithContext = vi.fn(async (_request: Request, _context: unknown) =>
+    const fetchAuthorized = vi.fn(async (_request: Request, _context: unknown) =>
       Response.json({
         id: "session-1",
         workflowName: "interactive-chat-workflow",
         status: "pending",
       }),
     );
-    const fetch = vi.fn();
-    const piObject = { fetch, fetchWithContext };
+    const fetch = vi.fn(async () => new Response());
+    const piObject = {
+      commands: {},
+      http: { fetch, fetchAuthorized },
+    };
     const kernel = {
       scoped: vi.fn(() => piObject),
     };
@@ -144,8 +151,8 @@ describe("Pi session route caller", () => {
 
     expect(requireBackofficeContextMock).toHaveBeenCalledWith(request, context, scope);
     expect(kernel.scoped).toHaveBeenCalledWith("AUTOMATIONS", scope, undefined);
-    expect(fetchWithContext).toHaveBeenCalledOnce();
-    const [forwardedRequest, actionContext] = fetchWithContext.mock.calls[0]!;
+    expect(fetchAuthorized).toHaveBeenCalledOnce();
+    const [forwardedRequest, actionContext] = fetchAuthorized.mock.calls[0]!;
     assert.instanceOf(forwardedRequest, Request);
     assert.equal(forwardedRequest.method, "POST");
     assert.equal(

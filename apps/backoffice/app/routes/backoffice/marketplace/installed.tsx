@@ -52,7 +52,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       organization,
       ingestions: await runtime.objects.automations
         .forOrg(organization.id)
-        .listMarketplaceIngestions({ targetScope }),
+        .commands.listMarketplaceIngestions({ targetScope }),
     })),
   );
   const ingestions = ingestionPages.flatMap(({ organization, ingestions: records }) =>
@@ -68,7 +68,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     listingIdBatches.push(listingIds.slice(offset, offset + MARKETPLACE_LATEST_VERSIONS_MAX_IDS));
   }
 
-  const marketplace = runtime.objects.marketplace.singleton();
+  const marketplace = runtime.objects.marketplace.singleton().commands;
   const latestPublishedVersionPages = await Promise.all(
     listingIdBatches.map((listingIdBatch) =>
       marketplace.getLatestPublishedVersions({ listingIds: listingIdBatch }),

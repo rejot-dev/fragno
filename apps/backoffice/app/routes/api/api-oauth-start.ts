@@ -20,7 +20,7 @@ const apiOAuthStartPublicRoute = {
       API_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
       apiPublicAddress(publicOrigin, scopePathSegment).oauthRedirectUri,
     );
-    return object.fetch(new Request(internalUrl, request));
+    return object.http.fetch(new Request(internalUrl, request));
   },
 } satisfies PublicFragmentRoute<ApiObject>;
 

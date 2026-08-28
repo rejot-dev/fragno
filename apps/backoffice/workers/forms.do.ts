@@ -10,7 +10,11 @@ import {
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
-import { createDurableHookRepository } from "@/fragno/durable-hooks";
+import {
+  loadDurableHook,
+  loadDurableHookQueue,
+  type DurableHookQueueOptions,
+} from "@/fragno/durable-hooks";
 import { createFormsServer, type FormsFragment } from "@/fragno/forms";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
@@ -42,7 +46,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
         createFormsServer(
           {
             onFormCreated: async function ingestFormCreatedEvent(payload, context) {
-              await runtime.objects.automations.singleton().ingestEvent(
+              await runtime.objects.automations.singleton().commands.ingestEvent(
                 {
                   id: context.hookId.toString(),
                   scope: SYSTEM_SCOPE,
@@ -61,7 +65,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
               );
             },
             onFormUpdated: async function ingestFormUpdatedEvent(payload, context) {
-              await runtime.objects.automations.singleton().ingestEvent(
+              await runtime.objects.automations.singleton().commands.ingestEvent(
                 {
                   id: context.hookId.toString(),
                   scope: SYSTEM_SCOPE,
@@ -81,7 +85,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
             },
             onFormDeleted: async function ingestFormDeletedEvent(payload, context) {
               const { deletedAt, ...form } = payload;
-              await runtime.objects.automations.singleton().ingestEvent(
+              await runtime.objects.automations.singleton().commands.ingestEvent(
                 {
                   id: context.hookId.toString(),
                   scope: SYSTEM_SCOPE,
@@ -100,7 +104,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
               );
             },
             onResponseSubmitted: async function ingestFormResponseSubmittedEvent(payload, context) {
-              await runtime.objects.automations.singleton().ingestEvent(
+              await runtime.objects.automations.singleton().commands.ingestEvent(
                 {
                   id: context.hookId.toString(),
                   scope: SYSTEM_SCOPE,
@@ -142,8 +146,12 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
     return this.#fragment;
   }
 
-  getDurableHookRepository() {
-    return createDurableHookRepository(() => this.#getFragment());
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await loadDurableHookQueue(this.#getFragment(), options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await loadDurableHook(this.#getFragment(), hookId);
   }
 
   async alarm(): Promise<void> {
@@ -169,8 +177,12 @@ export class Forms extends DurableObject<CloudflareEnv> implements FormsObject {
     });
   }
 
-  getDurableHookRepository() {
-    return this.#object.getDurableHookRepository();
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await this.#object.getDurableHookQueue(options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await this.#object.getDurableHook(hookId);
   }
 
   async alarm(): Promise<void> {

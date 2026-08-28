@@ -73,7 +73,7 @@ describe("Backoffice authority runtime wiring", () => {
       const auth = runtime.objects.auth.singleton();
       const organizationId = "authority-org";
       const memberUserId = "authority-member";
-      await auth.applyScenarioFixture({
+      await auth.commands.applyScenarioFixture({
         users: [
           {
             id: "authority-owner",
@@ -129,7 +129,7 @@ describe("Backoffice authority runtime wiring", () => {
         }),
       ).resolves.toBe("sent");
 
-      await auth.applyScenarioFixture({
+      await auth.commands.applyScenarioFixture({
         removedMembers: [{ organizationId, userId: memberUserId }],
       });
 

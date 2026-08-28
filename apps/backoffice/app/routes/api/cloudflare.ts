@@ -9,7 +9,7 @@ const forwardToCloudflare = async (request: Request, context: Route.LoaderArgs["
 
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const cloudflareObject = kernel.scoped("CLOUDFLARE", scope, runtime.objects.cloudflare);
-  return cloudflareObject.fetch(request);
+  return cloudflareObject.http.fetch(request);
 };
 
 export async function loader({ request, context }: Route.LoaderArgs) {

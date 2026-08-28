@@ -1,7 +1,7 @@
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import type { UploadObject } from "@/backoffice-runtime/object-registry";
+import type { BackofficeObjectHandle, UploadObject } from "@/backoffice-runtime/object-registry";
 import type { FilesExplorerSource } from "@/components/backoffice/files-explorer";
 import { createUploadFileCollection } from "@/file-collection/create-upload-file-collection";
 import type { FileCollection } from "@/file-collection/file-collection";
@@ -102,11 +102,11 @@ export async function createFilesOverviewCollections({
 }
 
 function createWorkspaceFileCollection(
-  uploadObject: UploadObject,
+  uploadObject: BackofficeObjectHandle<UploadObject>,
   request: Request,
 ): FileCollection {
   return createUploadFileCollection({
-    routes: createUploadRouteCaller(uploadObject, request),
+    routes: createUploadRouteCaller(uploadObject.http, request),
     provider: UPLOAD_PROVIDER_DATABASE,
     getFileResponse: ({ provider, fileKey }) =>
       fetchUploadFile(uploadObject, request, provider, fileKey),
@@ -114,7 +114,7 @@ function createWorkspaceFileCollection(
 }
 
 function fetchUploadFile(
-  uploadObject: UploadObject,
+  uploadObject: BackofficeObjectHandle<UploadObject>,
   request: Request,
   provider: string,
   fileKey: string,
@@ -122,5 +122,5 @@ function fetchUploadFile(
   const url = new URL("/api/upload/files/by-key/content", request.url);
   url.searchParams.set("provider", provider);
   url.searchParams.set("key", fileKey);
-  return uploadObject.fetch(new Request(url, { headers: request.headers }));
+  return uploadObject.http.fetch(new Request(url, { headers: request.headers }));
 }

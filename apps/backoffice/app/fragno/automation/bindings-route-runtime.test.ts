@@ -1,8 +1,9 @@
-import { describe, expect, test, vi, assert } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 
 import type {
   AutomationsObject,
   BackofficeActionRpcContext,
+  BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
 
 import { createRouteBackedAutomationStoreRuntime } from "./bindings-route-runtime";
@@ -28,15 +29,24 @@ const execution = {
   },
 };
 
+function automationsHandle(
+  fetchAuthorized: (request: Request, context: BackofficeActionRpcContext) => Promise<Response>,
+  fetch: (request: Request) => Promise<Response>,
+): BackofficeObjectHandle<AutomationsObject> {
+  return {
+    commands: {} as AutomationsObject,
+    http: { fetch, fetchAuthorized },
+  };
+}
+
 describe("createAutomationsRouteCaller", () => {
-  test("passes every route through fetchWithContext when execution is supplied", async () => {
-    const fetchWithContext = vi.fn(
-      async (_request: Request, _context: BackofficeActionRpcContext) =>
-        Response.json({ id: "project-1" }),
+  test("passes every route through authorized HTTP when execution is supplied", async () => {
+    const fetchAuthorized = vi.fn(async (_request: Request, _context: BackofficeActionRpcContext) =>
+      Response.json({ id: "project-1" }),
     );
-    const fetch = vi.fn();
+    const fetch = vi.fn(async () => new Response());
     const callRoute = createAutomationsRouteCaller({
-      object: { fetchWithContext, fetch } as unknown as AutomationsObject,
+      object: automationsHandle(fetchAuthorized, fetch),
       context: { execution },
     });
 
@@ -46,8 +56,8 @@ describe("createAutomationsRouteCaller", () => {
       }),
     ).resolves.toMatchObject({ type: "json", data: { id: "project-1" } });
 
-    expect(fetchWithContext).toHaveBeenCalledOnce();
-    const [request, context] = fetchWithContext.mock.calls[0];
+    expect(fetchAuthorized).toHaveBeenCalledOnce();
+    const [request, context] = fetchAuthorized.mock.calls[0];
     expect(new URL(request.url)).toMatchObject({
       pathname: "/api/automations/projects",
     });
@@ -62,23 +72,21 @@ describe("createAutomationsRouteCaller", () => {
 });
 
 describe("createRouteBackedAutomationStoreRuntime", () => {
-  test("sends store mutations through fetchWithContext", async () => {
-    const fetchWithContext = vi.fn(
-      async (_request: Request, _context: BackofficeActionRpcContext) =>
-        Response.json({
-          id: "store-1",
-          key: "ordinary/key",
-          value: "value",
-          description: null,
-          category: ["ordinary"],
-        }),
+  test("sends store mutations through authorized HTTP", async () => {
+    const fetchAuthorized = vi.fn(async (_request: Request, _context: BackofficeActionRpcContext) =>
+      Response.json({
+        id: "store-1",
+        key: "ordinary/key",
+        value: "value",
+        description: null,
+        category: ["ordinary"],
+      }),
     );
-    const fetch = vi.fn();
-    const object = {
-      fetch,
-      fetchWithContext,
-    } as unknown as AutomationsObject;
-    const runtime = createRouteBackedAutomationStoreRuntime({ object, execution });
+    const fetch = vi.fn(async () => new Response());
+    const runtime = createRouteBackedAutomationStoreRuntime({
+      object: automationsHandle(fetchAuthorized, fetch),
+      execution,
+    });
 
     await expect(
       runtime.set({
@@ -88,8 +96,8 @@ describe("createRouteBackedAutomationStoreRuntime", () => {
       }),
     ).resolves.toMatchObject({ key: "ordinary/key", value: "value" });
 
-    expect(fetchWithContext).toHaveBeenCalledOnce();
-    const [request, context] = fetchWithContext.mock.calls[0];
+    expect(fetchAuthorized).toHaveBeenCalledOnce();
+    const [request, context] = fetchAuthorized.mock.calls[0];
     assert(new URL(request.url).pathname === "/api/automations/store/set");
     await expect(request.json()).resolves.toEqual({
       key: "ordinary/key",
@@ -100,26 +108,24 @@ describe("createRouteBackedAutomationStoreRuntime", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  test("preserves a missing delete response from fetchWithContext", async () => {
-    const fetchWithContext = vi.fn(
-      async (_request: Request, _context: BackofficeActionRpcContext) =>
-        Response.json(
-          {
-            message: "Store entry not found for missing/key.",
-            code: "STORE_ENTRY_NOT_FOUND",
-          },
-          { status: 404 },
-        ),
+  test("preserves a missing delete response from authorized HTTP", async () => {
+    const fetchAuthorized = vi.fn(async (_request: Request, _context: BackofficeActionRpcContext) =>
+      Response.json(
+        {
+          message: "Store entry not found for missing/key.",
+          code: "STORE_ENTRY_NOT_FOUND",
+        },
+        { status: 404 },
+      ),
     );
-    const fetch = vi.fn();
-    const object = {
-      fetch,
-      fetchWithContext,
-    } as unknown as AutomationsObject;
-    const runtime = createRouteBackedAutomationStoreRuntime({ object, execution });
+    const fetch = vi.fn(async () => new Response());
+    const runtime = createRouteBackedAutomationStoreRuntime({
+      object: automationsHandle(fetchAuthorized, fetch),
+      execution,
+    });
 
     await expect(runtime.delete({ key: "missing/key" })).resolves.toBeNull();
-    expect(fetchWithContext).toHaveBeenCalledOnce();
+    expect(fetchAuthorized).toHaveBeenCalledOnce();
     expect(fetch).not.toHaveBeenCalled();
   });
 });

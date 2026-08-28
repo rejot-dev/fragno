@@ -21,7 +21,7 @@ const forwardToOtp = async (
   url.searchParams.set("orgId", orgId);
 
   const proxyRequest = new Request(url.toString(), request);
-  return otpDo.fetch(proxyRequest);
+  return otpDo.http.fetch(proxyRequest);
 };
 
 /**

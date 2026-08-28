@@ -1,5 +1,8 @@
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type {
+  BackofficeObjectHandle,
+  BackofficeObjectRegistry,
+} from "@/backoffice-runtime/object-registry";
 import type { UploadAdminConfigResponse } from "@/fragno/upload";
 
 type TestScopedObjects<TObject> = {
@@ -20,6 +23,19 @@ const scopedObject = <TObject>(object: TObject | undefined): TestScopedObjects<T
   forProject: () => object as TObject,
 });
 
+function objectHandle<TCommands>(
+  commands: TCommands,
+  fetch: (request: Request) => Promise<Response>,
+): BackofficeObjectHandle<TCommands> {
+  return {
+    commands,
+    http: {
+      fetch,
+      fetchAuthorized: async (request) => await fetch(request),
+    },
+  };
+}
+
 export const createFilesTestObjectRegistry = ({
   uploadConfig,
   uploadRuntime,
@@ -30,9 +46,15 @@ export const createFilesTestObjectRegistry = ({
   resendRuntime?: { baseUrl?: string; fetch(request: Request): Promise<Response> };
 } = {}): BackofficeObjectRegistry =>
   ({
-    upload: scopedObject({
-      getAdminConfig: async () => uploadConfig ?? null,
-      fetch: async (request: Request) => uploadRuntime!.fetch(request),
-    }),
-    resend: scopedObject(resendRuntime),
-  }) as Partial<BackofficeObjectRegistry> as BackofficeObjectRegistry;
+    upload: scopedObject(
+      objectHandle(
+        { getAdminConfig: async () => uploadConfig ?? null },
+        async (request) => await uploadRuntime!.fetch(request),
+      ),
+    ),
+    resend: scopedObject(
+      resendRuntime
+        ? objectHandle(resendRuntime, async (request) => await resendRuntime.fetch(request))
+        : undefined,
+    ),
+  }) as unknown as BackofficeObjectRegistry;

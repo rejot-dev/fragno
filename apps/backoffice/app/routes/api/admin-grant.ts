@@ -67,7 +67,7 @@ function handleAdminGrantRoute({ request, context }: Route.ActionArgs | Route.Lo
   const { env, runtime } = context.get(BackofficeWorkerContext);
   return handleBackofficeAdminGrantRequest(request, {
     configuredToken: env.AUTH_ADMIN_GRANT_TOKEN,
-    auth: runtime.objects.auth.singleton(),
+    auth: runtime.objects.auth.singleton().commands,
   });
 }
 

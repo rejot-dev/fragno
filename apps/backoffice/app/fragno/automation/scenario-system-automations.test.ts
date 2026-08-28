@@ -85,17 +85,18 @@ describe("system automation scenarios", () => {
         steps: ({ when, then }) => [
           when.auth.signUp({ email: "triggered-user@example.com" }),
           then.assert("user and organization hooks completed", async (ctx) => {
-            const organizations = await ctx.runtime.objects.auth.singleton().getDevOrganizations();
+            const organizations = await ctx.runtime.objects.auth
+              .singleton()
+              .commands.getDevOrganizations();
             expect(organizations).toHaveLength(1);
             const organization = organizations[0];
             assert(organization);
             ctx.vars.organizationId = organization.id;
             ctx.rememberOrg(organization.id);
 
-            const repository = await ctx.runtime.objects.auth
+            const queue = await ctx.runtime.objects.auth
               .singleton()
-              .getDurableHookRepository();
-            const queue = await repository.getHookQueue({ pageSize: 100 });
+              .commands.getDurableHookQueue({ pageSize: 100 });
             expect(queue.items).toEqual(
               expect.arrayContaining([
                 expect.objectContaining({
@@ -117,7 +118,7 @@ describe("system automation scenarios", () => {
 
             const response = await ctx.runtime.objects.automations
               .singleton()
-              .fetch(new Request("https://automations.test/api/automations/events?limit=500"));
+              .http.fetch(new Request("https://automations.test/api/automations/events?limit=500"));
             assert(response.ok);
             const result = (await response.json()) as {
               events: Array<{ id: string; eventType: string; subject: { orgId?: string } }>;
@@ -177,7 +178,7 @@ describe("system automation scenarios", () => {
       });
 
       const systemAutomations = runtime.objects.automations.singleton();
-      await systemAutomations.ingestEvent({
+      await systemAutomations.commands.ingestEvent({
         id: `system:auth:organization.created:${orgId}`,
         scope: { kind: "system" },
         source: "auth",
@@ -318,7 +319,7 @@ describe("system automation scenarios", () => {
           then.assert("project upload database provider is configured", async (ctx) => {
             const config = await ctx.runtime.objects.upload
               .forProject({ orgId: "org-1", projectId: ctx.vars.projectId })
-              .getAdminConfig();
+              .commands.getAdminConfig();
             assert(config.providers.database?.configured);
           }),
 
@@ -567,7 +568,7 @@ describe("system automation scenarios", () => {
           then.assert(
             "ingest auth creation through the singleton auth dispatch path",
             async (ctx) => {
-              await ctx.runtime.objects.automations.singleton().ingestEvent({
+              await ctx.runtime.objects.automations.singleton().commands.ingestEvent({
                 id: "auth:organization.created:org-1",
                 scope: { kind: "system" },
                 source: "auth",
@@ -604,7 +605,7 @@ describe("system automation scenarios", () => {
           runner.drain(),
 
           then.assert("ingest auth update through regular singleton routing", async (ctx) => {
-            await ctx.runtime.objects.automations.singleton().ingestEvent({
+            await ctx.runtime.objects.automations.singleton().commands.ingestEvent({
               id: "auth:organization.updated:org-1",
               scope: { kind: "system" },
               source: "auth",
@@ -642,10 +643,9 @@ describe("system automation scenarios", () => {
           then.assert(
             "the organization automations object receives the forwarded update event",
             async (ctx) => {
-              const repository = await ctx.runtime.objects.automations
+              const queue = await ctx.runtime.objects.automations
                 .forOrg("org-1")
-                .getDurableHookRepository("automation");
-              const queue = await repository.getHookQueue({ pageSize: 20 });
+                .commands.getDurableHookQueue("automation", { pageSize: 20 });
 
               expect(queue.items).toEqual(
                 expect.arrayContaining([

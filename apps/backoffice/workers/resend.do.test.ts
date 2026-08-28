@@ -46,7 +46,7 @@ describe("Resend Durable Object", () => {
     runtimes.push(runtime);
 
     const resend = runtime.objects.resend.singleton();
-    await resend.setAdminConfig(
+    await resend.commands.setAdminConfig(
       {
         apiKey: "re_test",
         defaultFrom: "Fragno <hello@example.com>",
@@ -66,10 +66,10 @@ describe("Resend Durable Object", () => {
       subject: "Welcome",
       text: "Welcome",
     };
-    await resend.queueEmail(email, { idempotencyKey: "auth:user-created:user-1:tx-1" });
-    await resend.queueEmail(email, { idempotencyKey: "auth:user-created:user-1:tx-1" });
+    await resend.commands.queueEmail(email, { idempotencyKey: "auth:user-created:user-1:tx-1" });
+    await resend.commands.queueEmail(email, { idempotencyKey: "auth:user-created:user-1:tx-1" });
 
-    const response = await resend.fetch(new Request("https://resend.do/api/resend/emails"));
+    const response = await resend.http.fetch(new Request("https://resend.do/api/resend/emails"));
     assert(response.status === 200);
     const body = (await response.json()) as {
       emails: Array<{ subject: string | null }>;

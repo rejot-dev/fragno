@@ -49,10 +49,14 @@ describe("workspace starter file seeding", () => {
         return new Response("unexpected", { status: 500 });
       }),
     };
+    const uploadHandle = {
+      commands: uploadDo,
+      http: { fetch: uploadDo.fetch },
+    };
     const objects = {
       upload: {
-        for: vi.fn(() => uploadDo),
-        forOrg: vi.fn(() => uploadDo),
+        for: vi.fn(() => uploadHandle),
+        forOrg: vi.fn(() => uploadHandle),
       },
     } as unknown as BackofficeObjectRegistry;
 

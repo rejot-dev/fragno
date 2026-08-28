@@ -60,7 +60,7 @@ const loadPiSessionExecution = async (
   const scope = { kind: "org" as const, orgId };
   const response = await ctx.runtime.objects.automations
     .forOrg(orgId)
-    .fetchWithContext(
+    .http.fetchAuthorized(
       new Request(
         `https://pi.test/api/workflows/${BACKOFFICE_PI_WORKFLOW_NAME}/instances/${sessionId}?scope=org%3A${orgId}`,
       ),
@@ -136,7 +136,7 @@ const createScenarioPiSession = async ({
   metadata?: Record<string, unknown>;
 }) => {
   const scope = { kind: "org" as const, orgId };
-  const response = await ctx.runtime.objects.automations.forOrg(orgId).fetchWithContext(
+  const response = await ctx.runtime.objects.automations.forOrg(orgId).http.fetchAuthorized(
     new Request(
       `https://pi.test/api/pi/workflows/${BACKOFFICE_PI_WORKFLOW_NAME}/sessions?scope=org%3A${orgId}`,
       {
@@ -180,7 +180,7 @@ describe("scenario Pi boundary", () => {
           then.assert("raw Pi session fetch is denied", async (ctx) => {
             const response = await ctx.runtime.objects.automations
               .forOrg("org-1")
-              .fetch(sessionListRequest());
+              .http.fetch(sessionListRequest());
             assert(response.status === 403);
             await expect(response.json()).resolves.toMatchObject({
               code: "context-access-denied",
@@ -189,7 +189,7 @@ describe("scenario Pi boundary", () => {
           then.assert("deferred user context resolves current authority", async (ctx) => {
             const response = await ctx.runtime.objects.automations
               .forOrg("org-1")
-              .fetchWithContext(sessionListRequest(), {
+              .http.fetchAuthorized(sessionListRequest(), {
                 execution: createBackofficeUserExecution({
                   scope: { kind: "org", orgId: "org-1" },
                   userId: "missing-user",
@@ -201,7 +201,7 @@ describe("scenario Pi boundary", () => {
           }),
           then.assert("fake Pi rejects mismatched execution scope", async (ctx) => {
             await expect(
-              ctx.fakes.pi?.fetchWithContext(sessionListRequest(), {
+              ctx.fakes.pi?.fetchAuthorized(sessionListRequest(), {
                 execution: createBackofficeUserExecution({
                   scope: { kind: "org", orgId: "org-2" },
                   userId: "user-1",
@@ -260,7 +260,7 @@ describe("scenario Pi boundary", () => {
 
             const response = await ctx.runtime.objects.automations
               .forOrg("org-1")
-              .fetchWithContext(piCommandRequest("org-1", sessionId), {
+              .http.fetchAuthorized(piCommandRequest("org-1", sessionId), {
                 execution: createBackofficeUserExecution({
                   scope: { kind: "org", orgId: "org-1" },
                   userId: "attacker",
@@ -276,7 +276,7 @@ describe("scenario Pi boundary", () => {
               const scope = { kind: "org" as const, orgId: "org-1" };
               const response = await ctx.runtime.objects.automations
                 .forOrg("org-1")
-                .fetchWithContext(
+                .http.fetchAuthorized(
                   new Request(
                     `https://pi.test/api/workflows/${BACKOFFICE_PI_WORKFLOW_NAME}/instances`,
                     {
@@ -467,7 +467,7 @@ describe("scenario Pi boundary", () => {
           then.assert("configure the database-backed workspace", async (ctx) => {
             await ctx.runtime.objects.upload
               .forOrg("org-1")
-              .setAdminConfig({ provider: "database" }, "org-1");
+              .commands.setAdminConfig({ provider: "database" }, "org-1");
           }),
           when.pi.createSession({
             scope: { kind: "org", orgId: "org-1" },
@@ -558,7 +558,7 @@ describe("scenario Pi boundary", () => {
           then.assert("configure the database-backed workspace", async (ctx) => {
             await ctx.runtime.objects.upload
               .forOrg("org-1")
-              .setAdminConfig({ provider: "database" }, "org-1");
+              .commands.setAdminConfig({ provider: "database" }, "org-1");
           }),
           then.assert("create isolated administrator and member sessions", async (ctx) => {
             const [adminSession, memberSession] = await Promise.all([

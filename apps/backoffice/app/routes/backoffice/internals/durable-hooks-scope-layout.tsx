@@ -69,58 +69,36 @@ const loadDurableHookQueue = async ({
   const queueOptions = { cursor, pageSize };
 
   switch (selection.objectId) {
-    case "api": {
-      const repository = await objects.api.for(runtimeScope).getDurableHookRepository();
-      return repository.getHookQueue(queueOptions);
-    }
-    case "auth": {
-      const repository = await objects.auth.for(runtimeScope).getDurableHookRepository();
-      return repository.getHookQueue(queueOptions);
-    }
-    case "forms": {
-      const repository = await objects.forms.singleton().getDurableHookRepository();
-      return repository.getHookQueue(queueOptions);
-    }
-    case "automations": {
-      const repository = await objects.automations
+    case "api":
+      return await objects.api.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+    case "auth":
+      return await objects.auth.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+    case "forms":
+      return await objects.forms.singleton().commands.getDurableHookQueue(queueOptions);
+    case "automations":
+      return await objects.automations
         .for(runtimeScope)
-        .getDurableHookRepository("automation");
-      return repository.getHookQueue(queueOptions);
-    }
-    case "telegram": {
-      const repository = await objects.telegram.for(runtimeScope).getDurableHookRepository();
-      return repository.getHookQueue(queueOptions);
-    }
-    case "otp": {
-      const repository = await objects.otp.for(runtimeScope).getDurableHookRepository();
-      return repository.getHookQueue(queueOptions);
-    }
-    case "resend": {
-      const repository = await objects.resend.for(runtimeScope).getDurableHookRepository();
-      return repository.getHookQueue(queueOptions);
-    }
-    case "mcp": {
-      const repository = await objects.mcp.for(runtimeScope).getDurableHookRepository();
-      return repository.getHookQueue(queueOptions);
-    }
-    case "upload": {
-      const repository = await objects.upload.for(runtimeScope).getDurableHookRepository();
-      return repository.getHookQueue(queueOptions);
-    }
-    case "github": {
-      const repository = await objects.github.for(runtimeScope).getDurableHookRepository();
-      return repository.getHookQueue(queueOptions);
-    }
-    case "pi": {
-      const repository = await objects.automations.for(runtimeScope).getDurableHookRepository("pi");
-      return repository.getHookQueue(queueOptions);
-    }
-    case "workflows": {
-      const repository = await objects.automations
+        .commands.getDurableHookQueue("automation", queueOptions);
+    case "telegram":
+      return await objects.telegram.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+    case "otp":
+      return await objects.otp.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+    case "resend":
+      return await objects.resend.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+    case "mcp":
+      return await objects.mcp.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+    case "upload":
+      return await objects.upload.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+    case "github":
+      return await objects.github.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+    case "pi":
+      return await objects.automations
         .for(runtimeScope)
-        .getDurableHookRepository("workflows");
-      return repository.getHookQueue(queueOptions);
-    }
+        .commands.getDurableHookQueue("pi", queueOptions);
+    case "workflows":
+      return await objects.automations
+        .for(runtimeScope)
+        .commands.getDurableHookQueue("workflows", queueOptions);
   }
 
   throw new Error("Unsupported durable hooks object.");

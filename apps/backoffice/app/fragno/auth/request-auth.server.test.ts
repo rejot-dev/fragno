@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 
 const { authObject, getAuthDurableObjectMock } = vi.hoisted(() => ({
-  authObject: { fetch: vi.fn() },
+  authObject: { http: { fetch: vi.fn() } },
   getAuthDurableObjectMock: vi.fn(),
 }));
 
@@ -41,13 +41,13 @@ const issueJwt = async (expirationTime: string | number = "15m") => {
 
 describe("Backoffice request authentication", () => {
   beforeEach(() => {
-    authObject.fetch.mockReset();
+    authObject.http.fetch.mockReset();
     getAuthDurableObjectMock.mockReturnValue(authObject);
   });
 
   test("authenticates the same JWT from a bearer header", async () => {
     const { token, publicJwk } = await issueJwt();
-    authObject.fetch.mockResolvedValue(Response.json({ keys: [publicJwk] }));
+    authObject.http.fetch.mockResolvedValue(Response.json({ keys: [publicJwk] }));
 
     await expect(
       requireBackofficePrincipal(
@@ -67,7 +67,7 @@ describe("Backoffice request authentication", () => {
 
   test("authenticates the browser JWT while ignoring Better Auth cookies", async () => {
     const { token, publicJwk } = await issueJwt();
-    authObject.fetch.mockResolvedValue(Response.json({ keys: [publicJwk] }));
+    authObject.http.fetch.mockResolvedValue(Response.json({ keys: [publicJwk] }));
 
     await expect(
       requireBackofficePrincipal(
@@ -105,7 +105,7 @@ describe("Backoffice request authentication", () => {
         {} as never,
       ),
     ).rejects.toMatchObject({ status: 401 });
-    expect(authObject.fetch).not.toHaveBeenCalled();
+    expect(authObject.http.fetch).not.toHaveBeenCalled();
   });
 
   test("rejects opaque bearer session tokens", async () => {
@@ -121,7 +121,7 @@ describe("Backoffice request authentication", () => {
 
   test("marks expired authorization responses for browser token recovery", async () => {
     const { token, publicJwk } = await issueJwt(Math.floor(Date.now() / 1_000) - 1);
-    authObject.fetch.mockResolvedValue(Response.json({ keys: [publicJwk] }));
+    authObject.http.fetch.mockResolvedValue(Response.json({ keys: [publicJwk] }));
 
     const authorization = await authorizeBackofficePrincipal(
       new Request("https://backoffice.example/private", {
@@ -140,7 +140,7 @@ describe("Backoffice request authentication", () => {
 
   test("reports expired cookie and bearer JWTs consistently", async () => {
     const { token, publicJwk } = await issueJwt(Math.floor(Date.now() / 1_000) - 1);
-    authObject.fetch.mockResolvedValue(Response.json({ keys: [publicJwk] }));
+    authObject.http.fetch.mockResolvedValue(Response.json({ keys: [publicJwk] }));
     const requests = [
       new Request("https://backoffice.example/private", {
         headers: { authorization: `Bearer ${token}` },

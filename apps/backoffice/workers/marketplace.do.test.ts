@@ -57,14 +57,14 @@ describe("Marketplace Durable Object", () => {
     const marketplace = runtime.objects.marketplace.singleton();
     await runtime.drain();
 
-    await marketplace.createDraftListing(draftInput);
-    await marketplace.publishVersion({
+    await marketplace.commands.createDraftListing(draftInput);
+    await marketplace.commands.publishVersion({
       listingId,
       version: draftInput.version,
       owner: draftInput.owner,
     });
 
-    const browseResponse = await marketplace.fetch(
+    const browseResponse = await marketplace.http.fetch(
       new Request("https://example.test/api/marketplace/listings"),
     );
     assert(browseResponse.status === 200);
@@ -77,7 +77,7 @@ describe("Marketplace Durable Object", () => {
       ],
     });
 
-    const detailResponse = await marketplace.fetch(
+    const detailResponse = await marketplace.http.fetch(
       new Request(`https://example.test/api/marketplace/listings/${encodeURIComponent(listingId)}`),
     );
     assert(detailResponse.status === 200);
@@ -92,7 +92,7 @@ describe("Marketplace Durable Object", () => {
     const marketplace = runtime.objects.marketplace.singleton();
     await runtime.drain();
 
-    await expect(marketplace.createDraftListing(draftInput)).resolves.toEqual({
+    await expect(marketplace.commands.createDraftListing(draftInput)).resolves.toEqual({
       ok: true,
       value: {
         listingId,
@@ -101,19 +101,21 @@ describe("Marketplace Durable Object", () => {
         created: true,
       },
     });
-    await expect(marketplace.listPublishedListings()).resolves.toMatchObject({ listings: [] });
+    await expect(marketplace.commands.listPublishedListings()).resolves.toMatchObject({
+      listings: [],
+    });
     await expect(
-      marketplace.listOwnedListings({ ownerScope: draftInput.owner.scope }),
+      marketplace.commands.listOwnedListings({ ownerScope: draftInput.owner.scope }),
     ).resolves.toMatchObject({
       listings: [expect.objectContaining({ slug: "daily-operations-brief", status: "draft" })],
     });
 
-    await marketplace.publishVersion({
+    await marketplace.commands.publishVersion({
       listingId,
       version: draftInput.version,
       owner: draftInput.owner,
     });
-    await expect(marketplace.listPublishedListings()).resolves.toMatchObject({
+    await expect(marketplace.commands.listPublishedListings()).resolves.toMatchObject({
       listings: [
         expect.objectContaining({
           slug: "daily-operations-brief",
@@ -124,11 +126,11 @@ describe("Marketplace Durable Object", () => {
       hasNextPage: false,
     });
 
-    await marketplace.archiveListing({
+    await marketplace.commands.archiveListing({
       listingId,
       owner: draftInput.owner,
     });
-    await expect(marketplace.getPublishedListing({ listingId })).resolves.toBeNull();
+    await expect(marketplace.commands.getPublishedListing({ listingId })).resolves.toBeNull();
   });
 
   test("returns domain failures as RPC-safe results", async () => {
@@ -136,9 +138,9 @@ describe("Marketplace Durable Object", () => {
     const marketplace = runtime.objects.marketplace.singleton();
     await runtime.drain();
 
-    await marketplace.createDraftListing(draftInput);
+    await marketplace.commands.createDraftListing(draftInput);
     await expect(
-      marketplace.addDraftVersion({
+      marketplace.commands.addDraftVersion({
         listingId,
         version: "2.0.0",
         owner: {

@@ -1,7 +1,13 @@
 import { z } from "zod";
 
+import type {
+  AutomationsDurableHookFragment,
+  AutomationsObject,
+} from "@/backoffice-runtime/object-registry";
 import { automationScheduleCadenceSchema } from "@/fragno/automation/route-triggers";
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
+import type { DurableHookRepository } from "@/fragno/durable-hooks";
 
 const projectSchema = z.object({
   id: z.string().trim().min(1),
@@ -29,6 +35,16 @@ const scheduleTriggeredPayloadSchema = z.object({
   cadence: automationScheduleCadenceSchema,
 });
 
+function createAutomationsDurableHookRepository(
+  commands: AutomationsObject,
+  fragment: AutomationsDurableHookFragment,
+): DurableHookRepository {
+  return createDurableHookRepositoryFromCommands({
+    getDurableHookQueue: async (options) => await commands.getDurableHookQueue(fragment, options),
+    getDurableHook: async (hookId) => await commands.getDurableHook(fragment, hookId),
+  });
+}
+
 export const automationsCapability: BackofficeCapability = {
   id: "automations",
   label: "Automations",
@@ -53,13 +69,19 @@ export const automationsCapability: BackofficeCapability = {
         id: "automations",
         label: "Automations",
         getRepository: ({ objects, orgId }) =>
-          objects.automations.forOrg(orgId).getDurableHookRepository("automation"),
+          createAutomationsDurableHookRepository(
+            objects.automations.forOrg(orgId).commands,
+            "automation",
+          ),
       },
       {
         id: "workflows",
         label: "Workflows",
         getRepository: ({ objects, scope }) =>
-          objects.automations.for(scope).getDurableHookRepository("workflows"),
+          createAutomationsDurableHookRepository(
+            objects.automations.for(scope).commands,
+            "workflows",
+          ),
       },
     ],
     skillPaths: [],

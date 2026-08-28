@@ -200,7 +200,7 @@ export class InMemoryUploadObject implements UploadObject {
 
           await this.#runtimeServices.objects.automations
             .forOrg(stored.namespace.orgId)
-            .ingestEvent({
+            .commands.ingestEvent({
               id: item.id,
               scope: { kind: "org", orgId: stored.namespace.orgId },
               source: "upload",
@@ -430,9 +430,9 @@ export class InMemoryUploadObject implements UploadObject {
     return buildUploadAdminConfigResponse(resolved.config);
   }
 
-  async getDurableHookRepository() {
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
     await this.#refreshConfigured();
-    return this.#host.getDurableHookRepository<DurableHookQueueOptions>(
+    return await this.#host.getDurableHookQueue(
       ({ runtime }) => {
         const provider = resolveHooksProvider(runtime.response);
         if (!provider) {
@@ -440,8 +440,20 @@ export class InMemoryUploadObject implements UploadObject {
         }
         return runtime.fragmentsByProvider.get(provider)!;
       },
+      options,
       (value) => hookQueueOptionsSchema.parse(value),
     );
+  }
+
+  async getDurableHook(hookId: string) {
+    await this.#refreshConfigured();
+    return await this.#host.getDurableHook(({ runtime }) => {
+      const provider = resolveHooksProvider(runtime.response);
+      if (!provider) {
+        throw new Error("Upload does not have a configured durable hook provider.");
+      }
+      return runtime.fragmentsByProvider.get(provider)!;
+    }, hookId);
   }
 
   async alarm(): Promise<void> {
@@ -499,8 +511,12 @@ export class Upload extends DurableObject<CloudflareEnv> implements UploadObject
     return await this.#object.setAdminConfig(payload, orgId, origin);
   }
 
-  async getDurableHookRepository() {
-    return await this.#object.getDurableHookRepository();
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await this.#object.getDurableHookQueue(options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await this.#object.getDurableHook(hookId);
   }
 
   async alarm(): Promise<void> {

@@ -185,7 +185,7 @@ describe("Telegram Channel OTP linking automation in memory", () => {
               const scope = { kind: "org" as const, orgId: "org-1" };
               const binding = await ctx.runtime.objects.automations
                 .for(scope)
-                .resolveExternalIdentity(
+                .commands.resolveExternalIdentity(
                   {
                     identity: {
                       scope: "external",

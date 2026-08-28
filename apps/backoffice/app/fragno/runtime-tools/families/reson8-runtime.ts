@@ -5,7 +5,7 @@ import type {
   Reson8PrerecordedTranscription,
 } from "@fragno-dev/reson8-fragment";
 
-import type { Reson8Object } from "@/backoffice-runtime/object-registry";
+import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import type { Reson8Fragment } from "@/fragno/reson8";
 
 import {
@@ -88,7 +88,7 @@ export const createRouteBackedReson8Runtime = (
   };
 };
 
-export const createReson8RouteRuntime = ({ object }: { object: Reson8Object }): Reson8Runtime =>
+export const createReson8RouteRuntime = ({ object }: { object: FetchObject }): Reson8Runtime =>
   createRouteBackedReson8Runtime({
     baseUrl: "https://reson8.do",
     fetch: object.fetch.bind(object),

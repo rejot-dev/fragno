@@ -148,7 +148,7 @@ describe("createDefaultAutomationFileSystem", () => {
   });
 });
 
-describe("Automations fetchWithContext authorization", () => {
+describe("Automations authorized HTTP context", () => {
   test("allows a user-scoped automation to mutate its store", async () => {
     const runtime = await createInMemoryBackofficeRuntime();
 
@@ -463,7 +463,7 @@ describe("Automations fetchWithContext authorization", () => {
         error: { code: "AUTOMATIONS_ACTION_CONTEXT_REQUIRED" },
       });
 
-      const directResponse = await automations.fetch(
+      const directResponse = await automations.http.fetch(
         new Request("https://automations.do/api/automations/store/delete", {
           method: "POST",
           body: JSON.stringify({ key: "user/key" }),
@@ -474,7 +474,7 @@ describe("Automations fetchWithContext authorization", () => {
         code: "AUTOMATIONS_ACTION_CONTEXT_REQUIRED",
       });
 
-      const malformedDirectResponse = await automations.fetch(
+      const malformedDirectResponse = await automations.http.fetch(
         new Request("https://automations.do/api/automations/store/set", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -513,7 +513,7 @@ describe("Automations fetchWithContext authorization", () => {
         userId: scope.userId,
       });
 
-      const malformedResponse = await automations.fetchWithContext(
+      const malformedResponse = await automations.http.fetchAuthorized(
         new Request("https://automations.do/api/automations/store/set", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -793,7 +793,11 @@ describe("Automations fetchWithContext authorization", () => {
         callRoute("POST", "/store/set", {
           body: { key: "user/key", value: "value" },
         }),
-      ).rejects.toThrow("Backoffice object method scope does not match object address scope.");
+      ).resolves.toMatchObject({
+        type: "error",
+        status: 401,
+        error: { code: "INVALID_INTERNAL_CONTEXT" },
+      });
 
       const response = await createAutomationsRouteCaller({
         object: automations,
@@ -811,7 +815,7 @@ describe("Automations object scope binding", () => {
 
     try {
       await expect(
-        runtime.objects.automations.singleton().ingestEvent(scopedEvent("org-1")),
+        runtime.objects.automations.singleton().commands.ingestEvent(scopedEvent("org-1")),
       ).rejects.toThrow("Backoffice object method scope does not match object address scope.");
     } finally {
       await runtime.cleanup();
@@ -823,9 +827,9 @@ describe("Automations object scope binding", () => {
 
     try {
       const automations = runtime.objects.automations.forOrg("org-1");
-      await automations.ingestEvent(scopedEvent("org-1"));
+      await automations.commands.ingestEvent(scopedEvent("org-1"));
 
-      await expect(automations.ingestEvent(scopedEvent("org-2"))).rejects.toThrow(
+      await expect(automations.commands.ingestEvent(scopedEvent("org-2"))).rejects.toThrow(
         "Backoffice object method scope does not match object address scope.",
       );
     } finally {
@@ -851,7 +855,7 @@ describe("Automations object scope binding", () => {
 
     try {
       const automations = runtime.objects.automations.forOrg("org-1");
-      await automations.requestStaticMarketplacePublications();
+      await automations.commands.requestStaticMarketplacePublications();
       await runtime.drain();
 
       const listingId = marketplaceListingId({
@@ -859,7 +863,7 @@ describe("Automations object scope binding", () => {
         slug: "telegram-test-command",
       });
       await expect(
-        automations.requestMarketplaceIngestion(
+        automations.commands.requestMarketplaceIngestion(
           {
             listingId,
             targetScope: { kind: "user", userId: "user-1" },
@@ -877,7 +881,7 @@ describe("Automations object scope binding", () => {
       await runtime.drain();
 
       await expect(
-        automations.getMarketplaceIngestion({
+        automations.commands.getMarketplaceIngestion({
           targetScope: { kind: "user", userId: "user-1" },
           listingId,
         }),
@@ -888,7 +892,7 @@ describe("Automations object scope binding", () => {
       contentUrl.searchParams.set("key", "automations/telegram-test-command.workflow.js");
       const content = await runtime.objects.upload
         .forUser({ userId: "user-1" })
-        .fetch(new Request(contentUrl));
+        .http.fetch(new Request(contentUrl));
       assert(content.ok);
       const marketplaceEntry = getStaticMarketplaceEntry({
         slug: "telegram-test-command",
@@ -919,7 +923,7 @@ describe("Automations object scope binding", () => {
 
     try {
       const automations = runtime.objects.automations.forOrg("org-1");
-      await automations.requestStaticMarketplacePublications();
+      await automations.commands.requestStaticMarketplacePublications();
       await runtime.drain();
 
       const listingId = marketplaceListingId({
@@ -932,7 +936,7 @@ describe("Automations object scope binding", () => {
         version: USER_WORKSPACE_INGESTION_TEST_VERSION,
       });
       await expect(
-        automations.requestMarketplaceIngestion(
+        automations.commands.requestMarketplaceIngestion(
           {
             listingId,
             targetScope: { kind: "user", userId: "user-1" },
@@ -971,7 +975,7 @@ describe("Automations object scope binding", () => {
         },
       });
       await expect(
-        automations.getMarketplaceIngestion({
+        automations.commands.getMarketplaceIngestion({
           targetScope: { kind: "user", userId: "user-1" },
           listingId,
         }),
@@ -987,7 +991,7 @@ describe("Automations object scope binding", () => {
 
     try {
       await expect(
-        runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion(
+        runtime.objects.automations.forOrg("org-1").commands.requestMarketplaceIngestion(
           {
             listingId: marketplaceListingId({
               ownerScope: { kind: "system" },

@@ -5,6 +5,7 @@ import type { WorkflowsFragment } from "@fragno-dev/workflows";
 import type {
   AutomationsObject,
   BackofficeActionRpcContext,
+  BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
 
 import type { createAutomationFragment } from "./index";
@@ -12,7 +13,7 @@ import type { createAutomationFragment } from "./index";
 type AutomationFragment = ReturnType<typeof createAutomationFragment>;
 
 type CreateAutomationsRouteCallerOptions = {
-  object: AutomationsObject;
+  object: BackofficeObjectHandle<AutomationsObject>;
   context?: BackofficeActionRpcContext;
 };
 
@@ -22,7 +23,7 @@ export const isAutomationOutboxPath = (path: string) =>
 const createAutomationsDoFetch =
   ({ object, context }: CreateAutomationsRouteCallerOptions) =>
   (request: Request) =>
-    context ? object.fetchWithContext(request, context) : object.fetch(request);
+    context ? object.http.fetchAuthorized(request, context) : object.http.fetch(request);
 
 export const createAutomationsRouteCaller = (
   options: CreateAutomationsRouteCallerOptions,

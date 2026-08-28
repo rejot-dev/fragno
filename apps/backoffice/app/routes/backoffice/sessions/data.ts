@@ -32,7 +32,7 @@ const createPiRouteCaller = async (
     mountRoute: "/api/pi",
     baseHeaders: request.headers,
     fetch: async (routeRequest) =>
-      await piObject.fetchWithContext(routeRequest, {
+      await piObject.http.fetchAuthorized(routeRequest, {
         execution,
         propagationContext: null,
       }),
@@ -92,7 +92,7 @@ export async function fetchPiAdapterIdentity(
     fetch: (input, init) => {
       const url = new URL(input instanceof Request ? input.url : input.toString());
       url.searchParams.set("scope", scopeKey);
-      return piDo.fetch(new Request(url, { ...init, headers: request.headers }));
+      return piDo.http.fetch(new Request(url, { ...init, headers: request.headers }));
     },
   });
 
@@ -105,7 +105,7 @@ export async function fetchPiRuntimeState(
 ): Promise<PiRuntimeStateResult> {
   try {
     const piDo = getScopedAutomationsDurableObject(context, scope);
-    const runtimeState = await piDo.getPiRuntimeState();
+    const runtimeState = await piDo.commands.getPiRuntimeState();
     return { runtimeState, runtimeError: null };
   } catch (error) {
     return {

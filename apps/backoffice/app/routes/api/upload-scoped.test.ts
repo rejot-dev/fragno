@@ -12,7 +12,7 @@ vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
 
 import { loader } from "./upload-scoped";
 
-const uploadObject = { fetch: uploadFetchMock };
+const uploadObject = { commands: {}, http: { fetch: uploadFetchMock } };
 const uploadFamily = {};
 const context = {
   get: () => ({

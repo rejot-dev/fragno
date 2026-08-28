@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { UploadObject } from "@/backoffice-runtime/object-registry";
+import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import type {
   PreparedUploadedFileReference,
   UploadedFileReference,
@@ -190,7 +190,7 @@ const bytesToBase64 = (bytes: Uint8Array): string => {
   return btoa(binary);
 };
 
-export const createUploadRuntime = (object: UploadObject): UploadRuntime => {
+export const createUploadRuntime = (object: FetchObject): UploadRuntime => {
   const fetchUpload = (request: Request) => object.fetch(request);
 
   return {

@@ -5,7 +5,7 @@ import type { Route } from "./+types/auth";
 const forwardToAuth = async (request: Request, context: Route.LoaderArgs["context"]) => {
   const authDo = getAuthDurableObject(context);
   const proxyRequest = new Request(request, { redirect: "manual" });
-  const response = await authDo.fetch(proxyRequest);
+  const response = await authDo.http.fetch(proxyRequest);
   return new Response(response.body, response);
 };
 

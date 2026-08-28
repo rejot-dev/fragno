@@ -44,7 +44,7 @@ export async function loadMarketplaceArtifactFile({
   }
 
   const runtime = context.get(BackofficeWorkerContext).runtime;
-  const manifest = await runtime.objects.marketplace.singleton().getArtifactManifest({
+  const manifest = await runtime.objects.marketplace.singleton().commands.getArtifactManifest({
     listingId: listingId.data,
   });
   return fetchPublishedMarketplaceArtifactFile({

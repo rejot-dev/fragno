@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
 const AUTOMATION_SOURCE = "otp" as const;
 const AUTOMATION_EVENT_IDENTITY_CLAIM_COMPLETED = "identity.claim.completed" as const;
 
@@ -39,7 +40,8 @@ export const otpCapability: BackofficeCapability = {
       {
         id: "otp",
         label: "OTP",
-        getRepository: ({ objects, orgId }) => objects.otp.forOrg(orgId).getDurableHookRepository(),
+        getRepository: ({ objects, orgId }) =>
+          createDurableHookRepositoryFromCommands(objects.otp.forOrg(orgId).commands),
       },
     ],
     skillPaths: ["skills/otp-system/SKILL.md"],

@@ -56,7 +56,7 @@ async function loadBackofficeDeviceAuthorization(
     throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }
 
-  const config = await getAuthDurableObject(context).getBackofficeCliOAuthConfig({
+  const config = await getAuthDurableObject(context).commands.getBackofficeCliOAuthConfig({
     requestUrl: request.url,
   });
   const deviceResponse = await callBetterAuth(

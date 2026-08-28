@@ -37,11 +37,11 @@ const cookieHeader = (response: Response): string =>
     .join("; ");
 
 const authRequest = (
-  auth: { fetch(request: Request): Promise<Response> },
+  auth: { http: { fetch(request: Request): Promise<Response> } },
   path: string,
   input: { cookie?: string; body?: unknown } = {},
 ) =>
-  auth.fetch(
+  auth.http.fetch(
     new Request(`https://backoffice.example/api/auth${path}`, {
       method: input.body === undefined ? "GET" : "POST",
       headers: {
@@ -90,7 +90,7 @@ const signUp = async () => {
 describe("Backoffice token exchange", () => {
   test("exchanges a session for a scoped cookie and serves current-user data with only that cookie", async () => {
     const { runtime, auth, user, sessionCookie } = await signUp();
-    const organizationId = (await auth.getAllOrganizations())[0]?.id;
+    const organizationId = (await auth.commands.getAllOrganizations())[0]?.id;
     assert(organizationId);
 
     const tokenResponse = await authRequest(auth, "/backoffice-token", {
@@ -120,7 +120,7 @@ describe("Backoffice token exchange", () => {
       new Request("https://backoffice.example/api/backoffice/me", {
         headers: { cookie: accessTokenCookie },
       }),
-      auth,
+      auth.http,
     );
     assert(verification.ok);
     expect(verification.payload).toMatchObject({
@@ -192,7 +192,7 @@ describe("Backoffice token exchange", () => {
     });
     assert(rejectedResponse.status === 403);
 
-    const expectedFallback = (await auth.getAllOrganizations()).sort(
+    const expectedFallback = (await auth.commands.getAllOrganizations()).sort(
       (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
     )[0]?.id;
     assert(expectedFallback);
@@ -209,9 +209,9 @@ describe("Backoffice token exchange", () => {
 
   test("reports initial organization provisioning instead of issuing an unscoped token", async () => {
     const { auth, user, sessionCookie } = await signUp();
-    const organizationId = (await auth.getAllOrganizations())[0]?.id;
+    const organizationId = (await auth.commands.getAllOrganizations())[0]?.id;
     assert(organizationId);
-    await auth.applyScenarioFixture({
+    await auth.commands.applyScenarioFixture({
       removedMembers: [{ organizationId, userId: user.id }],
     });
 
@@ -260,7 +260,7 @@ describe("Backoffice token exchange", () => {
 
   test("rejects banned users", async () => {
     const { auth, user, sessionCookie } = await signUp();
-    await auth.applyScenarioFixture({
+    await auth.commands.applyScenarioFixture({
       users: [
         {
           id: user.id,

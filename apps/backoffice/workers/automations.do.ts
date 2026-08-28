@@ -9,12 +9,20 @@ import {
   type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
+import {
+  BACKOFFICE_INTERNAL_CONTEXT_HEADER,
+  BackofficeInternalRequestError,
+  verifyAuthorizedBackofficeObjectRequest,
+} from "@/backoffice-runtime/internal-object-request";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type {
-  AutomationsObject,
-  BackofficeActionRpcContext,
-  BackofficeObjectRegistry,
-  BackofficeRpcContext,
+import {
+  backofficeContextScopeFromDurableObjectId,
+  backofficeObjectScopeFromContextScope,
+  type AutomationsDurableHookFragment,
+  type AutomationsObject,
+  type BackofficeActionRpcContext,
+  type BackofficeObjectRegistry,
+  type BackofficeRpcContext,
 } from "@/backoffice-runtime/object-registry";
 import {
   BACKOFFICE_PERMISSION,
@@ -127,7 +135,21 @@ type AutomationsOutboxItem = BackofficeOutboxItem & {
   type: "automations.initialized";
 };
 
-type AutomationsHookFragment = "automation" | "pi" | "workflows";
+function selectAutomationsDurableHookFragment(
+  runtime: AutomationsRuntime,
+  fragment: AutomationsDurableHookFragment,
+) {
+  switch (fragment) {
+    case "workflows":
+      return runtime.workflowsFragment;
+    case "pi":
+      return runtime.piFragment;
+    case "automation":
+      return runtime.automationFragment;
+    default:
+      throw new Error("Unsupported Automations durable hook fragment.");
+  }
+}
 
 const piApiKeys = (env?: CloudflareEnv): PiApiKeys => ({
   openai: env?.OPENAI_API_KEY,
@@ -262,6 +284,8 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
   readonly #env: AutomationFragmentConfig["env"] | undefined;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
+  readonly #internalRequestEnv: Pick<CloudflareEnv, "AUTH_ACCESS_TOKEN_SECRET"> | null;
+  readonly #nowEpochMs: () => number;
   readonly #kernel: BackofficeKernel;
   readonly #host: BackofficeFragmentDurableObject<
     AutomationDurableObjectConfig,
@@ -278,20 +302,27 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     state,
     env,
     runtime,
+    nowEpochMs = Date.now,
     getAutomationFileSystem,
     createPiRuntime,
   }: {
     state: BackofficeObjectState;
     env?: unknown;
     runtime: BackofficeRuntimeServices;
+    nowEpochMs?: () => number;
     getAutomationFileSystem?: AutomationsFileSystemResolver;
     createPiRuntime?: (execution: BackofficeExecutionContext) => PiRuntime;
   }) {
     super();
     this.#env = env as AutomationFragmentConfig["env"];
+    this.#internalRequestEnv = env
+      ? (env as Pick<CloudflareEnv, "AUTH_ACCESS_TOKEN_SECRET">)
+      : null;
     this.#state = state;
     this.#runtimeServices = runtime;
+    this.#nowEpochMs = nowEpochMs;
     this.#kernel = new BackofficeKernel(runtime);
+    this.#scope = backofficeContextScopeFromDurableObjectId(state.id, "AUTOMATIONS");
     this.#getAutomationFileSystem = getAutomationFileSystem;
     this.#createPiRuntime = createPiRuntime;
     this.#host = createBackofficeFragmentDurableObject({
@@ -375,21 +406,16 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
 
     void state.blockConcurrencyWhile(async () => {
       const stored = await this.#host.loadStored();
+      if (!this.#scope && stored) {
+        this.#scope = stored.scope;
+      } else if (this.#scope && stored) {
+        assertAutomationObjectScope(this.#scope, stored.scope);
+      }
       await this.#host.initializeFromStored(stored);
       if (stored) {
         await this.#dispatchInitialized(stored.scope);
       }
     });
-  }
-
-  init(scope: BackofficeContextScope): AutomationsObject {
-    if (this.#scope) {
-      assertAutomationObjectScope(this.#scope, scope);
-      return this;
-    }
-
-    this.#scope = scope;
-    return this;
   }
 
   #requireScope(): BackofficeContextScope {
@@ -448,10 +474,8 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       kernel: this.#kernel,
       execution,
       config: this.#runtimeServices.config,
-      automationHookQueue: async (opts) =>
-        await (
-          await automationHookObject.getDurableHookRepository("automation")
-        ).getHookQueue(opts),
+      automationHookQueue: async (options) =>
+        await automationHookObject.commands.getDurableHookQueue("automation", options),
     });
   }
 
@@ -481,7 +505,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
           recordEvent: async (billingOrganizationId, event) => {
             await this.#runtimeServices.objects.billing
               .forOrg(billingOrganizationId)
-              .recordEvent(event, {
+              .commands.recordEvent(event, {
                 propagationContext: context.capturePropagationContext(),
               });
           },
@@ -629,7 +653,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       forceId,
     });
     const marketplace = this.#runtimeServices.objects.marketplace.singleton();
-    const manifest = await marketplace.getArtifactManifest({ listingId });
+    const manifest = await marketplace.commands.getArtifactManifest({ listingId });
     if (manifest?.listingStatus === "archived") {
       throw new MarketplaceListingArchivedError(entry.slug);
     }
@@ -697,7 +721,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       return { ...identity, ...workflowStatus };
     }
 
-    const completedManifest = await marketplace.getArtifactManifest({ listingId });
+    const completedManifest = await marketplace.commands.getArtifactManifest({ listingId });
     const completedPublication =
       completedManifest?.listingStatus === "published" &&
       completedManifest.versions.includes(entry.version);
@@ -744,7 +768,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
           ),
         ),
       organizationHasMember: async (userId) =>
-        await this.#runtimeServices.objects.auth.singleton().hasOrganizationMember({
+        await this.#runtimeServices.objects.auth.singleton().commands.hasOrganizationMember({
           organizationId: scope.orgId,
           userId,
         }),
@@ -753,7 +777,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     const resolvedArtifact = resolveMarketplaceIngestionArtifactVersion(
       await this.#runtimeServices.objects.marketplace
         .singleton()
-        .getArtifactManifest({ listingId: input.listingId }),
+        .commands.getArtifactManifest({ listingId: input.listingId }),
       input.version,
     );
     const version = resolvedArtifact.version;
@@ -907,15 +931,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     return await runtime.automationFragment.callServices(() =>
       runtime.automationFragment.services.listMarketplaceIngestions(input),
     );
-  }
-
-  async fetchWithContext(request: Request, context: BackofficeActionRpcContext): Promise<Response> {
-    assertAutomationObjectScope(this.#requireScope(), context.execution.scope);
-    await this.#ensureConfigured({ scope: this.#requireScope() });
-    return await this.#host.fetch(request, {
-      propagationContext: context.propagationContext,
-      requestContext: context.execution,
-    });
   }
 
   async bindExternalIdentity(
@@ -1220,31 +1235,63 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     return buildPiRuntimeState(this.#env);
   }
 
-  async getDurableHookRepository(fragment?: AutomationsHookFragment) {
+  async getDurableHookQueue(
+    fragment: AutomationsDurableHookFragment,
+    options?: DurableHookQueueOptions,
+  ) {
     await this.#ensureConfigured({ scope: this.#requireScope() });
-    type Options = DurableHookQueueOptions & { fragment?: AutomationsHookFragment };
-    return this.#host.getDurableHookRepository<Options>((state, options) => {
-      switch (options?.fragment ?? fragment) {
-        case "workflows":
-          return state.runtime.workflowsFragment;
-        case "pi":
-          return state.runtime.piFragment;
-        case "automation":
-        case undefined:
-          return state.runtime.automationFragment;
-        default:
-          throw new Error("Unsupported Automations durable hook fragment.");
-      }
-    });
+    return await this.#host.getDurableHookQueue(
+      ({ runtime }) => selectAutomationsDurableHookFragment(runtime, fragment),
+      options,
+    );
+  }
+
+  async getDurableHook(fragment: AutomationsDurableHookFragment, hookId: string) {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    return await this.#host.getDurableHook(
+      ({ runtime }) => selectAutomationsDurableHookFragment(runtime, fragment),
+      hookId,
+    );
   }
 
   async fetch(request: Request): Promise<Response> {
-    await this.#ensureConfigured({ scope: this.#requireScope() });
-    return await this.#host.fetch(request);
+    const scope = this.#requireScope();
+    await this.#ensureConfigured({ scope });
+
+    if (!request.headers.has(BACKOFFICE_INTERNAL_CONTEXT_HEADER)) {
+      return await this.#host.fetch(request);
+    }
+    if (!this.#internalRequestEnv) {
+      throw new Error("Automations internal request verification is not configured.");
+    }
+
+    try {
+      const verified = await verifyAuthorizedBackofficeObjectRequest({
+        request,
+        address: {
+          binding: "AUTOMATIONS",
+          scope: backofficeObjectScopeFromContextScope(scope),
+        },
+        env: this.#internalRequestEnv,
+        nowEpochMs: this.#nowEpochMs(),
+      });
+      return await this.#host.fetch(verified.request, {
+        propagationContext: verified.context.propagationContext,
+        requestContext: verified.context.execution,
+      });
+    } catch (error) {
+      if (error instanceof BackofficeInternalRequestError) {
+        return Response.json(
+          { code: "INVALID_INTERNAL_CONTEXT", message: error.message },
+          { status: 401 },
+        );
+      }
+      throw error;
+    }
   }
 }
 
-export class Automations extends DurableObject<CloudflareEnv> {
+export class Automations extends DurableObject<CloudflareEnv> implements AutomationsObject {
   readonly #object: InMemoryAutomationsObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
@@ -1256,24 +1303,130 @@ export class Automations extends DurableObject<CloudflareEnv> {
     });
   }
 
-  init(scope: BackofficeContextScope): AutomationsObject {
-    return this.#object.init(scope);
-  }
-
   async alarm() {
     await this.#object.alarm();
+  }
+
+  async triggerIngestEvent(event: AutomationEvent, context?: BackofficeRpcContext) {
+    return await this.#object.triggerIngestEvent(event, context);
+  }
+
+  async ingestEvent(event: AutomationEvent, context?: BackofficeRpcContext) {
+    return await this.#object.ingestEvent(event, context);
+  }
+
+  async seedStarterAutomationRoutes() {
+    return await this.#object.seedStarterAutomationRoutes();
+  }
+
+  async requestStaticMarketplacePublications(input?: { force?: boolean }) {
+    return await this.#object.requestStaticMarketplacePublications(input);
+  }
+
+  async requestMarketplaceIngestion(
+    input: MarketplaceIngestionRequestInput,
+    context: BackofficeActionRpcContext,
+  ) {
+    return await this.#object.requestMarketplaceIngestion(input, context);
+  }
+
+  async restartMarketplaceIngestion(
+    input: MarketplaceIngestionRequestInput,
+    context: BackofficeActionRpcContext,
+  ) {
+    return await this.#object.restartMarketplaceIngestion(input, context);
+  }
+
+  async getMarketplaceIngestion(input: MarketplaceIngestionLookupInput) {
+    return await this.#object.getMarketplaceIngestion(input);
+  }
+
+  async listMarketplaceIngestions(input?: MarketplaceIngestionListInput) {
+    return await this.#object.listMarketplaceIngestions(input);
+  }
+
+  async bindExternalIdentity(
+    input: BindExternalIdentityInput,
+    context: BackofficeActionRpcContext,
+  ) {
+    return await this.#object.bindExternalIdentity(input, context);
+  }
+
+  async revokeExternalIdentity(
+    input: RevokeExternalIdentityInput,
+    context: BackofficeActionRpcContext,
+  ) {
+    return await this.#object.revokeExternalIdentity(input, context);
+  }
+
+  async resolveExternalIdentity(
+    input: GetExternalIdentityBindingInput,
+    context: BackofficeActionRpcContext,
+  ) {
+    return await this.#object.resolveExternalIdentity(input, context);
+  }
+
+  async listEventSources() {
+    return await this.#object.listEventSources();
+  }
+
+  async getEventSource(input: { source: string }) {
+    return await this.#object.getEventSource(input);
+  }
+
+  async ensureEventSource(input: AutomationEventSourceInput) {
+    return await this.#object.ensureEventSource(input);
+  }
+
+  async listEventDefinitions() {
+    return await this.#object.listEventDefinitions();
+  }
+
+  async getEventDefinition(input: { source: string; eventType: string }) {
+    return await this.#object.getEventDefinition(input);
+  }
+
+  async createEventDefinition(input: AutomationEventDefinitionCreateInput) {
+    return await this.#object.createEventDefinition(input);
+  }
+
+  async updateEventDefinition(input: AutomationEventDefinitionUpdateInput) {
+    return await this.#object.updateEventDefinition(input);
+  }
+
+  async resolveProjectForExecution(input: { projectId?: string; slug?: string }) {
+    return await this.#object.resolveProjectForExecution(input);
+  }
+
+  async listSandboxInstances(input?: { provider?: SandboxProvider; limit?: number }) {
+    return await this.#object.listSandboxInstances(input);
+  }
+
+  async getSandboxInstance(input: { id: string }) {
+    return await this.#object.getSandboxInstance(input);
+  }
+
+  async requestSandboxInstance(input: SandboxInstanceRequestInput) {
+    return await this.#object.requestSandboxInstance(input);
+  }
+
+  async requestSandboxInstanceStop(input: { id: string }) {
+    return await this.#object.requestSandboxInstanceStop(input);
   }
 
   async getPiRuntimeState(): Promise<PiRuntimeState> {
     return await this.#object.getPiRuntimeState();
   }
 
-  async getDurableHookRepository(fragment?: AutomationsHookFragment) {
-    return await this.#object.getDurableHookRepository(fragment);
+  async getDurableHookQueue(
+    fragment: AutomationsDurableHookFragment,
+    options?: DurableHookQueueOptions,
+  ) {
+    return await this.#object.getDurableHookQueue(fragment, options);
   }
 
-  async fetchWithContext(request: Request, context: BackofficeActionRpcContext): Promise<Response> {
-    return await this.#object.fetchWithContext(request, context);
+  async getDurableHook(fragment: AutomationsDurableHookFragment, hookId: string) {
+    return await this.#object.getDurableHook(fragment, hookId);
   }
 
   async fetch(request: Request): Promise<Response> {

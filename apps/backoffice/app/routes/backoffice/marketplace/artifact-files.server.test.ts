@@ -255,7 +255,7 @@ async function createUploadObjects(
       upload: {
         forName: (name: string) => {
           expect(name).toBe(manifest.uploadName);
-          return uploadObject;
+          return { commands: {}, http: uploadObject };
         },
       },
     } as unknown as BackofficeObjectRegistry,

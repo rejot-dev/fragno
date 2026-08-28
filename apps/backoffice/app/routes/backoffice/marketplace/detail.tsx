@@ -195,7 +195,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   }
 
   const runtime = context.get(BackofficeWorkerContext).runtime;
-  const marketplace = runtime.objects.marketplace.singleton();
+  const marketplace = runtime.objects.marketplace.singleton().commands;
   const [detail, artifactManifest] = await Promise.all([
     marketplace.getPublishedListing({
       listingId: listingIdResult.data,
@@ -231,7 +231,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     installationOrganization
       ? runtime.objects.automations
           .forOrg(installationOrganization.id)
-          .listMarketplaceIngestions({ targetScope: selectedScope })
+          .commands.listMarketplaceIngestions({ targetScope: selectedScope })
           .then((records) =>
             records.filter(
               (ingestion) =>
@@ -298,7 +298,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
   const formData = await request.formData();
   const automations = context
     .get(BackofficeWorkerContext)
-    .runtime.objects.automations.forOrg(installationTarget.organizationId);
+    .runtime.objects.automations.forOrg(installationTarget.organizationId).commands;
 
   try {
     const execution = await requireBackofficeContext(request, context, {

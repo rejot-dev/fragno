@@ -18,7 +18,7 @@ const forwardToScopedUpload = async (
   const suffix = params["*"] ? `/${params["*"]}` : "";
   url.pathname = `/api/upload${suffix}`;
 
-  return uploadObject.fetch(new Request(url, request));
+  return uploadObject.http.fetch(new Request(url, request));
 };
 
 /** Authenticated browser proxy for system, organization, project, and user Upload objects. */

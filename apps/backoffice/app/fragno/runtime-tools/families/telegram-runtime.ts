@@ -1,6 +1,7 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 
-import type { TelegramObject } from "@/backoffice-runtime/object-registry";
+import type { BackofficeObjectHandle, TelegramObject } from "@/backoffice-runtime/object-registry";
+import { telegramAutomationFileDownloadPath } from "@/backoffice-runtime/telegram-file-response";
 import type {
   TelegramRuntime,
   TelegramAutomationFileMetadata,
@@ -142,15 +143,22 @@ export const createRouteBackedTelegramRuntime = (
   };
 };
 
-export const createTelegramRuntime = ({ object }: { object: TelegramObject }): TelegramRuntime => {
+export const createTelegramRuntime = ({
+  object,
+}: {
+  object: BackofficeObjectHandle<TelegramObject>;
+}): TelegramRuntime => {
   const routeBacked = createRouteBackedTelegramRuntime({
     baseUrl: "https://telegram.do",
-    fetch: async (outboundRequest) => object.fetch(outboundRequest),
+    fetch: async (outboundRequest) => object.http.fetch(outboundRequest),
   });
 
   return {
-    getFile: async (input) => object.getAutomationFile(input),
-    downloadFile: async (input) => object.downloadAutomationFile(input),
+    getFile: async (input) => object.commands.getAutomationFile(input),
+    downloadFile: async ({ fileId }) =>
+      await object.http.fetch(
+        new Request(`https://telegram.do${telegramAutomationFileDownloadPath(fileId)}`),
+      ),
     ...routeBacked,
   };
 };

@@ -230,7 +230,7 @@ const createApiRouteCallerForScope = (
   return createRouteCaller<ApiFragment>({
     baseUrl: new URL(request.url).origin,
     mountRoute: "/api/api",
-    fetch: (outboundRequest) => apiObject.fetch(outboundRequest),
+    fetch: (outboundRequest) => apiObject.http.fetch(outboundRequest),
   });
 };
 

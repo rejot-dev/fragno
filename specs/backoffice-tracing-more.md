@@ -76,6 +76,14 @@ Then:
 For alarms created before March 15, 2026, use the persisted configured scope as a temporary fallback
 or explicitly reschedule them after deployment.
 
+> **Deferred simplification:** Current `v1` Backoffice object addresses are created exclusively with
+> `idFromName()`, so a valid production object should always have `ctx.id.name`. In a later cleanup,
+> make `backofficeContextScopeFromDurableObjectId()` throw instead of returning `null`, remove scope
+> restoration from persisted storage, and delete `initializeFromOwnerScope()` plus the
+> scoped-runtime helper if API and MCP no longer need it. Fragment runtime creation and migration
+> must still run inside `blockConcurrencyWhile`; only the nullable identity and persisted-scope
+> fallback should be removed. Do not include this cleanup in the current transport migration.
+
 This also fixes cold initialization’s `scope_kind = unknown`.
 
 ## 3. Carry authorization through a trusted fetch envelope

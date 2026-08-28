@@ -5,7 +5,7 @@ import {
   type ToolCallInput,
 } from "@fragno-dev/mcp-fragment/types";
 
-import type { McpObject } from "@/backoffice-runtime/object-registry";
+import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import type { McpFragment } from "@/fragno/mcp";
 import type { ScopedPublicFragmentAddress } from "@/fragno/scoped-public-fragment-routes";
 
@@ -173,7 +173,7 @@ export const createRouteBackedMcpRuntime = (
 };
 
 export const createMcpRuntime = (
-  object: McpObject,
+  object: FetchObject,
   resolvePublicAddress: () => Promise<ScopedPublicFragmentAddress>,
 ) => {
   let publicAddress: Promise<ScopedPublicFragmentAddress> | null = null;

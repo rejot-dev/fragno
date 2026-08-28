@@ -31,7 +31,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
-import type { AuthObject } from "@/backoffice-runtime/object-registry";
+import type { AuthObject, BackofficeObjectHandle } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED } from "@/fragno/backoffice-capabilities/capabilities/auth";
 
@@ -66,8 +66,11 @@ class RecordingResendObject {
 const toTimestamp = (value: Date | string): number =>
   value instanceof Date ? value.getTime() : new Date(value).getTime();
 
-async function signUpUnverifiedBackofficeUser(auth: Pick<AuthObject, "fetch">, email: string) {
-  const response = await auth.fetch(
+async function signUpUnverifiedBackofficeUser(
+  auth: BackofficeObjectHandle<AuthObject>,
+  email: string,
+) {
+  const response = await auth.http.fetch(
     new Request("https://backoffice.example/api/auth/sign-up/email", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -95,7 +98,7 @@ describe("Auth Durable Object administration", () => {
   test("creates organizations and manages members through privileged operations", async () => {
     const runtime = await createInMemoryBackofficeRuntime();
     runtimes.push(runtime);
-    const auth = runtime.objects.auth.singleton();
+    const auth = runtime.objects.auth.singleton().commands;
     await auth.applyScenarioFixture({
       users: [
         { id: "owner-1", email: "owner@example.com", role: "user", status: "active" },
@@ -147,7 +150,7 @@ describe("Auth Durable Object administration", () => {
   test("preserves at least one owner when removing organization members", async () => {
     const runtime = await createInMemoryBackofficeRuntime();
     runtimes.push(runtime);
-    const auth = runtime.objects.auth.singleton();
+    const auth = runtime.objects.auth.singleton().commands;
     await auth.applyScenarioFixture({
       users: [
         { id: "owner-1", email: "owner@example.com", role: "user", status: "active" },
@@ -193,7 +196,7 @@ describe("Auth Durable Object account creation policy", () => {
     const runtime = await createInMemoryBackofficeRuntime();
     runtimes.push(runtime);
 
-    const response = await runtime.objects.auth.singleton().fetch(
+    const response = await runtime.objects.auth.singleton().http.fetch(
       new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -216,7 +219,7 @@ describe("Auth Durable Object account creation policy", () => {
     const runtime = await createInMemoryBackofficeRuntime();
     runtimes.push(runtime);
 
-    const response = await runtime.objects.auth.singleton().fetch(
+    const response = await runtime.objects.auth.singleton().http.fetch(
       new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -243,10 +246,14 @@ describe("Auth Durable Object administrator granting", () => {
     const auth = runtime.objects.auth.singleton();
     await signUpUnverifiedBackofficeUser(auth, "first-admin@rejot.dev");
 
-    const result = await auth.grantBackofficeAdminByEmail({ email: "FIRST-ADMIN@rejot.dev" });
+    const result = await auth.commands.grantBackofficeAdminByEmail({
+      email: "FIRST-ADMIN@rejot.dev",
+    });
 
     assert(result.status === "granted");
-    await expect(auth.getUserAuthorityFacts({ userId: result.userId })).resolves.toMatchObject({
+    await expect(
+      auth.commands.getUserAuthorityFacts({ userId: result.userId }),
+    ).resolves.toMatchObject({
       role: "admin",
     });
   });
@@ -256,7 +263,7 @@ describe("Auth Durable Object administrator granting", () => {
     const runtime = await createInMemoryBackofficeRuntime();
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
-    await auth.applyScenarioFixture({
+    await auth.commands.applyScenarioFixture({
       users: [
         {
           id: "admin-1",
@@ -268,10 +275,14 @@ describe("Auth Durable Object administrator granting", () => {
     });
     await signUpUnverifiedBackofficeUser(auth, "next-admin@rejot.dev");
 
-    const result = await auth.grantBackofficeAdminByEmail({ email: "next-admin@rejot.dev" });
+    const result = await auth.commands.grantBackofficeAdminByEmail({
+      email: "next-admin@rejot.dev",
+    });
 
     assert(result.status === "email_not_verified");
-    await expect(auth.getUserAuthorityFacts({ userId: result.userId })).resolves.toMatchObject({
+    await expect(
+      auth.commands.getUserAuthorityFacts({ userId: result.userId }),
+    ).resolves.toMatchObject({
       role: "user",
     });
   });
@@ -280,7 +291,7 @@ describe("Auth Durable Object administrator granting", () => {
     const runtime = await createInMemoryBackofficeRuntime();
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
-    await auth.applyScenarioFixture({
+    await auth.commands.applyScenarioFixture({
       users: [
         {
           id: "admin-1",
@@ -298,13 +309,13 @@ describe("Auth Durable Object administrator granting", () => {
     });
 
     await expect(
-      auth.grantBackofficeAdminByEmail({ email: "NEXT-ADMIN@rejot.dev" }),
+      auth.commands.grantBackofficeAdminByEmail({ email: "NEXT-ADMIN@rejot.dev" }),
     ).resolves.toEqual({ status: "granted", userId: "user-1" });
-    await expect(auth.getUserAuthorityFacts({ userId: "user-1" })).resolves.toMatchObject({
+    await expect(auth.commands.getUserAuthorityFacts({ userId: "user-1" })).resolves.toMatchObject({
       role: "admin",
     });
     await expect(
-      auth.grantBackofficeAdminByEmail({ email: "next-admin@rejot.dev" }),
+      auth.commands.grantBackofficeAdminByEmail({ email: "next-admin@rejot.dev" }),
     ).resolves.toEqual({ status: "already_admin", userId: "user-1" });
   });
 
@@ -317,16 +328,18 @@ describe("Auth Durable Object administrator granting", () => {
     await signUpUnverifiedBackofficeUser(auth, "next-admin@rejot.dev");
 
     const [firstResult, nextResult] = await Promise.all([
-      auth.grantBackofficeAdminByEmail({ email: "first-admin@rejot.dev" }),
-      auth.grantBackofficeAdminByEmail({ email: "next-admin@rejot.dev" }),
+      auth.commands.grantBackofficeAdminByEmail({ email: "first-admin@rejot.dev" }),
+      auth.commands.grantBackofficeAdminByEmail({ email: "next-admin@rejot.dev" }),
     ]);
 
     assert(firstResult.status === "granted");
     assert(nextResult.status === "email_not_verified");
-    await expect(auth.getUserAuthorityFacts({ userId: firstResult.userId })).resolves.toMatchObject(
-      { role: "admin" },
-    );
-    await expect(auth.getUserAuthorityFacts({ userId: nextResult.userId })).resolves.toMatchObject({
+    await expect(
+      auth.commands.getUserAuthorityFacts({ userId: firstResult.userId }),
+    ).resolves.toMatchObject({ role: "admin" });
+    await expect(
+      auth.commands.getUserAuthorityFacts({ userId: nextResult.userId }),
+    ).resolves.toMatchObject({
       role: "user",
     });
   });
@@ -336,7 +349,7 @@ describe("Auth Durable Object administrator granting", () => {
     runtimes.push(runtime);
 
     await expect(
-      runtime.objects.auth.singleton().grantBackofficeAdminByEmail({
+      runtime.objects.auth.singleton().commands.grantBackofficeAdminByEmail({
         email: "missing@rejot.dev",
       }),
     ).resolves.toEqual({ status: "user_not_found" });
@@ -351,7 +364,7 @@ describe("Auth Durable Object rate limiting", () => {
 
     const responses = await Promise.all(
       Array.from({ length: 101 }, () =>
-        auth.fetch(new Request("https://backoffice.example/api/auth/jwks")),
+        auth.http.fetch(new Request("https://backoffice.example/api/auth/jwks")),
       ),
     );
 
@@ -365,7 +378,7 @@ describe("Auth Durable Object rate limiting", () => {
 
     const responses = await Promise.all(
       Array.from({ length: 4 }, () =>
-        auth.fetch(
+        auth.http.fetch(
           new Request("https://backoffice.example/api/auth/sign-in/email", {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -388,7 +401,7 @@ describe("Auth Durable Object rate limiting", () => {
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
     const attempt = () =>
-      auth.fetch(
+      auth.http.fetch(
         new Request("https://backoffice.example/api/auth/sign-in/email", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -436,7 +449,7 @@ describe("Auth Durable Object email verification delivery", () => {
     });
     runtimes.push(runtime);
 
-    const response = await runtime.objects.auth.singleton().fetch(
+    const response = await runtime.objects.auth.singleton().http.fetch(
       new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -450,8 +463,8 @@ describe("Auth Durable Object email verification delivery", () => {
     assert(response.ok);
     await runtime.drain();
 
-    const authRepository = await runtime.objects.auth.singleton().getDurableHookRepository();
-    const firstAuthQueue = await authRepository.getHookQueue({ pageSize: 100 });
+    const authCommands = runtime.objects.auth.singleton().commands;
+    const firstAuthQueue = await authCommands.getDurableHookQueue({ pageSize: 100 });
     const pendingVerificationHook = firstAuthQueue.items.find(
       (hook) => hook.hookName === "onUserEmailVerificationRequested",
     );
@@ -459,8 +472,8 @@ describe("Auth Durable Object email verification delivery", () => {
     assert(pendingVerificationHook.status === "pending");
     assert(pendingVerificationHook.nextRetryAt);
 
-    const otpRepository = await runtime.objects.otp.singleton().getDurableHookRepository();
-    const firstOtpQueue = await otpRepository.getHookQueue({ pageSize: 100 });
+    const otpCommands = runtime.objects.otp.singleton().commands;
+    const firstOtpQueue = await otpCommands.getDurableHookQueue({ pageSize: 100 });
     const issuedHook = firstOtpQueue.items.find((hook) => hook.hookName === "onOtpIssued");
     assert(issuedHook?.status === "completed");
     assert.equal(resend.queuedEmails.size, 0);
@@ -471,13 +484,13 @@ describe("Auth Durable Object email verification delivery", () => {
     runtime.advanceTime(Math.max(0, retryAt - runtime.now()));
     await runtime.drain();
 
-    const completedAuthQueue = await authRepository.getHookQueue({ pageSize: 100 });
+    const completedAuthQueue = await authCommands.getDurableHookQueue({ pageSize: 100 });
     const completedVerificationHook = completedAuthQueue.items.find(
       (hook) => hook.hookName === "onUserEmailVerificationRequested",
     );
     assert(completedVerificationHook?.status === "completed");
 
-    const completedOtpQueue = await otpRepository.getHookQueue({ pageSize: 100 });
+    const completedOtpQueue = await otpCommands.getDurableHookQueue({ pageSize: 100 });
     expect(completedOtpQueue.items.filter((hook) => hook.hookName === "onOtpIssued")).toHaveLength(
       1,
     );
@@ -497,7 +510,7 @@ describe("Auth Durable Object email verification delivery", () => {
     });
     runtimes.push(runtime);
 
-    const response = await runtime.objects.auth.singleton().fetch(
+    const response = await runtime.objects.auth.singleton().http.fetch(
       new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -511,16 +524,16 @@ describe("Auth Durable Object email verification delivery", () => {
     assert(response.ok);
     await runtime.drain();
 
-    const authRepository = await runtime.objects.auth.singleton().getDurableHookRepository();
-    const firstAuthQueue = await authRepository.getHookQueue({ pageSize: 100 });
+    const authCommands = runtime.objects.auth.singleton().commands;
+    const firstAuthQueue = await authCommands.getDurableHookQueue({ pageSize: 100 });
     const pendingVerificationHook = firstAuthQueue.items.find(
       (hook) => hook.hookName === "onUserEmailVerificationRequested",
     );
     assert(pendingVerificationHook?.status === "pending");
     assert(pendingVerificationHook.nextRetryAt);
 
-    const otpRepository = await runtime.objects.otp.singleton().getDurableHookRepository();
-    const otpQueue = await otpRepository.getHookQueue({ pageSize: 100 });
+    const otpCommands = runtime.objects.otp.singleton().commands;
+    const otpQueue = await otpCommands.getDurableHookQueue({ pageSize: 100 });
     const issuedHook = otpQueue.items.find((hook) => hook.hookName === "onOtpIssued");
     assert(issuedHook?.status === "completed");
     expect(resend.attempts).toHaveLength(1);
@@ -530,7 +543,7 @@ describe("Auth Durable Object email verification delivery", () => {
     runtime.advanceTime(Math.max(0, retryAt - runtime.now()));
     await runtime.drain();
 
-    const completedAuthQueue = await authRepository.getHookQueue({ pageSize: 100 });
+    const completedAuthQueue = await authCommands.getDurableHookQueue({ pageSize: 100 });
     const completedVerificationHook = completedAuthQueue.items.find(
       (hook) => hook.hookName === "onUserEmailVerificationRequested",
     );
@@ -549,7 +562,7 @@ describe("Auth session organization bootstrap", () => {
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
 
-    const signUpResponse = await auth.fetch(
+    const signUpResponse = await auth.http.fetch(
       new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -567,10 +580,10 @@ describe("Auth session organization bootstrap", () => {
     assert(cookie);
     await runtime.drain();
 
-    const organizationId = (await auth.getAllOrganizations())[0]?.id;
+    const organizationId = (await auth.commands.getAllOrganizations())[0]?.id;
     assert(organizationId);
 
-    const tokenResponse = await auth.fetch(
+    const tokenResponse = await auth.http.fetch(
       new Request("https://backoffice.example/api/auth/backoffice-token", {
         method: "POST",
         headers: { cookie, "content-type": "application/json" },
@@ -587,7 +600,7 @@ describe("Auth organization automation hooks", () => {
     const runtime = {
       objects: {
         automations: {
-          singleton: () => ({ ingestEvent }),
+          singleton: () => ({ commands: { ingestEvent } }),
         },
       },
     } as unknown as BackofficeRuntimeServices;

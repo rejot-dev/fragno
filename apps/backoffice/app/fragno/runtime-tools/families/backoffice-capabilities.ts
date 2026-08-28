@@ -1089,7 +1089,7 @@ export const createBackofficeCapabilitiesRuntime = ({
       const staticEvents = listAutomationEventDescriptors().map(
         ({ payloadSchema, actorSchema, subjectSchema, ...event }) => event,
       );
-      const dynamicEvents = await objects.automations.for(scope).listEventDefinitions();
+      const dynamicEvents = await objects.automations.for(scope).commands.listEventDefinitions();
 
       return [
         ...staticEvents,
@@ -1112,7 +1112,7 @@ export const createBackofficeCapabilitiesRuntime = ({
 
       const dynamicEvent = await objects.automations
         .for(scope)
-        .getEventDefinition({ source, eventType });
+        .commands.getEventDefinition({ source, eventType });
       if (!dynamicEvent) {
         return null;
       }
@@ -1127,7 +1127,7 @@ export const createBackofficeCapabilitiesRuntime = ({
       };
     },
     createAutomationEvent: async (input) =>
-      await objects.automations.for(scope).createEventDefinition(input),
+      await objects.automations.for(scope).commands.createEventDefinition(input),
   };
 };
 

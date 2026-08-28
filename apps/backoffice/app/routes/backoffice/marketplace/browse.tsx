@@ -46,7 +46,9 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     throw error;
   }
 
-  const marketplace = context.get(BackofficeWorkerContext).runtime.objects.marketplace.singleton();
+  const marketplace = context
+    .get(BackofficeWorkerContext)
+    .runtime.objects.marketplace.singleton().commands;
   const page = await marketplace.listPublishedListings(cursor ? { cursor } : {});
   return { basePath: url.pathname, ...page };
 }

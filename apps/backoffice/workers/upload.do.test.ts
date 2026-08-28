@@ -101,24 +101,16 @@ const VALID_DATABASE_PAYLOAD = {
 };
 
 const testDurableHookDependencies: BackofficeDurableHookDependencies = {
-  createEmptyRepository: () => ({
-    getHookQueue: async () => ({
-      configured: false,
-      hooksEnabled: false,
-      namespace: null,
-      items: [],
-      cursor: undefined,
-      hasNextPage: false,
-    }),
-    getHook: async () => null,
+  createUnconfiguredDurableHookQueueResponse: () => ({
+    configured: false,
+    hooksEnabled: false,
+    namespace: null,
+    items: [],
+    cursor: undefined,
+    hasNextPage: false,
   }),
-  createRepository: <TOptions>(selectFragment: (options: TOptions | undefined) => unknown) => ({
-    getHookQueue: (options?: TOptions) =>
-      loadDurableHookQueueMock(selectFragment(options), options),
-    getHook: (hookId: string, options?: TOptions) =>
-      loadDurableHookMock(selectFragment(options), hookId),
-  }),
-  createRpcTarget: (repository) => repository,
+  loadDurableHookQueue: loadDurableHookQueueMock,
+  loadDurableHook: loadDurableHookMock,
 };
 
 describe("Upload Durable Object", () => {
@@ -354,7 +346,7 @@ describe("Upload Durable Object", () => {
     const state = createState();
     const upload = new Upload(state, {} as CloudflareEnv, testDurableHookDependencies);
 
-    const queue = await upload.getDurableHookRepository().then((repo) => repo.getHookQueue());
+    const queue = await upload.getDurableHookQueue();
 
     expect(queue).toEqual({
       configured: false,
@@ -383,9 +375,7 @@ describe("Upload Durable Object", () => {
     const upload = new Upload(state, {} as CloudflareEnv, testDurableHookDependencies);
     await upload.setAdminConfig(VALID_R2_PAYLOAD, "acme");
 
-    const queue = await upload
-      .getDurableHookRepository()
-      .then((repo) => repo.getHookQueue({ pageSize: 10 }));
+    const queue = await upload.getDurableHookQueue({ pageSize: 10 });
 
     expect(queue).toMatchObject({
       configured: true,
@@ -398,6 +388,22 @@ describe("Upload Durable Object", () => {
     expect(loadDurableHookQueueMock).toHaveBeenCalledWith(
       expect.objectContaining({ handler: expect.any(Function) }),
       expect.objectContaining({ pageSize: 10 }),
+    );
+  });
+
+  test("loads one durable hook through a finite command", async () => {
+    const state = createState();
+    const fragment = { handler: vi.fn(async () => new Response("ok")) };
+    createUploadServerForProviderMock.mockReturnValue(fragment);
+    loadDurableHookMock.mockResolvedValue(null);
+
+    const upload = new Upload(state, {} as CloudflareEnv, testDurableHookDependencies);
+    await upload.setAdminConfig(VALID_DATABASE_PAYLOAD, "acme");
+
+    await expect(upload.getDurableHook("hook-1")).resolves.toBeNull();
+    expect(loadDurableHookMock).toHaveBeenCalledWith(
+      expect.objectContaining({ handler: expect.any(Function) }),
+      "hook-1",
     );
   });
 });

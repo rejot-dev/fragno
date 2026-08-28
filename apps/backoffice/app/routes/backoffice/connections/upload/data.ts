@@ -34,7 +34,7 @@ const createUploadRouteCaller = (
     baseUrl: request.url,
     mountRoute: "/api/upload",
     baseHeaders: request.headers,
-    fetch: uploadDo.fetch.bind(uploadDo),
+    fetch: uploadDo.http.fetch.bind(uploadDo),
   });
 };
 
@@ -65,7 +65,7 @@ export async function fetchUploadConfig(
 ): Promise<UploadConfigResult> {
   try {
     const uploadDo = getUploadDurableObject(context, orgId);
-    const configState = await uploadDo.getAdminConfig();
+    const configState = await uploadDo.commands.getAdminConfig();
     return { configState, configError: null };
   } catch (error) {
     return {

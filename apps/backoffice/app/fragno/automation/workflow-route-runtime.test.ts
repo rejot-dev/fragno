@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
+import type {
+  AutomationsObject,
+  BackofficeObjectHandle,
+} from "@/backoffice-runtime/object-registry";
 
 import { CODEMODE_WORKFLOW } from "./engine/codemode-invocation";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
@@ -11,8 +14,15 @@ const jsonResponse = (body: unknown) =>
     headers: { "content-type": "application/json" },
   });
 
-const createObject = (handle: (request: Request) => Response | Promise<Response>) =>
-  ({ fetch: handle }) as unknown as AutomationsObject;
+const createObject = (
+  fetch: (request: Request) => Response | Promise<Response>,
+): BackofficeObjectHandle<AutomationsObject> => ({
+  commands: {} as AutomationsObject,
+  http: {
+    fetch: async (request) => await fetch(request),
+    fetchAuthorized: async (request) => await fetch(request),
+  },
+});
 
 describe("createRouteBackedAutomationWorkflowRuntime", () => {
   test("pins every public saved-workflow operation to the shared workflow host", async () => {

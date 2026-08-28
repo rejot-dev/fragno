@@ -290,9 +290,9 @@ const handleForwardEventRouteAction = async ({
 
   const targetAutomations = runtime.objects.automations.for(scope);
   if (scope.kind === "system") {
-    await targetAutomations.seedStarterAutomationRoutes();
+    await targetAutomations.commands.seedStarterAutomationRoutes();
   }
-  await targetAutomations.ingestEvent(forwardedEvent);
+  await targetAutomations.commands.ingestEvent(forwardedEvent);
 };
 
 const MAX_AUTOMATION_EVENT_RECLASSIFICATION_CHAIN_LENGTH = 32;

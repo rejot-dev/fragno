@@ -31,8 +31,8 @@ export async function createCodemodeStaticArtifacts({
   config,
   orgId,
 }: CreateCodemodeStaticArtifactsInput): Promise<CodemodeStaticArtifactsResult> {
-  const mcpServers = await createMcpRuntime(objects.mcp.forOrg(orgId), async () => {
-    const organization = (await objects.auth.singleton().getAllOrganizations()).find(
+  const mcpServers = await createMcpRuntime(objects.mcp.forOrg(orgId).http, async () => {
+    const organization = (await objects.auth.singleton().commands.getAllOrganizations()).find(
       ({ id }) => id === orgId,
     );
     if (!organization) {

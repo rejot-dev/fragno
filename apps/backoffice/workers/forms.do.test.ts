@@ -36,7 +36,7 @@ afterEach(async () => {
 async function listFormsAutomationEvents(runtime: InMemoryBackofficeRuntime) {
   const response = await runtime.objects.automations
     .singleton()
-    .fetch(new Request("https://automations.test/api/automations/events?limit=10"));
+    .http.fetch(new Request("https://automations.test/api/automations/events?limit=10"));
   assert(response.ok);
   return (await response.json()) as {
     events: Array<{ eventType: string; occurredAt: string }>;
@@ -50,7 +50,7 @@ describe("Forms Durable Object events", () => {
     await runtime.drain();
 
     const createdAt = new Date().toISOString();
-    const createResponse = await forms.fetch(
+    const createResponse = await forms.http.fetch(
       new Request("https://forms.test/api/forms/admin/forms", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -76,7 +76,7 @@ describe("Forms Durable Object events", () => {
     expect(createdEvent?.occurredAt).toBe(createdAt);
 
     const deletedAt = new Date().toISOString();
-    const deleteResponse = await forms.fetch(
+    const deleteResponse = await forms.http.fetch(
       new Request(`https://forms.test/api/forms/admin/forms/${formId}`, { method: "DELETE" }),
     );
     assert(deleteResponse.ok);

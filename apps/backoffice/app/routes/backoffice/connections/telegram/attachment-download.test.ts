@@ -23,6 +23,15 @@ import {
   loader,
 } from "./attachment-download";
 
+function mockTelegramDownload(response: Response) {
+  getTelegramDurableObjectMock.mockReturnValue({
+    commands: {},
+    http: {
+      fetch: vi.fn(async () => response),
+    },
+  });
+}
+
 describe("telegram attachment download route", () => {
   beforeEach(() => {
     findBackofficeMeMock.mockReset();
@@ -47,16 +56,14 @@ describe("telegram attachment download route", () => {
 
   it("downloads Telegram attachment bytes with a file-path-derived filename", async () => {
     findBackofficeMeMock.mockResolvedValue(createAuthMe());
-    getTelegramDurableObjectMock.mockReturnValue({
-      downloadAutomationFile: vi.fn(async () =>
-        createTelegramAutomationFileResponse(new Response(new Uint8Array([0, 255, 1, 2])), {
-          fileId: "file-1",
-          fileUniqueId: "unique-1",
-          filePath: "voice/message-1.ogg",
-          fileSize: 4,
-        }),
-      ),
-    });
+    mockTelegramDownload(
+      createTelegramAutomationFileResponse(new Response(new Uint8Array([0, 255, 1, 2])), {
+        fileId: "file-1",
+        fileUniqueId: "unique-1",
+        filePath: "voice/message-1.ogg",
+        fileSize: 4,
+      }),
+    );
 
     const response = await loader(
       createLoaderArgs(
@@ -75,16 +82,14 @@ describe("telegram attachment download route", () => {
 
   it("prefers the original filename from the backoffice attachment when available", async () => {
     findBackofficeMeMock.mockResolvedValue(createAuthMe());
-    getTelegramDurableObjectMock.mockReturnValue({
-      downloadAutomationFile: vi.fn(async () =>
-        createTelegramAutomationFileResponse(new Response(new Uint8Array([7, 8, 9])), {
-          fileId: "file-1",
-          fileUniqueId: "unique-1",
-          filePath: "documents/file_123",
-          fileSize: 3,
-        }),
-      ),
-    });
+    mockTelegramDownload(
+      createTelegramAutomationFileResponse(new Response(new Uint8Array([7, 8, 9])), {
+        fileId: "file-1",
+        fileUniqueId: "unique-1",
+        filePath: "documents/file_123",
+        fileSize: 3,
+      }),
+    );
 
     const response = await loader(
       createLoaderArgs(
@@ -101,16 +106,14 @@ describe("telegram attachment download route", () => {
 
   it("falls back to the attachment kind when Telegram metadata lacks a file path", async () => {
     findBackofficeMeMock.mockResolvedValue(createAuthMe());
-    getTelegramDurableObjectMock.mockReturnValue({
-      downloadAutomationFile: vi.fn(async () =>
-        createTelegramAutomationFileResponse(new Response(new Uint8Array([1, 2, 3])), {
-          fileId: "file/with spaces",
-          fileUniqueId: "unique-1",
-          filePath: undefined,
-          fileSize: 3,
-        }),
-      ),
-    });
+    mockTelegramDownload(
+      createTelegramAutomationFileResponse(new Response(new Uint8Array([1, 2, 3])), {
+        fileId: "file/with spaces",
+        fileUniqueId: "unique-1",
+        filePath: undefined,
+        fileSize: 3,
+      }),
+    );
 
     const response = await loader(
       createLoaderArgs(
@@ -127,16 +130,14 @@ describe("telegram attachment download route", () => {
 
   it("serves inline disposition when requested for previews", async () => {
     findBackofficeMeMock.mockResolvedValue(createAuthMe());
-    getTelegramDurableObjectMock.mockReturnValue({
-      downloadAutomationFile: vi.fn(async () =>
-        createTelegramAutomationFileResponse(new Response(new Uint8Array([1, 2, 3, 4])), {
-          fileId: "file-1",
-          fileUniqueId: "unique-1",
-          filePath: "photos/thumb.jpg",
-          fileSize: 4,
-        }),
-      ),
-    });
+    mockTelegramDownload(
+      createTelegramAutomationFileResponse(new Response(new Uint8Array([1, 2, 3, 4])), {
+        fileId: "file-1",
+        fileUniqueId: "unique-1",
+        filePath: "photos/thumb.jpg",
+        fileSize: 4,
+      }),
+    );
 
     const response = await loader(
       createLoaderArgs(

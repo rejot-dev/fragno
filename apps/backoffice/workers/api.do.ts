@@ -4,8 +4,10 @@ import {
 } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import type { ApiObject } from "@/backoffice-runtime/object-registry";
+import {
+  backofficeContextScopeFromDurableObjectId,
+  type ApiObject,
+} from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
@@ -13,7 +15,11 @@ import {
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { createApiServer, type ApiConfig, type ApiFragment } from "@/fragno/api";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
-import { createDurableHookRepository } from "@/fragno/durable-hooks";
+import {
+  loadDurableHook,
+  loadDurableHookQueue,
+  type DurableHookQueueOptions,
+} from "@/fragno/durable-hooks";
 import {
   API_PUBLIC_PREFIX,
   isScopedPublicOAuthRedirectUriAllowed,
@@ -71,19 +77,15 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
     this.#scopedRuntime = createScopedFragmentDurableObjectRuntime({
       name: "API",
       state,
+      ownerScope: backofficeContextScopeFromDurableObjectId(state.id, "API"),
       host: this.#host,
       createSource: (scope) => this.#createConfig(scope),
     });
 
     void state.blockConcurrencyWhile(async () => {
       // Restore inside the constructor boundary so alarms cannot run before the dispatcher exists.
-      await this.#scopedRuntime.initializeFromStoredOwnerScope();
+      await this.#scopedRuntime.initializeFromOwnerScope();
     });
-  }
-
-  init(scope: BackofficeContextScope): ApiObject {
-    this.#scopedRuntime.init(scope);
-    return this;
   }
 
   #createConfig(ownerScope: BackofficeRoutableScope): ApiConfig {
@@ -96,7 +98,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
         }),
       onConnectionChanged: async (payload, context) => {
         const scope = ownerScope;
-        await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
+        await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
           {
             id: context.hookId.toString(),
             scope,
@@ -118,7 +120,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
       },
       onConnectionDeleted: async (payload, context) => {
         const scope = ownerScope;
-        await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
+        await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
           {
             id: context.hookId.toString(),
             scope,
@@ -140,7 +142,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
       },
       onConnectionAvailable: async (payload, context) => {
         const scope = ownerScope;
-        await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
+        await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
           {
             id: context.hookId.toString(),
             scope,
@@ -162,7 +164,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
       },
       onWebhookEndpointChanged: async (payload, context) => {
         const automations = this.#runtimeServices.objects.automations.for(ownerScope);
-        await automations.ensureEventSource({
+        await automations.commands.ensureEventSource({
           source: payload.endpointId,
           label: payload.endpoint.name,
           description: `${payload.endpoint.name} webhook events received through the API.`,
@@ -171,7 +173,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
         if (payload.change !== "created") {
           return;
         }
-        await automations.ingestEvent(
+        await automations.commands.ingestEvent(
           {
             id: context.hookId.toString(),
             scope: ownerScope,
@@ -191,7 +193,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
       },
       onWebhookReceived: async (payload, context) => {
         const scope = ownerScope;
-        await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
+        await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
           {
             id: payload.hookId,
             scope,
@@ -215,9 +217,12 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
     };
   }
 
-  async getDurableHookRepository() {
-    const fragment = await this.#scopedRuntime.getRuntime();
-    return createDurableHookRepository(() => fragment);
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await loadDurableHookQueue(await this.#scopedRuntime.getRuntime(), options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await loadDurableHook(await this.#scopedRuntime.getRuntime(), hookId);
   }
 
   async alarm(): Promise<void> {
@@ -243,16 +248,16 @@ export class Api extends DurableObject<CloudflareEnv> implements ApiObject {
     });
   }
 
-  init(scope: BackofficeContextScope): ApiObject {
-    return this.#object.init(scope);
-  }
-
   async alarm(): Promise<void> {
     await this.#object.alarm();
   }
 
-  async getDurableHookRepository() {
-    return await this.#object.getDurableHookRepository();
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await this.#object.getDurableHookQueue(options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await this.#object.getDurableHook(hookId);
   }
 
   async fetch(request: Request): Promise<Response> {

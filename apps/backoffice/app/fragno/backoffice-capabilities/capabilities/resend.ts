@@ -5,6 +5,7 @@ import type {
   BackofficeCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
 const optionalTrimmedString = z
   .string()
   .trim()
@@ -92,14 +93,14 @@ export const resendCapability: BackofficeCapability = {
         },
       ],
       getStatus: async ({ objects, orgId }) =>
-        toResendStatus(await getResendDo(objects, orgId).getAdminConfig()),
+        toResendStatus(await getResendDo(objects, orgId).commands.getAdminConfig()),
       verify: async ({ objects, orgId }) =>
-        toResendStatus(await getResendDo(objects, orgId).getAdminConfig()),
+        toResendStatus(await getResendDo(objects, orgId).commands.getAdminConfig()),
       reset: async ({ objects, orgId }) =>
-        toResendStatus(await getResendDo(objects, orgId).resetAdminConfig()),
+        toResendStatus(await getResendDo(objects, orgId).commands.resetAdminConfig()),
       configure: async ({ objects, orgId, origin, payload }) =>
         toResendStatus(
-          await getResendDo(objects, orgId).setAdminConfig(
+          await getResendDo(objects, orgId).commands.setAdminConfig(
             resendConfigureInputSchema.parse(payload),
             { kind: "org", orgId },
             origin,
@@ -113,7 +114,7 @@ export const resendCapability: BackofficeCapability = {
         id: "resend",
         label: "Resend",
         getRepository: ({ objects, orgId }) =>
-          getResendDo(objects, orgId).getDurableHookRepository(),
+          createDurableHookRepositoryFromCommands(getResendDo(objects, orgId).commands),
       },
     ],
     skillPaths: ["skills/resend-connection/SKILL.md"],

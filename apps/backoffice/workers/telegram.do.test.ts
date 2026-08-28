@@ -43,24 +43,22 @@ vi.mock("@/fragno/telegram", () => ({
 vi.mock("@/fragno/durable-hooks", () => ({
   loadDurableHookQueue: loadDurableHookQueueMock,
   loadDurableHook: loadDurableHookMock,
-  createDurableHookRepository: (selectFragment: (options: unknown) => unknown) => ({
-    getHookQueue: (options: unknown) => loadDurableHookQueueMock(selectFragment(options), options),
-    getHook: (hookId: string, options: unknown) =>
-      loadDurableHookMock(selectFragment(options), hookId),
-  }),
-  createDurableHookRepositoryRpcTarget: <T>(repository: T) => repository,
-  createEmptyDurableHookRepository: () => ({
-    getHookQueue: async () => ({
-      configured: false,
-      hooksEnabled: false,
-      namespace: null,
-      items: [],
-      cursor: undefined,
-      hasNextPage: false,
-    }),
-    getHook: async () => null,
+  createUnconfiguredDurableHookQueueResponse: () => ({
+    configured: false,
+    hooksEnabled: false,
+    namespace: null,
+    items: [],
+    cursor: undefined,
+    hasNextPage: false,
   }),
 }));
+
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import {
+  backofficeObjectScopeFromContextScope,
+  encodeBackofficeObjectAddress,
+} from "@/backoffice-runtime/object-registry";
+import { telegramAutomationFileDownloadPath } from "@/backoffice-runtime/telegram-file-response";
 
 import { Telegram } from "./telegram.do";
 
@@ -72,13 +70,13 @@ const VALID_PAYLOAD = {
   botUsername: "fragno_bot",
 };
 
-const createTelegramObject = (
-  state: DurableObjectState,
-  scope: Parameters<Telegram["init"]>[0] = { kind: "org", orgId: "acme" },
-) =>
-  new Telegram(state, { DOCS_PUBLIC_BASE_URL: "https://example.com" } as CloudflareEnv).init(scope);
+const createTelegramObject = (state: DurableObjectState) =>
+  new Telegram(state, { DOCS_PUBLIC_BASE_URL: "https://example.com" } as CloudflareEnv);
 
-const createState = (initialEntries?: Array<[string, unknown]>) => {
+const createState = (
+  initialEntries?: Array<[string, unknown]>,
+  scope: BackofficeContextScope = { kind: "org", orgId: "acme" },
+) => {
   const store = new Map<string, unknown>(initialEntries);
   let alarm: number | null = null;
   const storage = {
@@ -101,7 +99,13 @@ const createState = (initialEntries?: Array<[string, unknown]>) => {
   return {
     store,
     state: {
-      id: { toString: () => "telegram:test" },
+      id: {
+        name: encodeBackofficeObjectAddress({
+          binding: "TELEGRAM",
+          scope: backofficeObjectScopeFromContextScope(scope),
+        }),
+        toString: () => "telegram:test",
+      },
       storage,
       waitUntil,
       blockConcurrencyWhile,
@@ -221,8 +225,8 @@ describe("Telegram Durable Object", () => {
   });
 
   test("can be configured for the system scope", async () => {
-    const { state, store } = createState();
-    const telegram = createTelegramObject(state, { kind: "system" });
+    const { state, store } = createState(undefined, { kind: "system" });
+    const telegram = createTelegramObject(state);
 
     await telegram.setAdminConfig(VALID_PAYLOAD);
 
@@ -236,8 +240,8 @@ describe("Telegram Durable Object", () => {
   });
 
   test("can be configured for a user scope", async () => {
-    const { state, store } = createState();
-    const telegram = createTelegramObject(state, { kind: "user", userId: "user-1" });
+    const { state, store } = createState(undefined, { kind: "user", userId: "user-1" });
+    const telegram = createTelegramObject(state);
 
     await telegram.setAdminConfig(VALID_PAYLOAD);
 
@@ -247,17 +251,6 @@ describe("Telegram Durable Object", () => {
       expect.objectContaining({
         body: expect.stringContaining("/api/telegram/user:user-1/telegram/webhook"),
       }),
-    );
-  });
-
-  test("rejects attempts to initialize the same object for a different organization", async () => {
-    const { state } = createState();
-    const telegram = new Telegram(state, {} as CloudflareEnv);
-
-    telegram.init({ kind: "org", orgId: "acme" });
-
-    expect(() => telegram.init({ kind: "org", orgId: "other-org" })).toThrow(
-      "Backoffice object method scope does not match object address scope.",
     );
   });
 
@@ -320,7 +313,9 @@ describe("Telegram Durable Object", () => {
 
     await telegram.setAdminConfig(VALID_PAYLOAD);
 
-    const response = await telegram.downloadAutomationFile({ fileId: "telegram-file-1" });
+    const response = await telegram.fetch(
+      new Request(`https://telegram.test${telegramAutomationFileDownloadPath("telegram-file-1")}`),
+    );
     expect(response).toBeInstanceOf(Response);
     assert(response.ok);
     await expect(response.arrayBuffer().then((buf) => new Uint8Array(buf))).resolves.toEqual(

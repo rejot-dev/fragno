@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
-import type { UploadObject } from "@/backoffice-runtime/object-registry";
+import type { BackofficeObjectHandle, UploadObject } from "@/backoffice-runtime/object-registry";
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import {
   UPLOAD_PROVIDER_DATABASE,
@@ -225,7 +225,7 @@ export const uploadR2RemoteFileContributor =
 
 type CreateUploadFileSystemOptions = {
   mountPoint?: string;
-  object?: UploadObject;
+  object?: BackofficeObjectHandle<UploadObject>;
   provider: UploadProvider;
 };
 
@@ -1812,8 +1812,10 @@ const getUploadObject = (ctx: FilesContext) => {
   }
 };
 
-const getUploadConfig = async (ctx: FilesContext): Promise<UploadAdminConfigResponse | null> =>
-  (await getUploadObject(ctx)?.getAdminConfig()) ?? null;
+const getUploadConfig = async (ctx: FilesContext): Promise<UploadAdminConfigResponse | null> => {
+  const uploadObject = getUploadObject(ctx);
+  return uploadObject ? await uploadObject.commands.getAdminConfig() : null;
+};
 
 const requestUpload = async (
   ctx: FilesContext,
@@ -1851,7 +1853,7 @@ const requestUpload = async (
   if (options.body instanceof ReadableStream) {
     requestInit.duplex = "half";
   }
-  return uploadObject.fetch(new Request(url, requestInit));
+  return uploadObject.http.fetch(new Request(url, requestInit));
 };
 
 const createUploadFileSystemRequestError = async (

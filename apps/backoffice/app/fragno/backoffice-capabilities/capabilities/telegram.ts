@@ -7,6 +7,7 @@ import type {
   BackofficeConfigurableConnectionCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
 import { generateTelegramWebhookSecretToken } from "@/fragno/telegram-webhook-secret";
 
 import type { TelegramAdminConfigResponse } from "../../../../workers/telegram.do";
@@ -117,14 +118,14 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
         { name: "apiBaseUrl", description: "Optional Telegram API base URL override." },
       ],
       getStatus: async ({ objects, orgId }) =>
-        toTelegramStatus(await getTelegramDo(objects, orgId).getAdminConfig()),
+        toTelegramStatus(await getTelegramDo(objects, orgId).commands.getAdminConfig()),
       verify: async ({ objects, orgId }) =>
-        toTelegramStatus(await getTelegramDo(objects, orgId).getAdminConfig()),
+        toTelegramStatus(await getTelegramDo(objects, orgId).commands.getAdminConfig()),
       reset: async ({ objects, orgId }) =>
-        toTelegramStatus(await getTelegramDo(objects, orgId).resetAdminConfig()),
+        toTelegramStatus(await getTelegramDo(objects, orgId).commands.resetAdminConfig()),
       configure: async ({ objects, orgId, payload }) =>
         toTelegramStatus(
-          await getTelegramDo(objects, orgId).setAdminConfig({
+          await getTelegramDo(objects, orgId).commands.setAdminConfig({
             ...telegramRuntimeConfigureInputSchema.parse(payload),
             webhookSecretToken: generateTelegramWebhookSecretToken(),
           }),
@@ -143,7 +144,7 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
         id: "telegram",
         label: "Telegram",
         getRepository: ({ objects, orgId }) =>
-          getTelegramDo(objects, orgId).getDurableHookRepository(),
+          createDurableHookRepositoryFromCommands(getTelegramDo(objects, orgId).commands),
       },
     ],
     skillPaths: ["skills/telegram-connection/SKILL.md"],

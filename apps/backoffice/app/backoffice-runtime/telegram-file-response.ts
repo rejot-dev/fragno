@@ -2,6 +2,30 @@ import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/fami
 
 const TELEGRAM_FILE_PATH_HEADER = "x-backoffice-telegram-file-path";
 const TELEGRAM_FILE_SIZE_HEADER = "x-backoffice-telegram-file-size";
+const TELEGRAM_AUTOMATION_FILE_DOWNLOAD_PREFIX = "/__backoffice/telegram/automation-files/";
+
+export function telegramAutomationFileDownloadPath(fileId: string): string {
+  const normalizedFileId = fileId.trim();
+  if (!normalizedFileId) {
+    throw new Error("Telegram automation file download requires a non-empty file id.");
+  }
+  return `${TELEGRAM_AUTOMATION_FILE_DOWNLOAD_PREFIX}${encodeURIComponent(normalizedFileId)}`;
+}
+
+export function telegramAutomationFileIdFromDownloadPath(pathname: string): string | null {
+  if (!pathname.startsWith(TELEGRAM_AUTOMATION_FILE_DOWNLOAD_PREFIX)) {
+    return null;
+  }
+  const encodedFileId = pathname.slice(TELEGRAM_AUTOMATION_FILE_DOWNLOAD_PREFIX.length);
+  if (!encodedFileId || encodedFileId.includes("/")) {
+    return null;
+  }
+  try {
+    return decodeURIComponent(encodedFileId);
+  } catch {
+    return null;
+  }
+}
 
 export function createTelegramAutomationFileResponse(
   response: Response,

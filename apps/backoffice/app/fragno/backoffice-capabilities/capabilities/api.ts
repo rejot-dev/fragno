@@ -4,6 +4,7 @@ import { webhookVerificationConfigSchema } from "@fragno-dev/api-fragment/webhoo
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
 
 const AUTOMATION_SOURCE = "api" as const;
 const apiConnectionSnapshotSchema = z.object({
@@ -81,7 +82,8 @@ export const apiCapability: BackofficeCapability = {
       {
         id: "api",
         label: "API",
-        getRepository: ({ objects, scope }) => objects.api.for(scope).getDurableHookRepository(),
+        getRepository: ({ objects, scope }) =>
+          createDurableHookRepositoryFromCommands(objects.api.for(scope).commands),
       },
     ],
     skillPaths: ["skills/api-connection/SKILL.md", "skills/api-webhooks/SKILL.md"],

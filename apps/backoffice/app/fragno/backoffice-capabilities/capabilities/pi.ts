@@ -1,7 +1,10 @@
+import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
 import type {
   BackofficeCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
+import type { DurableHookRepository } from "@/fragno/durable-hooks";
 import type { PiRuntimeState } from "@/fragno/pi/pi-shared";
 
 const connectionStatusIdentity = {
@@ -27,6 +30,13 @@ const toPiStatus = (state: PiRuntimeState): ConnectionStatus => ({
     : {}),
 });
 
+function createPiDurableHookRepository(commands: AutomationsObject): DurableHookRepository {
+  return createDurableHookRepositoryFromCommands({
+    getDurableHookQueue: async (options) => await commands.getDurableHookQueue("pi", options),
+    getDurableHook: async (hookId) => await commands.getDurableHook("pi", hookId),
+  });
+}
+
 export const piCapability: BackofficeCapability = {
   id: connectionStatusIdentity.id,
   label: connectionStatusIdentity.label,
@@ -35,9 +45,9 @@ export const piCapability: BackofficeCapability = {
     connection: {
       configurable: false,
       getStatus: async ({ objects, scope }) =>
-        toPiStatus(await objects.automations.for(scope).getPiRuntimeState()),
+        toPiStatus(await objects.automations.for(scope).commands.getPiRuntimeState()),
       verify: async ({ objects, scope }) =>
-        toPiStatus(await objects.automations.for(scope).getPiRuntimeState()),
+        toPiStatus(await objects.automations.for(scope).commands.getPiRuntimeState()),
     },
     eventSources: [],
     actionProviders: ["pi"],
@@ -46,7 +56,7 @@ export const piCapability: BackofficeCapability = {
         id: "pi",
         label: "Pi",
         getRepository: ({ objects, scope }) =>
-          objects.automations.for(scope).getDurableHookRepository("pi"),
+          createPiDurableHookRepository(objects.automations.for(scope).commands),
       },
     ],
     skillPaths: [],

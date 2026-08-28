@@ -32,7 +32,7 @@ beforeEach(() => {
 
   authorizeBackofficeContextMock.mockResolvedValue({ ok: true, headers: [] });
   formsFetchMock.mockResolvedValue(new Response("forwarded"));
-  getFormsDurableObjectMock.mockReturnValue({ fetch: formsFetchMock });
+  getFormsDurableObjectMock.mockReturnValue({ http: { fetch: formsFetchMock } });
 });
 
 describe("Forms API authorization", () => {

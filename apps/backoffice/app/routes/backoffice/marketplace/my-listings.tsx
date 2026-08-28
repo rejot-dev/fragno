@@ -92,7 +92,9 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw error;
   }
 
-  const marketplace = context.get(BackofficeWorkerContext).runtime.objects.marketplace.singleton();
+  const marketplace = context
+    .get(BackofficeWorkerContext)
+    .runtime.objects.marketplace.singleton().commands;
   const page = await marketplace.listOwnedListings({
     ownerScope: routeScope,
     status,

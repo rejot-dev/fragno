@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
+import type {
+  AutomationsObject,
+  BackofficeObjectHandle,
+} from "@/backoffice-runtime/object-registry";
 import {
   automationRouteSchema,
   type AutomationRouteCreateInput,
@@ -19,7 +22,7 @@ export const createRouteBackedAutomationRouterRuntime = ({
   object,
   execution,
 }: {
-  object: AutomationsObject;
+  object: BackofficeObjectHandle<AutomationsObject>;
   execution: BackofficeExecutionContext;
 }): AutomationRouterRuntime => {
   const callRoute = createAutomationsRouteCaller({ object, context: { execution } });

@@ -50,7 +50,7 @@ export async function loader({
   }
 
   const otpDo = getOtpDurableObject(context, organization.id);
-  const result = await otpDo.confirmIdentityClaim({
+  const result = await otpDo.commands.confirmIdentityClaim({
     externalId,
     code,
     subjectUserId: me.user.id,

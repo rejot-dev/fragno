@@ -183,7 +183,7 @@ const createWorkflowsRouteCaller = async (
     mountRoute: "/api/workflows",
     baseHeaders: request.headers,
     fetch: (outboundRequest) =>
-      doInstance.fetchWithContext(outboundRequest, {
+      doInstance.http.fetchAuthorized(outboundRequest, {
         execution,
         propagationContext: null,
       }),

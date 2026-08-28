@@ -33,7 +33,7 @@ const forwardToTelegram = async (
     url.pathname = `${TELEGRAM_MOUNT}${suffix}`;
   }
 
-  return telegramDo.fetch(new Request(url.toString(), request));
+  return telegramDo.http.fetch(new Request(url.toString(), request));
 };
 
 /**

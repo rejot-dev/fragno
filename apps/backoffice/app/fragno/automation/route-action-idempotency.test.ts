@@ -577,9 +577,11 @@ describe("automation route action idempotency", () => {
       objects: {
         automations: {
           for: () => ({
-            seedStarterAutomationRoutes: async () => ({ created: [], skipped: [] }),
-            ingestEvent: async (forwardedEvent: AutomationEvent) =>
-              await target.callServices(() => target.services.ingestEvent(forwardedEvent)),
+            commands: {
+              seedStarterAutomationRoutes: async () => ({ created: [], skipped: [] }),
+              ingestEvent: async (forwardedEvent: AutomationEvent) =>
+                await target.callServices(() => target.services.ingestEvent(forwardedEvent)),
+            },
           }),
         },
       },

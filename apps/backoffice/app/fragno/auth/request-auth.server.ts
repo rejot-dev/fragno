@@ -44,7 +44,7 @@ const resolveBackofficePrincipal = async (
   const verification = await verifyBackofficeJwt(
     transport.token,
     request.url,
-    getAuthDurableObject(context),
+    getAuthDurableObject(context).http,
   );
   if (!verification.ok) {
     return {

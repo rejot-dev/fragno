@@ -140,7 +140,7 @@ const createResendRouteCaller = (
     baseUrl: request.url,
     mountRoute: "/api/resend",
     baseHeaders: request.headers,
-    fetch: resendDo.fetch.bind(resendDo),
+    fetch: resendDo.http.fetch.bind(resendDo),
   }) as unknown as ResendRouteCaller;
 };
 
@@ -220,7 +220,7 @@ export async function fetchResendConfig(
 ): Promise<ResendConfigResult> {
   try {
     const resendDo = getResendObject(context, target);
-    const configState = await resendDo.getAdminConfig();
+    const configState = await resendDo.commands.getAdminConfig();
     return { configState, configError: null };
   } catch (error) {
     return {

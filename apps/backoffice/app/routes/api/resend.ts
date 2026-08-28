@@ -33,7 +33,7 @@ const forwardToResend = async (
     url.pathname = `/api/resend${suffix}`;
   }
   const proxyRequest = new Request(url.toString(), request);
-  const response = await resendDo.fetch(proxyRequest);
+  const response = await resendDo.http.fetch(proxyRequest);
   const headers = new Headers(response.headers);
   for (const [name, value] of authorization.headers) {
     headers.append(name, value);

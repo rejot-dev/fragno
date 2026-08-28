@@ -30,9 +30,16 @@ export class AuthSqlHarnessDurableObject extends DurableObject<CloudflareEnv> {
         authEmailVerification: { enabled: false },
       },
       objects: {
-        auth: { singleton: () => this.#auth },
+        auth: {
+          singleton: () => ({
+            commands: this.#auth,
+            http: { fetch: async (request: Request) => await this.#auth.fetch(request) },
+          }),
+        },
         automations: {
-          singleton: () => ({ ingestEvent: async () => ({ accepted: true }) }),
+          singleton: () => ({
+            commands: { ingestEvent: async () => ({ accepted: true }) },
+          }),
         },
       },
     } as unknown as BackofficeRuntimeServices;

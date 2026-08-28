@@ -77,7 +77,7 @@ export const createInMemoryBackofficeRuntime = async (
       createBackofficeAuthorityResolver(
         {
           getUserAuthorityFacts: async (input) =>
-            await objects.auth.singleton().getUserAuthorityFacts(input),
+            await objects.auth.singleton().commands.getUserAuthorityFacts(input),
         },
         { now: () => objectFactory.now() },
       ),

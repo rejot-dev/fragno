@@ -25,11 +25,16 @@ import {
 } from "./in-memory-durable-objects";
 import type { InMemoryBackofficeRuntimeEnv } from "./in-memory-runtime-env";
 import { defaultInMemoryBackofficeRuntimeEnv } from "./in-memory-runtime-env";
+import {
+  createAuthorizedBackofficeObjectRequest,
+  removeBackofficeInternalContextHeader,
+} from "./internal-object-request";
 import type {
   BackofficeObjectAddress,
   BackofficeObjectBinding,
   BackofficeObjectBindingName,
   BackofficeObjectFactory,
+  BackofficeObjectHandle,
 } from "./object-registry";
 import { assertBackofficeObjectAddressAllowed } from "./object-registry";
 import { encodeBackofficeObjectAddress } from "./object-registry";
@@ -45,6 +50,7 @@ export type InMemoryBackofficeObjectFactory<TObject> = (input: {
   state: Parameters<InMemoryDurableObjectFactory<TObject>>[0]["state"];
   env: InMemoryBackofficeRuntimeEnv;
   runtime: BackofficeRuntimeServices;
+  nowEpochMs: () => number;
   getAutomationFileSystem?: InMemoryObjectFactoryOptions["getAutomationFileSystem"];
 }) => TObject;
 
@@ -64,11 +70,19 @@ export type InMemoryObjectFactoryOptions = {
 
 type NamespaceMap = Record<string, InMemoryDurableObjectNamespace<unknown>>;
 
-class UnavailableInMemoryDurableObject {
-  init() {
-    return this;
-  }
+let inMemoryDateNowOverrideTail = Promise.resolve();
 
+async function acquireInMemoryDateNowOverride(): Promise<() => void> {
+  const precedingOverride = inMemoryDateNowOverrideTail;
+  let releaseCurrentOverride!: () => void;
+  inMemoryDateNowOverrideTail = new Promise<void>((resolve) => {
+    releaseCurrentOverride = resolve;
+  });
+  await precedingOverride;
+  return releaseCurrentOverride;
+}
+
+class UnavailableInMemoryDurableObject {
   async fetch() {
     return Response.json({ message: "Not configured", code: "NOT_CONFIGURED" }, { status: 400 });
   }
@@ -91,18 +105,19 @@ class UnavailableInMemoryDurableObject {
     throw new Error("Resend is not configured.");
   }
 
-  async getDurableHookRepository() {
+  async getDurableHookQueue() {
     return {
-      getHookQueue: async () => ({
-        configured: false,
-        hooksEnabled: false,
-        namespace: null,
-        items: [],
-        cursor: undefined,
-        hasNextPage: false,
-      }),
-      getHook: async () => null,
+      configured: false,
+      hooksEnabled: false,
+      namespace: null,
+      items: [],
+      cursor: undefined,
+      hasNextPage: false,
     };
+  }
+
+  async getDurableHook() {
+    return null;
   }
 
   async getUserAuthorityFacts() {
@@ -260,11 +275,12 @@ const inMemoryObjectFactories = {
       env,
       runtime,
     }),
-  AUTOMATIONS: ({ state, env, runtime, getAutomationFileSystem }) =>
+  AUTOMATIONS: ({ state, env, runtime, nowEpochMs, getAutomationFileSystem }) =>
     new InMemoryAutomationsObject({
       state,
       env,
       runtime,
+      nowEpochMs,
       getAutomationFileSystem,
     }),
   BILLING: ({ state, env, runtime }) =>
@@ -289,6 +305,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
   readonly #getAutomationFileSystem?: InMemoryObjectFactoryOptions["getAutomationFileSystem"];
   readonly #objectFactories?: InMemoryObjectFactoryOverrides;
   #timeOffsetMs = 0;
+  #activeTimeEpochMs: number | null = null;
 
   constructor(options: InMemoryObjectFactoryOptions) {
     this.env = {
@@ -317,19 +334,40 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
     await namespace.restart(id);
   }
 
-  get<TObject, TRawObject = TObject>(
-    binding: BackofficeObjectBinding<TObject, TRawObject>,
+  get<TCommands>(
+    binding: BackofficeObjectBinding<TCommands>,
     address: BackofficeObjectAddress,
-  ): TRawObject {
+  ): BackofficeObjectHandle<TCommands> {
     if (address.binding !== binding.name) {
       throw new Error(
         `Backoffice object address binding ${address.binding} does not match requested binding ${binding.name}.`,
       );
     }
     assertBackofficeObjectAddressAllowed(address);
-    const namespace = this.#namespace<TObject>(binding);
+    const namespace = this.#namespace<TCommands>(binding);
     const encodedName = encodeBackofficeObjectAddress(address);
-    return namespace.get(namespace.idFromName(encodedName)) as unknown as TRawObject;
+    const stub = namespace.get(namespace.idFromName(encodedName)) as TCommands & {
+      fetch(request: Request): Promise<Response>;
+    };
+    return {
+      commands: stub,
+      http: {
+        fetch: async (request) => await stub.fetch(removeBackofficeInternalContextHeader(request)),
+        fetchAuthorized: async (request, context) =>
+          await stub.fetch(
+            await createAuthorizedBackofficeObjectRequest({
+              request,
+              address,
+              context: {
+                execution: context.execution,
+                propagationContext: context.propagationContext ?? null,
+              },
+              env: this.env as CloudflareEnv,
+              nowEpochMs: this.now(),
+            }),
+          ),
+      },
+    };
   }
 
   instances(): InMemoryDurableObjectInstance[] {
@@ -337,24 +375,28 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
   }
 
   async drainWaitUntil(): Promise<void> {
-    const results = await Promise.all(
-      Object.values(this.#namespaces).map(async (namespace) => await namespace.drainWaitUntil()),
-    );
-    if (results.some(Boolean)) {
-      await Promise.resolve();
-    }
+    await this.#runAtCurrentTime(async () => {
+      const results = await Promise.all(
+        Object.values(this.#namespaces).map(async (namespace) => await namespace.drainWaitUntil()),
+      );
+      if (results.some(Boolean)) {
+        await Promise.resolve();
+      }
+    });
   }
 
   async drainBackground(): Promise<void> {
-    await Promise.all(
-      Object.values(this.#namespaces).map(async (namespace) => {
-        await namespace.drainBackground();
-      }),
-    );
+    await this.#runAtCurrentTime(async () => {
+      await Promise.all(
+        Object.values(this.#namespaces).map(async (namespace) => {
+          await namespace.drainBackground();
+        }),
+      );
+    });
   }
 
   now(): number {
-    return Date.now() + this.#timeOffsetMs;
+    return this.#activeTimeEpochMs ?? Date.now() + this.#timeOffsetMs;
   }
 
   advanceTime(ms: number): number {
@@ -371,19 +413,15 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
           alarmTimestamp !== null && alarmTimestamp <= now && state.consumeDueAlarm(now),
       );
 
-    for (const { object, state } of due) {
-      await state.drainBlocking();
-      const alarm = (object as { alarm?: () => Promise<void> }).alarm;
-      if (alarm) {
-        const originalNow = Date.now;
-        Date.now = () => now;
-        try {
+    await this.#runAtCurrentTime(async () => {
+      for (const { object, state } of due) {
+        await state.drainBlocking();
+        const alarm = (object as { alarm?: () => Promise<void> }).alarm;
+        if (alarm) {
           await alarm.call(object);
-        } finally {
-          Date.now = originalNow;
         }
       }
-    }
+    });
   }
 
   createRuntimeConfig(): BackofficeRuntimeConfig {
@@ -448,6 +486,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
               createDurableObjectDatabaseAdapterScope(input.state as unknown as DurableObjectState),
             ),
           },
+          nowEpochMs: () => this.now(),
           getAutomationFileSystem: this.#getAutomationFileSystem,
         });
       },
@@ -467,5 +506,21 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
 
   #hasNamespace(bindingName: BackofficeObjectBindingName) {
     return Boolean(this.#namespaces[bindingName]);
+  }
+
+  async #runAtCurrentTime<T>(callback: () => Promise<T>): Promise<T> {
+    // Date.now is process-global, so logical-time drains from different runtimes cannot overlap.
+    const releaseDateNowOverride = await acquireInMemoryDateNowOverride();
+    const originalNow = Date.now;
+    const activeTimeEpochMs = originalNow() + this.#timeOffsetMs;
+    this.#activeTimeEpochMs = activeTimeEpochMs;
+    Date.now = () => activeTimeEpochMs;
+    try {
+      return await callback();
+    } finally {
+      Date.now = originalNow;
+      this.#activeTimeEpochMs = null;
+      releaseDateNowOverride();
+    }
   }
 }

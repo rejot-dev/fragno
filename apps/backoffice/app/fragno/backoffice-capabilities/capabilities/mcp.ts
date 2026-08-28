@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
 
 const AUTOMATION_SOURCE = "mcp" as const;
 const AUTOMATION_EVENT_SERVER_CONFIGURATION_CHANGED = "server.configuration.changed" as const;
@@ -37,7 +38,8 @@ export const mcpCapability: BackofficeCapability = {
       {
         id: "mcp",
         label: "MCP",
-        getRepository: ({ objects, scope }) => objects.mcp.for(scope).getDurableHookRepository(),
+        getRepository: ({ objects, scope }) =>
+          createDurableHookRepositoryFromCommands(objects.mcp.for(scope).commands),
       },
     ],
     skillPaths: ["skills/mcp-connection/SKILL.md"],

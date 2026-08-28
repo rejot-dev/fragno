@@ -119,11 +119,13 @@ describe("project automation event routing", () => {
     const projectRoutesUrl =
       `https://automations.do/api/automations/routes?scopeKind=project` +
       `&orgId=${orgId}&projectId=${projectId}`;
-    const initialRoutesResponse = await projectAutomations.fetch(new Request(projectRoutesUrl));
+    const initialRoutesResponse = await projectAutomations.http.fetch(
+      new Request(projectRoutesUrl),
+    );
     assert(initialRoutesResponse.status === 200);
     await expect(initialRoutesResponse.json()).resolves.toEqual([]);
 
-    const createRouteResponse = await projectAutomations.fetch(
+    const createRouteResponse = await projectAutomations.http.fetch(
       new Request(projectRoutesUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -191,7 +193,7 @@ describe("project automation event routing", () => {
 
     await runtime.drain();
 
-    const workflowsResponse = await projectAutomations.fetchWithContext(
+    const workflowsResponse = await projectAutomations.http.fetchAuthorized(
       new Request("https://automations.do/api/workflows/codemode-script/instances"),
       {
         execution: createBackofficeSystemExecution({ kind: "project", orgId, projectId }),
@@ -230,9 +232,7 @@ describe("project automation event routing", () => {
     }
     const projectId = idValue(createProjectResponse.data.id);
 
-    const hookQueue = await (
-      await orgAutomations.getDurableHookRepository("automation")
-    ).getHookQueue();
+    const hookQueue = await orgAutomations.commands.getDurableHookQueue("automation");
     expect(hookQueue.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

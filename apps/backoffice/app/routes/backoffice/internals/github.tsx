@@ -98,14 +98,17 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   let snapshotError: string | null = null;
 
   try {
-    configState = await githubRouterDo.getAdminConfig(BACKOFFICE_ADMIN_OBJECT_NAME, origin);
+    configState = await githubRouterDo.commands.getAdminConfig(
+      BACKOFFICE_ADMIN_OBJECT_NAME,
+      origin,
+    );
   } catch (error) {
     configError =
       error instanceof Error ? error.message : "Failed to load GitHub app runtime configuration.";
   }
 
   try {
-    snapshot = await githubRouterDo.getWebhookRouterSnapshot();
+    snapshot = await githubRouterDo.commands.getWebhookRouterSnapshot();
   } catch (error) {
     snapshotError =
       error instanceof Error ? error.message : "Failed to load singleton routing snapshot.";

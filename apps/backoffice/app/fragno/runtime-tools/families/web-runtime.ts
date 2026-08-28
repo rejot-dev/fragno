@@ -4,7 +4,7 @@ import type {
 } from "@fragno-dev/cloudflare-fragment/browser-run";
 import { createRouteCaller } from "@fragno-dev/core/api";
 
-import type { CloudflareObject } from "@/backoffice-runtime/object-registry";
+import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import type { CloudflareFragment } from "@/fragno/cloudflare";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-errors";
@@ -16,7 +16,7 @@ export type WebRuntime = {
   extract(input: WebExtractInput): Promise<WebExtractResult>;
 };
 
-export const createWebRuntime = ({ object }: { object: CloudflareObject }): WebRuntime => {
+export const createWebRuntime = ({ object }: { object: FetchObject }): WebRuntime => {
   const callRoute = createRouteCaller<CloudflareFragment>({
     baseUrl: "https://cloudflare.do",
     mountRoute: "/api/cloudflare",

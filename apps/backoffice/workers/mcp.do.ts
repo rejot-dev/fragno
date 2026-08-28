@@ -4,15 +4,21 @@ import {
 } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import type { McpObject } from "@/backoffice-runtime/object-registry";
+import {
+  backofficeContextScopeFromDurableObjectId,
+  type McpObject,
+} from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
-import { createDurableHookRepository } from "@/fragno/durable-hooks";
+import {
+  loadDurableHook,
+  loadDurableHookQueue,
+  type DurableHookQueueOptions,
+} from "@/fragno/durable-hooks";
 import { createMcpServer, type McpConfig, type McpFragment } from "@/fragno/mcp";
 import {
   isScopedPublicOAuthRedirectUriAllowed,
@@ -75,19 +81,15 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
     this.#scopedRuntime = createScopedFragmentDurableObjectRuntime({
       name: "MCP",
       state,
+      ownerScope: backofficeContextScopeFromDurableObjectId(state.id, "MCP"),
       host: this.#host,
       createSource: (scope) => this.#createConfig(scope),
     });
 
     void state.blockConcurrencyWhile(async () => {
       // Restore inside the constructor boundary so alarms cannot run before the dispatcher exists.
-      await this.#scopedRuntime.initializeFromStoredOwnerScope();
+      await this.#scopedRuntime.initializeFromOwnerScope();
     });
-  }
-
-  init(scope: BackofficeContextScope): McpObject {
-    this.#scopedRuntime.init(scope);
-    return this;
   }
 
   #createConfig(ownerScope: BackofficeRoutableScope): McpConfig {
@@ -100,7 +102,7 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
         }),
       onServerConfigurationChanged: async (payload, context) => {
         const scope = ownerScope;
-        await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
+        await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
           {
             id: context.hookId.toString(),
             scope,
@@ -120,7 +122,7 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
       },
       onServerConfigurationDeleted: async (payload, context) => {
         const scope = ownerScope;
-        await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
+        await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
           {
             id: context.hookId.toString(),
             scope,
@@ -141,9 +143,12 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
     };
   }
 
-  async getDurableHookRepository() {
-    const fragment = await this.#scopedRuntime.getRuntime();
-    return createDurableHookRepository(() => fragment);
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await loadDurableHookQueue(await this.#scopedRuntime.getRuntime(), options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await loadDurableHook(await this.#scopedRuntime.getRuntime(), hookId);
   }
 
   async alarm(): Promise<void> {
@@ -169,16 +174,16 @@ export class Mcp extends DurableObject<CloudflareEnv> implements McpObject {
     });
   }
 
-  init(scope: BackofficeContextScope): McpObject {
-    return this.#object.init(scope);
-  }
-
   async alarm(): Promise<void> {
     await this.#object.alarm();
   }
 
-  async getDurableHookRepository() {
-    return await this.#object.getDurableHookRepository();
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await this.#object.getDurableHookQueue(options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await this.#object.getDurableHook(hookId);
   }
 
   async fetch(request: Request): Promise<Response> {

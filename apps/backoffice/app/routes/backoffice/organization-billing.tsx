@@ -116,7 +116,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   const billing = context
     .get(BackofficeWorkerContext)
-    .runtime.objects.billing.forOrg(organization.id);
+    .runtime.objects.billing.forOrg(organization.id).commands;
   const page = await billing.getTrackers({
     scope,
     period,

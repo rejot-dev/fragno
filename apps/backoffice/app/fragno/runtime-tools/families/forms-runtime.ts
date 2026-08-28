@@ -2,7 +2,7 @@ import { createRouteCaller, type RouteCallerForFragment } from "@fragno-dev/core
 
 import type { Form, FormSubmissionsPage, NewForm, UpdateForm } from "@fragno-dev/forms";
 
-import type { FormsObject } from "@/backoffice-runtime/object-registry";
+import type { BackofficeObjectHttp } from "@/backoffice-runtime/object-registry";
 import type { FormsFragment } from "@/fragno/forms";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-errors";
@@ -22,17 +22,17 @@ export type FormsRuntime = {
   listSubmissions(input: ListFormSubmissionsInput): Promise<FormSubmissionsPage>;
 };
 
-function createFormsRouteCaller(object: FormsObject): RouteCallerForFragment<FormsFragment> {
+function createFormsRouteCaller(http: BackofficeObjectHttp): RouteCallerForFragment<FormsFragment> {
   return createRouteCaller<FormsFragment>({
     baseUrl: "https://forms.do",
     mountRoute: "/api/forms",
-    fetch: object.fetch.bind(object),
+    fetch: http.fetch.bind(http),
   });
 }
 
 /** Creates system Forms operations backed by the singleton Forms Durable Object routes. */
-export function createFormsRuntime(object: FormsObject): FormsRuntime {
-  const callRoute = createFormsRouteCaller(object);
+export function createFormsRuntime(http: BackofficeObjectHttp): FormsRuntime {
+  const callRoute = createFormsRouteCaller(http);
 
   return {
     listForms: async () => {

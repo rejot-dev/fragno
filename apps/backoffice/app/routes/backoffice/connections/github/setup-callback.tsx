@@ -27,7 +27,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   }
 
   const githubWebhookRouterDo = getGitHubWebhookRouterDurableObject(context);
-  const resolved = await githubWebhookRouterDo.resolveInstallState({
+  const resolved = await githubWebhookRouterDo.commands.resolveInstallState({
     state,
     userId: me.user.id,
   });
