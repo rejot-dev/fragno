@@ -4,13 +4,26 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { BACKOFFICE_WORKER_TOPOLOGY } from "../backoffice-worker-topology";
-import { getReactRouterWorkerEntries } from "./react-router-worker-routing";
+import {
+  getReactRouterWorkerEntries,
+  selectReactRouterServerBundle,
+} from "./react-router-worker-routing";
 
 describe("Backoffice Worker topology", () => {
   it("uses unique Worker names and service bindings", () => {
     const workers = getReactRouterWorkerEntries().map(([, worker]) => worker);
     assert.equal(new Set(workers.map((worker) => worker.name)).size, workers.length);
     assert.equal(new Set(workers.map((worker) => worker.serviceBinding)).size, workers.length);
+  });
+
+  it("routes React Router client navigation data requests by their document pathname", () => {
+    assert.equal(selectReactRouterServerBundle("/backoffice/internals.data"), "internals");
+    assert.equal(selectReactRouterServerBundle("/backoffice/internals/_.data"), "internals");
+    assert.equal(
+      selectReactRouterServerBundle("/backoffice/sessions/org/wilcos-organization/sessions.data"),
+      "sessions",
+    );
+    assert.equal(selectReactRouterServerBundle("/api/admin/grant.data"), "api");
   });
 
   it("assigns every documented environment name to at least one Worker", () => {

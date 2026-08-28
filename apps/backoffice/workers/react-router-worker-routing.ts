@@ -57,8 +57,9 @@ export function assignReactRouterServerBundle(
 
 /** Selects the declared React Router Worker service that owns a request pathname. */
 export function selectReactRouterServerBundle(pathname: string): ReactRouterServerBundleId {
+  const routePathname = normalizeReactRouterRequestPathname(pathname);
   const entries = getReactRouterWorkerEntries();
-  const matches = entries.filter(([, worker]) => workerMatchesRequestPath(worker, pathname));
+  const matches = entries.filter(([, worker]) => workerMatchesRequestPath(worker, routePathname));
 
   if (matches.length > 1) {
     throw new Error(
@@ -105,6 +106,14 @@ function workerMatchesRequestPath(worker: BackofficeReactRouterWorker, pathname:
     worker.requestPathPrefixes.some((prefix) => isPathWithin(pathname, prefix)) ||
     worker.requestPathRegularExpressions.some((pattern) => new RegExp(pattern).test(pathname))
   );
+}
+
+function normalizeReactRouterRequestPathname(pathname: string): string {
+  // Client navigations target React Router's synthetic `.data` URL, but bundle ownership follows
+  // the underlying document route. The `/_.data` form preserves a trailing slash.
+  return pathname.endsWith("/_.data")
+    ? pathname.replace(/_\.data$/u, "")
+    : pathname.replace(/\.data$/u, "");
 }
 
 function isPathWithin(pathname: string, pathPrefix: string): boolean {
