@@ -43,7 +43,7 @@ export const getScenarioAuthMemberRoles = async (
   runtime: InMemoryBackofficeRuntime,
   input: Pick<ScenarioAuthMemberInput, "orgId" | "userId">,
 ): Promise<string[] | null> =>
-  await auth(runtime).getScenarioMemberRoles({
+  await auth(runtime).commands.getScenarioMemberRoles({
     organizationId: input.orgId,
     userId: input.userId,
   });
@@ -52,7 +52,7 @@ export const setUpScenarioAuthUser = async (
   runtime: InMemoryBackofficeRuntime,
   input: ScenarioAuthUserInput,
 ) => {
-  await auth(runtime).applyScenarioFixture({
+  await auth(runtime).commands.applyScenarioFixture({
     users: [
       {
         id: input.id,
@@ -68,7 +68,7 @@ export const setUpScenarioAuthOrganization = async (
   runtime: InMemoryBackofficeRuntime,
   input: ScenarioAuthOrganizationInput,
 ) => {
-  await auth(runtime).applyScenarioFixture({
+  await auth(runtime).commands.applyScenarioFixture({
     organizations: [
       {
         id: input.id,
@@ -85,7 +85,7 @@ export const setUpScenarioAuthMember = async (
   runtime: InMemoryBackofficeRuntime,
   input: ScenarioAuthMemberInput,
 ) => {
-  await auth(runtime).applyScenarioFixture({
+  await auth(runtime).commands.applyScenarioFixture({
     members: [
       {
         organizationId: input.orgId,
@@ -107,11 +107,11 @@ export const setScenarioAuthUserRole = async (
   runtime: InMemoryBackofficeRuntime,
   input: ScenarioAuthUserRoleInput,
 ) => {
-  const facts = await auth(runtime).getUserAuthorityFacts({ userId: input.userId });
+  const facts = await auth(runtime).commands.getUserAuthorityFacts({ userId: input.userId });
   if (!facts.role) {
     throw new Error(`Scenario auth user ${input.userId} does not exist.`);
   }
-  await auth(runtime).applyScenarioFixture({
+  await auth(runtime).commands.applyScenarioFixture({
     users: [
       {
         id: input.userId,
@@ -127,11 +127,11 @@ export const setScenarioAuthUserStatus = async (
   runtime: InMemoryBackofficeRuntime,
   input: ScenarioAuthUserStatusInput,
 ) => {
-  const facts = await auth(runtime).getUserAuthorityFacts({ userId: input.userId });
+  const facts = await auth(runtime).commands.getUserAuthorityFacts({ userId: input.userId });
   if (!facts.role) {
     throw new Error(`Scenario auth user ${input.userId} does not exist.`);
   }
-  await auth(runtime).applyScenarioFixture({
+  await auth(runtime).commands.applyScenarioFixture({
     users: [
       {
         id: input.userId,
@@ -147,7 +147,7 @@ export const removeScenarioAuthMember = async (
   runtime: InMemoryBackofficeRuntime,
   input: ScenarioAuthMemberRemoveInput,
 ) => {
-  await auth(runtime).applyScenarioFixture({
+  await auth(runtime).commands.applyScenarioFixture({
     removedMembers: [{ organizationId: input.orgId, userId: input.userId }],
   });
 };

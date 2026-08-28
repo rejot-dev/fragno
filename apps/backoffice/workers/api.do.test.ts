@@ -34,7 +34,7 @@ describe("API system capability", () => {
     const runtime = await createRuntime();
     const api = runtime.objects.api.forOrg("org-1");
 
-    const response = await api.fetch(new Request("https://api.do/api/api/connections"));
+    const response = await api.http.fetch(new Request("https://api.do/api/api/connections"));
     assert(response.ok);
     await expect(response.json()).resolves.toEqual({ connections: [] });
   });
@@ -44,7 +44,7 @@ describe("API system capability", () => {
     const scope = { kind: "org" as const, orgId: "org-1" };
     const api = runtime.objects.api.for(scope);
 
-    const response = await api.fetch(
+    const response = await api.http.fetch(
       new Request("https://api.do/api/api/webhooks/endpoints/slack", {
         method: "PUT",
         headers: { "content-type": "application/json" },
@@ -59,11 +59,10 @@ describe("API system capability", () => {
     );
     assert.equal(response.status, 201);
 
-    await api.alarm?.();
-    await runtime.drainWaitUntil();
+    await runtime.drain();
 
     const automations = runtime.objects.automations.for(scope);
-    await expect(automations.listEventSources()).resolves.toEqual([
+    await expect(automations.commands.listEventSources()).resolves.toEqual([
       expect.objectContaining({
         source: "slack",
         label: "Slack",
@@ -72,7 +71,7 @@ describe("API system capability", () => {
       }),
     ]);
 
-    const eventsResponse = await automations.fetch(
+    const eventsResponse = await automations.http.fetch(
       new Request("https://automations.test/api/automations/events?limit=10"),
     );
     assert.equal(eventsResponse.status, 200);

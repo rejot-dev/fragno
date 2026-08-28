@@ -38,7 +38,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   const reson8Do = getReson8DurableObject(context, orgId);
 
   try {
-    const configState = await reson8Do.setAdminConfig({ apiKey }, orgId);
+    const configState = await reson8Do.commands.setAdminConfig({ apiKey }, orgId);
     return {
       ok: true,
       message: "Reson8 API key saved.",

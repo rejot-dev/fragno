@@ -41,7 +41,7 @@ beforeEach(() => {
     ],
   });
   uploadFetchMock.mockResolvedValue(new Response("ok"));
-  getUploadDurableObjectMock.mockReturnValue({ fetch: uploadFetchMock });
+  getUploadDurableObjectMock.mockReturnValue({ http: { fetch: uploadFetchMock } });
 });
 
 describe("Upload API proxy", () => {

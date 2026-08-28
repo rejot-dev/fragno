@@ -85,7 +85,9 @@ export async function action({ request, context }: Route.ActionArgs) {
     } satisfies VerificationActionData;
   }
 
-  const confirmation = await getSystemOtpDurableObject(context).confirmEmailVerificationChallenge({
+  const confirmation = await getSystemOtpDurableObject(
+    context,
+  ).commands.confirmEmailVerificationChallenge({
     userId: input.data.userId,
     code: input.data.code,
   });

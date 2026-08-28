@@ -8,7 +8,7 @@ import {
 } from "@fragno-dev/api-fragment/types";
 import { createRouteCaller } from "@fragno-dev/core/api";
 
-import type { ApiObject } from "@/backoffice-runtime/object-registry";
+import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import type { ApiFragment } from "@/fragno/api";
 import {
   apiWebhookPublicUrl,
@@ -258,7 +258,7 @@ export const createRouteBackedApiRuntime = (
 };
 
 export const createApiRuntime = (
-  object: ApiObject,
+  object: FetchObject,
   resolvePublicAddress: () => Promise<ScopedPublicFragmentAddress>,
 ) => {
   let publicAddress: Promise<ScopedPublicFragmentAddress> | null = null;

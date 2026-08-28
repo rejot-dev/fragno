@@ -181,7 +181,7 @@ const forwardWebhook = async (request: Request, context: Readonly<RouterContextP
   }
 
   const githubWebhookRouterDo = getGitHubWebhookRouterDurableObject(context);
-  const orgId = await githubWebhookRouterDo.getInstallationOrg(installationId);
+  const orgId = await githubWebhookRouterDo.commands.getInstallationOrg(installationId);
   if (!orgId) {
     console.warn("GitHub webhook rejected because installation mapping was not found", {
       ...webhookMeta,
@@ -202,14 +202,14 @@ const forwardWebhook = async (request: Request, context: Readonly<RouterContextP
   }
 
   const githubDo = getGitHubDurableObject(context, orgId);
-  await githubDo.ensureAdminConfig(orgId);
+  await githubDo.commands.ensureAdminConfig(orgId);
 
   const url = new URL(request.url);
   url.pathname = "/api/github/webhooks";
   url.searchParams.set("orgId", orgId);
 
   const proxyRequest = new Request(url.toString(), request);
-  const response = await githubDo.fetch(proxyRequest);
+  const response = await githubDo.http.fetch(proxyRequest);
   if (!response.ok) {
     console.warn("Forwarded GitHub webhook returned non-success status", {
       ...webhookMeta,

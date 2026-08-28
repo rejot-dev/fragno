@@ -7,13 +7,19 @@ import {
   backofficeContextScopesEqual,
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
-import type { TelegramObject } from "@/backoffice-runtime/object-registry";
+import {
+  backofficeContextScopeFromDurableObjectId,
+  type TelegramObject,
+} from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
-import { createTelegramAutomationFileResponse } from "@/backoffice-runtime/telegram-file-response";
+import {
+  createTelegramAutomationFileResponse,
+  telegramAutomationFileIdFromDownloadPath,
+} from "@/backoffice-runtime/telegram-file-response";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import type { AutomationEventSubject } from "@/fragno/automation/contracts";
 import { telegramConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/telegram";
@@ -316,6 +322,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
     this.#state = state;
     this.#runtime = runtime;
     this.#api = api;
+    this.#scope = backofficeContextScopeFromDurableObjectId(state.id, "TELEGRAM");
     this.#adminApi = adminApi;
     this.#host = createBackofficeFragmentDurableObject({
       name: "Telegram",
@@ -353,7 +360,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
                 const { scope } = runtime.stored;
                 await this.#runtime.objects.automations
                   .for(scope)
-                  .triggerIngestEvent(
+                  .commands.triggerIngestEvent(
                     buildTelegramAutomationEvent(scope, payload, context.hookId.toString()),
                     { propagationContext: context.capturePropagationContext() },
                   );
@@ -368,7 +375,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
           }
 
           const { scope } = stored;
-          await this.#runtime.objects.automations.for(scope).ingestEvent({
+          await this.#runtime.objects.automations.for(scope).commands.ingestEvent({
             id: item.id,
             scope,
             source: "telegram",
@@ -390,18 +397,20 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
     });
 
     void state.blockConcurrencyWhile(async () => {
-      await this.#host.initializeFromStored(await this.#host.loadStored());
+      const stored = await this.#host.loadStored();
+      if (stored) {
+        const storedScope = (stored as Partial<StoredTelegramConfig>).scope;
+        if (!storedScope) {
+          throw new Error("Stored Telegram config is missing a scope.");
+        }
+        if (!this.#scope) {
+          this.#scope = storedScope;
+        } else {
+          assertTelegramObjectScope(this.#scope, storedScope);
+        }
+      }
+      await this.#host.initializeFromStored(stored);
     });
-  }
-
-  init(scope: BackofficeContextScope): TelegramObject {
-    if (this.#scope) {
-      assertTelegramObjectScope(this.#scope, scope);
-      return this;
-    }
-
-    this.#scope = scope;
-    return this;
   }
 
   #requireScope(): BackofficeContextScope {
@@ -462,7 +471,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
     }
   }
 
-  async downloadAutomationFile(input: { fileId: string }): Promise<Response> {
+  async #downloadAutomationFile(input: { fileId: string }): Promise<Response> {
     const { source: config } = this.#host.requireConfigured();
     const metadata = await this.getAutomationFile(input);
     if (!metadata.filePath) {
@@ -567,18 +576,28 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
     };
   }
 
-  getDurableHookRepository() {
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
     this.#requireScope();
-    return this.#host.getDurableHookRepository<DurableHookQueueOptions>(({ runtime }) => runtime);
+    return await this.#host.getDurableHookQueue(({ runtime }) => runtime, options);
+  }
+
+  async getDurableHook(hookId: string) {
+    this.#requireScope();
+    return await this.#host.getDurableHook(({ runtime }) => runtime, hookId);
   }
 
   async fetch(request: Request): Promise<Response> {
     this.#requireScope();
+    const url = new URL(request.url);
+    const automationFileId = telegramAutomationFileIdFromDownloadPath(url.pathname);
+    if (request.method === "GET" && automationFileId) {
+      return await this.#downloadAutomationFile({ fileId: automationFileId });
+    }
     return await this.#host.fetch(request);
   }
 }
 
-export class Telegram extends DurableObject<CloudflareEnv> {
+export class Telegram extends DurableObject<CloudflareEnv> implements TelegramObject {
   readonly #object: InMemoryTelegramObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
@@ -590,12 +609,32 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     });
   }
 
-  init(scope: BackofficeContextScope): TelegramObject {
-    return this.#object.init(scope);
-  }
-
   async alarm() {
     await this.#object.alarm();
+  }
+
+  async getAdminConfig() {
+    return await this.#object.getAdminConfig();
+  }
+
+  async resetAdminConfig() {
+    return await this.#object.resetAdminConfig();
+  }
+
+  async setAdminConfig(input: unknown) {
+    return await this.#object.setAdminConfig(input);
+  }
+
+  async getAutomationFile(input: { fileId: string }) {
+    return await this.#object.getAutomationFile(input);
+  }
+
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await this.#object.getDurableHookQueue(options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await this.#object.getDurableHook(hookId);
   }
 
   async fetch(request: Request): Promise<Response> {

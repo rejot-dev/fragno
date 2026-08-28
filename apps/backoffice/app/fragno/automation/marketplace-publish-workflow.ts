@@ -145,7 +145,7 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
         return createRouteCaller<UploadFragment>({
           baseUrl: MARKETPLACE_UPLOAD_ORIGIN,
           mountRoute: "/api/upload",
-          fetch: (request) => uploadObject.fetch(request),
+          fetch: (request) => uploadObject.http.fetch(request),
         });
       };
 
@@ -209,7 +209,7 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
         "create marketplace draft listing",
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
         async (): Promise<MarketplaceDraftResult | null> => {
-          const result = await marketplace.createDraftListing(entry);
+          const result = await marketplace.commands.createDraftListing(entry);
           if (result.ok) {
             return result.value;
           }
@@ -225,7 +225,7 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
           "add marketplace draft version",
           MARKETPLACE_EXTERNAL_STEP_RETRIES,
           async (): Promise<MarketplaceDraftResult> => {
-            const result = await marketplace.addDraftVersion({
+            const result = await marketplace.commands.addDraftVersion({
               owner: entry.owner,
               listingId,
               version: entry.version,
@@ -240,7 +240,7 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
         "resolve marketplace root files",
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
         async () => {
-          const manifest = await marketplace.getArtifactManifest({ listingId });
+          const manifest = await marketplace.commands.getArtifactManifest({ listingId });
           return !manifest || manifest.versions.length === 0;
         },
       );
@@ -372,7 +372,9 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
         "publish marketplace artifact version",
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
         async (tx) => {
-          const manifest = await marketplace.getArtifactManifest({ listingId: draft.listingId });
+          const manifest = await marketplace.commands.getArtifactManifest({
+            listingId: draft.listingId,
+          });
           const existingVersion = manifest?.versions.includes(entry.version);
           let result: MarketplacePublishVersionResult;
           if (existingVersion) {
@@ -383,7 +385,7 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
               published: false,
             };
           } else {
-            const publishedVersion = await marketplace.publishVersion({
+            const publishedVersion = await marketplace.commands.publishVersion({
               owner: entry.owner,
               listingId: draft.listingId,
               version: entry.version,

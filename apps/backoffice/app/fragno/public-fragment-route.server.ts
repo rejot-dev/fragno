@@ -1,5 +1,6 @@
 import type { RouterContextProvider } from "react-router";
 
+import type { BackofficeObjectHandle } from "@/backoffice-runtime/object-registry";
 import {
   backofficeRuntimeScopeFromResolvedScope,
   resolveBackofficeRouteScope,
@@ -14,20 +15,16 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { appendBackofficeScopeQuery } from "./scoped-public-fragment-routes";
 
-type PublicFragmentObject = {
-  fetch(request: Request): Promise<Response>;
-};
-
-export type PublicFragmentRoute<TObject extends PublicFragmentObject> = {
+export type PublicFragmentRoute<TCommands> = {
   publicPrefix: string;
   internalPrefix: string;
   getObjectForScope(
     context: Readonly<RouterContextProvider>,
     scope: BackofficeRoutableScope,
-  ): TObject;
+  ): BackofficeObjectHandle<TCommands>;
   forwardRequest(input: {
     context: Readonly<RouterContextProvider>;
-    object: TObject;
+    object: BackofficeObjectHandle<TCommands>;
     request: Request;
     scopePathSegment: string;
     publicPathSuffix: string;
@@ -126,7 +123,7 @@ async function resolvePublicRouteScope(
   const organization = await context
     .get(BackofficeWorkerContext)
     .runtime.objects.auth.singleton()
-    .getOrganizationBySlug(routeScope.orgSlug);
+    .commands.getOrganizationBySlug(routeScope.orgSlug);
   if (!organization) {
     return null;
   }
@@ -135,7 +132,7 @@ async function resolvePublicRouteScope(
   return resolvedScope ? backofficeRuntimeScopeFromResolvedScope(resolvedScope) : null;
 }
 
-async function handleScopedOAuthCallback<TObject extends PublicFragmentObject>({
+async function handleScopedOAuthCallback<TCommands>({
   request,
   context,
   scopePathSegment,
@@ -144,8 +141,8 @@ async function handleScopedOAuthCallback<TObject extends PublicFragmentObject>({
   request: Request;
   context: Readonly<RouterContextProvider>;
   scopePathSegment: string | undefined;
-  route: PublicFragmentRoute<TObject> & {
-    oauth: NonNullable<PublicFragmentRoute<TObject>["oauth"]>;
+  route: PublicFragmentRoute<TCommands> & {
+    oauth: NonNullable<PublicFragmentRoute<TCommands>["oauth"]>;
   };
 }) {
   const parsed = parsePublicRouteScope(scopePathSegment);
@@ -207,7 +204,7 @@ async function handleScopedOAuthCallback<TObject extends PublicFragmentObject>({
   });
 }
 
-export async function forwardPublicFragmentRequest<TObject extends PublicFragmentObject>({
+export async function forwardPublicFragmentRequest<TCommands>({
   request,
   context,
   scopePathSegment,
@@ -216,7 +213,7 @@ export async function forwardPublicFragmentRequest<TObject extends PublicFragmen
   request: Request;
   context: Readonly<RouterContextProvider>;
   scopePathSegment: string | undefined;
-  route: PublicFragmentRoute<TObject>;
+  route: PublicFragmentRoute<TCommands>;
 }) {
   if (
     route.oauth &&

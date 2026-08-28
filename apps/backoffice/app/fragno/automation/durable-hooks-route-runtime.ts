@@ -9,7 +9,7 @@ import type {
 
 type FragmentDurableHookRepository = DurableHookRepository;
 
-const getDurableHookRepository = async ({
+const resolveDurableHookRepository = async ({
   objects,
   config,
   orgId,
@@ -45,11 +45,11 @@ export const createRouteBackedDurableHooksRuntime = ({
   orgId: string;
 }): DurableHooksRuntime => ({
   listHooks: async ({ fragment, cursor, pageSize }): Promise<DurableHookQueueResponse> => {
-    const repository = await getDurableHookRepository({ objects, config, orgId, fragment });
+    const repository = await resolveDurableHookRepository({ objects, config, orgId, fragment });
     return await repository.getHookQueue({ cursor, pageSize });
   },
   getHook: async ({ fragment, hookId }) => {
-    const repository = await getDurableHookRepository({ objects, config, orgId, fragment });
+    const repository = await resolveDurableHookRepository({ objects, config, orgId, fragment });
     return await repository.getHook(hookId);
   },
 });

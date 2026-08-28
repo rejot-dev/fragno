@@ -16,14 +16,17 @@ import { action } from "./api";
 import { action as oauthStartAction } from "./api-oauth-start";
 
 const apiObject = {
-  fetch: apiFetchMock,
+  commands: {},
+  http: { fetch: apiFetchMock },
 };
 const context = {
   get: () => ({
     runtime: {
       config: { docsPublicBaseUrl: "https://public.example" },
       objects: {
-        auth: { singleton: () => ({ getOrganizationBySlug: getOrganizationBySlugMock }) },
+        auth: {
+          singleton: () => ({ commands: { getOrganizationBySlug: getOrganizationBySlugMock } }),
+        },
         api: { for: apiForScopeMock },
       },
     },

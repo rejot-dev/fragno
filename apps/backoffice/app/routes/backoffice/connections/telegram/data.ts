@@ -31,7 +31,7 @@ const createTelegramRouteCaller = (
     baseUrl: request.url,
     mountRoute: "/api/telegram",
     baseHeaders: request.headers,
-    fetch: (outboundRequest) => telegramDo.fetch(outboundRequest),
+    fetch: (outboundRequest) => telegramDo.http.fetch(outboundRequest),
   });
 };
 
@@ -68,7 +68,7 @@ export async function fetchTelegramConfig(
 ): Promise<TelegramConfigResult> {
   try {
     const telegramDo = getTelegramObject(context, target);
-    const configState = await telegramDo.getAdminConfig();
+    const configState = await telegramDo.commands.getAdminConfig();
     return { configState, configError: null };
   } catch (error) {
     return {

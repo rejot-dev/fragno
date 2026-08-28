@@ -23,7 +23,7 @@ const createReson8RouteCaller = (
     baseUrl: request.url,
     mountRoute: "/api/reson8",
     baseHeaders: request.headers,
-    fetch: reson8Do.fetch.bind(reson8Do),
+    fetch: reson8Do.http.fetch.bind(reson8Do),
   });
 };
 
@@ -58,7 +58,7 @@ export async function fetchReson8Config(
 ): Promise<Reson8ConfigResult> {
   try {
     const reson8Do = getReson8DurableObject(context, orgId);
-    const configState = await reson8Do.getAdminConfig();
+    const configState = await reson8Do.commands.getAdminConfig();
     return { configState, configError: null };
   } catch (error) {
     return {
@@ -148,7 +148,7 @@ export async function fetchReson8RealtimeOriginDiagnostic(
 ): Promise<Reson8RealtimeOriginDiagnosticResult> {
   try {
     const reson8Do = getReson8DurableObject(context, orgId);
-    const diagnostic = await reson8Do.getRealtimeOriginDiagnostic(origin);
+    const diagnostic = await reson8Do.commands.getRealtimeOriginDiagnostic(origin);
     return { diagnostic, diagnosticError: null };
   } catch (error) {
     return {

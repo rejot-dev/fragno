@@ -32,7 +32,7 @@ export function getScopedSandboxRuntime(
   }
 
   return createSandboxRuntime({
-    lifecycle: runtime.objects.automations.for(scope),
+    lifecycle: runtime.objects.automations.for(scope).commands,
     provider: createCloudflareSandboxProvider({
       sandboxNamespace,
       sdk: {

@@ -46,7 +46,7 @@ beforeEach(() => {
   getAuthDurableObject.mockReset();
   getBackofficeCliOAuthConfig.mockReset();
   getBackofficeCliOAuthConfig.mockResolvedValue(config);
-  getAuthDurableObject.mockReturnValue({ getBackofficeCliOAuthConfig });
+  getAuthDurableObject.mockReturnValue({ commands: { getBackofficeCliOAuthConfig } });
 });
 
 describe("Backoffice device approval route", () => {

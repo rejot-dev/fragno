@@ -109,7 +109,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 
   try {
     const telegramDo = runtime.objects.telegram.for(scope);
-    const status = await telegramDo.setAdminConfig({
+    const status = await telegramDo.commands.setAdminConfig({
       ...validation.payload,
       webhookSecretToken: generateTelegramWebhookSecretToken(),
     });

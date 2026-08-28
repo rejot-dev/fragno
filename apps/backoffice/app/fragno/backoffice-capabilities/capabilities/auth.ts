@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
 
 export const AUTH_AUTOMATION_SOURCE = "auth" as const;
 export const AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED = "organization.created" as const;
@@ -57,7 +58,8 @@ export const authCapability: BackofficeCapability = {
       {
         id: "auth",
         label: "Auth",
-        getRepository: ({ objects }) => objects.auth.singleton().getDurableHookRepository(),
+        getRepository: ({ objects }) =>
+          createDurableHookRepositoryFromCommands(objects.auth.singleton().commands),
       },
     ],
     skillPaths: [],

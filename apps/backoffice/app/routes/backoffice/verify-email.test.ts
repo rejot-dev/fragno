@@ -62,7 +62,7 @@ describe("backoffice email verification route", () => {
       userId: "user_123",
     });
     vi.mocked(getSystemOtpDurableObject).mockReturnValue({
-      confirmEmailVerificationChallenge,
+      commands: { confirmEmailVerificationChallenge },
     } as never);
 
     await expect(
@@ -76,9 +76,11 @@ describe("backoffice email verification route", () => {
 
   test("does not verify an already confirmed link again", async () => {
     vi.mocked(getSystemOtpDurableObject).mockReturnValue({
-      confirmEmailVerificationChallenge: vi.fn().mockResolvedValue({
-        status: "already_confirmed",
-      }),
+      commands: {
+        confirmEmailVerificationChallenge: vi.fn().mockResolvedValue({
+          status: "already_confirmed",
+        }),
+      },
     } as never);
 
     await expect(
@@ -92,7 +94,12 @@ describe("backoffice email verification route", () => {
     ["invalid_input", "invalid"],
   ] as const)("maps %s OTP rejection to %s", async (reason, result) => {
     vi.mocked(getSystemOtpDurableObject).mockReturnValue({
-      confirmEmailVerificationChallenge: vi.fn().mockResolvedValue({ status: "rejected", reason }),
+      commands: {
+        confirmEmailVerificationChallenge: vi.fn().mockResolvedValue({
+          status: "rejected",
+          reason,
+        }),
+      },
     } as never);
 
     await expect(

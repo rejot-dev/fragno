@@ -142,7 +142,7 @@ export const createCloudflareBackofficeRuntimeServices = (
     config: createCloudflareBackofficeRuntimeConfig(env),
     authorityResolver: createBackofficeAuthorityResolver({
       getUserAuthorityFacts: async (input) =>
-        await objects.auth.singleton().getUserAuthorityFacts(input),
+        await objects.auth.singleton().commands.getUserAuthorityFacts(input),
     }),
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
   };

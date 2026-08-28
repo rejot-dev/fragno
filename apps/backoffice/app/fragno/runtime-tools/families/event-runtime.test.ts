@@ -81,7 +81,7 @@ describe("createEventRuntime.emitEvent", () => {
     const triggerIngestEvent = vi.fn(async () => undefined);
     const objects = {
       automations: {
-        forOrg: vi.fn(() => ({ triggerIngestEvent })),
+        forOrg: vi.fn(() => ({ commands: { triggerIngestEvent } })),
       },
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
@@ -131,7 +131,7 @@ describe("createEventRuntime.emitEvent", () => {
     const triggerIngestEvent = vi.fn(async () => undefined);
     const objects = {
       automations: {
-        forOrg: vi.fn(() => ({ triggerIngestEvent })),
+        forOrg: vi.fn(() => ({ commands: { triggerIngestEvent } })),
       },
     } as unknown as BackofficeObjectRegistry;
     const attributedActors = createBackofficeUserExecution({
@@ -155,7 +155,7 @@ describe("createEventRuntime.emitEvent", () => {
   it("requires source without a parent automation event", async () => {
     const objects = {
       automations: {
-        forOrg: vi.fn(() => ({ triggerIngestEvent: vi.fn(async () => undefined) })),
+        forOrg: vi.fn(() => ({ commands: { triggerIngestEvent: vi.fn(async () => undefined) } })),
       },
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
@@ -173,8 +173,8 @@ describe("createEventRuntime.emitEvent", () => {
     const triggerIngestEvent = vi.fn(async () => undefined);
     const objects = {
       automations: {
-        for: vi.fn(() => ({ triggerIngestEvent })),
-        forOrg: vi.fn(() => ({ triggerIngestEvent })),
+        for: vi.fn(() => ({ commands: { triggerIngestEvent } })),
+        forOrg: vi.fn(() => ({ commands: { triggerIngestEvent } })),
       },
     } as unknown as BackofficeObjectRegistry;
     const event = createEvent();
@@ -206,7 +206,7 @@ describe("createEventRuntime.emitEvent", () => {
     const triggerIngestEvent = vi.fn(async () => undefined);
     const objects = {
       automations: {
-        forOrg: vi.fn(() => ({ triggerIngestEvent })),
+        forOrg: vi.fn(() => ({ commands: { triggerIngestEvent } })),
       },
     } as unknown as BackofficeObjectRegistry;
     const parentEvent = createEvent({
@@ -259,8 +259,8 @@ describe("createEventRuntime.emitEvent", () => {
     const triggerUserIngestEvent = vi.fn(async () => undefined);
     const objects = {
       automations: {
-        forOrg: vi.fn(() => ({ triggerIngestEvent: triggerOrgIngestEvent })),
-        forUser: vi.fn(() => ({ triggerIngestEvent: triggerUserIngestEvent })),
+        forOrg: vi.fn(() => ({ commands: { triggerIngestEvent: triggerOrgIngestEvent } })),
+        forUser: vi.fn(() => ({ commands: { triggerIngestEvent: triggerUserIngestEvent } })),
       },
     } as unknown as BackofficeObjectRegistry;
     const kernel = new BackofficeKernel(TEST_KERNEL_RUNTIME);
@@ -298,8 +298,8 @@ describe("createEventRuntime.emitEvent", () => {
     }));
     const objects = {
       automations: {
-        forOrg: vi.fn(() => ({ resolveProjectForExecution })),
-        forProject: vi.fn(() => ({ triggerIngestEvent: triggerProjectIngestEvent })),
+        forOrg: vi.fn(() => ({ commands: { resolveProjectForExecution } })),
+        forProject: vi.fn(() => ({ commands: { triggerIngestEvent: triggerProjectIngestEvent } })),
       },
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
@@ -332,8 +332,10 @@ describe("createEventRuntime.emitEvent", () => {
     const triggerProjectIngestEvent = vi.fn(async () => undefined);
     const objects = {
       automations: {
-        forOrg: vi.fn(() => ({ resolveProjectForExecution: vi.fn(async () => null) })),
-        forProject: vi.fn(() => ({ triggerIngestEvent: triggerProjectIngestEvent })),
+        forOrg: vi.fn(() => ({
+          commands: { resolveProjectForExecution: vi.fn(async () => null) },
+        })),
+        forProject: vi.fn(() => ({ commands: { triggerIngestEvent: triggerProjectIngestEvent } })),
       },
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
@@ -357,7 +359,7 @@ describe("createEventRuntime.emitEvent", () => {
     const triggerOrgIngestEvent = vi.fn(async () => undefined);
     const objects = {
       automations: {
-        forOrg: vi.fn(() => ({ triggerIngestEvent: triggerOrgIngestEvent })),
+        forOrg: vi.fn(() => ({ commands: { triggerIngestEvent: triggerOrgIngestEvent } })),
       },
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
@@ -402,7 +404,7 @@ describe("createEventRuntime.emitEvent", () => {
     );
     const objects = {
       automations: {
-        forOrg: vi.fn(() => ({ triggerIngestEvent })),
+        forOrg: vi.fn(() => ({ commands: { triggerIngestEvent } })),
       },
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
@@ -440,8 +442,8 @@ describe("createEventRuntime.emitEvent", () => {
     const triggerIngestEvent = vi.fn(async () => undefined);
     const objects = {
       automations: {
-        for: vi.fn(() => ({ triggerIngestEvent })),
-        forOrg: vi.fn(() => ({ triggerIngestEvent })),
+        for: vi.fn(() => ({ commands: { triggerIngestEvent } })),
+        forOrg: vi.fn(() => ({ commands: { triggerIngestEvent } })),
       },
     } as unknown as BackofficeObjectRegistry;
     const event = createEvent();

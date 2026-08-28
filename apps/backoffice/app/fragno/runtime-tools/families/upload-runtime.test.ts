@@ -1,6 +1,6 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
-import type { UploadObject } from "@/backoffice-runtime/object-registry";
+import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import type { PreparedUploadedFileReference } from "@/fragno/prepared-upload";
 
 import { createUploadRuntime } from "./upload-runtime";
@@ -17,8 +17,7 @@ const file: PreparedUploadedFileReference = {
   expiresAt: "2027-01-01T00:00:00.000Z",
 };
 
-const createObject = (fetch: (request: Request) => Promise<Response>) =>
-  ({ fetch }) as UploadObject;
+const createObject = (fetch: (request: Request) => Promise<Response>): FetchObject => ({ fetch });
 
 describe("Upload runtime", () => {
   test("reads prepared UTF-8 content", async () => {

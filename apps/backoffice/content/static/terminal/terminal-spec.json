@@ -50,6 +50,129 @@
     ]
   },
   {
+    "command": "admin.organisation.create",
+    "summary": "admin.organisation.create creates an organization and assigns its owner.",
+    "options": [
+      {
+        "name": "name",
+        "valueRequired": true,
+        "valueName": "name",
+        "description": "Organization name"
+      },
+      {
+        "name": "slug",
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Organization slug"
+      },
+      {
+        "name": "owner-email",
+        "valueRequired": true,
+        "valueName": "email",
+        "description": "Email address of the existing owner user"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.organisation.members.add",
+    "summary": "admin.organisation.members.add adds a user to an organization.",
+    "options": [
+      {
+        "name": "organization-id",
+        "valueRequired": true,
+        "valueName": "organization-id",
+        "description": "Organization ID"
+      },
+      {
+        "name": "user-id",
+        "valueRequired": true,
+        "valueName": "user-id",
+        "description": "User ID"
+      },
+      {
+        "name": "role",
+        "valueRequired": true,
+        "valueName": "role",
+        "description": "Organization role; repeat for multiple roles"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.organisation.members.remove",
+    "summary": "admin.organisation.members.remove removes a user from an organization.",
+    "options": [
+      {
+        "name": "organization-id",
+        "valueRequired": true,
+        "valueName": "organization-id",
+        "description": "Organization ID"
+      },
+      {
+        "name": "user-id",
+        "valueRequired": true,
+        "valueName": "user-id",
+        "description": "User ID"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "capabilities.list",
     "summary": "capabilities.list lists Backoffice capabilities and status.",
     "options": [
@@ -974,7 +1097,7 @@
         "required": true,
         "valueRequired": true,
         "valueName": "fragment",
-        "description": "Fragment scope. Run hooks.scopes.list to discover values. Current values: api, telegram, mcp, resend, upload, pi, otp, automations, workflows, github, auth."
+        "description": "Fragment scope. Run hooks.scopes.list to discover values. Current values: api, telegram, mcp, resend, upload, pi, otp, automations, workflows, github, auth, forms."
       },
       {
         "name": "cursor",
@@ -1178,6 +1301,196 @@
         "valueRequired": true,
         "valueName": "json",
         "description": "Event definition JSON payload."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "forms.list",
+    "summary": "forms.list lists forms in the global system scope.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "forms.create",
+    "summary": "forms.create creates a system form from JSON Schema.",
+    "options": [
+      {
+        "name": "title",
+        "required": true,
+        "valueRequired": true,
+        "description": "Form title"
+      },
+      {
+        "name": "slug",
+        "required": true,
+        "valueRequired": true,
+        "description": "Unique form slug"
+      },
+      {
+        "name": "description",
+        "valueRequired": true,
+        "description": "Optional form description"
+      },
+      {
+        "name": "status",
+        "valueRequired": true,
+        "description": "Initial status: draft, open, or closed (default: draft)"
+      },
+      {
+        "name": "data-schema-json",
+        "required": true,
+        "valueRequired": true,
+        "description": "JSON Schema object used to validate responses"
+      },
+      {
+        "name": "ui-schema-json",
+        "valueRequired": true,
+        "description": "Optional JSON Forms UI schema object"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "forms.update",
+    "summary": "forms.update changes selected fields on an existing system form.",
+    "options": [
+      {
+        "name": "form-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Form ID"
+      },
+      {
+        "name": "title",
+        "valueRequired": true,
+        "description": "New form title"
+      },
+      {
+        "name": "slug",
+        "valueRequired": true,
+        "description": "New unique form slug"
+      },
+      {
+        "name": "description",
+        "valueRequired": true,
+        "description": "New form description"
+      },
+      {
+        "name": "status",
+        "valueRequired": true,
+        "description": "New status: draft, open, or closed"
+      },
+      {
+        "name": "data-schema-json",
+        "valueRequired": true,
+        "description": "Replacement JSON Schema object used to validate responses"
+      },
+      {
+        "name": "ui-schema-json",
+        "valueRequired": true,
+        "description": "Replacement JSON Forms UI schema object"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "forms.submissions.list",
+    "summary": "forms.submissions.list lists responses submitted to a system form.",
+    "options": [
+      {
+        "name": "form-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Form ID"
+      },
+      {
+        "name": "sort-order",
+        "valueRequired": true,
+        "description": "Submission order: asc or desc (default: desc)"
+      },
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "description": "Responses per page from 1 to 100 (default: 25)"
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "description": "Opaque nextCursor returned by the previous page"
       },
       {
         "name": "help",

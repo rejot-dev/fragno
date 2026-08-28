@@ -214,7 +214,7 @@ const postAcmeWebhookDelivery = (): BackofficeScenarioStep => ({
 const listApiEvents = async (ctx: BackofficeScenarioContext, eventType: string) => {
   const response = await ctx.runtime.objects.automations
     .forOrg(ORG_ID)
-    .fetch(new Request("https://automations.test/api/automations/events?limit=100"));
+    .http.fetch(new Request("https://automations.test/api/automations/events?limit=100"));
   assert(response.ok);
   const page = automationEventPageSchema.parse(await response.json());
   return page.events.filter((event) => event.source === "api" && event.eventType === eventType);
@@ -271,8 +271,8 @@ describe("API webhook scenarios", () => {
             const automations = ctx.runtime.objects.automations.forOrg(ORG_ID);
             await expect(
               Promise.all([
-                automations.getEventSource({ source: LEGACY_PUT_ENDPOINT_ID }),
-                automations.getEventSource({ source: LEGACY_PATCH_ENDPOINT_ID }),
+                automations.commands.getEventSource({ source: LEGACY_PUT_ENDPOINT_ID }),
+                automations.commands.getEventSource({ source: LEGACY_PATCH_ENDPOINT_ID }),
               ]),
             ).resolves.toEqual([null, null]);
           }),
@@ -293,7 +293,7 @@ describe("API webhook scenarios", () => {
             await expect(
               ctx.runtime.objects.automations
                 .forOrg(ORG_ID)
-                .getEventSource({ source: LEGACY_PUT_ENDPOINT_ID }),
+                .commands.getEventSource({ source: LEGACY_PUT_ENDPOINT_ID }),
             ).resolves.toMatchObject({
               source: LEGACY_PUT_ENDPOINT_ID,
               label: "PUT Reconciled Webhook",
@@ -314,7 +314,7 @@ describe("API webhook scenarios", () => {
             await expect(
               ctx.runtime.objects.automations
                 .forOrg(ORG_ID)
-                .getEventSource({ source: LEGACY_PATCH_ENDPOINT_ID }),
+                .commands.getEventSource({ source: LEGACY_PATCH_ENDPOINT_ID }),
             ).resolves.toMatchObject({
               source: LEGACY_PATCH_ENDPOINT_ID,
               label: "PATCH Reconciled Webhook",
@@ -335,7 +335,7 @@ describe("API webhook scenarios", () => {
             await expect(
               ctx.runtime.objects.automations
                 .forOrg(ORG_ID)
-                .getEventSource({ source: LEGACY_PATCH_ENDPOINT_ID }),
+                .commands.getEventSource({ source: LEGACY_PATCH_ENDPOINT_ID }),
             ).resolves.toMatchObject({
               label: "PATCH Reconciled Webhook",
               description: "PATCH Reconciled Webhook webhook events received through the API.",
@@ -403,7 +403,7 @@ describe("API webhook scenarios", () => {
             await expect(
               ctx.runtime.objects.automations
                 .forOrg(ORG_ID)
-                .getEventSource({ source: ACME_ENDPOINT_ID }),
+                .commands.getEventSource({ source: ACME_ENDPOINT_ID }),
             ).resolves.toMatchObject({
               source: ACME_ENDPOINT_ID,
               label: "Acme",
@@ -455,7 +455,7 @@ describe("API webhook scenarios", () => {
           }),
           then.assert("the webhook source owns the registered event definition", async (ctx) => {
             await expect(
-              ctx.runtime.objects.automations.forOrg(ORG_ID).getEventDefinition({
+              ctx.runtime.objects.automations.forOrg(ORG_ID).commands.getEventDefinition({
                 source: ACME_ENDPOINT_ID,
                 eventType: "record.created",
               }),

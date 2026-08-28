@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
+import type {
+  AutomationsObject,
+  BackofficeObjectHandle,
+} from "@/backoffice-runtime/object-registry";
 
 import type {
   AutomationWorkflowRuntime,
@@ -50,7 +53,7 @@ export const createRouteBackedAutomationWorkflowRuntime = ({
   execution,
   prepareSavedWorkflowInstance,
 }: {
-  object: AutomationsObject;
+  object: BackofficeObjectHandle<AutomationsObject>;
   execution?: BackofficeExecutionContext;
   prepareSavedWorkflowInstance?: PrepareSavedWorkflowInstance;
 }): RouteBackedAutomationWorkflowRuntime => {

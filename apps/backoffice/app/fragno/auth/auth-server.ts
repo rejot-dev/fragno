@@ -36,7 +36,7 @@ export const callBetterAuth = async (
     headers.set("content-type", "application/json");
   }
 
-  return await getAuthDurableObject(context).fetch(
+  return await getAuthDurableObject(context).http.fetch(
     new Request(new URL(`/api/auth${path}`, request.url), {
       ...init,
       headers,
@@ -70,14 +70,14 @@ export async function getBackofficeMe(
   }
 
   const authObject = getAuthDurableObject(context);
-  const verification = await verifyBackofficeJwt(transport.token, request.url, authObject);
+  const verification = await verifyBackofficeJwt(transport.token, request.url, authObject.http);
   if (!verification.ok) {
     return verification.reason === "missing"
       ? { status: "missing" }
       : { status: "invalid", reason: verification.reason };
   }
 
-  const me = await authObject.getBackofficeMe({
+  const me = await authObject.commands.getBackofficeMe({
     userId: verification.payload.sub,
     activeOrganizationId: verification.payload.organization?.id ?? null,
   });

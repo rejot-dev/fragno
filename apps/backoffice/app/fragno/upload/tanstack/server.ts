@@ -18,7 +18,7 @@ export async function fetchUploadAdapterIdentity(
     baseUrl,
     signal: request.signal,
     fetch: (input, init) =>
-      uploadObject.fetch(new Request(input, { ...init, headers: request.headers })),
+      uploadObject.http.fetch(new Request(input, { ...init, headers: request.headers })),
   });
 
   return description.adapterIdentity;

@@ -360,7 +360,7 @@ export class InMemoryResendObject implements ResendObject {
             return;
           }
 
-          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
+          await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent({
             id: item.id,
             scope,
             source: "resend",
@@ -510,8 +510,12 @@ export class InMemoryResendObject implements ResendObject {
     }
   }
 
-  getDurableHookRepository() {
-    return this.#host.getDurableHookRepository<DurableHookQueueOptions>(({ runtime }) => runtime);
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await this.#host.getDurableHookQueue(({ runtime }) => runtime, options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await this.#host.getDurableHook(({ runtime }) => runtime, hookId);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -560,8 +564,12 @@ export class Resend extends DurableObject<CloudflareEnv> implements ResendObject
     await this.#object.queueEmail(input, options);
   }
 
-  getDurableHookRepository() {
-    return this.#object.getDurableHookRepository();
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await this.#object.getDurableHookQueue(options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await this.#object.getDurableHook(hookId);
   }
 
   async fetch(request: Request): Promise<Response> {

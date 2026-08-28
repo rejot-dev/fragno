@@ -1,12 +1,18 @@
+import {
+  createAuthorizedBackofficeObjectRequest,
+  removeBackofficeInternalContextHeader,
+} from "./internal-object-request";
 import type {
   BackofficeObjectAddress,
   BackofficeObjectBinding,
   BackofficeObjectFactory,
+  BackofficeObjectHandle,
 } from "./object-registry";
 import { createBackofficeObjectRegistry } from "./object-registry";
 import { assertBackofficeObjectAddressAllowed } from "./object-registry";
 import { encodeBackofficeObjectAddress } from "./object-registry";
 import type { BackofficeObjectRegistry } from "./object-registry";
+import { forwardRequestOwnedResponse } from "./request-owned-response";
 
 type DurableObjectNamespaceLike = {
   idFromName(name: string): DurableObjectId;
@@ -28,10 +34,10 @@ const getNamespace = (
 export class CloudflareDurableObjectFactory implements BackofficeObjectFactory {
   constructor(readonly env: CloudflareEnv) {}
 
-  get<TObject, TRawObject = TObject>(
-    binding: BackofficeObjectBinding<TObject, TRawObject>,
+  get<TCommands>(
+    binding: BackofficeObjectBinding<TCommands>,
     address: BackofficeObjectAddress,
-  ): TRawObject {
+  ): BackofficeObjectHandle<TCommands> {
     if (address.binding !== binding.name) {
       throw new Error(
         `Backoffice object address binding ${address.binding} does not match requested binding ${binding.name}.`,
@@ -40,7 +46,34 @@ export class CloudflareDurableObjectFactory implements BackofficeObjectFactory {
     assertBackofficeObjectAddressAllowed(address);
     const namespace = getNamespace(this.env, binding);
     const encodedName = encodeBackofficeObjectAddress(address);
-    return namespace.get(namespace.idFromName(encodedName)) as TRawObject;
+    const stub = namespace.get(namespace.idFromName(encodedName)) as TCommands & {
+      fetch(request: Request): Promise<Response>;
+    };
+    return {
+      commands: stub,
+      http: {
+        fetch: async (request) =>
+          forwardRequestOwnedResponse(
+            request,
+            await stub.fetch(removeBackofficeInternalContextHeader(request)),
+          ),
+        fetchAuthorized: async (request, context) =>
+          forwardRequestOwnedResponse(
+            request,
+            await stub.fetch(
+              await createAuthorizedBackofficeObjectRequest({
+                request,
+                address,
+                context: {
+                  execution: context.execution,
+                  propagationContext: context.propagationContext ?? null,
+                },
+                env: this.env,
+              }),
+            ),
+          ),
+      },
+    };
   }
 }
 

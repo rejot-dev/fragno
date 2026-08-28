@@ -4,12 +4,13 @@ import {
 } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
-import {
-  backofficeContextScopesEqual,
-  type BackofficeContextScope,
-} from "@/backoffice-runtime/context";
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficeKernel, type BackofficeScopeOperation } from "@/backoffice-runtime/kernel";
-import type { BackofficeRpcContext, BillingObject } from "@/backoffice-runtime/object-registry";
+import {
+  requireBackofficeContextScopeFromDurableObjectId,
+  type BackofficeRpcContext,
+  type BillingObject,
+} from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
@@ -35,8 +36,8 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
   readonly #state: BackofficeObjectState;
   readonly #kernel: BackofficeKernel;
   readonly #host: FragmentDurableObjectHost<void, BillingFragment>;
+  readonly #ownerScope: BillingOwnerScope;
   #fragment: BillingFragment | null = null;
-  #ownerScope: BillingOwnerScope | null = null;
 
   constructor({
     state,
@@ -50,6 +51,11 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
     super();
     this.#state = state;
     this.#kernel = new BackofficeKernel(runtime);
+    const ownerScope = requireBackofficeContextScopeFromDurableObjectId(state.id, "BILLING");
+    if (ownerScope.kind !== "org") {
+      throw new Error("Billing objects require an organization scope.");
+    }
+    this.#ownerScope = ownerScope;
     this.#host = createFragmentDurableObjectHost({
       name: "Billing",
       state,
@@ -73,18 +79,6 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
     });
   }
 
-  init(scope: BackofficeContextScope): BillingObject {
-    if (scope.kind !== "org") {
-      throw new Error("Billing objects require an organization scope.");
-    }
-    if (this.#ownerScope && !backofficeContextScopesEqual(this.#ownerScope, scope)) {
-      throw new Error("Billing object scope does not match object address scope.");
-    }
-
-    this.#ownerScope = scope;
-    return this;
-  }
-
   #getFragment(): BillingFragment {
     if (!this.#fragment) {
       throw new Error("Billing is unavailable.");
@@ -93,9 +87,6 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
   }
 
   #requireOwnerScope(): BillingOwnerScope {
-    if (!this.#ownerScope) {
-      throw new Error("Billing object has not been initialized with organization scope metadata.");
-    }
     return this.#ownerScope;
   }
 
@@ -154,12 +145,11 @@ export class Billing extends DurableObject<CloudflareEnv> implements BillingObje
     });
   }
 
-  init(scope: BackofficeContextScope): BillingObject {
-    return this.#object.init(scope);
-  }
-
-  async recordEvent(input: BillingEventInput): Promise<BillingRecordEventResult> {
-    return await this.#object.recordEvent(input);
+  async recordEvent(
+    input: BillingEventInput,
+    context?: BackofficeRpcContext,
+  ): Promise<BillingRecordEventResult> {
+    return await this.#object.recordEvent(input, context);
   }
 
   async getStatement(input: BillingStatementInput): Promise<BillingStatement> {

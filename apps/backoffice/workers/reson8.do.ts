@@ -130,7 +130,7 @@ export class InMemoryReson8Object implements Reson8Object {
           }
 
           const { scope } = stored;
-          await this.#runtime.objects.automations.for(scope).ingestEvent({
+          await this.#runtime.objects.automations.for(scope).commands.ingestEvent({
             id: item.id,
             scope,
             source: "reson8",

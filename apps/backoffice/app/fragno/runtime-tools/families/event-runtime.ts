@@ -45,7 +45,7 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       resolvedTargetScope.kind === "project"
         ? await options.objects.automations
             .forOrg(resolvedTargetScope.orgId)
-            .resolveProjectForExecution({ projectId: resolvedTargetScope.projectId })
+            .commands.resolveProjectForExecution({ projectId: resolvedTargetScope.projectId })
         : null;
 
     if (resolvedTargetScope.kind === "project" && !targetProject) {
@@ -83,7 +83,7 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       resolvedTargetScope,
       options.objects.automations,
     );
-    await targetObject.triggerIngestEvent(nextEvent);
+    await targetObject.commands.triggerIngestEvent(nextEvent);
 
     return {
       accepted: true,

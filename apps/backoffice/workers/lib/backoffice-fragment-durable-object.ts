@@ -15,11 +15,12 @@ import {
 } from "@/backoffice-runtime/context";
 import { backofficeContextScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
-  createDurableHookRepository,
-  createDurableHookRepositoryRpcTarget,
-  createEmptyDurableHookRepository,
+  createUnconfiguredDurableHookQueueResponse,
+  loadDurableHook,
+  loadDurableHookQueue,
+  type DurableHookQueueEntry,
   type DurableHookQueueOptions,
-  type DurableHookRepository,
+  type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
 
 import { cloudflareDurableHooksInstrumentation } from "./cloudflare-durable-hooks-instrumentation";
@@ -78,17 +79,15 @@ type ConfiguredRuntimeState<TStored, TSource, TRuntime> = Extract<
  * guard, `fetch(...)` rejects mismatches before forwarding to the hosted fragment.
  */
 export type BackofficeDurableHookDependencies = {
-  createRepository: typeof createDurableHookRepository;
-  createRpcTarget: <TOptions extends DurableHookQueueOptions = DurableHookQueueOptions>(
-    repository: DurableHookRepository<TOptions>,
-  ) => DurableHookRepository<TOptions>;
-  createEmptyRepository: typeof createEmptyDurableHookRepository;
+  loadDurableHookQueue: typeof loadDurableHookQueue;
+  loadDurableHook: typeof loadDurableHook;
+  createUnconfiguredDurableHookQueueResponse: typeof createUnconfiguredDurableHookQueueResponse;
 };
 
 const defaultDurableHookDependencies: BackofficeDurableHookDependencies = {
-  createRepository: createDurableHookRepository,
-  createRpcTarget: createDurableHookRepositoryRpcTarget,
-  createEmptyRepository: createEmptyDurableHookRepository,
+  loadDurableHookQueue,
+  loadDurableHook,
+  createUnconfiguredDurableHookQueueResponse,
 };
 
 export type BackofficeOutboxItem = {
@@ -102,7 +101,7 @@ export type BackofficeOutboxItem = {
 
 export type BackofficeObjectState = Pick<
   DurableObjectState,
-  "storage" | "blockConcurrencyWhile" | "waitUntil"
+  "id" | "storage" | "blockConcurrencyWhile" | "waitUntil"
 >;
 
 export type BackofficeFragmentDurableObjectCreateRuntimeContext<TEnv = CloudflareEnv> =
@@ -163,7 +162,7 @@ export type BackofficeFragmentDurableObjectOptions<
   ) => TRuntime | Promise<TRuntime>;
   /** Single-fragment runtimes can omit this; multi-fragment runtimes should provide it. */
   getMigrationFragments?: (runtime: TRuntime) => readonly AnyFragnoInstantiatedDatabaseFragment[];
-  /** Override durable-hook repository construction. Intended for tests that need lightweight repositories. */
+  /** Override durable hook reads. Intended for tests that use lightweight fragment doubles. */
   durableHooks?: BackofficeDurableHookDependencies;
   /** Override which migrated fragments participate in durable-hook alarm processing. */
   getHookFragments?: (
@@ -224,19 +223,23 @@ export type BackofficeFragmentDurableObject<
   alarm: () => Promise<void>;
   /** Fetch through the configured runtime/mounts, including not-configured and scope-bound checks. */
   fetch: (request: Request, context?: FragnoRequestLifecycleContext<unknown>) => Promise<Response>;
-  /**
-   * Return durable hook accessors for a selected fragment.
-   *
-   * Multi-fragment runtimes choose the target fragment with `selectFragment`; single-fragment
-   * runtimes usually return `state.runtime`.
-   */
-  getDurableHookRepository: <TOptions extends DurableHookQueueOptions>(
+  /** Read one page of durable hooks from a selected hosted fragment. */
+  getDurableHookQueue: (
     selectFragment: (
       state: ConfiguredRuntimeState<TStored, TSource, TRuntime>,
-      options: TOptions | undefined,
     ) => AnyFragnoInstantiatedDatabaseFragment,
-    parseOptions?: (options: TOptions | undefined) => TOptions | undefined,
-  ) => DurableHookRepository<TOptions>;
+    options?: DurableHookQueueOptions,
+    parseOptions?: (
+      options: DurableHookQueueOptions | undefined,
+    ) => DurableHookQueueOptions | undefined,
+  ) => Promise<DurableHookQueueResponse>;
+  /** Read one durable hook from a selected hosted fragment. */
+  getDurableHook: (
+    selectFragment: (
+      state: ConfiguredRuntimeState<TStored, TSource, TRuntime>,
+    ) => AnyFragnoInstantiatedDatabaseFragment,
+    hookId: string,
+  ) => Promise<DurableHookQueueEntry | null>;
 };
 
 const defaultConfigKey = (name: string) => `${name.toLowerCase()}-config`;
@@ -443,30 +446,34 @@ export function createBackofficeFragmentDurableObject<
     return initializing;
   };
 
-  const getDurableHookRepository = <TOptions extends DurableHookQueueOptions>(
+  const getDurableHookQueue = async (
     selectFragment: (
       state: ConfiguredRuntimeState<TStored, TSource, TRuntime>,
-      options: TOptions | undefined,
     ) => AnyFragnoInstantiatedDatabaseFragment,
-    parseOptions?: (options: TOptions | undefined) => TOptions | undefined,
-  ): DurableHookRepository<TOptions> => {
+    options?: DurableHookQueueOptions,
+    parseOptions?: (
+      options: DurableHookQueueOptions | undefined,
+    ) => DurableHookQueueOptions | undefined,
+  ): Promise<DurableHookQueueResponse> => {
     if (!current.configured) {
-      return durableHooks.createEmptyRepository();
+      return durableHooks.createUnconfiguredDurableHookQueueResponse();
     }
 
-    const repository = durableHooks.createRepository<TOptions>((queueOptions) =>
-      selectFragment(
-        current as ConfiguredRuntimeState<TStored, TSource, TRuntime>,
-        parseOptions?.(queueOptions) ?? queueOptions,
-      ),
-    );
+    const queueOptions = parseOptions?.(options) ?? options;
+    return await durableHooks.loadDurableHookQueue(selectFragment(current), queueOptions);
+  };
 
-    return durableHooks.createRpcTarget<TOptions>({
-      getHookQueue: async (options) =>
-        await repository.getHookQueue(parseOptions?.(options) ?? options),
-      getHook: async (hookId, options) =>
-        await repository.getHook(hookId, parseOptions?.(options) ?? options),
-    });
+  const getDurableHook = async (
+    selectFragment: (
+      state: ConfiguredRuntimeState<TStored, TSource, TRuntime>,
+    ) => AnyFragnoInstantiatedDatabaseFragment,
+    hookId: string,
+  ): Promise<DurableHookQueueEntry | null> => {
+    if (!current.configured) {
+      return null;
+    }
+
+    return await durableHooks.loadDurableHook(selectFragment(current), hookId);
   };
 
   const outboxItemKeyPrefix = `${outboxKey}:`;
@@ -631,6 +638,7 @@ export function createBackofficeFragmentDurableObject<
         ...context,
       });
     },
-    getDurableHookRepository,
+    getDurableHookQueue,
+    getDurableHook,
   };
 }

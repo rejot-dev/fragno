@@ -9,7 +9,7 @@ import type {
   ResendThreadSummary,
 } from "@fragno-dev/resend-fragment";
 
-import type { ResendObject } from "@/backoffice-runtime/object-registry";
+import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import type { ResendFragment } from "@/fragno/resend";
 
 import {
@@ -286,7 +286,7 @@ export const createRouteBackedResendRuntime = (
   };
 };
 
-export const createResendRouteRuntime = ({ object }: { object: ResendObject }): ResendRuntime =>
+export const createResendRouteRuntime = ({ object }: { object: FetchObject }): ResendRuntime =>
   createRouteBackedResendRuntime({
     baseUrl: "https://resend.do",
     fetch: object.fetch.bind(object),

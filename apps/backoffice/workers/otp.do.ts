@@ -14,7 +14,11 @@ import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
-import { createDurableHookRepository } from "@/fragno/durable-hooks";
+import {
+  loadDurableHook,
+  loadDurableHookQueue,
+  type DurableHookQueueOptions,
+} from "@/fragno/durable-hooks";
 import {
   DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES,
   EMAIL_VERIFICATION_EXPIRY_HOURS,
@@ -154,7 +158,7 @@ const verifyEmailFromConfirmedOtp = async (
   runtime: BackofficeRuntimeServices,
   input: { otpId: string; userId: string; email: string; verifiedAt: Date },
 ): Promise<boolean> => {
-  const result = await runtime.objects.auth.singleton().verifyUserEmail({
+  const result = await runtime.objects.auth.singleton().commands.verifyUserEmail({
     userId: input.userId,
     expectedEmail: input.email,
     verifiedAt: input.verifiedAt,
@@ -216,7 +220,7 @@ export const handleIdentityClaimConfirmed = async (
   const automations = runtime.objects.automations.for(scope);
   const propagationContext = context.capturePropagationContext();
 
-  const bindingResult = await automations.bindExternalIdentity(
+  const bindingResult = await automations.commands.bindExternalIdentity(
     {
       identity: claim.actor,
       userId: confirmation.subjectUserId,
@@ -235,7 +239,7 @@ export const handleIdentityClaimConfirmed = async (
     return;
   }
 
-  await automations.triggerIngestEvent(
+  await automations.commands.triggerIngestEvent(
     buildIdentityClaimCompletedAutomationEvent({
       orgId: claim.orgId,
       userId: confirmation.subjectUserId,
@@ -474,8 +478,12 @@ export class InMemoryOtpObject implements OtpObject {
     };
   }
 
-  getDurableHookRepository() {
-    return createDurableHookRepository(() => this.#getFragment());
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await loadDurableHookQueue(this.#getFragment(), options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await loadDurableHook(this.#getFragment(), hookId);
   }
 
   async alarm(): Promise<void> {
@@ -523,8 +531,12 @@ export class Otp extends DurableObject<CloudflareEnv> implements OtpObject {
     return await this.#object.confirmIdentityClaim(input);
   }
 
-  getDurableHookRepository() {
-    return this.#object.getDurableHookRepository();
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await this.#object.getDurableHookQueue(options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await this.#object.getDurableHook(hookId);
   }
 
   async alarm(): Promise<void> {

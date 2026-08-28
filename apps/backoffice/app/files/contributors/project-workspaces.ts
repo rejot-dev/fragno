@@ -71,7 +71,7 @@ const loadProjects = async (ctx: FilesContext): Promise<ProjectMountEntry[]> => 
   );
   const url = new URL("https://automations.local/api/automations/projects");
   url.searchParams.set("orgId", ctx.execution.scope.orgId);
-  const response = await automations.fetch(new Request(url));
+  const response = await automations.http.fetch(new Request(url));
   if (!response.ok) {
     throw new Error(`Failed to load project workspaces (${response.status}).`);
   }

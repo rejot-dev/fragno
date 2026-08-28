@@ -19,7 +19,10 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
+import type { BackofficeRpcContext } from "@/backoffice-runtime/object-registry";
 import type { BillingEventInput } from "@/fragno/billing";
+
+import { Billing, InMemoryBillingObject } from "./billing.do";
 
 let runtime: InMemoryBackofficeRuntime | null = null;
 
@@ -39,6 +42,28 @@ afterEach(async () => {
 });
 
 describe("Billing Durable Object", () => {
+  test("forwards RPC propagation context through the production wrapper", async () => {
+    const result = { accepted: true, eventId: "pi:org-1:hook-1" } as const;
+    const recordEvent = vi
+      .spyOn(InMemoryBillingObject.prototype, "recordEvent")
+      .mockResolvedValue(result);
+    const state = {
+      id: { name: "v1:org:org-1" },
+      blockConcurrencyWhile: vi.fn(async () => undefined),
+    } as unknown as DurableObjectState;
+    const context: BackofficeRpcContext = {
+      propagationContext: { traceId: "billing-trace" },
+    };
+    const billing = new Billing(state, {} as CloudflareEnv);
+
+    try {
+      await expect(billing.recordEvent(event(), context)).resolves.toEqual(result);
+      expect(recordEvent).toHaveBeenCalledWith(event(), context);
+    } finally {
+      recordEvent.mockRestore();
+    }
+  });
+
   test("stores events in the owning organization object", async () => {
     runtime = await createInMemoryBackofficeRuntime();
 
@@ -46,18 +71,24 @@ describe("Billing Durable Object", () => {
     const orgTwoBilling = runtime.objects.billing.forOrg("org-2");
     await runtime.drain();
 
-    await expect(orgOneBilling.recordEvent(event())).resolves.toEqual({
+    await expect(orgOneBilling.commands.recordEvent(event())).resolves.toEqual({
       accepted: true,
       eventId: "pi:org-1:hook-1",
     });
     await expect(
-      orgOneBilling.getTrackers({ scope: { kind: "org", orgId: "org-1" }, period: "2026-07" }),
+      orgOneBilling.commands.getTrackers({
+        scope: { kind: "org", orgId: "org-1" },
+        period: "2026-07",
+      }),
     ).resolves.toMatchObject({
       trackers: [expect.objectContaining({ meter: "ai.tokens.total", quantity: "100" })],
       hasNextPage: false,
     });
     await expect(
-      orgTwoBilling.getTrackers({ scope: { kind: "org", orgId: "org-2" }, period: "2026-07" }),
+      orgTwoBilling.commands.getTrackers({
+        scope: { kind: "org", orgId: "org-2" },
+        period: "2026-07",
+      }),
     ).resolves.toMatchObject({ trackers: [], hasNextPage: false });
   });
 
@@ -67,13 +98,13 @@ describe("Billing Durable Object", () => {
     await runtime.drain();
     const userScope = { kind: "user" as const, userId: "user-1" };
 
-    await billing.recordEvent(
+    await billing.commands.recordEvent(
       event({
         id: "pi:org-1:user-1:hook-1",
         scope: userScope,
       }),
     );
-    await billing.recordEvent(
+    await billing.commands.recordEvent(
       event({
         id: "pi:org-1:project-1:hook-1",
         scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
@@ -82,7 +113,7 @@ describe("Billing Durable Object", () => {
     );
 
     await expect(
-      billing.getTrackers({ scope: userScope, period: "2026-07" }),
+      billing.commands.getTrackers({ scope: userScope, period: "2026-07" }),
     ).resolves.toMatchObject({
       trackers: [
         expect.objectContaining({
@@ -93,7 +124,7 @@ describe("Billing Durable Object", () => {
       ],
       hasNextPage: false,
     });
-    await expect(billing.getStatement({ period: "2026-07" })).resolves.toMatchObject({
+    await expect(billing.commands.getStatement({ period: "2026-07" })).resolves.toMatchObject({
       period: "2026-07",
       trackers: [
         expect.objectContaining({
@@ -111,7 +142,7 @@ describe("Billing Durable Object", () => {
     await runtime.drain();
 
     await expect(
-      billing.recordEvent(
+      billing.commands.recordEvent(
         event({
           id: "pi:org-2:hook-1",
           scope: { kind: "org", orgId: "org-2" },

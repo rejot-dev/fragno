@@ -35,7 +35,7 @@ function request(authorization: string | null, body: unknown = { scope: null }) 
 beforeEach(() => {
   exchangeBackofficeOAuthAccessToken.mockReset();
   getAuthDurableObject.mockReset();
-  getAuthDurableObject.mockReturnValue({ exchangeBackofficeOAuthAccessToken });
+  getAuthDurableObject.mockReturnValue({ commands: { exchangeBackofficeOAuthAccessToken } });
 });
 
 describe("Backoffice CLI token route", () => {

@@ -5,6 +5,7 @@ import type {
   BackofficeCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
 const uploadProviderSchema = z.enum(["database", "r2", "r2-binding"]);
 
 export const uploadConfigureInputSchema = z.looseObject({
@@ -71,14 +72,14 @@ export const uploadCapability: BackofficeCapability = {
         { name: "r2Binding", description: "R2 binding provider configuration payload." },
       ],
       getStatus: async ({ objects, orgId }) =>
-        toUploadStatus(await getUploadDo(objects, orgId).getAdminConfig()),
+        toUploadStatus(await getUploadDo(objects, orgId).commands.getAdminConfig()),
       verify: async ({ objects, orgId }) =>
-        toUploadStatus(await getUploadDo(objects, orgId).getAdminConfig()),
+        toUploadStatus(await getUploadDo(objects, orgId).commands.getAdminConfig()),
       reset: async ({ objects, orgId }) =>
-        toUploadStatus(await getUploadDo(objects, orgId).resetAdminConfig()),
+        toUploadStatus(await getUploadDo(objects, orgId).commands.resetAdminConfig()),
       configure: async ({ objects, orgId, origin, payload }) =>
         toUploadStatus(
-          await getUploadDo(objects, orgId).setAdminConfig(
+          await getUploadDo(objects, orgId).commands.setAdminConfig(
             uploadConfigureInputSchema.parse(payload),
             orgId,
             origin,
@@ -92,7 +93,7 @@ export const uploadCapability: BackofficeCapability = {
         id: "upload",
         label: "Upload",
         getRepository: ({ objects, orgId }) =>
-          getUploadDo(objects, orgId).getDurableHookRepository(),
+          createDurableHookRepositoryFromCommands(getUploadDo(objects, orgId).commands),
       },
     ],
     skillPaths: ["skills/upload-connection/SKILL.md", "skills/using-prepared-uploads/SKILL.md"],

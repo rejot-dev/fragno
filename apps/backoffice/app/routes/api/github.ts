@@ -21,7 +21,7 @@ const forwardToGitHub = async (
   url.searchParams.set("orgId", orgId);
 
   const proxyRequest = new Request(url.toString(), request);
-  return githubDo.fetch(proxyRequest);
+  return githubDo.http.fetch(proxyRequest);
 };
 
 /**

@@ -62,12 +62,13 @@ export const createSandboxRouteRuntime = ({
   }
 
   return createSandboxRuntime({
-    lifecycle: objects.automations.forOrg(normalizedOrgId),
+    lifecycle: objects.automations.forOrg(normalizedOrgId).commands,
     provider: createCloudflareSandboxProvider({
       sandboxNamespace: {} as CloudflareEnv["SANDBOX"],
       sdk: {
         async getSandbox(_namespace, id, options) {
-          const stub = objects.sandbox.forName(id) as unknown as ConfigurableSandboxRouteStub;
+          const stub = objects.sandbox.forName(id)
+            .commands as unknown as ConfigurableSandboxRouteStub;
           await applySandboxRouteConfiguration(stub, id, options);
           return stub;
         },

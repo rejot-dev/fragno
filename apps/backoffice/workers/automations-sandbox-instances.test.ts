@@ -40,14 +40,14 @@ describe("Automations sandbox instance object methods", () => {
     runtime = await createInMemoryBackofficeRuntime();
     const automations = runtime.objects.automations.forOrg("org_123");
 
-    const created = await automations.requestSandboxInstance({
+    const created = await automations.commands.requestSandboxInstance({
       id: "org_123::dev",
       provider: CLOUDFLARE_SANDBOX_PROVIDER,
     });
-    const listed = await automations.listSandboxInstances({
+    const listed = await automations.commands.listSandboxInstances({
       provider: CLOUDFLARE_SANDBOX_PROVIDER,
     });
-    const found = await automations.getSandboxInstance({ id: "org_123::dev" });
+    const found = await automations.commands.getSandboxInstance({ id: "org_123::dev" });
 
     expect(created).toMatchObject({
       id: "org_123::dev",
@@ -77,14 +77,14 @@ describe("Automations sandbox instance object methods", () => {
     runtime = await createInMemoryBackofficeRuntime({ env: { SANDBOX: {} } as never });
     const automations = runtime.objects.automations.forOrg("org_123");
 
-    const created = await automations.requestSandboxInstance({
+    const created = await automations.commands.requestSandboxInstance({
       id: "org_123::dev",
       provider: CLOUDFLARE_SANDBOX_PROVIDER,
       keepAlive: true,
     });
     await runtime.drain();
 
-    const terminateResponse = await automations.fetchWithContext(
+    const terminateResponse = await automations.http.fetchAuthorized(
       new Request(
         `http://fragno.test/api/workflows/sandbox-lifecycle/instances/${created.workflowInstanceId}/terminate`,
         { method: "POST" },
@@ -97,7 +97,9 @@ describe("Automations sandbox instance object methods", () => {
     assert(terminateResponse.status === 200);
     await runtime.drain();
 
-    await expect(automations.getSandboxInstance({ id: "org_123::dev" })).resolves.toMatchObject({
+    await expect(
+      automations.commands.getSandboxInstance({ id: "org_123::dev" }),
+    ).resolves.toMatchObject({
       status: "stopped",
     });
     expect(rawHandle.destroy).toHaveBeenCalledTimes(1);
@@ -107,12 +109,12 @@ describe("Automations sandbox instance object methods", () => {
     runtime = await createInMemoryBackofficeRuntime();
     const automations = runtime.objects.automations.forOrg("org_123");
 
-    const first = await automations.requestSandboxInstance({
+    const first = await automations.commands.requestSandboxInstance({
       id: "org_123::dev",
       provider: CLOUDFLARE_SANDBOX_PROVIDER,
       startupCommand: "echo first",
     });
-    const second = await automations.requestSandboxInstance({
+    const second = await automations.commands.requestSandboxInstance({
       id: "org_123::dev",
       provider: CLOUDFLARE_SANDBOX_PROVIDER,
       startupCommand: "echo ignored",

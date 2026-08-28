@@ -268,15 +268,13 @@ const resolveRuntime = (ctx: FilesContext, contributorId: string): DurableHooksR
     }
     throw error;
   }
-  if (!automationsObject?.getDurableHookRepository) {
+  if (!automationsObject.commands?.getDurableHookQueue) {
     return null;
   }
 
   return {
-    getHookQueue: async (options) => {
-      const repository = await automationsObject.getDurableHookRepository("automation");
-      return repository.getHookQueue(options);
-    },
+    getHookQueue: async (options) =>
+      await automationsObject.commands.getDurableHookQueue("automation", options),
   };
 };
 

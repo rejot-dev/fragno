@@ -10,7 +10,7 @@ async function forwardFormsRequest(
   context: LoaderFunctionArgs["context"],
 ): Promise<Response> {
   if (!requiresFormsAdminAuthorization(request.url)) {
-    return getFormsDurableObject(context).fetch(request);
+    return getFormsDurableObject(context).http.fetch(request);
   }
 
   const authorization = await authorizeBackofficeContext(request, context, { kind: "system" });
@@ -18,7 +18,7 @@ async function forwardFormsRequest(
     return authorization.response;
   }
 
-  const response = await getFormsDurableObject(context).fetch(request);
+  const response = await getFormsDurableObject(context).http.fetch(request);
   const headers = new Headers(response.headers);
   for (const [name, value] of authorization.headers) {
     headers.append(name, value);

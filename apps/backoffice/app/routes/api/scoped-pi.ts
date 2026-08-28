@@ -46,7 +46,7 @@ export async function forwardScopedPiRequest({
   url.pathname = `${mountRoute}${suffix}`;
   url.searchParams.set("scope", backofficeContextScopeSinglePathSegment(scope));
 
-  return await automationsObject.fetchWithContext(new Request(url.toString(), request), {
+  return await automationsObject.http.fetchAuthorized(new Request(url.toString(), request), {
     execution,
     propagationContext: null,
   });

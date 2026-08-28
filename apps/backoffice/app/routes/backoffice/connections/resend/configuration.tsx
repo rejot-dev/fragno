@@ -134,7 +134,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     scope.kind === "system" ? resendObjects.singleton() : resendObjects.forOrg(scope.orgId);
 
   try {
-    const configState = await resendDo.setAdminConfig(validation.payload, scope, origin);
+    const configState = await resendDo.commands.setAdminConfig(validation.payload, scope, origin);
     const webhook = configState.webhook;
     if (webhook && !webhook.ok) {
       return {

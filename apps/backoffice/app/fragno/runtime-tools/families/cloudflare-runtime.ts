@@ -5,7 +5,10 @@ import type {
 } from "@fragno-dev/cloudflare-fragment/browser-run";
 import { createRouteCaller } from "@fragno-dev/core/api";
 
-import type { CloudflareObject } from "@/backoffice-runtime/object-registry";
+import type {
+  BackofficeObjectHandle,
+  CloudflareObject,
+} from "@/backoffice-runtime/object-registry";
 import type { CloudflareFragment } from "@/fragno/cloudflare";
 
 import {
@@ -21,20 +24,22 @@ export type CloudflareRuntime = {
 
 const BROWSER_RUN_CAPTURE_TIMEOUT_MS = 60_000;
 
+type CloudflareHttpTransport = Pick<BackofficeObjectHandle<CloudflareObject>["http"], "fetch">;
+
 export const createCloudflareRuntime = ({
-  object,
+  http,
 }: {
-  object: CloudflareObject;
+  http: CloudflareHttpTransport;
 }): CloudflareRuntime => {
   const callRoute = createRouteCaller<CloudflareFragment>({
     baseUrl: "https://cloudflare.do",
     mountRoute: "/api/cloudflare",
-    fetch: object.fetch.bind(object),
+    fetch: http.fetch.bind(http),
   });
 
   return {
     browserRunCapture: async (input) => {
-      const response = await object.fetch(
+      const response = await http.fetch(
         new Request("https://cloudflare.do/api/cloudflare/browser-run/capture", {
           method: "POST",
           headers: { "content-type": "application/json" },

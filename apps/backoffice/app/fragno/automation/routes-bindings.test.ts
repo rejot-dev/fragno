@@ -327,16 +327,18 @@ describe("automation routes /routes", () => {
       objects: {
         automations: {
           for: (scope: AutomationEvent["scope"]) => ({
-            ingestEvent: async (event: AutomationEvent) => {
-              forwardedEvents.push(event);
-              expect(scope).toEqual({ kind: "org", orgId: "org_123" });
-              return {
-                accepted: true,
-                eventId: event.id,
-                scope: event.scope,
-                source: event.source,
-                eventType: event.eventType,
-              };
+            commands: {
+              ingestEvent: async (event: AutomationEvent) => {
+                forwardedEvents.push(event);
+                expect(scope).toEqual({ kind: "org", orgId: "org_123" });
+                return {
+                  accepted: true,
+                  eventId: event.id,
+                  scope: event.scope,
+                  source: event.source,
+                  eventType: event.eventType,
+                };
+              },
             },
           }),
         },
@@ -403,7 +405,7 @@ describe("automation routes /routes", () => {
     const runtime = {
       objects: {
         automations: {
-          for: () => ({ ingestEvent }),
+          for: () => ({ commands: { ingestEvent } }),
         },
       },
     } as unknown as BackofficeRuntimeServices;
@@ -468,13 +470,15 @@ describe("automation routes /routes", () => {
       objects: {
         automations: {
           for: () => ({
-            ingestEvent: async () => ({
-              accepted: true,
-              eventId: "unexpected",
-              scope: { kind: "org", orgId: "unexpected" },
-              source: "custom",
-              eventType: "ready",
-            }),
+            commands: {
+              ingestEvent: async () => ({
+                accepted: true,
+                eventId: "unexpected",
+                scope: { kind: "org", orgId: "unexpected" },
+                source: "custom",
+                eventType: "ready",
+              }),
+            },
           }),
         },
       },

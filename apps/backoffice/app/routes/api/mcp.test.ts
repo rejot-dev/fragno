@@ -15,13 +15,15 @@ vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
 import { loader as mcpLoader } from "./mcp";
 import { action as oauthStartAction } from "./mcp-oauth-start";
 
-const mcpObject = { fetch: mcpFetchMock };
+const mcpObject = { commands: {}, http: { fetch: mcpFetchMock } };
 const context = {
   get: () => ({
     runtime: {
       config: { docsPublicBaseUrl: "https://public.example" },
       objects: {
-        auth: { singleton: () => ({ getOrganizationBySlug: getOrganizationBySlugMock }) },
+        auth: {
+          singleton: () => ({ commands: { getOrganizationBySlug: getOrganizationBySlugMock } }),
+        },
         mcp: { for: mcpForScopeMock },
       },
     },

@@ -5,6 +5,7 @@ import type {
   ApiObject,
   AuthObject,
   AutomationsObject,
+  BackofficeObjectHandle,
   FormsObject,
   GitHubObject,
   GitHubWebhookRouterObject,
@@ -15,7 +16,6 @@ import type {
   Reson8Object,
   TelegramObject,
   UploadObject,
-  BackofficeRpcObject,
 } from "@/backoffice-runtime/object-registry";
 
 import { BackofficeWorkerContext } from "./router-context";
@@ -28,67 +28,73 @@ export const getBackofficeObjects = (context: Readonly<RouterContextProvider>) =
 export const getApiDurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,
-): ApiObject => getBackofficeObjects(context).api.forOrg(orgId);
+): BackofficeObjectHandle<ApiObject> => getBackofficeObjects(context).api.forOrg(orgId);
 
-export const getAuthDurableObject = (context: Readonly<RouterContextProvider>): AuthObject =>
-  getBackofficeObjects(context).auth.singleton();
+export const getAuthDurableObject = (
+  context: Readonly<RouterContextProvider>,
+): BackofficeObjectHandle<AuthObject> => getBackofficeObjects(context).auth.singleton();
 
 export const getAutomationsDurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,
-): BackofficeRpcObject<AutomationsObject> =>
+): BackofficeObjectHandle<AutomationsObject> =>
   getBackofficeObjects(context).automations.forOrg(orgId);
 
 export const getMarketplaceDurableObject = (
   context: Readonly<RouterContextProvider>,
-): MarketplaceObject => getBackofficeObjects(context).marketplace.singleton();
+): BackofficeObjectHandle<MarketplaceObject> =>
+  getBackofficeObjects(context).marketplace.singleton();
 
 export const getTelegramDurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,
-): BackofficeRpcObject<TelegramObject> => getBackofficeObjects(context).telegram.forOrg(orgId);
+): BackofficeObjectHandle<TelegramObject> => getBackofficeObjects(context).telegram.forOrg(orgId);
 
 export const getMcpDurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,
-): McpObject => getBackofficeObjects(context).mcp.forOrg(orgId);
+): BackofficeObjectHandle<McpObject> => getBackofficeObjects(context).mcp.forOrg(orgId);
 
-export const getSystemOtpDurableObject = (context: Readonly<RouterContextProvider>): OtpObject =>
-  getBackofficeObjects(context).otp.singleton();
+export const getSystemOtpDurableObject = (
+  context: Readonly<RouterContextProvider>,
+): BackofficeObjectHandle<OtpObject> => getBackofficeObjects(context).otp.singleton();
 
 export const getOtpDurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,
-): OtpObject => getBackofficeObjects(context).otp.forOrg(orgId);
+): BackofficeObjectHandle<OtpObject> => getBackofficeObjects(context).otp.forOrg(orgId);
 
 export const getResendDurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,
-): ResendObject => getBackofficeObjects(context).resend.forOrg(orgId);
+): BackofficeObjectHandle<ResendObject> => getBackofficeObjects(context).resend.forOrg(orgId);
 
 export const getReson8DurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,
-): Reson8Object => getBackofficeObjects(context).reson8.forOrg(orgId);
+): BackofficeObjectHandle<Reson8Object> => getBackofficeObjects(context).reson8.forOrg(orgId);
 
 export const getUploadDurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,
-): UploadObject => getBackofficeObjects(context).upload.forOrg(orgId);
+): BackofficeObjectHandle<UploadObject> => getBackofficeObjects(context).upload.forOrg(orgId);
 
 export const getScopedAutomationsDurableObject = (
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
-): BackofficeRpcObject<AutomationsObject> => getBackofficeObjects(context).automations.for(scope);
+): BackofficeObjectHandle<AutomationsObject> =>
+  getBackofficeObjects(context).automations.for(scope);
 
-export const getFormsDurableObject = (context: Readonly<RouterContextProvider>): FormsObject =>
-  getBackofficeObjects(context).forms.singleton();
+export const getFormsDurableObject = (
+  context: Readonly<RouterContextProvider>,
+): BackofficeObjectHandle<FormsObject> => getBackofficeObjects(context).forms.singleton();
 
 export const getGitHubDurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,
-): GitHubObject => getBackofficeObjects(context).github.forOrg(orgId);
+): BackofficeObjectHandle<GitHubObject> => getBackofficeObjects(context).github.forOrg(orgId);
 
 export const getGitHubWebhookRouterDurableObject = (
   context: Readonly<RouterContextProvider>,
-): GitHubWebhookRouterObject => getBackofficeObjects(context).githubWebhookRouter.singleton();
+): BackofficeObjectHandle<GitHubWebhookRouterObject> =>
+  getBackofficeObjects(context).githubWebhookRouter.singleton();

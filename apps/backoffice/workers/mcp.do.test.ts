@@ -33,7 +33,7 @@ describe("MCP system capability", () => {
     const runtime = await createRuntime();
     const mcp = runtime.objects.mcp.forOrg("org-1");
 
-    const response = await mcp.fetch(new Request("https://mcp.do/api/mcp/servers"));
+    const response = await mcp.http.fetch(new Request("https://mcp.do/api/mcp/servers"));
     assert(response.ok);
     await expect(response.json()).resolves.toEqual({ servers: [] });
   });

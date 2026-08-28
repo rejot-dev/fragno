@@ -80,7 +80,9 @@ export class InMemoryGitHubObject implements GitHubObject {
                 const { scope } = runtime.stored;
                 await this.#runtimeServices.objects.automations
                   .for(scope)
-                  .ingestEvent(buildGitHubAutomationEvent({ orgId: scope.orgId, event, meta }));
+                  .commands.ingestEvent(
+                    buildGitHubAutomationEvent({ orgId: scope.orgId, event, meta }),
+                  );
               });
 
               register("installation.deleted", async ({ payload }, idempotencyKey) => {
@@ -133,7 +135,7 @@ export class InMemoryGitHubObject implements GitHubObject {
     }
 
     const routerDo = this.#runtimeServices.objects.githubWebhookRouter.singleton();
-    const cleanup = await routerDo.clearInstallationRouting(normalizedInstallationId);
+    const cleanup = await routerDo.commands.clearInstallationRouting(normalizedInstallationId);
     console.info("Cleaned GitHub webhook router installation mapping after uninstall", {
       installationId: normalizedInstallationId,
       removedMapping: cleanup.removedMapping,
@@ -146,8 +148,12 @@ export class InMemoryGitHubObject implements GitHubObject {
     await this.#host.alarm();
   }
 
-  getDurableHookRepository() {
-    return this.#host.getDurableHookRepository<DurableHookQueueOptions>(({ runtime }) => runtime);
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await this.#host.getDurableHookQueue(({ runtime }) => runtime, options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await this.#host.getDurableHook(({ runtime }) => runtime, hookId);
   }
 
   async redeliverFailedInstallationWebhooks(installationId: string): Promise<void> {
@@ -274,8 +280,12 @@ export class GitHub extends DurableObject<CloudflareEnv> implements GitHubObject
     await this.#object.alarm();
   }
 
-  getDurableHookRepository() {
-    return this.#object.getDurableHookRepository();
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await this.#object.getDurableHookQueue(options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await this.#object.getDurableHook(hookId);
   }
 
   async redeliverFailedInstallationWebhooks(installationId: string): Promise<void> {

@@ -81,7 +81,7 @@ export const seedWorkspaceStarterFiles = async ({
   force?: boolean;
 }): Promise<WorkspaceStarterFilesSeedOutput> => {
   const uploadDo = objects.upload.for(scope);
-  const uploadConfig = await uploadDo.getAdminConfig();
+  const uploadConfig = await uploadDo.commands.getAdminConfig();
   const provider = uploadConfig.defaultProvider ?? "database";
   const fileContext = createSystemFilesContext({
     objects,

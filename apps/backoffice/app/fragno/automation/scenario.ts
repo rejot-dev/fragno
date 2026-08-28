@@ -42,7 +42,10 @@ import {
   backofficeContextScopeRoutePath,
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
-import { createTelegramAutomationFileResponse } from "@/backoffice-runtime/telegram-file-response";
+import {
+  createTelegramAutomationFileResponse,
+  telegramAutomationFileIdFromDownloadPath,
+} from "@/backoffice-runtime/telegram-file-response";
 import {
   createBackofficeFileSystem,
   STATIC_FILE_CONTENT,
@@ -290,7 +293,7 @@ export type FakePiApi = {
   getSessionCalls: PiGetSessionCall[];
   runTurnCalls: PiRunTurnCall[];
   fetch(request: Request): Promise<Response>;
-  fetchWithContext(request: Request, context: BackofficeActionRpcContext): Promise<Response>;
+  fetchAuthorized(request: Request, context: BackofficeActionRpcContext): Promise<Response>;
   setSessionStatus(sessionId: string, status: PiSessionStatus): void;
 };
 
@@ -1291,7 +1294,7 @@ const createFakePiApi = (
       }
       return await handleRequest(request);
     },
-    fetchWithContext: async (request, context) => {
+    fetchAuthorized: async (request, context) => {
       const encodedScope = new URL(request.url).searchParams.get("scope");
       if (!encodedScope) {
         throw new Error("Fake Pi requests require an encoded Backoffice scope.");
@@ -1764,7 +1767,7 @@ const createScenarioAutomationTanStackFetch = (
 
     const kernel = new BackofficeKernel(runtime.services);
     const automations = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
-    return await automations.fetch(new Request(forwardedUrl.toString(), request));
+    return await automations.http.fetch(new Request(forwardedUrl.toString(), request));
   };
 };
 
@@ -1781,7 +1784,7 @@ const createScenarioPiTanStackFetch = (
 
     const kernel = new BackofficeKernel(runtime.services);
     const pi = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
-    return await pi.fetch(new Request(forwardedUrl.toString(), request));
+    return await pi.http.fetch(new Request(forwardedUrl.toString(), request));
   };
 };
 
@@ -2036,8 +2039,8 @@ const ingestSystemAutomationEvent = async (
   }
 
   const systemAutomations = ctx.runtime.objects.automations.singleton();
-  await systemAutomations.seedStarterAutomationRoutes();
-  await systemAutomations.ingestEvent({ ...event, scope: { kind: "system" } });
+  await systemAutomations.commands.seedStarterAutomationRoutes();
+  await systemAutomations.commands.ingestEvent({ ...event, scope: { kind: "system" } });
 };
 
 const ingestAutomationEvent = async (ctx: BackofficeScenarioContext, event: AutomationEvent) => {
@@ -2053,10 +2056,10 @@ const ingestAutomationEvent = async (ctx: BackofficeScenarioContext, event: Auto
   ctx.rememberOrg(event.scope.orgId);
   if (isSystemRoutedAutomationEvent(event)) {
     const systemAutomations = ctx.runtime.objects.automations.singleton();
-    await systemAutomations.seedStarterAutomationRoutes();
-    await systemAutomations.ingestEvent({ ...event, id: `system:${event.id}` });
+    await systemAutomations.commands.seedStarterAutomationRoutes();
+    await systemAutomations.commands.ingestEvent({ ...event, id: `system:${event.id}` });
   }
-  await ctx.runtime.objects.automations.forOrg(event.scope.orgId).ingestEvent(event);
+  await ctx.runtime.objects.automations.forOrg(event.scope.orgId).commands.ingestEvent(event);
 };
 
 const buildOrganizationCreatedEvent = (input: OrganizationCreatedInput): AutomationEvent => {
@@ -2197,7 +2200,7 @@ const postTelegramWebhook = async (
   const secret = String(
     ctx.vars[`telegram:${orgId}:webhookSecretToken`] ?? "telegram-webhook-secret",
   );
-  const response = await ctx.runtime.objects.telegram.forOrg(orgId).fetch(
+  const response = await ctx.runtime.objects.telegram.forOrg(orgId).http.fetch(
     new Request("https://telegram.do/api/telegram/telegram/webhook", {
       method: "POST",
       headers: {
@@ -2272,7 +2275,7 @@ const scenarioAuthRequest = (
   path: string,
   input: { cookie?: string; body?: unknown } = {},
 ) =>
-  ctx.runtime.objects.auth.singleton().fetch(
+  ctx.runtime.objects.auth.singleton().http.fetch(
     new Request(`https://backoffice.example/api/auth${path}`, {
       method: input.body === undefined ? "GET" : "POST",
       headers: {
@@ -2416,7 +2419,9 @@ const buildStepBuilders = <
               name: input.name,
               ownerUserId,
             };
-            await ctx.runtime.objects.automations.forOrg(input.id).seedStarterAutomationRoutes();
+            await ctx.runtime.objects.automations
+              .forOrg(input.id)
+              .commands.seedStarterAutomationRoutes();
           },
           { drain: false },
         ),
@@ -2433,9 +2438,11 @@ const buildStepBuilders = <
             )
             .join(", ")}`,
           async (ctx) => {
-            const result = await ctx.runtime.objects.marketplace.singleton().insertStaticEntries({
-              entries: [...entries],
-            });
+            const result = await ctx.runtime.objects.marketplace
+              .singleton()
+              .commands.insertStaticEntries({
+                entries: [...entries],
+              });
             if (!result.ok) {
               throw new Error(`${result.error.code}: ${result.error.message}`);
             }
@@ -2452,7 +2459,7 @@ const buildStepBuilders = <
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
             const webhookSecretToken = input.webhookSecretToken ?? "telegram-webhook-secret";
-            await ctx.runtime.objects.telegram.forOrg(input.orgId).setAdminConfig({
+            await ctx.runtime.objects.telegram.forOrg(input.orgId).commands.setAdminConfig({
               orgId: input.orgId,
               botToken: input.botToken ?? "123456:telegram-bot-token",
               webhookSecretToken,
@@ -2476,7 +2483,7 @@ const buildStepBuilders = <
             if (input.scope.kind === "org" || input.scope.kind === "project") {
               ctx.rememberOrg(input.scope.orgId);
             }
-            await ctx.runtime.objects.automations.for(input.scope).getPiRuntimeState();
+            await ctx.runtime.objects.automations.for(input.scope).commands.getPiRuntimeState();
           },
         ),
       defaultAgent: (input) =>
@@ -2519,7 +2526,7 @@ const buildStepBuilders = <
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
             const scope = { kind: "org" as const, orgId: input.orgId };
-            await ctx.runtime.objects.automations.for(scope).bindExternalIdentity(
+            await ctx.runtime.objects.automations.for(scope).commands.bindExternalIdentity(
               {
                 identity: {
                   scope: "external",
@@ -2838,10 +2845,10 @@ const buildStepBuilders = <
             });
             const automations = ctx.runtime.objects.automations.forOrg(input.targetScope.orgId);
 
-            await automations.requestStaticMarketplacePublications();
+            await automations.commands.requestStaticMarketplacePublications();
             await ctx.drain();
 
-            const requested = await automations.requestMarketplaceIngestion(
+            const requested = await automations.commands.requestMarketplaceIngestion(
               {
                 listingId,
                 version: entry.version,
@@ -2863,7 +2870,7 @@ const buildStepBuilders = <
 
             await ctx.drain();
 
-            const installed = await automations.getMarketplaceIngestion({
+            const installed = await automations.commands.getMarketplaceIngestion({
               listingId,
               targetScope: input.targetScope,
             });
@@ -2928,7 +2935,7 @@ const buildStepBuilders = <
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
             const scope = { kind: "org" as const, orgId: input.orgId };
-            await ctx.runtime.objects.automations.for(scope).revokeExternalIdentity(
+            await ctx.runtime.objects.automations.for(scope).commands.revokeExternalIdentity(
               {
                 identity: {
                   scope: "external",
@@ -2960,7 +2967,7 @@ const buildStepBuilders = <
 
             const workflowName = input.workflowName ?? BACKOFFICE_PI_WORKFLOW_NAME;
             const { object, context } = getScenarioPiRouteTarget(ctx, input.scope, input.userId);
-            const response = await object.fetchWithContext(
+            const response = await object.http.fetchAuthorized(
               new Request(
                 createScenarioPiRouteUrl(
                   input.scope,
@@ -3008,7 +3015,7 @@ const buildStepBuilders = <
             );
             const workflowName = input.workflowName ?? BACKOFFICE_PI_WORKFLOW_NAME;
             const { object, context } = getScenarioPiRouteTarget(ctx, input.scope, input.userId);
-            const response = await object.fetchWithContext(
+            const response = await object.http.fetchAuthorized(
               new Request(
                 createScenarioPiRouteUrl(
                   input.scope,
@@ -3041,7 +3048,7 @@ const buildStepBuilders = <
                 ctx.rememberOrg(organizationId);
                 const billing = ctx.runtime.objects.billing.forOrg(organizationId);
                 await ctx.runtime.drain();
-                await billing.recordEvent(event);
+                await billing.commands.recordEvent(event);
               },
             });
           },
@@ -3055,7 +3062,9 @@ const buildStepBuilders = <
           `seed starter routes for ${input.orgId}`,
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
-            await ctx.runtime.objects.automations.forOrg(input.orgId).seedStarterAutomationRoutes();
+            await ctx.runtime.objects.automations
+              .forOrg(input.orgId)
+              .commands.seedStarterAutomationRoutes();
           },
         ),
       createRoute: (input) =>
@@ -3092,7 +3101,7 @@ const buildStepBuilders = <
           input.label ?? `create project ${input.orgId}:${input.slug ?? input.name}`,
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
-            const response = await ctx.runtime.objects.automations.forOrg(input.orgId).fetch(
+            const response = await ctx.runtime.objects.automations.forOrg(input.orgId).http.fetch(
               new Request("https://automations.local/api/automations/projects", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
@@ -3252,11 +3261,13 @@ const buildStepBuilders = <
             }
 
             ctx.rememberOrg(orgId);
-            const result = await ctx.runtime.objects.otp.forOrg(orgId).confirmIdentityClaim({
-              externalId,
-              code,
-              subjectUserId: input.subjectUserId,
-            });
+            const result = await ctx.runtime.objects.otp
+              .forOrg(orgId)
+              .commands.confirmIdentityClaim({
+                externalId,
+                code,
+                subjectUserId: input.subjectUserId,
+              });
             if (!result.ok) {
               throw new Error(`OTP claim confirmation failed: ${JSON.stringify(result)}`);
             }
@@ -3279,10 +3290,12 @@ const buildStepBuilders = <
           "auth.authority",
           `assert authority for ${input.userId}`,
           async (ctx) => {
-            const actual = await ctx.runtime.objects.auth.singleton().getUserAuthorityFacts({
-              userId: input.userId,
-              ...(input.orgId ? { organizationId: input.orgId } : {}),
-            });
+            const actual = await ctx.runtime.objects.auth
+              .singleton()
+              .commands.getUserAuthorityFacts({
+                userId: input.userId,
+                ...(input.orgId ? { organizationId: input.orgId } : {}),
+              });
             if (
               actual.active !== input.expected.active ||
               actual.role !== input.expected.role ||
@@ -3407,7 +3420,7 @@ const buildStepBuilders = <
 
             const response = await ctx.runtime.objects.automations
               .for(input.scope)
-              .fetch(new Request("https://automations.test/api/automations/events?limit=500"));
+              .http.fetch(new Request("https://automations.test/api/automations/events?limit=500"));
             if (!response.ok) {
               throw new Error(`Automation event listing returned ${response.status}.`);
             }
@@ -3449,7 +3462,7 @@ const buildStepBuilders = <
           async (ctx) => {
             const result = await ctx.runtime.objects.automations
               .for(input.scope)
-              .resolveExternalIdentity(
+              .commands.resolveExternalIdentity(
                 { identity: input.identity },
                 { execution: createBackofficeSystemExecution(input.scope) },
               );
@@ -3468,7 +3481,7 @@ const buildStepBuilders = <
           async (ctx) => {
             const result = await ctx.runtime.objects.automations
               .for(input.scope)
-              .resolveExternalIdentity(
+              .commands.resolveExternalIdentity(
                 { identity: input.identity },
                 { execution: createBackofficeSystemExecution(input.scope) },
               );
@@ -3644,7 +3657,7 @@ const buildStepBuilders = <
             );
             const workflowName = input.workflowName ?? BACKOFFICE_PI_WORKFLOW_NAME;
             const { object, context } = getScenarioPiRouteTarget(ctx, input.scope, input.userId);
-            const response = await object.fetchWithContext(
+            const response = await object.http.fetchAuthorized(
               new Request(
                 createScenarioPiRouteUrl(
                   input.scope,
@@ -3693,7 +3706,7 @@ const buildStepBuilders = <
             ctx.rememberOrg(input.organizationId);
             const billing = ctx.runtime.objects.billing.forOrg(input.organizationId);
             await ctx.runtime.drain();
-            const page = await billing.getTrackers({
+            const page = await billing.commands.getTrackers({
               scope: input.scope,
               period: input.period,
               pageSize: 100,
@@ -4459,9 +4472,14 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
           };
         }
 
-        async downloadAutomationFile(input: { fileId: string }): Promise<Response> {
-          fakeTelegram.downloadFileCalls.push({ fileId: input.fileId });
-          const file = fakeTelegramFile(fakeTelegram, input.fileId);
+        async fetch(request: Request): Promise<Response> {
+          const fileId = telegramAutomationFileIdFromDownloadPath(new URL(request.url).pathname);
+          if (!fileId) {
+            return await super.fetch(request);
+          }
+
+          fakeTelegram.downloadFileCalls.push({ fileId });
+          const file = fakeTelegramFile(fakeTelegram, fileId);
           return createTelegramAutomationFileResponse(
             new Response(file.bytes.slice(), {
               headers: file.contentType ? { "content-type": file.contentType } : undefined,
@@ -4480,25 +4498,15 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
   }
 
   if (fakes.pi) {
-    objectFactories.AUTOMATIONS = ({ state, env, runtime, getAutomationFileSystem }) => {
-      const object = new InMemoryAutomationsObject({
-        state,
-        env,
-        runtime,
-        getAutomationFileSystem,
-        createPiRuntime: (execution) =>
-          createPiRouteRuntime({
-            object: {
-              fetchWithContext: async (request, context) =>
-                await fakes.pi!.fetchWithContext(request, context),
-            } as AutomationsObject,
-            scope: execution.scope,
-            execution,
-          }),
-      });
+    objectFactories.AUTOMATIONS = ({
+      state,
+      env,
+      runtime,
+      nowEpochMs,
+      getAutomationFileSystem,
+    }) => {
       const kernel = new BackofficeKernel(runtime);
-
-      const fetchPiWithContext = async (request: Request, context: BackofficeActionRpcContext) => {
+      const fetchPiAuthorized = async (request: Request, context: BackofficeActionRpcContext) => {
         const sessionRoute =
           /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/([^/]+))?$/u.exec(
             new URL(request.url).pathname,
@@ -4536,17 +4544,30 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
           }
         }
 
-        return await fakes.pi!.fetchWithContext(request, context);
+        return await fakes.pi!.fetchAuthorized(request, context);
       };
+      const object = new InMemoryAutomationsObject({
+        state,
+        env,
+        runtime,
+        nowEpochMs,
+        getAutomationFileSystem,
+        createPiRuntime: (execution) =>
+          createPiRouteRuntime({
+            object: {
+              commands: {} as AutomationsObject,
+              http: {
+                fetch: async (request) => await fakes.pi!.fetch(request),
+                fetchAuthorized: fetchPiAuthorized,
+              },
+            },
+            scope: execution.scope,
+            execution,
+          }),
+      });
 
       return new Proxy(object, {
         get(target, property) {
-          if (property === "fetchWithContext") {
-            return async (request: Request, context: BackofficeActionRpcContext) =>
-              new URL(request.url).pathname.startsWith("/api/pi")
-                ? await fetchPiWithContext(request, context)
-                : await target.fetchWithContext(request, context);
-          }
           if (property === "getPiRuntimeState") {
             return async () => ({ configured: true, modelCatalog: [] });
           }
@@ -4569,17 +4590,15 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
       getAdminConfig: async () => ({ configured: true }),
       resetAdminConfig: async () => ({ configured: false }),
       setAdminConfig: async () => ({ configured: true }),
-      getDurableHookRepository: () => ({
-        getHookQueue: async () => ({
-          configured: false,
-          hooksEnabled: false,
-          namespace: null,
-          items: [],
-          cursor: undefined,
-          hasNextPage: false,
-        }),
-        getHook: async () => null,
+      getDurableHookQueue: async () => ({
+        configured: false,
+        hooksEnabled: false,
+        namespace: null,
+        items: [],
+        cursor: undefined,
+        hasNextPage: false,
       }),
+      getDurableHook: async () => null,
     });
   }
 
@@ -4589,17 +4608,15 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
         init: () => object,
         fetch: (request: Request) => fakes.mcp!.fetch(request),
         alarm: async () => undefined,
-        getDurableHookRepository: () => ({
-          getHookQueue: async () => ({
-            configured: false,
-            hooksEnabled: false,
-            namespace: null,
-            items: [],
-            cursor: undefined,
-            hasNextPage: false,
-          }),
-          getHook: async () => null,
+        getDurableHookQueue: async () => ({
+          configured: false,
+          hooksEnabled: false,
+          namespace: null,
+          items: [],
+          cursor: undefined,
+          hasNextPage: false,
         }),
+        getDurableHook: async () => null,
       };
       return object;
     };

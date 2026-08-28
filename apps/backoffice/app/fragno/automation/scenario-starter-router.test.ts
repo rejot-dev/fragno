@@ -859,10 +859,9 @@ describe("starter automation router scenarios", () => {
           when.automation.ingestEvent(event),
 
           then.assert("the first fan-out attempt is waiting to retry", async (ctx) => {
-            const repository = await ctx.runtime.objects.automations
+            const queue = await ctx.runtime.objects.automations
               .forOrg("org-1")
-              .getDurableHookRepository("automation");
-            const queue = await repository.getHookQueue({ pageSize: 100 });
+              .commands.getDurableHookQueue("automation", { pageSize: 100 });
             const hook = queue.items.find(
               (item) =>
                 item.hookName === "internalIngestEvent" &&
@@ -913,10 +912,9 @@ describe("starter automation router scenarios", () => {
             output: { received: "ready" },
           }),
           then.assert("the retry completed without forwarding the event twice", async (ctx) => {
-            const sourceRepository = await ctx.runtime.objects.automations
+            const sourceQueue = await ctx.runtime.objects.automations
               .forOrg("org-1")
-              .getDurableHookRepository("automation");
-            const sourceQueue = await sourceRepository.getHookQueue({ pageSize: 100 });
+              .commands.getDurableHookQueue("automation", { pageSize: 100 });
             const sourceHook = sourceQueue.items.find(
               (item) =>
                 item.hookName === "internalIngestEvent" &&
@@ -929,7 +927,7 @@ describe("starter automation router scenarios", () => {
 
             const response = await ctx.runtime.objects.automations
               .forProject({ orgId: "org-1", projectId: "fanout-retry-project" })
-              .fetch(new Request("https://automations.test/api/automations/events?limit=100"));
+              .http.fetch(new Request("https://automations.test/api/automations/events?limit=100"));
             assert(response.ok);
             const result = (await response.json()) as { events: Array<{ id: string }> };
             assert.equal(

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
 
 const githubUserSchema = z.looseObject({
   id: z.union([z.number(), z.string()]),
@@ -117,7 +118,7 @@ export const githubCapability: BackofficeCapability = {
         id: "github",
         label: "GitHub",
         getRepository: ({ objects, orgId }) =>
-          objects.github.forOrg(orgId).getDurableHookRepository(),
+          createDurableHookRepositoryFromCommands(objects.github.forOrg(orgId).commands),
       },
     ],
     skillPaths: [],

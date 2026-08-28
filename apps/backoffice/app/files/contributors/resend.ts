@@ -198,14 +198,14 @@ const createResendRuntime = (ctx: FilesContext): ResendRuntime | null => {
     }
     throw error;
   }
-  if (!resendObject?.fetch) {
+  if (!resendObject.http?.fetch) {
     return null;
   }
 
   return createRouteBackedResendRuntime({
     baseUrl: ctx.origin ?? "https://resend.runtime",
     fetch: async (input: RequestInfo | URL) =>
-      resendObject.fetch(input instanceof Request ? input : new Request(input)),
+      resendObject.http.fetch(input instanceof Request ? input : new Request(input)),
   });
 };
 

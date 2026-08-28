@@ -209,7 +209,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
     try {
       const githubWebhookRouterDo = getGitHubWebhookRouterDurableObject(context);
-      const consumed = await githubWebhookRouterDo.consumeInstallState({
+      const consumed = await githubWebhookRouterDo.commands.consumeInstallState({
         state: callbackState,
         userId: me.user.id,
         installationId: callbackInstallationId,
@@ -244,7 +244,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
         return redirect(buildConfigurationRedirect(requestUrl, "callback_error"));
       }
 
-      const mappingResult = await githubWebhookRouterDo.setInstallationOrg(
+      const mappingResult = await githubWebhookRouterDo.commands.setInstallationOrg(
         callbackInstallationId,
         organizationId,
       );
@@ -275,7 +275,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
         });
 
         const githubDo = getGitHubDurableObject(context, organizationId);
-        await githubDo.redeliverFailedInstallationWebhooks(callbackInstallationId);
+        await githubDo.commands.redeliverFailedInstallationWebhooks(callbackInstallationId);
 
         return redirect(buildConfigurationRedirect(requestUrl, "installed_pending_webhook"));
       }
@@ -385,7 +385,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
 
   if (intent === "start-installation") {
     const githubWebhookRouterDo = getGitHubWebhookRouterDurableObject(context);
-    const install = await githubWebhookRouterDo.createInstallStatefulUrl(
+    const install = await githubWebhookRouterDo.commands.createInstallStatefulUrl(
       me.user.id,
       organizationId,
     );
@@ -423,7 +423,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
 
     const githubWebhookRouterDo = getGitHubWebhookRouterDurableObject(context);
     try {
-      await githubWebhookRouterDo.storeInstallationClaimState({
+      await githubWebhookRouterDo.commands.storeInstallationClaimState({
         state: claim.result.state,
         userId: me.user.id,
         orgId: integration.scope.orgId,

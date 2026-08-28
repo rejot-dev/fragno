@@ -9,7 +9,11 @@ import {
 } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
-import type { BackofficeObjectRegistry, McpObject } from "@/backoffice-runtime/object-registry";
+import type {
+  BackofficeObjectHandle,
+  BackofficeObjectRegistry,
+  McpObject,
+} from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
@@ -826,8 +830,8 @@ describe("runBackofficeCodemode", () => {
 const createScopedMcpRuntimeServices = (
   calls: Array<{ scope: string; method: string; pathname: string }>,
 ): BackofficeRuntimeServices => {
-  const createMcpObject = (scope: string): McpObject => ({
-    fetch: async (request) => {
+  const createMcpObject = (scope: string): BackofficeObjectHandle<McpObject> => {
+    const fetch = async (request: Request) => {
       const url = new URL(request.url);
       calls.push({ scope, method: request.method, pathname: url.pathname });
       if (request.method === "GET" && url.pathname === "/api/mcp/servers") {
@@ -848,9 +852,18 @@ const createScopedMcpRuntimeServices = (
         return Response.json({ ok: true });
       }
       return Response.json({ error: "Unexpected MCP request" }, { status: 500 });
-    },
-    getDurableHookRepository: async () => ({}) as never,
-  });
+    };
+    return {
+      commands: {
+        getDurableHookQueue: async () => ({}) as never,
+        getDurableHook: async () => null,
+      },
+      http: {
+        fetch,
+        fetchAuthorized: async (request) => await fetch(request),
+      },
+    };
+  };
 
   const scoped = {
     singleton: () => createMcpObject("singleton"),

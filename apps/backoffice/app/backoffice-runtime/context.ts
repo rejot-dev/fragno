@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import type { Role } from "@/fragno/auth/contracts";
-import { AUTOMATION_SYSTEM_INITIATOR, type AutomationActors } from "@/fragno/automation/actors";
+import {
+  automationActorsSchema,
+  AUTOMATION_SYSTEM_INITIATOR,
+  type AutomationActors,
+} from "@/fragno/automation/actors";
 
 import type { BackofficeInternalServiceAuthorityRole } from "./authority-roles";
 
@@ -85,6 +89,14 @@ export type BackofficeExecutionContext = {
    */
   userAuthority?: BackofficeVerifiedRequestAuthority;
 };
+
+/** Validates serialized execution provenance at trusted HTTP and storage boundaries. */
+export const backofficeExecutionContextSchema: z.ZodType<BackofficeExecutionContext> =
+  z.strictObject({
+    scope: backofficeContextScopeSchema,
+    actors: automationActorsSchema,
+    userAuthority: backofficeVerifiedRequestAuthoritySchema.optional(),
+  });
 
 export const BACKOFFICE_SYSTEM_ACTORS = {
   initiator: AUTOMATION_SYSTEM_INITIATOR,

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
 
 export const FORMS_AUTOMATION_SOURCE = "forms" as const;
 export const FORMS_AUTOMATION_EVENT_FORM_CREATED = "form.created" as const;
@@ -64,7 +65,8 @@ export const formsCapability: BackofficeCapability = {
       {
         id: "forms",
         label: "Forms",
-        getRepository: ({ objects }) => objects.forms.singleton().getDurableHookRepository(),
+        getRepository: ({ objects }) =>
+          createDurableHookRepositoryFromCommands(objects.forms.singleton().commands),
       },
     ],
     skillPaths: ["skills/forms/SKILL.md"],

@@ -143,12 +143,12 @@ export const createInternalRuntime = ({
         force: input?.force,
       }),
     seedStarterAutomationRoutes: async () =>
-      await objects.automations.forOrg(orgId).seedStarterAutomationRoutes(),
+      await objects.automations.forOrg(orgId).commands.seedStarterAutomationRoutes(),
     pushStaticMarketplaceEntries: async (input) =>
-      await objects.automations.forOrg(orgId).requestStaticMarketplacePublications(input),
+      await objects.automations.forOrg(orgId).commands.requestStaticMarketplacePublications(input),
     configureProjectDatabaseFileSystem: async ({ projectId }) => {
       const uploadObject = objects.upload.forProject({ orgId, projectId });
-      const config = await uploadObject.setAdminConfig(
+      const config = await uploadObject.commands.setAdminConfig(
         { provider: "database", defaultProvider: "database" },
         orgId,
         origin,

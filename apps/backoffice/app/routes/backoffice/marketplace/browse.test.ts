@@ -24,7 +24,7 @@ const marketplace = { listPublishedListings: listPublishedListingsMock };
 const context = {
   get: () => ({
     runtime: {
-      objects: { marketplace: { singleton: () => marketplace } },
+      objects: { marketplace: { singleton: () => ({ commands: marketplace }) } },
     },
   }),
 };

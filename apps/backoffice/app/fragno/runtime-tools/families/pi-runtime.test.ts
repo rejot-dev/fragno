@@ -35,8 +35,11 @@ const createAutomationsObjects = (
       forOrg: (orgId: string) => {
         const object = env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(orgId));
         return {
-          ...object,
-          fetchWithContext: async (request: Request) => await object.fetch(request),
+          commands: object as unknown as AutomationsObject,
+          http: {
+            fetch: async (request: Request) => await object.fetch(request),
+            fetchAuthorized: async (request: Request) => await object.fetch(request),
+          },
         };
       },
     },
@@ -708,14 +711,17 @@ describe("createPiRouteRuntime", () => {
     ],
   ])("calls Pi through a %s scope", async (scope, expectedScopeQuery) => {
     let receivedUrl = "";
-    const fetchWithContext = async (request: Request) => {
+    const fetchAuthorized = async (request: Request) => {
       receivedUrl = request.url;
       return Response.json([]);
     };
     const object = {
-      fetch: fetchWithContext,
-      fetchWithContext,
-    } as unknown as AutomationsObject;
+      commands: {} as AutomationsObject,
+      http: {
+        fetch: fetchAuthorized,
+        fetchAuthorized,
+      },
+    };
 
     await createPiRouteRuntime({
       object,

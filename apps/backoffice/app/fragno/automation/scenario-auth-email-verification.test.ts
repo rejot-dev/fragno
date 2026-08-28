@@ -36,16 +36,18 @@ import {
 } from "./scenario";
 
 const getEmailVerificationRequestedHook = async (ctx: BackofficeScenarioContext) => {
-  const repository = await ctx.runtime.objects.auth.singleton().getDurableHookRepository();
-  const queue = await repository.getHookQueue({ pageSize: 100 });
+  const queue = await ctx.runtime.objects.auth
+    .singleton()
+    .commands.getDurableHookQueue({ pageSize: 100 });
   const hook = queue.items.find((item) => item.hookName === "onUserEmailVerificationRequested");
   assert(hook, "Expected Auth onUserEmailVerificationRequested hook to exist.");
   return hook;
 };
 
 const getOtpIssuedHook = async (ctx: BackofficeScenarioContext) => {
-  const repository = await ctx.runtime.objects.otp.singleton().getDurableHookRepository();
-  const queue = await repository.getHookQueue({ pageSize: 100 });
+  const queue = await ctx.runtime.objects.otp
+    .singleton()
+    .commands.getDurableHookQueue({ pageSize: 100 });
   const hook = queue.items.find((item) => item.hookName === "onOtpIssued");
   assert(hook, "Expected OTP onOtpIssued hook to exist.");
   return hook;
@@ -63,7 +65,7 @@ const requestEmailVerificationResend = (
   ctx: BackofficeScenarioContext,
   email: string,
 ): Promise<Response> =>
-  ctx.runtime.objects.auth.singleton().fetch(
+  ctx.runtime.objects.auth.singleton().http.fetch(
     new Request("https://backoffice.example/api/auth/send-verification-email", {
       method: "POST",
       headers: {
@@ -103,7 +105,7 @@ const submitEmailVerificationUrl = async (ctx: BackofficeScenarioContext, verifi
 };
 
 const signInWithPassword = (ctx: BackofficeScenarioContext, email: string) =>
-  ctx.runtime.objects.auth.singleton().fetch(
+  ctx.runtime.objects.auth.singleton().http.fetch(
     new Request("https://backoffice.example/api/auth/sign-in/email", {
       method: "POST",
       headers: {
@@ -130,7 +132,7 @@ const issuePublicEmailVerificationOtp = (): BackofficeScenarioStep => ({
   type: "otp.issuePublicEmailVerificationOtp",
   label: "issue an email verification OTP through the public organization route",
   async run(ctx) {
-    const response = await ctx.runtime.objects.otp.forOrg("attacker-org").fetch(
+    const response = await ctx.runtime.objects.otp.forOrg("attacker-org").http.fetch(
       new Request("https://backoffice.example/api/otp/otp/issue", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -199,10 +201,9 @@ describe("Auth email verification scenarios", () => {
             },
           },
           then.assert("verification does not enqueue an unhandled Auth hook", async (ctx) => {
-            const repository = await ctx.runtime.objects.auth
+            const queue = await ctx.runtime.objects.auth
               .singleton()
-              .getDurableHookRepository();
-            const queue = await repository.getHookQueue({ pageSize: 100 });
+              .commands.getDurableHookQueue({ pageSize: 100 });
             assert(!queue.items.some((hook) => hook.hookName === "onUserEmailVerified"));
           }),
         ],
@@ -277,7 +278,9 @@ describe("Auth email verification scenarios", () => {
         steps: ({ when, then }) => [
           when.auth.signUp({ email: "new-user@example.com" }),
           then.assert("Auth owns the retryable email delivery", async (ctx) => {
-            const resendConfig = await ctx.runtime.objects.resend.singleton().getAdminConfig();
+            const resendConfig = await ctx.runtime.objects.resend
+              .singleton()
+              .commands.getAdminConfig();
             assert(!resendConfig.configured);
             assert(
               ctx.runtime.hasObjectInstance({
@@ -313,10 +316,9 @@ describe("Auth email verification scenarios", () => {
           issuePublicEmailVerificationOtp(),
           then.resend.noQueuedEmails(),
           then.assert("public OTP issuance creates no durable email challenge", async (ctx) => {
-            const repository = await ctx.runtime.objects.otp
+            const queue = await ctx.runtime.objects.otp
               .forOrg("attacker-org")
-              .getDurableHookRepository();
-            const queue = await repository.getHookQueue({ pageSize: 100 });
+              .commands.getDurableHookQueue({ pageSize: 100 });
             assert(!queue.items.some((hook) => hook.hookName === "onOtpIssued"));
           }),
         ],

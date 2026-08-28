@@ -43,7 +43,7 @@ function createRouteContext(
   const runtime = {
     objects: {
       auth: {
-        singleton: () => auth,
+        singleton: () => ({ commands: auth }),
       },
     },
   } as unknown as BackofficeRuntimeServices;
@@ -112,7 +112,7 @@ describe("Backoffice administrator grant route", () => {
     const runtime = await createInMemoryBackofficeRuntime();
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
-    await auth.applyScenarioFixture({
+    await auth.commands.applyScenarioFixture({
       users: [
         {
           id: "user-1",
@@ -123,11 +123,11 @@ describe("Backoffice administrator grant route", () => {
       ],
     });
 
-    const response = await callAction(createRequest(), "grant-secret", auth);
+    const response = await callAction(createRequest(), "grant-secret", auth.commands);
 
     assert(response.status === 200);
     await expect(response.json()).resolves.toEqual({ status: "granted", userId: "user-1" });
-    await expect(auth.getUserAuthorityFacts({ userId: "user-1" })).resolves.toMatchObject({
+    await expect(auth.commands.getUserAuthorityFacts({ userId: "user-1" })).resolves.toMatchObject({
       role: "admin",
     });
   });

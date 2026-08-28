@@ -458,7 +458,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   const uploadDo = getUploadDurableObject(context, organization.id);
 
   try {
-    const configState = await uploadDo.setAdminConfig(validation.payload, organization.id);
+    const configState = await uploadDo.commands.setAdminConfig(validation.payload, organization.id);
     return {
       ok: true,
       message: "Upload configuration saved.",

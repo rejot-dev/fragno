@@ -24,7 +24,7 @@ export async function fetchAutomationCollectionSource<
   const description = await fetchFragnoOutboxDescription({
     baseUrl: new URL("/api/automations", request.url),
     signal: request.signal,
-    fetch: (input, init) => automations.fetch(new Request(input, init)),
+    fetch: (input, init) => automations.http.fetch(new Request(input, init)),
   });
 
   return {

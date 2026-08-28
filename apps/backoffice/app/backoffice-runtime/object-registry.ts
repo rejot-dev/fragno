@@ -58,7 +58,11 @@ import type {
   BillingTrackerPage,
   BillingTrackerPageInput,
 } from "@/fragno/billing";
-import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/durable-hooks";
+import type {
+  DurableHookQueueEntry,
+  DurableHookQueueOptions,
+  DurableHookQueueResponse,
+} from "@/fragno/durable-hooks";
 import type {
   MarketplaceAddDraftVersionInput,
   MarketplaceArchiveListingInput,
@@ -102,11 +106,15 @@ export type FetchObject = {
   fetch(request: Request): Promise<Response>;
 };
 
-export type AlarmableObject = {
-  alarm?(): Promise<void>;
+export type BackofficeObjectHttp = FetchObject & {
+  fetchAuthorized(request: Request, context: BackofficeActionRpcContext): Promise<Response>;
 };
 
-type DurableHookOptionsWithExtras = DurableHookQueueOptions & Record<string, unknown>;
+/** Separates finite Durable Object RPC commands from native HTTP request/response transport. */
+export type BackofficeObjectHandle<TCommands> = {
+  commands: TCommands;
+  http: BackofficeObjectHttp;
+};
 
 type AwaitedMethodReturn<TObject, TKey extends keyof TObject> = TObject[TKey] extends (
   ...args: infer _Args
@@ -114,9 +122,13 @@ type AwaitedMethodReturn<TObject, TKey extends keyof TObject> = TObject[TKey] ex
   ? TResult
   : never;
 
-export type DurableHookObject<TRepository = DurableHookRepository<DurableHookOptionsWithExtras>> = {
-  getDurableHookRepository(...args: unknown[]): TRepository | Promise<TRepository>;
+/** Exposes durable hook inspection as finite serializable Durable Object commands. */
+export type DurableHookCommands = {
+  getDurableHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse>;
+  getDurableHook(hookId: string): Promise<DurableHookQueueEntry | null>;
 };
+
+export type AutomationsDurableHookFragment = "automation" | "pi" | "workflows";
 
 type ScopedObjects<TObject> = {
   singleton(): TObject;
@@ -175,237 +187,226 @@ export type AdminOrganizationMemberRecord = {
   roles: string[];
 };
 
-export type AuthObject = FetchObject &
-  AlarmableObject &
-  DurableHookObject & {
-    enqueueEmailVerificationHook(
-      input: { userId: string; email: string },
-      propagationContext?: Readonly<Record<string, string>> | null,
-    ): Promise<string>;
-    enqueueOrganizationHook(
-      hookName: "onOrganizationCreated" | "onOrganizationUpdated",
-      payload: OrganizationHookPayload,
-      propagationContext?: Readonly<Record<string, string>> | null,
-    ): Promise<string>;
-    verifyUserEmail(input: VerifyUserEmailInput): Promise<VerifyUserEmailResult>;
-    getBackofficeMe(input: {
-      userId: string;
-      activeOrganizationId: string | null;
-    }): Promise<BackofficeMeData | null>;
-    getBackofficeCliOAuthConfig(input: { requestUrl: string }): Promise<BackofficeCliOAuthConfig>;
-    exchangeBackofficeOAuthAccessToken(input: {
-      requestUrl: string;
-      oauthAccessToken: string;
-      scope: BackofficeContextScope | null;
-    }): Promise<BackofficeCliTokenResult>;
-    getUserAuthorityFacts(input: {
-      userId: string;
-      organizationId?: string;
-    }): Promise<UserAuthorityFacts>;
-    /** Grants global administrator access; only the first administrator may be unverified. */
-    grantBackofficeAdminByEmail(input: { email: string }): Promise<GrantBackofficeAdminResult>;
-    createAdminOrganization(input: {
-      name: string;
-      slug: string;
-      ownerEmail: string;
-    }): Promise<AdminOrganizationRecord>;
-    addAdminOrganizationMember(input: {
-      organizationId: string;
-      userId: string;
-      roles: readonly string[];
-    }): Promise<AdminOrganizationMemberRecord>;
-    removeAdminOrganizationMember(input: {
-      organizationId: string;
-      userId: string;
-    }): Promise<AdminOrganizationMemberRecord>;
-    getAllOrganizations(): Promise<Organization[]>;
-    getOrganizationBySlug(slug: string): Promise<Pick<Organization, "id" | "slug"> | null>;
-    hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean>;
-    getDevOrganizations(): Promise<
-      Array<
-        Pick<Organization, "id" | "name" | "slug" | "createdBy"> & {
-          createdAt: Date;
-          updatedAt: Date;
-        }
-      >
-    >;
-    /**
-     * Applies deterministic auth state for scenario setup without sessions or lifecycle hooks.
-     * Production auth flows must use Better Auth's public endpoints instead.
-     */
-    applyScenarioFixture(fixture: ScenarioAuthFixture): Promise<void>;
-    getScenarioMemberRoles(input: {
-      organizationId: string;
-      userId: string;
-    }): Promise<string[] | null>;
-  };
+export type AuthObject = DurableHookCommands & {
+  enqueueEmailVerificationHook(
+    input: { userId: string; email: string },
+    propagationContext?: Readonly<Record<string, string>> | null,
+  ): Promise<string>;
+  enqueueOrganizationHook(
+    hookName: "onOrganizationCreated" | "onOrganizationUpdated",
+    payload: OrganizationHookPayload,
+    propagationContext?: Readonly<Record<string, string>> | null,
+  ): Promise<string>;
+  verifyUserEmail(input: VerifyUserEmailInput): Promise<VerifyUserEmailResult>;
+  getBackofficeMe(input: {
+    userId: string;
+    activeOrganizationId: string | null;
+  }): Promise<BackofficeMeData | null>;
+  getBackofficeCliOAuthConfig(input: { requestUrl: string }): Promise<BackofficeCliOAuthConfig>;
+  exchangeBackofficeOAuthAccessToken(input: {
+    requestUrl: string;
+    oauthAccessToken: string;
+    scope: BackofficeContextScope | null;
+  }): Promise<BackofficeCliTokenResult>;
+  getUserAuthorityFacts(input: {
+    userId: string;
+    organizationId?: string;
+  }): Promise<UserAuthorityFacts>;
+  /** Grants global administrator access; only the first administrator may be unverified. */
+  grantBackofficeAdminByEmail(input: { email: string }): Promise<GrantBackofficeAdminResult>;
+  createAdminOrganization(input: {
+    name: string;
+    slug: string;
+    ownerEmail: string;
+  }): Promise<AdminOrganizationRecord>;
+  addAdminOrganizationMember(input: {
+    organizationId: string;
+    userId: string;
+    roles: readonly string[];
+  }): Promise<AdminOrganizationMemberRecord>;
+  removeAdminOrganizationMember(input: {
+    organizationId: string;
+    userId: string;
+  }): Promise<AdminOrganizationMemberRecord>;
+  getAllOrganizations(): Promise<Organization[]>;
+  getOrganizationBySlug(slug: string): Promise<Pick<Organization, "id" | "slug"> | null>;
+  hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean>;
+  getDevOrganizations(): Promise<
+    Array<
+      Pick<Organization, "id" | "name" | "slug" | "createdBy"> & {
+        createdAt: Date;
+        updatedAt: Date;
+      }
+    >
+  >;
+  /**
+   * Applies deterministic auth state for scenario setup without sessions or lifecycle hooks.
+   * Production auth flows must use Better Auth's public endpoints instead.
+   */
+  applyScenarioFixture(fixture: ScenarioAuthFixture): Promise<void>;
+  getScenarioMemberRoles(input: {
+    organizationId: string;
+    userId: string;
+  }): Promise<string[] | null>;
+};
 
-export type ApiObject = FetchObject & AlarmableObject & DurableHookObject;
+export type ApiObject = DurableHookCommands;
 
-export type BillingObject = FetchObject &
-  AlarmableObject & {
-    recordEvent(
-      input: BillingEventInput,
-      context?: BackofficeRpcContext,
-    ): Promise<BillingRecordEventResult>;
-    getStatement(input: BillingStatementInput): Promise<BillingStatement>;
-    getTrackers(input: BillingTrackerPageInput): Promise<BillingTrackerPage>;
-  };
+export type BillingObject = {
+  recordEvent(
+    input: BillingEventInput,
+    context?: BackofficeRpcContext,
+  ): Promise<BillingRecordEventResult>;
+  getStatement(input: BillingStatementInput): Promise<BillingStatement>;
+  getTrackers(input: BillingTrackerPageInput): Promise<BillingTrackerPage>;
+};
 
-export type MarketplaceObject = FetchObject &
-  AlarmableObject & {
-    listPublishedListings(input?: MarketplaceListingPageInput): Promise<MarketplaceListingPage>;
-    getPublishedListing(
-      input: MarketplacePublishedListingInput,
-    ): Promise<MarketplaceListingDetail | null>;
-    getArtifactManifest(
-      input: MarketplaceArtifactManifestInput,
-    ): Promise<MarketplaceArtifactManifest | null>;
-    getLatestPublishedVersions(
-      input: MarketplaceLatestPublishedVersionsInput,
-    ): Promise<MarketplaceLatestPublishedVersions>;
-    listOwnedListings(
-      input: MarketplaceOwnedListingPageInput,
-    ): Promise<MarketplaceOwnedListingPage>;
-    getOwnedListing(
-      input: MarketplaceOwnedListingInput,
-    ): Promise<MarketplaceOwnedListingDetail | null>;
-    insertStaticEntries(
-      input: MarketplaceInsertStaticEntriesInput,
-    ): Promise<MarketplaceOperationResult<MarketplaceInsertStaticEntriesResult>>;
-    createDraftListing(
-      input: MarketplaceCreateDraftListingInput,
-    ): Promise<MarketplaceOperationResult<MarketplaceDraftResult>>;
-    addDraftVersion(
-      input: MarketplaceAddDraftVersionInput,
-    ): Promise<MarketplaceOperationResult<MarketplaceDraftResult>>;
-    updateListing(
-      input: MarketplaceUpdateListingInput,
-    ): Promise<MarketplaceOperationResult<MarketplaceListingUpdateResult>>;
-    publishVersion(
-      input: MarketplacePublishVersionInput,
-    ): Promise<MarketplaceOperationResult<MarketplacePublishVersionResult>>;
-    archiveListing(
-      input: MarketplaceArchiveListingInput,
-    ): Promise<MarketplaceOperationResult<MarketplaceArchiveResult>>;
-  };
+export type MarketplaceObject = {
+  listPublishedListings(input?: MarketplaceListingPageInput): Promise<MarketplaceListingPage>;
+  getPublishedListing(
+    input: MarketplacePublishedListingInput,
+  ): Promise<MarketplaceListingDetail | null>;
+  getArtifactManifest(
+    input: MarketplaceArtifactManifestInput,
+  ): Promise<MarketplaceArtifactManifest | null>;
+  getLatestPublishedVersions(
+    input: MarketplaceLatestPublishedVersionsInput,
+  ): Promise<MarketplaceLatestPublishedVersions>;
+  listOwnedListings(input: MarketplaceOwnedListingPageInput): Promise<MarketplaceOwnedListingPage>;
+  getOwnedListing(
+    input: MarketplaceOwnedListingInput,
+  ): Promise<MarketplaceOwnedListingDetail | null>;
+  insertStaticEntries(
+    input: MarketplaceInsertStaticEntriesInput,
+  ): Promise<MarketplaceOperationResult<MarketplaceInsertStaticEntriesResult>>;
+  createDraftListing(
+    input: MarketplaceCreateDraftListingInput,
+  ): Promise<MarketplaceOperationResult<MarketplaceDraftResult>>;
+  addDraftVersion(
+    input: MarketplaceAddDraftVersionInput,
+  ): Promise<MarketplaceOperationResult<MarketplaceDraftResult>>;
+  updateListing(
+    input: MarketplaceUpdateListingInput,
+  ): Promise<MarketplaceOperationResult<MarketplaceListingUpdateResult>>;
+  publishVersion(
+    input: MarketplacePublishVersionInput,
+  ): Promise<MarketplaceOperationResult<MarketplacePublishVersionResult>>;
+  archiveListing(
+    input: MarketplaceArchiveListingInput,
+  ): Promise<MarketplaceOperationResult<MarketplaceArchiveResult>>;
+};
 
-export type AutomationsObject = FetchObject &
-  AlarmableObject &
-  DurableHookObject & {
-    triggerIngestEvent(
-      event: AutomationEvent,
-      context?: BackofficeRpcContext,
-    ): Promise<AutomationIngestResult>;
-    ingestEvent(
-      event: AutomationEvent,
-      context?: BackofficeRpcContext,
-    ): Promise<AutomationIngestResult>;
-    seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
-    requestStaticMarketplacePublications(input?: {
-      force?: boolean;
-    }): Promise<MarketplaceStaticPublicationResult>;
-    requestMarketplaceIngestion(
-      input: MarketplaceIngestionRequestInput,
-      context: BackofficeActionRpcContext,
-    ): Promise<MarketplaceIngestionRequestResult>;
-    restartMarketplaceIngestion(
-      input: MarketplaceIngestionRequestInput,
-      context: BackofficeActionRpcContext,
-    ): Promise<MarketplaceIngestionRestartResult>;
-    getMarketplaceIngestion(
-      input: MarketplaceIngestionLookupInput,
-    ): Promise<MarketplaceIngestionRecord | null>;
-    listMarketplaceIngestions(
-      input?: MarketplaceIngestionListInput,
-    ): Promise<MarketplaceIngestionRecord[]>;
-    fetchWithContext(request: Request, context: BackofficeActionRpcContext): Promise<Response>;
-    bindExternalIdentity(
-      input: BindExternalIdentityInput,
-      context: BackofficeActionRpcContext,
-    ): Promise<BindExternalIdentityResult>;
-    revokeExternalIdentity(
-      input: RevokeExternalIdentityInput,
-      context: BackofficeActionRpcContext,
-    ): Promise<RevokeExternalIdentityResult>;
-    resolveExternalIdentity(
-      input: GetExternalIdentityBindingInput,
-      context: BackofficeActionRpcContext,
-    ): Promise<ResolveExternalIdentityResult>;
-    listEventSources(): Promise<AutomationEventSource[]>;
-    getEventSource(input: { source: string }): Promise<AutomationEventSource | null>;
-    ensureEventSource(input: AutomationEventSourceInput): Promise<AutomationEventSource>;
-    listEventDefinitions(): Promise<AutomationEventDefinition[]>;
-    getEventDefinition(input: {
-      source: string;
-      eventType: string;
-    }): Promise<AutomationEventDefinition | null>;
-    createEventDefinition(
-      input: AutomationEventDefinitionCreateInput,
-    ): Promise<AutomationEventDefinition>;
-    updateEventDefinition(
-      input: AutomationEventDefinitionUpdateInput,
-    ): Promise<AutomationEventDefinition | null>;
-    resolveProjectForExecution(input: {
-      projectId?: string;
-      slug?: string;
-    }): Promise<AutomationProjectExecutionTarget | null>;
-    listSandboxInstances(input?: {
-      provider?: SandboxProvider;
-      limit?: number;
-    }): Promise<SandboxInstanceRecord[]>;
-    getSandboxInstance(input: { id: string }): Promise<SandboxInstanceRecord | null>;
-    requestSandboxInstance(input: SandboxInstanceRequestInput): Promise<SandboxInstanceRecord>;
-    requestSandboxInstanceStop(input: { id: string }): Promise<SandboxInstanceRecord | null>;
-    getPiRuntimeState(): Promise<PiRuntimeState>;
-  };
+export type AutomationsObject = {
+  triggerIngestEvent(
+    event: AutomationEvent,
+    context?: BackofficeRpcContext,
+  ): Promise<AutomationIngestResult>;
+  ingestEvent(
+    event: AutomationEvent,
+    context?: BackofficeRpcContext,
+  ): Promise<AutomationIngestResult>;
+  seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
+  requestStaticMarketplacePublications(input?: {
+    force?: boolean;
+  }): Promise<MarketplaceStaticPublicationResult>;
+  requestMarketplaceIngestion(
+    input: MarketplaceIngestionRequestInput,
+    context: BackofficeActionRpcContext,
+  ): Promise<MarketplaceIngestionRequestResult>;
+  restartMarketplaceIngestion(
+    input: MarketplaceIngestionRequestInput,
+    context: BackofficeActionRpcContext,
+  ): Promise<MarketplaceIngestionRestartResult>;
+  getMarketplaceIngestion(
+    input: MarketplaceIngestionLookupInput,
+  ): Promise<MarketplaceIngestionRecord | null>;
+  listMarketplaceIngestions(
+    input?: MarketplaceIngestionListInput,
+  ): Promise<MarketplaceIngestionRecord[]>;
+  bindExternalIdentity(
+    input: BindExternalIdentityInput,
+    context: BackofficeActionRpcContext,
+  ): Promise<BindExternalIdentityResult>;
+  revokeExternalIdentity(
+    input: RevokeExternalIdentityInput,
+    context: BackofficeActionRpcContext,
+  ): Promise<RevokeExternalIdentityResult>;
+  resolveExternalIdentity(
+    input: GetExternalIdentityBindingInput,
+    context: BackofficeActionRpcContext,
+  ): Promise<ResolveExternalIdentityResult>;
+  listEventSources(): Promise<AutomationEventSource[]>;
+  getEventSource(input: { source: string }): Promise<AutomationEventSource | null>;
+  ensureEventSource(input: AutomationEventSourceInput): Promise<AutomationEventSource>;
+  listEventDefinitions(): Promise<AutomationEventDefinition[]>;
+  getEventDefinition(input: {
+    source: string;
+    eventType: string;
+  }): Promise<AutomationEventDefinition | null>;
+  createEventDefinition(
+    input: AutomationEventDefinitionCreateInput,
+  ): Promise<AutomationEventDefinition>;
+  updateEventDefinition(
+    input: AutomationEventDefinitionUpdateInput,
+  ): Promise<AutomationEventDefinition | null>;
+  resolveProjectForExecution(input: {
+    projectId?: string;
+    slug?: string;
+  }): Promise<AutomationProjectExecutionTarget | null>;
+  listSandboxInstances(input?: {
+    provider?: SandboxProvider;
+    limit?: number;
+  }): Promise<SandboxInstanceRecord[]>;
+  getSandboxInstance(input: { id: string }): Promise<SandboxInstanceRecord | null>;
+  requestSandboxInstance(input: SandboxInstanceRequestInput): Promise<SandboxInstanceRecord>;
+  requestSandboxInstanceStop(input: { id: string }): Promise<SandboxInstanceRecord | null>;
+  getPiRuntimeState(): Promise<PiRuntimeState>;
+  getDurableHookQueue(
+    fragment: AutomationsDurableHookFragment,
+    options?: DurableHookQueueOptions,
+  ): Promise<DurableHookQueueResponse>;
+  getDurableHook(
+    fragment: AutomationsDurableHookFragment,
+    hookId: string,
+  ): Promise<DurableHookQueueEntry | null>;
+};
 
-export type TelegramObject = FetchObject &
-  AlarmableObject &
-  DurableHookObject &
+export type TelegramObject = DurableHookCommands &
   AdminConfigurableObject<TelegramAdminConfigResponse> & {
     getAutomationFile(input: { fileId: string }): Promise<TelegramAutomationFileMetadata>;
-    downloadAutomationFile(input: { fileId: string }): Promise<Response>;
   };
 
-export type OtpObject = FetchObject &
-  AlarmableObject &
-  DurableHookObject & {
-    issueEmailVerification(
-      input: Parameters<Otp["issueEmailVerification"]>[0],
-    ): Promise<AwaitedMethodReturn<Otp, "issueEmailVerification">>;
-    confirmEmailVerificationChallenge(
-      input: Parameters<Otp["confirmEmailVerificationChallenge"]>[0],
-    ): Promise<AwaitedMethodReturn<Otp, "confirmEmailVerificationChallenge">>;
-    issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult>;
-    confirmIdentityClaim(input: unknown): Promise<AwaitedMethodReturn<Otp, "confirmIdentityClaim">>;
-  };
+export type OtpObject = DurableHookCommands & {
+  issueEmailVerification(
+    input: Parameters<Otp["issueEmailVerification"]>[0],
+  ): Promise<AwaitedMethodReturn<Otp, "issueEmailVerification">>;
+  confirmEmailVerificationChallenge(
+    input: Parameters<Otp["confirmEmailVerificationChallenge"]>[0],
+  ): Promise<AwaitedMethodReturn<Otp, "confirmEmailVerificationChallenge">>;
+  issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult>;
+  confirmIdentityClaim(input: unknown): Promise<AwaitedMethodReturn<Otp, "confirmIdentityClaim">>;
+};
 
-export type ResendObject = FetchObject &
-  AlarmableObject &
-  DurableHookObject &
+export type ResendObject = DurableHookCommands &
   AdminConfigurableObject<AwaitedMethodReturn<Resend, "getAdminConfig">> & {
     queueEmail(input: ResendSendEmailInput, options: { idempotencyKey: string }): Promise<void>;
   };
-export type Reson8Object = FetchObject &
-  AdminConfigurableObject<AwaitedMethodReturn<Reson8, "getAdminConfig">> & {
-    getRealtimeOriginDiagnostic(
-      origin: string,
-    ): Promise<AwaitedMethodReturn<Reson8, "getRealtimeOriginDiagnostic">>;
-  };
-export type McpObject = FetchObject & AlarmableObject & DurableHookObject;
-export type UploadObject = FetchObject &
-  AlarmableObject &
-  DurableHookObject &
+export type Reson8Object = AdminConfigurableObject<
+  AwaitedMethodReturn<Reson8, "getAdminConfig">
+> & {
+  getRealtimeOriginDiagnostic(
+    origin: string,
+  ): Promise<AwaitedMethodReturn<Reson8, "getRealtimeOriginDiagnostic">>;
+};
+export type McpObject = DurableHookCommands;
+export type UploadObject = DurableHookCommands &
   AdminConfigurableObject<AwaitedMethodReturn<Upload, "getAdminConfig">>;
-export type CloudflareObject = FetchObject;
-export type FormsObject = FetchObject & AlarmableObject & DurableHookObject;
-export type GitHubObject = FetchObject &
-  AlarmableObject &
-  DurableHookObject & {
-    ensureAdminConfig(orgId: string): Promise<AwaitedMethodReturn<GitHub, "ensureAdminConfig">>;
-    redeliverFailedInstallationWebhooks(installationId: string): Promise<void>;
-  };
+export type CloudflareObject = Record<never, never>;
+export type FormsObject = DurableHookCommands;
+export type GitHubObject = DurableHookCommands & {
+  ensureAdminConfig(orgId: string): Promise<AwaitedMethodReturn<GitHub, "ensureAdminConfig">>;
+  redeliverFailedInstallationWebhooks(installationId: string): Promise<void>;
+};
 
 type SandboxObject = {
   getRuntimeStatus(): Promise<{ status: SandboxInstanceStatus }>;
@@ -469,7 +470,7 @@ export type BackofficeObjectBindingName =
   | "FORMS"
   | "SANDBOX";
 
-export type BackofficeObjectBinding<_TObject, _TRawObject = _TObject> = {
+export type BackofficeObjectBinding<_TCommands> = {
   name: BackofficeObjectBindingName;
 };
 
@@ -527,10 +528,10 @@ export const assertBackofficeObjectAddressAllowed = (address: BackofficeObjectAd
 };
 
 export type BackofficeObjectFactory = {
-  get<TObject, TRawObject = TObject>(
-    binding: BackofficeObjectBinding<TObject, TRawObject>,
+  get<TCommands>(
+    binding: BackofficeObjectBinding<TCommands>,
     address: BackofficeObjectAddress,
-  ): TRawObject;
+  ): BackofficeObjectHandle<TCommands>;
 };
 
 const binding = <TObject>(name: BackofficeObjectBindingName): BackofficeObjectBinding<TObject> => ({
@@ -609,6 +610,34 @@ export const decodeBackofficeObjectScope = (encodedName: string): BackofficeObje
   }
 };
 
+export function backofficeContextScopeFromDurableObjectId(
+  id: DurableObjectId,
+  bindingName: BackofficeObjectBindingName,
+): BackofficeContextScope | null {
+  // TODO(Wilco): should just throw here
+  if (!id.name) {
+    return null;
+  }
+
+  const scope = decodeBackofficeObjectScope(id.name);
+  if (!scope) {
+    throw new Error(`Backoffice object ${bindingName} has an invalid named identity.`);
+  }
+  assertBackofficeObjectAddressAllowed({ binding: bindingName, scope });
+  return objectScopeToContextScope(scope);
+}
+
+export function requireBackofficeContextScopeFromDurableObjectId(
+  id: DurableObjectId,
+  bindingName: BackofficeObjectBindingName,
+): BackofficeContextScope {
+  const scope = backofficeContextScopeFromDurableObjectId(id, bindingName);
+  if (!scope) {
+    throw new Error(`Backoffice object ${bindingName} requires a named Durable Object identity.`);
+  }
+  return scope;
+}
+
 export const encodeBackofficeObjectAddress = (address: BackofficeObjectAddress): string => {
   switch (address.scope.kind) {
     case "singleton":
@@ -640,7 +669,24 @@ export const objectAddressToActor = (
   role: "delegate",
 });
 
-export const objectScopeToContextScope = (scope: BackofficeObjectScope): BackofficeContextScope => {
+export function backofficeObjectScopeFromContextScope(
+  scope: BackofficeContextScope,
+): BackofficeObjectScope {
+  switch (scope.kind) {
+    case "system":
+      return singleton();
+    case "org":
+      return org(scope.orgId);
+    case "user":
+      return user({ userId: scope.userId });
+    case "project":
+      return project({ orgId: scope.orgId, projectId: scope.projectId });
+  }
+
+  throw new Error("Unsupported Backoffice context scope kind.");
+}
+
+export function objectScopeToContextScope(scope: BackofficeObjectScope): BackofficeContextScope {
   switch (scope.kind) {
     case "singleton":
       return { kind: "system" };
@@ -659,34 +705,7 @@ export const objectScopeToContextScope = (scope: BackofficeObjectScope): Backoff
   }
 
   throw new Error("Unsupported Backoffice object scope kind.");
-};
-
-type BackofficeRpcResult<TResult> = Promise<TResult> &
-  (TResult extends object ? BackofficeRpcObject<TResult> : unknown);
-
-type BackofficeRpcMethod<TValue> = TValue extends (...args: infer TArgs) => infer TResult
-  ? ((...args: TArgs) => BackofficeRpcResult<Awaited<TResult>>) & {
-      bind?: never;
-      call?: never;
-      apply?: never;
-    }
-  : BackofficeRpcResult<Awaited<TValue>>;
-
-type BackofficeRpcMember<TValue> = undefined extends TValue
-  ? BackofficeRpcMethod<Exclude<TValue, undefined>> | undefined
-  : BackofficeRpcMethod<TValue>;
-
-export type BackofficeRpcObject<TObject> = Promise<TObject> & {
-  [TKey in keyof TObject]: BackofficeRpcMember<TObject[TKey]>;
-};
-
-type RemoteInitializableScopedObject<TObject> = {
-  init(scope: BackofficeContextScope): BackofficeRpcObject<TObject>;
-};
-
-const initializedBinding = <TObject>(
-  name: BackofficeObjectBindingName,
-): BackofficeObjectBinding<TObject, RemoteInitializableScopedObject<TObject>> => ({ name });
+}
 
 const objectAddress = (
   objectBinding: BackofficeObjectBinding<unknown>,
@@ -696,47 +715,25 @@ const objectAddress = (
   scope,
 });
 
-const scopedObject = <TObject>(
+const scopedObject = <TCommands>(
   factory: BackofficeObjectFactory,
-  objectBinding: BackofficeObjectBinding<TObject>,
+  objectBinding: BackofficeObjectBinding<TCommands>,
   address: BackofficeObjectAddress,
-): TObject => factory.get(objectBinding, address);
+): BackofficeObjectHandle<TCommands> => factory.get(objectBinding, address);
 
-const scopedInitializedObject = <TObject>(
+const scoped = <TCommands>(
   factory: BackofficeObjectFactory,
-  objectBinding: BackofficeObjectBinding<TObject, RemoteInitializableScopedObject<TObject>>,
-  address: BackofficeObjectAddress,
-): BackofficeRpcObject<TObject> =>
-  factory.get(objectBinding, address).init(objectScopeToContextScope(address.scope));
-
-const scoped = <TObject>(
-  factory: BackofficeObjectFactory,
-  objectBinding: BackofficeObjectBinding<TObject>,
-): ScopedObjects<TObject> => ({
+  objectBinding: BackofficeObjectBinding<TCommands>,
+): ScopedObjects<BackofficeObjectHandle<TCommands>> => ({
   singleton() {
     return scopedObject(factory, objectBinding, objectAddress(objectBinding, singleton()));
   },
   for(scope: BackofficeContextScope) {
-    switch (scope.kind) {
-      case "system":
-        return scopedObject(factory, objectBinding, objectAddress(objectBinding, singleton()));
-      case "org":
-        return scopedObject(factory, objectBinding, objectAddress(objectBinding, org(scope.orgId)));
-      case "user":
-        return scopedObject(
-          factory,
-          objectBinding,
-          objectAddress(objectBinding, user({ userId: scope.userId })),
-        );
-      case "project":
-        return scopedObject(
-          factory,
-          objectBinding,
-          objectAddress(objectBinding, project({ orgId: scope.orgId, projectId: scope.projectId })),
-        );
-    }
-
-    throw new Error("Unsupported Backoffice context scope kind.");
+    return scopedObject(
+      factory,
+      objectBinding,
+      objectAddress(objectBinding, backofficeObjectScopeFromContextScope(scope)),
+    );
   },
   forOrg(orgId: string) {
     return scopedObject(factory, objectBinding, objectAddress(objectBinding, org(orgId)));
@@ -752,89 +749,18 @@ const scoped = <TObject>(
   },
 });
 
-const scopedInitialized = <TObject>(
-  factory: BackofficeObjectFactory,
-  objectBinding: BackofficeObjectBinding<TObject, RemoteInitializableScopedObject<TObject>>,
-): ScopedObjects<BackofficeRpcObject<TObject>> => ({
-  singleton() {
-    return scopedInitializedObject(
-      factory,
-      objectBinding,
-      objectAddress(objectBinding, singleton()),
-    );
-  },
-  for(scope: BackofficeContextScope) {
-    switch (scope.kind) {
-      case "system":
-        return scopedInitializedObject(
-          factory,
-          objectBinding,
-          objectAddress(objectBinding, singleton()),
-        );
-      case "org":
-        return scopedInitializedObject(
-          factory,
-          objectBinding,
-          objectAddress(objectBinding, org(scope.orgId)),
-        );
-      case "user":
-        return scopedInitializedObject(
-          factory,
-          objectBinding,
-          objectAddress(objectBinding, user({ userId: scope.userId })),
-        );
-      case "project":
-        return scopedInitializedObject(
-          factory,
-          objectBinding,
-          objectAddress(objectBinding, project({ orgId: scope.orgId, projectId: scope.projectId })),
-        );
-    }
-
-    throw new Error("Unsupported Backoffice context scope kind.");
-  },
-  forOrg(orgId: string) {
-    return scopedInitializedObject(
-      factory,
-      objectBinding,
-      objectAddress(objectBinding, org(orgId)),
-    );
-  },
-  forName(name: string) {
-    return scopedInitializedObject(
-      factory,
-      objectBinding,
-      objectAddress(objectBinding, named(name)),
-    );
-  },
-  forUser(input: { userId: string }) {
-    return scopedInitializedObject(
-      factory,
-      objectBinding,
-      objectAddress(objectBinding, user(input)),
-    );
-  },
-  forProject(input: { orgId: string; projectId: string }) {
-    return scopedInitializedObject(
-      factory,
-      objectBinding,
-      objectAddress(objectBinding, project(input)),
-    );
-  },
-});
-
 export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory) => ({
-  api: scopedInitialized(factory, initializedBinding<ApiObject>("API")),
+  api: scoped(factory, binding<ApiObject>("API")),
   auth: scoped(factory, binding<AuthObject>("AUTH")),
 
-  automations: scopedInitialized(factory, initializedBinding<AutomationsObject>("AUTOMATIONS")),
-  billing: scopedInitialized(factory, initializedBinding<BillingObject>("BILLING")),
+  automations: scoped(factory, binding<AutomationsObject>("AUTOMATIONS")),
+  billing: scoped(factory, binding<BillingObject>("BILLING")),
   marketplace: scoped(factory, binding<MarketplaceObject>("MARKETPLACE")),
-  telegram: scopedInitialized(factory, initializedBinding<TelegramObject>("TELEGRAM")),
+  telegram: scoped(factory, binding<TelegramObject>("TELEGRAM")),
   otp: scoped(factory, binding<OtpObject>("OTP")),
   resend: scoped(factory, binding<ResendObject>("RESEND")),
   reson8: scoped(factory, binding<Reson8Object>("RESON8")),
-  mcp: scopedInitialized(factory, initializedBinding<McpObject>("MCP")),
+  mcp: scoped(factory, binding<McpObject>("MCP")),
   upload: scoped(factory, binding<UploadObject>("UPLOAD")),
   github: scoped(factory, binding<GitHubObject>("GITHUB")),
 

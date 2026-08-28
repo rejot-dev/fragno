@@ -59,7 +59,7 @@ describe("Automations identity binding RPCs", () => {
       const bindingId = buildExternalIdentityBindingId(identity);
 
       await expect(
-        automations.bindExternalIdentity(
+        automations.commands.bindExternalIdentity(
           {
             identity,
             userId: "user-1",
@@ -90,7 +90,7 @@ describe("Automations identity binding RPCs", () => {
 
       observer.actions.length = 0;
       await expect(
-        automations.resolveExternalIdentity({ identity }, actionContext()),
+        automations.commands.resolveExternalIdentity({ identity }, actionContext()),
       ).resolves.toEqual({ userId: "user-1" });
       expect(observer.actions).toEqual([
         {
@@ -107,7 +107,7 @@ describe("Automations identity binding RPCs", () => {
 
       observer.actions.length = 0;
       await expect(
-        automations.revokeExternalIdentity(
+        automations.commands.revokeExternalIdentity(
           { identity, expectedUserId: "user-1", expectedVersion: 0 },
           actionContext(),
         ),
@@ -160,21 +160,21 @@ describe("Automations identity binding RPCs", () => {
       };
 
       await expect(
-        automations.bindExternalIdentity(bindInput, actionContext()),
+        automations.commands.bindExternalIdentity(bindInput, actionContext()),
       ).rejects.toMatchObject({ reason: "principal-permission-denied" });
       await expect(
-        automations.resolveExternalIdentity({ identity }, actionContext()),
+        automations.commands.resolveExternalIdentity({ identity }, actionContext()),
       ).rejects.toMatchObject({ reason: "principal-permission-denied" });
       expect(observer.actions).toEqual([]);
 
       const systemContext = actionContext(createBackofficeSystemExecution(scope));
       await expect(
-        automations.bindExternalIdentity(bindInput, systemContext),
+        automations.commands.bindExternalIdentity(bindInput, systemContext),
       ).resolves.toMatchObject({ outcome: "created" });
 
       observer.actions.length = 0;
       await expect(
-        automations.revokeExternalIdentity(
+        automations.commands.revokeExternalIdentity(
           { identity, expectedUserId: "user-1", expectedVersion: 0 },
           actionContext(),
         ),
@@ -182,7 +182,7 @@ describe("Automations identity binding RPCs", () => {
       expect(observer.actions).toEqual([]);
 
       await expect(
-        automations.revokeExternalIdentity(
+        automations.commands.revokeExternalIdentity(
           { identity, expectedUserId: "user-1", expectedVersion: 0 },
           systemContext,
         ),
@@ -206,7 +206,7 @@ describe("Automations identity binding RPCs", () => {
       );
 
       await expect(
-        automations.bindExternalIdentity(
+        automations.commands.bindExternalIdentity(
           {
             identity,
             userId: "user-1",

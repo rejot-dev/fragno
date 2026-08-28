@@ -117,7 +117,7 @@ const createExecutionStateBackend = ({
   }
 
   return createBackofficeStateBackend({
-    uploadObject: kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload),
+    uploadObject: kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload).http,
     staticFileCollection,
   });
 };
@@ -126,7 +126,7 @@ async function resolveRuntimeOrganization(
   runtime: BackofficeRuntimeServices,
   organizationId: string,
 ) {
-  const organization = (await runtime.objects.auth.singleton().getAllOrganizations()).find(
+  const organization = (await runtime.objects.auth.singleton().commands.getAllOrganizations()).find(
     ({ id }) => id === organizationId,
   );
   if (!organization) {
@@ -170,7 +170,7 @@ export const createRouteBackedRuntimeContext = ({
     stateBackend: createExecutionStateBackend({ runtime, kernel, execution }),
     admin:
       runtime.config.bindings.auth && execution.scope.kind === "system"
-        ? { runtime: createAdminRuntime(runtime.objects.auth.singleton()) }
+        ? { runtime: createAdminRuntime(runtime.objects.auth.singleton().commands) }
         : null,
     createBackofficeScopedContext: (scope) => {
       kernel.assertScopedContextAccess(execution, scope);
@@ -203,13 +203,13 @@ export const createRouteBackedRuntimeContext = ({
     cloudflare: runtime.config.bindings.cloudflare
       ? (() => {
           const object = unavailableObject(() => runtime.objects.cloudflare.singleton());
-          return object ? { runtime: createCloudflareRuntime({ object }) } : null;
+          return object ? { runtime: createCloudflareRuntime({ http: object.http }) } : null;
         })()
       : null,
     web: runtime.config.bindings.cloudflare
       ? (() => {
           const object = unavailableObject(() => runtime.objects.cloudflare.singleton());
-          return object ? { runtime: createWebRuntime({ object }) } : null;
+          return object ? { runtime: createWebRuntime({ object: object.http }) } : null;
         })()
       : null,
     event: {
@@ -272,7 +272,7 @@ export const createRouteBackedRuntimeContext = ({
       : null,
     forms:
       execution.scope.kind === "system" && formsObjects
-        ? { runtime: createFormsRuntime(formsObjects.singleton()) }
+        ? { runtime: createFormsRuntime(formsObjects.singleton().http) }
         : null,
     internal: org
       ? {
@@ -291,7 +291,7 @@ export const createRouteBackedRuntimeContext = ({
           );
           return object
             ? {
-                runtime: createApiRuntime(object, async () => {
+                runtime: createApiRuntime(object.http, async () => {
                   const resolvedScope = await resolveBackofficeRuntimeScope(
                     execution.scope,
                     (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
@@ -317,7 +317,7 @@ export const createRouteBackedRuntimeContext = ({
           );
           return object
             ? {
-                runtime: createMcpRuntime(object, async () => {
+                runtime: createMcpRuntime(object.http, async () => {
                   const resolvedScope = await resolveBackofficeRuntimeScope(
                     execution.scope,
                     (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
@@ -345,7 +345,7 @@ export const createRouteBackedRuntimeContext = ({
                 (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
               );
               return await createOtpRuntime({
-                object: kernel.scoped("OTP", execution.scope, runtime.objects.otp),
+                object: kernel.scoped("OTP", execution.scope, runtime.objects.otp).commands,
                 config: runtime.config,
                 scope: resolvedScope,
                 kernel,
@@ -365,14 +365,14 @@ export const createRouteBackedRuntimeContext = ({
     reson8: {
       runtime: selectedOrg
         ? createReson8RouteRuntime({
-            object: kernel.scoped("RESON8", execution.scope, runtime.objects.reson8),
+            object: kernel.scoped("RESON8", execution.scope, runtime.objects.reson8).http,
           })
         : createUnavailableReson8Runtime(unavailableMessage("RESON8", execution)),
     },
     resend: {
       runtime: selectedOrg
         ? createResendRouteRuntime({
-            object: kernel.scoped("RESEND", execution.scope, runtime.objects.resend),
+            object: kernel.scoped("RESEND", execution.scope, runtime.objects.resend).http,
           })
         : createUnavailableResendRuntime(unavailableMessage("RESEND", execution)),
     },
@@ -391,7 +391,7 @@ export const createRouteBackedRuntimeContext = ({
       runtime.config.bindings.upload && isBackofficeRoutableScope(execution.scope)
         ? {
             runtime: createUploadRuntime(
-              kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload),
+              kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload).http,
             ),
           }
         : null,

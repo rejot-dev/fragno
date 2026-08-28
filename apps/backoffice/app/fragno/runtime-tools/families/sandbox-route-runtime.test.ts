@@ -36,8 +36,8 @@ describe("createSandboxRouteRuntime", () => {
     };
     const runtime = createSandboxRouteRuntime({
       objects: {
-        automations: { forOrg: vi.fn(() => automations) },
-        sandbox: { forName: vi.fn(() => sandbox) },
+        automations: { forOrg: vi.fn(() => ({ commands: automations })) },
+        sandbox: { forName: vi.fn(() => ({ commands: sandbox })) },
       } as unknown as BackofficeObjectRegistry,
       orgId: " org-1 ",
     });

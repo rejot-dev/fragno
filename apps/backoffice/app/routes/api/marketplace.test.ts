@@ -17,7 +17,7 @@ beforeEach(() => {
   marketplaceFetchMock.mockReset();
   getMarketplaceDurableObjectMock.mockReset();
   marketplaceFetchMock.mockResolvedValue(Response.json({ listings: [] }));
-  getMarketplaceDurableObjectMock.mockReturnValue({ fetch: marketplaceFetchMock });
+  getMarketplaceDurableObjectMock.mockReturnValue({ http: { fetch: marketplaceFetchMock } });
 });
 
 describe("Marketplace API proxy", () => {

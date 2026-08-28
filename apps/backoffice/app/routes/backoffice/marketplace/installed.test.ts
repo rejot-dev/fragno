@@ -19,7 +19,7 @@ const authenticatedUser = {
 const automations = {
   listMarketplaceIngestions: listMarketplaceIngestionsMock,
 };
-const forOrgMock = vi.fn(() => automations);
+const forOrgMock = vi.fn(() => ({ commands: automations }));
 const marketplace = {
   getLatestPublishedVersions: getLatestPublishedVersionsMock,
 };
@@ -28,7 +28,7 @@ const context = {
     runtime: {
       objects: {
         automations: { forOrg: forOrgMock },
-        marketplace: { singleton: () => marketplace },
+        marketplace: { singleton: () => ({ commands: marketplace }) },
       },
     },
   }),

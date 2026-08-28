@@ -24,7 +24,7 @@ export const apiPublicRoute = {
   internalPrefix: API_INTERNAL_PREFIX,
   getObjectForScope: (context, scope) =>
     context.get(BackofficeWorkerContext).runtime.objects.api.for(scope),
-  forwardRequest: ({ object, request }) => object.fetch(request),
+  forwardRequest: ({ object, request }) => object.http.fetch(request),
   isAnonymousRequest: isPublicWebhookReceiveRequest,
   oauth: {
     internalCallbackPath: API_INTERNAL_OAUTH_CALLBACK_PATH,

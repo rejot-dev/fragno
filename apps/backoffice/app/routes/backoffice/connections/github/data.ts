@@ -141,10 +141,10 @@ const createGitHubRouteCaller = (
     mountRoute: "/api/github",
     baseHeaders: request.headers,
     fetch: async (outboundRequest) => {
-      await githubDo.ensureAdminConfig(organizationId);
+      await githubDo.commands.ensureAdminConfig(organizationId);
       const url = new URL(outboundRequest.url);
       url.searchParams.set("orgId", organizationId);
-      return await githubDo.fetch(new Request(url.toString(), outboundRequest));
+      return await githubDo.http.fetch(new Request(url.toString(), outboundRequest));
     },
   });
 };
@@ -180,7 +180,10 @@ export async function fetchGitHubAdminConfig(
 ): Promise<GitHubAdminConfigResult> {
   try {
     const githubRouterDo = getGitHubWebhookRouterDurableObject(context);
-    const configState = await githubRouterDo.getAdminConfig(BACKOFFICE_ADMIN_OBJECT_NAME, origin);
+    const configState = await githubRouterDo.commands.getAdminConfig(
+      BACKOFFICE_ADMIN_OBJECT_NAME,
+      origin,
+    );
     return { configState, configError: null };
   } catch (error) {
     return {

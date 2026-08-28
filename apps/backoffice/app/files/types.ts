@@ -1,6 +1,10 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { BackofficeObjectRegistry, UploadObject } from "@/backoffice-runtime/object-registry";
+import type {
+  BackofficeObjectHandle,
+  BackofficeObjectRegistry,
+  UploadObject,
+} from "@/backoffice-runtime/object-registry";
 import type { DurableHookQueueOptions, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import type { UploadProvider } from "@/fragno/upload";
 
@@ -64,7 +68,7 @@ export type FilesContext = {
   request?: Request;
   objects?: BackofficeObjectRegistry;
   /** Selects a specific Upload object for trusted internal filesystem adapters. */
-  uploadObject?: UploadObject;
+  uploadObject?: BackofficeObjectHandle<UploadObject>;
   execution: BackofficeExecutionContext;
   kernel: BackofficeKernel;
   filePrincipal: FilePrincipal;

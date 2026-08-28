@@ -1,7 +1,10 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
-import type { AutomationsObject, BackofficeRpcObject } from "@/backoffice-runtime/object-registry";
+import type {
+  AutomationsObject,
+  BackofficeObjectHandle,
+} from "@/backoffice-runtime/object-registry";
 import { automationActorsSchema } from "@/fragno/automation/actors";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 
@@ -85,11 +88,11 @@ const loadWorkflowActors = async ({
   execution,
   instanceId,
 }: {
-  object: BackofficeRpcObject<AutomationsObject>;
+  object: BackofficeObjectHandle<AutomationsObject>;
   execution: ReturnType<typeof createBackofficeUserExecution>;
   instanceId: string;
 }) => {
-  const response = await object.fetchWithContext(
+  const response = await object.http.fetchAuthorized(
     new Request(
       `https://workflows.test/api/workflows/${CODEMODE_WORKFLOW}/instances/${instanceId}`,
     ),
@@ -125,7 +128,7 @@ describe("scenario workflow ownership", () => {
               userId: "attacker",
             }).actors;
             const object = ctx.runtime.objects.automations.forOrg("org-1");
-            const created = await object.fetchWithContext(
+            const created = await object.http.fetchAuthorized(
               workflowRequest({
                 orgId: "org-2",
                 instanceId: "forged-event-context",
@@ -135,7 +138,7 @@ describe("scenario workflow ownership", () => {
             );
             assert(created.status === 200);
 
-            const response = await object.fetchWithContext(
+            const response = await object.http.fetchAuthorized(
               new Request(
                 `https://workflows.test/api/workflows/${CODEMODE_WORKFLOW}/instances/forged-event-context`,
               ),
@@ -180,7 +183,7 @@ describe("scenario workflow ownership", () => {
               scope: { kind: "org", orgId: "org-1" },
               userId: "attacker",
             }).actors;
-            const response = await ctx.runtime.objects.automations.forOrg("org-1").fetch(
+            const response = await ctx.runtime.objects.automations.forOrg("org-1").http.fetch(
               workflowRequest({
                 orgId: "org-1",
                 instanceId: "untrusted-workflow",
@@ -205,7 +208,7 @@ describe("scenario workflow ownership", () => {
               ["owned-single", false],
               ["owned-batch", true],
             ] as const) {
-              const response = await object.fetchWithContext(
+              const response = await object.http.fetchAuthorized(
                 workflowRequest({ orgId: "org-1", instanceId, actors: forgedActors, batch }),
                 { execution: ownerExecution, propagationContext: null },
               );

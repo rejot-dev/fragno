@@ -86,7 +86,9 @@ export async function action({ request, context, url }: Route.ActionArgs) {
     } satisfies PublishActionData;
   }
 
-  const marketplace = context.get(BackofficeWorkerContext).runtime.objects.marketplace.singleton();
+  const marketplace = context
+    .get(BackofficeWorkerContext)
+    .runtime.objects.marketplace.singleton().commands;
   const operation = await marketplace.createDraftListing(input.data);
   if (!operation.ok) {
     return { ok: false, message: operation.error.message } satisfies PublishActionData;

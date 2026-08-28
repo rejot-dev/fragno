@@ -90,7 +90,7 @@ export async function loader({
   }
 
   const githubWebhookRouterDo = getGitHubWebhookRouterDurableObject(context);
-  const resolved = await githubWebhookRouterDo.resolveInstallationClaimState({
+  const resolved = await githubWebhookRouterDo.commands.resolveInstallationClaimState({
     state,
     userId: me.user.id,
   });
@@ -138,7 +138,7 @@ export async function loader({
     };
   }
 
-  await githubWebhookRouterDo.storeInstallationClaimCompletion({
+  await githubWebhookRouterDo.commands.storeInstallationClaimCompletion({
     state,
     userId: me.user.id,
     completion: claim.result,
@@ -168,7 +168,7 @@ export async function action({
   }
 
   const githubWebhookRouterDo = getGitHubWebhookRouterDurableObject(context);
-  const resolved = await githubWebhookRouterDo.resolveInstallationClaimState({
+  const resolved = await githubWebhookRouterDo.commands.resolveInstallationClaimState({
     state,
     userId: me.user.id,
   });
@@ -194,7 +194,7 @@ export async function action({
     };
   }
 
-  const mappingResult = await githubWebhookRouterDo.setInstallationOrg(
+  const mappingResult = await githubWebhookRouterDo.commands.setInstallationOrg(
     installationId,
     resolved.orgId,
   );
@@ -214,8 +214,8 @@ export async function action({
   }
 
   const githubDo = getGitHubDurableObject(context, resolved.orgId);
-  await githubDo.redeliverFailedInstallationWebhooks(installationId);
-  await githubWebhookRouterDo.consumeInstallationClaimState({ state, userId: me.user.id });
+  await githubDo.commands.redeliverFailedInstallationWebhooks(installationId);
+  await githubWebhookRouterDo.commands.consumeInstallationClaimState({ state, userId: me.user.id });
 
   const safeReturnTo = isSafeBackofficeReturnTo(returnTo) ? returnTo : resolved.returnTo;
   const syncResult = sync.result;

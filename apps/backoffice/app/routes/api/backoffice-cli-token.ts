@@ -43,7 +43,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   try {
-    const result = await getAuthDurableObject(context).exchangeBackofficeOAuthAccessToken({
+    const result = await getAuthDurableObject(context).commands.exchangeBackofficeOAuthAccessToken({
       requestUrl: request.url,
       oauthAccessToken: bearerMatch[1],
       scope: input.data.scope,

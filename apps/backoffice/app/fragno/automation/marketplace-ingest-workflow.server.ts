@@ -14,7 +14,7 @@ import {
   type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import type { UploadObject } from "@/backoffice-runtime/object-registry";
+import type { BackofficeObjectHandle, UploadObject } from "@/backoffice-runtime/object-registry";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
@@ -97,20 +97,22 @@ const marketplaceIngestWorkflowOutputSchema = z.object({
 
 const UPLOAD_INTERNAL_ORIGIN = "https://upload.internal";
 
-const createUploadRouteCaller = (object: UploadObject) =>
+type UploadHttpTransport = Pick<BackofficeObjectHandle<UploadObject>["http"], "fetch">;
+
+const createUploadRouteCaller = (http: UploadHttpTransport) =>
   createRouteCaller<UploadFragment>({
     baseUrl: UPLOAD_INTERNAL_ORIGIN,
     mountRoute: "/api/upload",
-    fetch: (request) => object.fetch(request),
+    fetch: (request) => http.fetch(request),
   });
 
 type UploadRouteCaller = ReturnType<typeof createUploadRouteCaller>;
 
-const requestMarketplaceArtifactBytes = async (object: UploadObject, fileKey: string) => {
+const requestMarketplaceArtifactBytes = async (http: UploadHttpTransport, fileKey: string) => {
   const url = new URL("/api/upload/files/by-key/content", UPLOAD_INTERNAL_ORIGIN);
   url.searchParams.set("provider", UPLOAD_PROVIDER_DATABASE);
   url.searchParams.set("key", fileKey);
-  const response = await object.fetch(new Request(url));
+  const response = await http.fetch(new Request(url));
   if (!response.ok) {
     let code: string | null = null;
     let message = "Upload returned an unexpected response.";
@@ -279,7 +281,7 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
                   ),
                 ),
               organizationHasMember: async (userId) =>
-                await runtime.objects.auth.singleton().hasOrganizationMember({
+                await runtime.objects.auth.singleton().commands.hasOrganizationMember({
                   organizationId,
                   userId,
                 }),
@@ -300,9 +302,9 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
           MARKETPLACE_EXTERNAL_STEP_RETRIES,
           async function prepareMarketplaceIngestionDestination() {
             const upload = runtime.objects.upload.forOrg(targetOrganizationId);
-            const uploadConfig = await upload.getAdminConfig();
+            const uploadConfig = await upload.commands.getAdminConfig();
             if (!uploadConfig.providers.database?.configured) {
-              await upload.setAdminConfig({ provider: "database" }, targetOrganizationId);
+              await upload.commands.setAdminConfig({ provider: "database" }, targetOrganizationId);
             }
           },
         );
@@ -329,9 +331,11 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
         "resolve published marketplace artifact",
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
         async function resolvePublishedMarketplaceArtifact() {
-          const manifest = await runtime.objects.marketplace.singleton().getArtifactManifest({
-            listingId: input.listingId,
-          });
+          const manifest = await runtime.objects.marketplace
+            .singleton()
+            .commands.getArtifactManifest({
+              listingId: input.listingId,
+            });
           let resolvedArtifact;
           try {
             resolvedArtifact = resolveMarketplaceIngestionArtifactVersion(manifest, input.version);
@@ -361,7 +365,7 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
       );
 
       const sourceObject = runtime.objects.upload.forName(artifact.uploadName);
-      const sourceUploadRoutes = createUploadRouteCaller(sourceObject);
+      const sourceUploadRoutes = createUploadRouteCaller(sourceObject.http);
       const artifactListings: Array<{
         kind: "requested" | "installed";
         version: string;
@@ -491,7 +495,7 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
       ).sort((left, right) => left.localeCompare(right));
 
       const destinationObject = runtime.objects.upload.for(input.targetScope);
-      const destinationUploadRoutes = createUploadRouteCaller(destinationObject);
+      const destinationUploadRoutes = createUploadRouteCaller(destinationObject.http);
       const workspaceUpdate = await step.do(
         "plan marketplace workspace writes",
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
@@ -542,7 +546,7 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
           async () => {
             try {
               const sourceBytes = await requestMarketplaceArtifactBytes(
-                sourceObject,
+                sourceObject.http,
                 source.fileKey,
               );
               await assertMarketplaceSourceBytesMatch(source, sourceBytes);
@@ -596,7 +600,7 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
           async () => {
             try {
               const sourceBytes = await requestMarketplaceArtifactBytes(
-                sourceObject,
+                sourceObject.http,
                 source.fileKey,
               );
               await assertMarketplaceSourceBytesMatch(source, sourceBytes);
@@ -752,7 +756,10 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
               throw new Error("Marketplace ingestion requires the local Workflows fragment.");
             }
             const code = TEXT_DECODER.decode(
-              await requestMarketplaceArtifactBytes(sourceObject, installationWorkflowFile.fileKey),
+              await requestMarketplaceArtifactBytes(
+                sourceObject.http,
+                installationWorkflowFile.fileKey,
+              ),
             );
             const execution = appendAutomationDelegate({
               execution: installationBaseExecution,

@@ -22,7 +22,7 @@ const forwardToReson8 = async (
   url.searchParams.set("orgId", orgId);
 
   const proxyRequest = new Request(url.toString(), request);
-  return reson8Do.fetch(proxyRequest);
+  return reson8Do.http.fetch(proxyRequest);
 };
 
 /**

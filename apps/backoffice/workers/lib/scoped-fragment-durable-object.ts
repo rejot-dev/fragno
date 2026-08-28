@@ -22,19 +22,19 @@ const storedOwnerScopeSchema = z.discriminatedUnion("kind", [
 type ScopedFragmentDurableObjectOptions<TSource, TRuntime> = {
   name: string;
   state: BackofficeObjectState;
+  ownerScope: BackofficeContextScope | null;
   host: FragmentDurableObjectHost<TSource, TRuntime>;
   createSource: (scope: BackofficeRoutableScope) => TSource;
 };
 
 export type ScopedFragmentDurableObjectRuntime<TRuntime> = {
-  init(scope: BackofficeContextScope): void;
   /**
-   * Restores the owner scope and runtime after a cold start.
+   * Initializes from the named object identity or restores a legacy persisted owner scope.
    *
    * Call this inside the DO constructor's `state.blockConcurrencyWhile(...)` callback so requests
    * and alarms cannot observe the object before its durable-hook dispatcher is ready.
    */
-  initializeFromStoredOwnerScope(): Promise<void>;
+  initializeFromOwnerScope(): Promise<void>;
   requireOwnerScope(): BackofficeRoutableScope;
   getRuntime(): Promise<TRuntime>;
   alarm(): Promise<void>;
@@ -43,6 +43,7 @@ export type ScopedFragmentDurableObjectRuntime<TRuntime> = {
 export function createScopedFragmentDurableObjectRuntime<TSource, TRuntime>({
   name,
   state,
+  ownerScope: initialOwnerScope,
   host,
   createSource,
 }: ScopedFragmentDurableObjectOptions<
@@ -50,7 +51,7 @@ export function createScopedFragmentDurableObjectRuntime<TSource, TRuntime>({
   TRuntime
 >): ScopedFragmentDurableObjectRuntime<TRuntime> {
   const ownerScopeKey = `${name.toLowerCase()}-owner-scope`;
-  let ownerScope: BackofficeRoutableScope | null = null;
+  let ownerScope = initialOwnerScope ? storedOwnerScopeSchema.parse(initialOwnerScope) : null;
   let runtime: TRuntime | null = null;
   let initialization: Promise<TRuntime> | null = null;
 
@@ -82,20 +83,23 @@ export function createScopedFragmentDurableObjectRuntime<TSource, TRuntime>({
   };
 
   return {
-    init(scope) {
-      const parsedScope = storedOwnerScopeSchema.parse(scope);
-      if (ownerScope && !backofficeContextScopesEqual(ownerScope, parsedScope)) {
-        throw new Error(`${name} object scope does not match object address scope.`);
+    async initializeFromOwnerScope() {
+      const storedScopeValue = await state.storage.get(ownerScopeKey);
+      const storedScope =
+        storedScopeValue === undefined ? null : storedOwnerScopeSchema.parse(storedScopeValue);
+
+      if (ownerScope) {
+        if (storedScope && !backofficeContextScopesEqual(ownerScope, storedScope)) {
+          throw new Error(`${name} object scope does not match persisted owner scope.`);
+        }
+        await initializeForOwnerScope(ownerScope, storedScope === null);
+        return;
       }
-      ownerScope = parsedScope;
-    },
-    async initializeFromStoredOwnerScope() {
-      const storedScope = await state.storage.get(ownerScopeKey);
-      if (storedScope === undefined) {
+      if (!storedScope) {
         return;
       }
 
-      ownerScope = storedOwnerScopeSchema.parse(storedScope);
+      ownerScope = storedScope;
       await initializeForOwnerScope(ownerScope, false);
     },
     requireOwnerScope,

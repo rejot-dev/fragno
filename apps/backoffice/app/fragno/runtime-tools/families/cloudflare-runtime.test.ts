@@ -1,11 +1,9 @@
 import { afterEach, describe, expect, test, vi, assert } from "vitest";
 
-import type { CloudflareObject } from "@/backoffice-runtime/object-registry";
-
 import { NotConfiguredError } from "../runtime-errors";
 import { createCloudflareRuntime } from "./cloudflare-runtime";
 
-const createNotConfiguredObject = (): CloudflareObject => ({
+const createNotConfiguredHttp = () => ({
   fetch: async () =>
     Response.json(
       {
@@ -25,15 +23,15 @@ describe("createCloudflareRuntime", () => {
     const abortController = new AbortController();
     const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(abortController.signal);
     let captureRequest: Request | undefined;
-    const object: CloudflareObject = {
-      fetch: async (request) => {
+    const http = {
+      fetch: async (request: Request) => {
         captureRequest = request;
         return new Response(new Uint8Array([1, 2, 3]), {
           headers: { "content-type": "image/png" },
         });
       },
     };
-    const runtime = createCloudflareRuntime({ object });
+    const runtime = createCloudflareRuntime({ http });
 
     await runtime.browserRunCapture({
       action: "screenshot",
@@ -46,7 +44,7 @@ describe("createCloudflareRuntime", () => {
   });
 
   test("classifies missing capture configuration as NotConfiguredError", async () => {
-    const runtime = createCloudflareRuntime({ object: createNotConfiguredObject() });
+    const runtime = createCloudflareRuntime({ http: createNotConfiguredHttp() });
 
     await expect(
       runtime.browserRunCapture({

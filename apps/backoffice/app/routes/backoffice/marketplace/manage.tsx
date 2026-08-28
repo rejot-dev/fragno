@@ -72,7 +72,9 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw error;
   }
 
-  const marketplace = context.get(BackofficeWorkerContext).runtime.objects.marketplace.singleton();
+  const marketplace = context
+    .get(BackofficeWorkerContext)
+    .runtime.objects.marketplace.singleton().commands;
   const detail = await marketplace.getOwnedListing({
     listingId: listingIdResult.data,
     ownerScope: { kind: "org", orgId: organization.id },
@@ -109,7 +111,9 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     } satisfies ManageActionData;
   }
 
-  const marketplace = context.get(BackofficeWorkerContext).runtime.objects.marketplace.singleton();
+  const marketplace = context
+    .get(BackofficeWorkerContext)
+    .runtime.objects.marketplace.singleton().commands;
   const intent = String(formData.get("intent") ?? "");
 
   if (intent === "update") {

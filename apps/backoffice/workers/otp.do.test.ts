@@ -44,7 +44,7 @@ const signUp = async (
   runtime: Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>,
   email: string,
 ) => {
-  const response = await runtime.objects.auth.singleton().fetch(
+  const response = await runtime.objects.auth.singleton().http.fetch(
     new Request("https://backoffice.example/api/auth/sign-up/email", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -60,7 +60,7 @@ const signIn = async (
   runtime: Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>,
   email: string,
 ) =>
-  await runtime.objects.auth.singleton().fetch(
+  await runtime.objects.auth.singleton().http.fetch(
     new Request("https://backoffice.example/api/auth/sign-in/email", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -97,7 +97,7 @@ describe("OTP identity claim completion", () => {
     const runtime = {
       objects: {
         automations: {
-          for: () => ({ bindExternalIdentity, triggerIngestEvent }),
+          for: () => ({ commands: { bindExternalIdentity, triggerIngestEvent } }),
         },
       },
     } as unknown as BackofficeRuntimeServices;
@@ -164,7 +164,7 @@ describe("OTP identity claim completion", () => {
     const runtime = {
       objects: {
         automations: {
-          for: () => ({ bindExternalIdentity, triggerIngestEvent }),
+          for: () => ({ commands: { bindExternalIdentity, triggerIngestEvent } }),
         },
       },
     } as unknown as BackofficeRuntimeServices;
@@ -210,14 +210,14 @@ describe("OTP Durable Object email verification", () => {
       requestId: "auth-email-verification-hook-1",
     };
 
-    const first = await otp.issueEmailVerification(input);
-    const repeated = await otp.issueEmailVerification(input);
+    const first = await otp.commands.issueEmailVerification(input);
+    const repeated = await otp.commands.issueEmailVerification(input);
 
     expect(repeated).toEqual(first);
     assert(first.deliverable);
     expect(first.expiresInHours).toBe(EMAIL_VERIFICATION_EXPIRY_HOURS);
     await expect(
-      otp.issueEmailVerification({ ...input, email: "different@example.com" }),
+      otp.commands.issueEmailVerification({ ...input, email: "different@example.com" }),
     ).rejects.toThrow("request id cannot be reused with different delivery input");
     const verificationUrl = new URL(first.url);
     assert(verificationUrl.pathname === "/backoffice/verify-email");
@@ -225,18 +225,19 @@ describe("OTP Durable Object email verification", () => {
     const code = verificationUrl.searchParams.get("code");
     assert(code);
 
-    expect(await otp.confirmEmailVerificationChallenge({ userId, code })).toEqual({
+    expect(await otp.commands.confirmEmailVerificationChallenge({ userId, code })).toEqual({
       status: "confirmation_recorded",
       requestId: input.requestId,
       userId,
     });
     assert((await signIn(runtime, "new-user@example.com")).ok);
-    expect(await otp.confirmEmailVerificationChallenge({ userId, code })).toEqual({
+    expect(await otp.commands.confirmEmailVerificationChallenge({ userId, code })).toEqual({
       status: "already_confirmed",
     });
 
-    const repository = await runtime.objects.auth.singleton().getDurableHookRepository();
-    const queue = await repository.getHookQueue({ pageSize: 100 });
+    const queue = await runtime.objects.auth
+      .singleton()
+      .commands.getDurableHookQueue({ pageSize: 100 });
     assert(!queue.items.some((hook) => hook.hookName === "onUserEmailVerified"));
   });
 
@@ -251,12 +252,12 @@ describe("OTP Durable Object email verification", () => {
       requestId: "auth-email-verification-request-1",
     };
 
-    const first = await otp.issueEmailVerification(firstInput);
-    const second = await otp.issueEmailVerification({
+    const first = await otp.commands.issueEmailVerification(firstInput);
+    const second = await otp.commands.issueEmailVerification({
       ...firstInput,
       requestId: "auth-email-verification-request-2",
     });
-    const retriedFirst = await otp.issueEmailVerification(firstInput);
+    const retriedFirst = await otp.commands.issueEmailVerification(firstInput);
 
     assert(first.deliverable);
     assert(second.deliverable);
@@ -273,11 +274,11 @@ describe("OTP Durable Object email verification", () => {
       requestId: "auth-email-verification-expired-delivery",
     };
 
-    const issued = await otp.issueEmailVerification(input);
+    const issued = await otp.commands.issueEmailVerification(input);
     assert(issued.deliverable);
     runtime.advanceTime(EMAIL_VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1_000 + 1);
 
-    await expect(otp.issueEmailVerification(input)).resolves.toEqual({
+    await expect(otp.commands.issueEmailVerification(input)).resolves.toEqual({
       deliverable: false,
       reason: "expired",
     });
@@ -287,7 +288,7 @@ describe("OTP Durable Object email verification", () => {
     const runtime = await createRuntime({ env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" } });
     const { userId } = await signUp(runtime, "current@example.com");
     const otp = runtime.objects.otp.singleton();
-    const issued = await otp.issueEmailVerification({
+    const issued = await otp.commands.issueEmailVerification({
       userId,
       email: "stale@example.com",
       publicBaseUrl: "https://backoffice.example",
@@ -297,7 +298,7 @@ describe("OTP Durable Object email verification", () => {
     const code = new URL(issued.url).searchParams.get("code");
     assert(code);
 
-    expect(await otp.confirmEmailVerificationChallenge({ userId, code })).toEqual({
+    expect(await otp.commands.confirmEmailVerificationChallenge({ userId, code })).toEqual({
       status: "rejected",
       reason: "invalid",
     });
@@ -327,7 +328,7 @@ describe("OTP Durable Object email verification", () => {
   test("returns typed invalid and expired confirmation outcomes", async () => {
     const runtime = await createRuntime();
     const otp = runtime.objects.otp.singleton();
-    const issued = await otp.issueEmailVerification({
+    const issued = await otp.commands.issueEmailVerification({
       userId: "user-expiring",
       email: "expiring@example.com",
       publicBaseUrl: "https://backoffice.example",
@@ -338,14 +339,16 @@ describe("OTP Durable Object email verification", () => {
     assert(code);
 
     expect(
-      await otp.confirmEmailVerificationChallenge({
+      await otp.commands.confirmEmailVerificationChallenge({
         userId: "user-expiring",
         code: "WRONGCODE",
       }),
     ).toEqual({ status: "rejected", reason: "invalid" });
 
     runtime.advanceTime(EMAIL_VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000 + 1);
-    expect(await otp.confirmEmailVerificationChallenge({ userId: "user-expiring", code })).toEqual({
+    expect(
+      await otp.commands.confirmEmailVerificationChallenge({ userId: "user-expiring", code }),
+    ).toEqual({
       status: "rejected",
       reason: "expired",
     });

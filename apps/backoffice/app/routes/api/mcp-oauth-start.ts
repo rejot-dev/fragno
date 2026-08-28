@@ -22,7 +22,7 @@ const mcpOAuthStartPublicRoute = {
         scopePathSegment,
       ).oauthRedirectUri,
     );
-    return object.fetch(new Request(internalUrl, request));
+    return object.http.fetch(new Request(internalUrl, request));
   },
 } satisfies PublicFragmentRoute<McpObject>;
 
