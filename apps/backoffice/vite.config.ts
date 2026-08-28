@@ -12,6 +12,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 import { BACKOFFICE_WORKER_TOPOLOGY } from "./backoffice-worker-topology";
 import { reactRouterServerBundleVitePlugin } from "./scripts/react-router-server-bundle-vite-plugin";
+import { reactRouterWorkerPreviewDevVarsVitePlugin } from "./scripts/react-router-worker-preview-dev-vars-vite-plugin";
 import { getReactRouterWorkerEntries } from "./workers/react-router-worker-routing";
 
 // Warm the Cloudflare worker entry so the Durable Object graph is transformed
@@ -133,6 +134,7 @@ export default defineConfig(({ command }) => {
       tailwindcss(),
       reactRouter(),
       reactRouterServerBundleVitePlugin(),
+      reactRouterWorkerPreviewDevVarsVitePlugin(),
       devtoolsJson(),
       emitWaSqliteWasmAssetPlugin(),
     ],

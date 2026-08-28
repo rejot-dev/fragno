@@ -26,6 +26,12 @@ describe("Backoffice Worker topology", () => {
     assert.equal(selectReactRouterServerBundle("/api/admin/grant.data"), "api");
   });
 
+  it("grants every route Worker the shared internal request signing capability", () => {
+    for (const [, worker] of getReactRouterWorkerEntries()) {
+      assert.include(worker.environment.secrets.required, "AUTH_ACCESS_TOKEN_SECRET");
+    }
+  });
+
   it("assigns every documented environment name to at least one Worker", () => {
     const devVarsExamplePath = fileURLToPath(new URL("../.dev.vars.example", import.meta.url));
     const documentedNames = readFileSync(devVarsExamplePath, "utf8")
