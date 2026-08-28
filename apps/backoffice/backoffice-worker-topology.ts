@@ -48,6 +48,13 @@ const sharedReactRouterVariables = [
   "DOCS_PUBLIC_BASE_URL",
 ] as const;
 
+// Every route Worker receives the object registry capability that signs authorized Durable Object
+// requests, so the signing secret must travel with that shared runtime capability.
+const sharedReactRouterSecrets = {
+  required: ["AUTH_ACCESS_TOKEN_SECRET"],
+  optional: [],
+} as const;
+
 /** Declares Backoffice deployment Workers, route ownership, bindings, and environment grants. */
 export const BACKOFFICE_WORKER_TOPOLOGY = {
   fallbackRequestHandler: "public_account",
@@ -106,7 +113,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
       excludedRequestPathRegularExpressions: [],
       environment: {
         variables: sharedReactRouterVariables,
-        secrets: { required: [], optional: [] },
+        secrets: sharedReactRouterSecrets,
       },
     },
     sessions: {
@@ -120,7 +127,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
       excludedRequestPathRegularExpressions: [],
       environment: {
         variables: sharedReactRouterVariables,
-        secrets: { required: [], optional: [] },
+        secrets: sharedReactRouterSecrets,
       },
     },
     files: {
@@ -134,7 +141,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
       excludedRequestPathRegularExpressions: [],
       environment: {
         variables: sharedReactRouterVariables,
-        secrets: { required: [], optional: [] },
+        secrets: sharedReactRouterSecrets,
       },
     },
     automations: {
@@ -148,7 +155,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
       excludedRequestPathRegularExpressions: ["^/backoffice/automations/[^/]+/[^/]+/integrations/"],
       environment: {
         variables: sharedReactRouterVariables,
-        secrets: { required: [], optional: [] },
+        secrets: sharedReactRouterSecrets,
       },
     },
     connections: {
@@ -162,7 +169,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
       excludedRequestPathRegularExpressions: [],
       environment: {
         variables: sharedReactRouterVariables,
-        secrets: { required: [], optional: [] },
+        secrets: sharedReactRouterSecrets,
       },
     },
     internals: {
@@ -185,7 +192,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
       ],
       environment: {
         variables: sharedReactRouterVariables,
-        secrets: { required: [], optional: [] },
+        secrets: sharedReactRouterSecrets,
       },
     },
     internals_browser: {
@@ -199,7 +206,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
       excludedRequestPathRegularExpressions: [],
       environment: {
         variables: sharedReactRouterVariables,
-        secrets: { required: [], optional: [] },
+        secrets: sharedReactRouterSecrets,
       },
     },
     internals_durable_hooks: {
@@ -213,7 +220,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
       excludedRequestPathRegularExpressions: [],
       environment: {
         variables: sharedReactRouterVariables,
-        secrets: { required: [], optional: [] },
+        secrets: sharedReactRouterSecrets,
       },
     },
     marketplace: {
@@ -227,7 +234,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
       excludedRequestPathRegularExpressions: [],
       environment: {
         variables: sharedReactRouterVariables,
-        secrets: { required: [], optional: [] },
+        secrets: sharedReactRouterSecrets,
       },
     },
     api: {
@@ -268,8 +275,12 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
         variables: sharedReactRouterVariables,
         // These are read directly by API route modules instead of by entry-hosted Durable Objects.
         secrets: {
-          required: ["AUTH_ADMIN_GRANT_TOKEN", "GITHUB_APP_WEBHOOK_SECRET"],
-          optional: [],
+          required: [
+            ...sharedReactRouterSecrets.required,
+            "AUTH_ADMIN_GRANT_TOKEN",
+            "GITHUB_APP_WEBHOOK_SECRET",
+          ],
+          optional: sharedReactRouterSecrets.optional,
         },
       },
     },
@@ -288,7 +299,7 @@ export const BACKOFFICE_WORKER_TOPOLOGY = {
       excludedRequestPathRegularExpressions: [],
       environment: {
         variables: sharedReactRouterVariables,
-        secrets: { required: [], optional: [] },
+        secrets: sharedReactRouterSecrets,
       },
     },
   },
