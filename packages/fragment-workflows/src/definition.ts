@@ -3,7 +3,7 @@ import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
 // Fragment definition and service implementations for workflow instances.
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
-import type { Cursor, DatabaseHandlerTx } from "@fragno-dev/db";
+import type { Cursor } from "@fragno-dev/db";
 
 import { WorkflowsLogger } from "./debug-log";
 import { buildScopedInstanceRowId } from "./instance-ref";
@@ -1244,18 +1244,15 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       observeStepEmissions: function <TOutEmission = unknown>(params: {
         workflowName: string;
         instanceId: string;
-        handlerTx: DatabaseHandlerTx;
       }) {
         const handle = deps.stepEmissions.getOrCreate(
           workflowStepLivePumpKey(params.workflowName, params.instanceId),
           () =>
             createWorkflowStepLivePump({
-              handlerTx: params.handlerTx,
               workflowName: params.workflowName,
               instanceId: params.instanceId,
             }),
         );
-        handle.pump.setHandlerTx(params.handlerTx);
         return handle as WorkflowStepLivePumpHandle<TOutEmission>;
       },
       /**

@@ -506,6 +506,15 @@ describe("RequestOutputContext", () => {
       reader.releaseLock();
     });
 
+    test("Should report writes rejected after response cancellation", async () => {
+      const { readable, writable } = new TransformStream();
+      const stream = new ResponseStream(writable, readable);
+
+      await stream.responseReadable.cancel();
+
+      await expect(stream.writeRaw("after cancellation")).resolves.toBe(false);
+    });
+
     test("Should close stream after callback execution", async () => {
       const ctx = new RequestOutputContext();
       let streamRef: ResponseStream<unknown> | undefined;

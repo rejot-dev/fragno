@@ -484,12 +484,10 @@ export class RunnerStep implements WorkflowStep {
       workflowStepLivePumpKey(this.#workflowName, this.#instanceId),
       () =>
         createWorkflowStepLivePump({
-          handlerTx: this.#handlerTx,
           workflowName: this.#workflowName,
           instanceId: this.#instanceId,
         }),
     );
-    livePumpHandle.pump.setHandlerTx(this.#handlerTx);
     const emissionScope = livePumpHandle.pump.openScope(identity.stepKey, {
       stepKey: identity.stepKey,
       executionId: this.#executionId,
@@ -497,6 +495,12 @@ export class RunnerStep implements WorkflowStep {
       eventConsumptions: pendingEventConsumptions,
       queueEventConsumption,
       isEventConsumptionQueued,
+    });
+    const schedulerAbortController = new AbortController();
+    const schedulerLease = livePumpHandle.runWhile({
+      kind: "writer",
+      signal: schedulerAbortController.signal,
+      handlerTx: this.#handlerTx,
     });
     const tx = {
       ...txQueue.tx,
@@ -546,7 +550,9 @@ export class RunnerStep implements WorkflowStep {
       callbackThrew = true;
       callbackError = error;
     } finally {
-      await emissionScope.flushAndClose();
+      schedulerAbortController.abort();
+      await schedulerLease;
+      await emissionScope.flushAndClose(this.#handlerTx);
       await livePumpHandle.close();
       this.#queueStepEmissionCleanup({
         workflowName: this.#workflowName,
@@ -812,12 +818,10 @@ export class RunnerStep implements WorkflowStep {
         workflowStepLivePumpKey(this.#workflowName, this.#instanceId),
         () =>
           createWorkflowStepLivePump({
-            handlerTx: this.#handlerTx,
             workflowName: this.#workflowName,
             instanceId: this.#instanceId,
           }),
       );
-      livePumpHandle.pump.setHandlerTx(this.#handlerTx);
       const emissionScope = livePumpHandle.pump.openScope(stepKey, {
         stepKey,
         executionId: this.#executionId,
@@ -825,6 +829,12 @@ export class RunnerStep implements WorkflowStep {
         eventConsumptions: new Map(),
         queueEventConsumption: () => {},
         isEventConsumptionQueued: () => false,
+      });
+      const schedulerAbortController = new AbortController();
+      const schedulerLease = livePumpHandle.runWhile({
+        kind: "writer",
+        signal: schedulerAbortController.signal,
+        handlerTx: this.#handlerTx,
       });
 
       const consumeTx: WorkflowStepConsumeTx = {
@@ -862,7 +872,9 @@ export class RunnerStep implements WorkflowStep {
         });
         throw err;
       } finally {
-        await emissionScope.flushAndClose();
+        schedulerAbortController.abort();
+        await schedulerLease;
+        await emissionScope.flushAndClose(this.#handlerTx);
         await livePumpHandle.close();
         this.#queueStepEmissionCleanup({
           workflowName: this.#workflowName,

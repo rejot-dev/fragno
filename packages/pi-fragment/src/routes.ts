@@ -334,11 +334,11 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                 workflowsService.observeStepEmissions<PiSessionEventStreamItem>({
                   workflowName,
                   instanceId: sessionId,
-                  handlerTx: this.handlerTx.bind(this),
                 });
+              const handlerTx = this.handlerTx.bind(this);
               const emissionBus = emissionBusHandle.pump;
 
-              const snapshot = await emissionBus.snapshot();
+              const snapshot = await emissionBus.snapshot(handlerTx);
 
               const inFlightEvents: PiSessionEventStreamItem[] = snapshot.flatMap((emission) =>
                 initialDetail.completedStepKeys.has(emission.stepKey)
@@ -362,6 +362,8 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                 ...inFlightEvents,
               ];
 
+              let schedulerLease: Promise<void> | undefined;
+              const schedulerAbortController = new AbortController();
               try {
                 if (once) {
                   for (const emission of initialEmissions) {
@@ -370,11 +372,16 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                   return;
                 }
 
+                schedulerLease = emissionBusHandle.runWhile({
+                  kind: "observer",
+                  signal: schedulerAbortController.signal,
+                  handlerTx,
+                });
                 await streamWorkflowStepEmissions({
                   stream,
                   emissionBus: {
                     observe: (handler) =>
-                      emissionBus.observe(
+                      emissionBus.observeWithReplay(
                         (message) =>
                           handler({
                             ...message,
@@ -393,6 +400,8 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                   timeoutMs: LIVE_EVENT_STREAM_TIMEOUT_MS,
                 });
               } finally {
+                schedulerAbortController.abort();
+                await schedulerLease;
                 await emissionBusHandle.close();
               }
             });

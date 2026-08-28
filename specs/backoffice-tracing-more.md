@@ -148,26 +148,38 @@ Refactor the pump into:
 
 - Shared buffered state.
 - Serialized `flushNow()`.
-- **Actor-owned scheduler leases.**
+- One elected scheduler loop per pump and process.
+- Explicit writer and observer scheduler leases.
 
 For example:
 
 ```ts
 await pump.runWhile({
-  signal: streamSignal,
-  intervalMs: 100,
+  kind: "writer",
+  signal: workflowSignal,
+  handlerTx,
 });
 ```
 
 Rules:
 
-- An HTTP stream owns and awaits its scheduler lease.
-- A workflow runner owns its scheduler lease.
-- Two streams may share buffered state, but never share one timer execution context.
-- Closing a stream aborts and drains its lease before the body closes.
+- A running workflow owns a writer lease even when no observer is connected.
+- HTTP streams own observer leases so another process can still discover database changes.
+- The pump elects exactly one active scheduler. Additional leases do not add polling round trips.
+- Writer leases take priority. An observer yields before the next scheduled pass when a writer
+  arrives.
+- Observer-owned passes are read-only. They never drain writable scopes or persist another actor's
+  buffered work.
+- A local observer remains passive while a workflow writer is active. Its recurring storage spans
+  belong to the workflow invocation instead of the connected stream.
+- If no local writer exists, one observer becomes the cross-process polling fallback. In that case,
+  the polling spans necessarily belong to the elected observer invocation.
+- Closing an actor aborts and drains its lease before the actor's response or callback completes.
 - No asynchronous I/O loop is launched with `void`.
 
-Some redundant empty flushes are preferable to ambiguous trace ownership.
+A live Cloudflare trace on August 27, 2026 confirmed the handoff: the connected observer's storage
+span count stopped while an alarm-owned workflow writer ran, the writer's storage spans appeared
+under the alarm trace, and observer polling resumed after the workflow finished.
 
 ## 6. Make background work a durable handoff
 

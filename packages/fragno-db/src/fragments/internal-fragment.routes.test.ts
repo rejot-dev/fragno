@@ -1,4 +1,4 @@
-import { describe, expect, it, assert } from "vitest";
+import { describe, expect, it, assert, vi } from "vitest";
 
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
@@ -10,7 +10,10 @@ import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { getInternalFragment, getRegistryForAdapterSync } from "../internal/adapter-registry";
 import type { DatabaseRequestContext } from "../mod";
 import { FRAGNO_OUTBOX_PAGE_SIZE } from "../outbox/outbox";
-import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
+import type {
+  DatabaseTransactionInstrumentation,
+  TxResult,
+} from "../query/unit-of-work/execute-unit-of-work";
 import { schema, idColumn, column } from "../schema/create";
 import type { SyncCommandDefinition } from "../sync/types";
 import { withDatabase } from "../with-database";
@@ -329,6 +332,7 @@ describe("internal fragment describe routes", () => {
   });
 
   it("streams outbox entries after the requested versionstamp", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const { adapter, close } = await setupAdapter();
 
     const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
@@ -388,7 +392,125 @@ describe("internal fragment describe routes", () => {
       await streamResponse.stream.return(undefined);
     }
 
+    expect(info).toHaveBeenCalledWith(
+      "fragno.outbox_stream.started",
+      expect.objectContaining({ streamId: expect.any(String), initialEntryCount: 1 }),
+    );
+    await vi.waitFor(() => {
+      expect(info).toHaveBeenCalledWith(
+        "fragno.outbox_stream.completed",
+        expect.objectContaining({
+          streamId: expect.any(String),
+          durationMs: expect.any(Number),
+          pollCount: expect.any(Number),
+          entriesRead: expect.any(Number),
+          errorCount: 0,
+          completionReason: "aborted",
+        }),
+      );
+      expect(
+        info.mock.calls.filter(([event]) => event === "fragno.outbox_stream.completed"),
+      ).toHaveLength(1);
+    });
+    info.mockRestore();
     await close();
+  });
+
+  it("counts one initial outbox pump failure once", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { adapter, close } = await setupAdapter();
+    const initialPumpError = new Error("INITIAL_OUTBOX_PUMP_FAILED");
+    let failNextHandlerTransaction = false;
+    const transactionInstrumentation: DatabaseTransactionInstrumentation = {
+      run(context, execute) {
+        if (context.transactionKind === "handler" && failNextHandlerTransaction) {
+          failNextHandlerTransaction = false;
+          throw initialPumpError;
+        }
+        return execute();
+      },
+    };
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({
+        databaseAdapter: adapter,
+        mountRoute: "/alpha",
+        outbox: { enabled: true },
+        transactionInstrumentation,
+      })
+      .build();
+
+    try {
+      const streamResponse = await alphaFragment.callRoute(
+        "GET",
+        "/_internal/outbox/stream" as never,
+      );
+      assert(streamResponse.status === 200);
+      assert(streamResponse.type === "jsonStream");
+      failNextHandlerTransaction = true;
+
+      await expect(streamResponse.stream.next()).resolves.toEqual({ value: undefined, done: true });
+      await vi.waitFor(() => {
+        expect(info).toHaveBeenCalledWith(
+          "fragno.outbox_stream.completed",
+          expect.objectContaining({ errorCount: 1, completionReason: "failed" }),
+        );
+      });
+    } finally {
+      info.mockRestore();
+      error.mockRestore();
+      await close();
+    }
+  });
+
+  it("stops polling when the outbox response is no longer consumed", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const { adapter, close } = await setupAdapter();
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({
+        databaseAdapter: adapter,
+        mountRoute: "/alpha",
+        outbox: { enabled: true },
+      })
+      .build();
+
+    try {
+      const response = await alphaFragment.handler(
+        new Request("http://localhost/alpha/_internal/outbox/stream"),
+      );
+      assert(response.status === 200);
+
+      await vi.waitFor(
+        () => {
+          expect(info).toHaveBeenCalledWith(
+            "fragno.outbox_stream.completed",
+            expect.objectContaining({
+              pollCount: expect.any(Number),
+              completionReason: "aborted",
+            }),
+          );
+        },
+        { timeout: 2_500 },
+      );
+
+      const completedCall = info.mock.calls.find(
+        ([event]) => event === "fragno.outbox_stream.completed",
+      );
+      assert(completedCall);
+      const completed = completedCall[1] as { pollCount: number };
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(
+        info.mock.calls.filter(([event]) => event === "fragno.outbox_stream.completed"),
+      ).toHaveLength(1);
+      expect(completed.pollCount).toBeLessThan(10);
+
+      await response.body?.cancel();
+    } finally {
+      info.mockRestore();
+      await close();
+    }
   });
 
   it("throws when two fragments claim the same namespace", async () => {

@@ -1,4 +1,5 @@
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
+import { BufferedPumpObserveTimeoutError } from "@fragno-dev/db/buffered-pump";
 
 import type {
   AnyFragnoInstantiatedFragment,
@@ -3100,46 +3101,42 @@ export async function runScenario<
               workflowStepLivePumpKey(workflowName, instanceId),
               () =>
                 createWorkflowStepLivePump({
-                  handlerTx: this.handlerTx.bind(this),
                   workflowName,
                   instanceId,
                 }),
             );
-            handle.pump.setHandlerTx(this.handlerTx.bind(this));
-            let unsubscribe: () => void = () => {};
-            let timeout: ReturnType<typeof setTimeout> | undefined;
+            const handlerTx = this.handlerTx.bind(this);
+            const schedulerAbortController = new AbortController();
+            const schedulerLease = handle.runWhile({
+              kind: "observer",
+              signal: schedulerAbortController.signal,
+              handlerTx,
+            });
             try {
-              return await new Promise<WorkflowScenarioObservedEmission | undefined>(
-                (resolve, reject) => {
-                  function rejectError(error: unknown): void {
-                    reject(error instanceof Error ? error : new Error(String(error)));
-                  }
-                  timeout = setTimeout(function resolveTimeout() {
-                    resolve(undefined);
-                  }, timeoutMs);
-                  timeout.unref?.();
-                  try {
-                    unsubscribe = handle.pump.observe((message) => {
-                      try {
-                        const observedMessage = { workflowName, instanceId, ...message };
-                        if (step.match && !step.match(observedMessage, context)) {
-                          return;
-                        }
-                        resolve(observedMessage);
-                      } catch (error) {
-                        rejectError(error);
-                      }
-                    });
-                  } catch (error) {
-                    rejectError(error);
-                  }
-                },
-              );
-            } finally {
-              if (timeout) {
-                clearTimeout(timeout);
+              const snapshot = await handle.pump.snapshot(handlerTx);
+              const snapshotMatch = snapshot
+                .map((message) => ({ workflowName, instanceId, ...message }))
+                .find((message) => (step.match ? step.match(message, context) : true));
+              if (snapshotMatch) {
+                return snapshotMatch;
               }
-              unsubscribe();
+
+              const message = await handle.pump.waitForObserved(
+                (observed) => {
+                  const candidate = { workflowName, instanceId, ...observed };
+                  return step.match ? step.match(candidate, context) : true;
+                },
+                { after: snapshot, timeoutMs },
+              );
+              return { workflowName, instanceId, ...message };
+            } catch (error) {
+              if (error instanceof BufferedPumpObserveTimeoutError) {
+                return undefined;
+              }
+              throw error;
+            } finally {
+              schedulerAbortController.abort();
+              await schedulerLease;
               await handle.close();
             }
           });

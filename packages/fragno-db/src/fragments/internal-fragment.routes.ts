@@ -41,6 +41,8 @@ type InternalDescribeError = {
 
 const ADAPTER_IDENTITY_KEY = "adapter_identity" as const;
 const OUTBOX_STREAM_PUMP_INTERVAL_MS = 100;
+const OUTBOX_STREAM_WRITE_TIMEOUT_MS = 1_000;
+const OUTBOX_STREAM_MAX_LIFETIME_MS = 30_000;
 
 type QueryLimitResult =
   | { ok: true; limit: number | undefined }
@@ -267,38 +269,122 @@ export const createInternalFragmentOutboxRoutes = () =>
         const initialEntries = await listEntries((options) => this.handlerTx(options));
 
         return jsonStream(async (stream) => {
+          const streamId = crypto.randomUUID();
+          const startedAt = Date.now();
+          let pollCount = 0;
+          let entriesRead = initialEntries.length;
+          let errorCount = 0;
+          let completionReason: "aborted" | "expired" | "failed" = "failed";
+          console.info("fragno.outbox_stream.started", {
+            streamId,
+            initialEntryCount: initialEntries.length,
+          });
+
+          const writeOutboxStreamFrame = async (frame: string): Promise<boolean> => {
+            let timeout: ReturnType<typeof setTimeout> | undefined;
+            const writeCompleted = await Promise.race([
+              stream.writeRaw(frame),
+              new Promise<false>((resolve) => {
+                timeout = setTimeout(() => {
+                  resolve(false);
+                }, OUTBOX_STREAM_WRITE_TIMEOUT_MS);
+                timeout.unref?.();
+              }),
+            ]);
+            clearTimeout(timeout);
+            if (!writeCompleted) {
+              await stream.abort();
+            }
+            return writeCompleted;
+          };
+
+          const handlerTx: DatabaseHandlerTx = (options) => this.handlerTx(options);
           const pump = new BufferedDatabasePump<never, never, OutboxEntry>({
-            handlerTx: (options) => this.handlerTx(options),
             intervalMs: OUTBOX_STREAM_PUMP_INTERVAL_MS,
             cursorForObservedItem: (entry) => entry.versionstamp,
             onError: (error) => {
+              errorCount += 1;
               console.error("[outbox-stream] flush failed", error);
             },
-            flush: async ({ handlerTx }) => ({ observedItems: await listEntries(handlerTx) }),
+            flush: async ({ handlerTx }) => {
+              pollCount += 1;
+              const entries = await listEntries(handlerTx);
+              entriesRead += entries.length;
+              if (entries.length === 0) {
+                await writeOutboxStreamFrame("\n");
+              }
+              return { observedItems: entries };
+            },
           });
 
           let stopObserving = () => {};
+          let schedulerLease: Promise<void> | undefined;
+          const schedulerAbortController = new AbortController();
           const waitForAbort = new Promise<void>((resolve) => {
-            stream.onAbort(async () => {
-              stopObserving();
-              await pump.stopAndDrain();
+            stream.onAbort(() => {
+              if (completionReason !== "expired") {
+                completionReason = "aborted";
+              }
+              schedulerAbortController.abort();
               resolve();
             });
           });
 
           stopObserving = pump.observe(async (entry) => {
-            await stream.writeRaw(`${JSON.stringify(entry)}\n`);
+            await writeOutboxStreamFrame(`${JSON.stringify(entry)}\n`);
           });
 
           try {
             for (const entry of initialEntries) {
-              await stream.writeRaw(`${JSON.stringify(entry)}\n`);
+              if (!(await writeOutboxStreamFrame(`${JSON.stringify(entry)}\n`))) {
+                break;
+              }
             }
-            await pump.flushNow();
-            await waitForAbort;
+            await pump.flushNow(handlerTx);
+            schedulerLease = pump.runWhile({
+              kind: "observer",
+              signal: schedulerAbortController.signal,
+              handlerTx,
+            });
+            // Some HTTP proxies continue draining a response after their client disconnects, so
+            // cancellation alone cannot prove ownership. A finite lease bounds every polling pump.
+            let streamLeaseTimeout: ReturnType<typeof setTimeout> | undefined;
+            const waitForStreamLeaseExpiry = new Promise<true>((resolve) => {
+              streamLeaseTimeout = setTimeout(() => {
+                resolve(true);
+              }, OUTBOX_STREAM_MAX_LIFETIME_MS);
+              streamLeaseTimeout.unref?.();
+            });
+            const streamExpired = await Promise.race([
+              waitForAbort.then(() => {
+                return false;
+              }),
+              waitForStreamLeaseExpiry,
+            ]);
+            clearTimeout(streamLeaseTimeout);
+            if (streamExpired) {
+              completionReason = "expired";
+              await stream.abort();
+            }
+          } catch (error) {
+            // Buffered pump failures are counted by onError before flushNow rethrows them.
+            if (pump.getFailure() !== error) {
+              errorCount += 1;
+            }
+            throw error;
           } finally {
             stopObserving();
-            await pump.stopAndDrain();
+            schedulerAbortController.abort();
+            await schedulerLease;
+            await pump.drain();
+            console.info("fragno.outbox_stream.completed", {
+              streamId,
+              durationMs: Date.now() - startedAt,
+              pollCount,
+              entriesRead,
+              errorCount,
+              completionReason,
+            });
           }
         });
       },

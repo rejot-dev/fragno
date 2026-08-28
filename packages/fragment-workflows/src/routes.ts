@@ -826,12 +826,14 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
               const emissionBusHandle = services.observeStepEmissions<WorkflowStepEmissionOutput>({
                 workflowName,
                 instanceId,
-                handlerTx: this.handlerTx.bind(this),
               });
 
+              const handlerTx = this.handlerTx.bind(this);
+              const emissionBus = emissionBusHandle.pump;
+              let schedulerLease: Promise<void> | undefined;
+              const schedulerAbortController = new AbortController();
               try {
-                const emissionBus = emissionBusHandle.pump;
-                const snapshot = await emissionBus.snapshot();
+                const snapshot = await emissionBus.snapshot(handlerTx);
                 const initialEmissions = snapshot.map(mapStepEmissionOutput);
 
                 if (once) {
@@ -841,11 +843,16 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                   return;
                 }
 
+                schedulerLease = emissionBusHandle.runWhile({
+                  kind: "observer",
+                  signal: schedulerAbortController.signal,
+                  handlerTx,
+                });
                 await streamWorkflowStepEmissions({
                   stream,
                   emissionBus: {
-                    observe: (handler) => {
-                      const unsubscribe = emissionBus.observe(
+                    observe: (handler) =>
+                      emissionBus.observeWithReplay(
                         (message) => {
                           const mapped = mapStepEmissionOutput(message);
                           return handler({
@@ -854,14 +861,14 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                           });
                         },
                         { after: snapshot },
-                      );
-                      return unsubscribe;
-                    },
+                      ),
                   },
                   initialEmissions,
                   timeoutMs: LIVE_STEP_EMISSION_STREAM_TIMEOUT_MS,
                 });
               } finally {
+                schedulerAbortController.abort();
+                await schedulerLease;
                 await emissionBusHandle.close();
               }
             });

@@ -18,16 +18,18 @@ import type { WorkflowStepLivePump, WorkflowStepLivePumpRegistry } from "./step-
 function openBus<TOutEmission = unknown, TInEmission = unknown>(
   registry: WorkflowStepLivePumpRegistry,
   options: {
-    handlerTx: DatabaseRequestContext["handlerTx"];
     workflowName: string;
     instanceId: string;
   },
 ) {
   const handle = registry.getOrCreate(
     workflowStepLivePumpKey(options.workflowName, options.instanceId),
-    () => createWorkflowStepLivePump(options),
+    () =>
+      createWorkflowStepLivePump({
+        workflowName: options.workflowName,
+        instanceId: options.instanceId,
+      }),
   );
-  handle.pump.setHandlerTx(options.handlerTx);
   return handle.pump as WorkflowStepLivePump<TOutEmission, TInEmission>;
 }
 
@@ -41,22 +43,16 @@ describe("WorkflowStepLivePump", () => {
 
   test("registry scopes buses by workflow name and instance id", () => {
     const registry = createStepEmissions();
-    const handlerTx = (() => {
-      throw new Error("handlerTx should not be called");
-    }) as DatabaseRequestContext["handlerTx"];
 
     const first = openBus(registry, {
-      handlerTx,
       workflowName: "first-workflow",
       instanceId: "shared-instance",
     });
     const second = openBus(registry, {
-      handlerTx,
       workflowName: "second-workflow",
       instanceId: "shared-instance",
     });
     const firstAgain = openBus(registry, {
-      handlerTx,
       workflowName: "first-workflow",
       instanceId: "shared-instance",
     });
@@ -72,7 +68,7 @@ describe("WorkflowStepLivePump", () => {
       registries.flatMap((registry) =>
         registry
           .values()
-          .filter((bus) => bus.isRunning())
+          .filter((bus) => bus.activeSchedulerLeaseCount() > 0)
           .map((bus) => bus.debugLabel()),
       ),
     ).toEqual([]);
@@ -108,7 +104,6 @@ describe("WorkflowStepLivePump", () => {
     const instance = await readInstance(harness);
     const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(stepEmissions, {
-        handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-flush-running-workflow",
         instanceId,
       });
@@ -133,7 +128,6 @@ describe("WorkflowStepLivePump", () => {
     } finally {
       releaseStep.resolve();
       await tick;
-      emissionBus.stop();
       await drainDurableHooks(harness.fragment);
     }
   });
@@ -168,7 +162,6 @@ describe("WorkflowStepLivePump", () => {
     const instance = await readInstance(harness);
     const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(stepEmissions, {
-        handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-control-output-workflow",
         instanceId,
       });
@@ -198,7 +191,6 @@ describe("WorkflowStepLivePump", () => {
       expect(observed).toEqual([{ control: "step-started" }]);
     } finally {
       unsubscribe();
-      emissionBus.stop();
       releaseStep.resolve();
       await tick;
       await drainDurableHooks(harness.fragment);
@@ -234,7 +226,6 @@ describe("WorkflowStepLivePump", () => {
     const instance = await readInstance(harness);
     const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string; text?: string }>(stepEmissions, {
-        handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-observe-outbound-workflow",
         instanceId,
       });
@@ -255,7 +246,6 @@ describe("WorkflowStepLivePump", () => {
       assert(observed.pendingCount() === 0);
     } finally {
       unsubscribe();
-      emissionBus.stop();
     }
   });
 
@@ -290,7 +280,6 @@ describe("WorkflowStepLivePump", () => {
     const instance = await readInstance(harness);
     const localBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(localRegistry, {
-        handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-remote-observer-workflow",
         instanceId,
       });
@@ -300,7 +289,6 @@ describe("WorkflowStepLivePump", () => {
     const remoteRegistry = createStepEmissions();
     const remoteBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(remoteRegistry, {
-        handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-remote-observer-workflow",
         instanceId,
       });
@@ -320,8 +308,6 @@ describe("WorkflowStepLivePump", () => {
       assert(observed.pendingCount() === 0);
     } finally {
       unsubscribe();
-      remoteBus.stop();
-      localBus.stop();
       releaseStep.resolve();
       await tick;
     }
@@ -358,7 +344,6 @@ describe("WorkflowStepLivePump", () => {
     const instance = await readInstance(harness);
     const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string; tag?: string }>(stepEmissions, {
-        handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-snapshot-outbound-workflow",
         instanceId,
       });
@@ -369,7 +354,7 @@ describe("WorkflowStepLivePump", () => {
       await stepEntered.promise;
       await flushBus(harness, emissionBus);
 
-      const snapshot = await emissionBus.snapshot();
+      const snapshot = await snapshotBus(harness, emissionBus);
       const outboundOnly = snapshot.filter(
         (m) => m.actor === "user" && m.payload.type !== undefined,
       );
@@ -381,7 +366,6 @@ describe("WorkflowStepLivePump", () => {
 
       expect(outboundOnly.map((message) => message.sequence)).toEqual([1, 2]);
     } finally {
-      emissionBus.stop();
       releaseStep.resolve();
       await tick;
       await drainDurableHooks(harness.fragment);
@@ -423,7 +407,6 @@ describe("WorkflowStepLivePump", () => {
     const instance = await readInstance(harness);
     const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string; tag: string }>(stepEmissions, {
-        handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-cumulative-snapshot-workflow",
         instanceId,
       });
@@ -433,7 +416,7 @@ describe("WorkflowStepLivePump", () => {
     try {
       await firstEmitted.promise;
       await flushBus(harness, emissionBus);
-      const firstSnapshot = await emissionBus.snapshot();
+      const firstSnapshot = await snapshotBus(harness, emissionBus);
       expect(
         firstSnapshot
           .filter((message) => message.actor === "user")
@@ -448,7 +431,7 @@ describe("WorkflowStepLivePump", () => {
       releaseSecondEmission.resolve();
       await secondEmitted.promise;
       await flushBus(harness, emissionBus);
-      const secondSnapshot = await emissionBus.snapshot();
+      const secondSnapshot = await snapshotBus(harness, emissionBus);
       const secondOutbound = secondSnapshot.filter((message) => message.actor === "user");
       expect(secondOutbound.map((message) => message.payload.tag)).toEqual(
         expect.arrayContaining(["first", "second"]),
@@ -463,7 +446,6 @@ describe("WorkflowStepLivePump", () => {
         ]),
       );
     } finally {
-      emissionBus.stop();
       releaseStep.resolve();
       await tick;
       await drainDurableHooks(harness.fragment);
@@ -502,7 +484,6 @@ describe("WorkflowStepLivePump", () => {
     const instance = await readInstance(harness);
     const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string; tag: string }>(stepEmissions, {
-        handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-from-cursors-workflow",
         instanceId,
       });
@@ -518,7 +499,7 @@ describe("WorkflowStepLivePump", () => {
       await beforeThird.promise;
       await flushBus(harness, emissionBus);
 
-      const snapshot = await emissionBus.snapshot();
+      const snapshot = await snapshotBus(harness, emissionBus);
       expect(snapshot.filter((m) => m.actor === "user").map((m) => m.payload.tag)).toEqual([
         "first",
         "second",
@@ -551,7 +532,6 @@ describe("WorkflowStepLivePump", () => {
     } finally {
       unsubscribeLate();
       unsubscribeEarly();
-      emissionBus.stop();
       releaseStep.resolve();
       await drainDurableHooks(harness.fragment);
     }
@@ -651,7 +631,6 @@ describe("WorkflowStepLivePump", () => {
     const instance = await readInstance(harness);
     const competingBus = harness.fragment.inContext(function () {
       return openBus(competingStepEmissions, {
-        handlerTx: this.handlerTx,
         workflowName: "step-live-pump-durable-consumption-workflow",
         instanceId,
       });
@@ -707,17 +686,15 @@ describe("WorkflowStepLivePump", () => {
       await flushBus(harness, competingBus);
       expect(competingDeliveries).toEqual([]);
       await harness.fragment.inContext(async function () {
-        await competingScope!.flushAndClose();
+        await competingScope!.flushAndClose(this.handlerTx);
       });
       competingScope = undefined;
-      competingBus.stop();
     } finally {
       if (competingScope) {
         await harness.fragment.inContext(async function () {
-          await competingScope!.flushAndClose();
+          await competingScope!.flushAndClose(this.handlerTx);
         });
       }
-      competingBus.stop();
       releaseStep.resolve();
       await tick;
       await drainDurableHooks(harness.fragment);
@@ -791,7 +768,6 @@ describe("WorkflowStepLivePump", () => {
 
     const bus = harness.fragment.inContext(function () {
       return openBus(stepEmissions, {
-        handlerTx: this.handlerTx,
         workflowName: "step-live-pump-losing-consumption-workflow",
         instanceId,
       });
@@ -818,9 +794,8 @@ describe("WorkflowStepLivePump", () => {
       expect(deliveries).toEqual([{ command: "continue" }]);
     } finally {
       await harness.fragment.inContext(async function () {
-        await scope.flushAndClose();
+        await scope.flushAndClose(this.handlerTx);
       });
-      bus.stop();
     }
   });
 
@@ -958,19 +933,29 @@ const sendEventAndFlush = async (
       .execute();
 
     const busHandle = harness.services.observeStepEmissions({
-      handlerTx: this.handlerTx,
       workflowName: params.workflowName,
       instanceId: params.instanceId,
     });
-    await busHandle.flushAndClose();
+    await busHandle.flushAndClose(this.handlerTx);
   });
 };
 
-const flushBus = async (harness: WorkflowsTestHarness, bus: { flushNow(): Promise<void> }) => {
+const flushBus = async (
+  harness: WorkflowsTestHarness,
+  bus: { flushNow(handlerTx: DatabaseRequestContext["handlerTx"]): Promise<void> },
+) => {
   await harness.fragment.inContext(async function () {
-    await bus.flushNow();
+    await bus.flushNow(this.handlerTx);
   });
 };
+
+const snapshotBus = async <T>(
+  harness: WorkflowsTestHarness,
+  bus: { snapshot(handlerTx: DatabaseRequestContext["handlerTx"]): Promise<T[]> },
+): Promise<T[]> =>
+  await harness.fragment.inContext(async function () {
+    return await bus.snapshot(this.handlerTx);
+  });
 
 const deferred = <T = void>() => Promise.withResolvers<T>();
 

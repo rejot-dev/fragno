@@ -7,7 +7,9 @@ export type WorkflowStepEmissionStream<TMessage> = {
 };
 
 export type WorkflowStepEmissionStreamBus<TMessage> = {
-  observe(handler: (message: WorkflowStepEmission<TMessage>) => void | Promise<void>): () => void;
+  observe(
+    handler: (message: WorkflowStepEmission<TMessage>) => void | Promise<void>,
+  ): Promise<() => void> | (() => void);
 };
 
 export type WorkflowStepEmissionStreamOptions<TMessage> = {
@@ -107,7 +109,7 @@ export async function streamWorkflowStepEmissions<TMessage>({
       enqueueWrite(message, "initial");
     }
 
-    unsubscribe = emissionBus.observe((message: WorkflowStepEmission<TMessage>) => {
+    unsubscribe = await emissionBus.observe((message: WorkflowStepEmission<TMessage>) => {
       WorkflowsLogger.debug("workflow step emission stream observed emission", () => ({
         stepKey: message.stepKey,
         epoch: message.epoch,
