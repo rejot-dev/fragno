@@ -518,6 +518,15 @@ const findStoreUser = async (
     where: [{ field: "id", value: userId }],
   });
 
+const findStoreUserByEmail = async (
+  adapter: BetterAuthAdapter,
+  userEmail: string,
+): Promise<StoreUser | null> =>
+  await adapter.findOne<StoreUser>({
+    model: "user",
+    where: [{ field: "email", value: userEmail.trim().toLowerCase() }],
+  });
+
 async function resolveBackofficeScopeTokenGrant(
   adapter: BetterAuthAdapter,
   input: {
@@ -1258,10 +1267,7 @@ export class InMemoryAuthObject implements AuthObject {
   }): Promise<AdminOrganizationRecord> {
     const { adapter } = await this.#authContext();
     const ownerEmail = input.ownerEmail.trim().toLowerCase();
-    const owner = await adapter.findOne<StoreUser>({
-      model: "user",
-      where: [{ field: "email", value: ownerEmail }],
-    });
+    const owner = await findStoreUserByEmail(adapter, ownerEmail);
     if (!owner) {
       throw new Error(`Admin organization create could not find user '${ownerEmail}'.`);
     }
@@ -1284,15 +1290,20 @@ export class InMemoryAuthObject implements AuthObject {
 
   async addAdminOrganizationMember(input: {
     organizationId: string;
-    userId: string;
+    userEmail: string;
     roles: readonly string[];
   }): Promise<AdminOrganizationMemberRecord> {
-    await this.#ready;
+    const { adapter } = await this.#authContext();
+    const userEmail = input.userEmail.trim().toLowerCase();
+    const user = await findStoreUserByEmail(adapter, userEmail);
+    if (!user) {
+      throw new Error(`Admin organization member add could not find user email '${userEmail}'.`);
+    }
     const member = await getOrganizationAdminEndpoints(this.#getAuth("http://localhost")).addMember(
       {
         body: {
           organizationId: input.organizationId,
-          userId: input.userId,
+          userId: user.id,
           role: [...input.roles],
         },
       },
@@ -1306,19 +1317,24 @@ export class InMemoryAuthObject implements AuthObject {
 
   async removeAdminOrganizationMember(input: {
     organizationId: string;
-    userId: string;
+    userEmail: string;
   }): Promise<AdminOrganizationMemberRecord> {
     const { adapter } = await this.#authContext();
+    const userEmail = input.userEmail.trim().toLowerCase();
+    const user = await findStoreUserByEmail(adapter, userEmail);
+    if (!user) {
+      throw new Error(`Admin organization member remove could not find user email '${userEmail}'.`);
+    }
     const member = await adapter.findOne<StoreMember>({
       model: "member",
       where: [
         { field: "organizationId", value: input.organizationId },
-        { field: "userId", value: input.userId },
+        { field: "userId", value: user.id },
       ],
     });
     if (!member) {
       throw new Error(
-        `Admin organization member remove could not find user '${input.userId}' in organization '${input.organizationId}'.`,
+        `Admin organization member remove could not find user email '${userEmail}' in organization '${input.organizationId}'.`,
       );
     }
     const memberRoles = splitOrganizationRoles(member.role);
@@ -1344,7 +1360,7 @@ export class InMemoryAuthObject implements AuthObject {
     });
     return {
       organizationId: input.organizationId,
-      userId: input.userId,
+      userId: user.id,
       roles: memberRoles,
     };
   }
@@ -1662,13 +1678,13 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   async addAdminOrganizationMember(input: {
     organizationId: string;
-    userId: string;
+    userEmail: string;
     roles: readonly string[];
   }) {
     return await this.#object.addAdminOrganizationMember(input);
   }
 
-  async removeAdminOrganizationMember(input: { organizationId: string; userId: string }) {
+  async removeAdminOrganizationMember(input: { organizationId: string; userEmail: string }) {
     return await this.#object.removeAdminOrganizationMember(input);
   }
 

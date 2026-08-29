@@ -160,16 +160,16 @@
     "summary": "admin.organisation.members.add adds a user to an organization.",
     "options": [
       {
-        "name": "organization-id",
+        "name": "organization-slug",
         "valueRequired": true,
-        "valueName": "organization-id",
-        "description": "Organization ID"
+        "valueName": "organization-slug",
+        "description": "Organization slug"
       },
       {
-        "name": "user-id",
+        "name": "email",
         "valueRequired": true,
-        "valueName": "user-id",
-        "description": "User ID"
+        "valueName": "email",
+        "description": "Email address of the existing user"
       },
       {
         "name": "role",
@@ -203,16 +203,16 @@
     "summary": "admin.organisation.members.remove removes a user from an organization.",
     "options": [
       {
-        "name": "organization-id",
+        "name": "organization-slug",
         "valueRequired": true,
-        "valueName": "organization-id",
-        "description": "Organization ID"
+        "valueName": "organization-slug",
+        "description": "Organization slug"
       },
       {
-        "name": "user-id",
+        "name": "email",
         "valueRequired": true,
-        "valueName": "user-id",
-        "description": "User ID"
+        "valueName": "email",
+        "description": "Email address of the existing user"
       },
       {
         "name": "help",

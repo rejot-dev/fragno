@@ -124,7 +124,7 @@ describe("Auth Durable Object administration", () => {
     await expect(
       auth.addAdminOrganizationMember({
         organizationId: organization.id,
-        userId: "member-1",
+        userEmail: "MEMBER@example.com",
         roles: ["member"],
       }),
     ).resolves.toEqual({
@@ -135,7 +135,7 @@ describe("Auth Durable Object administration", () => {
     await expect(
       auth.removeAdminOrganizationMember({
         organizationId: organization.id,
-        userId: "member-1",
+        userEmail: "member@example.com",
       }),
     ).resolves.toEqual({
       organizationId: organization.id,
@@ -166,7 +166,7 @@ describe("Auth Durable Object administration", () => {
     await expect(
       auth.removeAdminOrganizationMember({
         organizationId: created.organizationId,
-        userId: "owner-1",
+        userEmail: "owner@example.com",
       }),
     ).rejects.toThrow(
       `Admin organization member remove cannot remove the last owner from organization '${created.organizationId}'.`,
@@ -174,13 +174,13 @@ describe("Auth Durable Object administration", () => {
 
     await auth.addAdminOrganizationMember({
       organizationId: created.organizationId,
-      userId: "owner-2",
+      userEmail: "replacement@example.com",
       roles: ["owner"],
     });
     await expect(
       auth.removeAdminOrganizationMember({
         organizationId: created.organizationId,
-        userId: "owner-1",
+        userEmail: "owner@example.com",
       }),
     ).resolves.toEqual({
       organizationId: created.organizationId,

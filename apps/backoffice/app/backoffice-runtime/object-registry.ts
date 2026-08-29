@@ -221,12 +221,12 @@ export type AuthObject = DurableHookCommands & {
   }): Promise<AdminOrganizationRecord>;
   addAdminOrganizationMember(input: {
     organizationId: string;
-    userId: string;
+    userEmail: string;
     roles: readonly string[];
   }): Promise<AdminOrganizationMemberRecord>;
   removeAdminOrganizationMember(input: {
     organizationId: string;
-    userId: string;
+    userEmail: string;
   }): Promise<AdminOrganizationMemberRecord>;
   getAllOrganizations(): Promise<Organization[]>;
   getOrganizationBySlug(slug: string): Promise<Pick<Organization, "id" | "slug"> | null>;

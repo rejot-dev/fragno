@@ -19,13 +19,13 @@ export type AdminRuntime = {
     ownerEmail: string;
   }): Promise<AdminOrganizationRecord>;
   addOrganizationMember(input: {
-    organizationId: string;
-    userId: string;
+    organizationSlug: string;
+    userEmail: string;
     roles: readonly string[];
   }): Promise<AdminOrganizationMemberRecord>;
   removeOrganizationMember(input: {
-    organizationId: string;
-    userId: string;
+    organizationSlug: string;
+    userEmail: string;
   }): Promise<AdminOrganizationMemberRecord>;
 };
 
@@ -51,14 +51,14 @@ const createOrganizationInputSchema = z.strictObject({
 });
 
 const addOrganizationMemberInputSchema = z.strictObject({
-  organizationId: z.string().trim().min(1),
-  userId: z.string().trim().min(1),
+  organizationSlug: z.string().trim().min(1),
+  userEmail: z.string().trim().toLowerCase().pipe(z.email()),
   roles: z.array(z.string().trim().min(1)).min(1),
 });
 
 const removeOrganizationMemberInputSchema = z.strictObject({
-  organizationId: z.string().trim().min(1),
-  userId: z.string().trim().min(1),
+  organizationSlug: z.string().trim().min(1),
+  userEmail: z.string().trim().toLowerCase().pipe(z.email()),
 });
 
 function getAdminRuntime(runtime: AdminToolContext["runtimes"]["admin"]): AdminRuntime {
@@ -134,12 +134,17 @@ const addOrganizationMemberTool = defineBackofficeRuntimeTool({
         summary: "admin.organisation.members.add adds a user to an organization.",
         options: [
           {
-            name: "organization-id",
+            name: "organization-slug",
             valueRequired: true,
-            valueName: "organization-id",
-            description: "Organization ID",
+            valueName: "organization-slug",
+            description: "Organization slug",
           },
-          { name: "user-id", valueRequired: true, valueName: "user-id", description: "User ID" },
+          {
+            name: "email",
+            valueRequired: true,
+            valueName: "email",
+            description: "Email address of the existing user",
+          },
           {
             name: "role",
             valueRequired: true,
@@ -148,12 +153,12 @@ const addOrganizationMemberTool = defineBackofficeRuntimeTool({
           },
         ],
         examples: [
-          "admin.organisation.members.add --organization-id org-1 --user-id user-1 --role member --format json",
+          "admin.organisation.members.add --organization-slug acme --email member@example.com --role member --format json",
         ],
       },
       parse: defineCliArgsParser("admin.organisation.members.add", {
-        organizationId: { kind: "string", required: true },
-        userId: { kind: "string", required: true },
+        organizationSlug: { kind: "string", required: true },
+        userEmail: { kind: "string", required: true, option: "email" },
         roles: { kind: "stringArray", required: true, option: "role" },
       }),
       format: (result) => ({ data: result }),
@@ -178,20 +183,25 @@ const removeOrganizationMemberTool = defineBackofficeRuntimeTool({
         summary: "admin.organisation.members.remove removes a user from an organization.",
         options: [
           {
-            name: "organization-id",
+            name: "organization-slug",
             valueRequired: true,
-            valueName: "organization-id",
-            description: "Organization ID",
+            valueName: "organization-slug",
+            description: "Organization slug",
           },
-          { name: "user-id", valueRequired: true, valueName: "user-id", description: "User ID" },
+          {
+            name: "email",
+            valueRequired: true,
+            valueName: "email",
+            description: "Email address of the existing user",
+          },
         ],
         examples: [
-          "admin.organisation.members.remove --organization-id org-1 --user-id user-1 --format json",
+          "admin.organisation.members.remove --organization-slug acme --email member@example.com --format json",
         ],
       },
       parse: defineCliArgsParser("admin.organisation.members.remove", {
-        organizationId: { kind: "string", required: true },
-        userId: { kind: "string", required: true },
+        organizationSlug: { kind: "string", required: true },
+        userEmail: { kind: "string", required: true, option: "email" },
       }),
       format: (result) => ({ data: result }),
     },

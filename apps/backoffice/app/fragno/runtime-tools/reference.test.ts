@@ -889,8 +889,8 @@ describe("runtime tool reference generation", () => {
         ownerUserId: string;
       };
       type AdminOrganisationMembersAddInput = {
-        organizationId: string;
-        userId: string;
+        organizationSlug: string;
+        userEmail: string;
         roles: string[];
       };
       type AdminOrganisationMembersAddOutput = {
@@ -899,8 +899,8 @@ describe("runtime tool reference generation", () => {
         roles: string[];
       };
       type AdminOrganisationMembersRemoveInput = {
-        organizationId: string;
-        userId: string;
+        organizationSlug: string;
+        userEmail: string;
       };
       type AdminOrganisationMembersRemoveOutput = {
         organizationId: string;

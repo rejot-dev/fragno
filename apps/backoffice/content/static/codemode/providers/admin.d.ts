@@ -25,8 +25,8 @@ type AdminOrganisationCreateOutput = {
   ownerUserId: string;
 };
 type AdminOrganisationMembersAddInput = {
-  organizationId: string;
-  userId: string;
+  organizationSlug: string;
+  userEmail: string;
   roles: string[];
 };
 type AdminOrganisationMembersAddOutput = {
@@ -35,8 +35,8 @@ type AdminOrganisationMembersAddOutput = {
   roles: string[];
 };
 type AdminOrganisationMembersRemoveInput = {
-  organizationId: string;
-  userId: string;
+  organizationSlug: string;
+  userEmail: string;
 };
 type AdminOrganisationMembersRemoveOutput = {
   organizationId: string;
