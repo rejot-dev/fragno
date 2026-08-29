@@ -49,7 +49,7 @@
    */
   "vars": {
     "TURNSTILE_SITEKEY": "0x4AAAAAACEAKTUMl498hZ6v",
-    "AUTH_EMAIL_VERIFICATION_ENABLED": "false",
+    "AUTH_EMAIL_VERIFICATION_ENABLED": "true",
     "DOCS_PUBLIC_BASE_URL": "https://backoffice.rejot.dev/",
   },
   "secrets": {
