@@ -1060,6 +1060,61 @@ describe("upload file routes", async () => {
     assert(response.data.files[0]?.fileKey.startsWith("users/1/"));
   });
 
+  it("GET /files paginates provider-scoped prefixes without SQL pattern matching", async () => {
+    const prefix = "bla/wilcokruijer.github.io/.git/refs/remotes/origin/";
+    expect(Buffer.byteLength(`${prefix}%`, "utf8")).toBeGreaterThan(50);
+
+    for (const fileKey of [`${prefix}HEAD`, `${prefix}main`, `${prefix.slice(0, -1)}0/outside`]) {
+      const response = await fragment.callRoute("POST", "/files", {
+        body: createFileForm({ content: fileKey, filename: path.basename(fileKey), fileKey }),
+      });
+      assert(response.type === "json");
+    }
+
+    const firstPage = await fragment.callRoute("GET", "/files", {
+      query: { provider, prefix, pageSize: "1", status: "ready" },
+    });
+    assert(firstPage.type === "json");
+    expect(firstPage.data.files.map((file) => file.fileKey)).toEqual([`${prefix}HEAD`]);
+    assert(firstPage.data.hasNextPage);
+    assert(firstPage.data.cursor);
+
+    const secondPage = await fragment.callRoute("GET", "/files", {
+      query: {
+        provider,
+        prefix,
+        pageSize: "1",
+        status: "ready",
+        cursor: firstPage.data.cursor,
+      },
+    });
+    assert(secondPage.type === "json");
+    expect(secondPage.data.files.map((file) => file.fileKey)).toEqual([`${prefix}main`]);
+    assert(!secondPage.data.hasNextPage);
+    expect(secondPage.data.cursor).toBeUndefined();
+  });
+
+  it("GET /files treats unscoped prefix pattern characters literally", async () => {
+    const prefix = "literal_%/";
+    for (const fileKey of [
+      "literal-/before.txt",
+      `${prefix}inside.txt`,
+      "literal_ax/outside.txt",
+    ]) {
+      const response = await fragment.callRoute("POST", "/files", {
+        body: createFileForm({ content: fileKey, filename: path.basename(fileKey), fileKey }),
+      });
+      assert(response.type === "json");
+    }
+
+    const response = await fragment.callRoute("GET", "/files", {
+      query: { prefix, pageSize: "20", status: "ready" },
+    });
+    assert(response.type === "json");
+    expect(response.data.files.map((file) => file.fileKey)).toEqual([`${prefix}inside.txt`]);
+    assert(!response.data.hasNextPage);
+  });
+
   it("GET /files filters prefix-scoped pages with a glob", async () => {
     const createForm = (fileKey: string) => {
       const form = new FormData();

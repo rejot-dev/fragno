@@ -64,6 +64,22 @@ const buildFileHookPayload = (file: FileHookSource, uploadId?: string): FileHook
   contentType: file.contentType,
 });
 
+function getExclusiveFileKeyPrefixUpperBound(prefix: string): string | undefined {
+  const characters = Array.from(prefix);
+
+  for (let index = characters.length - 1; index >= 0; index -= 1) {
+    const codePoint = characters[index].codePointAt(0)!;
+    if (codePoint === 0x10ffff) {
+      continue;
+    }
+
+    const nextCodePoint = codePoint === 0xd7ff ? 0xe000 : codePoint + 1;
+    return characters.slice(0, index).join("") + String.fromCodePoint(nextCodePoint);
+  }
+
+  return undefined;
+}
+
 export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
   return {
     findFileByKey: function (this: UploadServiceContext, input: FileByKeyInput) {
@@ -111,11 +127,14 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
     },
 
     listFiles: function (this: UploadServiceContext, input: ListFilesInput) {
+      const prefix = input.prefix ?? "";
+      const prefixUpperBound = getExclusiveFileKeyPrefixUpperBound(prefix);
+
+      // Avoid "LIKE or GLOB pattern too complex": file keys can exceed Cloudflare Durable Object
+      // SQLite's 50-byte pattern limit, so the query uses literal index range bounds instead.
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
           uow.findWithCursor("file", (b) => {
-            const prefix = input.prefix ?? "";
-
             if (input.status && input.uploaderId) {
               const status = input.status;
               const uploaderId = input.uploaderId;
@@ -124,7 +143,9 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
                   input.provider !== undefined
                     ? eb("provider", "=", input.provider)
                     : eb("provider", "starts with", ""),
-                  eb("key", "starts with", prefix),
+                  prefixUpperBound === undefined
+                    ? eb("key", ">=", prefix)
+                    : eb.and(eb("key", ">=", prefix), eb("key", "<", prefixUpperBound)),
                   eb("status", "=", status),
                   eb("uploaderId", "=", uploaderId),
                 ),
@@ -142,7 +163,9 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
                   input.provider !== undefined
                     ? eb("provider", "=", input.provider)
                     : eb("provider", "starts with", ""),
-                  eb("key", "starts with", prefix),
+                  prefixUpperBound === undefined
+                    ? eb("key", ">=", prefix)
+                    : eb.and(eb("key", ">=", prefix), eb("key", "<", prefixUpperBound)),
                   eb("status", "=", status),
                 ),
               );
@@ -159,7 +182,9 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
                   input.provider !== undefined
                     ? eb("provider", "=", input.provider)
                     : eb("provider", "starts with", ""),
-                  eb("key", "starts with", prefix),
+                  prefixUpperBound === undefined
+                    ? eb("key", ">=", prefix)
+                    : eb.and(eb("key", ">=", prefix), eb("key", "<", prefixUpperBound)),
                   eb("uploaderId", "=", uploaderId),
                 ),
               );
@@ -174,7 +199,9 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
                 input.provider !== undefined
                   ? eb("provider", "=", input.provider)
                   : eb("provider", "starts with", ""),
-                eb("key", "starts with", prefix),
+                prefixUpperBound === undefined
+                  ? eb("key", ">=", prefix)
+                  : eb.and(eb("key", ">=", prefix), eb("key", "<", prefixUpperBound)),
               ),
             );
             const ordered = query
