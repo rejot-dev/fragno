@@ -341,6 +341,35 @@ describe("interactive bash host", () => {
     assert(result.stdout === "kept\n");
     assert(result.stderr === "");
   });
+
+  it("explains when a known command requires a different scope", async () => {
+    const { bash, commandCallsResult } = createInteractiveBashHost({
+      fs: new InMemoryFs(),
+      context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
+        execution: {
+          ...EMPTY_BASH_HOST_CONTEXT.execution,
+          scope: { kind: "org", orgId: "org-1" },
+        },
+      },
+    });
+
+    const result = await bash.exec(
+      "admin.organisation.create --name Acme --slug acme --owner-email owner@example.com",
+    );
+
+    assert(result.exitCode === 1);
+    expect(result.stderr).toContain(
+      "Backoffice command unavailable: 'admin.organisation.create' is not supported in the current organization scope.",
+    );
+    expect(result.stderr).toContain(
+      "Admin commands require the System scope. Select System in the Backoffice scope switcher and retry.",
+    );
+    expect(result.stderr).toContain("context.current --format json");
+    expect(commandCallsResult).toEqual([
+      { command: "admin.organisation.create", output: "", exitCode: 1 },
+    ]);
+  });
 });
 
 describe("bash host command assembly", () => {

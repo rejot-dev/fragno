@@ -7,7 +7,12 @@ import {
   type AutomationRunResult,
 } from "@/fragno/automation/run-result";
 
-import { createBashHost, type BashHost, type BashHostContext } from "./bash-host";
+import {
+  createBashHost,
+  createInteractiveRuntimeBashHost,
+  type BashHost,
+  type BashHostContext,
+} from "./bash-host";
 
 // ---------------------------------------------------------------------------
 // Automation execution (bash + codemode)
@@ -96,7 +101,7 @@ export const createInteractiveBashHost = (input: CreateInteractiveBashHostInput)
       ? createAutomationExecutionFileSystem({ masterFs: input.fs })
       : input.fs;
 
-  return createBashHost({
+  return createInteractiveRuntimeBashHost({
     fs,
     sessionId: input.sessionId,
     context: input.context,

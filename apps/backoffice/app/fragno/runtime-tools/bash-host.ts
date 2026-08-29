@@ -9,6 +9,7 @@ import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import {
   createBackofficeBashCommands,
   getAvailableRuntimeTools,
+  type BackofficeToolContext,
 } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
@@ -115,7 +116,88 @@ type BashCommandFactoryInput = {
   context: BashHostContext;
 };
 
-const createRegisteredBashCommands = (input: BashCommandFactoryInput) => {
+type BashCommandAvailability = "available-only" | "describe-unavailable";
+
+function describeBackofficeScope(context: BackofficeToolContext): string {
+  switch (context.execution.scope.kind) {
+    case "system":
+      return "System";
+    case "org":
+      return "organization";
+    case "project":
+      return "project";
+    case "user":
+      return "user";
+  }
+
+  throw new Error("Unsupported Backoffice scope kind.");
+}
+
+function unavailableRuntimeToolCommandMessage({
+  command,
+  namespace,
+  context,
+}: {
+  command: string;
+  namespace: string;
+  context: BackofficeToolContext;
+}): string {
+  const scope = describeBackofficeScope(context);
+  if (namespace === "admin" && context.execution.scope.kind !== "system") {
+    return [
+      `Backoffice command unavailable: '${command}' is not supported in the current ${scope} scope.`,
+      "Admin commands require the System scope. Select System in the Backoffice scope switcher and retry.",
+      "Run 'context.current --format json' to inspect the current scope.",
+    ].join("\n");
+  }
+
+  return [
+    `Backoffice command unavailable: '${command}' is not supported in the current ${scope} runtime context.`,
+    "The selected scope or Backoffice environment does not provide this command's runtime.",
+    "Run 'context.current --format json' to inspect the current scope, then switch scopes and retry.",
+  ].join("\n");
+}
+
+function createUnavailableRuntimeToolBashCommands({
+  context,
+  commandCallsResult,
+}: {
+  context: BackofficeToolContext;
+  commandCallsResult: BashAutomationCommandResult[];
+}) {
+  return runtimeToolFamilies.flatMap((family) => {
+    if (!family.isAvailable || family.isAvailable(context)) {
+      return [];
+    }
+
+    return family.tools.flatMap((tool) => {
+      const command = tool.adapters?.bash?.command;
+      if (!command) {
+        return [];
+      }
+
+      return [
+        defineCommand(command, async () => {
+          commandCallsResult.push({ command, output: "", exitCode: 1 });
+          return {
+            stdout: "",
+            stderr: `${unavailableRuntimeToolCommandMessage({
+              command,
+              namespace: tool.namespace,
+              context,
+            })}\n`,
+            exitCode: 1,
+          };
+        }),
+      ];
+    });
+  });
+}
+
+function createRegisteredBashCommands(
+  input: BashCommandFactoryInput,
+  commandAvailability: BashCommandAvailability,
+) {
   const context = createBackofficeToolContext(input.context);
   const tools = getAvailableRuntimeTools({
     families: runtimeToolFamilies,
@@ -128,12 +210,21 @@ const createRegisteredBashCommands = (input: BashCommandFactoryInput) => {
       context,
       commandCallsResult: input.commandCallsResult,
     }),
+    ...(commandAvailability === "describe-unavailable"
+      ? createUnavailableRuntimeToolBashCommands({
+          context,
+          commandCallsResult: input.commandCallsResult,
+        })
+      : []),
     createCurrentScopeBashCommand(input.context.execution.scope, defineCommand),
     ...isomorphicGitCommands,
   ];
-};
+}
 
-export const createBashHost = (input: CreateBashHostInput): BashHost => {
+function createConfiguredBashHost(
+  input: CreateBashHostInput,
+  commandAvailability: BashCommandAvailability,
+): BashHost {
   const commandCallsResult = input.commandCallsResult ?? [];
   const commandInput: BashCommandFactoryInput = {
     sessionId: input.sessionId,
@@ -146,10 +237,19 @@ export const createBashHost = (input: CreateBashHostInput): BashHost => {
       fs: input.fs,
       env: input.env,
       defenseInDepth: false,
-      customCommands: createRegisteredBashCommands(commandInput),
+      customCommands: createRegisteredBashCommands(commandInput, commandAvailability),
     }),
     sessionId: input.sessionId,
     context: input.context,
     commandCallsResult,
   };
-};
+}
+
+export function createBashHost(input: CreateBashHostInput): BashHost {
+  return createConfiguredBashHost(input, "available-only");
+}
+
+/** Creates an interactive shell that explains why known commands are unavailable. */
+export function createInteractiveRuntimeBashHost(input: CreateBashHostInput): BashHost {
+  return createConfiguredBashHost(input, "describe-unavailable");
+}
