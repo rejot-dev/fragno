@@ -1,20 +1,11 @@
 import type { AutomationCommandOptionSpec } from "@/fragno/runtime-tools/automation-types";
 import { STANDARD_COMMAND_OPTIONS } from "@/fragno/runtime-tools/bash-cli";
-import { CURRENT_SCOPE_BASH_COMMAND_SPEC } from "@/fragno/runtime-tools/current-scope-command";
 import {
   createRuntimeToolReferenceContext,
   createRuntimeToolReferences,
 } from "@/fragno/runtime-tools/reference";
+import { BACKOFFICE_TERMINAL_SHELL_COMMAND_SPECS } from "@/fragno/runtime-tools/terminal-shell-command-specs";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
-
-const BACKOFFICE_TERMINAL_SHELL_COMMAND_SPECS = [
-  { command: "cat", summary: "Print file contents.", options: [] },
-  { command: "cd", summary: "Change the terminal working directory.", options: [] },
-  { command: "find", summary: "Search for files under a directory.", options: [] },
-  { command: "ls", summary: "List files and directories.", options: [] },
-  { command: "pwd", summary: "Print the terminal working directory.", options: [] },
-  CURRENT_SCOPE_BASH_COMMAND_SPEC,
-] as const;
 
 function appendStandardCommandOptions(options: readonly AutomationCommandOptionSpec[]) {
   const optionNames = new Set(options.map((option) => option.name));

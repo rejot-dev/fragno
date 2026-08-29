@@ -7,7 +7,6 @@
 
 import type { AutomationCommandOptionSpec } from "@/fragno/runtime-tools/automation-types";
 import { STANDARD_COMMAND_OPTIONS } from "@/fragno/runtime-tools/bash-cli";
-import { CURRENT_SCOPE_BASH_COMMAND_SPEC } from "@/fragno/runtime-tools/current-scope-command";
 import {
   createRuntimeToolReferenceContext,
   createRuntimeToolReferences,
@@ -15,6 +14,7 @@ import {
   type RuntimeToolReference,
 } from "@/fragno/runtime-tools/reference";
 import type { BackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
+import { BACKOFFICE_TERMINAL_SHELL_COMMAND_SPECS } from "@/fragno/runtime-tools/terminal-shell-command-specs";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import type { DashboardCommandSpec } from "./dashboard-terminal";
@@ -33,13 +33,8 @@ const VISIBLE_COMMAND_REFERENCES = createRuntimeToolReferences({
 export const PI_TERMINAL_COMMAND_GROUPS = renderDashboardCommandGroups(VISIBLE_COMMAND_REFERENCES);
 
 const SHELL_COMMAND_SPECS = [
-  { command: "cat", summary: "Print file contents.", options: [] },
-  { command: "cd", summary: "Change the terminal working directory.", options: [] },
-  { command: "find", summary: "Search for files under a directory.", options: [] },
+  ...BACKOFFICE_TERMINAL_SHELL_COMMAND_SPECS,
   { command: "help", summary: "List the commands available in this terminal.", options: [] },
-  { command: "ls", summary: "List files and directories.", options: [] },
-  { command: "pwd", summary: "Print the terminal working directory.", options: [] },
-  CURRENT_SCOPE_BASH_COMMAND_SPEC,
 ] as const;
 
 const appendStandardCommandOptions = (options: readonly AutomationCommandOptionSpec[]) => {
@@ -177,11 +172,13 @@ export const formatPiTerminalCommandHelp = (
   const optionLines = spec.options.map(
     (option) => `  --${option.name}${option.required ? " (required)" : ""}: ${option.description}`,
   );
+  const exampleLines = spec.examples?.map((example) => `  ${example}`) ?? [];
 
   return [
     `${spec.command}${usage ? ` ${usage}` : ""}`,
     `  ${firstLine(spec.summary)}`,
     ...(optionLines.length ? ["", "Options:", ...optionLines] : []),
+    ...(exampleLines.length ? ["", "Examples:", ...exampleLines] : []),
     "",
   ].join("\n");
 };

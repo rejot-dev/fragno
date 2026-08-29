@@ -36,7 +36,7 @@ import type { SandboxRuntime } from "./families/sandbox-runtime";
 import type { RegisteredTelegramCommandContext } from "./families/telegram-runtime";
 import type { UploadRuntime } from "./families/upload-runtime";
 import type { WebRuntime } from "./families/web-runtime";
-import { isomorphicGitCommand } from "./isomorphic-git-command";
+import { isomorphicGitCommands } from "./isomorphic-git-command";
 
 export type RegisteredAutomationsRuntime = AutomationStoreRuntime & AutomationRouterRuntime;
 
@@ -129,7 +129,7 @@ const createRegisteredBashCommands = (input: BashCommandFactoryInput) => {
       commandCallsResult: input.commandCallsResult,
     }),
     createCurrentScopeBashCommand(input.context.execution.scope, defineCommand),
-    isomorphicGitCommand,
+    ...isomorphicGitCommands,
   ];
 };
 
