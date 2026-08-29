@@ -1,9 +1,9 @@
 ---
 name: trace-analysis
 description:
-  Backoffice trace forensics. Use for a trace id, slow request, span explosion, Durable Object
+  Local Backoffice trace forensics. Use for a trace id, slow request, span explosion, Durable Object
   storage activity, durable-hook propagation, missing Fragno spans, or local observability-store
-  growth.
+  growth. Use only when analysis local traces.
 ---
 
 # Backoffice Trace Forensics
