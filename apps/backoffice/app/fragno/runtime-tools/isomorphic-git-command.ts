@@ -3,31 +3,31 @@ import http from "isomorphic-git/http/web";
 import type { IFileSystem } from "just-bash";
 import { defineCommand } from "just-bash";
 
+import { ISOMORPHIC_GIT_CLONE_LIMITS } from "./isomorphic-git-command-spec";
+
 type CommandContext = Parameters<Parameters<typeof defineCommand>[1]>[1];
 type CommandHandler = (args: string[], ctx: CommandContext) => Promise<string>;
 type NodeFsError = Error & { code?: string; path?: string };
 type NodeReadFileOptions = string | { encoding?: string | null };
 type NodeWriteFileOptions = string | { encoding?: string };
 
-const DEFAULT_CLONE_DEPTH = 1;
-const MAX_CLONE_DEPTH = 50;
-const DEFAULT_CLONE_MAX_FILES = 5_000;
-const MAX_CLONE_MAX_FILES = 20_000;
-const DEFAULT_CLONE_MAX_BYTES = 50 * 1024 * 1024;
-const MAX_CLONE_MAX_BYTES = 250 * 1024 * 1024;
+const {
+  defaultDepth: DEFAULT_CLONE_DEPTH,
+  maximumDepth: MAX_CLONE_DEPTH,
+  defaultFileLimit: DEFAULT_CLONE_MAX_FILES,
+  maximumFileLimit: MAX_CLONE_MAX_FILES,
+  defaultByteLimit: DEFAULT_CLONE_MAX_BYTES,
+  maximumByteLimit: MAX_CLONE_MAX_BYTES,
+} = ISOMORPHIC_GIT_CLONE_LIMITS;
 
-const HELP_TEXT = [
-  "Usage: isogit <command> [args]",
-  "",
-  "Convenience commands:",
-  "  isogit clone <url> [directory] [--depth <n>] [--ref <ref>] [--max-files <n>] [--max-bytes <n>]",
-  `    Defaults: --depth ${DEFAULT_CLONE_DEPTH}, --max-files ${DEFAULT_CLONE_MAX_FILES}, --max-bytes ${DEFAULT_CLONE_MAX_BYTES}`,
-  "  isogit status [directory]",
-  "",
-  "Escape hatch:",
-  "  isogit call <non-network-isomorphic-git-function> [json-options]",
+const CLONE_HELP_TEXT = [
+  "Usage: git.clone <url> [directory] [--depth <n>] [--ref <ref>] [--max-files <n>] [--max-bytes <n>]",
+  `Defaults: --depth ${DEFAULT_CLONE_DEPTH}, --max-files ${DEFAULT_CLONE_MAX_FILES}, --max-bytes ${DEFAULT_CLONE_MAX_BYTES}`,
   "",
 ].join("\n");
+
+const STATUS_HELP_TEXT = "Usage: git.status [directory] [--dir <path>]\n";
+const CALL_HELP_TEXT = "Usage: git.call <non-network-isomorphic-git-function> [json-options]\n";
 
 const ok = (stdout = "") => ({ stdout, stderr: "", exitCode: 0 });
 const fail = (stderr: string, exitCode = 1) => ({
@@ -159,7 +159,7 @@ const parseJsonOptions = (input: string | undefined): Record<string, unknown> =>
 
   const parsed = JSON.parse(input) as unknown;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("isogit options must be a JSON object.");
+    throw new Error("git.call options must be a JSON object.");
   }
 
   return parsed as Record<string, unknown>;
@@ -301,7 +301,7 @@ const clone: CommandHandler = async (args, ctx) => {
 
   if (!url) {
     throw new Error(
-      "usage: isogit clone <url> [directory] [--depth <n>] [--ref <ref>] [--max-files <n>] [--max-bytes <n>]",
+      "usage: git.clone <url> [directory] [--depth <n>] [--ref <ref>] [--max-files <n>] [--max-bytes <n>]",
     );
   }
 
@@ -352,8 +352,6 @@ const status: CommandHandler = async (args, ctx) => {
   );
 };
 
-const handlers: Record<string, CommandHandler> = { clone, status };
-
 const NETWORK_CALLS_REQUIRING_BOUNDS = new Set(["clone", "fetch", "pull", "push"]);
 
 const callIsomorphicGit = async (args: string[], ctx: CommandContext) => {
@@ -363,7 +361,7 @@ const callIsomorphicGit = async (args: string[], ctx: CommandContext) => {
     throw new Error(`unknown isomorphic-git function '${fnName ?? ""}'.`);
   }
   if (NETWORK_CALLS_REQUIRING_BOUNDS.has(fnName)) {
-    throw new Error(`isogit call ${fnName} is not supported; use a bounded isogit command.`);
+    throw new Error(`git.call ${fnName} is not supported; use a bounded git command.`);
   }
 
   const result = await fn({
@@ -375,25 +373,23 @@ const callIsomorphicGit = async (args: string[], ctx: CommandContext) => {
   return result === undefined ? "" : `${JSON.stringify(result, null, 2)}\n`;
 };
 
-export const isomorphicGitCommand = defineCommand("isogit", async (args, ctx) => {
-  const [command, ...rest] = args;
-
-  if (!command || command === "--help") {
-    return ok(HELP_TEXT);
-  }
-
-  try {
-    if (command === "call") {
-      return ok(await callIsomorphicGit(rest, ctx));
+function defineIsomorphicGitCommand(command: string, helpText: string, handler: CommandHandler) {
+  return defineCommand(command, async (args, ctx) => {
+    if (args.includes("--help")) {
+      return ok(helpText);
     }
 
-    const handler = handlers[command];
-    if (!handler) {
-      return fail(`isogit: unknown command '${command}'.\n`, 2);
+    try {
+      return ok(await handler(args, ctx));
+    } catch (error) {
+      return fail(`${command}: ${error instanceof Error ? error.message : String(error)}\n`);
     }
+  });
+}
 
-    return ok(await handler(rest, ctx));
-  } catch (error) {
-    return fail(`isogit: ${error instanceof Error ? error.message : String(error)}\n`);
-  }
-});
+/** Executes isomorphic-git operations inside the Backoffice Bash host. */
+export const isomorphicGitCommands = [
+  defineIsomorphicGitCommand("git.clone", CLONE_HELP_TEXT, clone),
+  defineIsomorphicGitCommand("git.status", STATUS_HELP_TEXT, status),
+  defineIsomorphicGitCommand("git.call", CALL_HELP_TEXT, callIsomorphicGit),
+];

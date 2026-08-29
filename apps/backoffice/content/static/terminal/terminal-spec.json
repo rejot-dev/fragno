@@ -50,6 +50,69 @@
     ]
   },
   {
+    "command": "git.clone",
+    "summary": "Clone a Git repository into the terminal filesystem with resource bounds.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show git.clone usage.",
+        "valueRequired": false
+      },
+      {
+        "name": "depth",
+        "description": "Clone history depth; defaults to 1 and cannot exceed 50.",
+        "valueRequired": true,
+        "valueName": "number"
+      },
+      {
+        "name": "ref",
+        "description": "Branch or tag to clone.",
+        "valueRequired": true,
+        "valueName": "ref"
+      },
+      {
+        "name": "max-files",
+        "description": "Maximum files allowed in a clone; defaults to 5000 and cannot exceed 20000.",
+        "valueRequired": true,
+        "valueName": "number"
+      },
+      {
+        "name": "max-bytes",
+        "description": "Maximum bytes allowed in a clone; defaults to 52428800 and cannot exceed 262144000.",
+        "valueRequired": true,
+        "valueName": "number"
+      }
+    ]
+  },
+  {
+    "command": "git.status",
+    "summary": "Show the Git working tree status for a terminal filesystem directory.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show git.status usage.",
+        "valueRequired": false
+      },
+      {
+        "name": "dir",
+        "description": "Repository directory; defaults to the current directory.",
+        "valueRequired": true,
+        "valueName": "path"
+      }
+    ]
+  },
+  {
+    "command": "git.call",
+    "summary": "Call a non-network isomorphic-git function in the terminal filesystem.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show git.call usage.",
+        "valueRequired": false
+      }
+    ]
+  },
+  {
     "command": "admin.organisation.create",
     "summary": "admin.organisation.create creates an organization and assigns its owner.",
     "options": [
