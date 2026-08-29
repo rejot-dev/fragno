@@ -7,6 +7,7 @@ import type {
   BackofficeObjectBinding,
   BackofficeObjectFactory,
   BackofficeObjectHandle,
+  BackofficeObjectHttp,
 } from "./object-registry";
 import { createBackofficeObjectRegistry } from "./object-registry";
 import { assertBackofficeObjectAddressAllowed } from "./object-registry";
@@ -46,34 +47,35 @@ export class CloudflareDurableObjectFactory implements BackofficeObjectFactory {
     assertBackofficeObjectAddressAllowed(address);
     const namespace = getNamespace(this.env, binding);
     const encodedName = encodeBackofficeObjectAddress(address);
-    const stub = namespace.get(namespace.idFromName(encodedName)) as TCommands & {
+    const id = namespace.idFromName(encodedName);
+    const stub = namespace.get(id) as TCommands & {
       fetch(request: Request): Promise<Response>;
     };
-    return {
-      commands: stub,
-      http: {
-        fetch: async (request) =>
-          forwardRequestOwnedResponse(
-            request,
-            await stub.fetch(removeBackofficeInternalContextHeader(request)),
+    const http: BackofficeObjectHttp & { readonly id: DurableObjectId } = {
+      // Preserve the target identity so isolate-local caches survive newly assembled object handles.
+      id,
+      fetch: async (request) =>
+        forwardRequestOwnedResponse(
+          request,
+          await stub.fetch(removeBackofficeInternalContextHeader(request)),
+        ),
+      fetchAuthorized: async (request, context) =>
+        forwardRequestOwnedResponse(
+          request,
+          await stub.fetch(
+            await createAuthorizedBackofficeObjectRequest({
+              request,
+              address,
+              context: {
+                execution: context.execution,
+                propagationContext: context.propagationContext ?? null,
+              },
+              env: this.env,
+            }),
           ),
-        fetchAuthorized: async (request, context) =>
-          forwardRequestOwnedResponse(
-            request,
-            await stub.fetch(
-              await createAuthorizedBackofficeObjectRequest({
-                request,
-                address,
-                context: {
-                  execution: context.execution,
-                  propagationContext: context.propagationContext ?? null,
-                },
-                env: this.env,
-              }),
-            ),
-          ),
-      },
+        ),
     };
+    return { commands: stub, http };
   }
 }
 

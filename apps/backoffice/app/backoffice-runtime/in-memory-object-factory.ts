@@ -35,6 +35,7 @@ import type {
   BackofficeObjectBindingName,
   BackofficeObjectFactory,
   BackofficeObjectHandle,
+  BackofficeObjectHttp,
 } from "./object-registry";
 import { assertBackofficeObjectAddressAllowed } from "./object-registry";
 import { encodeBackofficeObjectAddress } from "./object-registry";
@@ -346,28 +347,29 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
     assertBackofficeObjectAddressAllowed(address);
     const namespace = this.#namespace<TCommands>(binding);
     const encodedName = encodeBackofficeObjectAddress(address);
-    const stub = namespace.get(namespace.idFromName(encodedName)) as TCommands & {
+    const id = namespace.idFromName(encodedName);
+    const stub = namespace.get(id) as TCommands & {
       fetch(request: Request): Promise<Response>;
     };
-    return {
-      commands: stub,
-      http: {
-        fetch: async (request) => await stub.fetch(removeBackofficeInternalContextHeader(request)),
-        fetchAuthorized: async (request, context) =>
-          await stub.fetch(
-            await createAuthorizedBackofficeObjectRequest({
-              request,
-              address,
-              context: {
-                execution: context.execution,
-                propagationContext: context.propagationContext ?? null,
-              },
-              env: this.env as CloudflareEnv,
-              nowEpochMs: this.now(),
-            }),
-          ),
-      },
+    const http: BackofficeObjectHttp & { readonly id: DurableObjectId } = {
+      // Match Cloudflare handles so isolate-local caches behave the same in scenarios.
+      id,
+      fetch: async (request) => await stub.fetch(removeBackofficeInternalContextHeader(request)),
+      fetchAuthorized: async (request, context) =>
+        await stub.fetch(
+          await createAuthorizedBackofficeObjectRequest({
+            request,
+            address,
+            context: {
+              execution: context.execution,
+              propagationContext: context.propagationContext ?? null,
+            },
+            env: this.env as CloudflareEnv,
+            nowEpochMs: this.now(),
+          }),
+        ),
     };
+    return { commands: stub, http };
   }
 
   instances(): InMemoryDurableObjectInstance[] {
