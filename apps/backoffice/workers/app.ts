@@ -1,9 +1,10 @@
+import { createRequestHandler, RouterContextProvider } from "react-router";
 import System from "typebox/system";
+import * as serverBuild from "virtual:react-router/server-build";
 
-import {
-  BACKOFFICE_WORKER_TOPOLOGY,
-  type BackofficeRouteServiceBinding,
-} from "../backoffice-worker-topology";
+import { BackofficeKernel } from "../app/backoffice-runtime/kernel";
+import { createCloudflareBackofficeRuntimeServices } from "../app/backoffice-runtime/runtime-services";
+import { BackofficeWorkerContext } from "../app/worker-runtime/router-context";
 import { Api } from "./api.do";
 import { Auth } from "./auth.do";
 import { Automations } from "./automations.do";
@@ -16,14 +17,12 @@ import { Marketplace } from "./marketplace.do";
 import { Mcp } from "./mcp.do";
 import { Otp } from "./otp.do";
 import { OutboundProxy } from "./outbound-proxy";
-import { selectReactRouterServerBundle } from "./react-router-worker-routing";
 import { Resend } from "./resend.do";
 import { Reson8 } from "./reson8.do";
 import { Sandbox } from "./sandbox.do";
 import { Telegram } from "./telegram.do";
 import { Upload } from "./upload.do";
 
-// Export Durable Object classes
 export { Api };
 export { Auth };
 export { Automations };
@@ -44,11 +43,18 @@ export { OutboundProxy };
 
 System.Settings.Set({ useAcceleration: false });
 
+const requestHandler = createRequestHandler(serverBuild, import.meta.env.MODE);
+
 export default {
-  fetch(request, env) {
-    const serverBundleId = selectReactRouterServerBundle(new URL(request.url).pathname);
-    const routeWorker = BACKOFFICE_WORKER_TOPOLOGY.reactRouterWorkers[serverBundleId];
-    const routeServices = env as CloudflareEnv & Record<BackofficeRouteServiceBinding, Fetcher>;
-    return routeServices[routeWorker.serviceBinding].fetch(request);
+  async fetch(request, env, ctx) {
+    const runtime = createCloudflareBackofficeRuntimeServices(env);
+    const context = new RouterContextProvider();
+    context.set(BackofficeWorkerContext, {
+      runtime,
+      kernel: new BackofficeKernel(runtime),
+      env,
+      ctx,
+    });
+    return requestHandler(request, context);
   },
 } satisfies ExportedHandler<CloudflareEnv>;

@@ -1,12 +1,10 @@
 {
   "include": [
-    "backoffice-worker-topology.ts",
     "vite.config.ts",
+    "react-router.config.ts",
     "source.config.ts",
     "vitest*.ts",
-    "scripts/**/*.ts",
-    "workers/react-router-worker-routing.ts",
-    "workers/react-router-worker-routing.test.ts"
+    "scripts/**/*.ts"
   ],
   "exclude": ["scripts/better-auth-cli.ts"],
   "compilerOptions": {

@@ -1,7 +1,7 @@
 # Backoffice
 
-Backoffice is the Fragno dogfooding application. It is a React Router application deployed as an
-entry Cloudflare Worker with route-specific Workers connected through service bindings.
+Backoffice is the Fragno dogfooding application. Its complete React Router server, Durable Objects,
+and supporting Cloudflare bindings run in one Worker named `rejot-backoffice`.
 
 ## Development
 
@@ -13,74 +13,52 @@ pnpm --dir apps/backoffice dev
 
 ## Deploy Backoffice
 
-Backoffice deployment has separate upload and activation steps. Use one unique version tag for all
-Workers in a release. Do not reuse a tag: Cloudflare cannot resolve a tag that matches multiple
-versions of the same Worker.
+Backoffice deployment separates inactive version uploads from production activation. Give each
+release a unique version tag; reusing a tag makes Cloudflare version selection ambiguous. The
+package scripts pass flags directly to Wrangler, so do not insert a standalone `--` before them.
 
-### Bootstrap new Workers once
+### Bootstrap the Worker
 
-`wrangler versions upload` cannot create a Worker. Before the first versioned release, use Wrangler
-manually to create and configure any secret-bearing Workers, including
-`rejot-backoffice-routes-api`. Then bootstrap the complete Worker topology with normal deployments:
+A normal deployment is required when creating the Worker or adding a declarative Durable Object
+class that has not been provisioned yet:
 
 ```bash
 BOOTSTRAP_TAG=bootstrap-$(date -u +%Y%m%d-%H%M%S)
-pnpm --dir apps/backoffice run deploy:bootstrap -- --tag "$BOOTSTRAP_TAG"
+pnpm --dir apps/backoffice run deploy:bootstrap --tag "$BOOTSTRAP_TAG"
 ```
 
-The bootstrap command performs immediate `wrangler deploy` operations in route-Worker order and
-deploys the entry Worker last. It is a one-time live deployment, not an inactive version upload. Use
-`--dry-run` to validate the bootstrap locally without creating Workers. Bootstrap dry runs do not
-validate remote secrets.
+Bootstrap immediately activates the built Worker. It deliberately skips container rollout; manage
+changes to `sandbox.Dockerfile` and the Sandbox container configuration separately. Use `--dry-run`
+to validate the generated Worker locally without changing Cloudflare.
 
-### 1. Upload inactive Worker versions
+### Upload an inactive version
 
 ```bash
 VERSION_TAG=release-$(date -u +%Y%m%d-%H%M%S)
-pnpm --dir apps/backoffice run deploy:upload -- --tag "$VERSION_TAG"
+pnpm --dir apps/backoffice run deploy:upload --tag "$VERSION_TAG"
 ```
 
-This command builds Backoffice and runs `wrangler versions upload` for every route Worker followed
-by the entry Worker. The upload validates the generated bundles and required remote secrets without
-activating the versions.
+This builds Backoffice and uploads one inactive `rejot-backoffice` version. The upload validates the
+generated bundle and required remote secrets without changing production traffic.
 
-For local build validation without uploading versions:
+For local validation without uploading:
 
 ```bash
-pnpm --dir apps/backoffice run deploy:upload -- --tag "$VERSION_TAG" --dry-run
+pnpm --dir apps/backoffice run deploy:upload --tag "$VERSION_TAG" --dry-run
 ```
 
-Upload dry runs do not check whether required secrets exist on the remote Workers.
+Upload dry runs do not validate remote secrets.
 
-To upload only one Worker, select its topology id with `--worker`. Use `entry` for the entry Worker:
+### Activate an uploaded version
+
+Check that Cloudflare can resolve the tag without changing traffic:
 
 ```bash
-pnpm --dir apps/backoffice run deploy:upload -- \
-  --tag "$VERSION_TAG" \
-  --worker internals
+pnpm --dir apps/backoffice run deploy --version-tag "$VERSION_TAG@100%" --yes --dry-run
 ```
 
-The same selector works with `deploy:bootstrap` and `deploy`.
-
-### 2. Deploy the uploaded versions
-
-To check that every Worker has a deployable version with the tag without changing production:
+Activate the tagged version at 100% traffic:
 
 ```bash
-pnpm --dir apps/backoffice run deploy -- --tag "$VERSION_TAG" --dry-run
+pnpm --dir apps/backoffice run deploy --version-tag "$VERSION_TAG@100%" --yes
 ```
-
-Activate the tagged versions at 100% traffic:
-
-```bash
-pnpm --dir apps/backoffice run deploy -- --tag "$VERSION_TAG"
-```
-
-The deploy command checks every Worker tag before activating any version. It then deploys the route
-Workers in topology order and the entry Worker last. Activation is not atomic across Workers: if a
-deployment fails after activation begins, Workers already activated remain on the new version.
-
-### Container changes
-
-The version upload/deploy flow does not publish or roll out changes to `sandbox.Dockerfile` or the
-Sandbox container configuration. Treat container changes as a separate deployment operation.

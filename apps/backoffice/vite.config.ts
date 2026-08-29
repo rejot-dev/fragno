@@ -1,5 +1,4 @@
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { reactRouter } from "@react-router/dev/vite";
@@ -10,14 +9,9 @@ import devtoolsJson from "vite-plugin-devtools-json";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 
-import { BACKOFFICE_WORKER_TOPOLOGY } from "./backoffice-worker-topology";
-import { reactRouterServerBundleVitePlugin } from "./scripts/react-router-server-bundle-vite-plugin";
-import { reactRouterWorkerPreviewDevVarsVitePlugin } from "./scripts/react-router-worker-preview-dev-vars-vite-plugin";
-import { getReactRouterWorkerEntries } from "./workers/react-router-worker-routing";
-
-// Warm the Cloudflare worker entry so the Durable Object graph is transformed
+// Warm the Cloudflare Worker entry so the Durable Object graph is transformed
 // during dev-server boot instead of on the first SSR request.
-const workerWarmupFiles = ["./workers/backoffice-development-worker.ts"];
+const workerWarmupFiles = ["./workers/app.ts"];
 const waSqliteWasmUrl = new URL(import.meta.resolve("@journeyapps/wa-sqlite/dist/wa-sqlite.wasm"));
 
 function emitWaSqliteWasmAssetPlugin(): Plugin {
@@ -41,9 +35,6 @@ function emitWaSqliteWasmAssetPlugin(): Plugin {
 
 export default defineConfig(({ command }) => {
   const isDevServer = command === "serve";
-  if (!isDevServer) {
-    rmSync(path.resolve(__dirname, "./dist"), { recursive: true, force: true });
-  }
 
   return {
     resolve: {
@@ -62,79 +53,10 @@ export default defineConfig(({ command }) => {
         viteEnvironment: {
           name: "ssr",
         },
-        config: function configureBackofficeEntryWorker() {
-          if (isDevServer) {
-            return {
-              main: "./workers/backoffice-development-worker.ts",
-            };
-          }
-
-          return {
-            services: getReactRouterWorkerEntries().map(([, worker]) => ({
-              binding: worker.serviceBinding,
-              service: worker.name,
-            })),
-            secrets: {
-              required: [...BACKOFFICE_WORKER_TOPOLOGY.entryWorker.environment.secrets.required],
-            },
-          };
-        },
-        auxiliaryWorkers: isDevServer
-          ? []
-          : getReactRouterWorkerEntries().map(([bundleId, worker]) => ({
-              viteEnvironment: {
-                name: `routes_${bundleId}`,
-                childEnvironments: [`ssrBundle_${bundleId}`],
-              },
-              config: function configureReactRouterRoutesWorker(_, { entryWorkerConfig }) {
-                const vars = Object.fromEntries(
-                  worker.environment.variables.flatMap((variableName) =>
-                    variableName in entryWorkerConfig.vars
-                      ? [[variableName, entryWorkerConfig.vars[variableName]]]
-                      : [],
-                  ),
-                );
-
-                return {
-                  name: worker.name,
-                  main: "./workers/react-router-route-worker.ts",
-                  compatibility_date: entryWorkerConfig.compatibility_date,
-                  compatibility_flags: entryWorkerConfig.compatibility_flags,
-                  observability: entryWorkerConfig.observability,
-                  preview_urls: false,
-                  workers_dev: false,
-                  vars,
-                  ...(worker.environment.secrets.required.length > 0
-                    ? {
-                        secrets: {
-                          required: [...worker.environment.secrets.required],
-                        },
-                      }
-                    : {}),
-                  durable_objects: {
-                    bindings: entryWorkerConfig.durable_objects.bindings.map((binding) => ({
-                      ...binding,
-                      script_name: BACKOFFICE_WORKER_TOPOLOGY.entryWorker.name,
-                    })),
-                  },
-                  r2_buckets: entryWorkerConfig.r2_buckets,
-                  worker_loaders: entryWorkerConfig.worker_loaders,
-                  services: [
-                    {
-                      binding: "OUTBOUND",
-                      service: BACKOFFICE_WORKER_TOPOLOGY.entryWorker.name,
-                      entrypoint: "OutboundProxy",
-                    },
-                  ],
-                };
-              },
-            })),
         inspectorPort: false,
       }),
       tailwindcss(),
       reactRouter(),
-      reactRouterServerBundleVitePlugin(),
-      reactRouterWorkerPreviewDevVarsVitePlugin(),
       devtoolsJson(),
       emitWaSqliteWasmAssetPlugin(),
     ],
@@ -171,40 +93,3 @@ export default defineConfig(({ command }) => {
     },
   };
 });
-
-// oxlint-disable-next-line no-unused-vars
-function environmentInfoPlugin(): Plugin {
-  return {
-    name: "environment-info",
-    configResolved(config) {
-      const envInfo: Record<string, unknown> = {
-        root: config.root,
-        mode: config.mode,
-        command: config.command,
-        environments: {},
-      };
-
-      // Collect environment information
-      for (const [name, env] of Object.entries(config.environments)) {
-        (envInfo.environments as Record<string, unknown>)[name] = {
-          resolve: {
-            conditions: env.resolve.conditions,
-            externalConditions: env.resolve.externalConditions,
-            mainFields: env.resolve.mainFields,
-          },
-          build: {
-            outDir: env.build.outDir,
-            sourcemap: env.build.sourcemap,
-            minify: env.build.minify,
-            target: env.build.target,
-          },
-          consumer: env.consumer,
-        };
-      }
-
-      const outputPath = join(config.root, "vite-environments.json");
-      writeFileSync(outputPath, JSON.stringify(envInfo, null, 2), "utf-8");
-      console.log(`\nEnvironment info written to: ${outputPath}\n`);
-    },
-  };
-}

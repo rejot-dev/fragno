@@ -20,6 +20,9 @@ fallback and failed the route loader.
 This was an application build artifact problem. Cloudflare routing, Worker execution, service
 bindings, authentication, and Durable Object storage were operating.
 
+The route-Worker topology described in this report was retired on August 29, 2026 after the complete
+Backoffice server was validated in one Worker.
+
 ## Impact
 
 - The system automations dashboard could not load.
@@ -70,9 +73,8 @@ mean the application request succeeded.
 
 ## Request path
 
-The URL is assigned to the automations route Worker by
-[`backoffice-worker-topology.ts`](../apps/backoffice/backoffice-worker-topology.ts). The production
-request followed this path:
+At the time of the incident, the production deployment assigned this URL to a dedicated automations
+route Worker. The request followed this path:
 
 ```text
 backoffice.rejot.dev

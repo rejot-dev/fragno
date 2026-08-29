@@ -52,6 +52,23 @@
     "AUTH_EMAIL_VERIFICATION_ENABLED": "false",
     "DOCS_PUBLIC_BASE_URL": "https://backoffice.rejot.dev/",
   },
+  "secrets": {
+    "required": [
+      "AUTH_ACCESS_TOKEN_SECRET",
+      "AUTH_ADMIN_GRANT_TOKEN",
+      "GITHUB_CLIENT_ID",
+      "GITHUB_CLIENT_SECRET",
+      "GITHUB_APP_ID",
+      "GITHUB_APP_SLUG",
+      "GITHUB_APP_CLIENT_ID",
+      "GITHUB_APP_CLIENT_SECRET",
+      "GITHUB_APP_WEBHOOK_SECRET",
+      "GITHUB_APP_PRIVATE_KEY",
+      "OPENAI_API_KEY",
+      "CLOUDFLARE_WORKERS_ACCOUNT_ID",
+      "CLOUDFLARE_WORKERS_API_TOKEN",
+    ],
+  },
   "routes": [
     {
       "pattern": "backoffice.rejot.dev",
@@ -91,11 +108,6 @@
    * https://developers.cloudflare.com/workers/static-assets/binding/
    */
   // "assets": { "directory": "./public/", "binding": "ASSETS" }
-  /**
-   * Service Bindings (communicate between multiple Workers)
-   * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
-   */
-  // "services": [{ "binding": "MY_SERVICE", "service": "my-service" }]
   /**
    * Durable Objects
    * https://developers.cloudflare.com/durable-objects/

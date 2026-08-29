@@ -2,7 +2,6 @@
   "include": [
     ".react-router/types/**/*",
 
-    "backoffice-worker-topology.ts",
     "app/**/*",
     "app/**/.server/**/*",
     "app/**/.client/**/*",
@@ -10,7 +9,6 @@
     "worker-configuration.d.ts",
     "secrets.d.ts"
   ],
-  "exclude": ["workers/react-router-worker-routing.test.ts"],
   "compilerOptions": {
     "composite": true,
     "strict": true,
