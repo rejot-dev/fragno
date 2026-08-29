@@ -3,7 +3,7 @@ import { defineRoutes } from "@fragno-dev/core";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import { BufferedDatabasePump } from "../buffered-pump";
-import type { DatabaseHandlerContext, DatabaseHandlerTx } from "../db-fragment-definition-builder";
+import type { DatabaseHandlerTx } from "../db-fragment-definition-builder";
 import { FRAGNO_OUTBOX_PAGE_SIZE, type OutboxEntry } from "../outbox/outbox";
 import { submitSyncRequest, type SyncRequestRecord } from "../sync/submit";
 import type { SubmitRequest, SyncCommandDefinition } from "../sync/types";
@@ -40,7 +40,7 @@ type InternalDescribeError = {
 };
 
 const ADAPTER_IDENTITY_KEY = "adapter_identity" as const;
-const OUTBOX_STREAM_PUMP_INTERVAL_MS = 100;
+const OUTBOX_STREAM_PUMP_INTERVAL_MS = 300;
 const OUTBOX_STREAM_WRITE_TIMEOUT_MS = 1_000;
 const OUTBOX_STREAM_MAX_LIFETIME_MS = 30_000;
 
@@ -81,12 +81,12 @@ type AdapterIdentityResult =
   | { ok: false; error: InternalDescribeError };
 
 const getOrCreateAdapterIdentity = async (
-  handlerTx: () => ReturnType<DatabaseHandlerContext["handlerTx"]>,
+  handlerTx: DatabaseHandlerTx,
   services: Pick<InternalFragmentInstance["services"], "settingsService">,
 ): Promise<AdapterIdentityResult> => {
   try {
     const generatedIdentity = crypto.randomUUID();
-    const adapterIdentity = await handlerTx()
+    const adapterIdentity = await handlerTx({ name: "internal.adapterIdentity.getOrCreate" })
       .withServiceCalls(
         () =>
           [
@@ -138,7 +138,9 @@ export const createInternalFragmentDescribeRoutes = () =>
         let adapterIdentity: string;
         let currentVersionstamp: string | null;
         try {
-          ({ adapterIdentity, currentVersionstamp } = await this.handlerTx()
+          ({ adapterIdentity, currentVersionstamp } = await this.handlerTx({
+            name: "internal.describe",
+          })
             .withServiceCalls(
               () =>
                 [
@@ -215,7 +217,7 @@ export const createInternalFragmentOutboxRoutes = () =>
 
         const limit = limitResult.limit;
 
-        const entries = await this.handlerTx()
+        const entries = await this.handlerTx({ name: "internal.outbox.list" })
           .withServiceCalls(
             () => [services.outboxService.list({ afterVersionstamp, limit })] as const,
           )
@@ -249,7 +251,7 @@ export const createInternalFragmentOutboxRoutes = () =>
         }
 
         const listEntries = async (handlerTx: DatabaseHandlerTx): Promise<OutboxEntry[]> => {
-          const entries = await handlerTx()
+          const entries = await handlerTx({ name: "internal.outbox.stream.list" })
             .withServiceCalls(
               () =>
                 [
@@ -420,7 +422,7 @@ export const createInternalFragmentSyncRoutes = () =>
         }
 
         const adapterIdentityResult = await getOrCreateAdapterIdentity(
-          () => this.handlerTx(),
+          (options) => this.handlerTx(options),
           services,
         );
         if (!adapterIdentityResult.ok) {
@@ -432,7 +434,7 @@ export const createInternalFragmentSyncRoutes = () =>
         const result = await submitSyncRequest(body, {
           getAdapterIdentity: async () => adapterIdentityResult.value,
           listOutboxEntries: async (afterVersionstamp) =>
-            await this.handlerTx()
+            await this.handlerTx({ name: "internal.sync.listOutboxEntries" })
               .withServiceCalls(
                 () =>
                   [services.outboxService.list({ afterVersionstamp, limit: undefined })] as const,
@@ -440,7 +442,7 @@ export const createInternalFragmentSyncRoutes = () =>
               .transform(({ serviceResult: [entries] }) => entries as OutboxEntry[])
               .execute(),
           countOutboxMutations: async (afterVersionstamp) => {
-            const count = await this.handlerTx()
+            const count = await this.handlerTx({ name: "internal.sync.countOutboxMutations" })
               .retrieve(({ forSchema }) => {
                 const builder = afterVersionstamp
                   ? forSchema(internalSchema).find("fragno_db_outbox_mutations", (b) =>
@@ -460,7 +462,7 @@ export const createInternalFragmentSyncRoutes = () =>
             return count;
           },
           getSyncRequest: async (requestId) =>
-            await this.handlerTx()
+            await this.handlerTx({ name: "internal.sync.getRequest" })
               .retrieve(({ forSchema }) =>
                 forSchema(internalSchema).findFirst("fragno_db_sync_requests", (b) =>
                   b.whereIndex("idx_sync_request_id", (eb) => eb("requestId", "=", requestId)),
@@ -485,7 +487,7 @@ export const createInternalFragmentSyncRoutes = () =>
               })
               .execute(),
           storeSyncRequest: async (record) => {
-            await this.handlerTx()
+            await this.handlerTx({ name: "internal.sync.storeRequest" })
               .mutate(({ forSchema }) => {
                 forSchema(internalSchema).create("fragno_db_sync_requests", {
                   requestId: record.requestId,
@@ -508,7 +510,11 @@ export const createInternalFragmentSyncRoutes = () =>
             await command.handler({
               input: inputPayload,
               ctx,
-              tx: (options) => this.handlerTx(options),
+              tx: (options) =>
+                this.handlerTx({
+                  ...options,
+                  name: options?.name ?? `internal.sync.command.${command.name}`,
+                }),
             });
           },
         });
