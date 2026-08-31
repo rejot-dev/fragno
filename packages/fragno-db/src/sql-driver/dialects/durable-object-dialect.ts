@@ -64,11 +64,23 @@ interface DurableObjectState {
   readonly storage: DurableObjectStorage;
 }
 
-/**
- * Config for the Durable Objects dialect. Pass your Durable Object state to this object.
- */
+/** Final Durable Object SQLite row counters for one fully consumed compiled query. */
+export type DurableObjectQueryMetrics = {
+  sql: string;
+  rowsRead: number;
+  rowsWritten: number;
+  rowsReturned: number;
+};
+
+/** Records query-level Durable Object SQLite usage synchronously without receiving bound values. */
+export type DurableObjectQueryInstrumentation = {
+  recordQuery(metrics: DurableObjectQueryMetrics): undefined;
+};
+
+/** Configures Durable Object SQLite access and explicit query instrumentation. */
 export interface DODialectConfig {
   ctx: DurableObjectState;
+  queryInstrumentation: DurableObjectQueryInstrumentation | null;
 }
 
 /**
@@ -78,6 +90,7 @@ export interface DODialectConfig {
  * ```typescript
  * new DurableObjectDialect({
  *   ctx: this.ctx,
+ *   queryInstrumentation: null,
  * })
  * ```
  *
@@ -166,7 +179,20 @@ class DOConnection implements DatabaseConnection {
     }
 
     const rows = cursor.toArray() as O[];
-    const numAffectedRows = cursor.rowsWritten > 0 ? BigInt(cursor.rowsWritten) : undefined;
+    const rowsRead = cursor.rowsRead;
+    const rowsWritten = cursor.rowsWritten;
+    const numAffectedRows = rowsWritten > 0 ? BigInt(rowsWritten) : undefined;
+
+    try {
+      this.#config.queryInstrumentation?.recordQuery({
+        sql: compiledQuery.sql,
+        rowsRead,
+        rowsWritten,
+        rowsReturned: rows.length,
+      });
+    } catch {
+      // Observability must not turn a successfully executed database query into a failure.
+    }
 
     return {
       insertId: undefined, // Durable Objects doesn't provide last_row_id like D1

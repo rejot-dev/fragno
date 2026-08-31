@@ -134,7 +134,10 @@ import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 
 export function createFormsServer(init: FormsInit) {
   const adapter = new SqlAdapter({
-    dialect: new DurableObjectDialect({ ctx: init.state }),
+    dialect: new DurableObjectDialect({
+      ctx: init.state,
+      queryInstrumentation: null,
+    }),
     driverConfig: new CloudflareDurableObjectsDriverConfig(),
   });
 

@@ -749,7 +749,10 @@ export class InMemoryAuthObject implements AuthObject {
     this.#database =
       database ??
       new Kysely<AuthDatabase>({
-        dialect: new DurableObjectDialect({ ctx: state as DurableObjectState }),
+        dialect: new DurableObjectDialect({
+          ctx: state as DurableObjectState,
+          queryInstrumentation: null,
+        }),
       });
 
     this.#ready = state.blockConcurrencyWhile(async () => {

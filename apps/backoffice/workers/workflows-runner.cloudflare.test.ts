@@ -60,7 +60,10 @@ function createDurableObjectWorkflowsRuntime<TRegistry extends WorkflowsRegistry
   config: WorkflowsFragmentConfig<TRegistry>,
 ) {
   const adapter = new SqlAdapter({
-    dialect: new DurableObjectDialect({ ctx: wrapDurableObjectSqlErrors(state) }),
+    dialect: new DurableObjectDialect({
+      ctx: wrapDurableObjectSqlErrors(state),
+      queryInstrumentation: null,
+    }),
     driverConfig: new CloudflareDurableObjectsDriverConfig(),
   });
   const fragment = createWorkflowsFragment(config, { databaseAdapter: adapter });

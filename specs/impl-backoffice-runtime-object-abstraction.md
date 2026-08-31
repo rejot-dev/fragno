@@ -203,6 +203,7 @@ Today most fragment servers create a Cloudflare Durable Object SQL adapter inlin
 export function createAdapter(state?: DurableObjectState) {
   const dialect = new DurableObjectDialect({
     ctx: state!,
+    queryInstrumentation: null,
   });
 
   return new SqlAdapter({
@@ -281,7 +282,10 @@ export const cloudflareDatabaseAdapters = (): BackofficeDatabaseAdapterFactory =
     }
 
     return new SqlAdapter({
-      dialect: new DurableObjectDialect({ ctx: input.durableObjectState }),
+      dialect: new DurableObjectDialect({
+        ctx: input.durableObjectState,
+        queryInstrumentation: null,
+      }),
       driverConfig: new CloudflareDurableObjectsDriverConfig(),
     });
   },

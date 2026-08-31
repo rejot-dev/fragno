@@ -43,6 +43,7 @@ import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 function createAdapter(state?: DurableObjectState) {
   const dialect = new DurableObjectDialect({
     ctx: state!,
+    queryInstrumentation: null,
   });
 
   return new SqlAdapter({

@@ -12,6 +12,7 @@ import { STATIC_FORMS } from "./static-forms";
 export function createAdapter(state?: DurableObjectState) {
   const dialect = new DurableObjectDialect({
     ctx: state!,
+    queryInstrumentation: null,
   });
 
   return new SqlAdapter({

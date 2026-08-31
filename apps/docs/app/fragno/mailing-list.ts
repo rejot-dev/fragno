@@ -9,6 +9,7 @@ import { sendEmail } from "@/resend/resend";
 export function createAdapter(state?: DurableObjectState) {
   const dialect = new DurableObjectDialect({
     ctx: state!,
+    queryInstrumentation: null,
   });
 
   return new SqlAdapter({
