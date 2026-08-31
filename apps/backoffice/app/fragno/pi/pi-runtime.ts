@@ -1,4 +1,6 @@
-import { builtinModels } from "@earendil-works/pi-ai/providers/all";
+import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
+import { googleProvider } from "@earendil-works/pi-ai/providers/google";
+import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { createPiHarness, createPiWorkflows } from "@fragno-dev/pi-harness/factory";
 import type { PiFragmentConfig, PiSessionMetadata } from "@fragno-dev/pi-harness/types";
 import { createInteractiveChatWorkflow } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
@@ -11,7 +13,7 @@ import {
 
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
-import type { Models } from "@earendil-works/pi-ai";
+import { createModels, type Models } from "@earendil-works/pi-ai";
 
 import type {
   BackofficeContextScope,
@@ -205,6 +207,16 @@ const createBackofficeInteractiveChatWorkflow = ({
   checkpoint: "step",
 });
 
+function createBackofficePiModels(apiKeys: PiApiKeys): Models {
+  const models = createModels({
+    authContext: createBackofficeAuthContext(apiKeys),
+  });
+  models.setProvider(openaiProvider());
+  models.setProvider(anthropicProvider());
+  models.setProvider(googleProvider());
+  return models;
+}
+
 const buildPiRuntime = (
   config: { scope: BackofficeContextScope },
   kernel: BackofficeKernel,
@@ -214,9 +226,7 @@ const buildPiRuntime = (
   resolveSystemPrompt: BackofficeSystemPromptResolver,
   onOperationCompleted: PiFragmentConfig["onOperationCompleted"],
 ) => {
-  const models = builtinModels({
-    authContext: createBackofficeAuthContext(apiKeys),
-  });
+  const models = createBackofficePiModels(apiKeys);
   const workflows = [
     createBackofficeInteractiveChatWorkflow({
       config,
