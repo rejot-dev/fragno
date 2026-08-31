@@ -21,6 +21,7 @@
     "deploy": "wrangler versions deploy --config wrangler.jsonc",
     "dev": "react-router dev",
     "preview": "vite preview",
+    "preview:debug": "wrangler dev --config build/server/wrangler.json --envFile ../../.dev.vars --local --port 5173 --inspector-port 9230",
     "types:check": "tsc -b --noEmit",
     "types:check:watch": "tsc -b --noEmit --watch",
     "types:generate": "wrangler types --env-interface CloudflareEnv --env-file .dev.vars.example && react-router typegen",

@@ -53,7 +53,7 @@ export default defineConfig(({ command }) => {
         viteEnvironment: {
           name: "ssr",
         },
-        inspectorPort: false,
+        // inspectorPort: false,
       }),
       tailwindcss(),
       reactRouter(),
