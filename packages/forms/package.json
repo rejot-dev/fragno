@@ -64,7 +64,7 @@
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@jsonforms/core": "^3.7.0",
-    "zod": "^4.3.5"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@fragno-dev/test": "workspace:*",

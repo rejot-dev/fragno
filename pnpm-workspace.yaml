@@ -20,7 +20,7 @@ catalog:
 overrides:
   esbuild@<=0.24.2: ">=0.25.0"
   unicorn-magic: 0.4.0
-  zod@^4.0.0: 4.3.5
+  zod@^4.0.0: 4.5.4
 
 patchedDependencies:
   "@earendil-works/pi-ai@0.75.5": patches/@earendil-works__pi-ai.patch

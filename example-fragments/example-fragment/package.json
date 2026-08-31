@@ -50,7 +50,7 @@
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
-    "zod": "^4.3.5"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@fragno-dev/unplugin-fragno": "workspace:*",

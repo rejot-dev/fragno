@@ -169,7 +169,7 @@
     "sqlocal": "^0.15.2",
     "typescript": "catalog:",
     "vitest": "catalog:",
-    "zod": "^4.3.5"
+    "zod": "^4.5.4"
   },
   "peerDependencies": {
     "drizzle-orm": "^0.44.6"

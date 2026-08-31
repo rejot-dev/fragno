@@ -31,7 +31,7 @@
     "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
-    "zod": "^4.3.5"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",

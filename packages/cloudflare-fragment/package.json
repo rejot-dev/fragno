@@ -71,7 +71,7 @@
     "@fragno-dev/db": "workspace:*",
     "@standard-schema/spec": "^1.1.0",
     "cloudflare": "^7.0.0",
-    "zod": "^4.3.6"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",

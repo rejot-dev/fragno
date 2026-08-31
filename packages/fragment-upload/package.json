@@ -95,7 +95,7 @@
     "@fragno-dev/db": "workspace:*",
     "@standard-schema/spec": "^1.0.0",
     "gunshi": "^0.26.3",
-    "zod": "^4.0.5"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",

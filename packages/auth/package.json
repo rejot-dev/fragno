@@ -69,7 +69,7 @@
     "@standard-schema/spec": "^1.1.0",
     "jose": "^5.10.0",
     "nanostores": "^1.2.0",
-    "zod": "^4.3.5"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",

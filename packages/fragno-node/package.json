@@ -42,7 +42,7 @@
     "@vitest/coverage-istanbul": "^4.1.0",
     "express": "^5.2.1",
     "vitest": "catalog:",
-    "zod": "^4.3.5"
+    "zod": "^4.5.4"
   },
   "engines": {
     "node": ">=22"

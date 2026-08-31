@@ -36,7 +36,7 @@
     "@clack/prompts": "^0.11.0",
     "@fragno-dev/create": "workspace:*",
     "citty": "^0.1.6",
-    "zod": "^4.3.6"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",

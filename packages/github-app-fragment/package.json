@@ -75,7 +75,7 @@
     "gunshi": "^0.26.3",
     "kysely": "^0.28.10",
     "octokit": "^5.0.5",
-    "zod": "^4.3.6"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",

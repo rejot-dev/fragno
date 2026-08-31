@@ -81,7 +81,7 @@
     "@standard-schema/spec": "^1.1.0",
     "better-sqlite3": "^12.6.2",
     "gunshi": "^0.26.3",
-    "zod": "^4.3.6"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",

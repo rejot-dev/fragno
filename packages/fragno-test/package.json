@@ -48,7 +48,7 @@
     "drizzle-orm": "^0.44.7",
     "kysely-pglite": "^0.6.1",
     "vitest": "catalog:",
-    "zod": "^4.3.5"
+    "zod": "^4.5.4"
   },
   "peerDependencies": {
     "@electric-sql/pglite": "^0.3.11",
