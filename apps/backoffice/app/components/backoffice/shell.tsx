@@ -10,27 +10,26 @@ import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
 import { BackofficeClsDebugger } from "./cls-debugger";
 import { CurrentBackofficeProvider } from "./current-context";
-import {
-  automationCollectionResolvedScope,
-  type CurrentBackofficeContext,
-} from "./current-context-state";
+import type { CurrentBackofficeContext } from "./current-context-state";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
 import { GlobalWorkflowDrawer } from "./global-workflow-drawer";
 import { QuakeTerminal } from "./quake-terminal";
 import { BackofficeSidebarNav } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
 
-type BackofficeShellProps = {
-  children: ReactNode;
-  me: BackofficeMeData | null;
-  accessTokenExpiresAt: string | null;
-  currentContext: CurrentBackofficeContext | null;
-  isLoading?: boolean;
-};
-
 type BackofficeShellResolvedScope = BackofficeResolvedScope<
   BackofficeMeData["organizations"][number]["organization"]
 >;
+
+type BackofficeShellProps = {
+  children: ReactNode;
+  me: BackofficeMeData | null;
+  resolvedScope: BackofficeShellResolvedScope | null;
+  accessTokenExpiresAt: string | null;
+  automationCollectionSource: CurrentBackofficeContext["automationCollectionSource"] | null;
+  projectCollectionSource: CurrentBackofficeContext["projectCollectionSource"];
+  isLoading?: boolean;
+};
 
 function backofficeTerminalScopeSelection(
   scope: BackofficeShellResolvedScope,
@@ -60,8 +59,16 @@ export function BackofficeShell(props: BackofficeShellProps) {
       <BackofficeShellFrame {...props} />
     </GlobalHotkeysProvider>
   );
-  return props.currentContext ? (
-    <CurrentBackofficeProvider value={props.currentContext}>{shell}</CurrentBackofficeProvider>
+  const currentContext =
+    props.resolvedScope && props.automationCollectionSource
+      ? {
+          resolvedScope: props.resolvedScope,
+          automationCollectionSource: props.automationCollectionSource,
+          projectCollectionSource: props.projectCollectionSource,
+        }
+      : null;
+  return currentContext ? (
+    <CurrentBackofficeProvider value={currentContext}>{shell}</CurrentBackofficeProvider>
   ) : (
     shell
   );
@@ -70,15 +77,14 @@ export function BackofficeShell(props: BackofficeShellProps) {
 function BackofficeShellFrame({
   children,
   me,
+  resolvedScope,
   accessTokenExpiresAt,
-  currentContext,
+  automationCollectionSource,
+  projectCollectionSource,
   isLoading,
 }: BackofficeShellProps) {
   const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const resolvedScope = currentContext
-    ? automationCollectionResolvedScope(currentContext.automationCollectionSource)
-    : null;
   const routeScope = resolvedScope ? backofficeRouteScopeFromResolvedScope(resolvedScope) : null;
   const terminalScope = resolvedScope ? backofficeTerminalScopeSelection(resolvedScope, me) : null;
   useEffect(() => {
@@ -118,7 +124,7 @@ function BackofficeShellFrame({
         <BackofficeTopBar
           me={me}
           resolvedScope={resolvedScope}
-          projectCollectionSource={currentContext?.projectCollectionSource ?? null}
+          projectCollectionSource={projectCollectionSource}
           isLoading={isLoading}
           workflowDrawerOpen={workflowDrawerOpen}
           onWorkflowDrawerToggle={() => {
@@ -138,7 +144,7 @@ function BackofficeShellFrame({
       </div>
       <GlobalWorkflowDrawer
         open={workflowDrawerOpen}
-        sourceState={currentContext?.automationCollectionSource ?? null}
+        sourceState={automationCollectionSource}
         onClose={() => {
           setWorkflowDrawerOpen(false);
         }}

@@ -16,16 +16,7 @@ export type AutomationCollectionSourceState<
     };
 
 export type CurrentBackofficeContext = {
+  resolvedScope: BackofficeResolvedScope<Organization>;
   automationCollectionSource: AutomationCollectionSourceState<Organization>;
   projectCollectionSource: AutomationCollectionSourceState<Organization> | null;
 };
-
-export function automationCollectionResolvedScope<
-  TOrganization extends BackofficeOrganizationIdentity,
->(
-  sourceState: AutomationCollectionSourceState<TOrganization>,
-): BackofficeResolvedScope<TOrganization> {
-  return sourceState.status === "ready"
-    ? sourceState.source.resolvedScope
-    : sourceState.resolvedScope;
-}

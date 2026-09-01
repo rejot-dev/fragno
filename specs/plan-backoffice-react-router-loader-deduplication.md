@@ -1,8 +1,41 @@
 # Backoffice React Router loader deduplication plan
 
-Status: proposed
+Status: in progress
 
-Date: August 30, 2026
+Created: August 30, 2026
+
+Last updated: September 1, 2026
+
+## Implementation progress
+
+Completed:
+
+- Request-scoped authentication state is installed for every HTTP request.
+- JWT verification, principal derivation, and `getBackofficeMe` are lazy and promise-coalesced.
+- Protected Backoffice authentication runs in layout middleware before descendant route handlers.
+- Shell scope resolution, organization-switch redirects, authorization, and execution-context
+  creation run in middleware.
+- The layout returns `resolvedScope` as first-class data, and shell navigation no longer derives
+  scope identity from an Automations adapter source.
+- Automations collection-source loading is promise-coalesced by canonical scope within one HTTP
+  request. Equivalent organization identities share an operation; organization and project scopes
+  remain distinct; rejected operations are shared.
+
+Pending:
+
+- The global Backoffice layout still initializes Automations collection sources. Route ownership
+  must move to Automations, Files, and Marketplace boundaries before unrelated pages issue zero
+  `/_internal` requests.
+- The project selector and workflow drawer still depend on layout-owned collection sources. They
+  need focused resource routes and keyed fetchers before global loading can be removed.
+- Project lookup, integration configuration, list/detail, and redirect cleanup remain outstanding.
+- Representative traces have not yet been compared against the target operation counts.
+
+Verification on September 1, 2026:
+
+- Backoffice production build, type checking, and package lint pass.
+- The full Backoffice suite passes: 308 test files, 1,944 passing tests, one expected failure, and
+  one skipped test.
 
 ## Goal
 
@@ -93,7 +126,7 @@ Cloudflare Worker request
        -> me()
        -> shellScope()
        -> project(orgId, projectId)
-       -> automationCollectionSource(scope)
+       -> getAutomationCollectionSource(scope)
        -> integrationConfig(integration, scope)
        -> githubLinkedRepositories(orgId)
        -> ...named request operations
@@ -288,15 +321,17 @@ This makes scope identity available even when Automations synchronization is una
 Add request-state operations keyed by canonical runtime scope:
 
 ```ts
-automationCollectionSource(
-  resolvedScope: BackofficeResolvedScope<Organization>,
-): Promise<AutomationCollectionSource<Organization>>;
+getAutomationCollectionSource<TOrganization extends BackofficeOrganizationIdentity>(
+  resolvedScope: BackofficeResolvedScope<TOrganization>,
+): Promise<AutomationCollectionSource<TOrganization>>;
 ```
 
-The operation should call `fetchAutomationCollectionSource` once per canonical scope. Project and
-organization source requests remain distinct keys.
+Implementation status: request-scoped coalescing is complete. The operation calls the underlying
+Automations adapter-description loader once per canonical scope. Project and organization source
+requests remain distinct keys, rejected promises are shared, and separate HTTP requests remain
+isolated.
 
-Route ownership:
+Route ownership remains pending:
 
 - `automations/scope-layout.tsx` owns the current automation collection source.
 - `files/scope-layout.tsx` owns the automation source needed for workflow file routing.
@@ -541,15 +576,17 @@ Add scenario assertions for:
 
 Implement as independently deployable slices:
 
-1. P0 request-state primitive and auth coalescing.
-2. Backoffice authentication middleware using the coalesced state.
-3. First-class shell `resolvedScope` with existing collection-source behavior retained temporarily.
-4. Route-owned Automations collection sources.
-5. Fetcher/resource loading for project selector and workflow drawer.
-6. Request-scoped project and integration config operations.
-7. Configured-integration middleware boundaries, one integration family at a time.
-8. List/detail and redirect cleanup.
-9. Deploy and compare traces after every slice.
+1. [x] P0 request-state primitive and auth coalescing.
+2. [x] Backoffice authentication middleware using the coalesced state.
+3. [x] First-class shell `resolvedScope` with existing collection-source behavior retained
+       temporarily.
+4. [ ] Route-owned Automations collection sources. Request-state coalescing is complete; ownership
+       migration is pending.
+5. [ ] Fetcher/resource loading for project selector and workflow drawer.
+6. [ ] Request-scoped project and integration config operations.
+7. [ ] Configured-integration middleware boundaries, one integration family at a time.
+8. [ ] List/detail and redirect cleanup.
+9. [ ] Deploy and compare traces after every slice.
 
 Do not combine all route-tree changes into one migration.
 

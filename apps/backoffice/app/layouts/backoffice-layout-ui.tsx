@@ -25,8 +25,13 @@ export default function BackofficeLayout({
   children?: ReactNode;
   loaderData: Route.ComponentProps["loaderData"];
 }) {
-  const { me, accessTokenExpiresAt, automationCollectionSource, projectCollectionSource } =
-    loaderData;
+  const {
+    me,
+    accessTokenExpiresAt,
+    resolvedScope,
+    automationCollectionSource,
+    projectCollectionSource,
+  } = loaderData;
 
   useEffect(() => {
     writePreferredOrganization(me.activeOrganizationId);
@@ -34,8 +39,10 @@ export default function BackofficeLayout({
   return (
     <BackofficeShell
       me={me}
+      resolvedScope={resolvedScope}
       accessTokenExpiresAt={accessTokenExpiresAt}
-      currentContext={{ automationCollectionSource, projectCollectionSource }}
+      automationCollectionSource={automationCollectionSource}
+      projectCollectionSource={projectCollectionSource}
       isLoading={false}
     >
       {children ?? <Outlet context={{ me }} />}
@@ -67,22 +74,21 @@ export function ErrorBoundary() {
   const debugDetails =
     import.meta.env.MODE === "development" ? getRouteErrorDebugDetails(error) : null;
 
-  const currentContext = layoutData
-    ? {
-        automationCollectionSource: layoutData.automationCollectionSource,
-        projectCollectionSource: layoutData.projectCollectionSource,
-      }
-    : null;
-  const activeOrganization = layoutData?.me.activeOrganization?.organization ?? null;
-  const activeOrganizationPath = activeOrganization
-    ? `/backoffice/automations/org/${encodeURIComponent(activeOrganization.slug)}/dashboard`
+  const currentOrganization =
+    layoutData?.resolvedScope.kind === "org" || layoutData?.resolvedScope.kind === "project"
+      ? layoutData.resolvedScope.organization
+      : null;
+  const currentOrganizationPath = currentOrganization
+    ? `/backoffice/automations/org/${encodeURIComponent(currentOrganization.slug)}/dashboard`
     : null;
 
   return (
     <BackofficeShell
       me={layoutData?.me ?? null}
+      resolvedScope={layoutData?.resolvedScope ?? null}
       accessTokenExpiresAt={layoutData?.accessTokenExpiresAt ?? null}
-      currentContext={currentContext}
+      automationCollectionSource={layoutData?.automationCollectionSource ?? null}
+      projectCollectionSource={layoutData?.projectCollectionSource ?? null}
       isLoading={false}
     >
       <div className="space-y-4">
@@ -100,12 +106,12 @@ export function ErrorBoundary() {
           actions={
             organizationNotFound ? (
               <div className="flex flex-wrap gap-2">
-                {activeOrganizationPath ? (
+                {currentOrganizationPath ? (
                   <Link
-                    to={activeOrganizationPath}
+                    to={currentOrganizationPath}
                     className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                   >
-                    Open active organization
+                    Open current organization
                   </Link>
                 ) : null}
                 <Link
