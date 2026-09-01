@@ -76,6 +76,12 @@ describe("createPiOperationBillingEvent", () => {
     expect(() =>
       resolvePiOperationBillingOrganizationId({ kind: "user", userId: "user-1" }, null),
     ).toThrow(PiOperationBillingOwnerMissingError);
+    assert(
+      resolvePiOperationBillingOrganizationId(
+        { kind: "system" },
+        { __backofficeBillingOrganizationId: "org-2" },
+      ) === "org-2",
+    );
     expect(resolvePiOperationBillingOrganizationId({ kind: "system" }, null)).toBeNull();
   });
 

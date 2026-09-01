@@ -33,6 +33,28 @@ beforeEach(() => {
 });
 
 describe("organization sessions layout", () => {
+  test("uses the active organization for system session billing", async () => {
+    const organization = {
+      id: "org-123",
+      slug: "wilcos-organization",
+      name: "Wilco's organization",
+    };
+    requireBackofficeMeMock.mockResolvedValue({
+      user: { id: "user-1" },
+      organizations: [{ organization }],
+      activeOrganization: { organization },
+    });
+    requireBackofficeContextMock.mockResolvedValue({ scope: { kind: "system" } });
+
+    const result = await loader({
+      request: new Request("http://localhost:5173/backoffice/sessions/system/system/sessions"),
+      params: { scopeKind: "system", scopeId: "system" },
+      context: {},
+    } as never);
+
+    expect(result.billingOrganization).toEqual(organization);
+  });
+
   test("uses the route organization for billing without requiring an active organization", async () => {
     const organization = {
       id: "org-123",

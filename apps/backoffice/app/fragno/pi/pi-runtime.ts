@@ -142,13 +142,16 @@ const createBackofficeInteractiveChatWorkflow = ({
   ...createInteractiveChatWorkflow({
     name: BACKOFFICE_PI_WORKFLOW_NAME,
     beforeOperation: async (input) => {
-      if (config.scope.kind !== "user") {
+      if (config.scope.kind !== "user" && config.scope.kind !== "system") {
         return;
       }
 
       const billingOrganizationId = piSessionBillingOrganizationId(input.metadata);
       if (!billingOrganizationId) {
-        throw new PiSessionBillingOwnerMissingError(config.scope.userId);
+        if (config.scope.kind === "user") {
+          throw new PiSessionBillingOwnerMissingError(config.scope.userId);
+        }
+        return;
       }
 
       try {
@@ -385,8 +388,8 @@ export const createPiRuntimeDefinition = (
           }
 
           const billingOrganizationId = piSessionBillingOrganizationId(values.metadata);
-          if (requestContext.scope.kind === "user") {
-            if (!billingOrganizationId) {
+          if (requestContext.scope.kind === "user" || requestContext.scope.kind === "system") {
+            if (!billingOrganizationId && requestContext.scope.kind === "user") {
               return error(
                 {
                   message: "User-scoped Pi sessions require a billing organization.",
@@ -395,18 +398,20 @@ export const createPiRuntimeDefinition = (
                 400,
               );
             }
-            const billingAuthorizationResponse = await authorize(
-              BACKOFFICE_PERMISSION.pi.modify,
-              {
-                kind: "pi-session-billing-organization",
-                workflowName: pathParams.workflowName,
-                organizationId: billingOrganizationId,
-              },
-              {
-                ...requestContext,
-                scope: { kind: "org", orgId: billingOrganizationId },
-              },
-            );
+            const billingAuthorizationResponse = billingOrganizationId
+              ? await authorize(
+                  BACKOFFICE_PERMISSION.pi.modify,
+                  {
+                    kind: "pi-session-billing-organization",
+                    workflowName: pathParams.workflowName,
+                    organizationId: billingOrganizationId,
+                  },
+                  {
+                    ...requestContext,
+                    scope: { kind: "org", orgId: billingOrganizationId },
+                  },
+                )
+              : undefined;
             if (billingAuthorizationResponse) {
               return billingAuthorizationResponse;
             }
@@ -421,7 +426,9 @@ export const createPiRuntimeDefinition = (
             metadata: {
               ...sessionMetadata,
               model,
-              ...(requestContext.scope.kind === "user" && billingOrganizationId
+              ...((requestContext.scope.kind === "user" ||
+                requestContext.scope.kind === "system") &&
+              billingOrganizationId
                 ? { [PI_BILLING_ORGANIZATION_ID_METADATA_KEY]: billingOrganizationId }
                 : {}),
               [BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY]: automationActorsSchema.parse(

@@ -204,14 +204,24 @@ describe("scenario Pi billing", () => {
 
           when.pi.operationCompleted({
             scope: { kind: "system" },
-            payload: operationPayload("system-session"),
+            payload: operationPayload("system-session", {
+              [PI_BILLING_ORGANIZATION_ID_METADATA_KEY]: "org-1",
+            }),
             hookId: "system-hook",
             idempotencyKey: "billing:system-hook",
           }),
           then.pi.operationBilling({
             hookId: "system-hook",
-            recorded: false,
-            billingOrganizationId: null,
+            recorded: true,
+            billingOrganizationId: "org-1",
+          }),
+          then.billing.tracker({
+            organizationId: "org-1",
+            scope: { kind: "system" },
+            period: "2026-08",
+            meter: "ai.tokens.total",
+            quantity: "100",
+            eventCount: "1",
           }),
         ],
       }),

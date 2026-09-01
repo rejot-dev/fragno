@@ -50,11 +50,7 @@ export type BackofficeAuthorizationDenialReason =
   | "context-access-denied"
   | "policy-denied";
 
-export const BACKOFFICE_SCOPE_OPERATIONS = [
-  "automation.forward-event",
-  "billing.record-event",
-  "billing.read-trackers",
-] as const;
+export const BACKOFFICE_SCOPE_OPERATIONS = ["automation.forward-event"] as const;
 
 export type BackofficeScopeOperation = (typeof BACKOFFICE_SCOPE_OPERATIONS)[number];
 

@@ -136,7 +136,7 @@ describe("Billing Durable Object", () => {
     });
   });
 
-  test("rejects event scopes belonging to another organization", async () => {
+  test("records usage attribution independently from the ledger owner", async () => {
     runtime = await createInMemoryBackofficeRuntime();
     const billing = runtime.objects.billing.forOrg("org-1");
     await runtime.drain();
@@ -144,10 +144,10 @@ describe("Billing Durable Object", () => {
     await expect(
       billing.commands.recordEvent(
         event({
-          id: "pi:org-2:hook-1",
-          scope: { kind: "org", orgId: "org-2" },
+          id: "pi:system:hook-1",
+          scope: { kind: "system" },
         }),
       ),
-    ).rejects.toThrow("billing.record-event cannot use org:org-2 within org:org-1");
+    ).resolves.toEqual({ accepted: true, eventId: "pi:system:hook-1" });
   });
 });

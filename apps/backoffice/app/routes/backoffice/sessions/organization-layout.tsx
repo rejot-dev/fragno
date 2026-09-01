@@ -31,7 +31,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const billingOrganization =
     resolvedScope.kind === "org" || resolvedScope.kind === "project"
       ? resolvedScope.organization
-      : resolvedScope.kind === "user"
+      : resolvedScope.kind === "user" || resolvedScope.kind === "system"
         ? (me.activeOrganization?.organization ?? null)
         : null;
   const { runtimeState, runtimeError } = await fetchPiRuntimeState(context, scope);
