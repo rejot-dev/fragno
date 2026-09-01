@@ -21,8 +21,8 @@ describe("createDurableHooksDispatcher", () => {
         },
       });
 
-      dispatcher.notify({ source: "request" });
-      dispatcher.notify({ source: "request" });
+      await dispatcher.notify({ source: "request" });
+      await dispatcher.notify({ source: "request" });
 
       expect(processDue).toHaveBeenCalledTimes(0);
       await Promise.resolve();
@@ -49,7 +49,7 @@ describe("createDurableHooksDispatcher", () => {
       },
     });
 
-    dispatcher.notify({ source: "request" });
+    await dispatcher.notify({ source: "request" });
     await vi.waitFor(() => {
       expect(processDue).toHaveBeenCalledTimes(1);
     });
@@ -72,6 +72,32 @@ describe("createDurableHooksDispatcher", () => {
     await dispatcher.wake();
 
     expect(processDue).toHaveBeenCalledTimes(1);
+  });
+
+  it("should await async process error reporting during wake", async () => {
+    const processFailure = new Error("process failed");
+    const errorReporting = Promise.withResolvers<void>();
+    const onError = vi.fn(async () => await errorReporting.promise);
+    const dispatcher = createDurableHooksDispatcher({
+      processor: {
+        processDue: vi.fn().mockRejectedValue(processFailure),
+        getNextWakeAt: vi.fn().mockResolvedValue(null),
+        drain: vi.fn().mockResolvedValue(undefined),
+        namespace: "test",
+      },
+      onError,
+    });
+
+    let wakeCompleted = false;
+    const wake = dispatcher.wake().then(() => {
+      wakeCompleted = true;
+    });
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(processFailure));
+    assert(!wakeCompleted);
+
+    errorReporting.resolve();
+    await wake;
+    assert(wakeCompleted);
   });
 
   it("should wait for started hooks to complete", async () => {

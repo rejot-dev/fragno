@@ -383,7 +383,6 @@ function resolveMountRoute(name: string, mountRoute?: string): string {
 const dbRoundtripGuardStateSymbol = Symbol("fragno-db-roundtrip-guard");
 const requestSourceSymbol = Symbol.for("fragno-request-source");
 const requestRouteSymbol = Symbol.for("fragno-request-route");
-const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
 const roundtripGuardDocsUrl = "https://fragno.dev/docs/fragno/for-library-authors/rules-of-fragno";
 
 const getDatabaseTransactionRequestSource = (
@@ -552,7 +551,7 @@ async function runInstrumentedHookNotification(
   }
 }
 
-function notifyDurableHooks(
+async function notifyDurableHooks(
   notifier: HookNotifier,
   namespace: string,
   notifyContext: HookNotifyContext,
@@ -563,7 +562,7 @@ function notifyDurableHooks(
     correlationId: string;
     queued: number;
   },
-) {
+): Promise<void> {
   const crossNamespace = options.crossNamespace ?? false;
   const suffix = crossNamespace ? " (cross-namespace)" : "";
   const notifyStart = Date.now();
@@ -582,40 +581,51 @@ function notifyDurableHooks(
   const executeNotify = async () => {
     await notifier.notify(notifyContext);
   };
-  const notifyPromise = Promise.resolve()
-    .then(() =>
-      options.instrumentation?.runNotify
-        ? runInstrumentedHookNotification(options.instrumentation, notification, executeNotify)
-        : executeNotify(),
-    )
-    .then((processed) => {
-      DurableHooksLogger.debug(`Durable hooks notify completed${suffix}`, {
-        namespace,
-        fields: {
-          result: processed === undefined ? null : processed,
-          ms: Date.now() - notifyStart,
-          ...logContextFields,
-        },
-      });
-    })
-    .catch((error: unknown) => {
-      DurableHooksLogger.error(`Durable hooks notify failed${suffix}`, {
-        namespace,
-        fields: {
-          error: DurableHooksLogger.toErrorMessage(error),
-          ...logContextFields,
-        },
-      });
-    });
 
-  if (notifyContext.waitUntil) {
-    notifyContext.waitUntil(notifyPromise);
-    return;
+  try {
+    await (options.instrumentation?.runNotify
+      ? runInstrumentedHookNotification(options.instrumentation, notification, executeNotify)
+      : executeNotify());
+    DurableHooksLogger.debug(`Durable hooks notify completed${suffix}`, {
+      namespace,
+      fields: {
+        result: null,
+        ms: Date.now() - notifyStart,
+        ...logContextFields,
+      },
+    });
+  } catch (error) {
+    DurableHooksLogger.error(`Durable hooks notify failed${suffix}`, {
+      namespace,
+      fields: {
+        error: DurableHooksLogger.toErrorMessage(error),
+        ...logContextFields,
+      },
+    });
+    throw error;
   }
-  void notifyPromise;
 }
 
-function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
+async function awaitDurableHookNotifications(notifications: Promise<void>[]): Promise<void> {
+  const results = await Promise.allSettled(notifications);
+  const failures: unknown[] = [];
+  for (const result of results) {
+    if (result.status === "rejected") {
+      failures.push(result.reason);
+    }
+  }
+  if (failures.length === 1) {
+    throw failures[0];
+  }
+  if (failures.length > 1) {
+    throw new AggregateError(
+      failures,
+      "Durable hooks alarm scheduling failed for multiple namespaces.",
+    );
+  }
+}
+
+async function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
   uow,
   hooksConfig,
   internalFragment,
@@ -629,7 +639,7 @@ function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
   autoSchedule: boolean;
   planMode: boolean;
   logContext?: DurableHooksLogContext;
-}) {
+}): Promise<void> {
   if (planMode) {
     return;
   }
@@ -637,9 +647,8 @@ function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
   const notifyContext: HookNotifyContext = {
     source: logContext?.source ?? "request",
     route: logContext?.route,
-    waitUntil: logContext?.waitUntil,
   };
-
+  const notifications: Promise<void>[] = [];
   const logContextFields = buildDurableHooksLogContext(logContext);
   const triggeredHooks = uow.getTriggeredHooks();
   const ownNamespaceTriggeredCount = hooksConfig
@@ -647,16 +656,18 @@ function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
     : 0;
 
   if (hooksConfig?.notifier && autoSchedule && ownNamespaceTriggeredCount > 0) {
-    notifyDurableHooks(
-      hooksConfig.notifier,
-      hooksConfig.namespace,
-      notifyContext,
-      logContextFields,
-      {
-        instrumentation: hooksConfig.instrumentation,
-        correlationId: uow.idempotencyKey,
-        queued: ownNamespaceTriggeredCount,
-      },
+    notifications.push(
+      notifyDurableHooks(
+        hooksConfig.notifier,
+        hooksConfig.namespace,
+        notifyContext,
+        logContextFields,
+        {
+          instrumentation: hooksConfig.instrumentation,
+          correlationId: uow.idempotencyKey,
+          queued: ownNamespaceTriggeredCount,
+        },
+      ),
     );
   } else if (hooksConfig && !autoSchedule && ownNamespaceTriggeredCount > 0) {
     DurableHooksLogger.debug("Durable hooks notify skipped (autoSchedule=false)", {
@@ -728,13 +739,17 @@ function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
       });
       continue;
     }
-    notifyDurableHooks(notifier, namespace, notifyContext, logContextFields, {
-      crossNamespace: true,
-      instrumentation: runtime.config.instrumentation,
-      correlationId: uow.idempotencyKey,
-      queued: triggeredCountByNamespace.get(namespace) ?? 0,
-    });
+    notifications.push(
+      notifyDurableHooks(notifier, namespace, notifyContext, logContextFields, {
+        crossNamespace: true,
+        instrumentation: runtime.config.instrumentation,
+        correlationId: uow.idempotencyKey,
+        queued: triggeredCountByNamespace.get(namespace) ?? 0,
+      }),
+    );
   }
+
+  await awaitDurableHookNotifications(notifications);
 }
 
 function resolveDbRoundtripGuard(
@@ -1437,16 +1452,6 @@ export class DatabaseFragmentDefinitionBuilder<
           const userOnAfterMutate = execOptions?.onAfterMutate;
           const planMode = execOptions?.planMode ?? false;
           let storageRef: DatabaseContextStorage | null = null;
-          const getHookWaitUntil = () => {
-            if (!hookContextStorage.hasStore()) {
-              return undefined;
-            }
-            return (
-              hookContextStorage.getStore() as DatabaseContextStorage & {
-                [requestWaitUntilSymbol]?: (promise: Promise<unknown>) => void;
-              }
-            )[requestWaitUntilSymbol];
-          };
           const getHookPropagationContext = () =>
             hookContextStorage.hasStore() ? hookContextStorage.getPropagationContext() : null;
           return createHandlerTxBuilder<THooks>(
@@ -1482,13 +1487,13 @@ export class DatabaseFragmentDefinitionBuilder<
                 }
               },
               onAfterMutate: async (uow) => {
-                notifyDurableHooksAfterMutate({
+                await notifyDurableHooksAfterMutate({
                   uow,
                   hooksConfig,
                   internalFragment: hooksConfig.internalFragment,
                   autoSchedule,
                   planMode,
-                  logContext: { source: "hook", waitUntil: getHookWaitUntil() },
+                  logContext: { source: "hook" },
                 });
                 if (userOnAfterMutate) {
                   await userOnAfterMutate(uow);
@@ -1500,7 +1505,6 @@ export class DatabaseFragmentDefinitionBuilder<
               const parentStorage = hookContextStorage.hasStore()
                 ? hookContextStorage.getStore()
                 : undefined;
-              const inheritedWaitUntil = getHookWaitUntil();
               const parentDepth = parentStorage?.activeHandlerTxDepth ?? 0;
               storageRef = null;
               return await hookContextStorage.runWithInitializer(() => {
@@ -1509,13 +1513,6 @@ export class DatabaseFragmentDefinitionBuilder<
                   uow: null as unknown as DatabaseContextStorage["uow"],
                   activeHandlerTxDepth: parentDepth + 1,
                 };
-                if (inheritedWaitUntil) {
-                  (
-                    storageRef as DatabaseContextStorage & {
-                      [requestWaitUntilSymbol]?: (promise: Promise<unknown>) => void;
-                    }
-                  )[requestWaitUntilSymbol] = inheritedWaitUntil;
-                }
                 return storageRef;
               }, run);
             },
@@ -1608,11 +1605,6 @@ export class DatabaseFragmentDefinitionBuilder<
         const roundtripState = roundtripGuard
           ? getDbRoundtripGuardState(currentStorage, roundtripGuard)
           : null;
-        const routeWaitUntil = (
-          currentStorage as DatabaseContextStorage & {
-            [requestWaitUntilSymbol]?: (promise: Promise<unknown>) => void;
-          }
-        )[requestWaitUntilSymbol];
         const routeLabel =
           routeInfo?.method && routeInfo.path ? `${routeInfo.method} ${routeInfo.path}` : null;
         const routeSuffix = routeLabel ? ` (route: ${routeLabel})` : "";
@@ -1748,13 +1740,13 @@ export class DatabaseFragmentDefinitionBuilder<
             },
             onAfterRetrieve: guardOnAfterRetrieve,
             onAfterMutate: async (uow) => {
-              notifyDurableHooksAfterMutate({
+              await notifyDurableHooksAfterMutate({
                 uow,
                 hooksConfig,
                 internalFragment,
                 autoSchedule,
                 planMode,
-                logContext: { route: routeLabel, source: "request", waitUntil: routeWaitUntil },
+                logContext: { route: routeLabel, source: "request" },
               });
               if (hooksConfig && !planMode) {
                 const runtimeState = getDurableHooksRuntimeByConfig(hooksConfig);

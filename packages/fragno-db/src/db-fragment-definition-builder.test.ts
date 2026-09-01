@@ -24,6 +24,7 @@ import type {
   DurableHookPropagationContext,
   DurableHooksInstrumentation,
   HookFn,
+  HookNotifyContext,
 } from "./hooks/hooks";
 import * as hooks from "./hooks/hooks";
 import { getInternalFragment, getRegistryForAdapterSync } from "./internal/adapter-registry";
@@ -1141,20 +1142,19 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
     });
   });
 
-  describe("durable hooks waitUntil forwarding", () => {
-    it("forwards request waitUntil to notifier context", async () => {
+  describe("durable hook scheduling ownership", () => {
+    it("awaits request hook notification before completing the mutation", async () => {
       const mockAdapter = createMockAdapter();
       const requestSourceSymbol = Symbol.for("fragno-request-source");
       const requestRouteSymbol = Symbol.for("fragno-request-route");
-      const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
-      const notifySpy = vi.fn().mockResolvedValue(undefined);
-      const waitUntilSpy = vi.fn();
+      const notification = Promise.withResolvers<void>();
+      const notifySpy = vi.fn(async (_context: HookNotifyContext) => await notification.promise);
 
       type TestHooks = {
         onPing: HookFn<{ value: string }>;
       };
 
-      const definition = defineFragment("db-frag-hooks-waituntil")
+      const definition = defineFragment("db-frag-hooks-request-notification")
         .extend(withDatabase(testSchema))
         .provideHooks<TestHooks>(({ defineHook }) => ({
           onPing: defineHook(async function () {
@@ -1192,86 +1192,99 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
           {} as unknown as ReturnType<typeof executeUnitOfWork.createHandlerTxBuilder>,
         );
 
-      const mockStorage = {
-        getStore: () => ({
-          uow: mockAdapter.createUnitOfWork(testSchema, "test"),
-          [requestSourceSymbol]: "route",
-          [requestRouteSymbol]: { method: "POST", path: "/users" },
-          [requestWaitUntilSymbol]: waitUntilSpy,
-        }),
-        getPropagationContext: () => null,
-      } as unknown as RequestContextStorage<DatabaseContextStorage>;
+      try {
+        const mockStorage = {
+          getStore: () => ({
+            uow: mockAdapter.createUnitOfWork(testSchema, "test"),
+            [requestSourceSymbol]: "route",
+            [requestRouteSymbol]: { method: "POST", path: "/users" },
+          }),
+          getPropagationContext: () => null,
+        } as unknown as RequestContextStorage<DatabaseContextStorage>;
 
-      const contexts = definition.createThisContext!({
-        config: {},
-        options: { databaseAdapter: mockAdapter },
-        deps,
-        storage: mockStorage,
-      });
+        const contexts = definition.createThisContext!({
+          config: {},
+          options: { databaseAdapter: mockAdapter },
+          deps,
+          storage: mockStorage,
+        });
 
-      contexts.handlerContext.handlerTx();
-      const callArgs = createHandlerTxBuilderSpy.mock.calls[0]?.[0];
-      const mockUow = {
-        idempotencyKey: "request-uow",
-        getTriggeredHooks: () => [
-          {
-            namespace: runtime.config.namespace,
-            hookName: "onPing",
-            payload: { value: "ping" },
+        contexts.handlerContext.handlerTx();
+        const callArgs = createHandlerTxBuilderSpy.mock.calls[0]?.[0];
+        const mockUow = {
+          idempotencyKey: "request-uow",
+          getTriggeredHooks: () => [
+            {
+              namespace: runtime.config.namespace,
+              hookName: "onPing",
+              payload: { value: "ping" },
+            },
+          ],
+        } as unknown as IUnitOfWork;
+        const afterMutate = callArgs?.onAfterMutate?.(mockUow);
+        assert(afterMutate);
+        let mutationCompleted = false;
+        const mutationCompletion = afterMutate.then(() => {
+          mutationCompleted = true;
+        });
+
+        await vi.waitFor(() => expect(notifySpy).toHaveBeenCalledTimes(1));
+        assert(!mutationCompleted);
+        expect(notifySpy.mock.calls[0]?.[0]).toEqual({
+          source: "request",
+          route: "POST /users",
+        });
+
+        notification.resolve();
+        await mutationCompletion;
+        assert(mutationCompleted);
+
+        runtime.config.instrumentation = {
+          captureContext: () => null,
+          runAttempt: async (_attempt, execute) => await execute(),
+          async runNotify<T>(): Promise<T> {
+            return undefined as T;
           },
-        ],
-      } as unknown as IUnitOfWork;
-      await callArgs?.onAfterMutate?.(mockUow);
+        };
+        await expect(callArgs?.onAfterMutate?.(mockUow)).rejects.toThrow(
+          "Durable hooks instrumentation did not call execute() from runNotify().",
+        );
+        expect(notifySpy).toHaveBeenCalledTimes(1);
 
-      expect(notifySpy).toHaveBeenCalledTimes(1);
-      const notifyContext = notifySpy.mock.calls[0]?.[0] as
-        | { route?: string; source?: string; waitUntil?: unknown }
-        | undefined;
-      expect(notifyContext).toMatchObject({
-        source: "request",
-        route: "POST /users",
-      });
-      expect(notifyContext?.waitUntil).toBe(waitUntilSpy);
-      expect(waitUntilSpy).toHaveBeenCalledTimes(1);
+        runtime.config.instrumentation = {
+          captureContext: () => null,
+          runAttempt: async (_attempt, execute) => await execute(),
+          async runNotify<T>(_notification: unknown, execute: () => Promise<T>): Promise<T> {
+            const result = await execute();
+            await execute();
+            return result;
+          },
+        };
+        await expect(callArgs?.onAfterMutate?.(mockUow)).rejects.toThrow(
+          "Durable hooks instrumentation called execute() more than once from runNotify().",
+        );
+        expect(notifySpy).toHaveBeenCalledTimes(2);
 
-      runtime.config.instrumentation = {
-        captureContext: () => null,
-        runAttempt: async (_attempt, execute) => await execute(),
-        async runNotify<T>(): Promise<T> {
-          return undefined as T;
-        },
-      };
-      await callArgs?.onAfterMutate?.(mockUow);
-      await waitUntilSpy.mock.calls[1]?.[0];
-      expect(notifySpy).toHaveBeenCalledTimes(1);
-
-      runtime.config.instrumentation = {
-        captureContext: () => null,
-        runAttempt: async (_attempt, execute) => await execute(),
-        async runNotify<T>(_notification: unknown, execute: () => Promise<T>): Promise<T> {
-          const result = await execute();
-          await execute();
-          return result;
-        },
-      };
-      await callArgs?.onAfterMutate?.(mockUow);
-      await waitUntilSpy.mock.calls[2]?.[0];
-      expect(notifySpy).toHaveBeenCalledTimes(2);
-
-      createHandlerTxBuilderSpy.mockRestore();
+        runtime.config.instrumentation = undefined;
+        const schedulingFailure = new Error("alarm scheduling failed");
+        notifySpy.mockRejectedValueOnce(schedulingFailure);
+        await expect(callArgs?.onAfterMutate?.(mockUow)).rejects.toBe(schedulingFailure);
+        expect(notifySpy).toHaveBeenCalledTimes(3);
+      } finally {
+        createHandlerTxBuilderSpy.mockRestore();
+      }
     });
 
-    it("forwards inherited request waitUntil for hook mutations", async () => {
+    it("awaits hook-owned notification before completing a hook mutation", async () => {
       const mockAdapter = createMockAdapter();
-      const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
-      const notifySpy = vi.fn().mockResolvedValue(undefined);
-      const waitUntilSpy = vi.fn();
+      const notification = Promise.withResolvers<void>();
+      const notifySpy = vi.fn(async (_context: HookNotifyContext) => await notification.promise);
 
       type TestHooks = {
         onPing: HookFn<{ value: string }>;
       };
 
-      const definition = defineFragment("db-frag-hooks-hook-waituntil")
+      const definition = defineFragment("db-frag-hooks-hook-notification")
         .extend(withDatabase(testSchema))
         .provideHooks<TestHooks>(({ defineHook }) => ({
           onPing: defineHook(async function () {
@@ -1309,6 +1322,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
           return {
             execute: vi.fn(async () => {
               const mockUow = {
+                idempotencyKey: "hook-uow",
                 getTriggeredHooks: () => [
                   {
                     namespace: runtime.config.namespace,
@@ -1323,25 +1337,19 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         });
 
       try {
-        const storage = mockAdapter.contextStorage as RequestContextStorage<DatabaseContextStorage>;
-        await storage.runWithInitializer(
-          () =>
-            ({
-              uow: mockAdapter.createUnitOfWork(testSchema, "test"),
-              [requestWaitUntilSymbol]: waitUntilSpy,
-            }) as DatabaseContextStorage,
-          async () => {
-            await runtime.config.handlerTx().execute();
-          },
-        );
+        const execution = runtime.config.handlerTx().execute();
+        let mutationCompleted = false;
+        const mutationCompletion = execution.then(() => {
+          mutationCompleted = true;
+        });
 
-        expect(notifySpy).toHaveBeenCalledTimes(1);
-        const notifyContext = notifySpy.mock.calls[0]?.[0] as
-          | { source?: string; waitUntil?: unknown }
-          | undefined;
-        assert(notifyContext?.source === "hook");
-        expect(notifyContext?.waitUntil).toBe(waitUntilSpy);
-        expect(waitUntilSpy).toHaveBeenCalledTimes(1);
+        await vi.waitFor(() => expect(notifySpy).toHaveBeenCalledTimes(1));
+        assert(!mutationCompleted);
+        expect(notifySpy.mock.calls[0]?.[0]).toEqual({ source: "hook" });
+
+        notification.resolve();
+        await mutationCompletion;
+        assert(mutationCompleted);
       } finally {
         createHandlerTxBuilderSpy.mockRestore();
       }

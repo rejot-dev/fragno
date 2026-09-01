@@ -1,5 +1,8 @@
 import { DurableHooksLogger } from "../../hooks/durable-hooks-logger";
-import type { DurableHooksProcessor } from "../../hooks/durable-hooks-processor";
+import type {
+  DurableHooksErrorObserver,
+  DurableHooksProcessor,
+} from "../../hooks/durable-hooks-processor";
 import type { HookNotifyContext, HookNotifySource } from "../../hooks/hooks";
 
 type AlarmStorage = {
@@ -16,7 +19,11 @@ export type DurableHooksDispatcherDurableObjectState = {
 
 export type DurableHooksDispatcherDurableObjectHandler = {
   fetch?: (request: Request) => Promise<Response>;
-  notify?: (context: HookNotifyContext) => void | Promise<void>;
+  /** Reconciles the initial durable hook alarm before the hosted runtime is exposed. */
+  initialize?: () => Promise<void>;
+  /** Resolves after the durable hook alarm has been reconciled for newly committed work. */
+  notify?: (context: HookNotifyContext) => Promise<void>;
+  /** Owns claimed durable hook processing and follow-up alarm reconciliation. */
   alarm?: () => Promise<void>;
   drain?: () => Promise<void>;
 };
@@ -31,7 +38,7 @@ export type DurableHooksDispatcherDurableObjectOptions<TEnv = unknown> = {
     state: DurableHooksDispatcherDurableObjectState;
     env: TEnv;
   }) => DurableHooksProcessor;
-  onProcessError?: (error: unknown) => void;
+  onProcessError?: DurableHooksErrorObserver;
 };
 
 export function createDurableHooksDispatcherDurableObject<TEnv>(
@@ -51,17 +58,15 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
       await processor.drain();
     });
 
-    const safeOnProcessError = (error: unknown) => {
-      void Promise.resolve()
-        .then(() => {
-          onProcessError(error);
-        })
-        .catch((callbackError: unknown) => {
-          DurableHooksLogger.error("Durable hooks dispatcher onProcessError callback failed", {
-            namespace: processor.namespace,
-            fields: { error: DurableHooksLogger.toErrorMessage(callbackError) },
-          });
+    const reportProcessError = async (error: unknown): Promise<void> => {
+      try {
+        await onProcessError(error);
+      } catch (callbackError) {
+        DurableHooksLogger.error("Durable hooks dispatcher onProcessError callback failed", {
+          namespace: processor.namespace,
+          fields: { error: DurableHooksLogger.toErrorMessage(callbackError) },
         });
+      }
     };
     const rawGetAlarm = state.storage.getAlarm;
     const rawSetAlarm = state.storage.setAlarm;
@@ -101,23 +106,15 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
                 namespace: processor.namespace,
               });
               const run = await processor.processDue();
-              void run.completion
-                .catch((error: unknown) => {
-                  DurableHooksLogger.error("Durable hooks run failed", {
-                    namespace: processor.namespace,
-                    fields: { error: DurableHooksLogger.toErrorMessage(error) },
-                  });
-                  safeOnProcessError(error);
-                })
-                .finally(() => {
-                  void refreshAlarm("hook").catch((error: unknown) => {
-                    DurableHooksLogger.error("Durable hooks alarm schedule failed", {
-                      namespace: processor.namespace,
-                      fields: { error: DurableHooksLogger.toErrorMessage(error) },
-                    });
-                    safeOnProcessError(error);
-                  });
+              try {
+                await run.completion;
+              } catch (error) {
+                DurableHooksLogger.error("Durable hooks run failed", {
+                  namespace: processor.namespace,
+                  fields: { error: DurableHooksLogger.toErrorMessage(error) },
                 });
+                await reportProcessError(error);
+              }
               DurableHooksLogger.debug("Durable hooks alarm processed", {
                 namespace: processor.namespace,
                 fields: {
@@ -130,7 +127,7 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
                 namespace: processor.namespace,
                 fields: { error: DurableHooksLogger.toErrorMessage(error) },
               });
-              safeOnProcessError(error);
+              await reportProcessError(error);
             }
           } while (queued);
         } finally {
@@ -205,41 +202,32 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
       return alarmRefreshPromise;
     };
 
-    DurableHooksLogger.debug("Durable hooks dispatcher init", {
-      namespace: processor.namespace,
-    });
-    void refreshAlarm("alarm").catch((error: unknown) => {
-      DurableHooksLogger.error("Durable hooks alarm schedule failed", {
-        namespace: processor.namespace,
-        fields: { error: DurableHooksLogger.toErrorMessage(error) },
-      });
-      safeOnProcessError(error);
-    });
+    const reconcileHookAlarm = async (source: HookNotifySource): Promise<void> => {
+      try {
+        await refreshAlarm(source);
+      } catch (error) {
+        DurableHooksLogger.error("Durable hooks alarm schedule failed", {
+          namespace: processor.namespace,
+          fields: { error: DurableHooksLogger.toErrorMessage(error) },
+        });
+        await reportProcessError(error);
+        throw error;
+      }
+    };
 
     return {
-      notify: (context) => {
-        const schedulePromise = refreshAlarm(context.source);
-        const handledPromise = schedulePromise.catch((error: unknown) => {
-          DurableHooksLogger.error("Durable hooks alarm schedule failed", {
-            namespace: processor.namespace,
-            fields: { error: DurableHooksLogger.toErrorMessage(error) },
-          });
-          safeOnProcessError(error);
+      initialize: async () => {
+        DurableHooksLogger.debug("Durable hooks dispatcher init", {
+          namespace: processor.namespace,
         });
-        if (context.waitUntil) {
-          context.waitUntil(handledPromise);
-        } else {
-          void handledPromise;
-        }
-        return handledPromise;
+        await reconcileHookAlarm("alarm");
+      },
+      notify: async (context) => {
+        await reconcileHookAlarm(context.source);
       },
       alarm: async () => {
-        try {
-          await runProcess();
-          await refreshAlarm("alarm");
-        } catch (error) {
-          safeOnProcessError(error);
-        }
+        await runProcess();
+        await reconcileHookAlarm("alarm");
       },
       drain: async () => {
         await processor.drain();

@@ -23,7 +23,6 @@ import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-
 const SYSTEM_SCOPE = { kind: "system" } as const;
 
 export class InMemoryFormsObject extends RpcTarget implements FormsObject {
-  readonly #state: BackofficeObjectState;
   readonly #host: FragmentDurableObjectHost<void, FormsFragment>;
   #fragment: FormsFragment | null = null;
 
@@ -37,7 +36,6 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
     runtime: BackofficeRuntimeServices;
   }) {
     super();
-    this.#state = state;
     this.#host = createFragmentDurableObjectHost({
       name: "Forms",
       state,
@@ -130,7 +128,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
         console.error("Forms hook processor error", error);
       },
       onDispatcherError: (error) => {
-        console.warn("Forms hook processor disabled", error);
+        console.warn("Forms hook dispatcher initialization failed", error);
       },
     });
 
@@ -159,9 +157,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#host.fetch(this.#getFragment(), request, {
-      waitUntil: this.#state.waitUntil.bind(this.#state),
-    });
+    return await this.#host.fetch(this.#getFragment(), request);
   }
 }
 

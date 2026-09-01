@@ -43,7 +43,6 @@ import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-ob
 import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
 
 export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceObject {
-  readonly #state: BackofficeObjectState;
   readonly #host: FragmentDurableObjectHost<void, MarketplaceFragment>;
   #fragment: MarketplaceFragment | null = null;
 
@@ -57,7 +56,6 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
     runtime: BackofficeRuntimeServices;
   }) {
     super();
-    this.#state = state;
     this.#host = createFragmentDurableObjectHost({
       name: "Marketplace",
       state,
@@ -68,7 +66,7 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
         console.error("Marketplace hook processor error", error);
       },
       onDispatcherError: (error) => {
-        console.warn("Marketplace hook processor disabled", error);
+        console.warn("Marketplace hook dispatcher initialization failed", error);
       },
     });
 
@@ -203,9 +201,7 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#host.fetch(this.#getFragment(), request, {
-      waitUntil: this.#state.waitUntil.bind(this.#state),
-    });
+    return await this.#host.fetch(this.#getFragment(), request);
   }
 }
 

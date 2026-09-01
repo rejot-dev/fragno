@@ -3,11 +3,6 @@ import { afterEach, describe, expect, it, vi, assert } from "vitest";
 import { DurableHooksLogger } from "../../hooks/durable-hooks-logger";
 import { createDurableHooksDispatcherDurableObject } from "./dispatcher";
 
-const flushAlarmScheduling = async () => {
-  await Promise.resolve();
-  await Promise.resolve();
-};
-
 const completedRun = (count = 0) => ({
   claimedCount: count,
   completion: Promise.resolve(count),
@@ -19,7 +14,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     vi.useRealTimers();
   });
 
-  it("should schedule an initial alarm on creation", async () => {
+  it("should schedule an initial alarm during explicit initialization", async () => {
     const processDue = vi.fn().mockResolvedValue(completedRun());
     const getNextWakeAt = vi.fn().mockResolvedValue(new Date());
     const drain = vi.fn().mockResolvedValue(undefined);
@@ -34,11 +29,32 @@ describe("createDurableHooksDispatcherDurableObject", () => {
       }),
     });
 
-    handlerFactory({ storage: { setAlarm } }, {});
+    const handler = handlerFactory({ storage: { setAlarm } }, {});
 
-    await flushAlarmScheduling();
+    await handler.initialize?.();
     expect(setAlarm).toHaveBeenCalledTimes(1);
     expect(processDue).not.toHaveBeenCalled();
+  });
+
+  it("should reject initialization when the initial alarm cannot be scheduled", async () => {
+    const scheduleFailure = new Error("initial alarm unavailable");
+    const onProcessError = vi.fn().mockResolvedValue(undefined);
+    const handlerFactory = createDurableHooksDispatcherDurableObject({
+      createProcessor: () => ({
+        processDue: vi.fn().mockResolvedValue(completedRun()),
+        getNextWakeAt: vi.fn().mockResolvedValue(new Date()),
+        drain: vi.fn().mockResolvedValue(undefined),
+        namespace: "test",
+      }),
+      onProcessError,
+    });
+    const handler = handlerFactory(
+      { storage: { setAlarm: vi.fn().mockRejectedValue(scheduleFailure) } },
+      {},
+    );
+
+    await expect(handler.initialize?.()).rejects.toBe(scheduleFailure);
+    expect(onProcessError).toHaveBeenCalledWith(scheduleFailure);
   });
 
   it("should expose hook draining to in-memory runtimes", async () => {
@@ -83,7 +99,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
 
     const handler = handlerFactory({ storage: { setAlarm } }, {});
 
-    await flushAlarmScheduling();
+    await handler.initialize?.();
     expect(getNextWakeAt).toHaveBeenCalledTimes(1);
 
     await handler.alarm?.();
@@ -92,11 +108,15 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     expect(setAlarm).not.toHaveBeenCalled();
   });
 
-  it("should schedule alarm on notify and forward promise to waitUntil", async () => {
+  it("should resolve notify only after alarm scheduling completes", async () => {
     const processDue = vi.fn().mockResolvedValue(completedRun());
     const getNextWakeAt = vi.fn().mockResolvedValue(new Date("2024-01-01T00:00:00Z"));
     const drain = vi.fn().mockResolvedValue(undefined);
-    const setAlarm = vi.fn().mockResolvedValue(undefined);
+    const notifyAlarmScheduling = Promise.withResolvers<void>();
+    const setAlarm = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(async () => await notifyAlarmScheduling.promise);
 
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
@@ -108,18 +128,23 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     });
 
     const handler = handlerFactory({ storage: { setAlarm } }, {});
-    await flushAlarmScheduling();
+    await handler.initialize?.();
     expect(setAlarm).toHaveBeenCalledTimes(1);
 
-    const waitUntil = vi.fn();
-    await handler.notify?.({ source: "request", waitUntil });
+    const notification = handler.notify?.({ source: "request" });
+    assert(notification);
+    let notificationCompleted = false;
+    const notificationCompletion = notification.then(() => {
+      notificationCompleted = true;
+    });
 
-    expect(waitUntil).toHaveBeenCalledTimes(1);
-    const [notifyPromise] = waitUntil.mock.calls[0] as [Promise<void>];
-    await notifyPromise;
-
+    await vi.waitFor(() => expect(setAlarm).toHaveBeenCalledTimes(2));
+    assert(!notificationCompleted);
     expect(processDue).not.toHaveBeenCalled();
-    expect(setAlarm).toHaveBeenCalledTimes(2);
+
+    notifyAlarmScheduling.resolve();
+    await notificationCompletion;
+    assert(notificationCompleted);
   });
 
   it("should not postpone an existing due alarm", async () => {
@@ -142,14 +167,14 @@ describe("createDurableHooksDispatcherDurableObject", () => {
       }),
     });
 
-    handlerFactory({ storage: { getAlarm, setAlarm } }, {});
+    const handler = handlerFactory({ storage: { getAlarm, setAlarm } }, {});
 
-    await flushAlarmScheduling();
+    await handler.initialize?.();
     expect(getAlarm).toHaveBeenCalledTimes(1);
     expect(setAlarm).not.toHaveBeenCalled();
   });
 
-  it("should start another alarm run while an earlier run is completing", async () => {
+  it("should serialize concurrent alarms behind active hook completion", async () => {
     const firstCompletion = Promise.withResolvers<number>();
     const processDue = vi
       .fn()
@@ -172,16 +197,19 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     });
 
     const handler = handlerFactory({ storage: { setAlarm } }, {});
-    await flushAlarmScheduling();
+    await handler.initialize?.();
 
-    await handler.alarm?.();
-    await handler.alarm?.();
-
-    expect(processDue).toHaveBeenCalledTimes(2);
+    const firstAlarm = handler.alarm?.();
+    assert(firstAlarm);
+    await vi.waitFor(() => expect(processDue).toHaveBeenCalledTimes(1));
+    const secondAlarm = handler.alarm?.();
+    assert(secondAlarm);
+    await Promise.resolve();
+    expect(processDue).toHaveBeenCalledTimes(1);
 
     firstCompletion.resolve(1);
-    await firstCompletion.promise;
-    await flushAlarmScheduling();
+    await Promise.all([firstAlarm, secondAlarm]);
+    expect(processDue).toHaveBeenCalledTimes(2);
   });
 
   it("should delete the processing-timeout alarm after the last hook completes", async () => {
@@ -193,11 +221,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
       claimedCount: 1,
       completion: completion.promise,
     });
-    const getNextWakeAt = vi
-      .fn()
-      .mockResolvedValueOnce(wakeAt)
-      .mockResolvedValueOnce(wakeAt)
-      .mockResolvedValueOnce(null);
+    const getNextWakeAt = vi.fn().mockResolvedValueOnce(wakeAt).mockResolvedValueOnce(null);
     const drain = vi.fn().mockResolvedValue(undefined);
     let alarmTimestamp: number | null = null;
     const getAlarm = vi.fn(async () => alarmTimestamp);
@@ -217,15 +241,16 @@ describe("createDurableHooksDispatcherDurableObject", () => {
       }),
     });
     const handler = handlerFactory({ storage: { getAlarm, setAlarm, deleteAlarm } }, {});
-    await flushAlarmScheduling();
+    await handler.initialize?.();
     assert(alarmTimestamp === wakeAt.getTime());
 
-    await handler.alarm?.();
+    const alarm = handler.alarm?.();
+    assert(alarm);
+    await vi.waitFor(() => expect(processDue).toHaveBeenCalledTimes(1));
     assert(alarmTimestamp === wakeAt.getTime());
 
     completion.resolve(1);
-    await completion.promise;
-    await flushAlarmScheduling();
+    await alarm;
 
     expect(deleteAlarm).toHaveBeenCalledTimes(1);
     assert(alarmTimestamp === null);
@@ -243,7 +268,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
       }),
     });
 
-    handlerFactory(
+    const handler = handlerFactory(
       {
         storage: {
           getAlarm: vi.fn().mockResolvedValue(existingAlarm),
@@ -253,7 +278,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
       },
       {},
     );
-    await flushAlarmScheduling();
+    await handler.initialize?.();
 
     expect(deleteAlarm).not.toHaveBeenCalled();
   });
@@ -279,7 +304,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
 
     const handler = handlerFactory({ storage: { setAlarm } }, {});
 
-    await flushAlarmScheduling();
+    await handler.initialize?.();
     expect(setAlarm).toHaveBeenCalledTimes(1);
 
     await handler.alarm?.();
@@ -291,7 +316,43 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     vi.useRealTimers();
   });
 
-  it("should recover alarm processing when onProcessError throws", async () => {
+  it("should await async process error reporting before completing the alarm", async () => {
+    const processFailure = new Error("process failed");
+    const errorReporting = Promise.withResolvers<void>();
+    const processDue = vi.fn().mockRejectedValue(processFailure);
+    const getNextWakeAt = vi.fn().mockResolvedValue(null);
+    const onProcessError = vi.fn(async () => await errorReporting.promise);
+
+    const handlerFactory = createDurableHooksDispatcherDurableObject({
+      createProcessor: () => ({
+        processDue,
+        getNextWakeAt,
+        drain: vi.fn().mockResolvedValue(undefined),
+        namespace: "test",
+      }),
+      onProcessError,
+    });
+
+    const handler = handlerFactory(
+      { storage: { setAlarm: vi.fn().mockResolvedValue(undefined) } },
+      {},
+    );
+    await handler.initialize?.();
+
+    let alarmCompleted = false;
+    const alarm = handler.alarm?.().then(() => {
+      alarmCompleted = true;
+    });
+    assert(alarm);
+    await vi.waitFor(() => expect(onProcessError).toHaveBeenCalledWith(processFailure));
+    assert(!alarmCompleted);
+
+    errorReporting.resolve();
+    await alarm;
+    assert(alarmCompleted);
+  });
+
+  it("should recover alarm processing when async onProcessError rejects", async () => {
     const processFailure = new Error("process failed");
     const processDue = vi
       .fn()
@@ -300,7 +361,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const getNextWakeAt = vi.fn().mockResolvedValue(new Date("2024-01-01T00:00:00Z"));
     const drain = vi.fn().mockResolvedValue(undefined);
     const setAlarm = vi.fn().mockResolvedValue(undefined);
-    const onProcessError = vi.fn(() => {
+    const onProcessError = vi.fn(async () => {
       throw new Error("callback failed");
     });
     const errorSpy = vi.spyOn(DurableHooksLogger, "error").mockImplementation(() => {});
@@ -316,7 +377,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     });
 
     const handler = handlerFactory({ storage: { setAlarm } }, {});
-    await flushAlarmScheduling();
+    await handler.initialize?.();
 
     await handler.alarm?.();
     await handler.alarm?.();
@@ -331,7 +392,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     );
   });
 
-  it("should resolve notify when onProcessError throws in schedule error path", async () => {
+  it("should reject notify when alarm scheduling fails", async () => {
     const scheduleFailure = new Error("schedule failed");
     const processDue = vi.fn().mockResolvedValue(completedRun());
     const getNextWakeAt = vi
@@ -340,7 +401,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
       .mockRejectedValueOnce(scheduleFailure);
     const drain = vi.fn().mockResolvedValue(undefined);
     const setAlarm = vi.fn().mockResolvedValue(undefined);
-    const onProcessError = vi.fn(() => {
+    const onProcessError = vi.fn(async () => {
       throw new Error("callback failed");
     });
     const errorSpy = vi.spyOn(DurableHooksLogger, "error").mockImplementation(() => {});
@@ -356,10 +417,9 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     });
 
     const handler = handlerFactory({ storage: { setAlarm } }, {});
-    await flushAlarmScheduling();
+    await handler.initialize?.();
 
-    await handler.notify?.({ source: "request" });
-    await Promise.resolve();
+    await expect(handler.notify?.({ source: "request" })).rejects.toBe(scheduleFailure);
 
     expect(onProcessError).toHaveBeenCalledWith(scheduleFailure);
     assert(

@@ -44,7 +44,6 @@ function scopeSubject(scope: BackofficeRoutableScope, serverId?: string) {
 
 export class InMemoryMcpObject extends RpcTarget implements McpObject {
   readonly #env: McpObjectEnv;
-  readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #host: FragmentDurableObjectHost<McpConfig, McpFragment>;
   readonly #scopedRuntime: ScopedFragmentDurableObjectRuntime<McpFragment>;
@@ -60,7 +59,6 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
   }) {
     super();
     this.#env = env ?? {};
-    this.#state = state;
     this.#runtimeServices = runtime;
     this.#host = createFragmentDurableObjectHost({
       name: "MCP",
@@ -75,7 +73,7 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
         console.error("MCP hook processor error", error);
       },
       onDispatcherError: (error) => {
-        console.warn("MCP hook processor disabled", error);
+        console.warn("MCP hook dispatcher initialization failed", error);
       },
     });
     this.#scopedRuntime = createScopedFragmentDurableObjectRuntime({
@@ -156,9 +154,7 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#host.fetch(await this.#scopedRuntime.getRuntime(), request, {
-      waitUntil: this.#state.waitUntil.bind(this.#state),
-    });
+    return await this.#host.fetch(await this.#scopedRuntime.getRuntime(), request);
   }
 }
 

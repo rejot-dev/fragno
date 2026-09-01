@@ -89,7 +89,6 @@ const createState = (
       alarm = scheduledTime;
     }),
   };
-  const waitUntil = vi.fn();
   let blockConcurrencyPromise: Promise<unknown> | undefined;
   const blockConcurrencyWhile = vi.fn(<T>(callback: () => Promise<T>) => {
     blockConcurrencyPromise = Promise.resolve().then(callback);
@@ -107,7 +106,6 @@ const createState = (
         toString: () => "telegram:test",
       },
       storage,
-      waitUntil,
       blockConcurrencyWhile,
     } as unknown as DurableObjectState,
     waitForBlockConcurrency: async () => await blockConcurrencyPromise,

@@ -41,7 +41,6 @@ function scopeSubject(scope: BackofficeRoutableScope, subject?: Record<string, u
 }
 
 export class InMemoryApiObject extends RpcTarget implements ApiObject {
-  readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #host: FragmentDurableObjectHost<ApiConfig, ApiFragment>;
   readonly #scopedRuntime: ScopedFragmentDurableObjectRuntime<ApiFragment>;
@@ -56,7 +55,6 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
     runtime: BackofficeRuntimeServices;
   }) {
     super();
-    this.#state = state;
     this.#runtimeServices = runtime;
     this.#host = createFragmentDurableObjectHost({
       name: "API",
@@ -71,7 +69,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
         console.error("API hook processor error", error);
       },
       onDispatcherError: (error) => {
-        console.warn("API hook processor disabled", error);
+        console.warn("API hook dispatcher initialization failed", error);
       },
     });
     this.#scopedRuntime = createScopedFragmentDurableObjectRuntime({
@@ -230,9 +228,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#host.fetch(await this.#scopedRuntime.getRuntime(), request, {
-      waitUntil: this.#state.waitUntil.bind(this.#state),
-    });
+    return await this.#host.fetch(await this.#scopedRuntime.getRuntime(), request);
   }
 }
 

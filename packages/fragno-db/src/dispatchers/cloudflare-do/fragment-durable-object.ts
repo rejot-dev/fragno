@@ -1,6 +1,8 @@
 import type { FragnoRequestLifecycleContext } from "@fragno-dev/core";
 
 import { hasDurableHooksConfigured } from "../../hooks/durable-hooks-fragment";
+import { DurableHooksLogger } from "../../hooks/durable-hooks-logger";
+import type { DurableHooksErrorObserver } from "../../hooks/durable-hooks-processor";
 import type { DurableHooksInstrumentation } from "../../hooks/hooks";
 import { migrate, type AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
 import {
@@ -14,7 +16,7 @@ type CreateDispatcherContext<TEnv> = {
   state: DurableHooksDispatcherDurableObjectState;
   env: TEnv;
   instrumentation?: DurableHooksInstrumentation;
-  onProcessError?: (error: unknown) => void;
+  onProcessError?: DurableHooksErrorObserver;
 };
 
 export type FragmentDurableObjectInitializationContext =
@@ -57,20 +59,20 @@ type CommonHostOptions<TEnv, TSource, TRuntime> = {
   /** Optional request mounts used by `host.fetch(...)`. */
   mounts?: readonly FragmentDurableObjectMount<TRuntime>[];
   /** Called when runtime creation or migration fails. The original error is re-thrown. */
-  onMigrationError?: (error: unknown) => void;
+  onMigrationError?: DurableHooksErrorObserver;
   /**
-   * Called when durable hook dispatcher creation fails.
+   * Called when durable hook dispatcher creation or initial alarm reconciliation fails.
    *
-   * Dispatcher creation failures do not fail `initialize()`; the runtime remains usable without
-   * alarm-backed hook processing.
+   * Dispatcher setup failures reject `initialize()` so a runtime cannot be exposed without its
+   * required alarm-backed hook processing.
    */
-  onDispatcherError?: (error: unknown) => void;
+  onDispatcherError?: DurableHooksErrorObserver;
   /** Overrides instrumentation for every durable-hook fragment hosted by this Durable Object. */
   durableHooksInstrumentation?: DurableHooksInstrumentation;
   /** Instruments runtime construction and each fragment migration. */
   initializationInstrumentation?: FragmentDurableObjectInitializationInstrumentation;
   /** Called by the durable hook dispatcher when processing or alarm scheduling fails. */
-  onProcessError?: (error: unknown) => void;
+  onProcessError?: DurableHooksErrorObserver;
   /** @internal Override low-level operations in tests or advanced integrations. */
   operations?: FragmentDurableObjectHostOperations<TEnv>;
 };
@@ -203,7 +205,7 @@ export type FragmentDurableObjectHostOperations<TEnv> = {
    */
   createDispatcher?: (
     context: CreateDispatcherContext<TEnv>,
-  ) => DurableHooksDispatcherDurableObjectHandler | null;
+  ) => DurableHooksDispatcherDurableObjectHandler;
 };
 
 /** Options for creating a reusable Fragno runtime host inside a Cloudflare Durable Object. */
@@ -291,13 +293,35 @@ export function createFragmentDurableObjectHost<TEnv, TSource, TRuntime>(
     );
   };
 
-  const createDispatcher = (hookFragments: readonly AnyFragnoInstantiatedDatabaseFragment[]) => {
-    if (hookFragments.length === 0) {
-      options.state.setBackgroundDrain?.(null);
-      return null;
-    }
-
+  async function reportHostInitializationError(
+    observer: DurableHooksErrorObserver | undefined,
+    callbackName: "onMigrationError" | "onDispatcherError",
+    error: unknown,
+  ): Promise<void> {
     try {
+      await observer?.(error);
+    } catch (callbackError) {
+      DurableHooksLogger.error("Fragment Durable Object initialization error callback failed", {
+        namespace: hostName,
+        fields: {
+          callback: callbackName,
+          error: DurableHooksLogger.toErrorMessage(callbackError),
+        },
+      });
+    }
+  }
+
+  async function initializeDurableHooksDispatcher(
+    runtime: TRuntime,
+    migrationFragments: readonly AnyFragnoInstantiatedDatabaseFragment[],
+  ): Promise<DurableHooksDispatcherDurableObjectHandler | null> {
+    try {
+      const hookFragments = resolveHookFragments(runtime, migrationFragments);
+      if (hookFragments.length === 0) {
+        options.state.setBackgroundDrain?.(null);
+        return null;
+      }
+
       const nextDispatcher = options.operations?.createDispatcher
         ? options.operations.createDispatcher({
             hookFragments,
@@ -311,16 +335,17 @@ export function createFragmentDurableObjectHost<TEnv, TSource, TRuntime>(
             onProcessError: options.onProcessError,
           })(options.state, options.env);
 
+      await nextDispatcher.initialize?.();
       options.state.setBackgroundDrain?.(
-        nextDispatcher?.drain ? async () => await nextDispatcher.drain?.() : null,
+        nextDispatcher.drain ? async () => await nextDispatcher.drain?.() : null,
       );
       return nextDispatcher;
     } catch (error) {
       options.state.setBackgroundDrain?.(null);
-      options.onDispatcherError?.(error);
-      return null;
+      await reportHostInitializationError(options.onDispatcherError, "onDispatcherError", error);
+      throw error;
     }
-  };
+  }
 
   const createHostedRuntime = (
     runtime: TRuntime,
@@ -353,7 +378,7 @@ export function createFragmentDurableObjectHost<TEnv, TSource, TRuntime>(
     }
   };
 
-  const initialize = async (source: TSource): Promise<TRuntime> => {
+  const createAndMigrateRuntime = async (source: TSource) => {
     try {
       const createRuntime = () =>
         options.createRuntime(source, {
@@ -370,17 +395,21 @@ export function createFragmentDurableObjectHost<TEnv, TSource, TRuntime>(
 
       await migrateFragments(migrationFragments);
 
-      const hookFragments = resolveHookFragments(runtime, migrationFragments);
-      const nextDispatcher = createDispatcher(hookFragments);
-      const hostedRuntime = createHostedRuntime(runtime, nextDispatcher);
-
-      dispatcher = nextDispatcher;
-
-      return hostedRuntime;
+      return { runtime, migrationFragments };
     } catch (error) {
-      options.onMigrationError?.(error);
+      await reportHostInitializationError(options.onMigrationError, "onMigrationError", error);
       throw error;
     }
+  };
+
+  const initialize = async (source: TSource): Promise<TRuntime> => {
+    const { runtime, migrationFragments } = await createAndMigrateRuntime(source);
+    const nextDispatcher = await initializeDurableHooksDispatcher(runtime, migrationFragments);
+    const hostedRuntime = createHostedRuntime(runtime, nextDispatcher);
+
+    dispatcher = nextDispatcher;
+
+    return hostedRuntime;
   };
 
   const resolveMount = (

@@ -101,7 +101,7 @@ export type BackofficeOutboxItem = {
 
 export type BackofficeObjectState = Pick<
   DurableObjectState,
-  "id" | "storage" | "blockConcurrencyWhile" | "waitUntil"
+  "id" | "storage" | "blockConcurrencyWhile"
 >;
 
 export type BackofficeFragmentDurableObjectCreateRuntimeContext<TEnv = CloudflareEnv> =
@@ -350,7 +350,7 @@ export function createBackofficeFragmentDurableObject<
       console.error(`${options.name} hook processor error`, error);
     },
     onDispatcherError: (error: unknown) => {
-      console.warn(`${options.name} hook processor disabled`, error);
+      console.warn(`${options.name} hook dispatcher initialization failed`, error);
     },
   } as never) as unknown as FragmentDurableObjectHost<TSource, TRuntime>;
 
@@ -633,10 +633,7 @@ export function createBackofficeFragmentDurableObject<
         return scopeMismatchResponse;
       }
 
-      return await fragmentHost.fetch(current.runtime, request, {
-        waitUntil: options.state.waitUntil.bind(options.state),
-        ...context,
-      });
+      return await fragmentHost.fetch(current.runtime, request, context);
     },
     getDurableHookQueue,
     getDurableHook,

@@ -1,5 +1,6 @@
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../mod";
 import { getDurableHooksToken, hasDurableHooksConfigured } from "./durable-hooks-fragment";
+import { DurableHooksLogger } from "./durable-hooks-logger";
 import { getDurableHooksRuntimeByToken } from "./durable-hooks-runtime";
 import {
   createDurableHooksRunner,
@@ -22,8 +23,11 @@ export type DurableHooksProcessorOptions = {
   instrumentation?: DurableHooksInstrumentation;
 };
 
+/** Observes durable hook failures; the lifecycle reporting the failure awaits async observers. */
+export type DurableHooksErrorObserver = (error: unknown) => void | Promise<void>;
+
 export type DurableHooksProcessorGroupOptions = DurableHooksProcessorOptions & {
-  onError?: (error: unknown) => void;
+  onError?: DurableHooksErrorObserver;
 };
 
 const DEFAULT_STUCK_PROCESSING_TIMEOUT_MINUTES = 10;
@@ -119,6 +123,17 @@ export function createDurableHooksProcessorGroupFromProcessors(
   const onError = options.onError ?? (() => {});
   const namespace = processors.map((processor) => processor.namespace).join(",");
 
+  async function reportProcessorGroupError(error: unknown): Promise<void> {
+    try {
+      await onError(error);
+    } catch (callbackError) {
+      DurableHooksLogger.error("Durable hooks processor group onError callback failed", {
+        namespace,
+        fields: { error: DurableHooksLogger.toErrorMessage(callbackError) },
+      });
+    }
+  }
+
   const processDue = async (): Promise<DurableHooksRun> => {
     const results = await Promise.allSettled(
       processors.map(async (processor) => await processor.processDue()),
@@ -128,20 +143,20 @@ export function createDurableHooksProcessorGroupFromProcessors(
       if (result.status === "fulfilled") {
         runs.push(result.value);
       } else {
-        onError(result.reason);
+        await reportProcessorGroupError(result.reason);
       }
     }
 
     return {
       claimedCount: runs.reduce((count, run) => count + run.claimedCount, 0),
       completion: Promise.allSettled(runs.map((run) => run.completion)).then(
-        (completionResults) => {
+        async (completionResults) => {
           let processed = 0;
           for (const result of completionResults) {
             if (result.status === "fulfilled") {
               processed += result.value;
             } else {
-              onError(result.reason);
+              await reportProcessorGroupError(result.reason);
             }
           }
           return processed;
@@ -161,7 +176,7 @@ export function createDurableHooksProcessorGroupFromProcessors(
       );
       for (const result of results) {
         if (result.status === "rejected") {
-          onError(result.reason);
+          await reportProcessorGroupError(result.reason);
         }
       }
     },
@@ -180,7 +195,7 @@ export function createDurableHooksProcessorGroupFromProcessors(
             nextWakeAt = wakeAt;
           }
         } else {
-          onError(result.reason);
+          await reportProcessorGroupError(result.reason);
         }
       }
       return nextWakeAt;

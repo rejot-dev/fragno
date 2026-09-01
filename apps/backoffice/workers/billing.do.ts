@@ -32,7 +32,6 @@ import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-
 type BillingOwnerScope = Extract<BackofficeContextScope, { kind: "org" }>;
 
 export class InMemoryBillingObject extends RpcTarget implements BillingObject {
-  readonly #state: BackofficeObjectState;
   readonly #host: FragmentDurableObjectHost<void, BillingFragment>;
   readonly #ownerScope: BillingOwnerScope;
   #fragment: BillingFragment | null = null;
@@ -47,7 +46,6 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
     runtime: BackofficeRuntimeServices;
   }) {
     super();
-    this.#state = state;
     const ownerScope = requireBackofficeContextScopeFromDurableObjectId(state.id, "BILLING");
     if (ownerScope.kind !== "org") {
       throw new Error("Billing objects require an organization scope.");
@@ -67,7 +65,7 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
         console.error("Billing hook processor error", error);
       },
       onDispatcherError: (error) => {
-        console.warn("Billing hook processor disabled", error);
+        console.warn("Billing hook dispatcher initialization failed", error);
       },
     });
 
@@ -111,9 +109,7 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#host.fetch(this.#getFragment(), request, {
-      waitUntil: this.#state.waitUntil.bind(this.#state),
-    });
+    return await this.#host.fetch(this.#getFragment(), request);
   }
 }
 

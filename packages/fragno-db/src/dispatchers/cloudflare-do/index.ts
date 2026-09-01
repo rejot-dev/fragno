@@ -1,5 +1,8 @@
 import { getDurableHooksToken } from "../../hooks/durable-hooks-fragment";
-import { createDurableHooksProcessorGroup } from "../../hooks/durable-hooks-processor";
+import {
+  createDurableHooksProcessorGroup,
+  type DurableHooksErrorObserver,
+} from "../../hooks/durable-hooks-processor";
 import { getDurableHooksRuntimeByToken } from "../../hooks/durable-hooks-runtime";
 import type { DurableHooksInstrumentation } from "../../hooks/hooks";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
@@ -11,7 +14,7 @@ import {
 } from "./dispatcher";
 
 export type DurableHooksProcessorOptions = {
-  onProcessError?: (error: unknown) => void;
+  onProcessError?: DurableHooksErrorObserver;
   /**
    * Overrides each fragment's durable-hook instrumentation before the fragments are exposed.
    */
@@ -40,11 +43,8 @@ export function createDurableHooksProcessor<TEnv>(
   return (state, env) => {
     const handler = factory(state, env);
     const notifier = {
-      notify: (context: Parameters<NonNullable<typeof handler.notify>>[0]) => {
-        if (!handler.notify) {
-          return;
-        }
-        return handler.notify(context);
+      notify: async (context: Parameters<NonNullable<typeof handler.notify>>[0]) => {
+        await handler.notify?.(context);
       },
     };
 

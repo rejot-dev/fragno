@@ -1,9 +1,12 @@
 import { DurableHooksLogger } from "../../hooks/durable-hooks-logger";
-import type { DurableHooksProcessor } from "../../hooks/durable-hooks-processor";
+import type {
+  DurableHooksErrorObserver,
+  DurableHooksProcessor,
+} from "../../hooks/durable-hooks-processor";
 import type { HookNotifyContext } from "../../hooks/hooks";
 
 export type DurableHooksDispatcher = {
-  notify: (context: HookNotifyContext) => void;
+  notify: (context: HookNotifyContext) => Promise<void>;
   wake: () => Promise<void>;
   drain: () => Promise<void>;
   startPolling: () => void;
@@ -13,7 +16,7 @@ export type DurableHooksDispatcher = {
 export type DurableHooksDispatcherOptions = {
   processor: DurableHooksProcessor;
   pollIntervalMs?: number;
-  onError?: (error: unknown) => void;
+  onError?: DurableHooksErrorObserver;
 };
 
 export function createDurableHooksDispatcher(
@@ -28,6 +31,17 @@ export function createDurableHooksDispatcher(
         fields: { error: DurableHooksLogger.toErrorMessage(error) },
       });
     });
+  async function reportDispatcherError(error: unknown): Promise<void> {
+    try {
+      await onError(error);
+    } catch (callbackError) {
+      DurableHooksLogger.error("Durable hooks dispatcher onError callback failed", {
+        namespace: options.processor.namespace,
+        fields: { error: DurableHooksLogger.toErrorMessage(callbackError) },
+      });
+    }
+  }
+
   let timer: ReturnType<typeof setInterval> | undefined;
   let processing = false;
   let queued = false;
@@ -44,7 +58,7 @@ export function createDurableHooksDispatcher(
       }
     });
     activeCompletions.add(trackedCompletion);
-    void trackedCompletion.catch(onError);
+    void trackedCompletion.catch(reportDispatcherError);
   }
 
   function runProcess(continueAfterCompletion = false): Promise<void> {
@@ -66,7 +80,7 @@ export function createDurableHooksDispatcher(
           const run = await options.processor.processDue();
           observeCompletion(run.completion, shouldContinueAfterCompletion && run.claimedCount > 0);
         } catch (error) {
-          onError(error);
+          await reportDispatcherError(error);
         }
       } while (queued);
       processing = false;
@@ -85,12 +99,12 @@ export function createDurableHooksDispatcher(
         await runProcess(true);
       }
     } catch (error) {
-      onError(error);
+      await reportDispatcherError(error);
     }
   };
 
   return {
-    notify: (_context) => {
+    notify: async (_context) => {
       if (notifyQueued) {
         return;
       }
@@ -113,7 +127,7 @@ export function createDurableHooksDispatcher(
       try {
         await options.processor.drain();
       } catch (error) {
-        onError(error);
+        await reportDispatcherError(error);
       }
     },
     startPolling: () => {

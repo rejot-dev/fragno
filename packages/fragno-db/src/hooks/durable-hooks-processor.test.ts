@@ -16,6 +16,7 @@ import type {
 } from "../query/unit-of-work/execute-unit-of-work";
 import { schema, column, idColumn } from "../schema/create";
 import { withDatabase } from "../with-database";
+import { DurableHooksLogger } from "./durable-hooks-logger";
 import {
   createDurableHooksProcessor,
   createDurableHooksProcessorGroup,
@@ -364,6 +365,40 @@ describe("createDurableHooksProcessorGroupFromProcessors", () => {
 
     await group.drain();
     expect(onError).toHaveBeenCalledTimes(2);
+  });
+
+  it("awaits and contains async error observer failures", async () => {
+    const processorFailure = new Error("processor failed");
+    const callbackFailure = new Error("callback failed");
+    const errorReporting = Promise.withResolvers<void>();
+    const onError = vi.fn(async () => await errorReporting.promise);
+    const errorSpy = vi.spyOn(DurableHooksLogger, "error").mockImplementation(() => {});
+    const processorA = makeProcessor({
+      namespace: "a",
+      processDue: vi.fn().mockRejectedValue(processorFailure),
+    });
+    const processorB = makeProcessor({ namespace: "b" });
+    const group = createDurableHooksProcessorGroupFromProcessors([processorA, processorB], {
+      onError,
+    });
+
+    let processingCompleted = false;
+    const processing = group.processDue().then((run) => {
+      processingCompleted = true;
+      return run;
+    });
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(processorFailure));
+    assert(!processingCompleted);
+
+    errorReporting.reject(callbackFailure);
+    await expect(processing).resolves.toMatchObject({ claimedCount: 0 });
+    assert(processingCompleted);
+    assert(
+      errorSpy.mock.calls.some(
+        ([message]) => message === "Durable hooks processor group onError callback failed",
+      ),
+    );
+    errorSpy.mockRestore();
   });
 
   it("returns the earliest wake time and ignores failures", async () => {

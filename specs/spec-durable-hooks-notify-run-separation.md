@@ -1,5 +1,10 @@
 # Durable Hooks Notify/Run Separation — Spec
 
+> **Superseded on September 1, 2026:** Durable hook notification now resolves only after alarm
+> scheduling is acknowledged. `DurableObjectState.waitUntil()` is no longer part of the hook
+> notification contract. Hook processing remains decoupled and runs exclusively in `alarm()`. See
+> [`backoffice-tracing-more.md`](./backoffice-tracing-more.md).
+
 ## Open Questions
 
 None.

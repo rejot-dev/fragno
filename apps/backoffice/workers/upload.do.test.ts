@@ -62,7 +62,6 @@ const createState = (durableObjectName?: string) => {
       alarm = scheduledTime;
     }),
   };
-  const waitUntil = vi.fn();
   const blockConcurrencyWhile = vi.fn(<T>(callback: () => Promise<T>) => {
     return callback();
   });
@@ -73,7 +72,6 @@ const createState = (durableObjectName?: string) => {
       toString: () => `upload:${durableObjectName ?? "test"}`,
     },
     storage,
-    waitUntil,
     blockConcurrencyWhile,
   } as unknown as DurableObjectState;
 };
@@ -273,10 +271,7 @@ describe("Upload Durable Object", () => {
 
     await upload.fetch(new Request("https://example.com/api/upload/files?provider=r2-binding"));
 
-    expect(bindingHandler).toHaveBeenCalledWith(
-      expect.any(Request),
-      expect.objectContaining({ waitUntil: expect.any(Function) }),
-    );
+    expect(bindingHandler).toHaveBeenCalledWith(expect.any(Request));
     expect(dispatcherNotifyMock).toHaveBeenCalledTimes(1);
     expect(dispatcherNotifyMock).toHaveBeenCalledWith(
       expect.objectContaining({ source: "request" }),

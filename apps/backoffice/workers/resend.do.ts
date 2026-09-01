@@ -519,9 +519,7 @@ export class InMemoryResendObject implements ResendObject {
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#host.fetch(request, {
-      waitUntil: this.#state.waitUntil.bind(this.#state),
-    });
+    return await this.#host.fetch(request);
   }
 }
 

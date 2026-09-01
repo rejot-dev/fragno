@@ -206,6 +206,11 @@ Do not use `DurableObjectState.waitUntil()` as a background boundary. Cloudflare
 has no effect on Durable Object lifetime or request/RPC completion.
 ([developers.cloudflare.com](https://developers.cloudflare.com/durable-objects/api/state/?utm_source=openai))
 
+> **Implemented September 1, 2026:** Post-mutate notification now awaits alarm reconciliation,
+> Cloudflare alarms own claimed hook completion and follow-up scheduling, async error observers are
+> awaited, dispatcher setup failures prevent runtime exposure, and Backoffice Durable Object
+> fragment hosts no longer pass `waitUntil` into request handling.
+
 Therefore:
 
 - Hook notification should synchronously await alarm scheduling.

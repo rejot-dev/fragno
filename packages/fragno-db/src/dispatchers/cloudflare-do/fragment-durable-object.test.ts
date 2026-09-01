@@ -1,4 +1,4 @@
-import { describe, expect, it, assert } from "vitest";
+import { describe, expect, it, assert, vi } from "vitest";
 
 import type { DurableHooksInstrumentation, HookNotifyContext } from "../../hooks/hooks";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
@@ -101,6 +101,32 @@ describe("createFragmentDurableObjectHost", () => {
     ]);
   });
 
+  it("awaits durable hook alarm initialization before exposing the runtime", async () => {
+    const fragment = createFragment("test");
+    const dispatcherInitialization = Promise.withResolvers<void>();
+    const host = createFragmentDurableObjectHost({
+      state: { storage: { setAlarm: async () => {} } },
+      env: {},
+      createRuntime: () => fragment,
+      operations: createRecordingOperations({
+        initialize: async () => await dispatcherInitialization.promise,
+      }).operations,
+    });
+
+    const initialization = host.initialize({});
+    let runtimeExposed = false;
+    const runtimeExposure = initialization.then(() => {
+      runtimeExposed = true;
+    });
+
+    await Promise.resolve();
+    assert(!runtimeExposed);
+
+    dispatcherInitialization.resolve();
+    await runtimeExposure;
+    assert(runtimeExposed);
+  });
+
   it("creates a fresh runtime for every initialization", async () => {
     const runtimeBuilds: string[] = [];
     const recording = createRecordingOperations();
@@ -196,7 +222,7 @@ describe("createFragmentDurableObjectHost", () => {
       },
     });
     const recording = createRecordingOperations({
-      notify: (context) => {
+      notify: async (context) => {
         notifications.push(context);
       },
     });
@@ -336,7 +362,7 @@ describe("createFragmentDurableObjectHost", () => {
         fragment: hostFragment(runtime.fragment),
       }),
       operations: createRecordingOperations({
-        notify: (context) => {
+        notify: async (context) => {
           notifications.push(context);
         },
       }).operations,
@@ -375,10 +401,11 @@ describe("createFragmentDurableObjectHost", () => {
     expect(alarmCalls).toEqual(["second"]);
   });
 
-  it("disables dispatcher creation failures without failing migration", async () => {
+  it("classifies dispatcher creation failures and rejects initialization", async () => {
     const fragment = createFragment("test");
     const dispatcherError = new Error("no hooks");
     const dispatcherErrors: unknown[] = [];
+    const migrationErrors: unknown[] = [];
     const migratedFragments: AnyFragnoInstantiatedDatabaseFragment[] = [];
 
     const host = createFragmentDurableObjectHost({
@@ -386,6 +413,9 @@ describe("createFragmentDurableObjectHost", () => {
       env: {},
       createRuntime: () => ({ fragment }),
       getMigrationFragments: (runtime) => [runtime.fragment],
+      onMigrationError: (error) => {
+        migrationErrors.push(error);
+      },
       onDispatcherError: (error) => {
         dispatcherErrors.push(error);
       },
@@ -399,10 +429,55 @@ describe("createFragmentDurableObjectHost", () => {
       },
     });
 
-    await expect(host.initialize({})).resolves.toEqual({ fragment });
+    await expect(host.initialize({})).rejects.toBe(dispatcherError);
     await expect(host.alarm()).resolves.toBeUndefined();
 
     expect(migratedFragments).toEqual([fragment]);
     expect(dispatcherErrors).toEqual([dispatcherError]);
+    expect(migrationErrors).toEqual([]);
+  });
+
+  it("awaits dispatcher initialization error reporting without misclassifying the failure", async () => {
+    const fragment = createFragment("test");
+    const dispatcherError = new Error("alarm unavailable");
+    const errorReporting = Promise.withResolvers<void>();
+    const dispatcherErrors: unknown[] = [];
+    const migrationErrors: unknown[] = [];
+    const setBackgroundDrain = vi.fn();
+
+    const host = createFragmentDurableObjectHost({
+      state: {
+        storage: { setAlarm: async () => {} },
+        setBackgroundDrain,
+      },
+      env: {},
+      createRuntime: () => fragment,
+      onMigrationError: (error) => {
+        migrationErrors.push(error);
+      },
+      onDispatcherError: async (error) => {
+        dispatcherErrors.push(error);
+        await errorReporting.promise;
+      },
+      operations: createRecordingOperations({
+        initialize: async () => {
+          throw dispatcherError;
+        },
+      }).operations,
+    });
+
+    let initializationCompleted = false;
+    const initialization = host.initialize({}).finally(() => {
+      initializationCompleted = true;
+    });
+    const initializationResult = expect(initialization).rejects.toBe(dispatcherError);
+    await vi.waitFor(() => expect(dispatcherErrors).toEqual([dispatcherError]));
+    assert(!initializationCompleted);
+
+    errorReporting.resolve();
+    await initializationResult;
+
+    expect(migrationErrors).toEqual([]);
+    expect(setBackgroundDrain).toHaveBeenLastCalledWith(null);
   });
 });

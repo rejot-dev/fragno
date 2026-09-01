@@ -252,7 +252,6 @@ export const handleIdentityClaimConfirmed = async (
 };
 
 export class InMemoryOtpObject implements OtpObject {
-  readonly #state: BackofficeObjectState;
   readonly #runtime: BackofficeRuntimeServices;
   readonly #host: FragmentDurableObjectHost<void, OtpFragment>;
   #fragment: OtpFragment | null = null;
@@ -266,7 +265,6 @@ export class InMemoryOtpObject implements OtpObject {
     env?: unknown;
     runtime: BackofficeRuntimeServices;
   }) {
-    this.#state = state;
     this.#runtime = runtime;
     this.#host = createFragmentDurableObjectHost({
       name: "OTP",
@@ -288,7 +286,7 @@ export class InMemoryOtpObject implements OtpObject {
         console.error("OTP hook processor error", error);
       },
       onDispatcherError: (error) => {
-        console.warn("OTP hook processor disabled", error);
+        console.warn("OTP hook dispatcher initialization failed", error);
       },
     });
 
@@ -491,9 +489,7 @@ export class InMemoryOtpObject implements OtpObject {
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#host.fetch(this.#getFragment(), request, {
-      waitUntil: this.#state.waitUntil.bind(this.#state),
-    });
+    return await this.#host.fetch(this.#getFragment(), request);
   }
 }
 

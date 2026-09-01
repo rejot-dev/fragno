@@ -193,11 +193,11 @@ export type HookNotifySource = "request" | "hook" | "alarm";
 export type HookNotifyContext = {
   source: HookNotifySource;
   route?: string | null;
-  waitUntil?: (promise: Promise<unknown>) => void;
 };
 
 export type HookNotifier = {
-  notify: (context: HookNotifyContext) => void | Promise<void>;
+  /** Resolves after the runtime has durably acknowledged the hook wakeup. */
+  notify: (context: HookNotifyContext) => Promise<void>;
 };
 
 export type DurableHooksRun = {

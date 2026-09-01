@@ -1,12 +1,15 @@
 import { getDurableHooksToken } from "../../hooks/durable-hooks-fragment";
-import { createDurableHooksProcessorGroup } from "../../hooks/durable-hooks-processor";
+import {
+  createDurableHooksProcessorGroup,
+  type DurableHooksErrorObserver,
+} from "../../hooks/durable-hooks-processor";
 import { getDurableHooksRuntimeByToken } from "../../hooks/durable-hooks-runtime";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
 import { createDurableHooksDispatcher, type DurableHooksDispatcher } from "./dispatcher";
 
 export type DurableHooksProcessorOptions = {
   pollIntervalMs?: number;
-  onError?: (error: unknown) => void;
+  onError?: DurableHooksErrorObserver;
 };
 
 export type { DurableHooksDispatcher };
@@ -25,8 +28,8 @@ export function createDurableHooksProcessor(
   });
 
   const notifier = {
-    notify: (context: Parameters<typeof dispatcher.notify>[0]) => {
-      dispatcher.notify(context);
+    notify: async (context: Parameters<typeof dispatcher.notify>[0]) => {
+      await dispatcher.notify(context);
     },
   };
 

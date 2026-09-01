@@ -18,7 +18,6 @@ function createState(
       },
     } as BackofficeObjectState["storage"],
     blockConcurrencyWhile: async (callback) => await callback(),
-    waitUntil: () => undefined,
   };
 }
 

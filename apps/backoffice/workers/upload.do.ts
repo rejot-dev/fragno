@@ -472,9 +472,7 @@ export class InMemoryUploadObject implements UploadObject {
       return fragment;
     }
 
-    return await fragment.handler(request, {
-      waitUntil: this.#state.waitUntil.bind(this.#state),
-    });
+    return await fragment.handler(request);
   }
 }
 
