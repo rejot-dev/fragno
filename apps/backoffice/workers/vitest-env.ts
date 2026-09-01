@@ -28,6 +28,7 @@ export class AuthSqlHarnessDurableObject extends DurableObject<CloudflareEnv> {
     const runtime = {
       config: {
         authEmailVerification: { enabled: false },
+        signUpInvitationsEnabled: true,
       },
       objects: {
         auth: {
@@ -39,6 +40,20 @@ export class AuthSqlHarnessDurableObject extends DurableObject<CloudflareEnv> {
         automations: {
           singleton: () => ({
             commands: { ingestEvent: async () => ({ accepted: true }) },
+          }),
+        },
+        otp: {
+          singleton: () => ({
+            commands: {
+              confirmSignUpInvitation: async (input: {
+                invitationId: string;
+                code: string;
+                email: string;
+              }) =>
+                input.invitationId === "auth-sql-harness" && input.code === "AUTHSQL1"
+                  ? { ok: true as const, invitationId: input.invitationId, email: input.email }
+                  : { ok: false as const, reason: "invalid" as const },
+            },
           }),
         },
       },

@@ -1,28 +1,90 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { createAdminRuntime } from "./admin-runtime";
 
-describe("createAdminRuntime", () => {
-  test("resolves organization slugs before changing membership", async () => {
-    const membershipCalls: unknown[] = [];
-    const auth: Parameters<typeof createAdminRuntime>[0] = {
-      createAdminOrganization: async (input) => ({
+function createAdminRuntimeDependencies() {
+  return {
+    auth: {
+      createAdminOrganization: async (input: { name: string; slug: string }) => ({
         organizationId: "org-1",
         name: input.name,
         slug: input.slug,
         ownerUserId: "owner-1",
       }),
-      getOrganizationBySlug: async (slug) => (slug === "acme" ? { id: "org-1", slug } : null),
-      addAdminOrganizationMember: async (input) => {
-        membershipCalls.push(["add", input]);
-        return { organizationId: input.organizationId, userId: "user-1", roles: [...input.roles] };
-      },
-      removeAdminOrganizationMember: async (input) => {
-        membershipCalls.push(["remove", input]);
-        return { organizationId: input.organizationId, userId: "user-1", roles: ["member"] };
-      },
+      getOrganizationBySlug: async (slug: string) =>
+        slug === "acme" ? { id: "org-1", slug } : null,
+      addAdminOrganizationMember: async (input: {
+        organizationId: string;
+        roles: readonly string[];
+      }) => ({
+        organizationId: input.organizationId,
+        userId: "user-1",
+        roles: [...input.roles],
+      }),
+      removeAdminOrganizationMember: async (input: { organizationId: string }) => ({
+        organizationId: input.organizationId,
+        userId: "user-1",
+        roles: ["member"],
+      }),
+    },
+    otp: {
+      issueSignUpInvitation: vi.fn(async (input) => ({
+        invitationId: "invitation-1",
+        email: input.email,
+        url: `${input.publicBaseUrl}backoffice/sign-up?invitationId=invitation-1&code=ABC12345`,
+        ttlDays: input.ttlDays ?? 7,
+        type: "sign_up_invitation" as const,
+      })),
+    },
+    publicBaseUrl: "https://backoffice.example/",
+  } satisfies Parameters<typeof createAdminRuntime>[0];
+}
+
+describe("createAdminRuntime", () => {
+  test("creates sign-up invitations through the singleton OTP object", async () => {
+    const dependencies = createAdminRuntimeDependencies();
+    const runtime = createAdminRuntime(dependencies);
+
+    await expect(
+      runtime.createSignUpInvitation({ email: "person@example.com", ttlDays: 3 }),
+    ).resolves.toEqual({
+      invitationId: "invitation-1",
+      email: "person@example.com",
+      url: "https://backoffice.example/backoffice/sign-up?invitationId=invitation-1&code=ABC12345",
+      ttlDays: 3,
+    });
+    expect(dependencies.otp.issueSignUpInvitation).toHaveBeenCalledWith({
+      email: "person@example.com",
+      ttlDays: 3,
+      publicBaseUrl: "https://backoffice.example/",
+    });
+  });
+
+  test("reports unavailable sign-up invitation dependencies", async () => {
+    const dependencies = createAdminRuntimeDependencies();
+    const withoutOtp = createAdminRuntime({ ...dependencies, otp: null });
+    const withoutPublicBaseUrl = createAdminRuntime({ ...dependencies, publicBaseUrl: null });
+
+    await expect(
+      withoutOtp.createSignUpInvitation({ email: "person@example.com" }),
+    ).rejects.toThrow("requires the OTP binding");
+    await expect(
+      withoutPublicBaseUrl.createSignUpInvitation({ email: "person@example.com" }),
+    ).rejects.toThrow("requires DOCS_PUBLIC_BASE_URL");
+  });
+
+  test("resolves organization slugs before changing membership", async () => {
+    const dependencies = createAdminRuntimeDependencies();
+    const membershipCalls: unknown[] = [];
+    dependencies.auth.addAdminOrganizationMember = async (input) => {
+      membershipCalls.push(["add", input]);
+      return { organizationId: input.organizationId, userId: "user-1", roles: [...input.roles] };
     };
-    const runtime = createAdminRuntime(auth);
+    dependencies.auth.removeAdminOrganizationMember = async (input) => {
+      membershipCalls.push(["remove", input]);
+      return { organizationId: input.organizationId, userId: "user-1", roles: ["member"] };
+    };
+    const runtime = createAdminRuntime(dependencies);
 
     await expect(
       runtime.addOrganizationMember({
@@ -51,19 +113,9 @@ describe("createAdminRuntime", () => {
   });
 
   test("reports the missing organization slug before changing membership", async () => {
-    const auth: Parameters<typeof createAdminRuntime>[0] = {
-      createAdminOrganization: async () => {
-        throw new Error("createAdminOrganization should not be called");
-      },
-      getOrganizationBySlug: async () => null,
-      addAdminOrganizationMember: async () => {
-        throw new Error("addAdminOrganizationMember should not be called");
-      },
-      removeAdminOrganizationMember: async () => {
-        throw new Error("removeAdminOrganizationMember should not be called");
-      },
-    };
-    const runtime = createAdminRuntime(auth);
+    const dependencies = createAdminRuntimeDependencies();
+    dependencies.auth.getOrganizationBySlug = async () => null;
+    const runtime = createAdminRuntime(dependencies);
 
     await expect(
       runtime.addOrganizationMember({

@@ -28,6 +28,7 @@ import { createPiToolRegistry } from "./pi-tools";
 const unusedObjects = {} as BackofficeObjectRegistry;
 const testRuntimeConfig: BackofficeRuntimeConfig = {
   authEmailVerification: { enabled: false },
+  signUpInvitationsEnabled: true,
   bindings: {
     api: false,
     auth: false,

@@ -21,6 +21,9 @@ AUTH_ADMIN_GRANT_TOKEN=
 # DOCS_PUBLIC_BASE_URL must be an absolute HTTP(S) URL when this is true.
 AUTH_EMAIL_VERIFICATION_ENABLED=false
 
+# Require an email-bound system administrator invitation before creating an account.
+SIGN_UP_INVITATIONS_ENABLED=false
+
 DOCS_PUBLIC_BASE_URL=http://localhost:5173/
 
 # Pi model providers (configure at least one)

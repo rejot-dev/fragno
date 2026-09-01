@@ -113,6 +113,43 @@
     ]
   },
   {
+    "command": "admin.signup-invitations.create",
+    "summary": "admin.signup-invitations.create creates an email-bound sign-up link.",
+    "options": [
+      {
+        "name": "email",
+        "valueRequired": true,
+        "valueName": "email",
+        "description": "Email address authorized to create the account"
+      },
+      {
+        "name": "ttl-days",
+        "valueRequired": true,
+        "valueName": "days",
+        "description": "Optional invitation lifetime, in days"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "admin.organisation.create",
     "summary": "admin.organisation.create creates an organization and assigns its owner.",
     "options": [

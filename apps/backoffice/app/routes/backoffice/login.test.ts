@@ -54,8 +54,76 @@ describe("backoffice login route", () => {
         authenticated: false,
         returnTo: "/backoffice",
         bootstrapError: null,
+        authError: null,
       },
     );
+  });
+
+  it("shows a helpful error returned by Better Auth", async () => {
+    await expect(
+      loader(
+        createLoaderArgs(
+          "https://example.com/backoffice/login?error=signup_disabled&error_description=technical",
+        ),
+      ),
+    ).resolves.toEqual({
+      authenticated: false,
+      returnTo: "/backoffice",
+      bootstrapError: null,
+      authError: {
+        title: "Account creation is not available",
+        message:
+          "Use an existing Backoffice account or open the invitation created for your email.",
+      },
+    });
+  });
+
+  it("uses a safe fallback for an unknown error code", async () => {
+    await expect(
+      loader(
+        createLoaderArgs(
+          "https://example.com/backoffice/login?error=provider_failure&error_description=GitHub+is+temporarily+unavailable.",
+        ),
+      ),
+    ).resolves.toMatchObject({
+      authError: {
+        title: "Authentication could not be completed",
+        message: "Try again or use your Backoffice email and password to continue.",
+      },
+    });
+  });
+
+  it("recognizes every Better Auth redirect error code", async () => {
+    const errorCodes = [
+      "invalid_callback_request",
+      "invalid_code",
+      "internal_server_error",
+      "state_not_found",
+      "state_invalid",
+      "state_mismatch",
+      "no_code",
+      "no_callback_url",
+      "oauth_provider_not_found",
+      "email_not_found",
+      "email_doesn't_match",
+      "unable_to_get_user_info",
+      "unable_to_link_account",
+      "unable_to_create_user",
+      "unable_to_create_session",
+      "account_not_linked",
+      "account_already_linked_to_different_user",
+      "signup_disabled",
+    ];
+
+    for (const errorCode of errorCodes) {
+      const url = new URL("https://example.com/backoffice/login");
+      url.searchParams.set("error", errorCode);
+      const result = await loader(createLoaderArgs(url.toString()));
+      assert(!(result instanceof Response));
+      assert(result.authError);
+      expect(result.authError.title).not.toMatch(/github|sign-?in/i);
+      expect(result.authError.message).not.toMatch(/github|sign-?in/i);
+    }
   });
 
   it("redirects an authenticated JWT user", async () => {
@@ -93,6 +161,7 @@ describe("backoffice login route", () => {
       authenticated: false,
       returnTo: "/backoffice/device?user_code=ME7L-5UAH",
       bootstrapError: null,
+      authError: null,
     });
     expect(getBackofficeMe).not.toHaveBeenCalled();
   });

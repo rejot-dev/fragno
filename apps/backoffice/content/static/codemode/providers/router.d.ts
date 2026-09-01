@@ -279,6 +279,10 @@ type AutomationReclassifyEventAction = {
 type BackofficePermissionRequirement =
   | {
       namespace: "admin";
+      permission: "sign-up-invitations.manage";
+    }
+  | {
+      namespace: "admin";
       permission: "organizations.manage";
     }
   | {

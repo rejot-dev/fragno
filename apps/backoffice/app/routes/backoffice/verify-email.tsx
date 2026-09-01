@@ -109,8 +109,8 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export function meta() {
   return [
-    { title: "Verify your Fragno Backoffice email" },
-    { name: "description", content: "Confirm the email address for your backoffice account." },
+    { title: "Verify your Backoffice email" },
+    { name: "description", content: "Confirm the email address for your Backoffice account." },
   ];
 }
 
@@ -118,7 +118,7 @@ const resultContent = {
   confirmation_recorded: {
     eyebrow: "Email verified",
     title: "Your email is verified.",
-    description: "Continue to sign in to Fragno Backoffice.",
+    description: "Continue to sign in to Backoffice.",
   },
   already_confirmed: {
     eyebrow: "Already confirmed",
@@ -138,7 +138,7 @@ const resultContent = {
   incomplete: {
     eyebrow: "Link incomplete",
     title: "This verification link is incomplete.",
-    description: "Open the complete link from your Fragno Backoffice verification email.",
+    description: "Open the complete link from your Backoffice verification email.",
   },
   resent: {
     eyebrow: "Request accepted",
@@ -258,12 +258,6 @@ export default function VerifyEmail() {
                     className="inline-flex min-h-10 items-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96]"
                   >
                     Continue to sign in
-                  </Link>
-                  <Link
-                    to="/docs"
-                    className="inline-flex min-h-10 items-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                  >
-                    Return to docs
                   </Link>
                 </div>
               </div>

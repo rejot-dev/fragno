@@ -23,6 +23,8 @@ import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-
 import { verifyBackofficeJwt } from "@/fragno/auth/token-lifecycle";
 import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 
+import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
+
 const baseUrl = "https://backoffice.example";
 const deviceCodeGrantType = "urn:ietf:params:oauth:grant-type:device_code";
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
@@ -75,11 +77,14 @@ async function signUpUser(): Promise<SignedUpUser> {
   });
   runtimes.push(runtime);
   const auth = runtime.objects.auth.singleton();
+  const email = `oauth-device-${crypto.randomUUID()}@example.com`;
+  const invitation = await issueTestSignUpInvitation(runtime, email);
   const response = await authRequest(auth, "/sign-up/email", {
     json: {
       name: "OAuth Device User",
-      email: `oauth-device-${crypto.randomUUID()}@example.com`,
+      email,
       password: "password123",
+      ...invitation,
     },
   });
   if (!response.ok) {

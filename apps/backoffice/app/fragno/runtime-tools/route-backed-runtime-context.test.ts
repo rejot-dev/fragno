@@ -45,6 +45,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
     adapters: {} as BackofficeRuntimeServices["adapters"],
     config: {
       authEmailVerification: { enabled: false },
+      signUpInvitationsEnabled: true,
       bindings: {
         api: false,
         auth: false,

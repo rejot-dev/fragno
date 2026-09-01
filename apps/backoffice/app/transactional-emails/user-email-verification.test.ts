@@ -14,7 +14,7 @@ describe("user email verification transactional email", () => {
 
     expect(email).toMatchObject({
       to: "new-user@example.com",
-      subject: "Verify your email for Fragno Backoffice",
+      subject: "Verify your Backoffice email",
       tags: [
         { name: "category", value: "transactional" },
         { name: "event", value: "email-verification" },

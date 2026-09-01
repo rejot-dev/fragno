@@ -31,10 +31,11 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
-import type { AuthObject, BackofficeObjectHandle } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED } from "@/fragno/backoffice-capabilities/capabilities/auth";
+import { EMAIL_VERIFICATION_TYPE } from "@/fragno/otp";
 
+import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
 import { createOrganizationAutomationHooks } from "./auth.do";
 import {
   InMemoryOtpObject,
@@ -67,14 +68,20 @@ const toTimestamp = (value: Date | string): number =>
   value instanceof Date ? value.getTime() : new Date(value).getTime();
 
 async function signUpUnverifiedBackofficeUser(
-  auth: BackofficeObjectHandle<AuthObject>,
+  runtime: Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>,
   email: string,
 ) {
-  const response = await auth.http.fetch(
+  const invitation = await issueTestSignUpInvitation(runtime, email);
+  const response = await runtime.objects.auth.singleton().http.fetch(
     new Request("https://backoffice.example/api/auth/sign-up/email", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: email.split("@", 1)[0], email, password: "password123" }),
+      body: JSON.stringify({
+        name: email.split("@", 1)[0],
+        email,
+        password: "password123",
+        ...invitation,
+      }),
     }),
   );
   assert(response.ok);
@@ -90,6 +97,7 @@ afterEach(async () => {
     await Promise.all(runtimes.splice(0).map(async (runtime) => await runtime.cleanup()));
   } finally {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   }
 });
@@ -190,9 +198,30 @@ describe("Auth Durable Object administration", () => {
   });
 });
 
+describe("Auth Durable Object API errors", () => {
+  test("redirects Better Auth errors to the Backoffice login", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+
+    const response = await runtime.objects.auth
+      .singleton()
+      .http.fetch(
+        new Request(
+          "https://backoffice.example/api/auth/error?error=state_not_found&error_description=Try+again",
+          { redirect: "manual" },
+        ),
+      );
+
+    assert(response.status === 302);
+    assert.equal(
+      response.headers.get("location"),
+      "https://backoffice.example/backoffice/login?error=state_not_found&error_description=Try+again",
+    );
+  });
+});
+
 describe("Auth Durable Object account creation policy", () => {
-  test("creates rejot.dev accounts as users outside development", async () => {
-    vi.stubEnv("MODE", "production");
+  test("rejects direct password registration without a sign-up invitation", async () => {
     const runtime = await createInMemoryBackofficeRuntime();
     runtimes.push(runtime);
 
@@ -201,9 +230,137 @@ describe("Auth Durable Object account creation policy", () => {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          name: "Admin",
-          email: "admin@rejot.dev",
+          name: "Uninvited User",
+          email: "uninvited@example.com",
           password: "password123",
+        }),
+      }),
+    );
+
+    assert(response.status === 403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "SIGN_UP_INVITATION_REQUIRED",
+      message: "A valid sign-up invitation is required.",
+    });
+  });
+
+  test("rejects explicit social sign-up while invitations are required", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+    const email = "uninvited-social@example.com";
+    const githubFetch = vi.fn(async (input: string | URL | Request) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (requestUrl === "https://github.com/login/oauth/access_token") {
+        return Response.json({
+          access_token: "github-access-token",
+          token_type: "bearer",
+          scope: "read:user,user:email",
+        });
+      }
+      if (requestUrl === "https://api.github.com/user") {
+        return Response.json({
+          id: "github-user-1",
+          login: "uninvited-social",
+          name: "Uninvited Social",
+          email,
+          avatar_url: "https://avatars.example/uninvited-social",
+        });
+      }
+      if (requestUrl === "https://api.github.com/user/emails") {
+        return Response.json([{ email, primary: true, verified: true, visibility: "public" }]);
+      }
+      throw new Error(`Unexpected GitHub OAuth request '${requestUrl}'.`);
+    });
+    vi.stubGlobal("fetch", githubFetch);
+
+    const socialResponse = await runtime.objects.auth.singleton().http.fetch(
+      new Request("https://backoffice.example/api/auth/sign-in/social", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://backoffice.example",
+        },
+        body: JSON.stringify({
+          provider: "github",
+          callbackURL: "https://backoffice.example/backoffice/auth/bootstrap",
+          requestSignUp: true,
+        }),
+      }),
+    );
+    assert(socialResponse.ok, await socialResponse.clone().text());
+    const socialResult = (await socialResponse.json()) as { url: string };
+    const authorizationUrl = new URL(socialResult.url);
+    const state = authorizationUrl.searchParams.get("state");
+    assert(state);
+    const callbackCookie = socialResponse.headers
+      .getSetCookie()
+      .map((cookie) => cookie.split(";", 1)[0])
+      .join("; ");
+    assert(callbackCookie);
+
+    const callbackResponse = await runtime.objects.auth.singleton().http.fetch(
+      new Request(
+        `https://backoffice.example/api/auth/callback/github?code=github-code&state=${encodeURIComponent(state)}`,
+        {
+          headers: { cookie: callbackCookie },
+          redirect: "manual",
+        },
+      ),
+    );
+
+    assert(callbackResponse.status === 302);
+    assert.equal(
+      callbackResponse.headers.get("location"),
+      "https://backoffice.example/backoffice/login?error=signup_disabled",
+    );
+    await expect(
+      runtime.objects.auth.singleton().commands.grantBackofficeAdminByEmail({ email }),
+    ).resolves.toEqual({ status: "user_not_found" });
+    expect(githubFetch).toHaveBeenCalledTimes(3);
+  });
+
+  test("rejects an invitation used with a different email", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+    const invitation = await issueTestSignUpInvitation(runtime, "invited@example.com");
+
+    const response = await runtime.objects.auth.singleton().http.fetch(
+      new Request("https://backoffice.example/api/auth/sign-up/email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Different User",
+          email: "different@example.com",
+          password: "password123",
+          ...invitation,
+        }),
+      }),
+    );
+
+    assert(response.status === 403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "SIGN_UP_INVITATION_REQUIRED",
+      message: "A valid sign-up invitation is required.",
+    });
+  });
+
+  test("creates rejot.dev accounts as users outside development", async () => {
+    vi.stubEnv("MODE", "production");
+    const runtime = await createInMemoryBackofficeRuntime();
+    runtimes.push(runtime);
+
+    const email = "admin@rejot.dev";
+    const invitation = await issueTestSignUpInvitation(runtime, email);
+    const response = await runtime.objects.auth.singleton().http.fetch(
+      new Request("https://backoffice.example/api/auth/sign-up/email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Admin",
+          email,
+          password: "password123",
+          ...invitation,
         }),
       }),
     );
@@ -219,14 +376,17 @@ describe("Auth Durable Object account creation policy", () => {
     const runtime = await createInMemoryBackofficeRuntime();
     runtimes.push(runtime);
 
+    const email = "admin@rejot.dev";
+    const invitation = await issueTestSignUpInvitation(runtime, email);
     const response = await runtime.objects.auth.singleton().http.fetch(
       new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: "Admin",
-          email: "admin@rejot.dev",
+          email,
           password: "password123",
+          ...invitation,
         }),
       }),
     );
@@ -244,7 +404,7 @@ describe("Auth Durable Object administrator granting", () => {
     const runtime = await createInMemoryBackofficeRuntime();
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
-    await signUpUnverifiedBackofficeUser(auth, "first-admin@rejot.dev");
+    await signUpUnverifiedBackofficeUser(runtime, "first-admin@rejot.dev");
 
     const result = await auth.commands.grantBackofficeAdminByEmail({
       email: "FIRST-ADMIN@rejot.dev",
@@ -273,7 +433,7 @@ describe("Auth Durable Object administrator granting", () => {
         },
       ],
     });
-    await signUpUnverifiedBackofficeUser(auth, "next-admin@rejot.dev");
+    await signUpUnverifiedBackofficeUser(runtime, "next-admin@rejot.dev");
 
     const result = await auth.commands.grantBackofficeAdminByEmail({
       email: "next-admin@rejot.dev",
@@ -324,8 +484,8 @@ describe("Auth Durable Object administrator granting", () => {
     const runtime = await createInMemoryBackofficeRuntime();
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
-    await signUpUnverifiedBackofficeUser(auth, "first-admin@rejot.dev");
-    await signUpUnverifiedBackofficeUser(auth, "next-admin@rejot.dev");
+    await signUpUnverifiedBackofficeUser(runtime, "first-admin@rejot.dev");
+    await signUpUnverifiedBackofficeUser(runtime, "next-admin@rejot.dev");
 
     const [firstResult, nextResult] = await Promise.all([
       auth.commands.grantBackofficeAdminByEmail({ email: "first-admin@rejot.dev" }),
@@ -449,14 +609,17 @@ describe("Auth Durable Object email verification delivery", () => {
     });
     runtimes.push(runtime);
 
+    const email = "new-user@example.com";
+    const invitation = await issueTestSignUpInvitation(runtime, email);
     const response = await runtime.objects.auth.singleton().http.fetch(
       new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: "New User",
-          email: "new-user@example.com",
+          email,
           password: "password123",
+          ...invitation,
         }),
       }),
     );
@@ -474,7 +637,11 @@ describe("Auth Durable Object email verification delivery", () => {
 
     const otpCommands = runtime.objects.otp.singleton().commands;
     const firstOtpQueue = await otpCommands.getDurableHookQueue({ pageSize: 100 });
-    const issuedHook = firstOtpQueue.items.find((hook) => hook.hookName === "onOtpIssued");
+    const issuedHook = firstOtpQueue.items.find(
+      (hook) =>
+        hook.hookName === "onOtpIssued" &&
+        (hook.payload as { type?: string }).type === EMAIL_VERIFICATION_TYPE,
+    );
     assert(issuedHook?.status === "completed");
     assert.equal(resend.queuedEmails.size, 0);
     expect(resend.attempts).toHaveLength(0);
@@ -491,9 +658,13 @@ describe("Auth Durable Object email verification delivery", () => {
     assert(completedVerificationHook?.status === "completed");
 
     const completedOtpQueue = await otpCommands.getDurableHookQueue({ pageSize: 100 });
-    expect(completedOtpQueue.items.filter((hook) => hook.hookName === "onOtpIssued")).toHaveLength(
-      1,
-    );
+    expect(
+      completedOtpQueue.items.filter(
+        (hook) =>
+          hook.hookName === "onOtpIssued" &&
+          (hook.payload as { type?: string }).type === EMAIL_VERIFICATION_TYPE,
+      ),
+    ).toHaveLength(1);
     expect(issueAttempts).toBe(2);
     assert.equal(resend.queuedEmails.size, 1);
     expect(resend.attempts).toHaveLength(1);
@@ -510,14 +681,17 @@ describe("Auth Durable Object email verification delivery", () => {
     });
     runtimes.push(runtime);
 
+    const email = "new-user@example.com";
+    const invitation = await issueTestSignUpInvitation(runtime, email);
     const response = await runtime.objects.auth.singleton().http.fetch(
       new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: "New User",
-          email: "new-user@example.com",
+          email,
           password: "password123",
+          ...invitation,
         }),
       }),
     );
@@ -534,7 +708,11 @@ describe("Auth Durable Object email verification delivery", () => {
 
     const otpCommands = runtime.objects.otp.singleton().commands;
     const otpQueue = await otpCommands.getDurableHookQueue({ pageSize: 100 });
-    const issuedHook = otpQueue.items.find((hook) => hook.hookName === "onOtpIssued");
+    const issuedHook = otpQueue.items.find(
+      (hook) =>
+        hook.hookName === "onOtpIssued" &&
+        (hook.payload as { type?: string }).type === EMAIL_VERIFICATION_TYPE,
+    );
     assert(issuedHook?.status === "completed");
     expect(resend.attempts).toHaveLength(1);
     assert.equal(resend.queuedEmails.size, 1);
@@ -561,6 +739,8 @@ describe("Auth session organization bootstrap", () => {
     });
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
+    const email = "new-user@example.com";
+    const invitation = await issueTestSignUpInvitation(runtime, email);
 
     const signUpResponse = await auth.http.fetch(
       new Request("https://backoffice.example/api/auth/sign-up/email", {
@@ -568,8 +748,9 @@ describe("Auth session organization bootstrap", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: "New User",
-          email: "new-user@example.com",
+          email,
           password: "password123",
+          ...invitation,
         }),
       }),
     );

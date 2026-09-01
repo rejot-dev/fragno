@@ -1,5 +1,9 @@
 // admin tools
 type AdminCodemodeProvider = {
+  /** Create an email-bound link that authorizes one Backoffice account sign-up. */
+  signupInvitationsCreate(
+    input: AdminSignupInvitationsCreateInput,
+  ): Promise<AdminSignupInvitationsCreateOutput>;
   /** Create an organization and assign its owner. */
   organisationCreate(input: AdminOrganisationCreateInput): Promise<AdminOrganisationCreateOutput>;
   /** Add a user to an organization with explicit roles. */
@@ -13,6 +17,16 @@ type AdminCodemodeProvider = {
 };
 declare const admin: AdminCodemodeProvider;
 
+type AdminSignupInvitationsCreateInput = {
+  email: string;
+  ttlDays?: number;
+};
+type AdminSignupInvitationsCreateOutput = {
+  invitationId: string;
+  email: string;
+  url: string;
+  ttlDays: number;
+};
 type AdminOrganisationCreateInput = {
   name: string;
   slug: string;

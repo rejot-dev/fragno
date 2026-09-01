@@ -31,6 +31,8 @@ import { loader as loadBackofficeMe } from "@/routes/api/backoffice-me";
 import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
+
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
 
 const cookieHeader = (response: Response): string =>
@@ -86,11 +88,14 @@ const signUp = async () => {
   });
   runtimes.push(runtime);
   const auth = runtime.objects.auth.singleton();
+  const email = "token-user@example.com";
+  const invitation = await issueTestSignUpInvitation(runtime, email);
   const response = await authRequest(auth, "/sign-up/email", {
     body: {
       name: "Token User",
-      email: "token-user@example.com",
+      email,
       password: "password123",
+      ...invitation,
     },
   });
   if (!response.ok) {

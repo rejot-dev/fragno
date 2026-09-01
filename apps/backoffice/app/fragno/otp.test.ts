@@ -5,9 +5,11 @@ import {
   buildEmailVerificationUrl,
   buildIdentityClaimCompletedAutomationEvent,
   buildIdentityClaimCompletionUrl,
+  buildSignUpInvitationUrl,
   emailVerificationPayloadSchema,
   identityClaimConfirmationPayloadSchema,
   identityClaimPayloadSchema,
+  signUpInvitationPayloadSchema,
 } from "./otp";
 
 const telegramChatActor = {
@@ -91,10 +93,31 @@ describe("otp identity claim helpers", () => {
     assert(!emailVerificationPayloadSchema.safeParse({ email: "user@example.com" }).success);
   });
 
+  it("parses email-bound sign-up invitation payloads", () => {
+    expect(
+      signUpInvitationPayloadSchema.parse({
+        email: " Person@Example.com ",
+        publicBaseUrl: "https://backoffice.example",
+        ttlDays: 3,
+      }),
+    ).toEqual({
+      email: "person@example.com",
+      publicBaseUrl: "https://backoffice.example",
+      ttlDays: 3,
+    });
+  });
+
   it("builds email verification urls from issued otp data", () => {
     assert(
       buildEmailVerificationUrl("https://docs.example/base", "user_123", "ABC12345") ===
         "https://docs.example/backoffice/verify-email?userId=user_123&code=ABC12345",
+    );
+  });
+
+  it("builds sign-up invitation urls from issued otp data", () => {
+    assert(
+      buildSignUpInvitationUrl("https://docs.example/base", "invitation_123", "ABC12345") ===
+        "https://docs.example/backoffice/sign-up?invitationId=invitation_123&code=ABC12345",
     );
   });
 

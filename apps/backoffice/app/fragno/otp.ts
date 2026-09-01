@@ -14,7 +14,9 @@ import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./automation/
 
 export const IDENTITY_LINK_TYPE = "identity_link" as const;
 export const EMAIL_VERIFICATION_TYPE = "email_verification" as const;
+export const SIGN_UP_INVITATION_TYPE = "sign_up_invitation" as const;
 export const DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES = 15;
+export const DEFAULT_SIGN_UP_INVITATION_TTL_DAYS = 7;
 export const EMAIL_VERIFICATION_EXPIRY_HOURS = 24;
 export const EMAIL_VERIFICATION_EXPIRY_MINUTES = EMAIL_VERIFICATION_EXPIRY_HOURS * 60;
 
@@ -43,11 +45,28 @@ export const emailVerificationPayloadSchema = z.object({
   expiresInHours: z.number().int().positive(),
 });
 
+export const signUpInvitationPayloadSchema = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email()),
+  publicBaseUrl: z.url(),
+  ttlDays: z.number().int().positive(),
+});
+
 export type EmailVerificationOtpPayload = z.infer<typeof emailVerificationPayloadSchema>;
 
 export const buildEmailVerificationUrl = (publicBaseUrl: string, userId: string, code: string) => {
   const url = new URL("/backoffice/verify-email", publicBaseUrl);
   url.searchParams.set("userId", userId);
+  url.searchParams.set("code", code);
+  return url.toString();
+};
+
+export const buildSignUpInvitationUrl = (
+  publicBaseUrl: string,
+  invitationId: string,
+  code: string,
+) => {
+  const url = new URL("/backoffice/sign-up", publicBaseUrl);
+  url.searchParams.set("invitationId", invitationId);
   url.searchParams.set("code", code);
   return url.toString();
 };
@@ -93,6 +112,10 @@ export const buildIdentityClaimCompletedAutomationEvent = (input: {
   },
 });
 
+function isInternalOtpType(type: string): boolean {
+  return type === EMAIL_VERIFICATION_TYPE || type === SIGN_UP_INVITATION_TYPE;
+}
+
 export function createOtpServer(
   runtime: BackofficeFragmentRuntimeOptions,
   config: Pick<OtpFragmentConfig, "hooks"> = {},
@@ -114,10 +137,10 @@ export function createOtpServer(
   ) {
     const issueResult = await ifMatchesRoute("POST", "/otp/issue", async ({ input }) => {
       const body = await input.valid();
-      if (body.type === EMAIL_VERIFICATION_TYPE) {
+      if (isInternalOtpType(body.type)) {
         return error(
           {
-            message: "Email verification OTPs cannot be issued through the public API.",
+            message: "This OTP type cannot be issued through the public API.",
             code: "OTP_TYPE_RESERVED",
           },
           403,
@@ -131,10 +154,10 @@ export function createOtpServer(
 
     const confirmResult = await ifMatchesRoute("POST", "/otp/confirm", async ({ input }) => {
       const body = await input.valid();
-      if (body.type === EMAIL_VERIFICATION_TYPE) {
+      if (isInternalOtpType(body.type)) {
         return error(
           {
-            message: "Email verification OTPs cannot be confirmed through the public API.",
+            message: "This OTP type cannot be confirmed through the public API.",
             code: "OTP_TYPE_RESERVED",
           },
           403,
@@ -148,10 +171,10 @@ export function createOtpServer(
 
     return await ifMatchesRoute("POST", "/otp/invalidate", async ({ input }) => {
       const body = await input.valid();
-      if (body.type === EMAIL_VERIFICATION_TYPE) {
+      if (isInternalOtpType(body.type)) {
         return error(
           {
-            message: "Email verification OTPs cannot be invalidated through the public API.",
+            message: "This OTP type cannot be invalidated through the public API.",
             code: "OTP_TYPE_RESERVED",
           },
           403,

@@ -170,7 +170,13 @@ export const createRouteBackedRuntimeContext = ({
     stateBackend: createExecutionStateBackend({ runtime, kernel, execution }),
     admin:
       runtime.config.bindings.auth && execution.scope.kind === "system"
-        ? { runtime: createAdminRuntime(runtime.objects.auth.singleton().commands) }
+        ? {
+            runtime: createAdminRuntime({
+              auth: runtime.objects.auth.singleton().commands,
+              otp: runtime.config.bindings.otp ? runtime.objects.otp.singleton().commands : null,
+              publicBaseUrl: runtime.config.docsPublicBaseUrl ?? null,
+            }),
+          }
         : null,
     createBackofficeScopedContext: (scope) => {
       kernel.assertScopedContextAccess(execution, scope);

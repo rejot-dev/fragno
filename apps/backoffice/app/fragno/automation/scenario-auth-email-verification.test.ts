@@ -159,7 +159,7 @@ describe("Auth email verification scenarios", () => {
           when.auth.signUp({ email: "new-user@example.com" }),
           then.resend.queuedEmail({
             to: "new-user@example.com",
-            subject: "Verify your email for Fragno Backoffice",
+            subject: "Verify your Backoffice email",
             text: /\/backoffice\/verify-email\?userId=[^&]+&code=[A-Z0-9]+/u,
             idempotencyKey: /^auth:email-verification:[^:]+$/u,
           }),
@@ -330,12 +330,16 @@ describe("Auth email verification scenarios", () => {
         steps: ({ when, then }) => [
           when.auth.signUp({ email: "new-user@example.com" }),
           then.resend.noQueuedEmails(),
-          then.assert("disabled verification authenticates without issuing an OTP", async (ctx) => {
+          then.assert("disabled verification issues no email verification OTP", async (ctx) => {
+            const queue = await ctx.runtime.objects.otp
+              .singleton()
+              .commands.getDurableHookQueue({ pageSize: 100 });
             assert(
-              !ctx.runtime.hasObjectInstance({
-                binding: "OTP",
-                scope: { kind: "singleton" },
-              }),
+              !queue.items.some(
+                (hook) =>
+                  hook.hookName === "onOtpIssued" &&
+                  (hook.payload as { type?: string }).type === EMAIL_VERIFICATION_TYPE,
+              ),
             );
             const response = await signInWithPassword(ctx, "new-user@example.com");
             assert(response.ok);

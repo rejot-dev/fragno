@@ -41,6 +41,7 @@ import { assertBackofficeObjectAddressAllowed } from "./object-registry";
 import { encodeBackofficeObjectAddress } from "./object-registry";
 import {
   parseAuthEmailVerificationRuntimeConfig,
+  parseSignUpInvitationsEnabled,
   type BackofficeRuntimeConfig,
   type BackofficeRuntimeServices,
 } from "./runtime-services";
@@ -435,6 +436,11 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
       authEmailVerification: parseAuthEmailVerificationRuntimeConfig({
         enabled: this.env.AUTH_EMAIL_VERIFICATION_ENABLED,
         publicBaseUrl: this.env.DOCS_PUBLIC_BASE_URL,
+      }),
+      signUpInvitationsEnabled: parseSignUpInvitationsEnabled({
+        enabled: this.env.SIGN_UP_INVITATIONS_ENABLED,
+        publicBaseUrl: this.env.DOCS_PUBLIC_BASE_URL,
+        accountCreationAvailable: this.#hasNamespace("AUTH"),
       }),
       bindings: {
         api: this.#hasNamespace("API"),

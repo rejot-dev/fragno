@@ -79,7 +79,10 @@ describe("Backoffice codemode scenarios", () => {
       defineBackofficeScenario({
         name: "telegram configuration requires a public origin",
 
-        env: { DOCS_PUBLIC_BASE_URL: undefined },
+        env: {
+          DOCS_PUBLIC_BASE_URL: undefined,
+          SIGN_UP_INVITATIONS_ENABLED: "false",
+        },
         files: backofficeFiles.workspaceStarter(),
 
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -112,7 +115,10 @@ describe("Backoffice codemode scenarios", () => {
         defineBackofficeScenario({
           name: `telegram configuration rejects public origin ${publicOrigin}`,
 
-          env: { DOCS_PUBLIC_BASE_URL: publicOrigin },
+          env: {
+            DOCS_PUBLIC_BASE_URL: publicOrigin,
+            SIGN_UP_INVITATIONS_ENABLED: "false",
+          },
           files: backofficeFiles.workspaceStarter(),
 
           setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
