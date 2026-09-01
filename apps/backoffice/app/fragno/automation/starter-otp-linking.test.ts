@@ -27,7 +27,7 @@ import { defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
   slug: "telegram-channel",
-  version: "1.0.0",
+  version: "1.0.1",
 } as const;
 
 const telegramMessageEvent = ({
@@ -112,8 +112,8 @@ const telegramLinkingExecution = (event: AutomationEvent) =>
   createAutomationRuntimeExecution({
     event,
     authority: {
-      mode: { kind: "organization-automation" },
-      automationId: "automation-route:telegram-start-linking",
+      mode: { kind: "organization-automation", grants: [] },
+      automationId: "automation:telegram-start-linking-test",
     },
   });
 

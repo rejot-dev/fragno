@@ -15,27 +15,6 @@ const currentKernelPermissions = [
   BACKOFFICE_PERMISSION.upload.read,
 ];
 
-const automationRuntimePermissions = [
-  BACKOFFICE_PERMISSION.workflow.executeCode,
-  BACKOFFICE_PERMISSION.connections.manage,
-  BACKOFFICE_PERMISSION.events.manage,
-  BACKOFFICE_PERMISSION.events.read,
-  BACKOFFICE_PERMISSION.identity.resolve,
-  BACKOFFICE_PERMISSION.internal.manage,
-  BACKOFFICE_PERMISSION.otp.create,
-  BACKOFFICE_PERMISSION.pi.modify,
-  BACKOFFICE_PERMISSION.pi.read,
-  BACKOFFICE_PERMISSION.router.modify,
-  BACKOFFICE_PERMISSION.router.read,
-  BACKOFFICE_PERMISSION.store.modify,
-  BACKOFFICE_PERMISSION.store.read,
-  BACKOFFICE_PERMISSION.telegram.send,
-  BACKOFFICE_PERMISSION.upload.modify,
-  BACKOFFICE_PERMISSION.upload.read,
-  BACKOFFICE_PERMISSION.workflow.modify,
-  BACKOFFICE_PERMISSION.workflow.read,
-];
-
 const automationAuthoringPermissions = [
   BACKOFFICE_PERMISSION.api.connectionsRead,
   BACKOFFICE_PERMISSION.capabilities.read,
@@ -80,19 +59,22 @@ describe("Backoffice authority role grants", () => {
     ]);
   });
 
-  test("grants Cloudflare Browser Run only to system administrators", () => {
-    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["system-administrator"]).toContain(
-      BACKOFFICE_PERMISSION.cloudflare.browserRun,
-    );
+  test("keeps Cloudflare Browser Run out of constrained authority roles", () => {
+    const unrestrictedRoles = new Set(["system-administrator", "automation", "capability"]);
     for (const [role, grants] of Object.entries(BACKOFFICE_AUTHORITY_ROLE_GRANTS)) {
-      if (role !== "system-administrator") {
+      if (!unrestrictedRoles.has(role)) {
         expect(grants).not.toContain(BACKOFFICE_PERMISSION.cloudflare.browserRun);
       }
     }
   });
 
-  test("allows automations to resolve identity bindings inside workflow logic", () => {
-    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.automation).toEqual(automationRuntimePermissions);
+  test("uses the canonical permission set for automation and capability actors", () => {
+    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.automation).toEqual(
+      allBackofficePermissionRequirements,
+    );
+    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.capability).toEqual(
+      allBackofficePermissionRequirements,
+    );
   });
 
   test("user owners can use user-scoped automation authoring tools", () => {
@@ -118,18 +100,14 @@ describe("Backoffice authority role grants", () => {
     );
   });
 
-  test.each(["agent", "capability"] as const)(
-    "%s receives the currently adopted workflow permissions",
-    (role) => {
-      expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS[role]).toEqual(currentKernelPermissions);
-    },
-  );
+  test("agents receive the currently adopted workflow permissions", () => {
+    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.agent).toEqual(currentKernelPermissions);
+  });
 
-  test("restricts organization administration to system administrators", () => {
+  test("keeps organization administration out of constrained authority roles", () => {
+    const unrestrictedRoles = new Set(["system-administrator", "automation", "capability"]);
     for (const [role, grants] of Object.entries(BACKOFFICE_AUTHORITY_ROLE_GRANTS)) {
-      if (role === "system-administrator") {
-        expect(grants).toContain(BACKOFFICE_PERMISSION.admin.organizationsManage);
-      } else {
+      if (!unrestrictedRoles.has(role)) {
         expect(grants).not.toContain(BACKOFFICE_PERMISSION.admin.organizationsManage);
       }
     }
@@ -150,9 +128,10 @@ describe("Backoffice authority role grants", () => {
     );
   });
 
-  test("does not grant unrelated read permissions to non-administrator roles", () => {
+  test("does not grant unrelated read permissions to constrained authority roles", () => {
+    const unrestrictedRoles = new Set(["system-administrator", "automation", "capability"]);
     for (const [role, grants] of Object.entries(BACKOFFICE_AUTHORITY_ROLE_GRANTS)) {
-      if (role !== "system-administrator") {
+      if (!unrestrictedRoles.has(role)) {
         expect(grants).not.toContain(BACKOFFICE_PERMISSION.telegram.read);
       }
     }

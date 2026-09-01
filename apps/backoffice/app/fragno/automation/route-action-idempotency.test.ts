@@ -114,7 +114,7 @@ describe("automation route action idempotency", () => {
       trigger: { kind: "event", source: "custom", eventType: "ready", matcher: null },
       action: {
         kind: "start_workflow",
-        authority: { kind: "organization-automation" },
+        authority: { kind: "organization-automation", grants: [] },
         workflowScriptPath: "/workspace/automations/idempotent.workflow.js",
         instanceIdTemplate: "instance-${event.id}",
       },

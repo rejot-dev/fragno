@@ -26,6 +26,7 @@ import {
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import {
   automationActorsSchema,
   BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY,
@@ -180,11 +181,8 @@ function githubPullRequestWebhookEvent(action: "opened" | "synchronize"): Automa
 const UNAUTHORIZED_MARKETPLACE_INSTALL_WORKFLOW_SOURCE = `defineWorkflow(
   { name: "unauthorized-marketplace-install" },
   async (_event, step) => {
-    await step.do("attempt unauthorized Telegram send", async () => {
-      await telegram.sendMessage({
-        chatId: "unauthorized",
-        text: "should-not-be-sent",
-      });
+    await step.do("attempt unauthorized workflow read", async () => {
+      await workflow.listInstances({});
     });
   },
 );
@@ -387,12 +385,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               automations.commands.requestMarketplaceIngestion(
                 {
                   listingId: telegramChannelListingId,
-                  version: "1.0.0",
+                  version: "1.0.1",
                   targetScope: { kind: "org", orgId: "org-1" },
                 },
                 execution,
               ),
-            ).resolves.toMatchObject({ state: "requested", version: "1.0.0" });
+            ).resolves.toMatchObject({ state: "requested", version: "1.0.1" });
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
@@ -408,17 +406,17 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("both channels own their installed routes", async (ctx) => {
             const automations = ctx.runtime.objects.automations.forOrg("org-1");
             const expectedRoutes = [
-              ["telegram-start-linking", telegramChannelListingId],
-              ["telegram-identity-claim-completed", telegramChannelListingId],
-              ["telegram-pi-linking", telegramChannelListingId],
-              ["github-issues-opened-reclassify", githubChannelListingId],
-              ["github-issue-comment-created-reclassify", githubChannelListingId],
-              ["github-pull-request-opened-reclassify", githubChannelListingId],
-              ["github-pull-request-synchronize-reclassify", githubChannelListingId],
-              ["github-push-reclassify", githubChannelListingId],
+              ["telegram-start-linking", telegramChannelListingId, "1.0.1"],
+              ["telegram-identity-claim-completed", telegramChannelListingId, "1.0.1"],
+              ["telegram-pi-linking", telegramChannelListingId, "1.0.1"],
+              ["github-issues-opened-reclassify", githubChannelListingId, "1.0.0"],
+              ["github-issue-comment-created-reclassify", githubChannelListingId, "1.0.0"],
+              ["github-pull-request-opened-reclassify", githubChannelListingId, "1.0.0"],
+              ["github-pull-request-synchronize-reclassify", githubChannelListingId, "1.0.0"],
+              ["github-push-reclassify", githubChannelListingId, "1.0.0"],
             ] as const;
 
-            for (const [routeId, listingId] of expectedRoutes) {
+            for (const [routeId, listingId, version] of expectedRoutes) {
               const response = await automations.http.fetch(
                 new Request(`https://automations.test/api/automations/routes/${routeId}`),
               );
@@ -429,7 +427,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   managedBy: {
                     kind: "marketplace",
                     listingId,
-                    version: "1.0.0",
+                    version,
                   },
                 },
               });
@@ -508,6 +506,201 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     );
   });
 
+  test("upgrades Marketplace-owned Telegram routes to 1.0.1 while preserving enabled state", async () => {
+    const telegramChannelListingId = marketplaceListingId({
+      ownerScope: { kind: "system" },
+      slug: "telegram-channel",
+    });
+    const legacyManagedBy = (resourceKey: string) => ({
+      kind: "marketplace" as const,
+      listingId: telegramChannelListingId,
+      resourceKey,
+      version: "1.0.0",
+    });
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "upgrade Marketplace-owned Telegram routes to inherited linked-user authority",
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.router.route({
+            orgId: "org-1",
+            id: "telegram-start-linking",
+            name: "Telegram /start identity linking",
+            enabled: true,
+            trigger: {
+              kind: "event",
+              source: "telegram",
+              eventType: "message.received",
+              matcher: { path: "$.payload.text", op: "eq", value: "/start" },
+            },
+            priority: 100,
+            action: {
+              kind: "start_workflow",
+              authority: { kind: "organization-automation", grants: [] },
+              workflowScriptPath: "/workspace/automations/legacy-telegram-user-linking.workflow.js",
+              instanceIdTemplate: "legacy-telegram-link-${event.id}",
+            },
+            managedBy: legacyManagedBy("telegram-start-linking-route"),
+          }),
+          given.router.route({
+            orgId: "org-1",
+            id: "telegram-identity-claim-completed",
+            name: "Forward Telegram identity claim completion",
+            enabled: true,
+            trigger: {
+              kind: "event",
+              source: "otp",
+              eventType: "identity.claim.completed",
+              matcher: {
+                actor: {
+                  participation: "initiator",
+                  scope: "external",
+                  source: "telegram",
+                },
+              },
+            },
+            priority: 90,
+            action: {
+              kind: "send_workflow_event",
+              target: {
+                kind: "stored_instance_id",
+                keyTemplate: "legacy/telegram/claim-workflow/${event.payload.otpId}",
+              },
+              eventType: "legacy-identity-claim-completed",
+              payload: "$event",
+            },
+            managedBy: legacyManagedBy("telegram-identity-claim-completed-route"),
+          }),
+          given.router.route({
+            orgId: "org-1",
+            id: "telegram-pi-linking",
+            name: "Telegram Pi session linking",
+            enabled: false,
+            trigger: {
+              kind: "event",
+              source: "telegram",
+              eventType: "message.received",
+              matcher: { path: "$.payload.text", op: "exists" },
+            },
+            priority: 120,
+            action: {
+              kind: "start_workflow",
+              authority: { kind: "organization-automation", grants: [] },
+              workflowScriptPath:
+                "/workspace/automations/legacy-telegram-user-pi-linking.workflow.js",
+              instanceIdTemplate: "legacy-telegram-pi-${event.id}",
+            },
+            managedBy: legacyManagedBy("telegram-pi-linking-route"),
+          }),
+        ],
+        steps: ({ when, then }) => [
+          when.marketplace.install({
+            targetScope: { kind: "org", orgId: "org-1" },
+            slug: "telegram-channel",
+            version: "1.0.1",
+          }),
+          then.router.routes({
+            orgId: "org-1",
+            include: [
+              {
+                id: "telegram-start-linking",
+                enabled: true,
+                action: {
+                  kind: "start_workflow",
+                  authority: {
+                    kind: "organization-automation",
+                    grants: [
+                      BACKOFFICE_PERMISSION.identity.resolve,
+                      BACKOFFICE_PERMISSION.otp.create,
+                      BACKOFFICE_PERMISSION.store.modify,
+                      BACKOFFICE_PERMISSION.telegram.send,
+                    ],
+                  },
+                  workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
+                  instanceIdTemplate: "telegram-link-${event.id}",
+                },
+                metadata: {
+                  managedBy: {
+                    kind: "marketplace",
+                    listingId: telegramChannelListingId,
+                    resourceKey: "telegram-start-linking-route",
+                    version: "1.0.1",
+                  },
+                },
+              },
+              {
+                id: "telegram-identity-claim-completed",
+                enabled: true,
+                action: {
+                  kind: "send_workflow_event",
+                  target: {
+                    kind: "stored_instance_id",
+                    keyTemplate: "telegram/claim-workflow/${event.payload.otpId}",
+                  },
+                  eventType: "identity-claim-completed",
+                  payload: "$event",
+                },
+                metadata: {
+                  managedBy: {
+                    kind: "marketplace",
+                    listingId: telegramChannelListingId,
+                    resourceKey: "telegram-identity-claim-completed-route",
+                    version: "1.0.1",
+                  },
+                },
+              },
+              {
+                id: "telegram-pi-linking",
+                enabled: false,
+                trigger: {
+                  kind: "event",
+                  source: "telegram",
+                  eventType: "message.received",
+                  matcher: {
+                    any: [
+                      { path: "$.payload.text", op: "eq", value: "/pi" },
+                      {
+                        all: [
+                          { path: "$.payload.text", op: "exists" },
+                          {
+                            not: {
+                              path: "$.payload.text",
+                              op: "startsWith",
+                              value: "/",
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                },
+                action: {
+                  kind: "start_workflow",
+                  authority: {
+                    kind: "linked-user",
+                    grants: "inherit",
+                  },
+                  workflowScriptPath: "/workspace/automations/telegram-user-pi-linking.workflow.js",
+                  instanceIdTemplate: "telegram-pi-${event.id}",
+                },
+                metadata: {
+                  managedBy: {
+                    kind: "marketplace",
+                    listingId: telegramChannelListingId,
+                    resourceKey: "telegram-pi-linking-route",
+                    version: "1.0.1",
+                  },
+                },
+              },
+            ],
+          }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
   test("installs Telegram Channel into project and personal scopes", async () => {
     const telegramChannelListingId = marketplaceListingId({
       ownerScope: { kind: "system" },
@@ -556,12 +749,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 automations.commands.requestMarketplaceIngestion(
                   {
                     listingId: telegramChannelListingId,
-                    version: "1.0.0",
+                    version: "1.0.1",
                     targetScope,
                   },
                   execution,
                 ),
-              ).resolves.toMatchObject({ state: "requested", version: "1.0.0" });
+              ).resolves.toMatchObject({ state: "requested", version: "1.0.1" });
             }
           }),
           runner.drain(),
@@ -579,7 +772,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   listingId: telegramChannelListingId,
                   targetScope,
                 }),
-              ).resolves.toMatchObject({ version: "1.0.0" });
+              ).resolves.toMatchObject({ version: "1.0.1" });
 
               const targetAutomations = ctx.runtime.objects.automations.for(targetScope);
               for (const routeId of [
@@ -597,7 +790,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                     managedBy: {
                       kind: "marketplace",
                       listingId: telegramChannelListingId,
-                      version: "1.0.0",
+                      version: "1.0.1",
                     },
                   },
                 });
@@ -973,16 +1166,11 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.2.1",
     });
-    const creatorActors = automationActorsSchema.parse({
-      initiator: {
-        scope: "internal",
-        type: "user",
-        id: "route-author",
-        role: "initiator",
-      },
-      principal: null,
-      delegation: [],
+    const creatorExecution = createBackofficeServiceExecution({
+      scope: { kind: "org", orgId: "org-1" },
+      service: { type: "automation", id: "route-author" },
     });
+    const creatorActors = creatorExecution.actors;
     const installerExecution = createBackofficeUserExecution({
       scope: { kind: "org", orgId: "org-1" },
       userId: "marketplace-installer",
@@ -1003,7 +1191,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             const routes = createAutomationsRouteCaller({
               object: ctx.runtime.objects.automations.forOrg("org-1"),
               context: {
-                execution: { scope: { kind: "org", orgId: "org-1" }, actors: creatorActors },
+                execution: creatorExecution,
                 propagationContext: null,
               },
             });
@@ -1021,7 +1209,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 },
                 action: {
                   kind: "start_workflow",
-                  authority: { kind: "organization-automation" },
+                  authority: { kind: "organization-automation", grants: [] },
                   workflowScriptPath: "/workspace/automations/wrong.workflow.js",
                   instanceIdTemplate: "wrong-${event.id}",
                 },
@@ -1160,7 +1348,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               },
               action: {
                 kind: "start_workflow",
-                authority: { kind: "organization-automation" },
+                authority: {
+                  kind: "organization-automation",
+                  grants: [BACKOFFICE_PERMISSION.telegram.send],
+                },
                 workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
                 instanceIdTemplate: "telegram-test-${event.id}",
               },
@@ -1241,7 +1432,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             },
             action: {
               kind: "start_workflow",
-              authority: { kind: "organization-automation" },
+              authority: { kind: "organization-automation", grants: [] },
               workflowScriptPath: "/workspace/automations/legacy-test.workflow.js",
               instanceIdTemplate: "legacy-${event.id}",
             },
@@ -1330,7 +1521,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             },
             action: {
               kind: "start_workflow",
-              authority: { kind: "organization-automation" },
+              authority: { kind: "organization-automation", grants: [] },
               workflowScriptPath: "/workspace/automations/unrelated.workflow.js",
               instanceIdTemplate: "unrelated-${event.id}",
             },

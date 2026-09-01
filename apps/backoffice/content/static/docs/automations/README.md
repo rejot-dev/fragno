@@ -114,6 +114,7 @@ Failures remain visible at the boundary where they occur:
 - A forwarding action fails when the target scope is incomplete or outside the owner's allowed
   scope.
 - A delegated-user route fails when its event does not carry an eligible user principal.
+- A linked-user route does not start when its external initiator has no active identity binding.
 
 The event record remains the audit anchor even when later route execution fails.
 

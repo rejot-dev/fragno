@@ -65,7 +65,13 @@ describe("project automation event routing", () => {
     runtime = await createInMemoryBackofficeRuntime({});
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
-    const orgRoutes = createAutomationsRouteCaller({ object: orgAutomations });
+    const orgRoutes = createAutomationsRouteCaller({
+      object: orgAutomations,
+      context: {
+        execution: createBackofficeSystemExecution({ kind: "org", orgId }),
+        propagationContext: null,
+      },
+    });
     await orgRoutes("POST", "/routes", {
       body: {
         id: "system-project-files-configure",
@@ -80,7 +86,7 @@ describe("project automation event routing", () => {
         priority: 15,
         action: {
           kind: "start_workflow",
-          authority: { kind: "organization-automation" },
+          authority: { kind: "organization-automation", grants: [] },
           workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
           instanceIdTemplate: "project-files-configure-${event.id}",
         },
@@ -125,7 +131,7 @@ describe("project automation event routing", () => {
     assert(initialRoutesResponse.status === 200);
     await expect(initialRoutesResponse.json()).resolves.toEqual([]);
 
-    const createRouteResponse = await projectAutomations.http.fetch(
+    const createRouteResponse = await projectAutomations.http.fetchAuthorized(
       new Request(projectRoutesUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -142,12 +148,16 @@ describe("project automation event routing", () => {
           priority: 50,
           action: {
             kind: "start_workflow",
-            authority: { kind: "organization-automation" },
+            authority: { kind: "organization-automation", grants: [] },
             workflowScriptPath: "/workspace/automations/project-store.workflow.js",
             instanceIdTemplate: "project-store-${event.id}",
           },
         }),
       }),
+      {
+        execution: createBackofficeSystemExecution({ kind: "project", orgId, projectId }),
+        propagationContext: null,
+      },
     );
     assert(createRouteResponse.status === 201);
     const event: AutomationEvent = {
@@ -174,7 +184,7 @@ describe("project automation event routing", () => {
       execution: createAutomationRuntimeExecution({
         event,
         authority: {
-          mode: { kind: "organization-automation" },
+          mode: { kind: "organization-automation", grants: [] },
           automationId: "automation-route:project-event",
         },
       }),
@@ -336,7 +346,7 @@ describe("project automation event routing", () => {
       execution: createAutomationRuntimeExecution({
         event,
         authority: {
-          mode: { kind: "organization-automation" },
+          mode: { kind: "organization-automation", grants: [] },
           automationId: "automation-route:project-event",
         },
       }),

@@ -30,9 +30,8 @@ forwards the event.
        eventType: "message.received",
      });
      const routes = await router.list({});
-     const workflowFiles = await state.find("/workspace/automations", {
-       type: "file",
-       maxDepth: 2,
+     const workflowFiles = await state.glob({
+       pattern: "/workspace/automations/**/*.workflow.js",
      });
      return { catalog, eventDescriptor, routes, workflowFiles };
    };
@@ -81,7 +80,24 @@ forwards the event.
    };
    ```
 
-   Create scheduled routes with an explicit IANA time zone:
+   ### Grants
+
+   Choose authority from the workflow's user source:
+   - `delegated-user`: the triggering event already carries an internal user principal.
+   - `linked-user`: resolve the external initiator's active user binding.
+
+   For either user-backed mode, use `grants: "inherit"` when the workflow should retain the user's
+   current permissions. The route remains a delegate, while role changes, bans, membership removal,
+   and route disablement still apply. Use an explicit canonical grant array only when the route must
+   narrow the user's authority.
+
+   `organization-automation` has no user principal to inherit from. Give it the explicit canonical
+   permissions used by its runtime tools. Creating or updating an explicit grant array requires the
+   configuring execution to hold every requested grant. **Complete when** the authority mode names
+   the intended principal and its grant policy is either inherited user authority or the smallest
+   explicit automation grant set.
+
+   Signal an existing durable workflow on a schedule, with an explicit IANA time zone:
 
    ```js
    async () =>
@@ -97,10 +113,9 @@ forwards the event.
          },
        },
        action: {
-         kind: "start_workflow",
-         authority: { kind: "organization-automation" },
-         workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
-         instanceIdTemplate: "daily-digest-${event.id}",
+         kind: "send_workflow_event",
+         target: { kind: "instance_id", template: "daily-digest" },
+         eventType: "scheduled",
        },
      });
    ```
@@ -121,9 +136,9 @@ forwards the event.
        priority: 1000,
        action: {
          kind: "start_workflow",
-         authority: { kind: "organization-automation" },
+         authority: { kind: "linked-user", grants: "inherit" },
          workflowScriptPath: "/workspace/automations/telegram-hello.workflow.js",
-         instanceIdTemplate: "telegram-hello-${event}",
+         instanceIdTemplate: "telegram-hello-${event.id}",
        },
      });
    };

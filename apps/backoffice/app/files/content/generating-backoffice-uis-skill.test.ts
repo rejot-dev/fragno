@@ -247,8 +247,8 @@ describe("generating Backoffice UIs skill", () => {
     expect(systemGuidance).toContain("Prefer acting over asking");
     expect(systemGuidance).toContain("Do not present executable code for the user to run");
     expect(systemGuidance).toContain("Immediate work uses a top-level async function");
-    expect(systemGuidance).toContain('state.find("/workspace"');
-    expect(systemGuidance).not.toContain('state.find("/events"');
+    expect(systemGuidance).toContain('state.glob({ pattern: "/workspace/**/*" })');
+    expect(systemGuidance).not.toMatch(/state\.find/u);
     expect(systemGuidance).toMatch(/Define a durable workflow\s+directly at the top level/u);
     expect(systemGuidance).toContain("Do not wrap `defineWorkflow` inside an async function");
     expect(systemGuidance).toContain("workflow.getInstance({ instanceId })");

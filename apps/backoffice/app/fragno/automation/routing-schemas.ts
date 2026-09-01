@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  backofficePermissionRequirementSchema,
+  type BackofficePermissionRequirement,
+} from "@/backoffice-runtime/permissions";
+
 import { automationActorsSchema } from "./actors";
 import { automationScheduleCadenceSchema } from "./route-triggers";
 import { isAutomationActorProvenancePath } from "./routing";
@@ -115,9 +120,40 @@ const automationRouteScopeTemplateSchema: z.ZodType<AutomationRouteScopeTemplate
   ])
   .meta({ id: "AutomationRouteScopeTemplate" });
 
+function backofficePermissionKey(grant: BackofficePermissionRequirement): string {
+  return `${grant.namespace}.${grant.permission}`;
+}
+
+const automationRouteGrantsSchema = z
+  .array(backofficePermissionRequirementSchema)
+  .superRefine((grants, context) => {
+    const encountered = new Set<string>();
+    for (const [index, grant] of grants.entries()) {
+      const key = backofficePermissionKey(grant);
+      if (encountered.has(key)) {
+        context.addIssue({
+          code: "custom",
+          path: [index],
+          message: `Automation route grant '${key}' is duplicated.`,
+        });
+      }
+      encountered.add(key);
+    }
+  }) satisfies z.ZodType<readonly BackofficePermissionRequirement[]>;
+
 const automationAuthorityModeSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("delegated-user") }),
-  z.strictObject({ kind: z.literal("organization-automation") }),
+  z.strictObject({
+    kind: z.literal("delegated-user"),
+    grants: z.union([automationRouteGrantsSchema, z.literal("inherit")]),
+  }),
+  z.strictObject({
+    kind: z.literal("linked-user"),
+    grants: z.union([automationRouteGrantsSchema, z.literal("inherit")]),
+  }),
+  z.strictObject({
+    kind: z.literal("organization-automation"),
+    grants: automationRouteGrantsSchema,
+  }),
 ]);
 
 const automationStartWorkflowActionSchema = z

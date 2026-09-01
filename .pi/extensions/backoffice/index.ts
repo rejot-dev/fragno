@@ -532,12 +532,9 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
         ctx.ui.notify("Checking stored Backoffice authentication…", "info");
         const connection = await connectToBackoffice({
           baseUrl,
-          openBrowser: true,
-          onDeviceAuthorization: ({ verificationUrl, userCode }) => {
-            ctx.ui.notify("Starting Backoffice browser authentication…", "info");
-            ctx.ui.notify(`Open ${verificationUrl}`, "info");
-            ctx.ui.notify(`Enter code: ${userCode}`, "info");
-            ctx.ui.notify("Waiting for approval…", "info");
+          openBrowser: false,
+          onDeviceAuthorization: ({ verificationUrl }) => {
+            ctx.ui.notify(`Authenticate at ${verificationUrl}`, "info");
           },
         });
         const organizations = connection.summary.organizations ?? [];

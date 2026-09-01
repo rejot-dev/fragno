@@ -14,7 +14,11 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
 
 import { automationActorsSchema } from "./actors";
-import { automationRouteAuthority, createAutomationRuntimeExecution } from "./authority";
+import {
+  automationRouteAuthority,
+  createAutomationRuntimeExecution,
+  linkAutomationEventToUser,
+} from "./authority";
 import { createAutomationStoreServices } from "./bindings-storage-runtime";
 import { resolveAutomationFileSystem, type AutomationFileSystemConfig } from "./catalog";
 import {
@@ -40,6 +44,7 @@ import {
 import { createAutomationEventDefinitionServices } from "./event-definitions-storage-runtime";
 import { createAutomationEventSourceServices } from "./event-sources-storage-runtime";
 import { createAutomationEventServices } from "./events-storage-runtime";
+import { buildExternalIdentityBindingId } from "./external-identities";
 import { createExternalIdentityBindingServices } from "./external-identity-bindings-storage-runtime";
 import type { AutomationEventIngestionPayload, AutomationHookUnitOfWork } from "./internal-hooks";
 import { createAutomationMarketplaceIngestionServices } from "./marketplace-ingestions";
@@ -189,6 +194,7 @@ type RouteExecutionContext = {
   workflows: AutomationWorkflowsService;
   runWorkflowServiceCall: RunWorkflowServiceCall;
   store: AutomationStoreSnapshot;
+  linkedUserId: string | null;
 };
 
 const routeRoutingKey = (event: AutomationEvent, route: AutomationRouteDefinition) =>
@@ -202,21 +208,34 @@ const handleStartWorkflowRouteAction = async ({
   workflows,
   runWorkflowServiceCall,
   config,
+  linkedUserId,
 }: RouteExecutionContext & {
   action: AutomationStartWorkflowAction;
   config: AutomationFileSystemConfig;
 }) => {
+  const workflowEvent =
+    action.authority.kind === "linked-user"
+      ? linkedUserId &&
+        event.actors.initiator.scope === "external" &&
+        event.actors.principal === null
+        ? linkAutomationEventToUser({ event, userId: linkedUserId })
+        : null
+      : event;
+  if (!workflowEvent) {
+    return;
+  }
+
   const instanceId = renderAutomationTemplateValue(
     action.instanceIdTemplate,
-    event,
+    workflowEvent,
     route.id,
     routingKey,
   );
   const execution =
-    event.scope.kind === "system"
-      ? createBackofficeSystemExecution(event.scope)
+    workflowEvent.scope.kind === "system"
+      ? createBackofficeSystemExecution(workflowEvent.scope)
       : createAutomationRuntimeExecution({
-          event,
+          event: workflowEvent,
           authority: automationRouteAuthority({ routeId: route.id, mode: action.authority }),
         });
   const fileSystem = await resolveAutomationFileSystem(config, {
@@ -229,9 +248,13 @@ const handleStartWorkflowRouteAction = async ({
     filename: action.workflowScriptPath,
     instanceId,
   });
+  const triggerEvent =
+    action.authority.kind === "linked-user"
+      ? { ...workflowEvent, actors: execution.actors }
+      : workflowEvent;
   const workflowInput = createCodemodeWorkflowInstanceInput({
     prepared,
-    trigger: { type: "event", event },
+    trigger: { type: "event", event: triggerEvent },
     execution,
   });
 
@@ -549,7 +572,12 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
         });
       }),
       internalIngestEvent: defineHook(async function (payload: AutomationEventIngestionPayload) {
-        const { routes, store } = await this.handlerTx({
+        const event = payload.event;
+        const externalIdentityBindingId =
+          event.actors.initiator.scope === "external"
+            ? buildExternalIdentityBindingId(event.actors.initiator)
+            : "";
+        const { routes, store, linkedUserId } = await this.handlerTx({
           name: "automations.internalIngestEvent",
         })
           .retrieve(({ forSchema }) => {
@@ -558,9 +586,12 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               .find("automation_route", (b) =>
                 b.whereIndex("primary").orderByIndex("idx_automation_route_priority_id", "asc"),
               )
-              .find("kv_store", (b) => b.whereIndex("primary"));
+              .find("kv_store", (b) => b.whereIndex("primary"))
+              .findFirst("external_identity_binding", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", externalIdentityBindingId)),
+              );
           })
-          .transformRetrieve(([routeRows, storeRows]) => ({
+          .transformRetrieve(([routeRows, storeRows, externalIdentityBinding]) => ({
             routes: routeRows.map((route) => ({
               id: route.id.externalId,
               name: route.name,
@@ -572,9 +603,10 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               nextOccurrenceAt: null,
             })),
             store: new Map(storeRows.map((entry) => [entry.key, entry.value])),
+            linkedUserId:
+              externalIdentityBinding?.revokedAt === null ? externalIdentityBinding.userId : null,
           }))
           .execute();
-        const event = payload.event;
         const routesToExecute = payload.route
           ? [payload.route]
           : routes.filter(
@@ -597,6 +629,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               workflows: serviceDeps.workflows,
               runWorkflowServiceCall,
               store,
+              linkedUserId,
             };
             const action = route.action;
             switch (action.kind) {

@@ -75,7 +75,7 @@ const createTestExecution = (event: AutomationEvent) =>
   createAutomationRuntimeExecution({
     event,
     authority: {
-      mode: { kind: "organization-automation" },
+      mode: { kind: "organization-automation", grants: [] },
       automationId: "automation-route:bash-test",
     },
   });

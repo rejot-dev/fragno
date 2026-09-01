@@ -96,7 +96,13 @@ defineWorkflow(
         priority: 110,
         action: {
           kind: "start_workflow",
-          authority: { kind: "organization-automation" },
+          authority: {
+            kind: "organization-automation",
+            grants: [
+              { namespace: "store", permission: "read" },
+              { namespace: "telegram", permission: "send" },
+            ],
+          },
           workflowScriptPath,
           instanceIdTemplate: "telegram-test-${event.id}",
         },

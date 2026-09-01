@@ -1,15 +1,27 @@
-import type { AutomationForwardEventAction, AutomationStartWorkflowAction } from "../routing";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
+
+import type { AutomationForwardEventAction } from "../routing";
 import type { AutomationRouteCreateInput } from "../routing-schemas";
+
+type AutomationStartWorkflowInput = Extract<
+  AutomationRouteCreateInput["action"],
+  { kind: "start_workflow" }
+>;
 
 const startWorkflowAction = ({
   workflowScriptPath,
   instanceIdTemplate,
+  grants,
 }: {
   workflowScriptPath: string;
   instanceIdTemplate: string;
-}): AutomationStartWorkflowAction => ({
+  grants: Extract<
+    AutomationStartWorkflowInput["authority"],
+    { kind: "organization-automation" }
+  >["grants"];
+}): AutomationStartWorkflowInput => ({
   kind: "start_workflow",
-  authority: { kind: "organization-automation" },
+  authority: { kind: "organization-automation", grants },
   workflowScriptPath,
   instanceIdTemplate,
 });
@@ -40,6 +52,7 @@ export const SYSTEM_STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInp
     action: startWorkflowAction({
       workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
       instanceIdTemplate: "workspace-file-initialization-${event.id}",
+      grants: [],
     }),
   },
   {
@@ -95,6 +108,7 @@ export const ORGANIZATION_STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCre
     action: startWorkflowAction({
       workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
       instanceIdTemplate: "project-files-configure-${event.id}",
+      grants: [BACKOFFICE_PERMISSION.internal.manage],
     }),
   },
 ];

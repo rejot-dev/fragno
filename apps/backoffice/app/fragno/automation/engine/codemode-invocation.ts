@@ -7,7 +7,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 import {
-  isBackofficePermissionRequirement,
+  backofficePermissionRequirementSchema,
   type BackofficePermissionRequirement,
 } from "@/backoffice-runtime/permissions";
 
@@ -30,14 +30,6 @@ export const CODEMODE_CAPABILITY_ACTOR = {
 } as const satisfies AutomationActors["delegation"][number];
 
 const dependencyMapSchema = z.record(z.string().trim().min(1), z.string().trim().min(1));
-
-const backofficePermissionRequirementSchema = z
-  .strictObject({
-    namespace: z.string().trim().min(1),
-    permission: z.string().trim().min(1),
-  })
-  .refine(isBackofficePermissionRequirement, "Unknown Backoffice permission.")
-  .transform((permission): BackofficePermissionRequirement => permission);
 
 export type CodemodeCapabilityGrant = {
   actor: AutomationActors["delegation"][number];

@@ -11,5 +11,5 @@
     "category": "communication",
     "tags": ["telegram", "pi", "identity", "communication"]
   },
-  "versions": ["1.0.0"]
+  "versions": ["1.0.0", "1.0.1"]
 }

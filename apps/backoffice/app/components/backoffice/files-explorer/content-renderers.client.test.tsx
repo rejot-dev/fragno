@@ -59,7 +59,7 @@ describe("workflow file preview", () => {
             },
             action: {
               kind: "start_workflow",
-              authority: { kind: "organization-automation" },
+              authority: { kind: "organization-automation", grants: [] },
               workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
               instanceIdTemplate: "telegram-link-${event.id}",
             },

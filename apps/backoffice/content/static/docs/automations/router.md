@@ -81,9 +81,16 @@ A route performs exactly one action.
 
 - `workflowScriptPath` — absolute path to a saved workflow file;
 - `instanceIdTemplate` — stable instance identity rendered from the event;
-- `authority` — delegated-user or organization-automation authority.
+- `authority.kind` — `delegated-user`, `linked-user`, or `organization-automation`;
+- `authority.grants` — the duplicate-free canonical permissions available to the route automation.
 
-The workflow runs in the current event scope. The action has no target-scope override.
+The workflow runs in the current event scope. The action has no target-scope override. Protected
+operations resolve the owning route's current grants each time. `linked-user` resolves the external
+event initiator's active identity binding before startup; unlinked events do not create a workflow.
+The linked user becomes the principal and the route automation becomes a delegate. Missing or
+disabled routes have no grants, so already-running workflows observe grant removal and route
+disablement. Creating or updating a workflow route requires the configuring execution to hold every
+requested grant.
 
 The route should render the same instance ID whenever the durable ingestion hook retries. Reusing
 the logical instance ID lets the workflow service recognize the same work instead of creating an

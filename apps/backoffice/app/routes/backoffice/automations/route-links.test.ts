@@ -25,7 +25,7 @@ describe("automation route links", () => {
   it("opens the route workflow script in the scoped files section", () => {
     const route = routeWithAction({
       kind: "start_workflow",
-      authority: { kind: "organization-automation" },
+      authority: { kind: "organization-automation", grants: [] },
       workflowScriptPath: "/workspace/automations/telegram-linking.workflow.js",
       instanceIdTemplate: "telegram-${event}",
     });

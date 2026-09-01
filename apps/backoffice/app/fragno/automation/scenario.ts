@@ -4505,55 +4505,58 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
       nowEpochMs,
       getAutomationFileSystem,
     }) => {
-      const kernel = new BackofficeKernel(runtime);
-      const fetchPiAuthorized = async (request: Request, context: BackofficeActionRpcContext) => {
-        const sessionRoute =
-          /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/([^/]+))?$/u.exec(
-            new URL(request.url).pathname,
-          );
-        const operation =
-          sessionRoute && request.method === "GET"
-            ? BACKOFFICE_PERMISSION.pi.read
-            : sessionRoute && request.method === "POST"
-              ? BACKOFFICE_PERMISSION.pi.modify
-              : null;
-
-        if (operation) {
-          try {
-            await kernel.assertAuthorized({
-              execution: context.execution,
-              operation,
-              resource: {
-                kind: sessionRoute?.[2]
-                  ? "pi-session"
-                  : request.method === "POST"
-                    ? "pi-session-create"
-                    : "pi-session-list",
-                workflowName: sessionRoute?.[1],
-                sessionId: sessionRoute?.[2],
-              },
-            });
-          } catch (cause) {
-            if (cause instanceof BackofficeForbiddenError) {
-              return Response.json(
-                { message: cause.message, code: cause.reason },
-                { status: cause.reason === "authority-unavailable" ? 503 : 403 },
-              );
-            }
-            throw cause;
-          }
-        }
-
-        return await fakes.pi!.fetchAuthorized(request, context);
-      };
       const object = new InMemoryAutomationsObject({
         state,
         env,
         runtime,
         nowEpochMs,
         getAutomationFileSystem,
-        createPiRuntime: (execution) =>
-          createPiRouteRuntime({
+        createPiRuntime: (execution, kernel) => {
+          const fetchPiAuthorized = async (
+            request: Request,
+            context: BackofficeActionRpcContext,
+          ) => {
+            const sessionRoute =
+              /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/([^/]+))?$/u.exec(
+                new URL(request.url).pathname,
+              );
+            const operation =
+              sessionRoute && request.method === "GET"
+                ? BACKOFFICE_PERMISSION.pi.read
+                : sessionRoute && request.method === "POST"
+                  ? BACKOFFICE_PERMISSION.pi.modify
+                  : null;
+
+            if (operation) {
+              try {
+                await kernel.assertAuthorized({
+                  execution: context.execution,
+                  operation,
+                  resource: {
+                    kind: sessionRoute?.[2]
+                      ? "pi-session"
+                      : request.method === "POST"
+                        ? "pi-session-create"
+                        : "pi-session-list",
+                    workflowName: sessionRoute?.[1],
+                    sessionId: sessionRoute?.[2],
+                  },
+                });
+              } catch (cause) {
+                if (cause instanceof BackofficeForbiddenError) {
+                  return Response.json(
+                    { message: cause.message, code: cause.reason },
+                    { status: cause.reason === "authority-unavailable" ? 503 : 403 },
+                  );
+                }
+                throw cause;
+              }
+            }
+
+            return await fakes.pi!.fetchAuthorized(request, context);
+          };
+
+          return createPiRouteRuntime({
             object: {
               commands: {} as AutomationsObject,
               http: {
@@ -4563,7 +4566,8 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
             },
             scope: execution.scope,
             execution,
-          }),
+          });
+        },
       });
 
       return new Proxy(object, {

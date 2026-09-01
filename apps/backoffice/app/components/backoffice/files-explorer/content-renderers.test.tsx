@@ -60,7 +60,7 @@ describe("files content rendering", () => {
   test("renders multiple schedule routes with enabled state and next occurrence", () => {
     const workflowAction = {
       kind: "start_workflow" as const,
-      authority: { kind: "organization-automation" as const },
+      authority: { kind: "organization-automation" as const, grants: [] },
       workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
       instanceIdTemplate: "daily-${event.id}",
     };

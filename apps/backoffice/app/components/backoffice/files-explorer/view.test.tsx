@@ -77,7 +77,7 @@ describe("FilesExplorerView", () => {
       },
       action: {
         kind: "start_workflow" as const,
-        authority: { kind: "organization-automation" as const },
+        authority: { kind: "organization-automation" as const, grants: [] },
         workflowScriptPath: workflowPath,
         instanceIdTemplate: "telegram-link-${event.id}",
       },
