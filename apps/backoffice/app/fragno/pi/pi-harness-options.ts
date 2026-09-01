@@ -148,6 +148,9 @@ export const resolveBackofficeWorkflowAgentHarnessOptions = async ({
   return {
     model,
     models,
+    streamOptions: {
+      maxRetries: 3,
+    },
     thinkingLevel: thinkingLevel ?? PI_THINKING_LEVEL,
     systemPrompt: await buildSystemPrompt({
       systemPrompt,
