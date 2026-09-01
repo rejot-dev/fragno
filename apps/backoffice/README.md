@@ -1,64 +1,42 @@
 # Backoffice
 
-Backoffice is the Fragno dogfooding application. Its complete React Router server, Durable Objects,
-and supporting Cloudflare bindings run in one Worker named `rejot-backoffice`.
+Backoffice deploys as two Cloudflare Workers:
 
-## Development
+- `rejot-backoffice-web` is the public React Router Worker.
+- `rejot-backoffice` owns the Durable Objects and backend bindings.
 
-From the repository root:
+## Build outputs
 
-```bash
-pnpm --dir apps/backoffice dev
+`pnpm --dir apps/backoffice build` produces:
+
+```text
+build/server/wrangler.json                 # rejot-backoffice-web
+dist/rejot_backoffice/wrangler.json        # rejot-backoffice
 ```
 
-## Deploy Backoffice
+React Router owns the primary Worker build under `build/server`. Cloudflare's Vite plugin builds
+`rejot-backoffice` as an auxiliary Worker under `dist/rejot_backoffice`.
 
-Backoffice deployment separates inactive version uploads from production activation. Give each
-release a unique version tag; reusing a tag makes Cloudflare version selection ambiguous. The
-package scripts pass flags directly to Wrangler, so do not insert a standalone `--` before them.
+Use these generated configs for uploads. They point to compiled bundles where Vite has resolved
+virtual modules and raw asset imports. The source configs, `wrangler.web.jsonc` and
+`wrangler.jsonc`, are sufficient when activating versions because activation does not rebuild the
+source.
 
-### Bootstrap the Worker
+## Release
 
-A normal deployment is required when creating the Worker or adding a declarative Durable Object
-class that has not been provisioned yet:
-
-```bash
-BOOTSTRAP_TAG=bootstrap-$(date -u +%Y%m%d-%H%M%S)
-pnpm --dir apps/backoffice run deploy:bootstrap --tag "$BOOTSTRAP_TAG"
-```
-
-Bootstrap immediately activates the built Worker. It deliberately skips container rollout; manage
-changes to `sandbox.Dockerfile` and the Sandbox container configuration separately. Use `--dry-run`
-to validate the generated Worker locally without changing Cloudflare.
-
-### Upload an inactive version
+Upload an inactive version of both Workers with one shared tag:
 
 ```bash
 VERSION_TAG=release-$(date -u +%Y%m%d-%H%M%S)
-pnpm --dir apps/backoffice run deploy:upload --tag "$VERSION_TAG"
+pnpm --dir apps/backoffice run deploy:upload -- --tag "$VERSION_TAG"
 ```
 
-This builds Backoffice and uploads one inactive `rejot-backoffice` version. The upload validates the
-generated bundle and required remote secrets without changing production traffic.
-
-For local validation without uploading:
+Activate the tagged versions, web Worker first and object Worker second:
 
 ```bash
-pnpm --dir apps/backoffice run deploy:upload --tag "$VERSION_TAG" --dry-run
+pnpm --dir apps/backoffice run deploy -- \
+  --version-tag "$VERSION_TAG@100%" \
+  --yes
 ```
 
-Upload dry runs do not validate remote secrets.
-
-### Activate an uploaded version
-
-Check that Cloudflare can resolve the tag without changing traffic:
-
-```bash
-pnpm --dir apps/backoffice run deploy --version-tag "$VERSION_TAG@100%" --yes --dry-run
-```
-
-Activate the tagged version at 100% traffic:
-
-```bash
-pnpm --dir apps/backoffice run deploy --version-tag "$VERSION_TAG@100%" --yes
-```
+The two activations are sequential, so releases must remain compatible during the rollout.

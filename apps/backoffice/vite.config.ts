@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { reactRouter } from "@react-router/dev/vite";
@@ -9,8 +9,7 @@ import devtoolsJson from "vite-plugin-devtools-json";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 
-// Warm the Cloudflare Worker entry so the Durable Object graph is transformed
-// during dev-server boot instead of on the first SSR request.
+// Warm the public Worker entry during dev-server boot instead of on the first SSR request.
 const workerWarmupFiles = ["./workers/app.ts"];
 const waSqliteWasmUrl = new URL(import.meta.resolve("@journeyapps/wa-sqlite/dist/wa-sqlite.wasm"));
 
@@ -33,6 +32,29 @@ function emitWaSqliteWasmAssetPlugin(): Plugin {
   };
 }
 
+function emitObjectWorkerLocalDevVarsPlugin(): Plugin {
+  const localDevVarsPath = path.resolve(__dirname, ".dev.vars");
+
+  return {
+    name: "emit-object-worker-local-dev-vars",
+    apply: "build",
+    generateBundle(_, bundle) {
+      if (this.environment.name !== "rejot_backoffice" || !existsSync(localDevVarsPath)) {
+        return;
+      }
+
+      // The Cloudflare Vite plugin only emits required secrets for auxiliary Worker previews.
+      const devVarsAsset = bundle[".dev.vars"];
+      const localDevVars = readFileSync(localDevVarsPath);
+      if (devVarsAsset?.type === "asset") {
+        devVarsAsset.source = localDevVars;
+      } else {
+        this.emitFile({ type: "asset", fileName: ".dev.vars", source: localDevVars });
+      }
+    },
+  };
+}
+
 export default defineConfig(({ command }) => {
   const isDevServer = command === "serve";
 
@@ -50,6 +72,8 @@ export default defineConfig(({ command }) => {
     },
     plugins: [
       cloudflare({
+        configPath: "./wrangler.web.jsonc",
+        auxiliaryWorkers: [{ configPath: "./wrangler.jsonc" }],
         viteEnvironment: {
           name: "ssr",
         },
@@ -59,6 +83,7 @@ export default defineConfig(({ command }) => {
       reactRouter(),
       devtoolsJson(),
       emitWaSqliteWasmAssetPlugin(),
+      emitObjectWorkerLocalDevVarsPlugin(),
     ],
     ssr: {
       noExternal: ["@earendil-works/pi-ai"],
@@ -73,6 +98,8 @@ export default defineConfig(({ command }) => {
         }
       : undefined,
     preview: {
+      port: 5173,
+      strictPort: true,
       allowedHosts: [".trycloudflare.com", "local-wilco.recivo.email"],
     },
     server: {

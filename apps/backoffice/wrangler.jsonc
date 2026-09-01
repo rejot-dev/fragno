@@ -12,7 +12,7 @@
     "enable_request_signal",
     "request_signal_passthrough",
   ],
-  "main": "./workers/app.ts",
+  "main": "./workers/objects.ts",
   "observability": {
     "enabled": true,
     "traces": {
@@ -20,7 +20,8 @@
       "head_sampling_rate": 1,
     },
   },
-  "preview_urls": true,
+  "workers_dev": false,
+  "preview_urls": false,
   "dev": {
     "enable_containers": false,
   },
@@ -70,12 +71,6 @@
       "CLOUDFLARE_WORKERS_API_TOKEN",
     ],
   },
-  "routes": [
-    {
-      "pattern": "backoffice.rejot.dev",
-      "custom_domain": true,
-    },
-  ],
   "r2_buckets": [
     {
       "binding": "UPLOAD_BUCKET",
@@ -89,9 +84,9 @@
   ],
   /**
    * Outbound egress for codemode/workflow sandboxes. A self service binding to
-   * the `OutboundProxy` entrypoint (see workers/app.ts) handed to dynamically
+   * the `OutboundProxy` entrypoint (see workers/objects.ts) handed to dynamically
    * loaded Workers as their `globalOutbound`, so `fetch()` inside a workflow
-   * step can reach the internet through the host worker.
+   * step can reach the internet through the object host.
    */
   "services": [
     {

@@ -3,6 +3,7 @@ import type {
   SandboxOptions as CloudflareSdkSandboxOptions,
 } from "@cloudflare/sandbox";
 
+import type { Sandbox as BackofficeSandbox } from "../../workers/sandbox.do";
 import type {
   ExecuteSandboxCommandOptions,
   MountBucketOptions,
@@ -18,8 +19,7 @@ import { CLOUDFLARE_SANDBOX_PROVIDER } from "./contracts";
 type CloudflareSandboxNamespace = CloudflareEnv["SANDBOX"];
 type CloudflareSandboxOptions = Pick<CloudflareSdkSandboxOptions, "keepAlive" | "sleepAfter">;
 
-export type CloudflareSandboxHandle =
-  CloudflareSandboxNamespace extends DurableObjectNamespace<infer TObject> ? TObject : never;
+export type CloudflareSandboxHandle = BackofficeSandbox;
 
 type CloudflareSandboxSdkClient = {
   getSandbox(

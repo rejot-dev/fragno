@@ -28,7 +28,7 @@ export type BackofficeCodemodeEnv = {
   LOADER: WorkerLoader;
   /**
    * Outbound egress capability for workflow sandboxes (the `OutboundProxy`
-   * service binding; see workers/app.ts). When present it is handed to the
+   * service binding; see workers/objects.ts). When present it is handed to the
    * dynamic worker as its `globalOutbound`, letting `fetch()` inside a workflow
    * step reach the internet. Absent (e.g. the Workers test pool) keeps the
    * sandbox sealed.
