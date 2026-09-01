@@ -13,6 +13,7 @@
     "AUTH_ACCESS_TOKEN_SECRET": "backoffice-vitest-auth-secret-at-least-32-characters",
     "BACKOFFICE_INTERNAL_REQUEST_SECRET": "backoffice-vitest-internal-request-secret-at-least-32-characters",
     "AUTH_EMAIL_VERIFICATION_ENABLED": "false",
+    "SIGN_UP_INVITATIONS_ENABLED": "true",
   },
   "worker_loaders": [
     {

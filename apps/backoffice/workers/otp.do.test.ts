@@ -23,11 +23,14 @@ import type { OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
+  DEFAULT_SIGN_UP_INVITATION_TTL_DAYS,
   EMAIL_VERIFICATION_EXPIRY_HOURS,
   EMAIL_VERIFICATION_TYPE,
   IDENTITY_LINK_TYPE,
+  SIGN_UP_INVITATION_TYPE,
 } from "@/fragno/otp";
 
+import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
 import { handleEmailVerificationConfirmed, handleIdentityClaimConfirmed } from "./otp.do";
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
@@ -44,11 +47,17 @@ const signUp = async (
   runtime: Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>,
   email: string,
 ) => {
+  const invitation = await issueTestSignUpInvitation(runtime, email);
   const response = await runtime.objects.auth.singleton().http.fetch(
     new Request("https://backoffice.example/api/auth/sign-up/email", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Test User", email, password: "password123" }),
+      body: JSON.stringify({
+        name: "Test User",
+        email,
+        password: "password123",
+        ...invitation,
+      }),
     }),
   );
   assert(response.ok);
@@ -70,6 +79,69 @@ const signIn = async (
 
 afterEach(async () => {
   await Promise.all(runtimes.splice(0).map(async (runtime) => await runtime.cleanup()));
+});
+
+describe("OTP sign-up invitations", () => {
+  test("issues an email-bound link and permits idempotent sign-up retries", async () => {
+    const runtime = await createRuntime();
+    const otp = runtime.objects.otp.singleton();
+
+    const issued = await otp.commands.issueSignUpInvitation({
+      email: " Person@Example.com ",
+      publicBaseUrl: "https://backoffice.example",
+    });
+    expect(issued).toMatchObject({
+      email: "person@example.com",
+      ttlDays: DEFAULT_SIGN_UP_INVITATION_TTL_DAYS,
+      type: SIGN_UP_INVITATION_TYPE,
+    });
+    const url = new URL(issued.url);
+    assert(url.pathname === "/backoffice/sign-up");
+    expect(url.searchParams.get("invitationId")).toBe(issued.invitationId);
+    const code = url.searchParams.get("code");
+    assert(code);
+
+    await expect(
+      otp.commands.confirmSignUpInvitation({
+        invitationId: issued.invitationId,
+        code,
+        email: "different@example.com",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "email_mismatch" });
+    await expect(
+      otp.commands.confirmSignUpInvitation({
+        invitationId: issued.invitationId,
+        code,
+        email: "person@example.com",
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      invitationId: issued.invitationId,
+      email: "person@example.com",
+    });
+  });
+
+  test("expires sign-up invitations using ttl days", async () => {
+    const runtime = await createRuntime();
+    const otp = runtime.objects.otp.singleton();
+    const issued = await otp.commands.issueSignUpInvitation({
+      email: "person@example.com",
+      publicBaseUrl: "https://backoffice.example",
+      ttlDays: 2,
+    });
+    const code = new URL(issued.url).searchParams.get("code");
+    assert(code);
+
+    runtime.advanceTime(2 * 24 * 60 * 60 * 1_000 + 1);
+
+    await expect(
+      otp.commands.confirmSignUpInvitation({
+        invitationId: issued.invitationId,
+        code,
+        email: "person@example.com",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "expired" });
+  });
 });
 
 describe("OTP identity claim completion", () => {

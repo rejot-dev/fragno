@@ -27,10 +27,16 @@ import {
   retargetBackofficeOrganizationReturnTo,
 } from "./auth-navigation";
 
+type BackofficeLoginAuthError = {
+  title: string;
+  message: string;
+};
+
 type BackofficeLoginLoaderData = {
   authenticated: boolean;
   returnTo: string;
   bootstrapError: string | null;
+  authError: BackofficeLoginAuthError | null;
 };
 
 type BackofficeLoginActionData =
@@ -66,6 +72,121 @@ const organizationProvisioningResponseSchema = z.object({
   status: z.literal("organization_provisioning"),
   retryAfterMs: z.number().int().positive(),
 });
+
+const betterAuthErrorCodeSchema = z.enum([
+  "invalid_callback_request",
+  "invalid_code",
+  "internal_server_error",
+  "state_not_found",
+  "state_invalid",
+  "state_mismatch",
+  "no_code",
+  "no_callback_url",
+  "oauth_provider_not_found",
+  "email_not_found",
+  "email_doesn't_match",
+  "unable_to_get_user_info",
+  "unable_to_link_account",
+  "unable_to_create_user",
+  "unable_to_create_session",
+  "account_not_linked",
+  "account_already_linked_to_different_user",
+  "signup_disabled",
+]);
+
+type BetterAuthErrorCode = z.infer<typeof betterAuthErrorCodeSchema>;
+
+const betterAuthErrorContent = {
+  invalid_callback_request: {
+    title: "The authentication response was invalid",
+    message: "Start authentication again and retry.",
+  },
+  invalid_code: {
+    title: "The authentication code is no longer valid",
+    message: "Start authentication again and retry.",
+  },
+  internal_server_error: {
+    title: "Authentication is temporarily unavailable",
+    message: "Try again in a moment or use your email and password to continue.",
+  },
+  state_not_found: {
+    title: "The authentication request could not be found",
+    message: "Start authentication again and retry.",
+  },
+  state_invalid: {
+    title: "The authentication request is invalid",
+    message: "Start authentication again and retry.",
+  },
+  state_mismatch: {
+    title: "The authentication request could not be verified",
+    message: "Start authentication again and retry.",
+  },
+  no_code: {
+    title: "The provider did not return an authentication code",
+    message: "Try again or use your email and password to continue.",
+  },
+  no_callback_url: {
+    title: "The authentication destination is missing",
+    message: "Start authentication again and retry.",
+  },
+  oauth_provider_not_found: {
+    title: "The authentication provider is unavailable",
+    message: "Use another authentication method or try again later.",
+  },
+  email_not_found: {
+    title: "No email address was provided",
+    message: "Make an email address available to Backoffice through your provider, then try again.",
+  },
+  "email_doesn't_match": {
+    title: "The account email does not match",
+    message: "Use the provider account connected to your Backoffice email address.",
+  },
+  unable_to_get_user_info: {
+    title: "Your account details could not be loaded",
+    message: "Try again or use your email and password to continue.",
+  },
+  unable_to_link_account: {
+    title: "The provider account could not be linked",
+    message: "Sign in with your email and password before connecting this account.",
+  },
+  unable_to_create_user: {
+    title: "Your Backoffice account could not be created",
+    message: "Try again or use the sign-up link provided for your email address.",
+  },
+  unable_to_create_session: {
+    title: "A Backoffice session could not be created",
+    message: "Return to sign in and try again.",
+  },
+  account_not_linked: {
+    title: "This provider account is not linked",
+    message: "Sign in with your email and password before connecting this account.",
+  },
+  account_already_linked_to_different_user: {
+    title: "This provider account is already linked",
+    message: "Sign in with the Backoffice account that is already connected to it.",
+  },
+  signup_disabled: {
+    title: "Account creation is not available",
+    message: "Use an existing Backoffice account or open the invitation created for your email.",
+  },
+} satisfies Record<BetterAuthErrorCode, BackofficeLoginAuthError>;
+
+function readBackofficeLoginAuthError(url: URL): BackofficeLoginAuthError | null {
+  const error = url.searchParams.get("error");
+  if (!error) {
+    return null;
+  }
+
+  const parsedErrorCode = betterAuthErrorCodeSchema.safeParse(error);
+  if (!parsedErrorCode.success) {
+    return {
+      title: "Authentication could not be completed",
+      message: "Try again or use your Backoffice email and password to continue.",
+    };
+  }
+
+  return betterAuthErrorContent[parsedErrorCode.data];
+}
 
 function mergeRequestCookiesWithResponseCookies(request: Request, response: Response): string {
   const cookies = new Map<string, string>();
@@ -138,6 +259,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     authenticated: false,
     returnTo,
     bootstrapError: null,
+    authError: readBackofficeLoginAuthError(url),
   } satisfies BackofficeLoginLoaderData;
 }
 
@@ -222,8 +344,11 @@ export function meta() {
 }
 
 export default function BackofficeLogin() {
-  const { authenticated, returnTo, bootstrapError } = useLoaderData<BackofficeLoginLoaderData>();
-  const [oauthError, setOauthError] = useState<string | null>(null);
+  const { authenticated, returnTo, bootstrapError, authError } =
+    useLoaderData<BackofficeLoginLoaderData>();
+  const [authErrorNotice, setAuthErrorNotice] = useState<BackofficeLoginAuthError | null>(
+    authError,
+  );
   const [oauthPending, setOauthPending] = useState(false);
   const actionData = useActionData<BackofficeLoginActionData>();
   const navigation = useNavigation();
@@ -239,7 +364,7 @@ export default function BackofficeLogin() {
 
   const handleGithubSignIn = async () => {
     setOauthPending(true);
-    setOauthError(null);
+    setAuthErrorNotice(null);
 
     try {
       const callbackURL = new URL(
@@ -259,7 +384,10 @@ export default function BackofficeLogin() {
       }
       window.location.assign(result.data.url);
     } catch (error) {
-      setOauthError(error instanceof Error ? error.message : "Unable to start GitHub sign-in.");
+      setAuthErrorNotice({
+        title: "GitHub sign-in could not be started",
+        message: error instanceof Error ? error.message : "Try GitHub again in a moment.",
+      });
       setOauthPending(false);
     }
   };
@@ -315,7 +443,19 @@ export default function BackofficeLogin() {
               >
                 {oauthPending ? "Redirecting…" : "Continue with GitHub"}
               </button>
-              {oauthError ? <p className="text-xs text-red-400">{oauthError}</p> : null}
+              {authErrorNotice ? (
+                <div
+                  role="alert"
+                  className="border-l-2 border-red-500 bg-red-500/5 px-3 py-3 text-pretty"
+                >
+                  <p className="text-[10px] font-semibold tracking-[0.18em] text-red-600 uppercase dark:text-red-400">
+                    {authErrorNotice.title}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-red-600/90 dark:text-red-400/90">
+                    {authErrorNotice.message}
+                  </p>
+                </div>
+              ) : null}
               <Form
                 method="post"
                 className="space-y-3"

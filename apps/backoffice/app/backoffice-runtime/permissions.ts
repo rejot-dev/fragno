@@ -9,6 +9,10 @@ import { z } from "zod";
  */
 export const BACKOFFICE_PERMISSION = {
   admin: {
+    signUpInvitationsManage: {
+      namespace: "admin",
+      permission: "sign-up-invitations.manage",
+    },
     organizationsManage: { namespace: "admin", permission: "organizations.manage" },
   },
   api: {

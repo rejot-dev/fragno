@@ -19,9 +19,9 @@ export const buildUserEmailVerificationEmail = ({
 
   return {
     to: email,
-    subject: "Verify your email for Fragno Backoffice",
+    subject: "Verify your Backoffice email",
     text: [
-      "Verify your Fragno Backoffice email.",
+      "Verify your Backoffice email.",
       "",
       "Use this link to verify your email address:",
       verificationUrl,
@@ -31,7 +31,7 @@ export const buildUserEmailVerificationEmail = ({
     html: [
       '<div style="background:#f4f7f6;padding:32px 16px;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#10201b">',
       '<div style="max-width:560px;margin:0 auto;border:1px solid #cbd8d3;background:#ffffff;padding:32px">',
-      '<p style="margin:0 0 12px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#477064">Fragno Backoffice</p>',
+      '<p style="margin:0 0 12px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#477064">Backoffice</p>',
       '<h1 style="margin:0 0 16px;font-size:28px;line-height:1.2">Verify your email.</h1>',
       '<p style="margin:0 0 24px;font-size:16px;line-height:1.6;color:#345047">Confirm this email address before signing in.</p>',
       `<a href="${htmlVerificationUrl}" style="display:inline-block;background:#163f34;color:#ffffff;padding:12px 18px;font-size:13px;font-weight:700;letter-spacing:.08em;text-decoration:none;text-transform:uppercase">Verify email</a>`,

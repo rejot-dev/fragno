@@ -50,6 +50,7 @@ import type {
   DurableHookQueueOptions,
   DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
+import { BACKOFFICE_LOGIN_PATH } from "@/routes/backoffice/auth-navigation";
 import { buildUserEmailVerificationEmail } from "@/transactional-emails/user-email-verification";
 
 import {
@@ -72,6 +73,7 @@ import {
   BACKOFFICE_ORGANIZATION_OWNER_ROLE,
   createBackofficeBetterAuthSchemaPlugins,
 } from "./auth/better-auth-schema-plugins";
+import { createBackofficeSignUpInvitationPlugin } from "./auth/better-auth-sign-up-invitation";
 import {
   completeBetterAuthDurableHook,
   deleteBetterAuthDurableHooksForFixture,
@@ -836,6 +838,14 @@ export class InMemoryAuthObject implements AuthObject {
       isDevelopment,
       resolveBackofficeScopeTokenGrant,
     });
+    const signUpInvitationPlugins = runtime.config.signUpInvitationsEnabled
+      ? [
+          createBackofficeSignUpInvitationPlugin({
+            confirmSignUpInvitation: async (input) =>
+              await runtime.objects.otp.singleton().commands.confirmSignUpInvitation(input),
+          }),
+        ]
+      : [];
 
     const options = {
       appName: "Fragno Backoffice",
@@ -843,6 +853,9 @@ export class InMemoryAuthObject implements AuthObject {
       basePath: "/api/auth",
       secret,
       trustedOrigins: [baseURL],
+      onAPIError: {
+        errorURL: `${baseURL}${BACKOFFICE_LOGIN_PATH}`,
+      },
       database: { db: this.#database, type: "sqlite" as const, transaction: true },
       emailAndPassword: {
         enabled: true,
@@ -875,6 +888,7 @@ export class InMemoryAuthObject implements AuthObject {
               github: {
                 clientId: this.#env.GITHUB_CLIENT_ID,
                 clientSecret: this.#env.GITHUB_CLIENT_SECRET,
+                disableSignUp: runtime.config.signUpInvitationsEnabled,
               },
             }
           : {},
@@ -947,7 +961,7 @@ export class InMemoryAuthObject implements AuthObject {
           },
         },
       },
-      plugins: [...schemaPlugins, backofficeTokenPlugin],
+      plugins: [...schemaPlugins, backofficeTokenPlugin, ...signUpInvitationPlugins],
     } satisfies BetterAuthOptions;
 
     return options;

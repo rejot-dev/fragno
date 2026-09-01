@@ -61,6 +61,7 @@ const objects = {} as BackofficeObjectRegistry;
 const USER_WORKSPACE_INGESTION_TEST_VERSION = "1.2.1";
 const config: BackofficeRuntimeConfig = {
   authEmailVerification: { enabled: false },
+  signUpInvitationsEnabled: true,
   bindings: {
     api: false,
     auth: false,

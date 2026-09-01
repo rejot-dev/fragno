@@ -40,6 +40,7 @@ describe("createOtpRuntime", () => {
       config: {
         docsPublicBaseUrl: "https://backoffice.example",
         authEmailVerification: { enabled: false },
+        signUpInvitationsEnabled: true,
         bindings: {
           api: false,
           auth: false,
@@ -82,6 +83,7 @@ describe("createOtpRuntime", () => {
       config: {
         docsPublicBaseUrl: "https://backoffice.example",
         authEmailVerification: { enabled: false },
+        signUpInvitationsEnabled: true,
         bindings: {
           api: false,
           auth: false,

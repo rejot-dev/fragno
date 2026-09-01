@@ -1,7 +1,10 @@
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 
+import { RouterContextProvider } from "react-router";
+
 import { callBetterAuth } from "@/fragno/auth/auth-server";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { action } from "./sign-up";
 
@@ -14,9 +17,18 @@ vi.mock("@/fragno/auth/email-verification.server", () => ({
   requestEmailVerificationResend: vi.fn(),
 }));
 
+function createRouterContext(signUpInvitationsEnabled: boolean) {
+  const context = new RouterContextProvider();
+  context.set(BackofficeWorkerContext, {
+    runtime: { config: { signUpInvitationsEnabled } },
+  } as never);
+  return context;
+}
+
 const createActionArgs = (
   body: Record<string, string>,
   url = "https://example.com/backoffice/sign-up",
+  signUpInvitationsEnabled = true,
 ) =>
   ({
     request: new Request(url, {
@@ -25,13 +37,15 @@ const createActionArgs = (
       body: new URLSearchParams({ intent: "sign_up", ...body }),
     }),
     url: new URL(url),
-    context: {} as never,
+    context: createRouterContext(signUpInvitationsEnabled),
     params: {},
   }) as unknown as Parameters<typeof action>[0];
 const validSignUpForm = {
   email: "new-user@example.com",
   password: "password123",
   confirmPassword: "password123",
+  invitationId: "invitation-123",
+  invitationCode: "ABC12345",
 };
 
 describe("backoffice sign-up route", () => {
@@ -40,7 +54,61 @@ describe("backoffice sign-up route", () => {
     vi.unstubAllEnvs();
   });
 
-  it("allows registration in production", async () => {
+  it("rejects registration without a sign-up invitation", async () => {
+    await expect(
+      action(
+        createActionArgs({
+          email: "new-user@example.com",
+          password: "password123",
+          confirmPassword: "password123",
+        }),
+      ),
+    ).resolves.toEqual({
+      state: "error",
+      message: "Enter a valid email and a password with at least 8 characters.",
+    });
+    expect(callBetterAuth).not.toHaveBeenCalled();
+  });
+
+  it("allows registration without an invitation when invitations are disabled", async () => {
+    vi.mocked(callBetterAuth).mockResolvedValue(
+      Response.json({ user: { id: "user_123", email: "new-user@example.com" } }),
+    );
+
+    await expect(
+      action(
+        createActionArgs(
+          {
+            email: "new-user@example.com",
+            password: "password123",
+            confirmPassword: "password123",
+          },
+          "https://example.com/backoffice/sign-up",
+          false,
+        ),
+      ),
+    ).resolves.toEqual({
+      state: "verification_required",
+      email: "new-user@example.com",
+      resend: "available",
+    });
+    expect(callBetterAuth).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.anything(),
+      "/sign-up/email",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "new-user",
+          email: "new-user@example.com",
+          password: "password123",
+          callbackURL: "/backoffice/login",
+        }),
+      },
+    );
+  });
+
+  it("allows invited registration in production", async () => {
     vi.stubEnv("MODE", "production");
     vi.mocked(callBetterAuth).mockResolvedValue(
       Response.json({ user: { id: "user_123", email: "new-user@example.com" } }),
@@ -74,6 +142,8 @@ describe("backoffice sign-up route", () => {
           name: "new-user",
           email: "new-user@example.com",
           password: "password123",
+          invitationId: "invitation-123",
+          invitationCode: "ABC12345",
           callbackURL: "/backoffice/login",
         }),
       },

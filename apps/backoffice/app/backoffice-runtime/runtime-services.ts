@@ -24,6 +24,7 @@ export type AuthEmailVerificationRuntimeConfig =
 export type BackofficeRuntimeConfig = {
   docsPublicBaseUrl?: string;
   authEmailVerification: AuthEmailVerificationRuntimeConfig;
+  signUpInvitationsEnabled: boolean;
   bindings: {
     api: boolean;
     auth: boolean;
@@ -88,6 +89,21 @@ const parsePublicHttpUrl = (name: string, value: string | undefined): string => 
   return url.toString();
 };
 
+export const parseSignUpInvitationsEnabled = (input: {
+  enabled: string | undefined;
+  publicBaseUrl: string | undefined;
+  accountCreationAvailable: boolean;
+}): boolean => {
+  const enabled =
+    input.enabled === undefined
+      ? true
+      : parseBooleanEnv("SIGN_UP_INVITATIONS_ENABLED", input.enabled);
+  if (enabled && input.accountCreationAvailable) {
+    parsePublicHttpUrl("DOCS_PUBLIC_BASE_URL", input.publicBaseUrl);
+  }
+  return enabled;
+};
+
 export const parseAuthEmailVerificationRuntimeConfig = (input: {
   enabled: string | undefined;
   publicBaseUrl: string | undefined;
@@ -109,6 +125,11 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
   authEmailVerification: parseAuthEmailVerificationRuntimeConfig({
     enabled: env.AUTH_EMAIL_VERIFICATION_ENABLED,
     publicBaseUrl: env.DOCS_PUBLIC_BASE_URL,
+  }),
+  signUpInvitationsEnabled: parseSignUpInvitationsEnabled({
+    enabled: env.SIGN_UP_INVITATIONS_ENABLED,
+    publicBaseUrl: env.DOCS_PUBLIC_BASE_URL,
+    accountCreationAvailable: Boolean(env.AUTH),
   }),
   bindings: {
     api: Boolean(env.API),

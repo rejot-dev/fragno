@@ -21,18 +21,23 @@ import {
 } from "@/fragno/durable-hooks";
 import {
   DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES,
+  DEFAULT_SIGN_UP_INVITATION_TTL_DAYS,
   EMAIL_VERIFICATION_EXPIRY_HOURS,
   EMAIL_VERIFICATION_EXPIRY_MINUTES,
   EMAIL_VERIFICATION_TYPE,
   IDENTITY_LINK_TYPE,
+  SIGN_UP_INVITATION_TYPE,
   buildEmailVerificationUrl,
   buildIdentityClaimCompletedAutomationEvent,
+  buildSignUpInvitationUrl,
   createOtpServer,
   emailVerificationPayloadSchema,
   identityClaimConfirmationPayloadSchema,
   identityClaimPayloadSchema,
+  signUpInvitationPayloadSchema,
   type OtpFragment,
 } from "@/fragno/otp";
+import { sha256Hex } from "@/lib/crypto";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
@@ -75,6 +80,37 @@ export type ConfirmEmailVerificationChallengeResult =
   | {
       status: "rejected";
       reason: "invalid_input" | "invalid" | "expired";
+    };
+
+export type IssueSignUpInvitationInput = {
+  email: string;
+  publicBaseUrl: string;
+  ttlDays?: number;
+};
+
+export type IssueSignUpInvitationResult = {
+  invitationId: string;
+  email: string;
+  url: string;
+  ttlDays: number;
+  type: typeof SIGN_UP_INVITATION_TYPE;
+};
+
+export type ConfirmSignUpInvitationInput = {
+  invitationId: string;
+  code: string;
+  email: string;
+};
+
+export type ConfirmSignUpInvitationResult =
+  | {
+      ok: true;
+      invitationId: string;
+      email: string;
+    }
+  | {
+      ok: false;
+      reason: "invalid_input" | "invalid" | "expired" | "email_mismatch";
     };
 
 export type IssueIdentityClaimInput = {
@@ -127,6 +163,24 @@ const issueEmailVerificationInputSchema = z.object({
 const confirmEmailVerificationChallengeInputSchema = z.object({
   userId: z.string().trim().min(1),
   code: z.string().trim().min(1),
+});
+
+const signUpInvitationIdEncoder = new TextEncoder();
+
+async function signUpInvitationIdForEmail(email: string): Promise<string> {
+  return await sha256Hex(signUpInvitationIdEncoder.encode(`${SIGN_UP_INVITATION_TYPE}:${email}`));
+}
+
+const issueSignUpInvitationInputSchema = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email()),
+  publicBaseUrl: publicHttpUrlSchema,
+  ttlDays: z.number().int().positive().optional(),
+});
+
+const confirmSignUpInvitationInputSchema = z.object({
+  invitationId: z.string().trim().min(1),
+  code: z.string().trim().min(1),
+  email: z.string().trim().toLowerCase().pipe(z.email()),
 });
 
 const issueIdentityClaimInputSchema = z.object({
@@ -305,6 +359,9 @@ export class InMemoryOtpObject implements OtpObject {
         await handleIdentityClaimConfirmed(this.#runtime, payload, context);
         return;
       }
+      case SIGN_UP_INVITATION_TYPE: {
+        return;
+      }
     }
   }
 
@@ -421,6 +478,73 @@ export class InMemoryOtpObject implements OtpObject {
       : { status: "already_confirmed" };
   }
 
+  async issueSignUpInvitation(
+    input: IssueSignUpInvitationInput,
+  ): Promise<IssueSignUpInvitationResult> {
+    const parsed = issueSignUpInvitationInputSchema.parse(input);
+    const invitationId = await signUpInvitationIdForEmail(parsed.email);
+    const ttlDays = parsed.ttlDays ?? DEFAULT_SIGN_UP_INVITATION_TTL_DAYS;
+    const payload = {
+      email: parsed.email,
+      publicBaseUrl: parsed.publicBaseUrl,
+      ttlDays,
+    };
+    const fragment = this.#getFragment();
+    const issued = await fragment.callServices(() =>
+      fragment.services.otp.issueOtp({
+        externalId: invitationId,
+        type: SIGN_UP_INVITATION_TYPE,
+        durationMinutes: ttlDays * 24 * 60,
+        payload,
+      }),
+    );
+
+    return {
+      invitationId,
+      email: payload.email,
+      url: buildSignUpInvitationUrl(payload.publicBaseUrl, invitationId, issued.code),
+      ttlDays,
+      type: SIGN_UP_INVITATION_TYPE,
+    };
+  }
+
+  async confirmSignUpInvitation(
+    input: ConfirmSignUpInvitationInput,
+  ): Promise<ConfirmSignUpInvitationResult> {
+    const parsed = confirmSignUpInvitationInputSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, reason: "invalid_input" };
+    }
+
+    const { invitationId, code, email } = parsed.data;
+    const fragment = this.#getFragment();
+    const confirmation = await fragment.callServices(() =>
+      fragment.services.otp.confirmOtp(invitationId, code, SIGN_UP_INVITATION_TYPE),
+    );
+    if (!confirmation.confirmed) {
+      return {
+        ok: false,
+        reason: confirmation.error === "OTP_EXPIRED" ? "expired" : "invalid",
+      };
+    }
+
+    // Repeated confirmation is valid for retries, so recover the invitation's trusted email from
+    // the persisted issuance payload instead of accepting it from the sign-up request.
+    const confirmedOtp = await fragment.callServices(() =>
+      fragment.services.otp.issueOtp({
+        externalId: invitationId,
+        type: SIGN_UP_INVITATION_TYPE,
+        requestId: confirmation.requestId,
+      }),
+    );
+    const invitation = signUpInvitationPayloadSchema.parse(confirmedOtp.payload);
+    if (invitation.email !== email) {
+      return { ok: false, reason: "email_mismatch" };
+    }
+
+    return { ok: true, invitationId, email: invitation.email };
+  }
+
   async issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult> {
     const parsed = issueIdentityClaimInputSchema.parse(input);
     const fragment = this.#getFragment();
@@ -515,6 +639,18 @@ export class Otp extends DurableObject<CloudflareEnv> implements OtpObject {
     input: ConfirmEmailVerificationChallengeInput,
   ): Promise<ConfirmEmailVerificationChallengeResult> {
     return await this.#object.confirmEmailVerificationChallenge(input);
+  }
+
+  async issueSignUpInvitation(
+    input: IssueSignUpInvitationInput,
+  ): Promise<IssueSignUpInvitationResult> {
+    return await this.#object.issueSignUpInvitation(input);
+  }
+
+  async confirmSignUpInvitation(
+    input: ConfirmSignUpInvitationInput,
+  ): Promise<ConfirmSignUpInvitationResult> {
+    return await this.#object.confirmSignUpInvitation(input);
   }
 
   async issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult> {

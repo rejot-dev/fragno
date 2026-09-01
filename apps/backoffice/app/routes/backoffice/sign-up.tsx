@@ -10,6 +10,7 @@ import {
   getBackofficeMe,
 } from "@/fragno/auth/auth-server";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/sign-up";
 import {
@@ -19,8 +20,15 @@ import {
   readBackofficeReturnTo,
 } from "./auth-navigation";
 
+type BackofficeSignUpInvitation = {
+  invitationId: string;
+  code: string;
+};
+
 type BackofficeSignUpLoaderData = {
   returnTo: string;
+  invitation: BackofficeSignUpInvitation | null;
+  signUpInvitationsEnabled: boolean;
 };
 
 type BackofficeSignUpActionData =
@@ -34,18 +42,50 @@ type BackofficeSignUpActionData =
       resend: "available" | "accepted";
     };
 
-const signUpActionInputSchema = z.discriminatedUnion("intent", [
-  z.object({
-    intent: z.literal("sign_up"),
-    email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
-    password: z.string().min(8).max(100),
-    confirmPassword: z.string().min(1),
-  }),
+const passwordSignUpFields = {
+  intent: z.literal("sign_up"),
+  email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
+  password: z.string().min(8).max(100),
+  confirmPassword: z.string().min(1),
+};
+
+const invitedPasswordSignUpActionInputSchema = z.object({
+  ...passwordSignUpFields,
+  invitationId: z.string().trim().min(1),
+  invitationCode: z.string().trim().min(1),
+});
+
+const invitedSignUpActionInputSchema = z.discriminatedUnion("intent", [
+  invitedPasswordSignUpActionInputSchema,
   z.object({
     intent: z.literal("resend"),
     email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
   }),
 ]);
+
+const openSignUpActionInputSchema = z.discriminatedUnion("intent", [
+  z.object(passwordSignUpFields),
+  z.object({
+    intent: z.literal("resend"),
+    email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
+  }),
+]);
+
+function readBackofficeSignUpInvitation(url: URL): BackofficeSignUpInvitation | null {
+  const invitationId = url.searchParams.get("invitationId")?.trim();
+  const code = url.searchParams.get("code")?.trim();
+  return invitationId && code ? { invitationId, code } : null;
+}
+
+function buildBackofficeInvitedSignUpPath(
+  returnTo: string,
+  invitation: BackofficeSignUpInvitation,
+): string {
+  const url = new URL(buildBackofficeSignUpPath(returnTo), "http://localhost");
+  url.searchParams.set("invitationId", invitation.invitationId);
+  url.searchParams.set("code", invitation.code);
+  return `${url.pathname}${url.search}`;
+}
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
   const returnTo = readBackofficeReturnTo(url);
@@ -54,13 +94,22 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     return redirect(returnTo);
   }
 
-  return { returnTo } satisfies BackofficeSignUpLoaderData;
+  const { signUpInvitationsEnabled } = context.get(BackofficeWorkerContext).runtime.config;
+  return {
+    returnTo,
+    invitation: readBackofficeSignUpInvitation(url),
+    signUpInvitationsEnabled,
+  } satisfies BackofficeSignUpLoaderData;
 }
 
 export async function action({ request, context, url }: Route.ActionArgs) {
   const formData = await request.formData();
   const returnTo = readBackofficeReturnTo(url);
-  const input = signUpActionInputSchema.safeParse(Object.fromEntries(formData));
+  const { signUpInvitationsEnabled } = context.get(BackofficeWorkerContext).runtime.config;
+  const inputSchema = signUpInvitationsEnabled
+    ? invitedSignUpActionInputSchema
+    : openSignUpActionInputSchema;
+  const input = inputSchema.safeParse(Object.fromEntries(formData));
   if (!input.success) {
     return {
       state: "error",
@@ -90,6 +139,10 @@ export async function action({ request, context, url }: Route.ActionArgs) {
     } satisfies BackofficeSignUpActionData;
   }
 
+  const invitationCredentials = signUpInvitationsEnabled
+    ? invitedPasswordSignUpActionInputSchema.parse(input.data)
+    : null;
+
   try {
     const response = await callBetterAuth(request, context, "/sign-up/email", {
       method: "POST",
@@ -97,6 +150,12 @@ export async function action({ request, context, url }: Route.ActionArgs) {
         name: input.data.email.split("@", 1)[0] || input.data.email,
         email: input.data.email,
         password: input.data.password,
+        ...(invitationCredentials
+          ? {
+              invitationId: invitationCredentials.invitationId,
+              invitationCode: invitationCredentials.invitationCode,
+            }
+          : {}),
         callbackURL: buildBackofficeLoginPath(returnTo),
       }),
     });
@@ -127,13 +186,14 @@ export async function action({ request, context, url }: Route.ActionArgs) {
 
 export function meta() {
   return [
-    { title: "Fragno Backoffice Sign Up" },
-    { name: "description", content: "Create a Fragno Backoffice account." },
+    { title: "Backoffice Sign Up" },
+    { name: "description", content: "Create a Backoffice account." },
   ];
 }
 
 export default function BackofficeSignUp() {
-  const { returnTo } = useLoaderData<BackofficeSignUpLoaderData>();
+  const { returnTo, invitation, signUpInvitationsEnabled } =
+    useLoaderData<BackofficeSignUpLoaderData>();
   const actionData = useActionData<BackofficeSignUpActionData>();
   const navigation = useNavigation();
   const verificationRequired = actionData?.state === "verification_required" ? actionData : null;
@@ -141,6 +201,11 @@ export default function BackofficeSignUp() {
   const submittedIntent = navigation.formData?.get("intent");
   const signUpPending = navigation.state === "submitting" && submittedIntent !== "resend";
   const resendPending = navigation.state === "submitting" && submittedIntent === "resend";
+  const activeInvitation = signUpInvitationsEnabled ? invitation : null;
+  const signUpAllowed = !signUpInvitationsEnabled || activeInvitation !== null;
+  const signUpPath = activeInvitation
+    ? buildBackofficeInvitedSignUpPath(returnTo, activeInvitation)
+    : buildBackofficeSignUpPath(returnTo);
 
   return (
     <div
@@ -151,13 +216,13 @@ export default function BackofficeSignUp() {
       <div className="relative mx-auto flex min-h-screen max-w-5xl flex-col items-center justify-center gap-6 px-4 py-8 lg:flex-row lg:items-center lg:justify-between">
         <div className="w-full max-w-xl space-y-4">
           <p className="text-[11px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-            Fragno Backoffice
+            Backoffice
           </p>
           <h1 className="text-3xl leading-tight font-semibold text-[var(--bo-fg)] md:text-4xl">
-            Create a Fragno Backoffice account.
+            Create your Backoffice account.
           </h1>
           <p className="text-sm text-[var(--bo-muted)]">
-            Register your email to enter the backoffice and configure fragments.
+            Register your email to access Backoffice.
           </p>
           <div className="flex flex-wrap gap-2">
             <Link
@@ -166,24 +231,34 @@ export default function BackofficeSignUp() {
             >
               Back to sign in
             </Link>
-            <Link
-              to="/docs"
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-            >
-              Return to docs
-            </Link>
           </div>
         </div>
 
         <div className="w-full max-w-md">
           <FormContainer
-            title={verificationRequired ? "Check your email" : "Create account"}
+            title={
+              verificationRequired
+                ? "Check your email"
+                : signUpAllowed
+                  ? "Create account"
+                  : "Invitation required"
+            }
             description={
               verificationRequired
                 ? `A verification link is being delivered to ${verificationRequired.email}.`
-                : "Use your team email to create a backoffice login."
+                : activeInvitation
+                  ? "Use the invited email to create a backoffice login."
+                  : signUpInvitationsEnabled
+                    ? "Open the sign-up link created for your email address."
+                    : "Use your team email to create a backoffice login."
             }
-            eyebrow={verificationRequired ? "Verification required" : "Get access"}
+            eyebrow={
+              verificationRequired
+                ? "Verification required"
+                : signUpAllowed
+                  ? "Get access"
+                  : "Invite only"
+            }
           >
             {verificationRequired ? (
               <div className="space-y-4">
@@ -214,19 +289,44 @@ export default function BackofficeSignUp() {
                   Continue to sign in
                 </Link>
               </div>
+            ) : !signUpAllowed ? (
+              <div className="space-y-4">
+                <p className="text-sm leading-6 text-[var(--bo-muted)]">
+                  Ask a Backoffice administrator to create a sign-up invitation for your email.
+                </p>
+                <Link
+                  to={buildBackofficeLoginPath(returnTo)}
+                  className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
+                >
+                  Back to sign in
+                </Link>
+              </div>
             ) : (
-              <Form
-                method="post"
-                action={buildBackofficeSignUpPath(returnTo)}
-                className="space-y-3"
-              >
-                <FormField label="Work email" hint="Use the email tied to your team access.">
+              <Form method="post" action={signUpPath} className="space-y-3">
+                {activeInvitation ? (
+                  <>
+                    <input
+                      type="hidden"
+                      name="invitationId"
+                      value={activeInvitation.invitationId}
+                    />
+                    <input type="hidden" name="invitationCode" value={activeInvitation.code} />
+                  </>
+                ) : null}
+                <FormField
+                  label="Work email"
+                  hint={
+                    activeInvitation
+                      ? "Use the email tied to your invitation."
+                      : "Use the email tied to your team access."
+                  }
+                >
                   <input
                     type="email"
                     name="email"
                     autoComplete="username"
                     required
-                    placeholder="team@fragno.dev"
+                    placeholder="team@example.com"
                     className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                   />
                 </FormField>

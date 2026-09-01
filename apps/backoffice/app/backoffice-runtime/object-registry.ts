@@ -383,6 +383,12 @@ export type OtpObject = DurableHookCommands & {
   confirmEmailVerificationChallenge(
     input: Parameters<Otp["confirmEmailVerificationChallenge"]>[0],
   ): Promise<AwaitedMethodReturn<Otp, "confirmEmailVerificationChallenge">>;
+  issueSignUpInvitation(
+    input: Parameters<Otp["issueSignUpInvitation"]>[0],
+  ): Promise<AwaitedMethodReturn<Otp, "issueSignUpInvitation">>;
+  confirmSignUpInvitation(
+    input: Parameters<Otp["confirmSignUpInvitation"]>[0],
+  ): Promise<AwaitedMethodReturn<Otp, "confirmSignUpInvitation">>;
   issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult>;
   confirmIdentityClaim(input: unknown): Promise<AwaitedMethodReturn<Otp, "confirmIdentityClaim">>;
 };

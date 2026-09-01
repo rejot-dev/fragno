@@ -901,6 +901,7 @@ const createScopedMcpRuntimeServices = (
     kernelObserver: noopBackofficeKernelObserver,
     config: {
       authEmailVerification: { enabled: false },
+      signUpInvitationsEnabled: true,
       bindings: {
         api: false,
         auth: false,
