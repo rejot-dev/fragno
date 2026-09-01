@@ -8,14 +8,12 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
-import { RouterContextProvider } from "react-router";
-
 import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { action } from "./admin-grant";
 
@@ -32,9 +30,8 @@ function createRequest(token = "grant-secret", body: unknown = { email: "Admin@R
   });
 }
 
-function createRouteContext(runtime: InMemoryBackofficeRuntime) {
-  const context = new RouterContextProvider();
-  context.set(BackofficeWorkerContext, {
+function createRouteContext(request: Request, runtime: InMemoryBackofficeRuntime) {
+  return createBackofficeRouterContextProvider(request, {
     runtime: runtime.services,
     kernel: new BackofficeKernel(runtime.services),
     env: {
@@ -42,14 +39,13 @@ function createRouteContext(runtime: InMemoryBackofficeRuntime) {
     } as CloudflareEnv,
     ctx: {} as ExecutionContext,
   });
-  return context;
 }
 
 function callAction(request: Request, runtime: InMemoryBackofficeRuntime) {
   return action({
     request,
     url: new URL(request.url),
-    context: createRouteContext(runtime),
+    context: createRouteContext(request, runtime),
     params: {},
   } as unknown as Parameters<typeof action>[0]);
 }

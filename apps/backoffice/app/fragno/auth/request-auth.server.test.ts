@@ -2,14 +2,11 @@ import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 
-const { authObject, getAuthDurableObjectMock } = vi.hoisted(() => ({
+const { authObject } = vi.hoisted(() => ({
   authObject: { http: { fetch: vi.fn() } },
-  getAuthDurableObjectMock: vi.fn(),
 }));
 
-vi.mock("@/worker-runtime/durable-objects", () => ({
-  getAuthDurableObject: getAuthDurableObjectMock,
-}));
+import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { BACKOFFICE_AUTH_ERROR_HEADER, BACKOFFICE_TOKEN_EXPIRED_CODE } from "./contracts";
 import { resolveBackofficeJwtTransport } from "./jwt-transport";
@@ -39,10 +36,28 @@ const issueJwt = async (expirationTime: string | number = "15m") => {
   };
 };
 
+function createRequestContext(request: Request) {
+  return createBackofficeRouterContextProvider(request, {
+    runtime: {
+      objects: { auth: { singleton: () => authObject } },
+    } as never,
+    kernel: {} as never,
+    env: {} as CloudflareEnv,
+    ctx: {} as ExecutionContext,
+  });
+}
+
+function requirePrincipalForRequest(request: Request) {
+  return requireBackofficePrincipal(request, createRequestContext(request));
+}
+
+function authorizePrincipalForRequest(request: Request) {
+  return authorizeBackofficePrincipal(request, createRequestContext(request));
+}
+
 describe("Backoffice request authentication", () => {
   beforeEach(() => {
     authObject.http.fetch.mockReset();
-    getAuthDurableObjectMock.mockReturnValue(authObject);
   });
 
   test("authenticates the same JWT from a bearer header", async () => {
@@ -50,11 +65,10 @@ describe("Backoffice request authentication", () => {
     authObject.http.fetch.mockResolvedValue(Response.json({ keys: [publicJwk] }));
 
     await expect(
-      requireBackofficePrincipal(
+      requirePrincipalForRequest(
         new Request("https://backoffice.example/private", {
           headers: { authorization: `Bearer ${token}`, cookie: "unrelated=value" },
         }),
-        {} as never,
       ),
     ).resolves.toMatchObject({
       user: { id: "user-1", role: "admin" },
@@ -70,13 +84,12 @@ describe("Backoffice request authentication", () => {
     authObject.http.fetch.mockResolvedValue(Response.json({ keys: [publicJwk] }));
 
     await expect(
-      requireBackofficePrincipal(
+      requirePrincipalForRequest(
         new Request("https://backoffice.example/private", {
           headers: {
             cookie: `${backofficeAccessTokenCookieName(false)}=${token}; better-auth.session_token=session`,
           },
         }),
-        {} as never,
       ),
     ).resolves.toMatchObject({
       auth: {
@@ -98,11 +111,10 @@ describe("Backoffice request authentication", () => {
 
   test("does not authorize a Better Auth session cookie", async () => {
     await expect(
-      requireBackofficePrincipal(
+      requirePrincipalForRequest(
         new Request("https://backoffice.example/private", {
           headers: { cookie: "better-auth.session_token=opaque-session" },
         }),
-        {} as never,
       ),
     ).rejects.toMatchObject({ status: 401 });
     expect(authObject.http.fetch).not.toHaveBeenCalled();
@@ -110,11 +122,10 @@ describe("Backoffice request authentication", () => {
 
   test("rejects opaque bearer session tokens", async () => {
     await expect(
-      requireBackofficePrincipal(
+      requirePrincipalForRequest(
         new Request("https://backoffice.example/private", {
           headers: { authorization: "Bearer opaque-better-auth-session" },
         }),
-        {} as never,
       ),
     ).rejects.toMatchObject({ status: 401 });
   });
@@ -123,11 +134,10 @@ describe("Backoffice request authentication", () => {
     const { token, publicJwk } = await issueJwt(Math.floor(Date.now() / 1_000) - 1);
     authObject.http.fetch.mockResolvedValue(Response.json({ keys: [publicJwk] }));
 
-    const authorization = await authorizeBackofficePrincipal(
+    const authorization = await authorizePrincipalForRequest(
       new Request("https://backoffice.example/private", {
         headers: { cookie: `${backofficeAccessTokenCookieName(false)}=${token}` },
       }),
-      {} as never,
     );
 
     assert(!authorization.ok);
@@ -151,9 +161,7 @@ describe("Backoffice request authentication", () => {
     ];
 
     for (const request of requests) {
-      await expect(requireBackofficePrincipal(request, {} as never)).rejects.toMatchObject({
-        status: 401,
-      });
+      await expect(requirePrincipalForRequest(request)).rejects.toMatchObject({ status: 401 });
     }
   });
 });

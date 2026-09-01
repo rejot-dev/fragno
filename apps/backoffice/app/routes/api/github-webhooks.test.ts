@@ -8,15 +8,13 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
-import { RouterContextProvider } from "react-router";
-
 import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { bytesToHex } from "@/lib/crypto";
-import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { action } from "./github-webhooks";
 
@@ -40,9 +38,8 @@ class RecordingGitHubObject {
   }
 }
 
-function createRouteContext(runtime: InMemoryBackofficeRuntime) {
-  const context = new RouterContextProvider();
-  context.set(BackofficeWorkerContext, {
+function createRouteContext(request: Request, runtime: InMemoryBackofficeRuntime) {
+  return createBackofficeRouterContextProvider(request, {
     runtime: runtime.services,
     kernel: new BackofficeKernel(runtime.services),
     env: {
@@ -50,7 +47,6 @@ function createRouteContext(runtime: InMemoryBackofficeRuntime) {
     } as CloudflareEnv,
     ctx: {} as ExecutionContext,
   });
-  return context;
 }
 
 async function signWebhookBody(body: string): Promise<string> {
@@ -87,7 +83,7 @@ function callAction(request: Request, runtime: InMemoryBackofficeRuntime) {
   return action({
     request,
     url: new URL(request.url),
-    context: createRouteContext(runtime),
+    context: createRouteContext(request, runtime),
     params: {},
   } as unknown as Parameters<typeof action>[0]);
 }

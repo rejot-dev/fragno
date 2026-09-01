@@ -1,10 +1,10 @@
-import { createRequestHandler, RouterContextProvider } from "react-router";
+import { createRequestHandler } from "react-router";
 import System from "typebox/system";
 import * as serverBuild from "virtual:react-router/server-build";
 
 import { BackofficeKernel } from "../app/backoffice-runtime/kernel";
 import { createCloudflareBackofficeRuntimeServices } from "../app/backoffice-runtime/runtime-services";
-import { BackofficeWorkerContext } from "../app/worker-runtime/router-context";
+import { createBackofficeRouterContextProvider } from "../app/worker-runtime/router-context-provider.server";
 
 System.Settings.Set({ useAcceleration: false });
 
@@ -18,8 +18,7 @@ export default {
       span.setAttribute("backoffice.request_id", requestId);
 
       const runtime = createCloudflareBackofficeRuntimeServices(env);
-      const context = new RouterContextProvider();
-      context.set(BackofficeWorkerContext, {
+      const context = createBackofficeRouterContextProvider(request, {
         runtime,
         kernel: new BackofficeKernel(runtime),
         env,

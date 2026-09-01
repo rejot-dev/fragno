@@ -1,7 +1,5 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
-import { RouterContextProvider } from "react-router";
-
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -26,7 +24,7 @@ import {
   action as submitEmailVerificationAction,
   loader as loadEmailVerification,
 } from "@/routes/backoffice/verify-email";
-import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import {
   defineBackofficeScenario,
@@ -77,26 +75,27 @@ const requestEmailVerificationResend = (
   );
 
 const submitEmailVerificationUrl = async (ctx: BackofficeScenarioContext, verificationUrl: URL) => {
-  const context = createScenarioRouterContext(ctx);
+  const pageRequest = new Request(verificationUrl);
   const page = loadEmailVerification({
-    request: new Request(verificationUrl),
+    request: pageRequest,
     url: verificationUrl,
-    context,
+    context: createScenarioRouterContext(ctx, pageRequest),
     params: {},
   } as unknown as Parameters<typeof loadEmailVerification>[0]);
   assert(page.state === "ready");
 
-  const result = await submitEmailVerificationAction({
-    request: new Request(new URL("/backoffice/verify-email.data", verificationUrl), {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" },
-      body: new URLSearchParams({
-        intent: "confirm",
-        userId: page.userId,
-        code: page.code,
-      }),
+  const actionRequest = new Request(new URL("/backoffice/verify-email.data", verificationUrl), {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" },
+    body: new URLSearchParams({
+      intent: "confirm",
+      userId: page.userId,
+      code: page.code,
     }),
-    context,
+  });
+  const result = await submitEmailVerificationAction({
+    request: actionRequest,
+    context: createScenarioRouterContext(ctx, actionRequest),
     params: {},
   } as unknown as Parameters<typeof submitEmailVerificationAction>[0]);
 
@@ -116,16 +115,13 @@ const signInWithPassword = (ctx: BackofficeScenarioContext, email: string) =>
     }),
   );
 
-const createScenarioRouterContext = (ctx: BackofficeScenarioContext) => {
-  const routerContext = new RouterContextProvider();
-  routerContext.set(BackofficeWorkerContext, {
+const createScenarioRouterContext = (ctx: BackofficeScenarioContext, request: Request) =>
+  createBackofficeRouterContextProvider(request, {
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     env: ctx.runtime.env as unknown as CloudflareEnv,
     ctx: {} as ExecutionContext,
   });
-  return routerContext;
-};
 
 const issuePublicEmailVerificationOtp = (): BackofficeScenarioStep => ({
   kind: "when",
@@ -188,13 +184,13 @@ describe("Auth email verification scenarios", () => {
                 (await signInWithPassword(ctx, "new-user@example.com")).ok,
                 "Expected verification to complete before the confirmation response.",
               );
-              const context = createScenarioRouterContext(ctx);
               const actionUrl = new URL("/backoffice/verify-email", verificationUrl);
+              const request = new Request(actionUrl);
               expect(
                 loadEmailVerification({
-                  request: new Request(actionUrl),
+                  request,
                   url: actionUrl,
-                  context,
+                  context: createScenarioRouterContext(ctx, request),
                   params: {},
                 } as unknown as Parameters<typeof loadEmailVerification>[0]),
               ).toEqual({ state: "result", result: "incomplete" });

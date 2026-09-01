@@ -7,20 +7,25 @@ import {
   type BackofficeOrganizationIdentity,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+import { getBackofficeRequestState } from "@/worker-runtime/request-state";
+import type { BackofficeWorkerContextValue } from "@/worker-runtime/router-context";
 
 import type { AutomationCollectionSource } from "./browser-database";
 
-export async function fetchAutomationCollectionSource<
+/** Loads one Automations adapter description from the scoped runtime authority. */
+export async function loadAutomationCollectionSource<
   TOrganization extends BackofficeOrganizationIdentity,
 >(
   request: Request,
-  context: Readonly<RouterContextProvider>,
+  workerContext: BackofficeWorkerContextValue,
   resolvedScope: BackofficeResolvedScope<TOrganization>,
 ): Promise<AutomationCollectionSource<TOrganization>> {
   const runtimeScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
-  const { runtime, kernel } = context.get(BackofficeWorkerContext);
-  const automations = kernel.scoped("AUTOMATIONS", runtimeScope, runtime.objects.automations);
+  const automations = workerContext.kernel.scoped(
+    "AUTOMATIONS",
+    runtimeScope,
+    workerContext.runtime.objects.automations,
+  );
   const description = await fetchFragnoOutboxDescription({
     baseUrl: new URL("/api/automations", request.url),
     signal: request.signal,
@@ -31,4 +36,15 @@ export async function fetchAutomationCollectionSource<
     resolvedScope,
     adapterIdentity: description.adapterIdentity,
   };
+}
+
+/** Returns the request-coalesced Automations collection source for a canonical scope. */
+export function fetchAutomationCollectionSource<
+  TOrganization extends BackofficeOrganizationIdentity,
+>(
+  _request: Request,
+  context: Readonly<RouterContextProvider>,
+  resolvedScope: BackofficeResolvedScope<TOrganization>,
+): Promise<AutomationCollectionSource<TOrganization>> {
+  return getBackofficeRequestState(context).getAutomationCollectionSource(resolvedScope);
 }

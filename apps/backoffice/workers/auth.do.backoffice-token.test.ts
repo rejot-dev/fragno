@@ -20,6 +20,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint, tracing } = vi.hoisted(() =>
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint, tracing }));
 
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { backofficeMeDataSchema } from "@/fragno/auth/contracts";
 import {
   BACKOFFICE_JWT_LIFETIME_SECONDS,
@@ -28,6 +29,7 @@ import {
 } from "@/fragno/auth/token-lifecycle";
 import { loader as loadBackofficeMe } from "@/routes/api/backoffice-me";
 import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
+import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
 
@@ -65,6 +67,18 @@ afterEach(async () => {
     vi.useRealTimers();
   }
 });
+
+function createRouteContext(
+  request: Request,
+  runtime: Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>,
+) {
+  return createBackofficeRouterContextProvider(request, {
+    runtime: runtime.services,
+    kernel: new BackofficeKernel(runtime.services),
+    env: runtime.env as unknown as CloudflareEnv,
+    ctx: {} as ExecutionContext,
+  });
+}
 
 const signUp = async () => {
   const runtime = await createInMemoryBackofficeRuntime({
@@ -135,13 +149,12 @@ describe("Backoffice token exchange", () => {
     });
     expect(verification.payload.jti).toEqual(expect.any(String));
 
+    const cookieRequest = new Request("https://backoffice.example/api/backoffice/me", {
+      headers: { cookie: accessTokenCookie },
+    });
     const response = await loadBackofficeMe({
-      request: new Request("https://backoffice.example/api/backoffice/me", {
-        headers: { cookie: accessTokenCookie },
-      }),
-      context: {
-        get: () => ({ runtime: runtime.services }),
-      },
+      request: cookieRequest,
+      context: createRouteContext(cookieRequest, runtime),
       params: {},
     } as never);
     assert(response.status === 200);
@@ -152,11 +165,12 @@ describe("Backoffice token exchange", () => {
     expect(me.organizations).toHaveLength(1);
     assert(response.headers.get("cache-control") === "no-store");
 
+    const bearerRequest = new Request("https://backoffice.example/api/backoffice/me", {
+      headers: { authorization: `Bearer ${accessTokenCookie.split("=", 2)[1]}` },
+    });
     const bearerResponse = await loadBackofficeMe({
-      request: new Request("https://backoffice.example/api/backoffice/me", {
-        headers: { authorization: `Bearer ${accessTokenCookie.split("=", 2)[1]}` },
-      }),
-      context: { get: () => ({ runtime: runtime.services }) },
+      request: bearerRequest,
+      context: createRouteContext(bearerRequest, runtime),
       params: {},
     } as never);
     assert(bearerResponse.status === 200);

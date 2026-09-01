@@ -3,7 +3,8 @@ import { createContext, type RouterContext } from "react-router";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
-type BackofficeWorkerContextValue = {
+/** Contains the Worker-owned services available throughout one Backoffice HTTP request. */
+export type BackofficeWorkerContextValue = {
   runtime: BackofficeRuntimeServices;
   kernel: BackofficeKernel;
   env: CloudflareEnv;

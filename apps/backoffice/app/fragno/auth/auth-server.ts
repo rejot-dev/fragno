@@ -3,15 +3,14 @@ import type { RouterContextProvider } from "react-router";
 import {
   BACKOFFICE_AUTH_ERROR_HEADER,
   BACKOFFICE_TOKEN_EXPIRED_CODE,
-  backofficeMeDataSchema,
   type BackofficeMeData,
 } from "@/fragno/auth/contracts";
-import { resolveBackofficeJwtTransport } from "@/fragno/auth/jwt-transport";
-import {
-  expiredBackofficeAccessTokenCookieHeaders,
-  verifyBackofficeJwt,
-} from "@/fragno/auth/token-lifecycle";
+import { expiredBackofficeAccessTokenCookieHeaders } from "@/fragno/auth/token-lifecycle";
 import { getAuthDurableObject } from "@/worker-runtime/durable-objects";
+import {
+  getBackofficeRequestState,
+  type BackofficeMeLookupResult,
+} from "@/worker-runtime/request-state";
 
 export const callBetterAuth = async (
   request: Request,
@@ -53,41 +52,11 @@ export function createBackofficeIdentityChangeHeaders(response: Response): Heade
   return headers;
 }
 
-export type BackofficeMeLookupResult =
-  | { status: "missing" }
-  | { status: "invalid"; reason: "expired" | "invalid" }
-  | { status: "authenticated"; me: BackofficeMeData; expiresAt: Date };
-
 export async function getBackofficeMe(
-  request: Request,
+  _request: Request,
   context: Readonly<RouterContextProvider>,
 ): Promise<BackofficeMeLookupResult> {
-  const transport = resolveBackofficeJwtTransport(request);
-  if (!transport.ok) {
-    return transport.reason === "missing"
-      ? { status: "missing" }
-      : { status: "invalid", reason: "invalid" };
-  }
-
-  const authObject = getAuthDurableObject(context);
-  const verification = await verifyBackofficeJwt(transport.token, request.url, authObject.http);
-  if (!verification.ok) {
-    return verification.reason === "missing"
-      ? { status: "missing" }
-      : { status: "invalid", reason: verification.reason };
-  }
-
-  const me = await authObject.commands.getBackofficeMe({
-    userId: verification.payload.sub,
-    activeOrganizationId: verification.payload.organization?.id ?? null,
-  });
-  return me
-    ? {
-        status: "authenticated",
-        me: backofficeMeDataSchema.parse(me),
-        expiresAt: new Date(verification.payload.exp * 1_000),
-      }
-    : { status: "invalid", reason: "invalid" };
+  return await getBackofficeRequestState(context).getBackofficeMe();
 }
 
 export async function findBackofficeMe(

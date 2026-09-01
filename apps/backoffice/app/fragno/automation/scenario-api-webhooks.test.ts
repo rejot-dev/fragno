@@ -15,7 +15,6 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import { apiSchema } from "@fragno-dev/api-fragment/schema";
-import { RouterContextProvider } from "react-router";
 import { z } from "zod";
 
 import { migrate } from "@fragno-dev/db";
@@ -27,7 +26,7 @@ import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/sc
 import { createApiServer } from "@/fragno/api";
 import { bytesToHex } from "@/lib/crypto";
 import { action as receiveApiWebhook } from "@/routes/api/api";
-import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import {
   defineBackofficeScenario,
@@ -86,16 +85,13 @@ type EventSourceScenarioVars = {
 
 type WebhookResponseCapture = keyof ApiWebhookScenarioVars;
 
-const createScenarioRouterContext = (ctx: BackofficeScenarioContext) => {
-  const routerContext = new RouterContextProvider();
-  routerContext.set(BackofficeWorkerContext, {
+const createScenarioRouterContext = (ctx: BackofficeScenarioContext, request: Request) =>
+  createBackofficeRouterContextProvider(request, {
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     env: ctx.runtime.env as unknown as CloudflareEnv,
     ctx: {} as ExecutionContext,
   });
-  return routerContext;
-};
 
 const getConfiguredWebhookPublicUrl = (ctx: BackofficeScenarioContext): string => {
   const result = ctx.codemodeRuns.at(-1)?.result.result;
@@ -158,17 +154,18 @@ const postSlackWebhook = ({
       orgSlug: ORG_SLUG,
     });
 
+    const request = new Request(publicUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-slack-request-timestamp": timestamp,
+        "x-slack-signature": signature,
+      },
+      body: rawBody,
+    });
     const response = await receiveApiWebhook({
-      request: new Request(publicUrl, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-slack-request-timestamp": timestamp,
-          "x-slack-signature": signature,
-        },
-        body: rawBody,
-      }),
-      context: createScenarioRouterContext(ctx),
+      request,
+      context: createScenarioRouterContext(ctx, request),
       params: { scopeSegment },
     } as unknown as Parameters<typeof receiveApiWebhook>[0]);
 
@@ -190,16 +187,17 @@ const postAcmeWebhookDelivery = (): BackofficeScenarioStep => ({
       kind: "org",
       orgId: ORG_ID,
     });
+    const request = new Request(
+      `https://example.com/api/http/org%3A${ORG_ID}/webhooks/endpoints/${ACME_ENDPOINT_ID}/events`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(acmeDeliveryBody),
+      },
+    );
     const response = await receiveApiWebhook({
-      request: new Request(
-        `https://example.com/api/http/org%3A${ORG_ID}/webhooks/endpoints/${ACME_ENDPOINT_ID}/events`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(acmeDeliveryBody),
-        },
-      ),
-      context: createScenarioRouterContext(ctx),
+      request,
+      context: createScenarioRouterContext(ctx, request),
       params: { scopeSegment },
     } as unknown as Parameters<typeof receiveApiWebhook>[0]);
 
