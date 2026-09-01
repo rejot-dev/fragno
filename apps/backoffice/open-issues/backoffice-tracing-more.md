@@ -1,4 +1,16 @@
-I would fix this **at the object-transport and async-ownership primitives**, not route by route.
+# Backoffice request-owned transport and async ownership
+
+Status: open follow-up
+
+Created: August 27, 2026
+
+Last updated: September 1, 2026
+
+The foundational implementation is complete. The remaining work is mechanical enforcement and
+trace-level regression coverage.
+
+The implementation belongs **at the object-transport and async-ownership primitives**, not route by
+route.
 
 ## Non-negotiable invariant
 
