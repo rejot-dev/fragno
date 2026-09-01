@@ -141,7 +141,6 @@ const createBackofficeInteractiveChatWorkflow = ({
 }): WorkflowRegistryEntry => ({
   ...createInteractiveChatWorkflow({
     name: BACKOFFICE_PI_WORKFLOW_NAME,
-    commandTimeout: "1 hour",
     beforeOperation: async (input) => {
       if (config.scope.kind !== "user") {
         return;
