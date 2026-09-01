@@ -147,7 +147,7 @@ export class AssistantStreamScript {
   #finalContent: AssistantMessage["content"] | undefined;
   #finalMessageOptions: AssistantStreamScriptMessageOptions = {};
   #terminal:
-    | { type: "done"; reason: Exclude<StopReason, "error" | "aborted"> }
+    | { type: "done"; reason: Exclude<StopReason, "error" | "aborted" | "pending"> }
     | {
         type: "error";
         reason: Extract<StopReason, "error" | "aborted">;
@@ -205,7 +205,7 @@ export class AssistantStreamScript {
   }
 
   completes(
-    reason: Exclude<StopReason, "error" | "aborted"> = "stop",
+    reason: Exclude<StopReason, "error" | "aborted" | "pending"> = "stop",
     options: {
       content?: AssistantMessage["content"];
       message?: AssistantStreamScriptMessageOptions;

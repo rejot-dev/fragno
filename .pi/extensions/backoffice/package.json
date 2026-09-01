@@ -11,8 +11,8 @@
     "lint:fix:package": "node ../../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.84.2",
-    "@earendil-works/pi-tui": "^0.84.2",
+    "@earendil-works/pi-coding-agent": "catalog:",
+    "@earendil-works/pi-tui": "catalog:",
     "@rejot-dev/backoffice-local": "workspace:*",
     "typebox": "1.1.38"
   },
