@@ -2,12 +2,7 @@ import { Form, Link } from "react-router";
 
 import { FormContainer } from "@/components/backoffice";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
-import {
-  BILLING_TRACKER_DEFAULT_PAGE_SIZE,
-  billingPeriodSchema,
-  type BillingTracker,
-} from "@/fragno/billing";
-import { decodeBillingTrackerCursor } from "@/fragno/billing/pagination";
+import { billingPeriodSchema, type BillingStatementTracker } from "@/fragno/billing";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/organization-billing";
@@ -56,18 +51,12 @@ const formatInteger = (quantity: string | undefined) =>
 const formatUsd = (quantity: string | undefined) =>
   BILLING_USD_FORMATTER.format(Number(BigInt(quantity ?? "0")) / 1_000_000_000);
 
-const formatTrackerQuantity = (tracker: BillingTracker) =>
+const formatTrackerQuantity = (tracker: BillingStatementTracker) =>
   tracker.unit === "nano-usd" ? formatUsd(tracker.quantity) : formatInteger(tracker.quantity);
 
 const formatTimestamp = (value: string) => BILLING_TIMESTAMP_FORMATTER.format(new Date(value));
 
-const billingPagePath = (period: string, cursor?: string) => {
-  const search = new URLSearchParams({ period });
-  if (cursor) {
-    search.set("cursor", cursor);
-  }
-  return `?${search.toString()}`;
-};
+const billingPagePath = (period: string) => `?${new URLSearchParams({ period }).toString()}`;
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   if (!params.orgSlug) {
@@ -99,33 +88,12 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Invalid billing period.", { status: 400 });
   }
   const period = periodResult.data;
-  const requestedCursor = search.get("cursor");
-  const cursor = requestedCursor === null ? undefined : requestedCursor.trim();
-  const scope = { kind: "org" as const, orgId: organization.id };
-
-  if (requestedCursor !== null && !cursor) {
-    throw new Response("Invalid billing page cursor.", { status: 400 });
-  }
-  if (cursor) {
-    try {
-      decodeBillingTrackerCursor({ encodedCursor: cursor, scope, period });
-    } catch {
-      throw new Response("Invalid billing page cursor.", { status: 400 });
-    }
-  }
-
   const billing = context
     .get(BackofficeWorkerContext)
     .runtime.objects.billing.forOrg(organization.id).commands;
-  const page = await billing.getTrackers({
-    scope,
-    period,
-    pageSize: BILLING_TRACKER_DEFAULT_PAGE_SIZE,
-    cursor,
-    summaryMeter: TOTAL_COST_METER,
-  });
+  const statement = await billing.getStatement({ period });
 
-  return { period, cursor: cursor ?? null, ...page };
+  return { period, trackers: statement.trackers };
 }
 
 export function meta() {
@@ -133,8 +101,8 @@ export function meta() {
 }
 
 export default function BackofficeOrganizationBilling({ loaderData }: Route.ComponentProps) {
-  const { period, cursor, trackers, nextCursor, hasNextPage, summaryTracker } = loaderData;
-  const totalCost = summaryTracker?.quantity;
+  const { period, trackers } = loaderData;
+  const totalCost = trackers.find((tracker) => tracker.meter === TOTAL_COST_METER)?.quantity;
   const previousPeriod = shiftPeriod(period, -1);
   const nextPeriod = shiftPeriod(period, 1);
   const currentPeriod = currentUtcPeriod();
@@ -245,15 +213,6 @@ export default function BackofficeOrganizationBilling({ loaderData }: Route.Comp
             </table>
           </div>
         )}
-
-        {cursor || hasNextPage ? (
-          <div className="mt-4 flex justify-end gap-2">
-            {cursor ? <PageLink to={billingPagePath(period)} label="First page" /> : null}
-            {hasNextPage && nextCursor ? (
-              <PageLink to={billingPagePath(period, nextCursor)} label="Next page →" />
-            ) : null}
-          </div>
-        ) : null}
       </FormContainer>
     </div>
   );
