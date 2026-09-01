@@ -12,6 +12,7 @@ export type InMemoryBackofficeRuntimeEnv = {
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
   AUTH_ACCESS_TOKEN_SECRET?: string;
+  BACKOFFICE_INTERNAL_REQUEST_SECRET?: string;
   AUTH_ADMIN_GRANT_TOKEN?: string;
   AUTH_EMAIL_VERIFICATION_ENABLED?: string;
   GITHUB_APP_ID?: string;
@@ -104,6 +105,7 @@ export const defaultInMemoryBackofficeRuntimeEnv = (): InMemoryBackofficeRuntime
   GITHUB_CLIENT_ID: "in-memory-github-client-id",
   GITHUB_CLIENT_SECRET: "in-memory-github-client-secret",
   AUTH_ACCESS_TOKEN_SECRET: "in-memory-auth-access-token-secret",
+  BACKOFFICE_INTERNAL_REQUEST_SECRET: "in-memory-backoffice-internal-request-secret",
   AUTH_ADMIN_GRANT_TOKEN: "in-memory-admin-grant-token",
   AUTH_EMAIL_VERIFICATION_ENABLED: "false",
   GITHUB_APP_ID: "1",

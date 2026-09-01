@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { resolveLiveAccessTokenSecret } from "@/fragno/auth/contracts";
-
 import {
   backofficeContextScopesEqual,
   backofficeExecutionContextSchema,
@@ -19,6 +17,7 @@ const INTERNAL_CONTEXT_VERSION = 1;
 const INTERNAL_CONTEXT_LIFETIME_MS = 30_000;
 const INTERNAL_CONTEXT_CLOCK_SKEW_MS = 5_000;
 const INTERNAL_CONTEXT_SIGNATURE_PREFIX = "backoffice-internal-context-v1.";
+const DEVELOPMENT_INTERNAL_REQUEST_SECRET = "fragno-backoffice-development-internal-request-secret";
 
 const backofficeInternalContextPayloadSchema = z.strictObject({
   version: z.literal(INTERNAL_CONTEXT_VERSION),
@@ -77,16 +76,23 @@ function base64UrlDecode(value: string): Uint8Array {
 }
 
 function resolveInternalContextSecret(
-  env: Pick<CloudflareEnv, "AUTH_ACCESS_TOKEN_SECRET">,
+  env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">,
 ): string {
-  return resolveLiveAccessTokenSecret(
-    env as CloudflareEnv,
-    import.meta.env?.MODE === "development" || import.meta.env?.MODE === "test",
-  );
+  const configuredSecret = env.BACKOFFICE_INTERNAL_REQUEST_SECRET?.trim();
+  if (configuredSecret) {
+    if (configuredSecret.length < 32) {
+      throw new Error("BACKOFFICE_INTERNAL_REQUEST_SECRET must contain at least 32 characters.");
+    }
+    return configuredSecret;
+  }
+  if (import.meta.env?.MODE === "development" || import.meta.env?.MODE === "test") {
+    return DEVELOPMENT_INTERNAL_REQUEST_SECRET;
+  }
+  throw new Error("BACKOFFICE_INTERNAL_REQUEST_SECRET must be configured for internal requests.");
 }
 
 async function importInternalContextSigningKey(
-  env: Pick<CloudflareEnv, "AUTH_ACCESS_TOKEN_SECRET">,
+  env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">,
 ): Promise<CryptoKey> {
   return await crypto.subtle.importKey(
     "raw",
@@ -104,7 +110,7 @@ function internalContextSigningInput(encodedPayload: string): ArrayBuffer {
 }
 
 async function signInternalContextPayload(
-  env: Pick<CloudflareEnv, "AUTH_ACCESS_TOKEN_SECRET">,
+  env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">,
   encodedPayload: string,
 ): Promise<string> {
   const key = await importInternalContextSigningKey(env);
@@ -117,7 +123,7 @@ async function signInternalContextPayload(
 }
 
 async function verifyInternalContextSignature(
-  env: Pick<CloudflareEnv, "AUTH_ACCESS_TOKEN_SECRET">,
+  env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">,
   encodedPayload: string,
   encodedSignature: string,
 ): Promise<boolean> {
@@ -167,7 +173,7 @@ export async function createAuthorizedBackofficeObjectRequest({
   request: Request;
   address: BackofficeObjectAddress;
   context: BackofficeAuthorizedRequestContext;
-  env: Pick<CloudflareEnv, "AUTH_ACCESS_TOKEN_SECRET">;
+  env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
   nowEpochMs?: number;
   requestId?: string;
 }): Promise<Request> {
@@ -204,7 +210,7 @@ export async function verifyAuthorizedBackofficeObjectRequest({
 }: {
   request: Request;
   address: BackofficeObjectAddress;
-  env: Pick<CloudflareEnv, "AUTH_ACCESS_TOKEN_SECRET">;
+  env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
   nowEpochMs?: number;
 }): Promise<VerifiedBackofficeInternalRequest> {
   const envelope = request.headers.get(BACKOFFICE_INTERNAL_CONTEXT_HEADER);

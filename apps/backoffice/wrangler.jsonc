@@ -55,6 +55,7 @@
   "secrets": {
     "required": [
       "AUTH_ACCESS_TOKEN_SECRET",
+      "BACKOFFICE_INTERNAL_REQUEST_SECRET",
       "AUTH_ADMIN_GRANT_TOKEN",
       "GITHUB_CLIENT_ID",
       "GITHUB_CLIENT_SECRET",

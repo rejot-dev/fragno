@@ -284,7 +284,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
   readonly #env: AutomationFragmentConfig["env"] | undefined;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
-  readonly #internalRequestEnv: Pick<CloudflareEnv, "AUTH_ACCESS_TOKEN_SECRET"> | null;
+  readonly #internalRequestEnv: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET"> | null;
   readonly #nowEpochMs: () => number;
   readonly #kernel: BackofficeKernel;
   readonly #host: BackofficeFragmentDurableObject<
@@ -316,7 +316,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     super();
     this.#env = env as AutomationFragmentConfig["env"];
     this.#internalRequestEnv = env
-      ? (env as Pick<CloudflareEnv, "AUTH_ACCESS_TOKEN_SECRET">)
+      ? (env as Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">)
       : null;
     this.#state = state;
     this.#runtimeServices = runtime;

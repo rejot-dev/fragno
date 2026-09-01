@@ -42,7 +42,7 @@ describe("Cloudflare Durable Object factory", () => {
     };
     const env = {
       AUTOMATIONS: namespace,
-      AUTH_ACCESS_TOKEN_SECRET: "cloudflare-object-factory-test-secret-1234567890",
+      BACKOFFICE_INTERNAL_REQUEST_SECRET: "cloudflare-object-factory-test-secret-1234567890",
     } as unknown as CloudflareEnv;
     const handle = new CloudflareDurableObjectFactory(env).get<{
       ping(): Promise<string>;

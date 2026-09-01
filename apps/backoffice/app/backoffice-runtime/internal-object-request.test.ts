@@ -10,8 +10,8 @@ import {
 import type { BackofficeObjectAddress } from "./object-registry";
 
 const env = {
-  AUTH_ACCESS_TOKEN_SECRET: "backoffice-internal-request-test-secret-1234567890",
-} satisfies Pick<CloudflareEnv, "AUTH_ACCESS_TOKEN_SECRET">;
+  BACKOFFICE_INTERNAL_REQUEST_SECRET: "backoffice-internal-request-test-secret-1234567890",
+} satisfies Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
 
 const address = {
   binding: "AUTOMATIONS",

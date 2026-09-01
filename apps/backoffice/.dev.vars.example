@@ -8,9 +8,13 @@ GITHUB_CLIENT_SECRET=
 # For auth access-token cookies. Set a strong secret in production.
 AUTH_ACCESS_TOKEN_SECRET=dev-auth-access-token-secret-replace-me
 
+# Signs trusted execution context sent between the web Worker and Durable Objects.
+# Configure the same value on both deployments.
+BACKOFFICE_INTERNAL_REQUEST_SECRET=dev-backoffice-internal-request-secret-replace-me
+
 # Allows POST /api/admin/grant to promote an existing account.
 # The first administrator may be unverified; every subsequent administrator must be verified.
-# Required for deployed API Workers; leave unset only to disable granting during local development.
+# Required on the object host; leave unset only to disable granting during local development.
 AUTH_ADMIN_GRANT_TOKEN=
 
 # Require Auth email verification and deliver challenges through the singleton Resend connection.
