@@ -246,9 +246,15 @@ type AutomationStartWorkflowAction = {
   authority:
     | {
         kind: "delegated-user";
+        grants: BackofficePermissionRequirement[] | "inherit";
+      }
+    | {
+        kind: "linked-user";
+        grants: BackofficePermissionRequirement[] | "inherit";
       }
     | {
         kind: "organization-automation";
+        grants: BackofficePermissionRequirement[];
       };
   workflowScriptPath: string;
   instanceIdTemplate: string;
@@ -270,6 +276,199 @@ type AutomationReclassifyEventAction = {
   eventType: string;
   payload: AutomationEventPayloadProjection;
 };
+type BackofficePermissionRequirement =
+  | {
+      namespace: "admin";
+      permission: "organizations.manage";
+    }
+  | {
+      namespace: "api";
+      permission: "connections.create";
+    }
+  | {
+      namespace: "api";
+      permission: "connections.delete";
+    }
+  | {
+      namespace: "api";
+      permission: "connections.read";
+    }
+  | {
+      namespace: "api";
+      permission: "requests.execute";
+    }
+  | {
+      namespace: "api";
+      permission: "webhooks.manage";
+    }
+  | {
+      namespace: "api";
+      permission: "webhooks.read";
+    }
+  | {
+      namespace: "capabilities";
+      permission: "read";
+    }
+  | {
+      namespace: "cloudflare";
+      permission: "browserRun";
+    }
+  | {
+      namespace: "connections";
+      permission: "manage";
+    }
+  | {
+      namespace: "connections";
+      permission: "read";
+    }
+  | {
+      namespace: "events";
+      permission: "emit";
+    }
+  | {
+      namespace: "events";
+      permission: "manage";
+    }
+  | {
+      namespace: "events";
+      permission: "read";
+    }
+  | {
+      namespace: "events";
+      permission: "route";
+    }
+  | {
+      namespace: "forms";
+      permission: "create";
+    }
+  | {
+      namespace: "forms";
+      permission: "read";
+    }
+  | {
+      namespace: "forms";
+      permission: "update";
+    }
+  | {
+      namespace: "hooks";
+      permission: "read";
+    }
+  | {
+      namespace: "identity";
+      permission: "bind";
+    }
+  | {
+      namespace: "identity";
+      permission: "read";
+    }
+  | {
+      namespace: "identity";
+      permission: "resolve";
+    }
+  | {
+      namespace: "identity";
+      permission: "revoke";
+    }
+  | {
+      namespace: "internal";
+      permission: "manage";
+    }
+  | {
+      namespace: "internal";
+      permission: "read";
+    }
+  | {
+      namespace: "mcp";
+      permission: "servers.create";
+    }
+  | {
+      namespace: "mcp";
+      permission: "servers.delete";
+    }
+  | {
+      namespace: "mcp";
+      permission: "servers.read";
+    }
+  | {
+      namespace: "mcp";
+      permission: "tools.call";
+    }
+  | {
+      namespace: "otp";
+      permission: "create";
+    }
+  | {
+      namespace: "pi";
+      permission: "modify";
+    }
+  | {
+      namespace: "pi";
+      permission: "read";
+    }
+  | {
+      namespace: "resend";
+      permission: "read";
+    }
+  | {
+      namespace: "resend";
+      permission: "send";
+    }
+  | {
+      namespace: "reson8";
+      permission: "use";
+    }
+  | {
+      namespace: "router";
+      permission: "modify";
+    }
+  | {
+      namespace: "router";
+      permission: "read";
+    }
+  | {
+      namespace: "sandbox";
+      permission: "modify";
+    }
+  | {
+      namespace: "sandbox";
+      permission: "read";
+    }
+  | {
+      namespace: "store";
+      permission: "modify";
+    }
+  | {
+      namespace: "store";
+      permission: "read";
+    }
+  | {
+      namespace: "telegram";
+      permission: "read";
+    }
+  | {
+      namespace: "telegram";
+      permission: "send";
+    }
+  | {
+      namespace: "upload";
+      permission: "modify";
+    }
+  | {
+      namespace: "upload";
+      permission: "read";
+    }
+  | {
+      namespace: "workflow";
+      permission: "executeCode";
+    }
+  | {
+      namespace: "workflow";
+      permission: "modify";
+    }
+  | {
+      namespace: "workflow";
+      permission: "read";
+    };
 type AutomationWorkflowEventTarget =
   | AutomationWorkflowEventInstanceIdTarget
   | AutomationWorkflowEventStoredInstanceIdTarget;
@@ -335,9 +534,15 @@ type AutomationStartWorkflowActionInput = {
   authority:
     | {
         kind: "delegated-user";
+        grants: BackofficePermissionRequirement[] | "inherit";
+      }
+    | {
+        kind: "linked-user";
+        grants: BackofficePermissionRequirement[] | "inherit";
       }
     | {
         kind: "organization-automation";
+        grants: BackofficePermissionRequirement[];
       };
   workflowScriptPath: string;
   instanceIdTemplate: string;

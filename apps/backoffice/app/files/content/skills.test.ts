@@ -18,6 +18,14 @@ describe("built-in automation skills", () => {
     expect(buildingAutomationsSkill).toContain("with a `.workflow.js` suffix");
   });
 
+  test("documents inherited authority for user-backed routes", () => {
+    expect(buildingAutomationsSkill).toContain("### Grants");
+    expect(buildingAutomationsSkill).toContain("`delegated-user`");
+    expect(buildingAutomationsSkill).toContain("`linked-user`");
+    expect(buildingAutomationsSkill).toContain('grants: "inherit"');
+    expect(buildingAutomationsSkill).toContain("`organization-automation` has no user principal");
+  });
+
   test("keeps the inline workflow example syntactically valid", () => {
     expect(workflowsSkill).toContain("async (event, step) =>");
     expect(workflowsSkill).not.toContain("\\_event");

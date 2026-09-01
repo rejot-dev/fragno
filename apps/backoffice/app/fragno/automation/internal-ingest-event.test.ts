@@ -24,7 +24,7 @@ import { defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
   slug: "telegram-channel",
-  version: "1.0.0",
+  version: "1.0.1",
 } as const;
 
 const telegramMessageEvent = ({
@@ -77,11 +77,9 @@ describe("automation internal ingest scenarios", () => {
           when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
           when.automation.ingestEvent(event),
           when.automation.ingestEvent(event),
-          then.workflow.instance({
+          then.workflow.missing({
             remoteWorkflowName: "telegram-user-pi-linking",
             instanceId: "telegram-pi-duplicate-event-1",
-            status: "complete",
-            output: { skipped: true, reason: "telegram-chat-not-linked" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
@@ -126,17 +124,13 @@ describe("automation internal ingest scenarios", () => {
               );
             }
           }),
-          then.workflow.instance({
+          then.workflow.missing({
             remoteWorkflowName: "telegram-user-pi-linking",
             instanceId: "telegram-pi-starter-telegram-pi-1",
-            status: "complete",
-            output: { skipped: true, reason: "telegram-chat-not-linked" },
           }),
-          then.workflow.instance({
+          then.workflow.missing({
             remoteWorkflowName: "telegram-user-pi-linking",
             instanceId: "telegram-pi-starter-telegram-pi-2",
-            status: "complete",
-            output: { skipped: true, reason: "telegram-chat-not-linked" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],

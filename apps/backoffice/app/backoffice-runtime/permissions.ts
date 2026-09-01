@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 /**
  * Every permission understood by the Backoffice authorization kernel.
  *
@@ -115,7 +117,7 @@ const backofficePermissionNamespaces = Object.values(BACKOFFICE_PERMISSION) as r
   Record<string, BackofficePermissionRequirement>
 >[];
 
-/** The complete finite permission set, reserved for explicitly unrestricted test/system contexts. */
+/** The complete finite permission set used by explicitly unrestricted authority roles. */
 export const allBackofficePermissionRequirements = backofficePermissionNamespaces.flatMap(
   (namespacePermissions) => Object.values(namespacePermissions),
 );
@@ -128,3 +130,41 @@ export const isBackofficePermissionRequirement = (input: {
     (requirement) =>
       requirement.namespace === input.namespace && requirement.permission === input.permission,
   );
+
+type BackofficePermissionRequirementSchema = z.ZodType<BackofficePermissionRequirement>;
+
+function backofficePermissionInputKey(input: unknown): string | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return null;
+  }
+  const candidate = input as Record<string, unknown>;
+  return typeof candidate.namespace === "string" && typeof candidate.permission === "string"
+    ? `${candidate.namespace}.${candidate.permission}`
+    : null;
+}
+
+function createBackofficePermissionRequirementSchema(): BackofficePermissionRequirementSchema {
+  const literalSchemas = allBackofficePermissionRequirements.map(
+    (requirement) =>
+      z.strictObject({
+        namespace: z.literal(requirement.namespace),
+        permission: z.literal(requirement.permission),
+      }) as BackofficePermissionRequirementSchema,
+  );
+  const [first, second, ...remaining] = literalSchemas;
+  if (!first || !second) {
+    throw new Error("Backoffice authorization requires at least two canonical permissions.");
+  }
+
+  return z
+    .union([first, second, ...remaining], {
+      error: (issue) => {
+        const key = backofficePermissionInputKey(issue.input);
+        return key ? `Unknown Backoffice permission '${key}'.` : "Unknown Backoffice permission.";
+      },
+    })
+    .meta({ id: "BackofficePermissionRequirement" }) as BackofficePermissionRequirementSchema;
+}
+
+/** Validates one canonical namespace-permission pair at an untrusted configuration boundary. */
+export const backofficePermissionRequirementSchema = createBackofficePermissionRequirementSchema();

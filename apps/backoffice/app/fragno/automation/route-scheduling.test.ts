@@ -10,7 +10,7 @@ import { automationFragmentSchema } from "./schema";
 
 const scheduledAction = {
   kind: "start_workflow" as const,
-  authority: { kind: "organization-automation" as const },
+  authority: { kind: "organization-automation" as const, grants: [] },
   workflowScriptPath: "/workspace/automations/scheduled-route.workflow.js",
   instanceIdTemplate: "scheduled-${event.id}",
 };

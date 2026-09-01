@@ -9,7 +9,10 @@ import {
   automationScheduleCadencesEqual,
   validateAutomationScheduleCadence,
 } from "./route-triggers";
-import { assertAutomationRouteDoesNotReclassifyItself } from "./routing";
+import {
+  assertAutomationRouteDoesNotReclassifyItself,
+  type AutomationRouteAction,
+} from "./routing";
 import {
   automationRouteCreateInputSchema,
   automationRouteUpdateInputSchema,
@@ -19,6 +22,11 @@ import {
 import { automationFragmentSchema } from "./schema";
 
 type AutomationRouteServiceContext = DatabaseServiceContext<AutomationInternalHooks>;
+
+export type AuthorizeAutomationRouteAction = (input: {
+  routeId: string;
+  action: AutomationRouteAction;
+}) => Promise<void>;
 
 const authoredRouteEqual = (
   left: {
@@ -156,7 +164,11 @@ export const createAutomationRouteServices = (
         .build();
     },
 
-    updateRoute(input: AutomationRouteUpdateInput, actors: AutomationActors) {
+    updateRoute(
+      input: AutomationRouteUpdateInput,
+      actors: AutomationActors,
+      authorizeAction: AuthorizeAutomationRouteAction,
+    ) {
       const patch = automationRouteUpdateInputSchema.parse(input);
       if (patch.trigger?.kind === "schedule") {
         validateAutomationScheduleCadence(patch.trigger.cadence);
@@ -172,7 +184,7 @@ export const createAutomationRouteServices = (
               b.whereIndex("primary", (eb) => eb("id", "=", patch.id)),
             ),
         )
-        .mutate(({ uow, retrieveResult: [existing, scheduleState] }) => {
+        .transformRetrieve(async ([existing, scheduleState]) => {
           if (!existing) {
             return null;
           }
@@ -197,13 +209,18 @@ export const createAutomationRouteServices = (
             trigger: merged.trigger,
             action: merged.action,
           });
-          if (
-            authoredRouteEqual(
-              { ...current, managedBy: current.metadata?.managedBy ?? null },
-              merged,
-            )
-          ) {
-            return current;
+
+          const unchanged = authoredRouteEqual(
+            { ...current, managedBy: current.metadata?.managedBy ?? null },
+            merged,
+          );
+          const requiresGrantAuthorization =
+            patch.action !== undefined ||
+            patch.trigger !== undefined ||
+            (patch.enabled === true && !current.enabled);
+          if (!unchanged && requiresGrantAuthorization) {
+            // Authorize the merged route inside the OCC attempt so a retry cannot commit different grants.
+            await authorizeAction({ routeId: current.id, action: merged.action });
           }
 
           const wasScheduled = current.trigger.kind === "schedule";
@@ -218,6 +235,36 @@ export const createAutomationRouteServices = (
             !automationScheduleCadencesEqual(current.trigger.cadence, merged.trigger.cadence);
           const needsInitialization =
             isScheduled && merged.enabled && (!wasScheduled || !current.enabled || cadenceChanged);
+
+          return {
+            existing,
+            scheduleState,
+            current,
+            merged,
+            unchanged,
+            wasScheduled,
+            isScheduled,
+            needsInitialization,
+          };
+        })
+        .mutate(({ uow, retrieveResult: plan }) => {
+          if (!plan) {
+            return null;
+          }
+
+          const {
+            existing,
+            scheduleState,
+            current,
+            merged,
+            unchanged,
+            wasScheduled,
+            isScheduled,
+            needsInitialization,
+          } = plan;
+          if (unchanged) {
+            return current;
+          }
 
           uow.update("automation_route", existing.id, (b) =>
             b

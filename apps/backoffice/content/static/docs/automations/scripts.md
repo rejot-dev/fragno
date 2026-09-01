@@ -114,8 +114,9 @@ The automation UI can start a workflow manually. It creates a synthetic automati
 delegated-user authority, so the current user remains the principal.
 
 A routed run uses the authority mode stored in the route action. It also derives its instance ID
-from the route template. Both paths snapshot the source and deliver the original automation event
-directly to the authored workflow.
+from the route template. Both paths snapshot the source. Linked-user routes deliver a trusted copy
+of the event containing the linked user principal and route delegate; other modes deliver the
+original automation event directly to the authored workflow.
 
 ## Catalog and authoring validation
 

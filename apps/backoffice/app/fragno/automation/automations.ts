@@ -14,8 +14,12 @@ import {
   BackofficeForbiddenError,
   BackofficeKernel,
   type BackofficeAuthorizationDenialReason,
+  type BackofficeKernelAuthorizationRequirement,
 } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
+import {
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "@/backoffice-runtime/permissions";
 import { createAutomationFragment, type AutomationFragmentConfig } from "@/fragno/automation";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
@@ -35,7 +39,12 @@ import {
 
 import { defineMarketplaceIngestWorkflow } from "./marketplace-ingest-workflow.server";
 import { defineMarketplacePublishWorkflow } from "./marketplace-publish-workflow";
-import { setAutomationRouteMutationActors } from "./route-routes";
+import {
+  AutomationRouteMutationAuthorizationError,
+  setAutomationRouteMutationActionAuthorizer,
+  setAutomationRouteMutationActors,
+} from "./route-routes";
+import type { AutomationRouteAction } from "./routing";
 import { defineSandboxLifecycleWorkflow } from "./sandbox-lifecycle-workflow";
 import { SANDBOX_LIFECYCLE_WORKFLOW_NAME } from "./sandboxes-storage-runtime";
 import {
@@ -600,14 +609,129 @@ export const createAutomationsRuntime = (
     { ifMatchesRoute, request, requestContext },
     { error },
   ) {
-    const attachRouteMutationActors = () => {
-      if (requestContext) {
-        setAutomationRouteMutationActors(request, requestContext.actors);
+    const authorizeAutomationRequirements = async (
+      requirements: readonly BackofficeKernelAuthorizationRequirement[],
+    ) => {
+      if (!requestContext) {
+        return error(
+          {
+            message: "Automations mutation requires trusted action context.",
+            code: "AUTOMATIONS_ACTION_CONTEXT_REQUIRED",
+          },
+          403,
+        );
+      }
+
+      try {
+        await config.kernel.assertAuthorizedAll({ execution: requestContext, requirements });
+        return undefined;
+      } catch (cause) {
+        if (cause instanceof BackofficeForbiddenError) {
+          return error(
+            { message: cause.message, code: cause.reason },
+            AUTOMATIONS_AUTHORIZATION_STATUS_BY_REASON[cause.reason],
+          );
+        }
+        throw cause;
       }
     };
 
-    await ifMatchesRoute("POST", "/routes", attachRouteMutationActors);
-    await ifMatchesRoute("PATCH", "/routes/:routeId", attachRouteMutationActors);
+    const authorizeAutomationOperation = async (
+      operation: BackofficePermissionRequirement,
+      resource: Record<string, unknown>,
+    ) => await authorizeAutomationRequirements([{ operation, resource }]);
+
+    const authorizeRouteMutation = async ({
+      routeId,
+      action,
+    }: {
+      routeId: string;
+      action: AutomationRouteAction | undefined;
+    }) => {
+      const requirements: BackofficeKernelAuthorizationRequirement[] = [
+        {
+          operation: BACKOFFICE_PERMISSION.router.modify,
+          resource: { kind: "automation-route", routeId },
+        },
+      ];
+      if (action?.kind === "start_workflow" && action.authority.grants !== "inherit") {
+        requirements.push(
+          ...action.authority.grants.map((grant) => ({
+            operation: grant,
+            resource: { kind: "automation-route-grant", routeId, grant },
+          })),
+        );
+      }
+
+      return await authorizeAutomationRequirements(requirements);
+    };
+
+    const createRouteResponse = await ifMatchesRoute("POST", "/routes", async ({ input }) => {
+      const route = await input.valid();
+      const authorization = await authorizeRouteMutation({
+        routeId: route.id,
+        action: route.action,
+      });
+      if (authorization || !requestContext) {
+        return authorization;
+      }
+      setAutomationRouteMutationActors(request, requestContext.actors);
+      return undefined;
+    });
+    if (createRouteResponse) {
+      return createRouteResponse;
+    }
+
+    const updateRouteResponse = await ifMatchesRoute(
+      "PATCH",
+      "/routes/:routeId",
+      async ({ input, pathParams }) => {
+        await input.valid();
+        const authorization = await authorizeAutomationOperation(
+          BACKOFFICE_PERMISSION.router.modify,
+          { kind: "automation-route", routeId: pathParams.routeId },
+        );
+        if (authorization || !requestContext) {
+          return authorization;
+        }
+
+        const execution = requestContext;
+        setAutomationRouteMutationActors(request, execution.actors);
+        setAutomationRouteMutationActionAuthorizer(request, async ({ routeId, action }) => {
+          if (action.kind !== "start_workflow") {
+            return;
+          }
+
+          const grants = action.authority.grants;
+          if (grants === "inherit") {
+            return;
+          }
+
+          try {
+            await config.kernel.assertAuthorizedAll({
+              execution,
+              requirements: grants.map((grant) => ({
+                operation: grant,
+                resource: { kind: "automation-route-grant", routeId, grant },
+              })),
+            });
+          } catch (cause) {
+            if (cause instanceof BackofficeForbiddenError) {
+              throw new AutomationRouteMutationAuthorizationError({
+                message: cause.message,
+                code: cause.reason,
+                status: AUTOMATIONS_AUTHORIZATION_STATUS_BY_REASON[cause.reason],
+              });
+            }
+            throw cause;
+          }
+        });
+        return undefined;
+      },
+    );
+    if (updateRouteResponse) {
+      return updateRouteResponse;
+    }
 
     const authorizeStoreMutation = async (readInput: () => Promise<{ key: string }>) => {
       if (!requestContext) {

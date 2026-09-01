@@ -84,6 +84,23 @@ const workflowSource = `defineWorkflow(
 );
 `;
 
+const liveGrantWorkflowSource = `defineWorkflow(
+  { name: "live-automation-grant" },
+  async (_event, step) => {
+    await step.do("write before grant revocation", async () => {
+      await store.set({ key: "authority/before-revocation", value: "written" });
+    });
+    await step.waitForEvent("continue after grant revocation", {
+      type: "continue-after-revocation",
+      timeout: "15 minutes",
+    });
+    await step.do("write after grant revocation", async () => {
+      await store.set({ key: "authority/after-revocation", value: "written" });
+    });
+  },
+);
+`;
+
 describe("automation route authority modes", () => {
   test("organization-automation performs protected work after its creator leaves", async () => {
     await runBackofficeScenario(
@@ -135,7 +152,10 @@ describe("automation route authority modes", () => {
                 },
                 action: {
                   kind: "start_workflow",
-                  authority: { kind: "organization-automation" },
+                  authority: {
+                    kind: "organization-automation",
+                    grants: [BACKOFFICE_PERMISSION.store.modify],
+                  },
                   workflowScriptPath: "/workspace/automations/authority-mode.workflow.js",
                   instanceIdTemplate: "organization-${event.id}",
                 },
@@ -243,7 +263,10 @@ describe("automation route authority modes", () => {
             },
             action: {
               kind: "start_workflow",
-              authority: { kind: "organization-automation" },
+              authority: {
+                kind: "organization-automation",
+                grants: [BACKOFFICE_PERMISSION.pi.modify],
+              },
               workflowScriptPath: "/workspace/automations/authority-mode-pi-session.workflow.js",
               instanceIdTemplate: "organization-pi-${event.id}",
             },
@@ -355,7 +378,10 @@ describe("automation route authority modes", () => {
             },
             action: {
               kind: "start_workflow",
-              authority: { kind: "delegated-user" },
+              authority: {
+                kind: "delegated-user",
+                grants: [BACKOFFICE_PERMISSION.store.modify],
+              },
               workflowScriptPath: "/workspace/automations/authority-mode.workflow.js",
               instanceIdTemplate: "delegated-${event.id}",
             },
@@ -430,6 +456,185 @@ describe("automation route authority modes", () => {
     );
   });
 
+  test("linked-user resolves the external initiator before starting the workflow", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "linked user route derives its principal",
+        files: backofficeFiles.workspaceStarter(),
+        setup: ({ given }) => [
+          given.auth.user({ id: "owner-1", role: "admin" }),
+          given.auth.user({ id: "user-1", role: "user" }),
+          given.auth.organization({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+            ownerRoles: ["owner"],
+          }),
+          given.auth.member({ orgId: "org-1", userId: "user-1", roles: ["member"] }),
+          given.organization.exists({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+          }),
+          given.identity.binding({
+            orgId: "org-1",
+            source: "authority-test",
+            externalType: "request",
+            externalId: "request:event-1",
+            userId: "user-1",
+          }),
+          given.direct.file({
+            orgId: "org-1",
+            path: "/workspace/automations/authority-mode.workflow.js",
+            content: workflowSource,
+          }),
+          given.router.route({
+            orgId: "org-1",
+            id: "linked-authority",
+            name: "Linked authority",
+            enabled: true,
+            priority: 100,
+            trigger: {
+              kind: "event",
+              source: "authority-test",
+              eventType: "authority.requested",
+              matcher: { path: "$.payload.id", op: "exists" },
+            },
+            action: {
+              kind: "start_workflow",
+              authority: {
+                kind: "linked-user",
+                grants: [BACKOFFICE_PERMISSION.store.modify],
+              },
+              workflowScriptPath: "/workspace/automations/authority-mode.workflow.js",
+              instanceIdTemplate: "linked-${event.id}",
+            },
+          }),
+        ],
+        steps: ({ when, then }) => [
+          when.automation.ingestEvent(authorityEvent({ id: "event-1" })),
+          then.workflow.instance({
+            remoteWorkflowName: "authority-mode",
+            instanceId: "linked-event-1",
+            status: "complete",
+            actors: {
+              initiator: {
+                scope: "external",
+                source: "authority-test",
+                type: "request",
+                id: "request:event-1",
+                role: "initiator",
+              },
+              principal: {
+                scope: "internal",
+                type: "user",
+                id: "user-1",
+                role: "principal",
+              },
+              delegation: [
+                {
+                  scope: "internal",
+                  type: "automation",
+                  id: "automation-route:linked-authority",
+                  role: "delegate",
+                },
+              ],
+            },
+          }),
+          then.store.entry({ orgId: "org-1", key: "authority/event-1", value: "written" }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
+  test("a running organization automation resolves its route grants again after revocation", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "running automation observes current route grants",
+        files: backofficeFiles.workspaceStarter(),
+        setup: ({ given }) => [
+          given.auth.user({ id: "owner-1", role: "admin" }),
+          given.auth.organization({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+            ownerRoles: ["owner"],
+          }),
+          given.organization.exists({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+          }),
+          given.direct.file({
+            orgId: "org-1",
+            path: "/workspace/automations/live-automation-grant.workflow.js",
+            content: liveGrantWorkflowSource,
+          }),
+          given.router.route({
+            orgId: "org-1",
+            id: "live-grant",
+            name: "Live automation grant",
+            enabled: true,
+            priority: 100,
+            trigger: {
+              kind: "event",
+              source: "authority-test",
+              eventType: "authority.requested",
+              matcher: { path: "$.payload.id", op: "exists" },
+            },
+            action: {
+              kind: "start_workflow",
+              authority: {
+                kind: "organization-automation",
+                grants: [BACKOFFICE_PERMISSION.store.modify],
+              },
+              workflowScriptPath: "/workspace/automations/live-automation-grant.workflow.js",
+              instanceIdTemplate: "live-grant-${event.id}",
+            },
+          }),
+        ],
+        steps: ({ when, then }) => [
+          when.automation.ingestEvent(authorityEvent({ id: "event-1" })),
+          then.store.entry({
+            orgId: "org-1",
+            key: "authority/before-revocation",
+            value: "written",
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "live-automation-grant",
+            instanceId: "live-grant-event-1",
+            status: "waiting",
+            waitingFor: "continue-after-revocation",
+          }),
+          when.router.updateRoute({
+            orgId: "org-1",
+            id: "live-grant",
+            action: {
+              kind: "start_workflow",
+              authority: { kind: "organization-automation", grants: [] },
+              workflowScriptPath: "/workspace/automations/live-automation-grant.workflow.js",
+              instanceIdTemplate: "live-grant-${event.id}",
+            },
+          }),
+          when.workflow.sendEvent({
+            orgId: "org-1",
+            instanceId: "live-grant-event-1",
+            type: "continue-after-revocation",
+            payload: {},
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "live-automation-grant",
+            instanceId: "live-grant-event-1",
+            status: "errored",
+          }),
+          then.store.missing({ orgId: "org-1", key: "authority/after-revocation" }),
+        ],
+        options: { allowErroredWorkflows: true },
+      }),
+    );
+  });
+
   test("delegated-user cannot exceed the route automation capability grant", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -469,7 +674,10 @@ describe("automation route authority modes", () => {
             },
             action: {
               kind: "start_workflow",
-              authority: { kind: "delegated-user" },
+              authority: {
+                kind: "delegated-user",
+                grants: [BACKOFFICE_PERMISSION.store.modify],
+              },
               workflowScriptPath: "/workspace/automations/authority-mode.workflow.js",
               instanceIdTemplate: "intersection-${event.id}",
             },

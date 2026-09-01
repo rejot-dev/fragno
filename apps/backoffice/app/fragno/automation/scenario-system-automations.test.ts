@@ -460,7 +460,10 @@ describe("system automation scenarios", () => {
                 },
                 action: {
                   kind: "start_workflow",
-                  authority: { kind: "organization-automation" },
+                  authority: {
+                    kind: "organization-automation",
+                    grants: [BACKOFFICE_PERMISSION.internal.manage],
+                  },
                   workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
                 },
               },

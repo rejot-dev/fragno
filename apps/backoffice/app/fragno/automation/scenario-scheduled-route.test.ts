@@ -60,7 +60,7 @@ describe("scheduled automation route scenario", () => {
   },
   action: {
     kind: "start_workflow",
-    authority: { kind: "organization-automation" },
+    authority: { kind: "organization-automation", grants: [] },
     workflowScriptPath: "/workspace/automations/scheduled-digest.workflow.js",
     instanceIdTemplate: "scheduled-\${event.payload.id}",
   },

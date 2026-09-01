@@ -23,7 +23,7 @@ Immediate work uses a top-level async function:
 
 ```js
 async () => {
-  const files = await state.find("/workspace", { type: "file", maxDepth: 2 });
+  const files = await state.glob({ pattern: "/workspace/**/*" });
   return { files };
 };
 ```
@@ -109,7 +109,7 @@ __BACKOFFICE_CODEMODE_DTS__;
 - User-editable automations live in `/workspace/automations/`.
 - Automation codemode scripts read event data from `/context/event.json` with `state.readFile` and
   must return JSON-serializable values.
-- Use `state.find` and `state.readFile` inside codemode for filesystem discovery.
+- Use `state.glob` and `state.readFile` inside codemode for filesystem discovery.
 
 ## Events
 

@@ -63,26 +63,9 @@ const USER_AUTHORITY_ROLE_GRANTS = {
  * as an internal service and requires the author to choose its current finite permission grants.
  */
 const INTERNAL_SERVICE_AUTHORITY_ROLE_GRANTS = {
-  automation: [
-    BACKOFFICE_PERMISSION.workflow.executeCode,
-    BACKOFFICE_PERMISSION.connections.manage,
-    BACKOFFICE_PERMISSION.events.manage,
-    BACKOFFICE_PERMISSION.events.read,
-    BACKOFFICE_PERMISSION.identity.resolve,
-    BACKOFFICE_PERMISSION.internal.manage,
-    BACKOFFICE_PERMISSION.otp.create,
-    BACKOFFICE_PERMISSION.pi.modify,
-    BACKOFFICE_PERMISSION.pi.read,
-    BACKOFFICE_PERMISSION.router.modify,
-    BACKOFFICE_PERMISSION.router.read,
-    BACKOFFICE_PERMISSION.store.modify,
-    BACKOFFICE_PERMISSION.store.read,
-    BACKOFFICE_PERMISSION.telegram.send,
-    BACKOFFICE_PERMISSION.upload.modify,
-    BACKOFFICE_PERMISSION.upload.read,
-    BACKOFFICE_PERMISSION.workflow.modify,
-    BACKOFFICE_PERMISSION.workflow.read,
-  ],
+  // Non-route automation services retain explicit infrastructure grants. Stable route actors are
+  // denied by the base resolver and resolved from current route state by the Automations object.
+  automation: allBackofficePermissionRequirements,
   agent: [
     BACKOFFICE_PERMISSION.otp.create,
     BACKOFFICE_PERMISSION.store.modify,
@@ -90,13 +73,8 @@ const INTERNAL_SERVICE_AUTHORITY_ROLE_GRANTS = {
     BACKOFFICE_PERMISSION.upload.modify,
     BACKOFFICE_PERMISSION.upload.read,
   ],
-  capability: [
-    BACKOFFICE_PERMISSION.otp.create,
-    BACKOFFICE_PERMISSION.store.modify,
-    BACKOFFICE_PERMISSION.telegram.send,
-    BACKOFFICE_PERMISSION.upload.modify,
-    BACKOFFICE_PERMISSION.upload.read,
-  ],
+  // Runtime capability grants remain the narrower per-execution boundary.
+  capability: allBackofficePermissionRequirements,
   object: [
     BACKOFFICE_PERMISSION.identity.bind,
     BACKOFFICE_PERMISSION.identity.resolve,

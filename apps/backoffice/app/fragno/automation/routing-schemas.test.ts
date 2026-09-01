@@ -1,8 +1,25 @@
 import { describe, expect, test } from "vitest";
 
+import {
+  allBackofficePermissionRequirements,
+  BACKOFFICE_PERMISSION,
+} from "@/backoffice-runtime/permissions";
 import { zodSchemaToTypeScriptRender } from "@/lib/zod/zod-formatter";
 
-import { automationRouteActionSchema, automationRouteCreateInputSchema } from "./routing-schemas";
+import {
+  automationRouteActionSchema,
+  automationRouteCreateInputSchema,
+  automationRouteSchema,
+} from "./routing-schemas";
+
+function expectedBackofficePermissionRequirementDeclaration(): string {
+  return `type BackofficePermissionRequirement = ${allBackofficePermissionRequirements
+    .map(
+      (grant) =>
+        `{\n  namespace: ${JSON.stringify(grant.namespace)};\n  permission: ${JSON.stringify(grant.permission)};\n}`,
+    )
+    .join(" | ")};`;
+}
 
 describe("automation routing schemas", () => {
   test.each(["workflowName", "remoteWorkflowName"])(
@@ -11,7 +28,7 @@ describe("automation routing schemas", () => {
       expect(() =>
         automationRouteActionSchema.parse({
           kind: "start_workflow",
-          authority: { kind: "organization-automation" },
+          authority: { kind: "organization-automation", grants: [] },
           workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
           instanceIdTemplate: "daily-digest-${event.id}",
           [field]: "caller-supplied-name",
@@ -30,27 +47,124 @@ describe("automation routing schemas", () => {
     ).toThrow();
   });
 
-  test("renders start_workflow action inputs without a configurable workflow host", () => {
-    const declaration = zodSchemaToTypeScriptRender(automationRouteCreateInputSchema, "input", {
+  test("renders canonical grants for start_workflow action inputs and outputs", () => {
+    const inputRender = zodSchemaToTypeScriptRender(automationRouteCreateInputSchema, "input", {
       rootTypeName: "RouterCreateInput",
-    }).declarations.find((candidate) =>
+    });
+    const inputDeclaration = inputRender.declarations.find((candidate) =>
       candidate.startsWith("type AutomationStartWorkflowActionInput ="),
     );
 
-    expect(declaration).toBe(
+    expect(inputDeclaration).toBe(
       [
         "type AutomationStartWorkflowActionInput = {",
         '  kind: "start_workflow";',
         "  authority: {",
         '    kind: "delegated-user";',
+        '    grants: BackofficePermissionRequirement[] | "inherit";',
+        "  } | {",
+        '    kind: "linked-user";',
+        '    grants: BackofficePermissionRequirement[] | "inherit";',
         "  } | {",
         '    kind: "organization-automation";',
+        "    grants: BackofficePermissionRequirement[];",
         "  };",
         "  workflowScriptPath: string;",
         "  instanceIdTemplate: string;",
         "};",
       ].join("\n"),
     );
+    expect(inputRender.declarations).toContain(
+      expectedBackofficePermissionRequirementDeclaration(),
+    );
+
+    const outputRender = zodSchemaToTypeScriptRender(automationRouteSchema, "output", {
+      rootTypeName: "AutomationRoute",
+    });
+    const outputDeclaration = outputRender.declarations.find((candidate) =>
+      candidate.startsWith("type AutomationStartWorkflowAction ="),
+    );
+    expect(outputDeclaration).toContain('grants: BackofficePermissionRequirement[] | "inherit";');
+    expect(outputDeclaration).not.toContain("grants: unknown[];");
+    expect(outputRender.declarations).toContain(
+      expectedBackofficePermissionRequirementDeclaration(),
+    );
+  });
+
+  test("accepts inherited grants for user-backed authority modes", () => {
+    for (const kind of ["delegated-user", "linked-user"] as const) {
+      expect(
+        automationRouteActionSchema.parse({
+          kind: "start_workflow",
+          authority: { kind, grants: "inherit" },
+          workflowScriptPath: "/workspace/automations/user.workflow.js",
+          instanceIdTemplate: "user-${event.id}",
+        }),
+      ).toMatchObject({ authority: { kind, grants: "inherit" } });
+    }
+
+    expect(() =>
+      automationRouteActionSchema.parse({
+        kind: "start_workflow",
+        authority: { kind: "organization-automation", grants: "inherit" },
+        workflowScriptPath: "/workspace/automations/invalid.workflow.js",
+        instanceIdTemplate: "invalid-${event.id}",
+      }),
+    ).toThrow();
+  });
+
+  test("accepts any duplicate-free canonical permissions", () => {
+    expect(
+      automationRouteActionSchema.parse({
+        kind: "start_workflow",
+        authority: {
+          kind: "organization-automation",
+          grants: [BACKOFFICE_PERMISSION.store.modify],
+        },
+        workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
+        instanceIdTemplate: "daily-digest-${event.id}",
+      }),
+    ).toMatchObject({
+      authority: { grants: [BACKOFFICE_PERMISSION.store.modify] },
+    });
+
+    expect(
+      automationRouteActionSchema.parse({
+        kind: "start_workflow",
+        authority: {
+          kind: "organization-automation",
+          grants: [BACKOFFICE_PERMISSION.admin.organizationsManage],
+        },
+        workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
+        instanceIdTemplate: "daily-digest-${event.id}",
+      }),
+    ).toMatchObject({
+      authority: { grants: [BACKOFFICE_PERMISSION.admin.organizationsManage] },
+    });
+
+    expect(() =>
+      automationRouteActionSchema.parse({
+        kind: "start_workflow",
+        authority: {
+          kind: "organization-automation",
+          grants: [{ namespace: "admin", permission: "unknown" }],
+        },
+        workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
+        instanceIdTemplate: "daily-digest-${event.id}",
+      }),
+    ).toThrow("Unknown Backoffice permission 'admin.unknown'");
+
+    expect(() =>
+      automationRouteActionSchema.parse({
+        kind: "start_workflow",
+        authority: {
+          kind: "organization-automation",
+          grants: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.store.modify],
+        },
+        workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
+        instanceIdTemplate: "daily-digest-${event.id}",
+      }),
+    ).toThrow("is duplicated");
   });
 
   test("accepts structural actor matchers and rejects invalid delegation roles", () => {
@@ -73,7 +187,7 @@ describe("automation routing schemas", () => {
         },
         action: {
           kind: "start_workflow",
-          authority: { kind: "organization-automation" },
+          authority: { kind: "organization-automation", grants: [] },
           workflowScriptPath: "/workspace/automations/telegram.workflow.js",
           instanceIdTemplate: "telegram-${event.id}",
         },
@@ -107,7 +221,7 @@ describe("automation routing schemas", () => {
         },
         action: {
           kind: "start_workflow",
-          authority: { kind: "organization-automation" },
+          authority: { kind: "organization-automation", grants: [] },
           workflowScriptPath: "/workspace/automations/telegram.workflow.js",
           instanceIdTemplate: "telegram-${event.id}",
         },
@@ -126,7 +240,7 @@ describe("automation routing schemas", () => {
         },
         action: {
           kind: "start_workflow",
-          authority: { kind: "organization-automation" },
+          authority: { kind: "organization-automation", grants: [] },
           workflowScriptPath: "/workspace/automations/telegram.workflow.js",
           instanceIdTemplate: "telegram-${event.id}",
         },
@@ -145,7 +259,7 @@ describe("automation routing schemas", () => {
         },
         action: {
           kind: "start_workflow",
-          authority: { kind: "organization-automation" },
+          authority: { kind: "organization-automation", grants: [] },
           workflowScriptPath: "/workspace/automations/telegram.workflow.js",
           instanceIdTemplate: "telegram-${event.id}",
         },
@@ -170,7 +284,7 @@ describe("automation routing schemas", () => {
         },
         action: {
           kind: "start_workflow",
-          authority: { kind: "organization-automation" },
+          authority: { kind: "organization-automation", grants: [] },
           workflowScriptPath: "/workspace/automations/telegram.workflow.js",
           instanceIdTemplate: "telegram-${event.id}",
         },

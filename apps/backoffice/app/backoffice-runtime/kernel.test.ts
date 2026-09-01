@@ -52,6 +52,7 @@ const linkedExecution = {
 };
 
 const operation = { namespace: "telegram", permission: "send" } as const;
+const secondOperation = { namespace: "store", permission: "modify" } as const;
 
 class RecordingKernelObserver implements BackofficeKernelObserver {
   readonly authorizations: BackofficeKernelAction[] = [];
@@ -67,7 +68,7 @@ class RecordingKernelObserver implements BackofficeKernelObserver {
   }
 }
 
-describe("BackofficeKernel.assertAuthorized", () => {
+describe("BackofficeKernel authorization assertions", () => {
   test("observes authorization without running the action execution observer", async () => {
     const resolvePrincipalPermissions = vi.fn(async () => [operation]);
     const resolveActorCapabilityGrants = vi.fn(async () => [operation]);
@@ -108,6 +109,69 @@ describe("BackofficeKernel.assertAuthorized", () => {
     await expect(
       kernel.assertAuthorized({ execution: linkedExecution, operation }),
     ).rejects.toMatchObject({ reason: "principal-permission-denied" });
+  });
+
+  test("resolves each authority participant once for an all-of requirement set", async () => {
+    const permissions = [operation, secondOperation];
+    const resolvePrincipalPermissions = vi.fn(async () => permissions);
+    const resolveActorCapabilityGrants = vi.fn(async () => permissions);
+    const observer = new RecordingKernelObserver();
+    const kernel = new BackofficeKernel({
+      authorityResolver: {
+        resolvePrincipalPermissions,
+        resolveActorCapabilityGrants,
+      },
+      kernelObserver: observer,
+    });
+
+    await expect(
+      kernel.assertAuthorizedAll({
+        execution: linkedExecution,
+        requirements: [
+          { operation, resource: { kind: "telegram-chat", chatId: "chat-1" } },
+          { operation: secondOperation, resource: { kind: "store-key", key: "reports/latest" } },
+        ],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(resolvePrincipalPermissions).toHaveBeenCalledOnce();
+    expect(resolveActorCapabilityGrants).toHaveBeenCalledTimes(2);
+    expect(observer.authorizations).toEqual([
+      {
+        execution: linkedExecution,
+        operation,
+        resource: { kind: "telegram-chat", chatId: "chat-1" },
+      },
+      {
+        execution: linkedExecution,
+        operation: secondOperation,
+        resource: { kind: "store-key", key: "reports/latest" },
+      },
+    ]);
+  });
+
+  test("observes no authorization when one requirement is denied", async () => {
+    const observer = new RecordingKernelObserver();
+    const kernel = new BackofficeKernel({
+      authorityResolver: {
+        async resolvePrincipalPermissions() {
+          return [operation];
+        },
+        async resolveActorCapabilityGrants() {
+          return [operation, secondOperation];
+        },
+      },
+      kernelObserver: observer,
+    });
+
+    await expect(
+      kernel.assertAuthorizedAll({
+        execution: linkedExecution,
+        requirements: [{ operation }, { operation: secondOperation }],
+      }),
+    ).rejects.toMatchObject({ reason: "principal-permission-denied" });
+
+    expect(observer.authorizations).toEqual([]);
   });
 });
 

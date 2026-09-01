@@ -91,17 +91,22 @@ describe("runBackofficeCodemode", () => {
     expect(result.toolCalls).toEqual([]);
   });
 
-  test("does not expose unsupported state tools", async () => {
+  test("discovers state files with glob", async () => {
     const result = await runBackofficeCodemode({
       env,
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({
-        runtimes: { state: createTestStateBackend() },
+        runtimes: {
+          state: createTestStateBackend({
+            upload: new MemoryUploadObject({ "automations/example.workflow.js": "example" }),
+          }),
+        },
       }),
-      code: `async () => await state.find("/")`,
+      code: `async () => await state.glob({ pattern: "/workspace/automations/**/*.workflow.js" })`,
     });
 
-    assert(result.error === "Unknown tool: find");
+    expect(result.error).toBeUndefined();
+    expect(result.result).toEqual(["/workspace/automations/example.workflow.js"]);
   });
 
   test("calls automation identity tools through codemode providers", async () => {

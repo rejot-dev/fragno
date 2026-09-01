@@ -49,7 +49,7 @@ if (!telegramTestCommandEntry) {
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
   slug: "telegram-channel",
-  version: "1.0.0",
+  version: "1.0.1",
 } as const;
 
 const marketplaceTelegramTestWorkspace = () =>
@@ -71,7 +71,10 @@ const telegramTestCommandRoute = {
   priority: 110,
   action: {
     kind: "start_workflow" as const,
-    authority: { kind: "organization-automation" as const },
+    authority: {
+      kind: "organization-automation" as const,
+      grants: [BACKOFFICE_PERMISSION.store.read, BACKOFFICE_PERMISSION.telegram.send],
+    },
     workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
     instanceIdTemplate: "telegram-test-${event.id}",
   },
@@ -426,7 +429,10 @@ describe("starter automation router scenarios", () => {
                 id: "system-project-files-configure",
                 action: {
                   kind: "start_workflow",
-                  authority: { kind: "organization-automation" },
+                  authority: {
+                    kind: "organization-automation",
+                    grants: [BACKOFFICE_PERMISSION.internal.manage],
+                  },
                   workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
                 },
               },
@@ -595,7 +601,10 @@ describe("starter automation router scenarios", () => {
             priority: 50,
             action: {
               kind: "start_workflow",
-              authority: { kind: "organization-automation" },
+              authority: {
+                kind: "organization-automation",
+                grants: [BACKOFFICE_PERMISSION.store.modify],
+              },
               workflowScriptPath: "/workspace/automations/custom-alpha.workflow.js",
               instanceIdTemplate: "custom-alpha-${event.id}",
             },
@@ -728,7 +737,7 @@ describe("starter automation router scenarios", () => {
             priority: 50,
             action: {
               kind: "start_workflow",
-              authority: { kind: "organization-automation" },
+              authority: { kind: "organization-automation", grants: [] },
               workflowScriptPath: "/workspace/automations/missing-workflow-file.workflow.js",
               instanceIdTemplate: "missing-workflow-file-${event.id}",
             },
@@ -751,7 +760,7 @@ describe("starter automation router scenarios", () => {
             priority: 60,
             action: {
               kind: "start_workflow",
-              authority: { kind: "organization-automation" },
+              authority: { kind: "organization-automation", grants: [] },
               workflowScriptPath: "/workspace/automations/valid-matched-route.workflow.js",
               instanceIdTemplate: "valid-matched-route-${event.id}",
             },
@@ -1180,9 +1189,18 @@ describe("starter automation router scenarios", () => {
               },
               principal: {
                 scope: "internal",
-                type: "automation",
+                type: "user",
+                id: "user-1",
                 role: "principal",
               },
+              delegation: [
+                {
+                  scope: "internal",
+                  type: "automation",
+                  id: "automation-route:telegram-pi-linking",
+                  role: "delegate",
+                },
+              ],
             },
           }),
           then.telegram.sentMessage({
@@ -1204,8 +1222,20 @@ describe("starter automation router scenarios", () => {
                       id: "1001",
                       role: "initiator",
                     },
-                    principal: null,
-                    delegation: [],
+                    principal: {
+                      scope: "internal",
+                      type: "user",
+                      id: "user-1",
+                      role: "principal",
+                    },
+                    delegation: [
+                      {
+                        scope: "internal",
+                        type: "automation",
+                        id: "automation-route:telegram-pi-linking",
+                        role: "delegate",
+                      },
+                    ],
                   },
                 },
               },
@@ -1408,10 +1438,8 @@ describe("starter automation router scenarios", () => {
               throw new Error(`Expected no Pi session creation, got ${calls.length}.`);
             }
           }),
-          then.workflow.instance({
+          then.workflow.missing({
             remoteWorkflowName: "telegram-user-pi-linking",
-            status: "complete",
-            output: { skipped: true, reason: "telegram-chat-not-linked" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
@@ -1459,10 +1487,8 @@ describe("starter automation router scenarios", () => {
               throw new Error(`Expected no Pi session creation, got ${calls.length}.`);
             }
           }),
-          then.workflow.instance({
+          then.workflow.missing({
             remoteWorkflowName: "telegram-user-pi-linking",
-            status: "complete",
-            output: { skipped: true, reason: "telegram-chat-not-linked" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
@@ -1510,10 +1536,8 @@ describe("starter automation router scenarios", () => {
               throw new Error(`Expected no Pi session creation, got ${calls.length}.`);
             }
           }),
-          then.workflow.instance({
+          then.workflow.missing({
             remoteWorkflowName: "telegram-user-pi-linking",
-            status: "complete",
-            output: { skipped: true, reason: "telegram-chat-not-linked" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],

@@ -25,6 +25,9 @@ export type BackofficeKernelAction = {
   resource?: unknown;
 };
 
+/** One operation that must be authorized as part of an all-of authorization check. */
+export type BackofficeKernelAuthorizationRequirement = Omit<BackofficeKernelAction, "execution">;
+
 export type BackofficeKernelObserver = {
   /** Observe a successfully authorized action, including checks that do not execute through invoke(). */
   observeAuthorization?(action: BackofficeKernelAction): Promise<void>;
@@ -84,8 +87,8 @@ const backofficePermissionsEqual = (
  *
  * Use `invoke()` for actions whose side effect can be expressed as a callback. It keeps
  * authorization, observation, and exactly-once execution in one boundary. Use
- * `assertAuthorized()` only at framework boundaries where successful authorization must allow an
- * external router, middleware chain, or transaction handler to continue the operation.
+ * `assertAuthorized()` or `assertAuthorizedAll()` only at framework boundaries where successful
+ * authorization must allow an external router, middleware chain, or transaction handler to continue.
  *
  * `scoped()` is not an authorization method. It only validates object availability and selects the
  * Durable Object address for an already-established scope.
@@ -109,6 +112,22 @@ export class BackofficeKernel {
    */
   async assertAuthorized(action: BackofficeKernelAction): Promise<void> {
     await this.#authorizeForExecution(action);
+  }
+
+  /**
+   * Checks every required operation through one authority resolution pass.
+   *
+   * Principal and delegated actor permissions are resolved once for the complete requirement set.
+   * No successful authorization is observed unless every requirement passes.
+   */
+  async assertAuthorizedAll({
+    execution,
+    requirements,
+  }: {
+    execution: BackofficeExecutionContext;
+    requirements: readonly BackofficeKernelAuthorizationRequirement[];
+  }): Promise<void> {
+    await this.#authorizeAllForExecution(execution, requirements);
   }
 
   /**
@@ -173,14 +192,42 @@ export class BackofficeKernel {
    * snapshot so role changes, bans, memberships, and service grants resolve from current state.
    */
   async #authorizeForExecution(action: BackofficeKernelAction): Promise<BackofficeKernelAction> {
-    return action.execution.userAuthority
-      ? await this.#authorizeVerifiedRequest(action)
-      : await this.#authorizeCurrentAuthority(action);
+    const [authorizedAction] = await this.#authorizeAllForExecution(action.execution, [
+      { operation: action.operation, resource: action.resource },
+    ]);
+    if (!authorizedAction) {
+      throw new BackofficeUnavailableError(
+        "Backoffice kernel single-action authorization produced no authorized action.",
+      );
+    }
+    return authorizedAction;
+  }
+
+  async #authorizeAllForExecution(
+    execution: BackofficeExecutionContext,
+    requirements: readonly BackofficeKernelAuthorizationRequirement[],
+  ): Promise<readonly BackofficeKernelAction[]> {
+    if (requirements.length === 0) {
+      return [];
+    }
+
+    const authorizedActions = execution.userAuthority
+      ? this.#authorizeVerifiedRequestRequirements(execution, requirements)
+      : await this.#authorizeCurrentAuthorityRequirements(execution, requirements);
+    await Promise.all(
+      authorizedActions.map(async (action) => {
+        await this.#observer.observeAuthorization?.(action);
+      }),
+    );
+    return authorizedActions;
   }
 
   /** Resolves an immediate request exclusively from its verified JWT authority snapshot. */
-  async #authorizeVerifiedRequest(action: BackofficeKernelAction): Promise<BackofficeKernelAction> {
-    const trustedExecution = this.#parseExecutionContext(action.execution);
+  #authorizeVerifiedRequestRequirements(
+    execution: BackofficeExecutionContext,
+    requirements: readonly BackofficeKernelAuthorizationRequirement[],
+  ): readonly BackofficeKernelAction[] {
+    const trustedExecution = this.#parseExecutionContext(execution);
     const tokenAuthority = trustedExecution.userAuthority;
     if (!tokenAuthority || tokenAuthority.expiresAtEpochMs <= Date.now()) {
       throw new BackofficeForbiddenError(
@@ -198,87 +245,115 @@ export class BackofficeKernel {
 
     const role = resolveBackofficeUserAuthorityRole(tokenAuthority, trustedExecution.scope);
     const permissions = role ? getBackofficeAuthorityRoleGrants(role) : [];
-    if (!permissions.some((grant) => backofficePermissionsEqual(grant, action.operation))) {
-      throw new BackofficeForbiddenError(
-        "The verified access-token role does not have the required permission.",
-        "principal-permission-denied",
-      );
-    }
-
-    const authorizedAction = {
-      execution: trustedExecution,
-      operation: action.operation,
-      resource: action.resource,
-    };
-    await this.#observer.observeAuthorization?.(authorizedAction);
-    return authorizedAction;
-  }
-
-  /** Resolves deferred and internal execution against current authoritative identity state. */
-  async #authorizeCurrentAuthority({
-    execution,
-    operation,
-    resource,
-  }: BackofficeKernelAction): Promise<BackofficeKernelAction> {
-    const trustedExecution = this.#parseExecutionContext(execution);
-    const principal = trustedExecution.actors.principal;
-
-    if (principal) {
-      let permissions: readonly BackofficePermissionRequirement[];
-      try {
-        permissions = await this.#authorityResolver.resolvePrincipalPermissions({
-          principal,
-          execution: trustedExecution,
-        });
-      } catch {
+    for (const requirement of requirements) {
+      if (!permissions.some((grant) => backofficePermissionsEqual(grant, requirement.operation))) {
         throw new BackofficeForbiddenError(
-          "Backoffice authority resolution is unavailable.",
-          "authority-unavailable",
-        );
-      }
-
-      if (!permissions.some((grant) => backofficePermissionsEqual(grant, operation))) {
-        throw new BackofficeForbiddenError(
-          "The current principal does not have the required permission.",
+          "The verified access-token role does not have the required permission.",
           "principal-permission-denied",
         );
       }
-    } else if (
-      !this.#isTrustedSystemExecution(trustedExecution) &&
-      !this.#isAllowedBootstrapAction(trustedExecution, operation, resource)
-    ) {
-      throw new BackofficeForbiddenError(
-        "This action requires current principal authority.",
-        "principal-permission-denied",
-      );
     }
 
-    // TODO: Express this ordered authorization chain without triggering async-await-in-loop.
-    for (const actor of trustedExecution.actors.delegation) {
-      let grants: readonly BackofficePermissionRequirement[];
-      try {
-        grants = await this.#authorityResolver.resolveActorCapabilityGrants({
+    return requirements.map((requirement) => ({
+      execution: trustedExecution,
+      operation: requirement.operation,
+      resource: requirement.resource,
+    }));
+  }
+
+  /** Resolves deferred and internal execution through one current authority resolution pass. */
+  async #authorizeCurrentAuthorityRequirements(
+    execution: BackofficeExecutionContext,
+    requirements: readonly BackofficeKernelAuthorizationRequirement[],
+  ): Promise<readonly BackofficeKernelAction[]> {
+    const trustedExecution = this.#parseExecutionContext(execution);
+    const principal = trustedExecution.actors.principal;
+
+    const resolvePrincipalAuthority = principal
+      ? this.#authorityResolver
+          .resolvePrincipalPermissions({
+            principal,
+            execution: trustedExecution,
+          })
+          .then((permissions) => ({ kind: "principal" as const, permissions }))
+      : Promise.resolve({ kind: "principal-free" as const });
+
+    const resolvePrincipalAuthorityResult = resolvePrincipalAuthority.then(
+      (value) => ({ status: "fulfilled" as const, value }),
+      () => ({ status: "rejected" as const }),
+    );
+    const resolveDelegatedActorResults = Promise.allSettled(
+      trustedExecution.actors.delegation.map((actor) =>
+        this.#authorityResolver.resolveActorCapabilityGrants({
           actor,
           execution: trustedExecution,
-        });
-      } catch {
+        }),
+      ),
+    );
+    const [principalAuthorityResult, delegatedActorResults] = await Promise.all([
+      resolvePrincipalAuthorityResult,
+      resolveDelegatedActorResults,
+    ]);
+
+    for (const requirement of requirements) {
+      if (principalAuthorityResult.status === "rejected") {
         throw new BackofficeForbiddenError(
           "Backoffice authority resolution is unavailable.",
           "authority-unavailable",
         );
       }
 
-      if (!grants.some((grant) => backofficePermissionsEqual(grant, operation))) {
+      const resolvedPrincipalAuthority = principalAuthorityResult.value;
+      if (resolvedPrincipalAuthority.kind === "principal") {
+        if (
+          !resolvedPrincipalAuthority.permissions.some((grant) =>
+            backofficePermissionsEqual(grant, requirement.operation),
+          )
+        ) {
+          throw new BackofficeForbiddenError(
+            "The current principal does not have the required permission.",
+            "principal-permission-denied",
+          );
+        }
+      } else if (
+        !this.#isTrustedSystemExecution(trustedExecution) &&
+        !this.#isAllowedBootstrapAction(
+          trustedExecution,
+          requirement.operation,
+          requirement.resource,
+        )
+      ) {
         throw new BackofficeForbiddenError(
-          "A delegated actor does not have the required capability grant.",
-          "actor-capability-denied",
+          "This action requires current principal authority.",
+          "principal-permission-denied",
         );
+      }
+
+      for (const actorResult of delegatedActorResults) {
+        if (actorResult.status === "rejected") {
+          throw new BackofficeForbiddenError(
+            "Backoffice authority resolution is unavailable.",
+            "authority-unavailable",
+          );
+        }
+        if (
+          !actorResult.value.some((grant) =>
+            backofficePermissionsEqual(grant, requirement.operation),
+          )
+        ) {
+          throw new BackofficeForbiddenError(
+            "A delegated actor does not have the required capability grant.",
+            "actor-capability-denied",
+          );
+        }
       }
     }
 
-    const authorizedAction = { execution: trustedExecution, operation, resource };
-    await this.#observer.observeAuthorization?.(authorizedAction);
-    return authorizedAction;
+    return requirements.map((requirement) => ({
+      execution: trustedExecution,
+      operation: requirement.operation,
+      resource: requirement.resource,
+    }));
   }
 
   #parseExecutionContext(execution: BackofficeExecutionContext): BackofficeExecutionContext {

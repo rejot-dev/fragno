@@ -1,6 +1,7 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { Role, UserAuthorityFacts } from "@/fragno/auth/contracts";
 import { automationEntityRefsEqual, type AutomationActors } from "@/fragno/automation/actors";
+import { automationRouteIdFromActor } from "@/fragno/automation/authority";
 
 import {
   getBackofficeAuthorityRoleGrants,
@@ -122,6 +123,10 @@ export const createBackofficeAuthorityResolver = (
 
   return {
     async resolvePrincipalPermissions({ principal, execution }) {
+      if (automationRouteIdFromActor(principal)) {
+        return noPermissions;
+      }
+
       const serviceRole = resolveBackofficeInternalServiceAuthorityRole(principal);
       if (serviceRole) {
         return getBackofficeAuthorityRoleGrants(serviceRole);
@@ -162,6 +167,10 @@ export const createBackofficeAuthorityResolver = (
     },
 
     async resolveActorCapabilityGrants({ actor }) {
+      if (actor.role === "delegate" && automationRouteIdFromActor(actor)) {
+        return noPermissions;
+      }
+
       const role = resolveBackofficeInternalServiceAuthorityRole(actor);
       return role ? getBackofficeAuthorityRoleGrants(role) : noPermissions;
     },

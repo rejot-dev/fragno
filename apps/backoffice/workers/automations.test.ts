@@ -156,7 +156,10 @@ describe("Automations authorized HTTP context", () => {
       const scope = { kind: "user" as const, userId: "user-1" };
       const execution = createAutomationRuntimeExecution({
         authority: {
-          mode: { kind: "organization-automation" },
+          mode: {
+            kind: "organization-automation",
+            grants: [BACKOFFICE_PERMISSION.store.modify],
+          },
           automationId: "automation-route:user-action",
         },
         event: {
@@ -181,6 +184,36 @@ describe("Automations authorized HTTP context", () => {
       });
       const automations = runtime.objects.automations.forUser({
         userId: scope.userId,
+      });
+      const systemRoutes = createAutomationsRouteCaller({
+        object: automations,
+        context: {
+          execution: createBackofficeSystemExecution(scope),
+          propagationContext: null,
+        },
+      });
+      await systemRoutes("POST", "/routes", {
+        body: {
+          id: "user-action",
+          name: "User action",
+          enabled: true,
+          priority: 100,
+          trigger: {
+            kind: "event",
+            source: "backoffice",
+            eventType: "user.action",
+            matcher: null,
+          },
+          action: {
+            kind: "start_workflow",
+            authority: {
+              kind: "organization-automation",
+              grants: [BACKOFFICE_PERMISSION.store.modify],
+            },
+            workflowScriptPath: "/workspace/automations/user-action.workflow.js",
+            instanceIdTemplate: "user-action-${event.id}",
+          },
+        },
       });
       const callRoute = createAutomationsRouteCaller({
         object: automations,
@@ -484,6 +517,182 @@ describe("Automations authorized HTTP context", () => {
       assert(malformedDirectResponse.status === 403);
       await expect(malformedDirectResponse.json()).resolves.toMatchObject({
         code: "AUTOMATIONS_ACTION_CONTEXT_REQUIRED",
+      });
+    } finally {
+      await runtime.cleanup();
+    }
+  });
+
+  test("authorizes route updates against the merged persisted grants", async () => {
+    let permissions = [BACKOFFICE_PERMISSION.router.modify, BACKOFFICE_PERMISSION.store.modify];
+    const resolvePrincipalPermissions = vi.fn(async () => permissions);
+    const runtime = await createInMemoryBackofficeRuntime({
+      authorityResolver: {
+        resolvePrincipalPermissions,
+        async resolveActorCapabilityGrants() {
+          return [];
+        },
+      },
+    });
+
+    try {
+      const scope = { kind: "org" as const, orgId: "org-1" };
+      const execution = createBackofficeServiceExecution({
+        scope,
+        service: { type: "system", id: "route-manager" },
+      });
+      const callRoute = createAutomationsRouteCaller({
+        object: runtime.objects.automations.forOrg(scope.orgId),
+        context: { execution, propagationContext: null },
+      });
+      const privilegedAction = {
+        kind: "start_workflow" as const,
+        authority: {
+          kind: "organization-automation" as const,
+          grants: [BACKOFFICE_PERMISSION.store.modify],
+        },
+        workflowScriptPath: "/workspace/automations/grant-update.workflow.js",
+        instanceIdTemplate: "grant-update-${event.id}",
+      };
+      const originalTrigger = {
+        kind: "event" as const,
+        source: "trusted",
+        eventType: "requested",
+        matcher: null,
+      };
+
+      const createResponse = await callRoute("POST", "/routes", {
+        body: {
+          id: "grant-update",
+          name: "Grant update",
+          enabled: true,
+          priority: 100,
+          trigger: originalTrigger,
+          action: privilegedAction,
+        },
+      });
+      assert(createResponse.type === "json");
+
+      permissions = [BACKOFFICE_PERMISSION.router.modify];
+
+      await expect(
+        callRoute("PATCH", "/routes/:routeId", {
+          pathParams: { routeId: "grant-update" },
+          body: { enabled: false },
+        }),
+      ).resolves.toMatchObject({ type: "json", data: { enabled: false } });
+
+      await expect(
+        callRoute("PATCH", "/routes/:routeId", {
+          pathParams: { routeId: "grant-update" },
+          body: { enabled: true },
+        }),
+      ).resolves.toMatchObject({
+        type: "error",
+        status: 403,
+        error: { code: "principal-permission-denied" },
+      });
+
+      await expect(
+        callRoute("PATCH", "/routes/:routeId", {
+          pathParams: { routeId: "grant-update" },
+          body: {
+            trigger: {
+              kind: "event",
+              source: "attacker-controlled",
+              eventType: "requested",
+              matcher: null,
+            },
+          },
+        }),
+      ).resolves.toMatchObject({
+        type: "error",
+        status: 403,
+        error: { code: "principal-permission-denied" },
+      });
+
+      await expect(
+        callRoute("PATCH", "/routes/:routeId", {
+          pathParams: { routeId: "grant-update" },
+          body: {
+            action: {
+              ...privilegedAction,
+              workflowScriptPath: "/workspace/automations/attacker-controlled.workflow.js",
+            },
+          },
+        }),
+      ).resolves.toMatchObject({
+        type: "error",
+        status: 403,
+        error: { code: "principal-permission-denied" },
+      });
+
+      const retainedRoute = await callRoute("GET", "/routes/:routeId", {
+        pathParams: { routeId: "grant-update" },
+      });
+      expect(retainedRoute).toMatchObject({
+        type: "json",
+        data: {
+          enabled: false,
+          trigger: originalTrigger,
+          action: privilegedAction,
+        },
+      });
+
+      await expect(
+        callRoute("POST", "/routes", {
+          body: {
+            id: "grant-create",
+            name: "Grant create",
+            enabled: true,
+            priority: 100,
+            trigger: originalTrigger,
+            action: privilegedAction,
+          },
+        }),
+      ).resolves.toMatchObject({
+        type: "error",
+        status: 403,
+        error: { code: "principal-permission-denied" },
+      });
+    } finally {
+      await runtime.cleanup();
+    }
+  });
+
+  test("rejects workflow route mutation without trusted action context", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+
+    try {
+      const callRoute = createAutomationsRouteCaller({
+        object: runtime.objects.automations.forOrg("org-1"),
+      });
+
+      await expect(
+        callRoute("POST", "/routes", {
+          body: {
+            id: "missing-context",
+            name: "Missing context",
+            enabled: true,
+            priority: 100,
+            trigger: {
+              kind: "event",
+              source: "test",
+              eventType: "requested",
+              matcher: null,
+            },
+            action: {
+              kind: "start_workflow",
+              authority: { kind: "organization-automation", grants: [] },
+              workflowScriptPath: "/workspace/automations/missing-context.workflow.js",
+              instanceIdTemplate: "missing-context-${event.id}",
+            },
+          },
+        }),
+      ).resolves.toMatchObject({
+        type: "error",
+        status: 403,
+        error: { code: "AUTOMATIONS_ACTION_CONTEXT_REQUIRED" },
       });
     } finally {
       await runtime.cleanup();

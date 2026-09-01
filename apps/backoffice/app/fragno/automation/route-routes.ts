@@ -11,6 +11,7 @@ import {
   automationRouteSchema,
   automationRouteUpdatePayloadSchema,
 } from "./routing-schemas";
+import type { AuthorizeAutomationRouteAction } from "./routing-storage-runtime";
 
 const SYSTEM_ROUTE_MUTATION_ACTORS = {
   initiator: AUTOMATION_SYSTEM_INITIATOR,
@@ -19,6 +20,19 @@ const SYSTEM_ROUTE_MUTATION_ACTORS = {
 } as const;
 
 const mutationActorsByRequest = new WeakMap<Request, AutomationActors>();
+const mutationActionAuthorizerByRequest = new WeakMap<Request, AuthorizeAutomationRouteAction>();
+
+export class AutomationRouteMutationAuthorizationError extends Error {
+  readonly code: string;
+  readonly status: 403 | 503;
+
+  constructor({ message, code, status }: { message: string; code: string; status: 403 | 503 }) {
+    super(message);
+    this.name = "AutomationRouteMutationAuthorizationError";
+    this.code = code;
+    this.status = status;
+  }
+}
 
 export const setAutomationRouteMutationActors = (
   request: Request,
@@ -27,8 +41,20 @@ export const setAutomationRouteMutationActors = (
   mutationActorsByRequest.set(request, actors);
 };
 
+export const setAutomationRouteMutationActionAuthorizer = (
+  request: Request,
+  authorizeAction: AuthorizeAutomationRouteAction,
+): void => {
+  mutationActionAuthorizerByRequest.set(request, authorizeAction);
+};
+
 const getAutomationRouteMutationActors = (request: Request | undefined): AutomationActors =>
   (request && mutationActorsByRequest.get(request)) ?? SYSTEM_ROUTE_MUTATION_ACTORS;
+
+const getAutomationRouteMutationActionAuthorizer = (
+  request: Request | undefined,
+): AuthorizeAutomationRouteAction =>
+  (request && mutationActionAuthorizerByRequest.get(request)) ?? (async () => undefined);
 
 const routeError = (cause: unknown) =>
   isAutomationScheduleError(cause)
@@ -121,6 +147,7 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
                   services.updateRoute(
                     { ...payload, id: pathParams.routeId },
                     getAutomationRouteMutationActors(request),
+                    getAutomationRouteMutationActionAuthorizer(request),
                   ),
                 ] as const,
             )
@@ -133,6 +160,9 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
 
           return json(route);
         } catch (cause) {
+          if (cause instanceof AutomationRouteMutationAuthorizationError) {
+            return error({ message: cause.message, code: cause.code }, cause.status);
+          }
           const known = routeError(cause);
           if (known) {
             return error({ message: known.message, code: known.code }, known.status);

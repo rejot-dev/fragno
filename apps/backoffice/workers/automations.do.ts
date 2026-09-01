@@ -63,6 +63,7 @@ import type {
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
+import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
 import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
 import type {
   AutomationEventSource,
@@ -294,7 +295,10 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     AutomationsOutboxItem
   >;
   readonly #getAutomationFileSystem?: AutomationsFileSystemResolver;
-  readonly #createPiRuntime?: (execution: BackofficeExecutionContext) => PiRuntime;
+  readonly #createPiRuntime?: (
+    execution: BackofficeExecutionContext,
+    kernel: BackofficeKernel,
+  ) => PiRuntime;
   #scope: BackofficeContextScope | null = null;
   private readonly automationRoutePrefix = "/api/automations";
 
@@ -311,7 +315,10 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     runtime: BackofficeRuntimeServices;
     nowEpochMs?: () => number;
     getAutomationFileSystem?: AutomationsFileSystemResolver;
-    createPiRuntime?: (execution: BackofficeExecutionContext) => PiRuntime;
+    createPiRuntime?: (
+      execution: BackofficeExecutionContext,
+      kernel: BackofficeKernel,
+    ) => PiRuntime;
   }) {
     super();
     this.#env = env as AutomationFragmentConfig["env"];
@@ -319,9 +326,23 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       ? (env as Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">)
       : null;
     this.#state = state;
-    this.#runtimeServices = runtime;
+    this.#runtimeServices = {
+      ...runtime,
+      authorityResolver: createAutomationRouteAuthorityResolver({
+        fallbackResolver: runtime.authorityResolver,
+        lookupRoute: async ({ scope, routeId }) => {
+          assertAutomationObjectScope(this.#requireScope(), scope);
+          const { runtime: automationRuntime } = this.#host.requireConfigured(
+            "Automations runtime is not ready for automation authority resolution.",
+          );
+          return await automationRuntime.automationFragment.callServices(() =>
+            automationRuntime.automationFragment.services.getRoute({ id: routeId }),
+          );
+        },
+      }),
+    };
     this.#nowEpochMs = nowEpochMs;
-    this.#kernel = new BackofficeKernel(runtime);
+    this.#kernel = new BackofficeKernel(this.#runtimeServices);
     this.#scope = backofficeContextScopeFromDurableObjectId(state.id, "AUTOMATIONS");
     this.#getAutomationFileSystem = getAutomationFileSystem;
     this.#createPiRuntime = createPiRuntime;
@@ -485,7 +506,9 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       codemode: this.#env
         ? createPiCodemodeRuntime(this.#env)
         : createUnavailablePiCodemodeRuntime(),
-      createRuntime: this.#createPiRuntime,
+      createRuntime: this.#createPiRuntime
+        ? (execution: BackofficeExecutionContext) => this.#createPiRuntime!(execution, this.#kernel)
+        : undefined,
       createRuntimeToolContext: (sessionExecution: BackofficeExecutionContext, pi: PiRuntime) =>
         createRouteBackedRuntimeContext({
           runtime: this.#runtimeServices,

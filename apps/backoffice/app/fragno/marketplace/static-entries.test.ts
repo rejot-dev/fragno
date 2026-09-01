@@ -32,6 +32,29 @@ describe("static Marketplace entries", () => {
     ]);
   });
 
+  test("keeps Telegram Channel 1.0.0 immutable and publishes inherited linked-user authority as 1.0.1", () => {
+    const original = getStaticMarketplaceEntry({
+      slug: "telegram-channel",
+      version: "1.0.0",
+    });
+    const linkedUser = getStaticMarketplaceEntry({
+      slug: "telegram-channel",
+      version: "1.0.1",
+    });
+
+    expect(original?.files[".marketplace/install.workflow.js"]).toContain(
+      'kind: "organization-automation"',
+    );
+    expect(original?.files["automations/telegram-user-pi-linking.workflow.js"]).toContain(
+      "identity.resolveExternal",
+    );
+    expect(linkedUser?.files[".marketplace/install.workflow.js"]).toContain('kind: "linked-user"');
+    expect(linkedUser?.files[".marketplace/install.workflow.js"]).toContain('grants: "inherit"');
+    expect(linkedUser?.files["automations/telegram-user-pi-linking.workflow.js"]).not.toContain(
+      "identity.resolveExternal",
+    );
+  });
+
   test("rejects duplicate parsed manifest versions", () => {
     expect(() =>
       marketplaceManifestSchema.parse({
@@ -96,7 +119,10 @@ describe("static Marketplace entries", () => {
               priority: 110,
               action: {
                 kind: "start_workflow",
-                authority: { kind: "organization-automation" },
+                authority: {
+                  kind: "organization-automation",
+                  grants: [{ namespace: "telegram", permission: "send" }],
+                },
                 workflowScriptPath,
                 instanceIdTemplate: "telegram-test-\${event.id}",
               },

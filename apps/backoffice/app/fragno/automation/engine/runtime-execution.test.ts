@@ -31,12 +31,12 @@ const event = {
 
 const organizationAuthority = automationRouteAuthority({
   routeId: "telegram-message",
-  mode: { kind: "organization-automation" },
+  mode: { kind: "organization-automation", grants: [] },
 });
 
 const delegatedUserAuthority = automationRouteAuthority({
   routeId: "telegram-message",
-  mode: { kind: "delegated-user" },
+  mode: { kind: "delegated-user", grants: [] },
 });
 
 describe("createAutomationRuntimeExecution", () => {
