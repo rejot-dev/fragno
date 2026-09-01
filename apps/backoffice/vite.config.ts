@@ -32,24 +32,72 @@ function emitWaSqliteWasmAssetPlugin(): Plugin {
   };
 }
 
-function emitObjectWorkerLocalDevVarsPlugin(): Plugin {
+const webWorkerLocalDevVarNames = [
+  "BACKOFFICE_INTERNAL_REQUEST_SECRET",
+  "AUTH_EMAIL_VERIFICATION_ENABLED",
+  "DOCS_PUBLIC_BASE_URL",
+] as const;
+
+function selectLocalDevVars(source: string, names: readonly string[]): string {
+  const assignments = new Map<string, string>();
+  for (const line of source.split(/\r?\n/)) {
+    const separatorIndex = line.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const name = line.slice(0, separatorIndex).trim();
+    if (names.includes(name)) {
+      assignments.set(name, line);
+    }
+  }
+
+  const selectedAssignments: string[] = [];
+  const missingNames: string[] = [];
+  for (const name of names) {
+    const assignment = assignments.get(name);
+    if (assignment === undefined) {
+      missingNames.push(name);
+    } else {
+      selectedAssignments.push(assignment);
+    }
+  }
+  if (missingNames.length > 0) {
+    throw new Error(
+      `Backoffice local dev vars missing required web Worker values: ${missingNames.join(", ")}`,
+    );
+  }
+
+  return `${selectedAssignments.join("\n")}\n`;
+}
+
+function emitWorkerLocalDevVarsPlugin(): Plugin {
   const localDevVarsPath = path.resolve(__dirname, ".dev.vars");
 
   return {
-    name: "emit-object-worker-local-dev-vars",
+    name: "emit-worker-local-dev-vars",
     apply: "build",
     generateBundle(_, bundle) {
-      if (this.environment.name !== "rejot_backoffice" || !existsSync(localDevVarsPath)) {
+      if (!existsSync(localDevVarsPath)) {
         return;
       }
 
-      // The Cloudflare Vite plugin only emits required secrets for auxiliary Worker previews.
+      const environmentName = this.environment.name;
+      if (environmentName !== "ssr" && environmentName !== "rejot_backoffice") {
+        return;
+      }
+
+      const localDevVars = readFileSync(localDevVarsPath, "utf8");
+      // Preview resolves .dev.vars beside each generated Wrangler config, not from the source root.
+      const emittedDevVars =
+        environmentName === "ssr"
+          ? selectLocalDevVars(localDevVars, webWorkerLocalDevVarNames)
+          : localDevVars;
       const devVarsAsset = bundle[".dev.vars"];
-      const localDevVars = readFileSync(localDevVarsPath);
       if (devVarsAsset?.type === "asset") {
-        devVarsAsset.source = localDevVars;
+        devVarsAsset.source = emittedDevVars;
       } else {
-        this.emitFile({ type: "asset", fileName: ".dev.vars", source: localDevVars });
+        this.emitFile({ type: "asset", fileName: ".dev.vars", source: emittedDevVars });
       }
     },
   };
@@ -83,7 +131,7 @@ export default defineConfig(({ command }) => {
       reactRouter(),
       devtoolsJson(),
       emitWaSqliteWasmAssetPlugin(),
-      emitObjectWorkerLocalDevVarsPlugin(),
+      emitWorkerLocalDevVarsPlugin(),
     ],
     ssr: {
       noExternal: ["@earendil-works/pi-ai"],
