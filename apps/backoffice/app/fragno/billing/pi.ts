@@ -53,7 +53,7 @@ export const resolvePiOperationBillingOrganizationId = (
       return organizationId;
     }
     case "system":
-      return null;
+      return piSessionBillingOrganizationId(metadata) ?? null;
   }
 
   throw new Error("Unsupported Backoffice context scope kind.");

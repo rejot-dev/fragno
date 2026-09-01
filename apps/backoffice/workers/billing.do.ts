@@ -5,7 +5,6 @@ import {
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { BackofficeKernel, type BackofficeScopeOperation } from "@/backoffice-runtime/kernel";
 import {
   requireBackofficeContextScopeFromDurableObjectId,
   type BackofficeRpcContext,
@@ -34,7 +33,6 @@ type BillingOwnerScope = Extract<BackofficeContextScope, { kind: "org" }>;
 
 export class InMemoryBillingObject extends RpcTarget implements BillingObject {
   readonly #state: BackofficeObjectState;
-  readonly #kernel: BackofficeKernel;
   readonly #host: FragmentDurableObjectHost<void, BillingFragment>;
   readonly #ownerScope: BillingOwnerScope;
   #fragment: BillingFragment | null = null;
@@ -50,7 +48,6 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
   }) {
     super();
     this.#state = state;
-    this.#kernel = new BackofficeKernel(runtime);
     const ownerScope = requireBackofficeContextScopeFromDurableObjectId(state.id, "BILLING");
     if (ownerScope.kind !== "org") {
       throw new Error("Billing objects require an organization scope.");
@@ -90,22 +87,10 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
     return this.#ownerScope;
   }
 
-  async #assertScopeAllowed(
-    scope: BackofficeContextScope,
-    operation: BackofficeScopeOperation,
-  ): Promise<void> {
-    await this.#kernel.assertScopeAllowedByOwner({
-      ownerScope: this.#requireOwnerScope(),
-      targetScope: scope,
-      operation,
-    });
-  }
-
   async recordEvent(
     input: BillingEventInput,
     context?: BackofficeRpcContext,
   ): Promise<BillingRecordEventResult> {
-    await this.#assertScopeAllowed(input.scope, "billing.record-event");
     const fragment = this.#getFragment();
     return await fragment.callServices(() => fragment.services.recordEvent(input), context);
   }
@@ -117,7 +102,6 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
   }
 
   async getTrackers(input: BillingTrackerPageInput): Promise<BillingTrackerPage> {
-    await this.#assertScopeAllowed(input.scope, "billing.read-trackers");
     const fragment = this.#getFragment();
     return await fragment.callServices(() => fragment.services.getTrackers(input));
   }

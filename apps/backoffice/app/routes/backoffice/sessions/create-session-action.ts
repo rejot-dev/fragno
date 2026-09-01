@@ -38,7 +38,9 @@ export async function createSessionAction({ request, params, context }: Route.Ac
   const modelOption = getValue("modelOption");
   const prompt = getValue("prompt");
   const billingOrganizationId =
-    scope.kind === "user" ? (me.activeOrganization?.organization.id ?? null) : null;
+    scope.kind === "user" || scope.kind === "system"
+      ? (me.activeOrganization?.organization.id ?? null)
+      : null;
 
   if (!prompt) {
     return actionError("Write a message to start the session.");
@@ -46,8 +48,8 @@ export async function createSessionAction({ request, params, context }: Route.Ac
   if (!modelOption) {
     return actionError("Model selection is required.");
   }
-  if (scope.kind === "user" && !billingOrganizationId) {
-    return actionError("Select an active organization before starting a personal session.");
+  if ((scope.kind === "user" || scope.kind === "system") && !billingOrganizationId) {
+    return actionError("Select an active organization before starting this session.");
   }
 
   const [providerRaw, ...modelParts] = modelOption.split("::");

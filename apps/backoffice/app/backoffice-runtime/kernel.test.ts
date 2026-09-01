@@ -614,14 +614,14 @@ describe("BackofficeKernel.assertScopeAllowedByOwner", () => {
       scopeKernel.assertScopeAllowedByOwner({
         ownerScope: { kind: "org", orgId: "org-1" },
         targetScope: { kind: "org", orgId: "org-1" },
-        operation: "billing.record-event",
+        operation: "automation.forward-event",
       }),
     ).resolves.toBeUndefined();
     await expect(
       scopeKernel.assertScopeAllowedByOwner({
         ownerScope: { kind: "org", orgId: "org-1" },
         targetScope: { kind: "project", orgId: "org-1", projectId: "project-1" },
-        operation: "billing.record-event",
+        operation: "automation.forward-event",
       }),
     ).resolves.toBeUndefined();
   });
@@ -631,7 +631,7 @@ describe("BackofficeKernel.assertScopeAllowedByOwner", () => {
       scopeKernel.assertScopeAllowedByOwner({
         ownerScope: { kind: "org", orgId: "org-1" },
         targetScope: { kind: "user", userId: "user-1" },
-        operation: "billing.record-event",
+        operation: "automation.forward-event",
       }),
     ).resolves.toBeUndefined();
   });
@@ -645,7 +645,7 @@ describe("BackofficeKernel.assertScopeAllowedByOwner", () => {
       scopeKernel.assertScopeAllowedByOwner({
         ownerScope: { kind: "org", orgId: "org-1" },
         targetScope,
-        operation: "billing.record-event",
+        operation: "automation.forward-event",
       }),
     ).rejects.toThrow(BackofficeForbiddenError);
   });
