@@ -15,7 +15,7 @@
     "pi-mcp-adapter": "2.29.0"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.84.2",
+    "@earendil-works/pi-coding-agent": "catalog:",
     "@fragno-private/typescript-config": "workspace:*",
     "@types/node": "^22.19.7",
     "tsdown": "^0.22.4",

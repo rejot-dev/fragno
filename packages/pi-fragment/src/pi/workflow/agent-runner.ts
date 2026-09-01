@@ -1,3 +1,4 @@
+import { streamSimple as defaultPiStreamFn } from "@earendil-works/pi-ai/compat";
 import { NonRetryableError } from "@fragno-dev/workflows/workflow";
 
 import {
@@ -319,7 +320,7 @@ const createAgentTurnRuntime = async (
       messages: turnContext.messages,
       ...(thinkingLevel ? { thinkingLevel } : {}),
     } satisfies Partial<AgentState>,
-    streamFn,
+    streamFn: streamFn ?? defaultPiStreamFn,
     convertToLlm,
     transformContext,
     getApiKey,
