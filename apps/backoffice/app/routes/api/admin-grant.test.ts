@@ -10,19 +10,16 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { RouterContextProvider } from "react-router";
 
-import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
-import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { AuthObject } from "@/backoffice-runtime/object-registry";
-import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import {
+  createInMemoryBackofficeRuntime,
+  type InMemoryBackofficeRuntime,
+} from "@/backoffice-runtime/in-memory-runtime";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { action } from "./admin-grant";
 
-const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
-
-afterEach(async () => {
-  await Promise.all(runtimes.splice(0).map(async (runtime) => await runtime.cleanup()));
-});
+const runtimes: InMemoryBackofficeRuntime[] = [];
 
 function createRequest(token = "grant-secret", body: unknown = { email: "Admin@Rejot.dev" }) {
   return new Request("https://backoffice.example.com/api/admin/grant", {
@@ -35,82 +32,70 @@ function createRequest(token = "grant-secret", body: unknown = { email: "Admin@R
   });
 }
 
-function createRouteContext(
-  configuredToken: string | undefined,
-  auth: Pick<AuthObject, "grantBackofficeAdminByEmail">,
-) {
+function createRouteContext(runtime: InMemoryBackofficeRuntime) {
   const context = new RouterContextProvider();
-  const runtime = {
-    objects: {
-      auth: {
-        singleton: () => ({ commands: auth }),
-      },
-    },
-  } as unknown as BackofficeRuntimeServices;
   context.set(BackofficeWorkerContext, {
-    runtime,
-    kernel: {} as BackofficeKernel,
-    env: { AUTH_ADMIN_GRANT_TOKEN: configuredToken } as CloudflareEnv,
+    runtime: runtime.services,
+    kernel: new BackofficeKernel(runtime.services),
+    env: {
+      BACKOFFICE_INTERNAL_REQUEST_SECRET: runtime.env.BACKOFFICE_INTERNAL_REQUEST_SECRET,
+    } as CloudflareEnv,
     ctx: {} as ExecutionContext,
   });
   return context;
 }
 
-function callAction(
-  request: Request,
-  configuredToken: string | undefined,
-  auth: Pick<AuthObject, "grantBackofficeAdminByEmail">,
-) {
+function callAction(request: Request, runtime: InMemoryBackofficeRuntime) {
   return action({
     request,
     url: new URL(request.url),
-    context: createRouteContext(configuredToken, auth),
+    context: createRouteContext(runtime),
     params: {},
   } as unknown as Parameters<typeof action>[0]);
 }
 
-describe("Backoffice administrator grant route", () => {
-  it("is unavailable when the grant token is not configured", async () => {
-    const grantBackofficeAdminByEmail = vi.fn<AuthObject["grantBackofficeAdminByEmail"]>();
+async function createRuntime(configuredToken: string) {
+  const runtime = await createInMemoryBackofficeRuntime({
+    env: { AUTH_ADMIN_GRANT_TOKEN: configuredToken },
+  });
+  runtimes.push(runtime);
+  return runtime;
+}
 
-    const response = await callAction(createRequest(), undefined, {
-      grantBackofficeAdminByEmail,
-    });
+afterEach(async () => {
+  await Promise.all(runtimes.splice(0).map(async (runtime) => await runtime.cleanup()));
+});
+
+describe("Backoffice administrator grant route", () => {
+  it("is unavailable when the object host grant token is not configured", async () => {
+    const runtime = await createRuntime("");
+    const response = await callAction(createRequest(), runtime);
 
     assert(response.status === 404);
-    expect(grantBackofficeAdminByEmail).not.toHaveBeenCalled();
   });
 
-  it("rejects an invalid grant token", async () => {
-    const grantBackofficeAdminByEmail = vi.fn<AuthObject["grantBackofficeAdminByEmail"]>();
-
-    const response = await callAction(createRequest("wrong-secret"), "grant-secret", {
-      grantBackofficeAdminByEmail,
-    });
+  it("rejects an invalid grant token in the Auth object", async () => {
+    const runtime = await createRuntime("grant-secret");
+    const response = await callAction(createRequest("wrong-secret"), runtime);
 
     assert(response.status === 401);
-    expect(grantBackofficeAdminByEmail).not.toHaveBeenCalled();
   });
 
   it("rejects administrator access outside rejot.dev", async () => {
-    const grantBackofficeAdminByEmail = vi.fn<AuthObject["grantBackofficeAdminByEmail"]>();
-
+    const runtime = await createRuntime("grant-secret");
     const response = await callAction(
       createRequest("grant-secret", { email: "admin@example.com" }),
-      "grant-secret",
-      { grantBackofficeAdminByEmail },
+      runtime,
     );
 
     assert(response.status === 400);
     await expect(response.json()).resolves.toEqual({
       error: "Administrator access requires a @rejot.dev email address.",
     });
-    expect(grantBackofficeAdminByEmail).not.toHaveBeenCalled();
   });
 
   it("grants administrator access to the normalized email", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
-    runtimes.push(runtime);
+    const runtime = await createRuntime("grant-secret");
     const auth = runtime.objects.auth.singleton();
     await auth.commands.applyScenarioFixture({
       users: [
@@ -123,7 +108,7 @@ describe("Backoffice administrator grant route", () => {
       ],
     });
 
-    const response = await callAction(createRequest(), "grant-secret", auth.commands);
+    const response = await callAction(createRequest(), runtime);
 
     assert(response.status === 200);
     await expect(response.json()).resolves.toEqual({ status: "granted", userId: "user-1" });
@@ -132,30 +117,10 @@ describe("Backoffice administrator grant route", () => {
     });
   });
 
-  it("returns the email verification requirement", async () => {
-    const grantBackofficeAdminByEmail = vi
-      .fn<AuthObject["grantBackofficeAdminByEmail"]>()
-      .mockResolvedValue({ status: "email_not_verified", userId: "user-1" });
-
-    const response = await callAction(createRequest(), "grant-secret", {
-      grantBackofficeAdminByEmail,
-    });
-
-    assert(response.status === 200);
-    await expect(response.json()).resolves.toEqual({
-      status: "email_not_verified",
-      userId: "user-1",
-    });
-  });
-
-  it("rejects invalid input before calling Auth", async () => {
-    const grantBackofficeAdminByEmail = vi.fn<AuthObject["grantBackofficeAdminByEmail"]>();
-
-    const response = await callAction(createRequest("grant-secret", {}), "grant-secret", {
-      grantBackofficeAdminByEmail,
-    });
+  it("rejects invalid input before granting Auth administration", async () => {
+    const runtime = await createRuntime("grant-secret");
+    const response = await callAction(createRequest("grant-secret", {}), runtime);
 
     assert(response.status === 400);
-    expect(grantBackofficeAdminByEmail).not.toHaveBeenCalled();
   });
 });

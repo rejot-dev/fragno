@@ -3,6 +3,7 @@ import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { APIError } from "better-auth/api";
 import { DurableObject } from "cloudflare:workers";
 import { Kysely } from "kysely";
+import { z } from "zod";
 
 import { extractW3CRequestPropagationContext } from "@fragno-dev/core";
 
@@ -176,6 +177,28 @@ const AUTH_SCHEMA_VERSION_STORAGE_KEY = "backoffice-auth-schema-version";
 const MAX_HOOK_ATTEMPTS = 10;
 const AUTH_HOOK_BATCH_SIZE = 25;
 const AUTH_HOOK_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
+
+const grantBackofficeAdminInputSchema = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
+});
+
+async function adminGrantTokensMatch(
+  providedToken: string,
+  configuredToken: string,
+): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [providedDigest, configuredDigest] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(providedToken)),
+    crypto.subtle.digest("SHA-256", encoder.encode(configuredToken)),
+  ]);
+  const providedBytes = new Uint8Array(providedDigest);
+  const configuredBytes = new Uint8Array(configuredDigest);
+  let difference = 0;
+  for (let index = 0; index < providedBytes.length; index += 1) {
+    difference |= providedBytes[index] ^ configuredBytes[index];
+  }
+  return difference === 0;
+}
 
 const toDate = (value: StoredDate): Date => {
   if (value instanceof Date) {
@@ -1205,6 +1228,39 @@ export class InMemoryAuthObject implements AuthObject {
     );
   }
 
+  async #handleAdminGrantRequest(request: Request): Promise<Response> {
+    const configuredToken = this.#env.AUTH_ADMIN_GRANT_TOKEN?.trim();
+    if (!configuredToken) {
+      return Response.json({ error: "Admin granting is not configured." }, { status: 404 });
+    }
+    if (request.method !== "POST") {
+      return new Response(null, { status: 405, headers: { allow: "POST" } });
+    }
+
+    const authorization = request.headers.get("authorization");
+    const providedToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
+    if (!providedToken || !(await adminGrantTokensMatch(providedToken, configuredToken))) {
+      return Response.json({ error: "Admin grant token is invalid." }, { status: 401 });
+    }
+
+    const parsedInput = grantBackofficeAdminInputSchema.safeParse(
+      await request.json().catch(() => null),
+    );
+    if (!parsedInput.success) {
+      return Response.json({ error: "A valid email address is required." }, { status: 400 });
+    }
+    if (!parsedInput.data.email.endsWith("@rejot.dev")) {
+      return Response.json(
+        { error: "Administrator access requires a @rejot.dev email address." },
+        { status: 400 },
+      );
+    }
+
+    return Response.json(await this.grantBackofficeAdminByEmail({ email: parsedInput.data.email }));
+  }
+
   async grantBackofficeAdminByEmail(input: { email: string }): Promise<GrantBackofficeAdminResult> {
     let releaseGrant: () => void = () => undefined;
     const previousGrant = this.#adminGrantQueue;
@@ -1594,6 +1650,9 @@ export class InMemoryAuthObject implements AuthObject {
   async fetch(request: Request): Promise<Response> {
     await this.#ready;
     try {
+      if (new URL(request.url).pathname === "/api/admin/grant") {
+        return await this.#handleAdminGrantRequest(request);
+      }
       return await this.#getAuth(resolveAuthBaseUrl(request)).handler(
         new Request(request, { redirect: "manual" }),
       );

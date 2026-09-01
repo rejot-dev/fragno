@@ -1,5 +1,11 @@
 import { DurableObject } from "cloudflare:workers";
 
+import {
+  createCloudflareDurableObjectRuntimeServices,
+  type BackofficeRuntimeServices,
+} from "@/backoffice-runtime/runtime-services";
+import { bytesToHex } from "@/lib/crypto";
+
 import { maskSecret, resolveGitHubConfig, resolveWebhookUrl } from "./github.shared";
 
 type AdminConfigResponse = {
@@ -143,6 +149,121 @@ type GitHubWebhookRouterSnapshot = {
 
 type GitHubWebhookRouterObjectState = Pick<DurableObjectState, "storage">;
 
+const githubWebhookTextEncoder = new TextEncoder();
+const githubWebhookTextDecoder = new TextDecoder();
+
+function githubWebhookJsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function toStringValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return "";
+}
+
+function getWebhookLogContext(request: Request) {
+  return {
+    deliveryId: request.headers.get("x-github-delivery") ?? "",
+    event: request.headers.get("x-github-event") ?? "",
+    method: request.method,
+  };
+}
+
+function timingSafeEqual(first: string, second: string): boolean {
+  if (first.length !== second.length) {
+    return false;
+  }
+  let mismatch = 0;
+  for (let index = 0; index < first.length; index += 1) {
+    mismatch |= first.charCodeAt(index) ^ second.charCodeAt(index);
+  }
+  return mismatch === 0;
+}
+
+async function verifyWebhookSignature({
+  payloadBytes,
+  signatureHeader,
+  secret,
+}: {
+  payloadBytes: Uint8Array;
+  signatureHeader: string | null;
+  secret: string;
+}): Promise<boolean> {
+  if (!signatureHeader) {
+    return false;
+  }
+
+  const [scheme, digest] = signatureHeader.split("=", 2);
+  if (scheme !== "sha256" || !digest) {
+    return false;
+  }
+
+  const normalizedDigest = digest.trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(normalizedDigest)) {
+    return false;
+  }
+
+  const hmacKey = await crypto.subtle.importKey(
+    "raw",
+    githubWebhookTextEncoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const payloadBuffer =
+    payloadBytes.buffer instanceof ArrayBuffer
+      ? payloadBytes.buffer.slice(
+          payloadBytes.byteOffset,
+          payloadBytes.byteOffset + payloadBytes.byteLength,
+        )
+      : payloadBytes.slice().buffer;
+  const expected = await crypto.subtle.sign("HMAC", hmacKey, payloadBuffer);
+  return timingSafeEqual(bytesToHex(new Uint8Array(expected)), normalizedDigest);
+}
+
+function getInstallationIdFromPayload(payload: unknown): string {
+  if (!isRecord(payload)) {
+    return "";
+  }
+
+  const installation = isRecord(payload.installation) ? payload.installation : null;
+  const nestedInstallationId = toStringValue(installation?.id);
+  return nestedInstallationId || toStringValue(payload.installation_id);
+}
+
+async function extractWebhookPayload(request: Request) {
+  const payloadBuffer = await request.clone().arrayBuffer();
+  const payloadBytes = new Uint8Array(payloadBuffer);
+  const payloadText = githubWebhookTextDecoder.decode(payloadBytes);
+  if (!payloadText) {
+    return { installationId: "", payloadText: "", payloadBytes, parseError: false };
+  }
+
+  try {
+    const payload = JSON.parse(payloadText) as unknown;
+    return {
+      installationId: getInstallationIdFromPayload(payload),
+      payloadText,
+      payloadBytes,
+      parseError: false,
+    };
+  } catch {
+    return { installationId: "", payloadText, payloadBytes, parseError: true };
+  }
+}
+
 const toBase64Url = (bytes: Uint8Array) =>
   btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, "-")
@@ -168,10 +289,114 @@ const toStateTokenPreview = (value: string) => {
 export class InMemoryGitHubWebhookRouterObject {
   readonly #env: CloudflareEnv;
   readonly #state: GitHubWebhookRouterObjectState;
+  readonly #runtime: BackofficeRuntimeServices;
 
-  constructor({ state, env }: { state: GitHubWebhookRouterObjectState; env: CloudflareEnv }) {
+  constructor({
+    state,
+    env,
+    runtime,
+  }: {
+    state: GitHubWebhookRouterObjectState;
+    env: CloudflareEnv;
+    runtime: BackofficeRuntimeServices;
+  }) {
     this.#env = env;
     this.#state = state;
+    this.#runtime = runtime;
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const webhookMeta = getWebhookLogContext(request);
+    try {
+      const { installationId, payloadText, payloadBytes, parseError } =
+        await extractWebhookPayload(request);
+      const webhookSecret = this.#env.GITHUB_APP_WEBHOOK_SECRET?.trim() ?? "";
+      if (!webhookSecret) {
+        console.error("GitHub webhook secret is not configured", webhookMeta);
+        return githubWebhookJsonResponse(
+          {
+            message: "GitHub webhook secret is not configured.",
+            code: "WEBHOOK_SECRET_NOT_CONFIGURED",
+          },
+          500,
+        );
+      }
+
+      const signatureValid = await verifyWebhookSignature({
+        payloadBytes,
+        signatureHeader: request.headers.get("x-hub-signature-256"),
+        secret: webhookSecret,
+      });
+      if (!signatureValid) {
+        console.warn("GitHub webhook rejected due to invalid signature", {
+          ...webhookMeta,
+          parseError,
+          payloadSize: payloadText.length,
+        });
+        return githubWebhookJsonResponse(
+          { message: "Invalid webhook signature.", code: "WEBHOOK_SIGNATURE_INVALID" },
+          401,
+        );
+      }
+
+      if (!installationId) {
+        console.warn("GitHub webhook missing installation id", {
+          ...webhookMeta,
+          parseError,
+          payloadSize: payloadText.length,
+        });
+        return githubWebhookJsonResponse(
+          {
+            message: "Missing installation id in webhook payload.",
+            code: "WEBHOOK_INSTALLATION_ID_MISSING",
+          },
+          400,
+        );
+      }
+
+      const orgId = await this.getInstallationOrg(installationId);
+      if (!orgId) {
+        console.warn("GitHub webhook rejected because installation mapping was not found", {
+          ...webhookMeta,
+          installationId,
+          parseError,
+          payloadSize: payloadText.length,
+        });
+        return githubWebhookJsonResponse(
+          {
+            message:
+              "No organization mapping found for installation id. Complete installation from backoffice first.",
+            code: "INSTALLATION_ORG_MAPPING_NOT_FOUND",
+            installationId,
+          },
+          404,
+        );
+      }
+
+      const githubObject = this.#runtime.objects.github.forOrg(orgId);
+      await githubObject.commands.ensureAdminConfig(orgId);
+
+      const url = new URL(request.url);
+      url.pathname = "/api/github/webhooks";
+      url.searchParams.set("orgId", orgId);
+      const response = await githubObject.http.fetch(new Request(url.toString(), request));
+      if (!response.ok) {
+        console.warn("Forwarded GitHub webhook returned non-success status", {
+          ...webhookMeta,
+          installationId,
+          orgId,
+          status: response.status,
+          statusText: response.statusText,
+        });
+      }
+      return response;
+    } catch (error) {
+      console.error("GitHub webhook handler failed", { ...webhookMeta, error });
+      return githubWebhookJsonResponse(
+        { message: "Webhook processing failed.", code: "WEBHOOK_PROCESSING_FAILED" },
+        500,
+      );
+    }
   }
 
   async getAdminConfig(_orgId: string, origin: string): Promise<AdminConfigResponse> {
@@ -567,7 +792,15 @@ export class GitHubWebhookRouter extends DurableObject<CloudflareEnv> {
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryGitHubWebhookRouterObject({ state, env });
+    this.#object = new InMemoryGitHubWebhookRouterObject({
+      state,
+      env,
+      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+    });
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    return await this.#object.fetch(request);
   }
 
   async getAdminConfig(orgId: string, origin: string): Promise<AdminConfigResponse> {

@@ -259,10 +259,11 @@ const inMemoryObjectFactories = {
       env: env as never,
       runtime,
     }),
-  GITHUB_WEBHOOK_ROUTER: ({ state, env }) =>
+  GITHUB_WEBHOOK_ROUTER: ({ state, env, runtime }) =>
     new InMemoryGitHubWebhookRouterObject({
       state,
       env: env as never,
+      runtime,
     }),
   CLOUDFLARE: ({ state, env, runtime }) =>
     new InMemoryCloudflareObject({
