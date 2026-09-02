@@ -12,6 +12,7 @@ import {
   executeBackofficeBash,
   executeBackofficeCodemode,
   fetchBackofficeSystemPrompt,
+  listBackofficeAvailableScopesForServer,
   parseBackofficeScope,
   probeBackofficeServer,
   resolveBackofficeAuthFile,
@@ -36,6 +37,7 @@ Usage:
 
 Commands:
   login                  Reuse stored authentication or sign in through the browser
+  scopes                 Print scopes available to the authenticated user
   probe                  Print the selected Backoffice server URL
   doctor                 Verify authentication, SYSTEM.md, and read-only execution
   system [scope] [file]  Print SYSTEM.md or create an owner-only output file
@@ -46,11 +48,14 @@ Commands:
   download <scope> <backoffice-path> <local-file>
                          Download a Backoffice file locally
 
-Scopes:
+Scope syntax:
   system
-  org:<orgId>
-  project:<orgId>:<projectId>
-  user:<userId>
+  org:<organization-slug>
+  project:<organization-slug>:<project-id>
+  user:<user-id>
+
+  Organization scopes always use the slug after org:, never the internal organization ID.
+  Run 'backoffice scopes' to print the exact values available to you.
 
 Login options:
   --open                 Open the browser when device authorization is required
@@ -63,12 +68,13 @@ Global options:
 
 Examples:
   backoffice login --open
+  backoffice scopes
   backoffice doctor
-  backoffice system org:org_123 ./SYSTEM.md
-  backoffice exec org:org_123 'async () => await state.readdir({ path: "/" })'
-  backoffice bash org:org_123 --cwd /workspace 'find . -maxdepth 2'
-  backoffice upload org:org_123 ./report.pdf /workspace/reports/report.pdf
-  backoffice download org:org_123 /workspace/reports/report.pdf ./report.pdf
+  backoffice system org:acme ./SYSTEM.md
+  backoffice exec org:acme 'async () => await state.readdir({ path: "/" })'
+  backoffice bash org:acme --cwd /workspace 'find . -maxdepth 2'
+  backoffice upload org:acme ./report.pdf /workspace/reports/report.pdf
+  backoffice download org:acme /workspace/reports/report.pdf ./report.pdf
 
 Environment:
   BACKOFFICE_URL          Default Backoffice server URL
@@ -176,6 +182,25 @@ async function login(args: string[]): Promise<void> {
       : `Stored OAuth credential state in ${resolveBackofficeAuthFile()}`,
   );
   console.log(JSON.stringify(connection.summary, null, 2));
+}
+
+async function printAvailableScopes(args: string[]): Promise<void> {
+  const requestedBaseUrl = getFlag(args, "--base-url", configuredBaseUrl);
+  if (args.length > 0) {
+    usage();
+  }
+
+  const baseUrl = await resolveCliBaseUrl(requestedBaseUrl);
+  const scopes = await listBackofficeAvailableScopesForServer({ baseUrl });
+  const argumentWidth = Math.max(...scopes.map((scope) => scope.argument.length));
+
+  console.log("Available Backoffice scopes:");
+  for (const scope of scopes) {
+    const defaultLabel = scope.isDefault ? " (default)" : "";
+    console.log(`  ${scope.argument.padEnd(argumentWidth)}  ${scope.label}${defaultLabel}`);
+  }
+  console.log("\nOrganization scopes use slugs after org:, never internal organization IDs.");
+  console.log("Project scope syntax: project:<organization-slug>:<project-id>");
 }
 
 async function doctor(args: string[]): Promise<void> {
@@ -343,6 +368,8 @@ export async function runBackofficeCli(argv = process.argv.slice(2)): Promise<vo
       console.log(cliVersion);
     } else if (command === "login") {
       await login(args);
+    } else if (command === "scopes") {
+      await printAvailableScopes(args);
     } else if (command === "probe") {
       const baseUrl = getFlag(args, "--base-url", configuredBaseUrl);
       if (args.length > 0) {

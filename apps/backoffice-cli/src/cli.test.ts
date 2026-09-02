@@ -16,8 +16,11 @@ describe("backoffice CLI", () => {
 
     expect(output).toContain("Usage:");
     expect(output).toContain("backoffice login");
+    expect(output).toContain("backoffice scopes");
+    expect(output).toContain("org:<organization-slug>");
+    expect(output).toContain("never the internal organization ID");
     expect(output).toContain("--force");
-    expect(output).toContain("Scopes:");
+    expect(output).toContain("Scope syntax:");
   });
 
   it("rejects absolute upload destinations outside /workspace", () => {

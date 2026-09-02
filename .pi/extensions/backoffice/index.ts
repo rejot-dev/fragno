@@ -537,18 +537,12 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
             ctx.ui.notify(`Authenticate at ${verificationUrl}`, "info");
           },
         });
-        const organizations = connection.summary.organizations ?? [];
-        const scopeChoices: Array<{ label: string; scope: string }> = [];
-        if (connection.summary.user.role === "admin") {
-          scopeChoices.push({ label: "System", scope: "system" });
-        }
-        for (const organization of organizations) {
-          const organizationLabel = `${organization.name ?? organization.id} (${organization.id})`;
-          scopeChoices.push({
-            label: `Organization · ${organizationLabel}`,
-            scope: `org:${encodeURIComponent(organization.id)}`,
-          });
-        }
+        const scopeChoices = connection.summary.scopes.map((availableScope) => ({
+          label: `${availableScope.label} · ${availableScope.argument}${
+            availableScope.isDefault ? " (default)" : ""
+          }`,
+          scope: availableScope.argument,
+        }));
         if (scopeChoices.length === 0) {
           throw new Error("The authenticated user has no available Backoffice scopes.");
         }

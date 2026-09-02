@@ -10,7 +10,14 @@ import {
 } from "./backoffice-server-url.js";
 import { openBackofficeVerificationUrl } from "./browser-verification.js";
 
+/** Slug-backed scope syntax accepted by Backoffice CLI commands and public routes. */
 export type BackofficeScope =
+  | { kind: "system" }
+  | { kind: "org"; orgSlug: string }
+  | { kind: "project"; orgSlug: string; projectId: string }
+  | { kind: "user"; userId: string };
+
+type BackofficeRuntimeScope =
   | { kind: "system" }
   | { kind: "org"; orgId: string }
   | { kind: "project"; orgId: string; projectId: string }
@@ -26,7 +33,7 @@ type OAuthCredential = {
 type BackofficeCredential = {
   accessToken: string;
   expiresAt: string;
-  scope: BackofficeScope;
+  scope: BackofficeRuntimeScope;
 };
 
 type StoredAuthState = {
@@ -52,17 +59,24 @@ type DeviceCodeResponse = {
   interval: number;
 };
 
-export type BackofficeOrganization = { id: string; name?: string };
+export type BackofficeOrganization = { id: string; name: string; slug: string };
 export type BackofficeMe = {
-  user: { id: string; email: string; role?: string };
-  activeOrganizationId?: string | null;
+  user: { id: string; email: string; role: "user" | "admin" };
+  activeOrganizationId: string | null;
   organizations: Array<{ organization: BackofficeOrganization }>;
+};
+
+/** CLI-ready available scope paired with its human label and default selection. */
+export type BackofficeAvailableScope = {
+  argument: string;
+  label: string;
+  isDefault: boolean;
 };
 
 type BackofficeCliTokenResult = {
   accessToken: string;
   expiresAt: string;
-  scope: BackofficeScope;
+  scope: BackofficeRuntimeScope;
 };
 
 type OAuthToken = Omit<OAuthCredential, "clientId">;
@@ -112,7 +126,7 @@ export function resolveBackofficeAuthFile(): string {
   return resolve(stateHome, "fragno/backoffice-cli/auth.json");
 }
 
-function isBackofficeScope(value: unknown): value is BackofficeScope {
+function isBackofficeRuntimeScope(value: unknown): value is BackofficeRuntimeScope {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -135,7 +149,10 @@ function isBackofficeScope(value: unknown): value is BackofficeScope {
   );
 }
 
-function backofficeScopesEqual(left: BackofficeScope, right: BackofficeScope): boolean {
+function backofficeRuntimeScopesEqual(
+  left: BackofficeRuntimeScope,
+  right: BackofficeRuntimeScope,
+): boolean {
   if (left.kind !== right.kind) {
     return false;
   }
@@ -176,7 +193,7 @@ export function parseBackofficeScope(segment: string): BackofficeScope {
     return { kind: "system" };
   }
   if (parts[0] === "org" && parts.length === 2) {
-    return { kind: "org", orgId: decodeScopeComponent(parts[1], "organization id") };
+    return { kind: "org", orgSlug: decodeScopeComponent(parts[1], "organization slug") };
   }
   if (parts[0] === "user" && parts.length === 2) {
     return { kind: "user", userId: decodeScopeComponent(parts[1], "user id") };
@@ -184,16 +201,16 @@ export function parseBackofficeScope(segment: string): BackofficeScope {
   if (parts[0] === "project" && parts.length === 3) {
     return {
       kind: "project",
-      orgId: decodeScopeComponent(parts[1], "organization id"),
+      orgSlug: decodeScopeComponent(parts[1], "organization slug"),
       projectId: decodeScopeComponent(parts[2], "project id"),
     };
   }
   throw new Error(
-    "Invalid Backoffice scope. Expected system, org:<orgId>, project:<orgId>:<projectId>, or user:<userId>.",
+    "Invalid Backoffice scope. Expected system, org:<organization-slug>, project:<organization-slug>:<project-id>, or user:<user-id>. Organization scopes use slugs, not internal IDs.",
   );
 }
 
-function backofficeScopeRouteId(scope: BackofficeScope): string {
+function backofficeRuntimeScopeRouteId(scope: BackofficeRuntimeScope): string {
   return scope.kind === "system"
     ? "system"
     : scope.kind === "org"
@@ -203,12 +220,12 @@ function backofficeScopeRouteId(scope: BackofficeScope): string {
         : `${encodeURIComponent(scope.orgId)}:${encodeURIComponent(scope.projectId)}`;
 }
 
-function backofficeScopePath(scope: BackofficeScope, suffix = ""): string {
-  return `/api/backoffice/codemode/${scope.kind}/${encodeURIComponent(backofficeScopeRouteId(scope))}${suffix}`;
+function backofficeScopePath(scope: BackofficeRuntimeScope, suffix = ""): string {
+  return `/api/backoffice/codemode/${scope.kind}/${encodeURIComponent(backofficeRuntimeScopeRouteId(scope))}${suffix}`;
 }
 
-function backofficeScopedUploadPath(scope: BackofficeScope, suffix = ""): string {
-  return `/api/upload-scoped/${scope.kind}/${encodeURIComponent(backofficeScopeRouteId(scope))}/files${suffix}`;
+function backofficeScopedUploadPath(scope: BackofficeRuntimeScope, suffix = ""): string {
+  return `/api/upload-scoped/${scope.kind}/${encodeURIComponent(backofficeRuntimeScopeRouteId(scope))}/files${suffix}`;
 }
 
 function isStoredAuthState(value: unknown): value is StoredAuthState {
@@ -232,7 +249,7 @@ function isStoredAuthState(value: unknown): value is StoredAuthState {
     typeof oauth["refreshToken"] === "string" &&
     typeof backoffice["accessToken"] === "string" &&
     typeof backoffice["expiresAt"] === "string" &&
-    isBackofficeScope(backoffice["scope"])
+    isBackofficeRuntimeScope(backoffice["scope"])
   );
 }
 
@@ -583,13 +600,13 @@ function isBackofficeCliTokenResult(value: unknown): value is BackofficeCliToken
   return (
     typeof result["accessToken"] === "string" &&
     typeof result["expiresAt"] === "string" &&
-    isBackofficeScope(result["scope"])
+    isBackofficeRuntimeScope(result["scope"])
   );
 }
 
 async function exchangeOAuthTokenForBackofficeJwt(
   auth: StoredAuthState,
-  scope: BackofficeScope | null,
+  scope: BackofficeRuntimeScope | null,
 ): Promise<StoredAuthState> {
   const response = await fetchBackofficeWithoutRedirect(
     `${auth.baseUrl}/api/backoffice/cli-token`,
@@ -646,11 +663,12 @@ async function ensureBackofficeJwtForScope({
   forceExchange = false,
 }: {
   baseUrl: string;
-  scope: BackofficeScope | null;
+  scope: BackofficeRuntimeScope | null;
   forceExchange?: boolean;
 }): Promise<{ auth: StoredAuthState; config: BackofficeCliOAuthConfig }> {
   let { auth, config } = await ensureOAuthAccessToken(baseUrl);
-  const cachedScopeMatches = scope === null || backofficeScopesEqual(auth.backoffice.scope, scope);
+  const cachedScopeMatches =
+    scope === null || backofficeRuntimeScopesEqual(auth.backoffice.scope, scope);
   if (!forceExchange && cachedScopeMatches && isCredentialUnexpired(auth.backoffice.expiresAt)) {
     return { auth, config };
   }
@@ -676,10 +694,29 @@ function isMeBody(body: unknown): body is BackofficeMe {
     return false;
   }
   const user = result["user"] as Record<string, unknown>;
+  const organizations = result["organizations"];
   return (
     typeof user["id"] === "string" &&
     typeof user["email"] === "string" &&
-    Array.isArray(result["organizations"])
+    (user["role"] === "user" || user["role"] === "admin") &&
+    (result["activeOrganizationId"] === null ||
+      typeof result["activeOrganizationId"] === "string") &&
+    Array.isArray(organizations) &&
+    organizations.every((membership) => {
+      if (!membership || typeof membership !== "object") {
+        return false;
+      }
+      const organization = (membership as Record<string, unknown>)["organization"];
+      if (!organization || typeof organization !== "object") {
+        return false;
+      }
+      const record = organization as Record<string, unknown>;
+      return (
+        typeof record["id"] === "string" &&
+        typeof record["name"] === "string" &&
+        typeof record["slug"] === "string"
+      );
+    })
   );
 }
 
@@ -713,44 +750,92 @@ async function ensureAuthenticatedState(
   return { auth, me: current.body };
 }
 
+function formatBackofficeScopeArgument(scope: BackofficeScope): string {
+  switch (scope.kind) {
+    case "system":
+      return "system";
+    case "org":
+      return `org:${encodeURIComponent(scope.orgSlug)}`;
+    case "project":
+      return `project:${encodeURIComponent(scope.orgSlug)}:${encodeURIComponent(scope.projectId)}`;
+    case "user":
+      return `user:${encodeURIComponent(scope.userId)}`;
+  }
+  throw new Error("Unsupported Backoffice CLI scope kind.");
+}
+
+/** Lists the exact scope arguments available from one authenticated Backoffice identity. */
+export function listBackofficeAvailableScopes(me: BackofficeMe): BackofficeAvailableScope[] {
+  const defaultOrganizationId =
+    me.activeOrganizationId ?? me.organizations[0]?.organization.id ?? null;
+  const organizationScopes = me.organizations.map(({ organization }) => ({
+    argument: formatBackofficeScopeArgument({ kind: "org", orgSlug: organization.slug }),
+    label: organization.name,
+    isDefault: organization.id === defaultOrganizationId,
+  }));
+  const userScope = {
+    argument: formatBackofficeScopeArgument({ kind: "user", userId: me.user.id }),
+    label: me.user.email,
+    isDefault: false,
+  };
+  const systemScopes =
+    me.user.role === "admin"
+      ? [{ argument: "system", label: "System administrator", isDefault: false }]
+      : [];
+  return [...organizationScopes, userScope, ...systemScopes];
+}
+
 export function getBackofficeLoginSummary({ baseUrl, me }: { baseUrl: string; me: BackofficeMe }) {
+  const scopes = listBackofficeAvailableScopes(me);
   return {
     baseUrl,
     user: me.user,
-    active: me.activeOrganizationId,
-    organizations: me.organizations.map((entry) => entry.organization),
+    defaultScope: scopes.find((scope) => scope.isDefault)?.argument ?? null,
+    scopes,
   };
 }
 
-function requireAccessibleScope(me: BackofficeMe, scope: BackofficeScope): void {
+function resolveBackofficeRuntimeScope(
+  me: BackofficeMe,
+  scope: BackofficeScope,
+): BackofficeRuntimeScope {
   if (scope.kind === "system") {
     if (me.user.role !== "admin") {
       throw new Error("System scope requires an admin user.");
     }
-    return;
+    return scope;
   }
   if (scope.kind === "user") {
     if (scope.userId !== me.user.id) {
       throw new Error(`User scope ${scope.userId} is not available to the authenticated user.`);
     }
-    return;
+    return scope;
   }
-  if (!me.organizations.some((entry) => entry.organization.id === scope.orgId)) {
-    throw new Error(`Organization ${scope.orgId} is not available to the authenticated user.`);
+
+  const organization = me.organizations.find(
+    (membership) => membership.organization.slug === scope.orgSlug,
+  )?.organization;
+  if (!organization) {
+    throw new Error(
+      `Organization slug '${scope.orgSlug}' is not available to the authenticated user. Run 'backoffice scopes' to list available organization slugs; org:* never accepts an internal organization ID.`,
+    );
   }
+  return scope.kind === "org"
+    ? { kind: "org", orgId: organization.id }
+    : { kind: "project", orgId: organization.id, projectId: scope.projectId };
 }
 
 async function authedFetch(
-  path: string,
+  pathForScope: (scope: BackofficeRuntimeScope) => string,
   scope: BackofficeScope,
   options: AuthedFetchOptions = {},
 ): Promise<Response> {
   const { baseUrl: requestedBaseUrl, ...fetchOptions } = options;
   const baseUrl = await probeBackofficeServer({ print: false, baseUrl: requestedBaseUrl });
   const session = await ensureAuthenticatedState(baseUrl ?? null);
-  requireAccessibleScope(session.me, scope);
+  const runtimeScope = resolveBackofficeRuntimeScope(session.me, scope);
 
-  let { auth } = await ensureBackofficeJwtForScope({ baseUrl, scope });
+  let { auth } = await ensureBackofficeJwtForScope({ baseUrl, scope: runtimeScope });
   const fetchWithAuth = (credentials: StoredAuthState) => {
     const headers = new Headers(fetchOptions.headers);
     headers.set("authorization", `Bearer ${credentials.backoffice.accessToken}`);
@@ -761,7 +846,10 @@ async function authedFetch(
     if (fetchOptions.body instanceof ReadableStream) {
       requestInit.duplex = "half";
     }
-    return fetchBackofficeWithoutRedirect(`${credentials.baseUrl}${path}`, requestInit);
+    return fetchBackofficeWithoutRedirect(
+      `${credentials.baseUrl}${pathForScope(runtimeScope)}`,
+      requestInit,
+    );
   };
 
   const response = await fetchWithAuth(auth);
@@ -771,18 +859,20 @@ async function authedFetch(
 
   ({ auth } = await ensureBackofficeJwtForScope({
     baseUrl,
-    scope,
+    scope: runtimeScope,
     forceExchange: true,
   }));
   return await fetchWithAuth(auth);
 }
 
 export function resolveDefaultBackofficeScope(me: BackofficeMe): BackofficeScope {
-  const orgId = me.activeOrganizationId ?? me.organizations[0]?.organization?.id;
-  if (!orgId) {
+  const membership =
+    me.organizations.find(({ organization }) => organization.id === me.activeOrganizationId) ??
+    me.organizations[0];
+  if (!membership) {
     throw new Error("The authenticated user has no default organization scope.");
   }
-  return { kind: "org", orgId };
+  return { kind: "org", orgSlug: membership.organization.slug };
 }
 
 export type BackofficeDeviceAuthorization = {
@@ -877,15 +967,25 @@ export async function resolveBackofficeDefaultScopeForServer(options: {
   return resolveDefaultBackofficeScope(session.me);
 }
 
+/** Lists CLI-ready scope arguments, using organization slugs rather than internal IDs. */
+export async function listBackofficeAvailableScopesForServer(options: {
+  baseUrl: string;
+}): Promise<BackofficeAvailableScope[]> {
+  const session = await ensureAuthenticatedState(options.baseUrl);
+  return listBackofficeAvailableScopes(session.me);
+}
+
 export async function fetchBackofficeSystemPrompt(options: {
   baseUrl: string;
   scope?: BackofficeScope;
 }): Promise<string> {
   const session = await ensureAuthenticatedState(options.baseUrl);
   const scope = options.scope ?? resolveDefaultBackofficeScope(session.me);
-  const response = await authedFetch(backofficeScopePath(scope, "/SYSTEM.md"), scope, {
-    baseUrl: options.baseUrl,
-  });
+  const response = await authedFetch(
+    (runtimeScope) => backofficeScopePath(runtimeScope, "/SYSTEM.md"),
+    scope,
+    { baseUrl: options.baseUrl },
+  );
   if (!response.ok) {
     await assertOk(response, "Fetch SYSTEM.md");
   }
@@ -900,17 +1000,21 @@ export async function executeBackofficeCodemode(options: {
   timeout?: number;
   signal?: AbortSignal;
 }): Promise<unknown> {
-  const response = await authedFetch(backofficeScopePath(options.scope), options.scope, {
-    baseUrl: options.baseUrl,
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      code: options.code,
-      ...(options.dependencies ? { dependencies: options.dependencies } : {}),
-      ...(options.timeout ? { timeout: options.timeout } : {}),
-    }),
-    signal: options.signal,
-  });
+  const response = await authedFetch(
+    (runtimeScope) => backofficeScopePath(runtimeScope),
+    options.scope,
+    {
+      baseUrl: options.baseUrl,
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        code: options.code,
+        ...(options.dependencies ? { dependencies: options.dependencies } : {}),
+        ...(options.timeout ? { timeout: options.timeout } : {}),
+      }),
+      signal: options.signal,
+    },
+  );
   const body = await assertOk(response, "Codemode execution");
   assertBackofficeCodemodeSucceeded(body);
   return body;
@@ -946,7 +1050,7 @@ export async function downloadBackofficeFile(options: {
     const fileKey = requireSafeBackofficeWorkspaceFileKey(path.slice("/workspace/".length));
     const query = new URLSearchParams({ provider: "database", key: fileKey });
     const response = await authedFetch(
-      backofficeScopedUploadPath(options.scope, `/by-key/content?${query}`),
+      (runtimeScope) => backofficeScopedUploadPath(runtimeScope, `/by-key/content?${query}`),
       options.scope,
       {
         baseUrl: options.baseUrl,
@@ -1001,7 +1105,8 @@ export async function uploadBackofficeWorkspaceFile(options: {
   const path = `/workspace/${fileKey}`;
   const query = new URLSearchParams({ path });
   const response = await authedFetch(
-    `/api/files-scoped/${options.scope.kind}/${encodeURIComponent(backofficeScopeRouteId(options.scope))}/workspace?${query}`,
+    (runtimeScope) =>
+      `/api/files-scoped/${runtimeScope.kind}/${encodeURIComponent(backofficeRuntimeScopeRouteId(runtimeScope))}/workspace?${query}`,
     options.scope,
     {
       baseUrl: options.baseUrl,
@@ -1025,16 +1130,20 @@ export async function executeBackofficeBash(options: {
   timeout?: number;
   signal?: AbortSignal;
 }): Promise<unknown> {
-  const response = await authedFetch(backofficeScopePath(options.scope, "/bash"), options.scope, {
-    baseUrl: options.baseUrl,
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      command: options.command,
-      ...(options.cwd ? { cwd: options.cwd } : {}),
-      ...(options.timeout ? { timeout: options.timeout } : {}),
-    }),
-    signal: options.signal,
-  });
+  const response = await authedFetch(
+    (runtimeScope) => backofficeScopePath(runtimeScope, "/bash"),
+    options.scope,
+    {
+      baseUrl: options.baseUrl,
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command: options.command,
+        ...(options.cwd ? { cwd: options.cwd } : {}),
+        ...(options.timeout ? { timeout: options.timeout } : {}),
+      }),
+      signal: options.signal,
+    },
+  );
   return await assertOk(response, "Bash execution");
 }
