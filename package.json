@@ -68,7 +68,8 @@
     "turbo": "^2.10.1",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "ws": "^8.21.3"
   },
   "engines": {
     "node": "^22.22.0 || >=24.11.0"
