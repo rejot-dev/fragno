@@ -10,6 +10,9 @@
   "scripts": {
     "dev": "turbo watch --ui tui --concurrency 20 dev",
     "cli": "tsx apps/fragno-cli/src/cli.ts",
+    "backoffice:context": "tsx scripts/generate-backoffice-context-graph.ts",
+    "backoffice:context:check": "tsx scripts/generate-backoffice-context-graph.ts --check",
+    "backoffice:context:check-staged": "tsx scripts/generate-backoffice-context-graph.ts --check-staged",
     "dev+": "turbo watch --ui tui --concurrency 20 dev types:check",
     "format": "turbo run format --output-logs=errors-only",
     "format:root": "node scripts/run-package-quality.mjs format --root",
