@@ -275,6 +275,7 @@ export class BufferedDatabasePump<
   readonly #cursorForObservedItem: BufferedPumpCursorFor<TObserved> | undefined;
   readonly #resolveScopeMeta: BufferedResolveScopeMeta<TOpenScopeMeta, TScopeMeta> | undefined;
   readonly #debugLabel: (() => string) | undefined;
+  readonly #snapshotMode: "enabled" | "disabled";
   readonly #scopeDeliveryCursors = new Map<string, Set<string>>();
   #lastSnapshot: TObserved[] = [];
   #hasFlushed = false;
@@ -299,11 +300,13 @@ export class BufferedDatabasePump<
     cursorForObservedItem?: BufferedPumpCursorFor<TObserved>;
     resolveScopeMeta?: BufferedResolveScopeMeta<TOpenScopeMeta, TScopeMeta>;
     debugLabel?: () => string;
+    snapshotMode?: "enabled" | "disabled";
   }) {
     this.#flush = options.flush;
     this.#cursorForObservedItem = options.cursorForObservedItem;
     this.#resolveScopeMeta = options.resolveScopeMeta;
     this.#debugLabel = options.debugLabel;
+    this.#snapshotMode = options.snapshotMode ?? "enabled";
     this.#onError =
       options.onError ??
       ((error) => {
@@ -494,6 +497,7 @@ export class BufferedDatabasePump<
     handler: (message: TObserved) => void | Promise<void>,
     options?: BufferedPumpObserveOptions<TObserved>,
   ): Promise<() => void> {
+    this.#assertSnapshotsEnabled("observeWithReplay");
     const registered = this.#registerObserver(handler, options);
     try {
       await this.#deliverObservedToObserver(registered.observer, this.#lastSnapshot);
@@ -508,6 +512,7 @@ export class BufferedDatabasePump<
     predicate: (message: TObserved) => boolean | Promise<boolean>,
     options: BufferedPumpWaitForObservedOptions<TObserved> = {},
   ): Promise<TObserved> {
+    this.#assertSnapshotsEnabled("waitForObserved");
     let isSettled = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let resolveResult!: (message: TObserved) => void;
@@ -567,6 +572,7 @@ export class BufferedDatabasePump<
   }
 
   async publishObserved(messages: readonly TObserved[]): Promise<void> {
+    this.#assertSnapshotsEnabled("publishObserved");
     if (messages.length === 0) {
       return;
     }
@@ -583,6 +589,7 @@ export class BufferedDatabasePump<
   }
 
   async snapshotState(handlerTx: DatabaseHandlerTx): Promise<BufferedPumpSnapshot<TObserved>> {
+    this.#assertSnapshotsEnabled("snapshotState");
     if (!this.#hasFlushed) {
       await this.refreshObserved(handlerTx);
     }
@@ -619,7 +626,9 @@ export class BufferedDatabasePump<
       if (includeWritableScopes) {
         await this.#deliverToScopes(result.scopeDeliveries ?? []);
       }
-      this.#lastSnapshot = (result.snapshot ?? observedItems).slice();
+      if (this.#snapshotMode === "enabled") {
+        this.#lastSnapshot = (result.snapshot ?? observedItems).slice();
+      }
       this.#hasFlushed = true;
       this.#lastError = undefined;
       await this.#deliverObserved(observedItems);
@@ -629,6 +638,14 @@ export class BufferedDatabasePump<
       this.#restoreDrained(drainedOutgoingByScope);
       this.#onError(normalizedError);
       throw normalizedError;
+    }
+  }
+
+  #assertSnapshotsEnabled(method: string): void {
+    if (this.#snapshotMode === "disabled") {
+      throw new Error(
+        `BufferedDatabasePump.${method}() is unavailable when snapshotMode is disabled.`,
+      );
     }
   }
 

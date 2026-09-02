@@ -1,3 +1,5 @@
+import { FRAGNO_OUTBOX_PAGE_SIZE } from "@fragno-dev/db/outbox";
+
 import type { OutboxEntry, OutboxMutation, OutboxTruncateNotification } from "@fragno-dev/db";
 
 import { decodeOutboxPayload, resolveOutboxRefs } from "../outbox";
@@ -29,7 +31,6 @@ type OutboxFetchOptions = {
 };
 
 const DEFAULT_POLL_INTERVAL_MS = 1000;
-const DEFAULT_LIMIT = 500;
 
 const ephemeralTableKey = (schema: string, table: string): string => `${schema}.${table}`;
 
@@ -92,7 +93,7 @@ export class LofiClient {
     this.outboxTransport = options.outboxTransport ?? "poll";
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.streamReconnectIntervalMs = options.streamReconnectIntervalMs ?? this.pollIntervalMs;
-    this.limit = options.limit ?? DEFAULT_LIMIT;
+    this.limit = options.limit ?? FRAGNO_OUTBOX_PAGE_SIZE;
     this.cursorKey = options.cursorKey;
     this.ephemeralTableKeys = new Set(
       options.ephemeralTables?.map(({ schema, table }) => ephemeralTableKey(schema, table)) ?? [],

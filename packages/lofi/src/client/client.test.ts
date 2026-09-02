@@ -878,7 +878,7 @@ describe("LofiClient", () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(typeof input === "string" ? input : input.toString());
       assert(url.pathname === "/api/outbox");
-      assert(url.searchParams.get("limit") === "500");
+      assert(url.searchParams.get("limit") === "50");
       return new Response(JSON.stringify([]), { status: 200 });
     });
 

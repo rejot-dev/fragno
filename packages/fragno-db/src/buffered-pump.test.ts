@@ -375,6 +375,36 @@ describe("BufferedDatabasePump", () => {
     expect(observed).toEqual(["observed-1", "observed-2"]);
   });
 
+  test("delivers observations without retaining snapshots when snapshots are disabled", async () => {
+    const pump = new BufferedDatabasePump({
+      snapshotMode: "disabled",
+      flush: async () => ({ observedItems: ["observed"] }),
+    });
+    const observed: string[] = [];
+    pump.observe((message) => {
+      observed.push(message);
+    });
+
+    await pump.flushNow(handlerTx);
+
+    expect(observed).toEqual(["observed"]);
+    await expect(pump.observeWithReplay(() => undefined)).rejects.toThrow(
+      "observeWithReplay() is unavailable when snapshotMode is disabled",
+    );
+    await expect(pump.waitForObserved(() => true)).rejects.toThrow(
+      "waitForObserved() is unavailable when snapshotMode is disabled",
+    );
+    await expect(pump.publishObserved(["published"])).rejects.toThrow(
+      "publishObserved() is unavailable when snapshotMode is disabled",
+    );
+    await expect(pump.snapshotState(handlerTx)).rejects.toThrow(
+      "snapshotState() is unavailable when snapshotMode is disabled",
+    );
+    await expect(pump.snapshot(handlerTx)).rejects.toThrow(
+      "snapshotState() is unavailable when snapshotMode is disabled",
+    );
+  });
+
   test("suppresses repeated scope deliveries with the same cursor", async () => {
     let enabled = false;
     const recorded = recordedFlush(async () => ({

@@ -305,7 +305,36 @@ describe("internal fragment describe routes", () => {
     await close();
   });
 
-  it("rejects outbox pages larger than the maximum", async () => {
+  it.each(["0", String(FRAGNO_OUTBOX_PAGE_SIZE + 1)])(
+    "rejects invalid outbox page limit %s",
+    async (limit) => {
+      const { adapter, close } = await setupAdapter();
+      const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+      const alphaFragment = instantiate(alphaDef)
+        .withOptions({
+          databaseAdapter: adapter,
+          mountRoute: "/alpha",
+          outbox: { enabled: true },
+        })
+        .build();
+
+      try {
+        const response = await alphaFragment.callRoute(
+          "GET",
+          "/_internal/outbox" as never,
+          {
+            query: { limit },
+          } as unknown as Parameters<typeof alphaFragment.callRoute>[2],
+        );
+
+        assert(response.status === 400);
+      } finally {
+        await close();
+      }
+    },
+  );
+
+  it("defaults outbox pages to the canonical page size", async () => {
     const { adapter, close } = await setupAdapter();
     const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
     const alphaFragment = instantiate(alphaDef)
@@ -315,17 +344,24 @@ describe("internal fragment describe routes", () => {
         outbox: { enabled: true },
       })
       .build();
+    const namespace = (alphaFragment.$internal.deps as { namespace: string | null }).namespace;
+    await adapter.prepareMigrations(alphaSchema, namespace).executeWithDriver(adapter.driver, 0);
 
     try {
-      const response = await alphaFragment.callRoute(
-        "GET",
-        "/_internal/outbox" as never,
-        {
-          query: { limit: String(FRAGNO_OUTBOX_PAGE_SIZE + 1) },
-        } as unknown as Parameters<typeof alphaFragment.callRoute>[2],
-      );
+      for (let index = 0; index < FRAGNO_OUTBOX_PAGE_SIZE + 1; index += 1) {
+        await alphaFragment.inContext(async function (this: DatabaseRequestContext) {
+          await this.handlerTx()
+            .mutate(({ forSchema }) =>
+              forSchema(alphaSchema).create("alpha_items", { name: `Item ${index}` }),
+            )
+            .execute();
+        });
+      }
 
-      assert(response.status === 400);
+      const response = await alphaFragment.callRoute("GET", "/_internal/outbox" as never);
+
+      assert(response.type === "json");
+      expect(response.data).toHaveLength(FRAGNO_OUTBOX_PAGE_SIZE);
     } finally {
       await close();
     }

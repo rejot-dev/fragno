@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { FRAGNO_OUTBOX_PAGE_SIZE } from "@fragno-dev/db/outbox";
 import { cli } from "gunshi";
 import type { Command } from "gunshi";
 
@@ -55,7 +56,7 @@ const printClientHelp = () => {
   console.log("  -e, --endpoint        Fragment base URL or outbox URL (required)");
   console.log("  -t, --timeout         Seconds to run (default: 5)");
   console.log("  -i, --poll-interval   Poll interval in ms (default: 1000)");
-  console.log("  --limit               Outbox page size (default: 500)");
+  console.log(`  --limit               Outbox page size (default: ${FRAGNO_OUTBOX_PAGE_SIZE})`);
   console.log("  --endpoint-name       Override local endpoint name");
   console.log("  --module              Path to client module with schemas/commands (required)");
   console.log("  --command             Queue a command by name before syncing");

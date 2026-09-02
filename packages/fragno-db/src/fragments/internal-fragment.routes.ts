@@ -45,12 +45,12 @@ const OUTBOX_STREAM_WRITE_TIMEOUT_MS = 1_000;
 const OUTBOX_STREAM_MAX_LIFETIME_MS = 30_000;
 
 type QueryLimitResult =
-  | { ok: true; limit: number | undefined }
+  | { ok: true; limit: number }
   | { ok: false; response: { error: string; code: "INVALID_LIMIT" }; status: 400 };
 
 const parseLimitQueryParam = (limitValue: string | null): QueryLimitResult => {
   if (limitValue === null) {
-    return { ok: true, limit: undefined };
+    return { ok: true, limit: FRAGNO_OUTBOX_PAGE_SIZE };
   }
 
   const parsed = Number.parseInt(limitValue, 10);
@@ -268,7 +268,7 @@ export const createInternalFragmentOutboxRoutes = () =>
           return entries;
         };
 
-        const initialEntries = await listEntries((options) => this.handlerTx(options));
+        let initialEntries = await listEntries((options) => this.handlerTx(options));
 
         return jsonStream(async (stream) => {
           const streamId = crypto.randomUUID();
@@ -303,6 +303,7 @@ export const createInternalFragmentOutboxRoutes = () =>
           const handlerTx: DatabaseHandlerTx = (options) => this.handlerTx(options);
           const pump = new BufferedDatabasePump<never, never, OutboxEntry>({
             intervalMs: OUTBOX_STREAM_PUMP_INTERVAL_MS,
+            snapshotMode: "disabled",
             cursorForObservedItem: (entry) => entry.versionstamp,
             onError: (error) => {
               errorCount += 1;
@@ -342,6 +343,8 @@ export const createInternalFragmentOutboxRoutes = () =>
                 break;
               }
             }
+            // The stream callback is long-lived, so release the initial page before polling starts.
+            initialEntries = [];
             await pump.flushNow(handlerTx);
             schedulerLease = pump.runWhile({
               kind: "observer",

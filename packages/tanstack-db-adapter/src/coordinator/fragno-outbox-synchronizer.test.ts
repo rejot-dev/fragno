@@ -2,6 +2,7 @@ import { assert, describe, expect, it } from "vitest";
 
 import {
   encodeVersionstamp,
+  FRAGNO_OUTBOX_PAGE_SIZE,
   outboxPageAfterVersionstamp,
   versionstampToHex,
 } from "@fragno-dev/db/outbox";
@@ -455,12 +456,17 @@ describe("FragnoOutboxSynchronizer", () => {
   });
 
   it("starts from the aligned page and loops until a partial page", async () => {
+    const pageStart = BigInt(FRAGNO_OUTBOX_PAGE_SIZE);
+    const initialVersion = pageStart + BigInt(Math.floor(FRAGNO_OUTBOX_PAGE_SIZE / 2));
+    const finalVersion = pageStart * 2n;
     const initialCheckpoint = {
-      versionstamp: outboxEntry(752n).versionstamp,
-      uowId: "uow-752",
+      versionstamp: outboxEntry(initialVersion).versionstamp,
+      uowId: `uow-${initialVersion}`,
     };
-    const firstPage = Array.from({ length: 500 }, (_, index) => outboxEntry(500n + BigInt(index)));
-    const finalPage = [outboxEntry(1000n)];
+    const firstPage = Array.from({ length: FRAGNO_OUTBOX_PAGE_SIZE }, (_, index) =>
+      outboxEntry(pageStart + BigInt(index)),
+    );
+    const finalPage = [outboxEntry(finalVersion)];
     const context = createSynchronizer({
       pages: [firstPage, finalPage],
       checkpoint: initialCheckpoint,
@@ -484,13 +490,13 @@ describe("FragnoOutboxSynchronizer", () => {
       {
         afterVersionstamp: outboxPageAfterVersionstamp(initialCheckpoint.versionstamp),
       },
-      { afterVersionstamp: outboxEntry(999n).versionstamp },
+      { afterVersionstamp: outboxEntry(finalVersion - 1n).versionstamp },
     ]);
-    assert.equal(appliedEntries, 248);
+    assert.equal(appliedEntries, Number(finalVersion - initialVersion));
     assert.equal(readyCalls, 1);
     expect(context.getCheckpoint()).toEqual({
-      versionstamp: outboxEntry(1000n).versionstamp,
-      uowId: "uow-1000",
+      versionstamp: outboxEntry(finalVersion).versionstamp,
+      uowId: `uow-${finalVersion}`,
     });
     context.synchronizer.dispose();
   });

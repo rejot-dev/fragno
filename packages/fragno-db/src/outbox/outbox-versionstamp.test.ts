@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { encodeVersionstamp, outboxPageAfterVersionstamp, versionstampToHex } from "./outbox";
+import {
+  encodeVersionstamp,
+  FRAGNO_OUTBOX_PAGE_SIZE,
+  outboxPageAfterVersionstamp,
+  versionstampToHex,
+} from "./outbox";
 
 function versionstamp(transactionVersion: bigint, userVersion = 0): string {
   return versionstampToHex(encodeVersionstamp(transactionVersion, userVersion));
@@ -9,10 +14,19 @@ function versionstamp(transactionVersion: bigint, userVersion = 0): string {
 describe("outbox page versionstamps", () => {
   it("returns the cursor immediately before the checkpoint page", () => {
     expect(outboxPageAfterVersionstamp(versionstamp(0n, 12))).toBeUndefined();
-    expect(outboxPageAfterVersionstamp(versionstamp(499n, 12))).toBe(versionstamp(499n));
-    expect(outboxPageAfterVersionstamp(versionstamp(500n, 12))).toBe(versionstamp(499n));
-    expect(outboxPageAfterVersionstamp(versionstamp(999n, 12))).toBe(versionstamp(999n));
-    expect(outboxPageAfterVersionstamp(versionstamp(1_000n, 12))).toBe(versionstamp(999n));
+    const pageSize = BigInt(FRAGNO_OUTBOX_PAGE_SIZE);
+    expect(outboxPageAfterVersionstamp(versionstamp(pageSize - 1n, 12))).toBe(
+      versionstamp(pageSize - 1n),
+    );
+    expect(outboxPageAfterVersionstamp(versionstamp(pageSize, 12))).toBe(
+      versionstamp(pageSize - 1n),
+    );
+    expect(outboxPageAfterVersionstamp(versionstamp(pageSize * 2n - 1n, 12))).toBe(
+      versionstamp(pageSize * 2n - 1n),
+    );
+    expect(outboxPageAfterVersionstamp(versionstamp(pageSize * 2n, 12))).toBe(
+      versionstamp(pageSize * 2n - 1n),
+    );
   });
 
   it("rejects malformed versionstamps", () => {

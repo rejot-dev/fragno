@@ -1,7 +1,7 @@
 import type { MutationOperation } from "../query/unit-of-work/mutation-recorder";
 import type { AnyColumn, AnySchema, AnyTable, FragnoId, FragnoReference } from "../schema/create";
 
-export const FRAGNO_OUTBOX_PAGE_SIZE = 500;
+export const FRAGNO_OUTBOX_PAGE_SIZE = 50;
 
 export type OutboxConfig = {
   enabled: boolean;

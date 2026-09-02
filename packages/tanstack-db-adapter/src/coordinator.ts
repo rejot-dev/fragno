@@ -49,7 +49,7 @@ import { FragnoOutboxSynchronizer } from "./coordinator/fragno-outbox-synchroniz
  *   -> coordinator.preload() closes registration and preloads every registered collection
  *   -> each collection's sync callback subscribes to the shared outbox synchronizer
  *   -> read the database's one exact persisted outbox checkpoint
- *   -> GET ordered 500-entry outbox pages from the aligned checkpoint boundary
+ *   -> GET ordered outbox pages from the aligned checkpoint boundary
  *   -> validate and decode each outbox entry once
  *   -> route every operation to its schema/table collection
  *   -> commit all affected collections before advancing the database checkpoint

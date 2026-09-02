@@ -63,7 +63,7 @@ The coordinator derives these routes from `baseUrl`:
 - `GET /_internal/outbox`
 - `GET /_internal/outbox/stream`
 
-Catch-up requests use aligned 500-entry pages. The coordinator decodes each entry once, routes its
+Catch-up requests use aligned 50-entry pages. The coordinator decodes each entry once, routes its
 operations to registered physical targets, and opens the stream from the resulting exact checkpoint.
 Unexpected stream closure transitions through `"retrying"` and `"replaying"`, performs finite
 replay, and reconnects with exponential backoff.

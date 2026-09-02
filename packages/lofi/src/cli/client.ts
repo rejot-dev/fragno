@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { FRAGNO_OUTBOX_PAGE_SIZE } from "@fragno-dev/db/outbox";
 import { define } from "gunshi";
 import { openDB, type IDBPDatabase } from "idb";
 
@@ -107,7 +108,7 @@ export const clientCommand = define({
     },
     limit: {
       type: "number" as const,
-      description: "Outbox page size (default: 500)",
+      description: `Outbox page size (default: ${FRAGNO_OUTBOX_PAGE_SIZE})`,
     },
     endpointName: {
       type: "string" as const,
@@ -139,7 +140,7 @@ export const clientCommand = define({
     const endpoint = ctx.values.endpoint;
     const timeoutSeconds = coerceNumber(ctx.values.timeout, 5);
     const pollIntervalMs = coerceNumber(ctx.values.pollInterval, 1000);
-    const limit = coerceNumber(ctx.values.limit, 500);
+    const limit = coerceNumber(ctx.values.limit, FRAGNO_OUTBOX_PAGE_SIZE);
     const endpointOverride = ctx.values.endpointName;
     const modulePath = ctx.values.module as string | undefined;
     const commandName = ctx.values.command;
