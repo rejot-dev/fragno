@@ -1,18 +1,9 @@
-# @fragno-dev/mcp-fragment
+# @rejot-dev/backoffice-local
 
-## 1.0.0
-
-### Major Changes
-
-- 4579483: feat: refresh MCP server configuration through durable hooks
+## 0.1.1
 
 ### Patch Changes
 
-- 3e7adf5: feat: cache MCP server metadata and discovered tools.
-- a352798: feat: accept explicit OAuth redirect URIs for authorization flows
-- d1bb877: feat: replace tool list hook with MCP server refresh diagnostics.
-- 67e494a: feat: expose durable hook context objects to API and MCP callbacks.
-- 8e2aea9: feat: expose durable hook propagation context to MCP callbacks.
 - Updated dependencies [0d4cbe8]
 - Updated dependencies [2797663]
 - Updated dependencies [fcecfed]
@@ -23,13 +14,11 @@
 - Updated dependencies [a8010b8]
 - Updated dependencies [26a21e3]
 - Updated dependencies [eb6ea3e]
-- Updated dependencies [0186a7a]
 - Updated dependencies [4fd5010]
 - Updated dependencies [3f9d1bb]
 - Updated dependencies [d9a5ffe]
 - Updated dependencies [d92f4ce]
 - Updated dependencies [1d2125e]
-- Updated dependencies [fe0e92d]
 - Updated dependencies [20324e7]
 - Updated dependencies [c1255e4]
 - Updated dependencies [318921d]
@@ -40,16 +29,13 @@
 - Updated dependencies [a7bf719]
 - Updated dependencies [9ea7170]
 - Updated dependencies [aff91d1]
-- Updated dependencies [03d5a5c]
 - Updated dependencies [a28094e]
 - Updated dependencies [033a643]
-- Updated dependencies [6cc8f36]
 - Updated dependencies [f42c8c6]
 - Updated dependencies [9cd79f3]
 - Updated dependencies [7a625f6]
 - Updated dependencies [49ca4fb]
 - Updated dependencies [0e63275]
-- Updated dependencies [4944ecf]
 - Updated dependencies [4e5d611]
 - Updated dependencies [7405040]
 - Updated dependencies [b40a129]
@@ -57,36 +43,23 @@
 - Updated dependencies [f297b5d]
 - Updated dependencies [caf581b]
 - Updated dependencies [7de0078]
-- Updated dependencies [ff3673f]
 - Updated dependencies [d7236a2]
 - Updated dependencies [1e1088b]
 - Updated dependencies [9e2ee05]
 - Updated dependencies [3734573]
 - Updated dependencies [1c57f29]
-- Updated dependencies [2e7263b]
-- Updated dependencies [801e6ab]
 - Updated dependencies [48c0094]
 - Updated dependencies [7a60491]
 - Updated dependencies [6649e1f]
-- Updated dependencies [d125074]
-- Updated dependencies [8afaf3d]
 - Updated dependencies [85be413]
 - Updated dependencies [fa21507]
 - Updated dependencies [79055dd]
 - Updated dependencies [e7b36e1]
 - Updated dependencies [a61b3a5]
 - Updated dependencies [4dc14bf]
-- Updated dependencies [3328fe3]
 - Updated dependencies [a64dc64]
 - Updated dependencies [ea8ea88]
 - Updated dependencies [5599183]
 - Updated dependencies [e2cad8d]
-- Updated dependencies [5e0cfe8]
 - Updated dependencies [9919fdd]
   - @fragno-dev/db@0.4.2
-  - @fragno-dev/core@0.2.3
-  - @fragno-dev/node@0.0.9
-
-## Unreleased
-
-- Initial scaffold copy prepared for MCP fragment development.

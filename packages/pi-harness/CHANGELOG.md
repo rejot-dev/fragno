@@ -1,5 +1,149 @@
 # @fragno-dev/pi-harness
 
+## 0.0.4
+
+### Patch Changes
+
+- 516930b: fix: compact streamed Pi message emissions to reduce workflow outbox size.
+- 276825b: perf: persist only newly appended Pi session entries in workflow step results.
+- e66ce86: feat: project live Pi workflow state from ephemeral step emissions.
+- d1d6174: feat: add workflow-backed Pi harness fragment.
+- 49c5837: feat: add durable manual Pi context compaction and compaction-aware session projections.
+- d0c9724: feat: forward workflow actors and emit durable operation-completion usage hooks.
+- ae57861: fix: validate workflow stream commit controls against their epochs
+- 9a7cd0b: refactor: simplify durable Pi attempt recovery around ordered append-only state.
+- 0598251: feat: add configurable lossless AgentHarness event stream protocols
+- a11779c: fix: keep interactive chat sessions available after terminal provider stream errors.
+- d714a9f: feat: allow interactive chat harness resolution to use session context.
+- f503a57: feat: project Pi harness sessions from workflow state.
+- 0f66b93: feat: add a pre-operation lifecycle callback to interactive chat workflows.
+- 1072cae: fix: align Pi runtime packages and preserve default streaming compatibility.
+- 7b77496: feat: Expose the transport-neutral Pi workflow session projection API for browser consumers and keep
+  Lofi-specific projection helpers on their dedicated client entrypoint.
+- 7a60491: fix: bind buffered pump schedulers to active actors so polling work drains with its owner.
+- 98e71c2: feat: expose streamed draft tool argument text to projection consumers.
+- 6886f33: feat: expose durable hook propagation context to Pi callbacks.
+- 69a3a79: feat: allow workflow and Pi fragments to declare typed request contexts.
+- 68c25c7: feat: make Pi harness execution workflow-native with canonical recovery.
+- Updated dependencies [0d4cbe8]
+- Updated dependencies [2797663]
+- Updated dependencies [fcecfed]
+- Updated dependencies [cff3b99]
+- Updated dependencies [d41c937]
+- Updated dependencies [9c894a8]
+- Updated dependencies [27b7db5]
+- Updated dependencies [9419f78]
+- Updated dependencies [73e14d7]
+- Updated dependencies [a8010b8]
+- Updated dependencies [26a21e3]
+- Updated dependencies [eb6ea3e]
+- Updated dependencies [0186a7a]
+- Updated dependencies [17e5ab9]
+- Updated dependencies [4fd5010]
+- Updated dependencies [3f9d1bb]
+- Updated dependencies [d9a5ffe]
+- Updated dependencies [d92f4ce]
+- Updated dependencies [1d2125e]
+- Updated dependencies [fe0e92d]
+- Updated dependencies [20324e7]
+- Updated dependencies [c1255e4]
+- Updated dependencies [318921d]
+- Updated dependencies [7e2d989]
+- Updated dependencies [ae415ff]
+- Updated dependencies [204bbb7]
+- Updated dependencies [8a60280]
+- Updated dependencies [a7bf719]
+- Updated dependencies [9ea7170]
+- Updated dependencies [bceb49b]
+- Updated dependencies [aff91d1]
+- Updated dependencies [03d5a5c]
+- Updated dependencies [20380f5]
+- Updated dependencies [a28094e]
+- Updated dependencies [1321f24]
+- Updated dependencies [5f98d46]
+- Updated dependencies [033a643]
+- Updated dependencies [6cc8f36]
+- Updated dependencies [cd7cfc9]
+- Updated dependencies [dfeb582]
+- Updated dependencies [d961df2]
+- Updated dependencies [83e7876]
+- Updated dependencies [54cbdca]
+- Updated dependencies [f42c8c6]
+- Updated dependencies [9cd79f3]
+- Updated dependencies [7a625f6]
+- Updated dependencies [49ca4fb]
+- Updated dependencies [0e63275]
+- Updated dependencies [26f85f9]
+- Updated dependencies [4944ecf]
+- Updated dependencies [4e5d611]
+- Updated dependencies [7405040]
+- Updated dependencies [b40a129]
+- Updated dependencies [5256cee]
+- Updated dependencies [f297b5d]
+- Updated dependencies [caf581b]
+- Updated dependencies [7de0078]
+- Updated dependencies [ff3673f]
+- Updated dependencies [d7236a2]
+- Updated dependencies [fda1ff9]
+- Updated dependencies [1e1088b]
+- Updated dependencies [9e2ee05]
+- Updated dependencies [3734573]
+- Updated dependencies [1c57f29]
+- Updated dependencies [2e7263b]
+- Updated dependencies [801e6ab]
+- Updated dependencies [8e31918]
+- Updated dependencies [a56b18f]
+- Updated dependencies [662e7d6]
+- Updated dependencies [48c0094]
+- Updated dependencies [7a60491]
+- Updated dependencies [6649e1f]
+- Updated dependencies [d125074]
+- Updated dependencies [8afaf3d]
+- Updated dependencies [85be413]
+- Updated dependencies [fa21507]
+- Updated dependencies [42353ac]
+- Updated dependencies [79055dd]
+- Updated dependencies [e7b36e1]
+- Updated dependencies [a61b3a5]
+- Updated dependencies [4dc14bf]
+- Updated dependencies [3328fe3]
+- Updated dependencies [6c10a63]
+- Updated dependencies [a64dc64]
+- Updated dependencies [6232259]
+- Updated dependencies [f856070]
+- Updated dependencies [ea8ea88]
+- Updated dependencies [5599183]
+- Updated dependencies [e2cad8d]
+- Updated dependencies [69a3a79]
+- Updated dependencies [b41824f]
+- Updated dependencies [5e0cfe8]
+- Updated dependencies [9919fdd]
+- Updated dependencies [6edb80b]
+- Updated dependencies [d1bf2fb]
+- Updated dependencies [5c98261]
+- Updated dependencies [144bcd6]
+- Updated dependencies [7507d49]
+- Updated dependencies [397aba2]
+- Updated dependencies [68c25c7]
+- Updated dependencies [168684e]
+- Updated dependencies [073f89b]
+- Updated dependencies [eb01668]
+- Updated dependencies [482fa2b]
+- Updated dependencies [b93067c]
+- Updated dependencies [267a5e3]
+- Updated dependencies [c58077c]
+- Updated dependencies [89a4489]
+- Updated dependencies [102238e]
+- Updated dependencies [68c03ce]
+- Updated dependencies [eea94c2]
+- Updated dependencies [3712e27]
+- Updated dependencies [28974f4]
+- Updated dependencies [e8845d1]
+  - @fragno-dev/db@0.4.2
+  - @fragno-dev/lofi@0.0.4
+  - @fragno-dev/workflows@1.0.0
+  - @fragno-dev/core@0.2.3
+
 ## 0.0.3
 
 ### Patch Changes
