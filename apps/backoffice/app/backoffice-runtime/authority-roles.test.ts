@@ -87,7 +87,9 @@ describe("Backoffice authority role grants", () => {
       BACKOFFICE_PERMISSION.capabilities.read,
       BACKOFFICE_PERMISSION.connections.manage,
       BACKOFFICE_PERMISSION.connections.read,
-      ...automationAuthoringPermissions.slice(2),
+      ...automationAuthoringPermissions.slice(2, 5),
+      BACKOFFICE_PERMISSION.github.read,
+      ...automationAuthoringPermissions.slice(5),
     ]);
   });
 

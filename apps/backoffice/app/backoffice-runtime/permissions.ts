@@ -44,6 +44,9 @@ export const BACKOFFICE_PERMISSION = {
     read: { namespace: "forms", permission: "read" },
     update: { namespace: "forms", permission: "update" },
   },
+  github: {
+    read: { namespace: "github", permission: "read" },
+  },
   hooks: {
     read: { namespace: "hooks", permission: "read" },
   },

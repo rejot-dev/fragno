@@ -27,6 +27,7 @@ import type { BackofficeCapabilitiesRuntime } from "./families/backoffice-capabi
 import type { CloudflareRuntime } from "./families/cloudflare-runtime";
 import type { EventRuntime } from "./families/event-runtime";
 import type { FormsRuntime } from "./families/forms-runtime";
+import type { GitHubRuntime } from "./families/github-runtime";
 import type { InternalRuntime } from "./families/internal";
 import type { RegisteredMcpCommandContext } from "./families/mcp-runtime";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
@@ -60,6 +61,7 @@ export type BashHostContext = {
   cloudflare?: { runtime: CloudflareRuntime } | null;
   event?: { runtime: EventRuntime } | null;
   forms?: { runtime: FormsRuntime } | null;
+  github?: { runtime: GitHubRuntime } | null;
   automations: RegisteredAutomationsBashCommandContext | null;
   identity?: { runtime: AutomationIdentityRuntime } | null;
   workflow?: { runtime: AutomationWorkflowRuntime } | null;

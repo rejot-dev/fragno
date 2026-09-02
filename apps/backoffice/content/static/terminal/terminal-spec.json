@@ -1614,6 +1614,75 @@
     ]
   },
   {
+    "command": "github.repositories.list",
+    "summary": "List connected GitHub repositories and the ids used by other GitHub commands.",
+    "options": [
+      {
+        "name": "link-key",
+        "valueRequired": true,
+        "valueName": "key",
+        "description": "Only list repositories connected under this link key."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "github.repositories.create-access-token",
+    "summary": "Create a short-lived read token for a linked GitHub repository.",
+    "options": [
+      {
+        "name": "repo-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Linked GitHub repository id."
+      },
+      {
+        "name": "link-key",
+        "valueRequired": true,
+        "valueName": "key",
+        "description": "Repository link key. Uses the configured default when omitted."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "cloudflare.browser-run.capture",
     "summary": "Capture a page and emit the PDF or image bytes to stdout.",
     "options": [

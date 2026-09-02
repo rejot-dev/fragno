@@ -17,9 +17,66 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
+import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 
 describe("Backoffice codemode scenarios", () => {
+  test("exposes GitHub repository credentials from project-scoped runtimes", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "project sandboxes can request GitHub repository clone credentials",
+
+        files: backofficeFiles.workspaceStarter(),
+
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+
+        steps: ({ when, then }) => [
+          when.project.create({
+            orgId: "org-1",
+            slug: "github-project",
+            name: "GitHub Project",
+            createdByUserId: "user-1",
+            captureIdAs: "projectId",
+          }),
+          then.assert("the project runtime exposes the GitHub token command", async (ctx) => {
+            const projectId = ctx.vars.projectId;
+            if (typeof projectId !== "string") {
+              throw new Error("Scenario did not capture the created project id.");
+            }
+            const execution = createBackofficeServiceExecution({
+              scope: { kind: "project", orgId: "org-1", projectId },
+              service: { type: "automation", id: "github-clone-test" },
+            });
+            const kernel = new BackofficeKernel(ctx.runtime.services);
+            const { bash } = createInteractiveBashHost({
+              fs: ctx.files.forProject(projectId),
+              context: createRouteBackedRuntimeContext({
+                runtime: ctx.runtime.services,
+                kernel,
+                execution,
+              }),
+            });
+
+            const help = await bash.exec("github.repositories.create-access-token --help");
+            expect(help.exitCode, help.stderr).toBe(0);
+            expect(help.stdout).toContain("short-lived read token");
+
+            const missingRepo = await bash.exec(
+              "github.repositories.create-access-token --repo-id 123456",
+            );
+            expect(missingRepo.exitCode).not.toBe(0);
+            expect(missingRepo.stderr).toContain("GitHub is not configured");
+            expect(missingRepo.stderr).not.toContain("command unavailable");
+          }),
+        ],
+      }),
+    );
+  });
+
   test("runs raw codemode through route-backed runtime tools", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({

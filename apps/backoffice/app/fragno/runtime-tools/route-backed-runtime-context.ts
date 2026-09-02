@@ -35,6 +35,7 @@ import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/fami
 import { createCloudflareRuntime } from "@/fragno/runtime-tools/families/cloudflare-runtime";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createFormsRuntime } from "@/fragno/runtime-tools/families/forms-runtime";
+import { createGitHubRuntime } from "@/fragno/runtime-tools/families/github-runtime";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import { createMcpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import {
@@ -279,6 +280,12 @@ export const createRouteBackedRuntimeContext = ({
     forms:
       execution.scope.kind === "system" && formsObjects
         ? { runtime: createFormsRuntime(formsObjects.singleton().http) }
+        : null,
+    github:
+      runtime.config.bindings.github && org
+        ? {
+            runtime: createGitHubRuntime(runtime.objects.github.forOrg(org.orgId).http),
+          }
         : null,
     internal: org
       ? {
