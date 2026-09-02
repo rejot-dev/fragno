@@ -17,8 +17,10 @@ describe("backoffice CLI", () => {
     expect(output).toContain("Usage:");
     expect(output).toContain("backoffice login");
     expect(output).toContain("backoffice scopes");
+    expect(output).toContain("backoffice listen org:acme");
     expect(output).toContain("org:<organization-slug>");
     expect(output).toContain("never the internal organization ID");
+    expect(output).toContain("--after-versionstamp");
     expect(output).toContain("--force");
     expect(output).toContain("Scope syntax:");
   });

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { once } from "node:events";
 import { createReadStream, readFileSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -13,6 +14,7 @@ import {
   executeBackofficeCodemode,
   fetchBackofficeSystemPrompt,
   listBackofficeAvailableScopesForServer,
+  openBackofficeAutomationsStream,
   parseBackofficeScope,
   probeBackofficeServer,
   resolveBackofficeAuthFile,
@@ -41,6 +43,7 @@ Commands:
   probe                  Print the selected Backoffice server URL
   doctor                 Verify authentication, SYSTEM.md, and read-only execution
   system [scope] [file]  Print SYSTEM.md or create an owner-only output file
+  listen <scope>         Listen to the scoped Automations NDJSON mutation stream
   exec <scope> <code>    Execute a JavaScript codemode function
   bash <scope> <command> Execute a shell command in the scoped runtime
   upload <scope> <local-file> <workspace-path>
@@ -61,6 +64,10 @@ Login options:
   --open                 Open the browser when device authorization is required
   --force                Ignore stored authentication and request new approval
 
+Listen options:
+  --after-versionstamp VALUE
+                         Resume after an Automations stream versionstamp
+
 Global options:
   --base-url URL         Select a Backoffice server instead of auto-discovery
   -h, --help             Show this help
@@ -71,6 +78,7 @@ Examples:
   backoffice scopes
   backoffice doctor
   backoffice system org:acme ./SYSTEM.md
+  backoffice listen org:acme
   backoffice exec org:acme 'async () => await state.readdir({ path: "/" })'
   backoffice bash org:acme --cwd /workspace 'find . -maxdepth 2'
   backoffice upload org:acme ./report.pdf /workspace/reports/report.pdf
@@ -245,6 +253,137 @@ async function fetchSystem(args: string[]): Promise<void> {
   }
 }
 
+async function writeAutomationStreamLine(line: string): Promise<void> {
+  if (!process.stdout.write(`${line}\n`)) {
+    await once(process.stdout, "drain");
+  }
+}
+
+async function consumeAutomationStream(
+  stream: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+  afterVersionstamp: string | undefined,
+): Promise<string | undefined> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let completed = false;
+  const cancelReader = () => {
+    void reader.cancel(signal.reason).catch(() => {});
+  };
+
+  if (signal.aborted) {
+    cancelReader();
+  } else {
+    signal.addEventListener("abort", cancelReader, { once: true });
+  }
+
+  async function consumeCompleteLines(final: boolean): Promise<void> {
+    const lines = buffer.split("\n");
+    buffer = final ? "" : (lines.pop() ?? "");
+
+    for (const line of lines) {
+      if (!line.trim()) {
+        continue;
+      }
+      const entry = JSON.parse(line) as { versionstamp: string };
+      await writeAutomationStreamLine(line);
+      afterVersionstamp = entry.versionstamp;
+    }
+  }
+
+  try {
+    while (!signal.aborted) {
+      const { done, value } = await reader.read();
+      if (done) {
+        completed = true;
+        buffer += decoder.decode();
+        await consumeCompleteLines(true);
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      await consumeCompleteLines(false);
+    }
+    return afterVersionstamp;
+  } finally {
+    signal.removeEventListener("abort", cancelReader);
+    if (!completed) {
+      await reader.cancel(signal.reason).catch(() => {});
+    }
+    reader.releaseLock();
+  }
+}
+
+async function waitForAutomationStreamReconnect(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(finish, 1_000);
+    function finish() {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    }
+    signal.addEventListener("abort", finish, { once: true });
+  });
+}
+
+async function listenToAutomations(args: string[]): Promise<void> {
+  const requestedBaseUrl = getFlag(args, "--base-url", configuredBaseUrl);
+  let afterVersionstamp = getFlag(args, "--after-versionstamp", undefined) ?? undefined;
+  const scopeArg = args.shift();
+  if (!scopeArg || args.length > 0) {
+    usage();
+  }
+
+  const baseUrl = await resolveCliBaseUrl(requestedBaseUrl);
+  const scope = parseBackofficeScope(scopeArg);
+  const abortController = new AbortController();
+  let hasOpenedStream = false;
+  const stopListening = () => {
+    abortController.abort();
+  };
+  process.once("SIGINT", stopListening);
+  process.once("SIGTERM", stopListening);
+
+  try {
+    while (!abortController.signal.aborted) {
+      try {
+        const stream = await openBackofficeAutomationsStream({
+          baseUrl,
+          scope,
+          afterVersionstamp,
+          signal: abortController.signal,
+        });
+        hasOpenedStream = true;
+        afterVersionstamp = await consumeAutomationStream(
+          stream,
+          abortController.signal,
+          afterVersionstamp,
+        );
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        if (!hasOpenedStream) {
+          throw error;
+        }
+        console.error(
+          `Automations stream disconnected: ${backofficeErrorMessage(error)} Retrying…`,
+        );
+      }
+
+      await waitForAutomationStreamReconnect(abortController.signal);
+    }
+  } finally {
+    process.removeListener("SIGINT", stopListening);
+    process.removeListener("SIGTERM", stopListening);
+  }
+}
+
 async function execCodemode(args: string[]): Promise<void> {
   const requestedBaseUrl = getFlag(args, "--base-url", configuredBaseUrl);
   const timeout = parsePositiveInteger(getFlag(args, "--timeout", undefined), "--timeout");
@@ -380,6 +519,8 @@ export async function runBackofficeCli(argv = process.argv.slice(2)): Promise<vo
       await doctor(args);
     } else if (command === "system") {
       await fetchSystem(args);
+    } else if (command === "listen") {
+      await listenToAutomations(args);
     } else if (command === "exec") {
       await execCodemode(args);
     } else if (command === "bash") {

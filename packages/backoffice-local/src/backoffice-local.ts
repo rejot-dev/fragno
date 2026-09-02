@@ -3,6 +3,8 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, posix, resolve } from "node:path";
 
+import { FRAGNO_OUTBOX_PAGE_SIZE } from "@fragno-dev/db/outbox";
+
 import {
   fetchBackofficeWithoutRedirect,
   resolveSameOriginBackofficeEndpoint,
@@ -226,6 +228,18 @@ function backofficeScopePath(scope: BackofficeRuntimeScope, suffix = ""): string
 
 function backofficeScopedUploadPath(scope: BackofficeRuntimeScope, suffix = ""): string {
   return `/api/upload-scoped/${scope.kind}/${encodeURIComponent(backofficeRuntimeScopeRouteId(scope))}/files${suffix}`;
+}
+
+function backofficeAutomationsStreamPath(
+  scope: BackofficeRuntimeScope,
+  afterVersionstamp?: string,
+): string {
+  const path = `/api/automations-scoped/${scope.kind}/${encodeURIComponent(backofficeRuntimeScopeRouteId(scope))}/_internal/outbox/stream`;
+  const query = new URLSearchParams({ limit: String(FRAGNO_OUTBOX_PAGE_SIZE) });
+  if (afterVersionstamp) {
+    query.set("afterVersionstamp", afterVersionstamp);
+  }
+  return `${path}?${query}`;
 }
 
 function isStoredAuthState(value: unknown): value is StoredAuthState {
@@ -990,6 +1004,31 @@ export async function fetchBackofficeSystemPrompt(options: {
     await assertOk(response, "Fetch SYSTEM.md");
   }
   return await response.text();
+}
+
+/** Opens the authenticated NDJSON mutation stream for one scoped Automations runtime. */
+export async function openBackofficeAutomationsStream(options: {
+  baseUrl: string;
+  scope: BackofficeScope;
+  afterVersionstamp?: string;
+  signal?: AbortSignal;
+}): Promise<ReadableStream<Uint8Array>> {
+  const response = await authedFetch(
+    (runtimeScope) => backofficeAutomationsStreamPath(runtimeScope, options.afterVersionstamp),
+    options.scope,
+    {
+      baseUrl: options.baseUrl,
+      headers: { accept: "application/x-ndjson" },
+      signal: options.signal,
+    },
+  );
+  if (!response.ok) {
+    await assertOk(response, "Open Automations stream");
+  }
+  if (!response.body) {
+    throw new Error("Open Automations stream returned a response without a body.");
+  }
+  return response.body;
 }
 
 export async function executeBackofficeCodemode(options: {

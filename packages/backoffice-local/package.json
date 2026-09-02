@@ -23,6 +23,9 @@
     "lint:package": "node ../../scripts/run-package-quality.mjs lint",
     "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
+  "dependencies": {
+    "@fragno-dev/db": "workspace:*"
+  },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
