@@ -232,6 +232,32 @@ describe("createGitHubApiClient", () => {
     assert(reposCall?.url.searchParams.get("per_page") === "100");
   });
 
+  it("creates repository-scoped read tokens for cloning", async () => {
+    const { fetchMock, calls } = createFetchMock({});
+    const client = createGitHubApiClient(
+      {
+        appId: "42",
+        appSlug: "test-app",
+        clientId: "test-client-id",
+        clientSecret: "test-client-secret",
+        callbackUrl: "https://example.com/github/callback",
+        privateKeyPem: createPrivateKey(),
+        webhookSecret: "secret",
+      },
+      { fetch: fetchMock },
+    );
+
+    const access = await client.app.createRepositoryReadToken(123, 456);
+
+    assert(access.token === "installation-token");
+    assert(access.expiresAt);
+    const tokenCall = calls.find((call) => call.url.pathname.endsWith("/access_tokens"));
+    expect(JSON.parse(String(tokenCall?.init?.body))).toEqual({
+      repository_ids: [456],
+      permissions: { contents: "read" },
+    });
+  });
+
   it("exposes app and installation octokit for direct requests", async () => {
     const { fetchMock, calls } = createFetchMock({
       pulls: [{ id: 99, title: "Test PR" }],

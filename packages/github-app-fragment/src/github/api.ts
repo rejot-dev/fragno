@@ -15,10 +15,19 @@ type UserInstallationResponse = Awaited<
   ReturnType<GitHubOctokit["rest"]["apps"]["listInstallationsForAuthenticatedUser"]>
 >["data"]["installations"][number];
 
+export type GitHubInstallationAccessToken = {
+  token: string;
+  expiresAt: string;
+};
+
 export type GitHubAppInstance = {
   octokit: GitHubOctokit;
   webhooks: OctokitAppInstance["webhooks"];
   getInstallationOctokit: (installationId: number) => Promise<GitHubOctokit>;
+  createRepositoryReadToken: (
+    installationId: number,
+    repositoryId: number,
+  ) => Promise<GitHubInstallationAccessToken>;
 };
 
 export type GitHubInstallationRepository = {
@@ -201,6 +210,19 @@ export const createGitHubApiClient = (
     webhooks: octokitApp.webhooks,
     getInstallationOctokit: async (installationId) => {
       return await octokitApp.getInstallationOctokit(installationId);
+    },
+    createRepositoryReadToken: async (installationId, repositoryId) => {
+      const authentication = (await octokitApp.octokit.auth({
+        type: "installation",
+        installationId,
+        repositoryIds: [repositoryId],
+        permissions: { contents: "read" },
+        refresh: true,
+      })) as GitHubInstallationAccessToken;
+      return {
+        token: authentication.token,
+        expiresAt: authentication.expiresAt,
+      };
     },
   };
 
