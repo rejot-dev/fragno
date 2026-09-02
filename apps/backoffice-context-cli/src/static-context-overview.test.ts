@@ -128,6 +128,11 @@ describe("Backoffice static context overview", () => {
     const tsx = resolve(repositoryRoot, "node_modules/.bin/tsx");
 
     execFileSync("git", ["read-tree", "HEAD"], { cwd: repositoryRoot, env: environment });
+    // CI starts from a commit that already contains the graph; remove it to model an unstaged file.
+    execFileSync("git", ["update-index", "--force-remove", "--", "content/CONTEXT-GRAPH.md"], {
+      cwd: repositoryRoot,
+      env: environment,
+    });
     const unstagedResult = spawnSync(tsx, [script, "--check-staged"], {
       cwd: repositoryRoot,
       env: environment,
