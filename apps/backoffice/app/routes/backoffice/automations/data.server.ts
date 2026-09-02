@@ -7,8 +7,8 @@ import type {
   BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
-import { createBackofficeFileSystem } from "@/files";
-import { getAutomationLayerForPath, readAutomationWorkspaceScript } from "@/fragno/automation";
+import { getAutomationLayerForPath, readAutomationScript } from "@/fragno/automation";
+import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -38,22 +38,6 @@ const getScopedAutomationsObject = (
   return kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
 };
 
-async function createBackofficeAutomationFileSystem({
-  context,
-  execution,
-}: {
-  context: Readonly<RouterContextProvider>;
-  execution: BackofficeExecutionContext;
-}) {
-  const { runtime, kernel } = context.get(BackofficeWorkerContext);
-  return createBackofficeFileSystem({
-    objects: runtime.objects,
-    kernel,
-    execution,
-    config: runtime.config,
-  });
-}
-
 export { toExternalId } from "./data";
 
 export async function loadAutomationScriptSource({
@@ -65,7 +49,7 @@ export async function loadAutomationScriptSource({
   execution: BackofficeExecutionContext;
   scriptId: string;
 }): Promise<AutomationScriptSourceRecord> {
-  const fileSystem = await createBackofficeAutomationFileSystem({ context, execution });
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
 
   try {
     const scriptPath = fromAutomationScriptId(scriptId);
@@ -77,7 +61,17 @@ export async function loadAutomationScriptSource({
       };
     }
 
-    const script = await readAutomationWorkspaceScript(fileSystem, scriptPath);
+    const script = await readAutomationScript(
+      ({ path }) =>
+        readBackofficeAutomationSource({
+          objects: runtime.objects,
+          kernel,
+          execution,
+          config: runtime.config,
+          path,
+        }),
+      { execution, scriptPath },
+    );
     return {
       script: script.body,
       scriptError: null,

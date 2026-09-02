@@ -14,7 +14,7 @@ import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-regis
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { createAutomationRuntimeExecution } from "@/fragno/automation/authority";
-import { loadAutomationCatalog } from "@/fragno/automation/catalog";
+import { readAutomationScript } from "@/fragno/automation/automation-source";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 import {
   CODEMODE_CAPABILITY_ACTOR,
@@ -55,7 +55,7 @@ vi.mock("cloudflare:workers", () => ({
   WorkerEntrypoint,
 }));
 
-import { createDefaultAutomationFileSystem } from "./automations.do";
+import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 
 const objects = {} as BackofficeObjectRegistry;
 const USER_WORKSPACE_INGESTION_TEST_VERSION = "1.2.1";
@@ -81,16 +81,19 @@ const config: BackofficeRuntimeConfig = {
   },
 };
 
-const createFileSystem = (execution: BackofficeExecutionContext) =>
-  createDefaultAutomationFileSystem({
-    objects,
-    kernel: new BackofficeKernel({
-      authorityResolver: unavailableBackofficeAuthorityResolver,
-      kernelObserver: noopBackofficeKernelObserver,
-    }),
-    execution,
-    config,
-  });
+const createSourceReader =
+  (execution: BackofficeExecutionContext) =>
+  ({ path }: { path: string }) =>
+    readBackofficeAutomationSource({
+      objects,
+      kernel: new BackofficeKernel({
+        authorityResolver: unavailableBackofficeAuthorityResolver,
+        kernelObserver: noopBackofficeKernelObserver,
+      }),
+      execution,
+      config,
+      path,
+    });
 
 const scopedEvent = (orgId: string): AutomationEvent => ({
   id: `github:issue.opened:${orgId}`,
@@ -113,39 +116,59 @@ const scopedEvent = (orgId: string): AutomationEvent => ({
   subject: { orgId },
 });
 
-describe("createDefaultAutomationFileSystem", () => {
+describe("readBackofficeAutomationSource", () => {
   test("loads static and system automation files for system automation scope", async () => {
-    const fs = await createFileSystem({
+    const execution = {
       actors: BACKOFFICE_SYSTEM_ACTORS,
-      scope: { kind: "system" },
-    });
+      scope: { kind: "system" as const },
+    };
+    const sourceReader = createSourceReader(execution);
 
-    const catalog = await loadAutomationCatalog(fs);
-
-    expect(catalog.scripts.map((script) => script.absolutePath)).toEqual(
-      expect.arrayContaining([
-        "/static/automations/project-files-configure.workflow.js",
-        "/system/automations/workspace-file-initialization.workflow.js",
-      ]),
+    await expect(
+      readAutomationScript(sourceReader, {
+        execution,
+        scriptPath: "/static/automations/project-files-configure.workflow.js",
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        absolutePath: "/static/automations/project-files-configure.workflow.js",
+      }),
+    );
+    await expect(
+      readAutomationScript(sourceReader, {
+        execution,
+        scriptPath: "/system/automations/workspace-file-initialization.workflow.js",
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        absolutePath: "/system/automations/workspace-file-initialization.workflow.js",
+      }),
     );
   });
 
   test("loads static automations for user automation scope", async () => {
-    const fs = await createFileSystem(
-      createBackofficeServiceExecution({
-        scope: { kind: "user", userId: "user-1" },
-        service: { type: "automation", id: "automation:event-1" },
+    const execution = createBackofficeServiceExecution({
+      scope: { kind: "user", userId: "user-1" },
+      service: { type: "automation", id: "automation:event-1" },
+    });
+    const sourceReader = createSourceReader(execution);
+
+    await expect(
+      readAutomationScript(sourceReader, {
+        execution,
+        scriptPath: "/static/automations/project-files-configure.workflow.js",
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        absolutePath: "/static/automations/project-files-configure.workflow.js",
       }),
     );
-
-    const catalog = await loadAutomationCatalog(fs);
-
-    expect(catalog.scripts.map((script) => script.absolutePath)).toEqual(
-      expect.arrayContaining(["/static/automations/project-files-configure.workflow.js"]),
-    );
-    expect(catalog.scripts.map((script) => script.absolutePath)).not.toContain(
-      "/system/automations/workspace-file-initialization.workflow.js",
-    );
+    await expect(
+      readAutomationScript(sourceReader, {
+        execution,
+        scriptPath: "/system/automations/workspace-file-initialization.workflow.js",
+      }),
+    ).rejects.toThrow();
   });
 });
 

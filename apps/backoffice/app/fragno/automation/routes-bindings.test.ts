@@ -14,9 +14,9 @@ import {
 } from "./content/starter-routing";
 import type { AutomationEvent } from "./contracts";
 import type { AutomationWorkflowsService } from "./definition";
-import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
 import { createAutomationFragment } from "./index";
 import { setAutomationRouteMutationActors } from "./route-routes";
+import { createTestAutomationSourceReader } from "./test-automation-source-reader.test-utils";
 
 const createAutomation = async (
   options: {
@@ -43,13 +43,13 @@ const createAutomation = async (
       } as unknown as AutomationWorkflowsService),
   };
   const ownerScope = options.ownerScope ?? { kind: "org", orgId: "org_123" };
-  const automationFileSystem = createTestMasterFileSystem(options.workflowFiles ?? {});
+  const sourceReader = createTestAutomationSourceReader(options.workflowFiles ?? {});
 
   return createAutomationFragment(
     {
       builtInEventDefinitions: [],
       ownerScope,
-      automationFileSystem,
+      readAutomationSource: sourceReader,
       runtime: options.runtime,
     },
     {

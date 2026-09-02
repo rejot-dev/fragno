@@ -19,8 +19,8 @@ import {
   createAutomationRuntimeExecution,
   linkAutomationEventToUser,
 } from "./authority";
+import { readAutomationScript, type AutomationSourceReader } from "./automation-source";
 import { createAutomationStoreServices } from "./bindings-storage-runtime";
-import { resolveAutomationFileSystem, type AutomationFileSystemConfig } from "./catalog";
 import {
   ORGANIZATION_STARTER_AUTOMATION_ROUTES,
   SYSTEM_STARTER_AUTOMATION_ROUTES,
@@ -107,7 +107,8 @@ export type AutomationWorkflowsService = Pick<
   ) => TxResult<AutomationWorkflowsInstanceStatus[], AutomationWorkflowsInstanceStatus[]>;
 };
 
-export interface AutomationFragmentConfig extends AutomationFileSystemConfig {
+export interface AutomationFragmentConfig {
+  readAutomationSource?: AutomationSourceReader;
   builtInEventDefinitions: readonly Pick<
     AutomationEventDefinition,
     "source" | "eventType" | "enabled" | "payloadSchema"
@@ -211,7 +212,7 @@ const handleStartWorkflowRouteAction = async ({
   linkedUserId,
 }: RouteExecutionContext & {
   action: AutomationStartWorkflowAction;
-  config: AutomationFileSystemConfig;
+  config: Pick<AutomationFragmentConfig, "readAutomationSource">;
 }) => {
   const workflowEvent =
     action.authority.kind === "linked-user"
@@ -238,14 +239,16 @@ const handleStartWorkflowRouteAction = async ({
           event: workflowEvent,
           authority: automationRouteAuthority({ routeId: route.id, mode: action.authority }),
         });
-  const fileSystem = await resolveAutomationFileSystem(config, {
+  if (!config.readAutomationSource) {
+    throw new Error("Automation workflow source reading is not configured.");
+  }
+  const script = await readAutomationScript(config.readAutomationSource, {
     execution,
-    purpose: "runtime",
+    scriptPath: action.workflowScriptPath,
   });
-  const code = await fileSystem.readFile(action.workflowScriptPath, "utf-8");
   const prepared = prepareCodemodeWorkflowInstance({
-    code,
-    filename: action.workflowScriptPath,
+    code: script.body,
+    filename: script.absolutePath,
     instanceId,
   });
   const triggerEvent =

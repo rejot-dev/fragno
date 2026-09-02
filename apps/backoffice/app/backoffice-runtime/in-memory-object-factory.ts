@@ -1,5 +1,4 @@
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import type { MasterFileSystem } from "@/files";
+import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 
 import { InMemoryApiObject } from "../../workers/api.do";
 import { InMemoryAuthObject } from "../../workers/auth.do";
@@ -53,7 +52,7 @@ export type InMemoryBackofficeObjectFactory<TObject> = (input: {
   env: InMemoryBackofficeRuntimeEnv;
   runtime: BackofficeRuntimeServices;
   nowEpochMs: () => number;
-  getAutomationFileSystem?: InMemoryObjectFactoryOptions["getAutomationFileSystem"];
+  readAutomationSource?: InMemoryObjectFactoryOptions["readAutomationSource"];
 }) => TObject;
 
 export type InMemoryObjectFactoryOverrides = Partial<
@@ -63,10 +62,7 @@ export type InMemoryObjectFactoryOverrides = Partial<
 export type InMemoryObjectFactoryOptions = {
   env?: Partial<InMemoryBackofficeRuntimeEnv>;
   getRuntimeServices: () => BackofficeRuntimeServices;
-  getAutomationFileSystem?: (input: {
-    execution: BackofficeExecutionContext;
-    purpose?: string;
-  }) => Promise<MasterFileSystem>;
+  readAutomationSource?: AutomationSourceReader;
   objectFactories?: InMemoryObjectFactoryOverrides;
 };
 
@@ -278,13 +274,13 @@ const inMemoryObjectFactories = {
       env,
       runtime,
     }),
-  AUTOMATIONS: ({ state, env, runtime, nowEpochMs, getAutomationFileSystem }) =>
+  AUTOMATIONS: ({ state, env, runtime, nowEpochMs, readAutomationSource }) =>
     new InMemoryAutomationsObject({
       state,
       env,
       runtime,
       nowEpochMs,
-      getAutomationFileSystem,
+      readAutomationSource,
     }),
   BILLING: ({ state, env, runtime }) =>
     new InMemoryBillingObject({
@@ -305,7 +301,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
 
   #namespaces: NamespaceMap = {};
   readonly #getRuntimeServices: () => BackofficeRuntimeServices;
-  readonly #getAutomationFileSystem?: InMemoryObjectFactoryOptions["getAutomationFileSystem"];
+  readonly #readAutomationSource?: InMemoryObjectFactoryOptions["readAutomationSource"];
   readonly #objectFactories?: InMemoryObjectFactoryOverrides;
   #timeOffsetMs = 0;
   #activeTimeEpochMs: number | null = null;
@@ -316,7 +312,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
       ...options.env,
     };
     this.#getRuntimeServices = options.getRuntimeServices;
-    this.#getAutomationFileSystem = options.getAutomationFileSystem;
+    this.#readAutomationSource = options.readAutomationSource;
     this.#objectFactories = options.objectFactories;
     this.#registerNamespaces();
   }
@@ -496,7 +492,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
             ),
           },
           nowEpochMs: () => this.now(),
-          getAutomationFileSystem: this.#getAutomationFileSystem,
+          readAutomationSource: this.#readAutomationSource,
         });
       },
     }) as InMemoryDurableObjectNamespace<unknown>;

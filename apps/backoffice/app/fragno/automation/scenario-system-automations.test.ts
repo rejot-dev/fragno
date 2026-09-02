@@ -27,6 +27,7 @@ import {
   setUpScenarioAuthOrganization,
   setUpScenarioAuthUser,
 } from "./scenario-auth";
+import { snapshotTestAutomationSourceReader } from "./test-automation-source-reader.test-utils";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -142,18 +143,22 @@ describe("system automation scenarios", () => {
     const orgId = "org-real";
     let runtime!: InMemoryBackofficeRuntime;
     runtime = await createInMemoryBackofficeRuntime({
-      getAutomationFileSystem: async ({ execution }) =>
-        await createMasterFileSystem(
-          createSystemFilesContext({
-            objects: runtime.objects,
-            execution,
-            staticFileArtifacts: createCodemodeStaticArtifactsResolver({
+      readAutomationSource: async ({ execution, path }) => {
+        const readSource = await snapshotTestAutomationSourceReader(
+          await createMasterFileSystem(
+            createSystemFilesContext({
               objects: runtime.objects,
-              config: runtime.config,
               execution,
+              staticFileArtifacts: createCodemodeStaticArtifactsResolver({
+                objects: runtime.objects,
+                config: runtime.config,
+                execution,
+              }),
             }),
-          }),
-        ),
+          ),
+        );
+        return await readSource({ execution, path });
+      },
     });
 
     try {

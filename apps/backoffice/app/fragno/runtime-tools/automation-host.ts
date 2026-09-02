@@ -1,6 +1,5 @@
 import type { IFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
-import type { AutomationScriptEngine } from "@/fragno/automation/catalog";
 import { createAutomationExecutionFileSystem } from "@/fragno/automation/engine/execution-file-system";
 import {
   createAutomationRunResult,
@@ -61,7 +60,7 @@ export const executeAutomationScript = async ({
   masterFs,
   env,
 }: {
-  engine: AutomationScriptEngine;
+  engine: "bash" | "codemode";
   script: string;
   context: AutomationScriptHostContext;
   masterFs: MasterFileSystem;

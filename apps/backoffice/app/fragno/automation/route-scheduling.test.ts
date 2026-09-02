@@ -4,9 +4,9 @@ import { getDurableHooksService, InMemoryAdapter } from "@fragno-dev/db";
 import { drainDurableHooks } from "@fragno-dev/test";
 
 import type { AutomationWorkflowsService } from "./definition";
-import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
 import { createAutomationFragment } from "./index";
 import { automationFragmentSchema } from "./schema";
+import { createTestAutomationSourceReader } from "./test-automation-source-reader.test-utils";
 
 const scheduledAction = {
   kind: "start_workflow" as const,
@@ -28,7 +28,7 @@ const createAutomation = async ({
     sendEvent: async () => ({}),
   } as unknown as AutomationWorkflowsService;
 
-  const automationFileSystem = createTestMasterFileSystem({
+  const sourceReader = createTestAutomationSourceReader({
     [scheduledAction.workflowScriptPath]: `defineWorkflow({ name: "scheduled-route" }, async (event) => event.payload);`,
   });
 
@@ -36,7 +36,7 @@ const createAutomation = async ({
     {
       builtInEventDefinitions: [],
       ownerScope: { kind: "org", orgId: "org_123" },
-      automationFileSystem,
+      readAutomationSource: sourceReader,
     },
     {
       databaseAdapter: new InMemoryAdapter({

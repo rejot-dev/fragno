@@ -190,9 +190,13 @@ export const createBackofficeStateBackend = (input: {
 
 export const createBackofficeSystemStateBackend = (input: {
   staticFileCollection: FileCollection;
+  systemFileCollection?: FileCollection;
 }): BackofficeStateBackend =>
   new SystemStaticStateBackend({
-    system: { mountPoint: "/system", collection: systemFileCollection },
+    system: {
+      mountPoint: "/system",
+      collection: input.systemFileCollection ?? systemFileCollection,
+    },
     static: { mountPoint: STATIC_MOUNT_POINT, collection: input.staticFileCollection },
   });
 

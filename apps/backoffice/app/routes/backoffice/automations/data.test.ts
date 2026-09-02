@@ -2,17 +2,13 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 
-const { createBackofficeFileSystemMock } = vi.hoisted(() => ({
-  createBackofficeFileSystemMock: vi.fn(),
+const { readBackofficeAutomationSourceMock } = vi.hoisted(() => ({
+  readBackofficeAutomationSourceMock: vi.fn(),
 }));
 
-vi.mock("@/files", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/files")>();
-  return {
-    ...actual,
-    createBackofficeFileSystem: createBackofficeFileSystemMock,
-  };
-});
+vi.mock("@/fragno/automation/read-backoffice-automation-source", () => ({
+  readBackofficeAutomationSource: readBackofficeAutomationSourceMock,
+}));
 
 import { loadAutomationScriptSource } from "./data.server";
 
@@ -34,7 +30,7 @@ const projectExecution = createBackofficeUserExecution({
 });
 
 beforeEach(() => {
-  createBackofficeFileSystemMock.mockReset();
+  readBackofficeAutomationSourceMock.mockReset();
 });
 
 describe("automation backoffice workspace data", () => {
@@ -42,7 +38,9 @@ describe("automation backoffice workspace data", () => {
     const fileSystem = createStubAutomationFileSystem({
       "/static/automations/project-files-configure.workflow.js": "configure",
     });
-    createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
+    readBackofficeAutomationSourceMock.mockImplementation(({ path }) =>
+      fileSystem.fs.readFile(path),
+    );
 
     const result = await loadAutomationScriptSource({
       context: mockContext,
@@ -63,7 +61,9 @@ describe("automation backoffice workspace data", () => {
     const fileSystem = createStubAutomationFileSystem({
       "/static/automations/project-files-configure.workflow.js": "configure",
     });
-    createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
+    readBackofficeAutomationSourceMock.mockImplementation(({ path }) =>
+      fileSystem.fs.readFile(path),
+    );
 
     const result = await loadAutomationScriptSource({
       context: mockContext,
@@ -83,7 +83,9 @@ describe("automation backoffice workspace data", () => {
     const fileSystem = createStubAutomationFileSystem({
       "/system/automations/workspace-file-initialization.workflow.js": "initialize",
     });
-    createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
+    readBackofficeAutomationSourceMock.mockImplementation(({ path }) =>
+      fileSystem.fs.readFile(path),
+    );
 
     const result = await loadAutomationScriptSource({
       context: mockContext,
@@ -103,7 +105,9 @@ describe("automation backoffice workspace data", () => {
     const fileSystem = createStubAutomationFileSystem({
       "/workspace/automations/lazy.sh": 'echo "lazy"',
     });
-    createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
+    readBackofficeAutomationSourceMock.mockImplementation(({ path }) =>
+      fileSystem.fs.readFile(path),
+    );
 
     const result = await loadAutomationScriptSource({
       context: mockContext,
@@ -120,26 +124,7 @@ describe("automation backoffice workspace data", () => {
 });
 
 function createStubAutomationFileSystem(files: Record<string, string>) {
-  const directories = new Set<string>([
-    "/",
-    "/system",
-    "/system/automations",
-    "/workspace",
-    "/workspace/automations",
-  ]);
-
-  for (const filePath of Object.keys(files)) {
-    const segments = filePath.split("/").filter(Boolean);
-    let current = "";
-
-    for (const segment of segments.slice(0, -1)) {
-      current += `/${segment}`;
-      directories.add(current);
-    }
-  }
-
   const readFileCalls: string[] = [];
-  const readdirCalls: string[] = [];
   const fs = {
     async readFile(path: string) {
       readFileCalls.push(path);
@@ -149,53 +134,7 @@ function createStubAutomationFileSystem(files: Record<string, string>) {
       }
       return content;
     },
-    async readFileBuffer(path: string) {
-      return new TextEncoder().encode(await this.readFile(path));
-    },
-    async readdir(path: string) {
-      readdirCalls.push(path);
-      const prefix = path.endsWith("/") ? path : `${path}/`;
-      const names = new Set<string>();
-
-      for (const directory of directories) {
-        if (directory === path || !directory.startsWith(prefix)) {
-          continue;
-        }
-        const child = directory.slice(prefix.length).split("/")[0];
-        if (child) {
-          names.add(child);
-        }
-      }
-
-      for (const filePath of Object.keys(files)) {
-        if (!filePath.startsWith(prefix)) {
-          continue;
-        }
-        const child = filePath.slice(prefix.length).split("/")[0];
-        if (child) {
-          names.add(child);
-        }
-      }
-
-      return [...names].sort();
-    },
-    async stat(path: string) {
-      return {
-        isFile: Object.hasOwn(files, path),
-        isDirectory: directories.has(path),
-        isSymbolicLink: false,
-        mode: Object.hasOwn(files, path) ? 0o644 : 0o755,
-        size: files[path]?.length ?? 0,
-        mtime: new Date(0),
-      };
-    },
-    resolvePath(base: string, child: string) {
-      return `${base.replace(/\/$/u, "")}/${child}`;
-    },
-    getAllPaths() {
-      return [...directories, ...Object.keys(files)].sort();
-    },
   };
 
-  return { fs, readFileCalls, readdirCalls };
+  return { fs, readFileCalls };
 }

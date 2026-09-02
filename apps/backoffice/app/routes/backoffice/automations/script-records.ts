@@ -4,8 +4,8 @@ import {
   AUTOMATION_SYSTEM_ROOT,
   AUTOMATION_WORKSPACE_ROOT,
   getAutomationLayerForPath,
-  type AutomationWorkspaceScriptEntry,
-} from "@/fragno/automation/catalog";
+  type AutomationScriptLayer,
+} from "@/fragno/automation/automation-source";
 
 const AUTOMATION_SCRIPT_ID_PREFIX = "automation-script:";
 
@@ -25,9 +25,7 @@ function normalizeAutomationScriptPath(value: string) {
   return trimmed.replace(/^\/+/, "");
 }
 
-function toAutomationScriptId(
-  script: Pick<AutomationWorkspaceScriptEntry, "layer" | "path">,
-): string {
+function toAutomationScriptId(script: { layer: AutomationScriptLayer; path: string }): string {
   return `${AUTOMATION_SCRIPT_ID_PREFIX}${script.layer}:${normalizeAutomationScriptPath(script.path)}`;
 }
 
@@ -61,7 +59,7 @@ export function fromAutomationScriptId(value: string): string {
 }
 
 export function isAutomationScriptLayerVisibleInScope(
-  layer: AutomationWorkspaceScriptEntry["layer"],
+  layer: AutomationScriptLayer,
   scope: BackofficeContextScope,
 ) {
   if (scope.kind === "system") {

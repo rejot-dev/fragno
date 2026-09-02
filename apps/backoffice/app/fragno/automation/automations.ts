@@ -132,12 +132,7 @@ export const createAutomationsRuntime = (
   runtime: BackofficeFragmentRuntimeOptions,
   config: Pick<
     AutomationFragmentConfig,
-    | "env"
-    | "runtime"
-    | "automationFileSystem"
-    | "getAutomationFileSystem"
-    | "ownerScope"
-    | "sandboxProviders"
+    "env" | "runtime" | "readAutomationSource" | "ownerScope" | "sandboxProviders"
   > & {
     kernel: BackofficeKernel;
     pi: Omit<CreatePiRuntimeDefinitionOptions, "scope" | "kernel" | "runtimeToolContext"> & {
@@ -208,8 +203,6 @@ export const createAutomationsRuntime = (
           ownerScope: config.ownerScope,
           env: config.env,
           runtime: config.runtime,
-          automationFileSystem: config.automationFileSystem,
-          getAutomationFileSystem: config.getAutomationFileSystem,
           getAutomationFragment: () => automationFragment,
           getWorkflowsFragment: (): AutomationsRuntime["workflowsFragment"] => workflowsFragment,
         }),
@@ -591,8 +584,7 @@ export const createAutomationsRuntime = (
       createPiAutomationContext: async ({ execution }) => ({
         runtime: createHostedPiRuntime(execution),
       }),
-      automationFileSystem: config.automationFileSystem,
-      getAutomationFileSystem: config.getAutomationFileSystem,
+      readAutomationSource: config.readAutomationSource,
       ownerScope: config.ownerScope,
       sandboxProviders: config.sandboxProviders,
     },
