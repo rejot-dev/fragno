@@ -9,15 +9,14 @@ import {
 } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import type { IFileSystem } from "@/files";
+import { createTestAutomationSourceReader } from "@/fragno/automation/test-automation-source-reader.test-utils";
 
-const { createBackofficeFileSystemMock } = vi.hoisted(() => ({
-  createBackofficeFileSystemMock: vi.fn(),
+const { readBackofficeAutomationSourceMock } = vi.hoisted(() => ({
+  readBackofficeAutomationSourceMock: vi.fn(),
 }));
 
-vi.mock("@/files", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/files")>()),
-  createBackofficeFileSystem: createBackofficeFileSystemMock,
+vi.mock("@/fragno/automation/read-backoffice-automation-source", () => ({
+  readBackofficeAutomationSource: readBackofficeAutomationSourceMock,
 }));
 
 import type { PiRuntime } from "./families/pi-runtime";
@@ -69,7 +68,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
 
 describe("createRouteBackedRuntimeContext", () => {
   beforeEach(() => {
-    createBackofficeFileSystemMock.mockReset();
+    readBackofficeAutomationSourceMock.mockReset();
   });
 
   test("preserves an injected Pi runtime in scoped child contexts", () => {
@@ -87,23 +86,23 @@ describe("createRouteBackedRuntimeContext", () => {
     expect(scoped.pi?.runtime).toBe(piRuntime);
   });
 
-  test("rebuilds the workflow source filesystem for a different scoped context", async () => {
+  test("uses a new workflow source reader for a different scoped context", async () => {
     const runtime = createRuntime();
-    const parentReadFile = vi.fn(
-      async () => `defineWorkflow({ name: "parent-workflow" }, async () => undefined);`,
-    );
-    const childReadFile = vi.fn(
-      async () => `defineWorkflow({ name: "child-workflow" }, async () => undefined);`,
-    );
-    createBackofficeFileSystemMock.mockResolvedValue({
-      readFile: childReadFile,
-    } as unknown as IFileSystem);
+    const parentBackend = createTestAutomationSourceReader({
+      "/workspace/automations/parent.workflow.js": `defineWorkflow({ name: "parent-workflow" }, async () => undefined);`,
+    });
+    const childBackend = createTestAutomationSourceReader({
+      "/workspace/automations/child.workflow.js": `defineWorkflow({ name: "child-workflow" }, async () => undefined);`,
+    });
+    const parentReadSource = vi.fn(parentBackend);
+    const childReadSource = vi.fn(childBackend);
+    readBackofficeAutomationSourceMock.mockImplementation(childReadSource);
 
     const context = createRouteBackedRuntimeContext({
       runtime,
       kernel: new BackofficeKernel(runtime),
       execution: createBackofficeSystemExecution({ kind: "system" }),
-      workflowSourceFileSystem: { readFile: parentReadFile } as unknown as IFileSystem,
+      workflowSourceReader: parentReadSource,
     });
     const projectScope = { kind: "project" as const, orgId: "org-1", projectId: "project-1" };
     const scoped = context.createBackofficeScopedContext(projectScope);
@@ -117,26 +116,29 @@ describe("createRouteBackedRuntimeContext", () => {
       instanceId: "child-instance",
     }).catch(() => undefined);
 
-    expect(createBackofficeFileSystemMock).toHaveBeenCalledWith(
+    expect(readBackofficeAutomationSourceMock).toHaveBeenCalledWith(
       expect.objectContaining({
         execution: expect.objectContaining({ scope: projectScope }),
       }),
     );
-    expect(childReadFile).toHaveBeenCalledWith("/workspace/automations/child.workflow.js", "utf-8");
-    expect(parentReadFile).not.toHaveBeenCalled();
+    expect(childReadSource).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "/workspace/automations/child.workflow.js" }),
+    );
+    expect(parentReadSource).not.toHaveBeenCalled();
   });
 
-  test("reuses the workflow source filesystem when the scope is unchanged", async () => {
+  test("reuses the workflow source reader when the scope is unchanged", async () => {
     const runtime = createRuntime();
-    const readFile = vi.fn(
-      async () => `defineWorkflow({ name: "same-scope-workflow" }, async () => undefined);`,
-    );
+    const sourceReader = createTestAutomationSourceReader({
+      "/workspace/automations/same-scope.workflow.js": `defineWorkflow({ name: "same-scope-workflow" }, async () => undefined);`,
+    });
+    const readSource = vi.fn(sourceReader);
     const scope = { kind: "system" as const };
     const context = createRouteBackedRuntimeContext({
       runtime,
       kernel: new BackofficeKernel(runtime),
       execution: createBackofficeSystemExecution(scope),
-      workflowSourceFileSystem: { readFile } as unknown as IFileSystem,
+      workflowSourceReader: readSource,
     });
     const scoped = context.createBackofficeScopedContext({ ...scope });
 
@@ -149,8 +151,10 @@ describe("createRouteBackedRuntimeContext", () => {
       instanceId: "same-scope-instance",
     }).catch(() => undefined);
 
-    expect(readFile).toHaveBeenCalledWith("/workspace/automations/same-scope.workflow.js", "utf-8");
-    expect(createBackofficeFileSystemMock).not.toHaveBeenCalled();
+    expect(readSource).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "/workspace/automations/same-scope.workflow.js" }),
+    );
+    expect(readBackofficeAutomationSourceMock).not.toHaveBeenCalled();
   });
 
   test("keeps the context available when the Cloudflare singleton cannot be resolved", () => {

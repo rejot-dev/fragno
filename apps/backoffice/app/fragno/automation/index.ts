@@ -49,10 +49,9 @@ export {
   AUTOMATION_SYSTEM_ROOT,
   AUTOMATION_WORKSPACE_ROOT,
   getAutomationLayerForPath,
-  listAutomationWorkspaceScripts,
-  readAutomationWorkspaceScript,
-} from "./catalog";
-export type { AutomationScriptLayer, AutomationWorkspaceScriptEntry } from "./catalog";
+  readAutomationScript,
+} from "./automation-source";
+export type { AutomationScriptLayer } from "./automation-source";
 export type { AutomationEventRecord } from "./events";
 export type {
   MarketplaceIngestionListInput,

@@ -42,7 +42,6 @@ import type { UploadFragment } from "@/fragno/upload-server";
 import { sha256Hex } from "@/lib/crypto";
 
 import { appendAutomationDelegate } from "./authority";
-import type { AutomationFileSystemConfig } from "./catalog";
 import {
   CODEMODE_CAPABILITY_ACTOR,
   CODEMODE_WORKFLOW,
@@ -206,7 +205,7 @@ type MarketplaceWorkflowsFragment = Pick<
   "callServices" | "services"
 >;
 
-type MarketplaceIngestWorkflowConfig = AutomationFileSystemConfig & {
+type MarketplaceIngestWorkflowConfig = {
   ownerScope: BackofficeContextScope;
   env?: CloudflareEnv;
   runtime?: BackofficeRuntimeServices;

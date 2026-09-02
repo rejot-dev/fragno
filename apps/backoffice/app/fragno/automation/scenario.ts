@@ -130,6 +130,7 @@ import {
   type ScenarioAuthUserRoleInput as AuthUserRoleInput,
   type ScenarioAuthUserStatusInput as AuthUserStatusInput,
 } from "./scenario-auth";
+import { snapshotTestAutomationSourceReader } from "./test-automation-source-reader.test-utils";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
 type ScenarioVars = Record<string, unknown>;
@@ -4511,19 +4512,13 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
   }
 
   if (fakes.pi) {
-    objectFactories.AUTOMATIONS = ({
-      state,
-      env,
-      runtime,
-      nowEpochMs,
-      getAutomationFileSystem,
-    }) => {
+    objectFactories.AUTOMATIONS = ({ state, env, runtime, nowEpochMs, readAutomationSource }) => {
       const object = new InMemoryAutomationsObject({
         state,
         env,
         runtime,
         nowEpochMs,
-        getAutomationFileSystem,
+        readAutomationSource,
         createPiRuntime: (execution, kernel) => {
           const fetchPiAuthorized = async (
             request: Request,
@@ -4812,10 +4807,14 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
   const runtime = await createInMemoryBackofficeRuntime({
     env: scenario.env,
     kernelObserver,
-    getAutomationFileSystem: async ({ execution }) =>
-      execution.scope.kind === "project"
-        ? files.forProject(execution.scope.projectId)
-        : files.forOrg(execution.scope.kind === "org" ? execution.scope.orgId : undefined),
+    readAutomationSource: async ({ execution, path }) => {
+      const readSource = await snapshotTestAutomationSourceReader(
+        execution.scope.kind === "project"
+          ? files.forProject(execution.scope.projectId)
+          : files.forOrg(execution.scope.kind === "org" ? execution.scope.orgId : undefined),
+      );
+      return await readSource({ execution, path });
+    },
     objectFactories: {
       ...createObjectFactories(fakes),
       ...scenario.objectFactories,

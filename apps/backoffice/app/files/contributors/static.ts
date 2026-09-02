@@ -1,5 +1,5 @@
 import { STATIC_FILE_CONTENT } from "../content/static";
-import { SYSTEM_FILE_CONTENT } from "../content/system";
+import { canAccessSystemFiles, SYSTEM_FILE_CONTENT } from "../content/system";
 import type { FileContributor, FileMountMetadata, FilesContext } from "../types";
 import { createReadOnlyContentFileSystem } from "./content";
 
@@ -45,19 +45,11 @@ export const systemFileMount: FileMountMetadata = {
   description: "Admin-only system-scope filesystem for system automations and metadata.",
 };
 
-// Interactive admins enter through system scope; principal-free system work may mount these files
-// while operating within a narrower organization or project scope.
-const canSeeSystemFileMount = ({ execution }: FilesContext): boolean =>
-  execution.scope.kind === "system" ||
-  (execution.actors.initiator.scope === "internal" &&
-    execution.actors.initiator.type === "system" &&
-    execution.actors.principal === null);
-
 export const systemFileContributor: FileContributor = {
   ...systemFileMount,
   ...createReadOnlyContentFileSystem(SYSTEM_FILE_MOUNT_POINT, SYSTEM_FILE_CONTENT),
   createFileSystem: (ctx) =>
-    canSeeSystemFileMount(ctx)
+    canAccessSystemFiles(ctx.execution)
       ? createReadOnlyContentFileSystem(SYSTEM_FILE_MOUNT_POINT, SYSTEM_FILE_CONTENT)
       : null,
 };

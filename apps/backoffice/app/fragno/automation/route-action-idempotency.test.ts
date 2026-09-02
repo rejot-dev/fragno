@@ -13,10 +13,10 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import type { AutomationEvent } from "./contracts";
 import type { AutomationWorkflowsService } from "./definition";
 import { CODEMODE_WORKFLOW } from "./engine/codemode-invocation";
-import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
 import { createAutomationFragment } from "./index";
 import type { AutomationRouteDefinition } from "./routing";
 import { automationFragmentSchema } from "./schema";
+import { createTestAutomationSourceReader } from "./test-automation-source-reader.test-utils";
 
 const actors = {
   initiator: {
@@ -94,7 +94,7 @@ describe("automation route action idempotency", () => {
       {
         builtInEventDefinitions: [],
         ownerScope: { kind: "org", orgId: "org_123" },
-        automationFileSystem: createTestMasterFileSystem({
+        readAutomationSource: createTestAutomationSourceReader({
           "/workspace/automations/idempotent.workflow.js":
             'defineWorkflow({ name: "idempotent" }, async () => ({ ok: true }));',
         }),
@@ -175,7 +175,7 @@ describe("automation route action idempotency", () => {
       {
         builtInEventDefinitions: [],
         ownerScope: { kind: "org", orgId: "org_123" },
-        automationFileSystem: createTestMasterFileSystem({}),
+        readAutomationSource: createTestAutomationSourceReader({}),
       },
       {
         databaseAdapter,
@@ -256,7 +256,7 @@ describe("automation route action idempotency", () => {
           },
         ],
         ownerScope: { kind: "org", orgId: "org_123" },
-        automationFileSystem: createTestMasterFileSystem({}),
+        readAutomationSource: createTestAutomationSourceReader({}),
       },
       {
         databaseAdapter: new InMemoryAdapter({ idSeed: "route-reclassify-source" }),
@@ -338,7 +338,7 @@ describe("automation route action idempotency", () => {
           },
         ],
         ownerScope: { kind: "org", orgId: "org_123" },
-        automationFileSystem: createTestMasterFileSystem({}),
+        readAutomationSource: createTestAutomationSourceReader({}),
       },
       {
         databaseAdapter: new InMemoryAdapter({ idSeed: "built-in-event-validation" }),
@@ -365,7 +365,7 @@ describe("automation route action idempotency", () => {
       {
         builtInEventDefinitions: [],
         ownerScope: { kind: "org", orgId: "org_123" },
-        automationFileSystem: createTestMasterFileSystem({}),
+        readAutomationSource: createTestAutomationSourceReader({}),
       },
       {
         databaseAdapter: new InMemoryAdapter({ idSeed: "direct-reclassification-cycle" }),
@@ -421,7 +421,7 @@ describe("automation route action idempotency", () => {
       {
         builtInEventDefinitions: [],
         ownerScope: { kind: "org", orgId: "org_123" },
-        automationFileSystem: createTestMasterFileSystem({}),
+        readAutomationSource: createTestAutomationSourceReader({}),
       },
       {
         databaseAdapter: new InMemoryAdapter({ idSeed: "multi-reclassification-cycle" }),
@@ -497,7 +497,7 @@ describe("automation route action idempotency", () => {
       {
         builtInEventDefinitions: [],
         ownerScope: { kind: "org", orgId: "org_123" },
-        automationFileSystem: createTestMasterFileSystem({}),
+        readAutomationSource: createTestAutomationSourceReader({}),
       },
       {
         databaseAdapter: new InMemoryAdapter({ idSeed: "valid-reclassification-chain" }),
@@ -564,7 +564,7 @@ describe("automation route action idempotency", () => {
       {
         builtInEventDefinitions: [],
         ownerScope: { kind: "org", orgId: "org_456" },
-        automationFileSystem: createTestMasterFileSystem({}),
+        readAutomationSource: createTestAutomationSourceReader({}),
       },
       {
         databaseAdapter: new InMemoryAdapter({ idSeed: "route-forward-target" }),
@@ -590,7 +590,7 @@ describe("automation route action idempotency", () => {
       {
         builtInEventDefinitions: [],
         ownerScope: { kind: "system" },
-        automationFileSystem: createTestMasterFileSystem({}),
+        readAutomationSource: createTestAutomationSourceReader({}),
         runtime,
       },
       {

@@ -4,14 +4,12 @@ import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/author
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { MasterFileSystem } from "@/files/master-file-system";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 import type { BackofficeWorkflowAgentHarnessOptionsResolver } from "@/fragno/pi/pi-runtime";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
-import type { AutomationFileSystemConfig } from "../catalog";
-import { resolveAutomationFileSystem } from "../catalog";
+import type { AutomationSourceReader } from "../automation-source";
 import type { AutomationEvent } from "../contracts";
 import {
   assertCodemodeCapabilityGrantsBelongToExecution,
@@ -22,7 +20,8 @@ import {
 import { createCodemodeWorkflowAgent } from "./codemode-workflow-agent";
 import { type AutomationPiBashContext, type AutomationRuntimeHostContext } from "./runtime";
 
-export type CodemodeWorkflowConfig = AutomationFileSystemConfig & {
+export type CodemodeWorkflowConfig = {
+  readAutomationSource?: AutomationSourceReader;
   env?: BackofficeCodemodeEnv & CloudflareEnv;
   runtime?: BackofficeRuntimeServices;
   createPiAutomationContext?: (input: {
@@ -60,14 +59,14 @@ const createCodemodeWorkflowContext = async ({
   automationEvent,
   workflowInstanceId,
   createPiAutomationContext,
-  fileSystem,
+  sourceReader,
 }: {
   runtime: BackofficeRuntimeServices;
   params: CodemodeWorkflowParams;
   automationEvent: AutomationEvent;
   workflowInstanceId: string;
   createPiAutomationContext?: CodemodeWorkflowConfig["createPiAutomationContext"];
-  fileSystem: MasterFileSystem;
+  sourceReader?: AutomationSourceReader;
 }): Promise<AutomationRuntimeHostContext> => {
   const execution: BackofficeExecutionContext = {
     scope: params.execution.scope,
@@ -85,7 +84,7 @@ const createCodemodeWorkflowContext = async ({
     execution,
     emittedEventActors: execution.actors,
     ...(pi ? { pi } : {}),
-    workflowSourceFileSystem: fileSystem,
+    workflowSourceReader: sourceReader,
   });
   const eventRuntime = createEventRuntime({
     objects: runtime.objects,
@@ -175,13 +174,7 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
                     ? { userId: execution.scope.userId }
                     : null,
             };
-      const fileSystem = await resolveAutomationFileSystem(config, {
-        execution,
-        purpose: "runtime",
-      });
-      if (!(fileSystem instanceof MasterFileSystem)) {
-        throw new Error("Codemode workflow filesystem must be a MasterFileSystem.");
-      }
+      const sourceReader = config.readAutomationSource;
 
       const [context, { executeWorkflowCodemodeAutomation }] = await Promise.all([
         createCodemodeWorkflowContext({
@@ -190,7 +183,7 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
           automationEvent,
           workflowInstanceId: event.instanceId,
           createPiAutomationContext: config.createPiAutomationContext,
-          fileSystem,
+          sourceReader,
         }),
         import("./codemode"),
       ]);

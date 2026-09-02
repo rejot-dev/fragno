@@ -21,7 +21,6 @@ import {
   type AutomationsDurableHookFragment,
   type AutomationsObject,
   type BackofficeActionRpcContext,
-  type BackofficeObjectRegistry,
   type BackofficeRpcContext,
 } from "@/backoffice-runtime/object-registry";
 import {
@@ -33,16 +32,6 @@ import {
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
 import { backofficeScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
-import {
-  createBackofficeFileSystem,
-  createMasterFileSystem,
-  createSystemFilesContext,
-  emptyStaticFileArtifacts,
-  staticFileContributor,
-  systemFileContributor,
-  type MasterFileSystem,
-} from "@/files";
-import { tmpFileContributor } from "@/files/contributors/tmp";
 import type {
   AutomationEvent,
   AutomationEventDefinition,
@@ -64,6 +53,7 @@ import type {
 } from "@/fragno/automation";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
+import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
 import type {
   AutomationEventSource,
@@ -94,8 +84,9 @@ import {
   buildMarketplacePublicationWorkflowInstanceId,
   MARKETPLACE_PUBLISH_WORKFLOW_NAME,
 } from "@/fragno/automation/marketplace-publish-workflow";
+import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 import { recordPiOperationBilling } from "@/fragno/billing/pi";
-import type { DurableHookQueueOptions, DurableHookQueueResponse } from "@/fragno/durable-hooks";
+import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import type { MarketplaceStaticArtifactEntry } from "@/fragno/marketplace/artifacts";
 import type {
   MarketplaceStaticPublicationEntryResult,
@@ -122,11 +113,6 @@ import {
   type BackofficeOutboxItem,
 } from "./lib/backoffice-fragment-durable-object";
 import { cloudflareDatabaseTransactionInstrumentation } from "./lib/cloudflare-database-transaction-instrumentation";
-
-export type AutomationsFileSystemResolver = (input: {
-  execution: BackofficeExecutionContext;
-  purpose?: string;
-}) => Promise<MasterFileSystem>;
 
 type AutomationDurableObjectConfig = {
   scope: BackofficeContextScope;
@@ -244,43 +230,6 @@ const describeExistingMarketplaceWorkflow = (input: {
   throw new Error("Unsupported marketplace workflow status.");
 };
 
-export const createDefaultAutomationFileSystem = async ({
-  objects,
-  kernel,
-  execution,
-  automationHookQueue,
-  config,
-}: {
-  objects: BackofficeObjectRegistry;
-  kernel: BackofficeKernel;
-  execution: BackofficeExecutionContext;
-  automationHookQueue?: (opts?: DurableHookQueueOptions) => Promise<DurableHookQueueResponse>;
-  config: BackofficeRuntimeServices["config"];
-}): Promise<MasterFileSystem> => {
-  if (
-    execution.scope.kind === "org" ||
-    execution.scope.kind === "project" ||
-    (execution.scope.kind === "user" && config.bindings.upload)
-  ) {
-    return createBackofficeFileSystem({
-      objects,
-      kernel,
-      execution,
-      ...(automationHookQueue ? { automationHookQueue } : {}),
-      config,
-    });
-  }
-
-  return createMasterFileSystem(
-    createSystemFilesContext({
-      objects,
-      execution,
-      staticFileArtifacts: emptyStaticFileArtifacts,
-    }),
-    { contributors: [staticFileContributor, systemFileContributor, tmpFileContributor] },
-  );
-};
-
 export class InMemoryAutomationsObject extends RpcTarget implements AutomationsObject {
   readonly #env: AutomationFragmentConfig["env"] | undefined;
   readonly #state: BackofficeObjectState;
@@ -294,7 +243,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     AutomationsRuntime,
     AutomationsOutboxItem
   >;
-  readonly #getAutomationFileSystem?: AutomationsFileSystemResolver;
   readonly #createPiRuntime?: (
     execution: BackofficeExecutionContext,
     kernel: BackofficeKernel,
@@ -307,14 +255,14 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     env,
     runtime,
     nowEpochMs = Date.now,
-    getAutomationFileSystem,
+    readAutomationSource,
     createPiRuntime,
   }: {
     state: BackofficeObjectState;
     env?: unknown;
     runtime: BackofficeRuntimeServices;
     nowEpochMs?: () => number;
-    getAutomationFileSystem?: AutomationsFileSystemResolver;
+    readAutomationSource?: AutomationSourceReader;
     createPiRuntime?: (
       execution: BackofficeExecutionContext,
       kernel: BackofficeKernel,
@@ -344,8 +292,17 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     this.#nowEpochMs = nowEpochMs;
     this.#kernel = new BackofficeKernel(this.#runtimeServices);
     this.#scope = backofficeContextScopeFromDurableObjectId(state.id, "AUTOMATIONS");
-    this.#getAutomationFileSystem = getAutomationFileSystem;
     this.#createPiRuntime = createPiRuntime;
+    const automationSourceReader =
+      readAutomationSource ??
+      (({ execution, path }) =>
+        readBackofficeAutomationSource({
+          objects: this.#runtimeServices.objects,
+          kernel: this.#kernel,
+          execution,
+          config: this.#runtimeServices.config,
+          path,
+        }));
     this.#host = createBackofficeFragmentDurableObject({
       name: "Automations",
       state,
@@ -376,13 +333,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
               : undefined,
             kernel: this.#kernel,
             pi: this.#createPiRuntimeOptions(config.scope),
-            getAutomationFileSystem: async ({ execution, purpose }) => {
-              if (this.#getAutomationFileSystem) {
-                return await this.#getAutomationFileSystem({ execution, purpose });
-              }
-
-              return await this.#createAutomationFileSystem(execution);
-            },
+            readAutomationSource: automationSourceReader,
           },
         ),
       getMigrationFragments: (runtime) => [
@@ -480,23 +431,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       }
       await this.#host.storeAndInitialize(config);
       await this.#dispatchInitialized(config.scope);
-    });
-  }
-
-  async #createAutomationFileSystem(execution: BackofficeExecutionContext) {
-    const automationHookObject = this.#kernel.scoped(
-      "AUTOMATIONS",
-      execution.scope,
-      this.#runtimeServices.objects.automations,
-    );
-
-    return createDefaultAutomationFileSystem({
-      objects: this.#runtimeServices.objects,
-      kernel: this.#kernel,
-      execution,
-      config: this.#runtimeServices.config,
-      automationHookQueue: async (options) =>
-        await automationHookObject.commands.getDurableHookQueue("automation", options),
     });
   }
 

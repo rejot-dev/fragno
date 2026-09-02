@@ -3,9 +3,6 @@ import { z } from "zod";
 import { defineRoutes } from "@fragno-dev/core";
 import { isUniqueConstraintError } from "@fragno-dev/db";
 
-import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
-
-import { loadAutomationCatalogFromConfig } from "./catalog";
 import { automationFragmentDefinition } from "./definition";
 import {
   automationProjectCreateInputSchema,
@@ -15,34 +12,8 @@ import {
 } from "./projects";
 
 export const automationProjectRoutes = defineRoutes(automationFragmentDefinition).create(
-  ({ defineRoute, config, services }) => {
+  ({ defineRoute, services }) => {
     return [
-      defineRoute({
-        method: "GET",
-        path: "/scripts",
-        outputSchema: z.array(z.record(z.string(), z.unknown())),
-        handler: async function ({ query }, { json, error }) {
-          try {
-            const orgId = query.get("orgId")?.trim() || undefined;
-            const catalog = await loadAutomationCatalogFromConfig(config, {
-              execution: createBackofficeSystemExecution(
-                orgId ? { kind: "org", orgId } : { kind: "system" },
-              ),
-              purpose: "route",
-            });
-            return json(catalog.scripts);
-          } catch (cause) {
-            return error(
-              {
-                message:
-                  cause instanceof Error ? cause.message : "Failed to load automation scripts.",
-                code: "AUTOMATION_CATALOG_INVALID",
-              },
-              500,
-            );
-          }
-        },
-      }),
       defineRoute({
         method: "GET",
         path: "/projects",

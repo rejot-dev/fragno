@@ -1,7 +1,6 @@
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import type { MasterFileSystem } from "@/files";
+import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 
 import {
   createBackofficeAuthorityResolver,
@@ -37,10 +36,7 @@ export type InMemoryBackofficeRuntime = {
 
 export type CreateInMemoryBackofficeRuntimeOptions = {
   env?: Partial<InMemoryBackofficeRuntimeEnv>;
-  getAutomationFileSystem?: (input: {
-    execution: BackofficeExecutionContext;
-    purpose?: string;
-  }) => Promise<MasterFileSystem>;
+  readAutomationSource?: AutomationSourceReader;
   objectFactories?: InMemoryObjectFactoryOverrides;
   authorityResolver?: BackofficeAuthorityResolver;
   kernelObserver?: BackofficeKernelObserver;
@@ -55,7 +51,7 @@ export const createInMemoryBackofficeRuntime = async (
   const objectFactory = new InMemoryObjectFactory({
     env: options.env,
     getRuntimeServices,
-    getAutomationFileSystem: options.getAutomationFileSystem,
+    readAutomationSource: options.readAutomationSource,
     objectFactories: options.objectFactories,
   });
   const config = objectFactory.createRuntimeConfig();
