@@ -1,5 +1,97 @@
 # @fragno-dev/upload
 
+## 0.1.4
+
+### Patch Changes
+
+- 5bfd508: feat: add atomic server-side text and JSON file edits.
+- 267669b: feat: bound text search hydration by explicit candidates and byte budgets
+- 66d2ecb: feat: paginate bounded file search and expose glob-filtered file listing.
+- 5594802: feat: export upload helpers and stream prepared batch content before publication
+- 04f0291: feat: allow prepared batch writes without a file precondition.
+- f856070: Ensure all non-private packages include repository metadata in their `package.json` entries.
+- c926ec5: feat: add prepared upload publication, atomic file batch commits, and typed upload errors.
+- eb5530b: feat: add revision-backed conditional file writes with collision-safe storage cleanup.
+- d5410ca: feat: add a database-backed storage adapter for uploads.
+- 38081b7: feat: add delimited file listings and allow larger list page sizes.
+- f4fced7: fix: query file prefixes with literal index ranges.
+- 500c81d: feat: support revision-conditional deletions in prepared file batches.
+- 0723b72: feat: export the Upload schema for metadata synchronization consumers.
+- 01c41c1: feat: add text index powered file search.
+- dc1de38: feat: allow up to 200 context lines while limiting hydrated searches to 100 matches.
+- Updated dependencies [0d4cbe8]
+- Updated dependencies [2797663]
+- Updated dependencies [fcecfed]
+- Updated dependencies [cff3b99]
+- Updated dependencies [27b7db5]
+- Updated dependencies [9419f78]
+- Updated dependencies [73e14d7]
+- Updated dependencies [a8010b8]
+- Updated dependencies [26a21e3]
+- Updated dependencies [eb6ea3e]
+- Updated dependencies [0186a7a]
+- Updated dependencies [4fd5010]
+- Updated dependencies [3f9d1bb]
+- Updated dependencies [d9a5ffe]
+- Updated dependencies [d92f4ce]
+- Updated dependencies [1d2125e]
+- Updated dependencies [fe0e92d]
+- Updated dependencies [20324e7]
+- Updated dependencies [c1255e4]
+- Updated dependencies [318921d]
+- Updated dependencies [7e2d989]
+- Updated dependencies [ae415ff]
+- Updated dependencies [204bbb7]
+- Updated dependencies [8a60280]
+- Updated dependencies [a7bf719]
+- Updated dependencies [9ea7170]
+- Updated dependencies [aff91d1]
+- Updated dependencies [03d5a5c]
+- Updated dependencies [a28094e]
+- Updated dependencies [033a643]
+- Updated dependencies [6cc8f36]
+- Updated dependencies [f42c8c6]
+- Updated dependencies [9cd79f3]
+- Updated dependencies [7a625f6]
+- Updated dependencies [49ca4fb]
+- Updated dependencies [0e63275]
+- Updated dependencies [4944ecf]
+- Updated dependencies [4e5d611]
+- Updated dependencies [7405040]
+- Updated dependencies [b40a129]
+- Updated dependencies [5256cee]
+- Updated dependencies [f297b5d]
+- Updated dependencies [caf581b]
+- Updated dependencies [7de0078]
+- Updated dependencies [ff3673f]
+- Updated dependencies [d7236a2]
+- Updated dependencies [1e1088b]
+- Updated dependencies [9e2ee05]
+- Updated dependencies [3734573]
+- Updated dependencies [1c57f29]
+- Updated dependencies [2e7263b]
+- Updated dependencies [801e6ab]
+- Updated dependencies [48c0094]
+- Updated dependencies [7a60491]
+- Updated dependencies [6649e1f]
+- Updated dependencies [d125074]
+- Updated dependencies [8afaf3d]
+- Updated dependencies [85be413]
+- Updated dependencies [fa21507]
+- Updated dependencies [79055dd]
+- Updated dependencies [e7b36e1]
+- Updated dependencies [a61b3a5]
+- Updated dependencies [4dc14bf]
+- Updated dependencies [3328fe3]
+- Updated dependencies [a64dc64]
+- Updated dependencies [ea8ea88]
+- Updated dependencies [5599183]
+- Updated dependencies [e2cad8d]
+- Updated dependencies [5e0cfe8]
+- Updated dependencies [9919fdd]
+  - @fragno-dev/db@0.4.2
+  - @fragno-dev/core@0.2.3
+
 ## 0.1.3
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/typescript-symbols",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Read TypeScript files as compact, TypeScript-native declaration outlines.",
   "homepage": "https://fragno.dev",
   "license": "MIT",
