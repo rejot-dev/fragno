@@ -42,8 +42,6 @@ Use canonical definitions and direct imports.
 - **Scenario Testing** Test through real SQLite operations, routes, client-store updates, and final-state
   assertions. We test through "scenarios", specifically built test DSLs that allow us to test real
   user flows. Real end-to-end, but within a process.
-- **Boil the ocean.** Consider unusually ambitious foundational solutions when they produce the
-  right primitive.
 - **Primitive-first.** Build reusable primitives, not application conveniences.
 
 ## Fragno's constraints:
@@ -78,6 +76,10 @@ Backoffice is the working name for the AI-native automation application in `apps
 a product combining all best aspects of Fragno. Backoffice tests whether Fragno's separate
 primitives form one coherent system. Backoffice is our dogfooding proving ground for sessions, files, integrations, permissions,
 workflows, generated interfaces, synchronization, and operations.
+
+### Tests
+
+In Backoffice, we test exclusively through scenario tests, unless specifically direct otherwise by me.
 
 ## Development
 
