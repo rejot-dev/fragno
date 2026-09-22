@@ -46,6 +46,7 @@ function PiSessionsLoading() {
       label="Opening sessions"
       title="Synchronizing…"
       description="Loading local session state."
+      flush
     />
   );
 }
@@ -64,6 +65,7 @@ function PiSessionsUnavailable({ layoutContext }: { layoutContext: PiLayoutConte
       label="Unavailable"
       title="Sessions are not connected."
       description={message}
+      flush
     />
   );
 }

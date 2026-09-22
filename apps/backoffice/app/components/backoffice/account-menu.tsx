@@ -43,7 +43,7 @@ function userInitials(email: string) {
 }
 
 const menuItemClassName =
-  "flex min-h-10 cursor-default items-center gap-3 px-2.5 text-sm text-[var(--bo-muted)] outline-none transition-[scale,background-color,color] duration-150 ease-out data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)] active:scale-[0.96]";
+  "flex min-h-10 cursor-pointer items-center gap-3 px-2.5 text-sm text-[var(--bo-muted)] outline-none transition-[scale,background-color,color] duration-150 ease-out data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)] active:scale-[0.96]";
 
 export function BackofficeAccountMenu({ me, currentScope, isLoading }: BackofficeAccountMenuProps) {
   const { mutate: signOut, loading: signingOut, error: signOutError } = authClient.useSignOut();
@@ -85,13 +85,13 @@ export function BackofficeAccountMenu({ me, currentScope, isLoading }: Backoffic
       <Menu.Trigger
         type="button"
         aria-label={`Open account menu for ${displayName}`}
-        className="group flex min-h-12 shrink-0 cursor-pointer items-center gap-2.5 self-stretch py-3.5 pr-5.5 pl-6 text-left transition-[scale,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
+        className="group flex min-h-12 shrink-0 cursor-pointer items-center gap-2.5 self-stretch py-3.5 pr-5.5 pl-6 text-left outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
       >
         <span className="flex size-8 shrink-0 items-center justify-center bg-[var(--bo-panel-2)] text-xs font-semibold text-[var(--bo-fg)] xl:hidden">
           {initials}
         </span>
         <span className="hidden min-w-0 flex-col gap-0.5 xl:flex">
-          <span className="text-[9px] font-semibold text-[var(--bo-muted-2)]">Account</span>
+          <span className="text-[11px] font-semibold text-[var(--bo-muted-2)]">Account</span>
           <span className="max-w-36 min-w-0 truncate text-sm font-extrabold tracking-normal text-[var(--bo-fg)] normal-case">
             {displayName}
           </span>
@@ -208,7 +208,7 @@ export function BackofficeAccountMenu({ me, currentScope, isLoading }: Backoffic
                   })
                   .catch(() => undefined);
               }}
-              className={`${menuItemClassName} disabled:opacity-60`}
+              className={`${menuItemClassName} disabled:cursor-default disabled:opacity-60`}
             >
               {signingOut ? "Signing out…" : "Sign out"}
             </Menu.Item>

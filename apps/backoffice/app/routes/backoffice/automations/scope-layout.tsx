@@ -299,6 +299,7 @@ function AutomationClientLoading() {
       label="Mounting workspace"
       title="Synchronizing automation data…"
       description={progressDescription}
+      flush
     >
       <noscript>
         <span className="text-[var(--bo-failed)]">
@@ -325,6 +326,7 @@ function AutomationClientOutlet({
         label="Unavailable"
         title="Automation synchronization failed."
         description={automationCollectionSource.message}
+        flush
       />
     );
   }
@@ -354,7 +356,7 @@ export default function BackofficeAutomationScopeLayout({
   const storeBasePath = automationScopeTabPath(loaderData.selectedScope, "store");
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="@container flex flex-1 flex-col">
       <AutomationWorkspaceHeader
         selectedScope={loaderData.selectedScope}
         isCreatingProject={isCreatingProject}

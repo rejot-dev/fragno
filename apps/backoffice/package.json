@@ -41,6 +41,7 @@
     "@cloudflare/worker-bundler": "0.2.2",
     "@earendil-works/pi-agent-core": "catalog:",
     "@earendil-works/pi-ai": "catalog:",
+    "@fontsource-variable/plus-jakarta-sans": "5.3.0",
     "@fragno-dev/api-fragment": "workspace:*",
     "@fragno-dev/cloudflare-fragment": "workspace:*",
     "@fragno-dev/core": "workspace:*",

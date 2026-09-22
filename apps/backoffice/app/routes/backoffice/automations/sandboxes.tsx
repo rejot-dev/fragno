@@ -365,7 +365,7 @@ function SandboxNavigation({
   loadFailed: boolean;
 }) {
   return (
-    <aside className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)]">
+    <aside className="border border-t-0 border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)] max-xl:border-r-0">
       <div>
         <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Sandboxes
@@ -491,7 +491,7 @@ function SandboxContent({
   }
 
   return (
-    <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)]">
+    <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)] max-xl:border-l-0 xl:border-t-0 @max-7xl:border-r-0">
       {content}
     </section>
   );
@@ -499,7 +499,7 @@ function SandboxContent({
 
 function SandboxLoadErrorView({ message }: { message: string }) {
   return (
-    <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)]">
+    <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)] max-xl:border-l-0 xl:border-t-0 @max-7xl:border-r-0">
       <div className="border border-red-300 bg-red-100 p-3 text-sm text-red-700">
         Could not load sandbox instances: {message}
       </div>

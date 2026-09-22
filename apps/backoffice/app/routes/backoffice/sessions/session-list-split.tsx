@@ -8,7 +8,7 @@ export function SessionListSplit({ children }: SessionListSplitProps) {
   return (
     <section
       data-session-list-split
-      className="bo-fragment-surface flex h-full min-h-0 flex-1 overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]"
+      className="bo-fragment-surface flex h-full min-h-0 flex-1 overflow-hidden border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)]"
     >
       <main
         data-session-content-pane

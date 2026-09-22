@@ -54,7 +54,9 @@ export default function BackofficeAutomationIntegrations() {
 
   return (
     <div className="flex-1 space-y-4">
-      <section className="bo-fragment-surface bo-panel-surface bg-[var(--bo-panel)] p-4">
+      {/* Panels here are full-bleed: clip the panel shadow ring (and the corner mark that
+          hangs over it) on every edge that touches the tab rail or the sides of the view. */}
+      <section className="bo-fragment-surface bo-panel-surface bg-[var(--bo-panel)] p-4 [clip-path:inset(0_0_-1rem)] after:hidden!">
         <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Integrations
         </p>
@@ -94,7 +96,7 @@ export default function BackofficeAutomationIntegrations() {
           return (
             <div
               key={integration.id}
-              className="bo-fragment-surface bo-panel-surface bg-[var(--bo-panel)] p-4"
+              className="bo-fragment-surface bo-panel-surface bg-[var(--bo-panel)] p-4 max-md:[clip-path:inset(-1rem_0)] max-md:after:hidden! md:odd:[clip-path:inset(-1rem_-1rem_-1rem_0)] md:even:[clip-path:inset(-1rem_0_-1rem_-1rem)] md:even:after:hidden!"
             >
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -130,7 +132,7 @@ export default function BackofficeAutomationIntegrations() {
 
 function SystemFormsIntegration({ managePath }: { managePath: string }) {
   return (
-    <section className="bo-fragment-surface bo-panel-surface bg-[var(--bo-panel)] p-4">
+    <section className="bo-fragment-surface bo-panel-surface bg-[var(--bo-panel)] p-4 [clip-path:inset(-1rem_0)] after:hidden!">
       <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
         System integration
       </p>

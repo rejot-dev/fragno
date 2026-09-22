@@ -81,7 +81,7 @@ export default function BackofficeOrganizationAutomationStore() {
         </div>
       ) : null}
 
-      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+      <div className="border border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 first:border-t-0 @max-7xl:border-r-0">
         <label className="flex flex-col gap-1 text-xs text-[var(--bo-muted)]">
           <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Key prefix
@@ -108,7 +108,7 @@ export default function BackofficeOrganizationAutomationStore() {
 
 function AutomationStoreLoading() {
   return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+    <div className="border border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)] @max-7xl:border-r-0">
       Loading the local automation store…
       <noscript>
         <span className="mt-2 block text-red-700 dark:text-red-200">
@@ -145,7 +145,7 @@ function AutomationKvStoreTable({
   }
 
   return (
-    <div className="backoffice-scroll flex-1 overflow-x-auto border border-[color:var(--bo-border)]">
+    <div className="backoffice-scroll flex-1 overflow-x-auto border border-l-0 border-[color:var(--bo-border)] @max-7xl:border-r-0">
       <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
         <thead className="bg-[var(--bo-panel-2)] text-left">
           <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
