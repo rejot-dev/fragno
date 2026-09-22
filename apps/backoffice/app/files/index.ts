@@ -27,7 +27,6 @@ export {
 } from "./contributors/upload";
 export type { UploadFileSystem, UploadFileWritePrecondition } from "./contributors/upload";
 export { WORKSPACE_STARTER_CONTENT } from "./content/starter";
-export { STATIC_AUTOMATION_SCRIPT_PATHS } from "./content/static-automations";
 export { SYSTEM_AUTOMATION_SCRIPT_PATHS } from "./content/system-automations";
 export { STATIC_FILE_CONTENT } from "./content/static";
 export { SYSTEM_FILE_CONTENT } from "./content/system";

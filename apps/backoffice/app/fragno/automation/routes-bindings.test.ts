@@ -8,14 +8,12 @@ import { drainDurableHooks } from "@fragno-dev/test";
 import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
-import {
-  ORGANIZATION_STARTER_AUTOMATION_ROUTES,
-  SYSTEM_STARTER_AUTOMATION_ROUTES,
-} from "./content/starter-routing";
+import { SYSTEM_STARTER_AUTOMATION_ROUTES } from "./content/starter-routing";
 import type { AutomationEvent } from "./contracts";
 import type { AutomationWorkflowsService } from "./definition";
 import { createAutomationFragment } from "./index";
 import { setAutomationRouteMutationActors } from "./route-routes";
+import type { AutomationRouteCreateInput } from "./routing-schemas";
 import { createTestAutomationSourceReader } from "./test-automation-source-reader.test-utils";
 
 const createAutomation = async (
@@ -78,6 +76,25 @@ const actor = {
   role: "initiator",
 } as const;
 
+const legacyProjectFilesConfigureRoute: AutomationRouteCreateInput = {
+  id: "system-project-files-configure",
+  name: "Configure project files",
+  enabled: true,
+  trigger: {
+    kind: "event",
+    source: "automations",
+    eventType: "project.created",
+    matcher: null,
+  },
+  priority: 15,
+  action: {
+    kind: "start_workflow",
+    authority: { kind: "organization-automation", grants: [] },
+    workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
+    instanceIdTemplate: "project-files-configure-${event.id}",
+  },
+};
+
 let fragment: Awaited<ReturnType<typeof createAutomation>>;
 
 beforeEach(async () => {
@@ -85,7 +102,7 @@ beforeEach(async () => {
 });
 
 describe("automation routes /routes", () => {
-  test("seeds the project filesystem route in organization scope", async () => {
+  test("seeds no starter routes in organization scope", async () => {
     await fragment.inContext(async function () {
       await this.handlerTx()
         .withServiceCalls(() => [fragment.services.seedStarterAutomationRoutes()] as const)
@@ -96,19 +113,7 @@ describe("automation routes /routes", () => {
 
     assert(response.type === "json");
     if (response.type === "json") {
-      expect(response.data.map((route) => route.id)).toEqual(
-        [...ORGANIZATION_STARTER_AUTOMATION_ROUTES]
-          .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
-          .map((route) => route.id),
-      );
-      expect(response.data).toEqual([
-        expect.objectContaining({
-          id: "system-project-files-configure",
-          action: expect.objectContaining({
-            kind: "start_workflow",
-          }),
-        }),
-      ]);
+      expect(response.data).toEqual([]);
     }
   });
 
@@ -132,45 +137,28 @@ describe("automation routes /routes", () => {
     }
   });
 
-  test.each([
-    {
-      scopeName: "project",
-      ownerScope: { kind: "project", orgId: "org-1", projectId: "project-1" },
-    },
-    {
-      scopeName: "user",
-      ownerScope: { kind: "user", userId: "user-1" },
-    },
-  ] as const)(
-    "removes organization starter routes from $scopeName scope",
-    async ({ ownerScope }) => {
-      const scopedFragment = await createAutomation({ ownerScope });
-      const organizationStarterRoute = ORGANIZATION_STARTER_AUTOMATION_ROUTES[0];
-      assert(organizationStarterRoute);
-      const createResponse = await scopedFragment.callRoute("POST", "/routes", {
-        body: organizationStarterRoute,
-      });
-      assert(createResponse.type === "json");
+  test("preserves the legacy project files route in organization scope", async () => {
+    const createResponse = await fragment.callRoute("POST", "/routes", {
+      body: legacyProjectFilesConfigureRoute,
+    });
+    assert(createResponse.type === "json");
 
-      const seedResult = await scopedFragment.inContext(async function () {
-        return await this.handlerTx()
-          .withServiceCalls(() => [scopedFragment.services.seedStarterAutomationRoutes()] as const)
-          .transform(({ serviceResult: [result] }) => result)
-          .execute();
-      });
+    const seedResult = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(() => [fragment.services.seedStarterAutomationRoutes()] as const)
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
 
-      expect(seedResult).toEqual({
-        created: [],
-        removed: [organizationStarterRoute.id],
-        skipped: [],
-      });
-      const response = await scopedFragment.callRoute("GET", "/routes");
-      assert(response.type === "json");
-      if (response.type === "json") {
-        expect(response.data).toEqual([]);
-      }
-    },
-  );
+    expect(seedResult).toEqual({ created: [], removed: [], skipped: [] });
+    const response = await fragment.callRoute("GET", "/routes");
+    assert(response.type === "json");
+    if (response.type === "json") {
+      expect(response.data).toEqual([
+        expect.objectContaining({ id: legacyProjectFilesConfigureRoute.id }),
+      ]);
+    }
+  });
 
   test("creates and updates automation routes", async () => {
     const createResponse = await fragment.callRoute("POST", "/routes", {

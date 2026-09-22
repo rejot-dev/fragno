@@ -1,5 +1,3 @@
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
-
 import type { AutomationForwardEventAction } from "../routing";
 import type { AutomationRouteCreateInput } from "../routing-schemas";
 
@@ -90,25 +88,5 @@ export const SYSTEM_STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInp
     },
     priority: 20,
     action: forwardToSubjectOrgAction(),
-  },
-];
-
-export const ORGANIZATION_STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInput[] = [
-  {
-    id: "system-project-files-configure",
-    name: "Configure project files",
-    enabled: true,
-    trigger: {
-      kind: "event",
-      source: "automations",
-      eventType: "project.created",
-      matcher: null,
-    },
-    priority: 15,
-    action: startWorkflowAction({
-      workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
-      instanceIdTemplate: "project-files-configure-${event.id}",
-      grants: [BACKOFFICE_PERMISSION.internal.manage],
-    }),
   },
 ];

@@ -1,14 +1,10 @@
 import { describe, expect, test, assert } from "vitest";
 
-import {
-  ORGANIZATION_STARTER_AUTOMATION_ROUTES,
-  SYSTEM_STARTER_AUTOMATION_ROUTES,
-} from "@/fragno/automation/content/starter-routing";
+import { SYSTEM_STARTER_AUTOMATION_ROUTES } from "@/fragno/automation/content/starter-routing";
 import { AUTOMATION_SOURCE_EVENT_TYPES } from "@/fragno/automation/contracts";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 
 import { WORKSPACE_STARTER_CONTENT } from "./starter";
-import { STATIC_AUTOMATION_CONTENT, STATIC_AUTOMATION_SCRIPT_PATHS } from "./static-automations";
 import { SYSTEM_AUTOMATION_CONTENT, SYSTEM_AUTOMATION_SCRIPT_PATHS } from "./system-automations";
 
 function requireMarketplaceEntry(slug: string) {
@@ -91,23 +87,11 @@ describe("automation content", () => {
   });
 
   test("core starter routes contain only platform lifecycle behavior", () => {
-    expect(ORGANIZATION_STARTER_AUTOMATION_ROUTES.map((route) => route.id)).toEqual([
-      "system-project-files-configure",
-    ]);
     expect(SYSTEM_STARTER_AUTOMATION_ROUTES.map((route) => route.id)).toEqual([
       "system-workspace-file-initialization",
       "system-auth-organization-created-forward-to-org",
       "system-auth-organization-updated-forward-to-org",
     ]);
-  });
-
-  test("automation content separates static and system workflows", () => {
-    expect(Object.keys(STATIC_AUTOMATION_CONTENT).sort()).toEqual(
-      [STATIC_AUTOMATION_SCRIPT_PATHS.projectFilesConfigure].sort(),
-    );
-    expect(Object.keys(SYSTEM_AUTOMATION_CONTENT).sort()).toEqual(
-      [SYSTEM_AUTOMATION_SCRIPT_PATHS.workspaceFileInitialization].sort(),
-    );
   });
 
   test("starter routes start system workflows in their owning automation scope", () => {
@@ -125,20 +109,6 @@ describe("automation content", () => {
         }),
       ]),
     );
-    expect(ORGANIZATION_STARTER_AUTOMATION_ROUTES).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "system-project-files-configure",
-          trigger: expect.objectContaining({
-            source: "automations",
-            eventType: "project.created",
-          }),
-          action: expect.objectContaining({
-            workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
-          }),
-        }),
-      ]),
-    );
   });
 
   test("organization creation workflow configures upload database connection", () => {
@@ -150,14 +120,5 @@ describe("automation content", () => {
     expect(workflow).toContain("connections.configure({");
     expect(workflow).toContain('id: "upload"');
     expect(workflow).toContain('payload: { provider: "database" }');
-  });
-
-  test("project creation workflow configures project files", () => {
-    const workflow =
-      STATIC_AUTOMATION_CONTENT[STATIC_AUTOMATION_SCRIPT_PATHS.projectFilesConfigure];
-
-    expect(workflow).toContain('{ name: "project-files-configure" }');
-    expect(workflow).toContain('automationEvent.eventType !== "project.created"');
-    expect(workflow).toContain("internal.projectFilesConfigure({ projectId })");
   });
 });

@@ -21,10 +21,7 @@ import {
 } from "./authority";
 import { readAutomationScript, type AutomationSourceReader } from "./automation-source";
 import { createAutomationStoreServices } from "./bindings-storage-runtime";
-import {
-  ORGANIZATION_STARTER_AUTOMATION_ROUTES,
-  SYSTEM_STARTER_AUTOMATION_ROUTES,
-} from "./content/starter-routing";
+import { SYSTEM_STARTER_AUTOMATION_ROUTES } from "./content/starter-routing";
 import {
   getAutomationEventIdentity,
   type AutomationEvent,
@@ -76,17 +73,15 @@ export type AutomationIngestResult = {
   eventType: string;
 };
 
-const ALL_BUILT_IN_STARTER_AUTOMATION_ROUTES = [
-  ...SYSTEM_STARTER_AUTOMATION_ROUTES,
-  ...ORGANIZATION_STARTER_AUTOMATION_ROUTES,
-];
+const ALL_BUILT_IN_STARTER_AUTOMATION_ROUTE_IDS = SYSTEM_STARTER_AUTOMATION_ROUTES.map(
+  (route) => route.id,
+);
 
 function getStarterAutomationRoutesForScope(ownerScope: BackofficeContextScope) {
   switch (ownerScope.kind) {
     case "system":
       return SYSTEM_STARTER_AUTOMATION_ROUTES;
     case "org":
-      return ORGANIZATION_STARTER_AUTOMATION_ROUTES;
     case "project":
     case "user":
       return [];
@@ -462,9 +457,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
             }): StarterAutomationRoutesSeedResult => {
               const scopedStarterRoutes = getStarterAutomationRoutesForScope(config.ownerScope);
               const scopedStarterRouteIds = new Set(scopedStarterRoutes.map((route) => route.id));
-              const allStarterRouteIds = new Set(
-                ALL_BUILT_IN_STARTER_AUTOMATION_ROUTES.map((route) => route.id),
-              );
+              const allStarterRouteIds = new Set(ALL_BUILT_IN_STARTER_AUTOMATION_ROUTE_IDS);
               const scheduleStatesByRouteId = new Map(
                 existingScheduleStates.map((state) => [state.id.externalId, state]),
               );

@@ -113,18 +113,6 @@ test("renders the stable workflow fixture corpus for quick inspection", () => {
     └─ 3. terminal final return
        value: { sent: true }
 
-    --- automations/project-files-configure.workflow.js ---
-    workflow project-files-configure
-    ├─ 0. if automationEvent.source !== "automations" || automationEvent.eventType !== "project.created"
-    │  └─ 0. terminal early return not-project-created
-    │     value: { skipped: true, reason: "not-project-created" }
-    ├─ 1. if !projectId
-    │  └─ 0. terminal error project.created event is missing subject.projectId.
-    │     value: new Error("project.created event is missing subject.projectId.")
-    ├─ 2. do configure project database filesystem
-    │  returns: await internal.projectFilesConfigure({ projectId })
-    └─ 3. terminal final return
-
     --- automations/reson8-transcribe-oga-upload-v2.workflow.js ---
     workflow reson8-transcribe-oga-upload-v2
     ├─ 0. do request OGA upload

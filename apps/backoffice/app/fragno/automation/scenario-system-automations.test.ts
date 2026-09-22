@@ -289,28 +289,40 @@ describe("system automation scenarios", () => {
     }
   });
 
-  test("project.created initializes db-backed project workspace files", async () => {
+  test("project creation exposes an empty database-backed workspace", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ projectId: string }>({
-        name: "system project creation initializes project workspace files",
-        options: { allowErroredWorkflows: true },
-
-        files: backofficeFiles.systemOnly(),
+        name: "project creation exposes an empty database-backed workspace",
+        files: backofficeFiles.fullStarter(),
         vars: () => ({ projectId: "" }),
 
-        setup: ({ given, runner }) => [
+        setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs", ownerUserId: "user-1" }),
-          given.connection.configured({
+          given.router.route({
             orgId: "org-1",
-            id: "upload",
-            payload: { provider: "database" },
+            id: "system-project-files-configure",
+            name: "Configure project files",
+            enabled: true,
+            trigger: {
+              kind: "event",
+              source: "automations",
+              eventType: "project.created",
+              matcher: null,
+            },
+            priority: 15,
+            action: {
+              kind: "start_workflow",
+              authority: {
+                kind: "organization-automation",
+                grants: [BACKOFFICE_PERMISSION.internal.manage],
+              },
+              workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
+              instanceIdTemplate: "project-files-configure-${event.id}",
+            },
           }),
-          runner.drain(),
         ],
 
-        steps: ({ when, runner, then }) => [
-          when.router.seedStarter({ orgId: "org-1" }),
-
+        steps: ({ when, then }) => [
           when.project.create({
             orgId: "org-1",
             slug: "alpha-project",
@@ -319,22 +331,7 @@ describe("system automation scenarios", () => {
             captureIdAs: "projectId",
           }),
 
-          runner.drain(),
-
-          then.assert("project upload database provider is configured", async (ctx) => {
-            const config = await ctx.runtime.objects.upload
-              .forProject({ orgId: "org-1", projectId: ctx.vars.projectId })
-              .commands.getAdminConfig();
-            assert(config.providers.database?.configured);
-          }),
-
-          then.files.contains({
-            orgId: "org-1",
-            path: "/projects/alpha-project/README.md",
-            text: "Project workspace",
-          }),
-
-          then.assert("project README is writable through the org filesystem", async (ctx) => {
+          then.assert("project workspace is available without seeded files", async (ctx) => {
             const fs = await createMasterFileSystem(
               createSystemFilesContext({
                 objects: ctx.runtime.objects,
@@ -345,15 +342,20 @@ describe("system automation scenarios", () => {
                 staticFileArtifacts: () => ({}),
               }),
             );
-            await fs.writeFile(
-              "/projects/alpha-project/README.md",
-              "# Alpha Project\n\nUpdated through /projects.",
+            await expect(fs.readdir("/projects/alpha-project")).resolves.toEqual([]);
+            await fs.writeFile("/projects/alpha-project/notes.txt", "project notes");
+            await expect(fs.readFile("/projects/alpha-project/notes.txt")).resolves.toBe(
+              "project notes",
             );
-            await expect(fs.readFile("/projects/alpha-project/README.md")).resolves.toContain(
-              "Updated through /projects.",
-            );
+
+            const config = await ctx.runtime.objects.upload
+              .forProject({ orgId: "org-1", projectId: ctx.vars.projectId })
+              .commands.getAdminConfig();
+            assert(config.providers.database?.configured);
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
+          then.hooks.noPending({ orgId: "org-1", fragments: ["automations"] }),
+          then.hooks.noFailed({ orgId: "org-1", fragments: ["automations"] }),
         ],
       }),
     );
@@ -453,27 +455,7 @@ describe("system automation scenarios", () => {
             assert(systemInstances?.instances[0]?.details.status === "complete");
           }),
 
-          then.router.routes({
-            orgId: "org-1",
-            include: [
-              {
-                id: "system-project-files-configure",
-                trigger: {
-                  kind: "event",
-                  source: "automations",
-                  eventType: "project.created",
-                },
-                action: {
-                  kind: "start_workflow",
-                  authority: {
-                    kind: "organization-automation",
-                    grants: [BACKOFFICE_PERMISSION.internal.manage],
-                  },
-                  workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
-                },
-              },
-            ],
-          }),
+          then.router.missing({ orgId: "org-1", id: "system-project-files-configure" }),
 
           then.files.exists({ orgId: "org-1", path: "/workspace/AGENTS.md" }),
           then.files.missing({

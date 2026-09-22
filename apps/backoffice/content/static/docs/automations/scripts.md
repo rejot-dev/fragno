@@ -64,12 +64,14 @@ routes decide which durable automation actions respond to events and schedules.
 A workflow file must contain exactly one static `defineWorkflow({ name })` declaration:
 
 ```js
-defineWorkflow({ name: "project-files-configure" }, async (event, step) => {
-  const automationEvent = event;
+defineWorkflow({ name: "telegram-welcome" }, async (event, step) => {
+  const chatId = event.payload.chatId;
 
-  return await step.do("configure project files", async () => {
-    return await internal.projectFilesConfigure({
-      projectId: automationEvent.subject.projectId,
+  await step.do("send welcome message", async () => {
+    await telegram.sendMessage({
+      chatId,
+      text: "Welcome!",
+      parseMode: "Markdown",
     });
   });
 });

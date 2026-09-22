@@ -36,7 +36,7 @@ beforeEach(() => {
 describe("automation backoffice workspace data", () => {
   test("reads visible static script source from org scope", async () => {
     const fileSystem = createStubAutomationFileSystem({
-      "/static/automations/project-files-configure.workflow.js": "configure",
+      "/static/automations/example.workflow.js": "example",
     });
     readBackofficeAutomationSourceMock.mockImplementation(({ path }) =>
       fileSystem.fs.readFile(path),
@@ -45,21 +45,19 @@ describe("automation backoffice workspace data", () => {
     const result = await loadAutomationScriptSource({
       context: mockContext,
       execution: orgExecution,
-      scriptId: "automation-script:static:project-files-configure.workflow.js",
+      scriptId: "automation-script:static:example.workflow.js",
     });
 
     expect(result).toEqual({
-      script: "configure",
+      script: "example",
       scriptError: null,
     });
-    expect(fileSystem.readFileCalls).toEqual([
-      "/static/automations/project-files-configure.workflow.js",
-    ]);
+    expect(fileSystem.readFileCalls).toEqual(["/static/automations/example.workflow.js"]);
   });
 
   test("rejects org static script source from project scope", async () => {
     const fileSystem = createStubAutomationFileSystem({
-      "/static/automations/project-files-configure.workflow.js": "configure",
+      "/static/automations/example.workflow.js": "example",
     });
     readBackofficeAutomationSourceMock.mockImplementation(({ path }) =>
       fileSystem.fs.readFile(path),
@@ -68,13 +66,13 @@ describe("automation backoffice workspace data", () => {
     const result = await loadAutomationScriptSource({
       context: mockContext,
       execution: projectExecution,
-      scriptId: "automation-script:static:project-files-configure.workflow.js",
+      scriptId: "automation-script:static:example.workflow.js",
     });
 
     expect(result).toEqual({
       script: null,
       scriptError:
-        "Automation script '/static/automations/project-files-configure.workflow.js' is not visible in project scope.",
+        "Automation script '/static/automations/example.workflow.js' is not visible in project scope.",
     });
     expect(fileSystem.readFileCalls).toEqual([]);
   });

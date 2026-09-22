@@ -3648,35 +3648,6 @@
     ]
   },
   {
-    "command": "internal.project.files.configure",
-    "summary": "internal.project.files.configure configures a db-backed project workspace.",
-    "options": [
-      {
-        "name": "projectId",
-        "description": "Project id to configure."
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
     "command": "internal.automations.routes.seed-starter",
     "summary": "internal.automations.routes.seed-starter reconciles starter routes for the current scope.",
     "options": [
