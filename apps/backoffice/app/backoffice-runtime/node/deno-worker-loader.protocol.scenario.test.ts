@@ -129,6 +129,7 @@ denoProtocolScenarioTest(
         ),
       },
       entryPoint: "executor.js",
+      dependencies: {},
       runtime: { compatibilityDate: "2026-05-07", compatibilityFlags: ["nodejs_compat"] },
     });
 
@@ -162,6 +163,7 @@ denoProtocolScenarioTest("Deno codemode denies host capabilities", async () => {
       ),
     },
     entryPoint: "executor.js",
+    dependencies: {},
     runtime: { compatibilityDate: "2026-05-07", compatibilityFlags: ["nodejs_compat"] },
   });
 

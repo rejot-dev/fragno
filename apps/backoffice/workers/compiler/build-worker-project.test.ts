@@ -1,18 +1,21 @@
 import { describe, expect, test } from "vitest";
 
-import { WorkerCompilationError, compileWorker } from "./compile-worker";
+import { WorkerCompilationError } from "@/backoffice-runtime/dynamic-workers/compile-worker";
 
-const runtime = { compatibilityDate: "2026-06-11" };
+import { buildWorkerProject } from "./build-worker-project";
 
-describe("compileWorker", () => {
+const runtime = { compatibilityDate: "2026-06-11", compatibilityFlags: [] };
+
+describe("buildWorkerProject", () => {
   test("reserves package configuration for the compiler", async () => {
     await expect(
-      compileWorker({
+      buildWorkerProject({
         files: {
           "src/index.ts": "export default {};",
           "package.json": "{}",
         },
         entryPoint: "src/index.ts",
+        dependencies: {},
         runtime,
       }),
     ).rejects.toMatchObject({
@@ -22,9 +25,10 @@ describe("compileWorker", () => {
 
   test("requires the entry point to be present in the source files", async () => {
     await expect(
-      compileWorker({
+      buildWorkerProject({
         files: { "src/other.ts": "export default {};" },
         entryPoint: "src/index.ts",
+        dependencies: {},
         runtime,
       }),
     ).rejects.toMatchObject({
@@ -34,7 +38,7 @@ describe("compileWorker", () => {
 
   test("requires dependency names and versions", async () => {
     await expect(
-      compileWorker({
+      buildWorkerProject({
         files: { "src/index.ts": "export default {};" },
         entryPoint: "src/index.ts",
         dependencies: { zod: "" },

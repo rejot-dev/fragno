@@ -59,10 +59,11 @@ afterEach(async () => {
 });
 
 describe("Backoffice Worker release orchestration", () => {
-  test("forwards bootstrap flags to both Worker deployments", async () => {
+  test("forwards bootstrap flags to all Worker deployments", async () => {
     const commands = await recordWorkerReleaseCommands("bootstrap", ["--", "--dry-run"]);
 
     assert.deepEqual(commands, [
+      ["deploy", "--config", "dist/rejot_codemode_compiler/wrangler.json", "--dry-run"],
       [
         "deploy",
         "--config",
@@ -74,10 +75,18 @@ describe("Backoffice Worker release orchestration", () => {
     ]);
   });
 
-  test("forwards upload tags to both Worker uploads", async () => {
+  test("forwards upload tags to all Worker uploads", async () => {
     const commands = await recordWorkerReleaseCommands("upload", ["--", "--tag", "release-test"]);
 
     assert.deepEqual(commands, [
+      [
+        "versions",
+        "upload",
+        "--config",
+        "dist/rejot_codemode_compiler/wrangler.json",
+        "--tag",
+        "release-test",
+      ],
       [
         "versions",
         "upload",
@@ -90,7 +99,7 @@ describe("Backoffice Worker release orchestration", () => {
     ]);
   });
 
-  test("forwards a shared version tag to both Worker deployments", async () => {
+  test("forwards a shared version tag to all Worker deployments", async () => {
     const commands = await recordWorkerReleaseCommands("deploy", [
       "--",
       "--version-tag",
@@ -103,7 +112,7 @@ describe("Backoffice Worker release orchestration", () => {
         "versions",
         "deploy",
         "--config",
-        "wrangler.web.jsonc",
+        "wrangler.compiler.jsonc",
         "--version-tag",
         "release-test@100%",
         "--yes",
@@ -113,6 +122,15 @@ describe("Backoffice Worker release orchestration", () => {
         "deploy",
         "--config",
         "wrangler.jsonc",
+        "--version-tag",
+        "release-test@100%",
+        "--yes",
+      ],
+      [
+        "versions",
+        "deploy",
+        "--config",
+        "wrangler.web.jsonc",
         "--version-tag",
         "release-test@100%",
         "--yes",

@@ -5,7 +5,6 @@ import {
 } from "@fragno-dev/workflows/remote-workflow";
 import type { RemoteWorkflowRunFn, WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
-import { compileWorker } from "@/backoffice-runtime/dynamic-workers/compile-worker";
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 import type {
   BackofficeRuntimeToolFamily,
@@ -22,6 +21,7 @@ import {
 import {
   createBackofficeCodemodeResolvedProviders,
   normalizeBackofficeCodemodeCode,
+  resolveBackofficeWorkerCompiler,
   type BackofficeCodemodeEnv,
 } from "./execute";
 import { CodemodeWorkflowAgentTarget, type CodemodeWorkflowAgent } from "./workflow-agent-rpc";
@@ -346,16 +346,17 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
     throw new Error(dispatcherResult.error);
   }
   const { dispatchers } = dispatcherResult;
+  const executableCode = normalizeBackofficeCodemodeCode(code);
 
-  const compiled = await (env.compileWorker ?? compileWorker)({
+  const compiled = await resolveBackofficeWorkerCompiler(env)({
     files: {
       "remote-workflow.js": createRemoteWorkflowWorkerCode({
-        code,
+        code: executableCode,
         providerProxySource: createCodemodeProviderProxySource(providers),
       }),
     },
     entryPoint: "remote-workflow.js",
-    dependencies,
+    dependencies: dependencies ?? {},
     runtime: {
       compatibilityDate: "2026-05-07",
       compatibilityFlags: ["nodejs_als"],

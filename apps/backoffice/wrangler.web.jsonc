@@ -43,6 +43,10 @@
       "service": "rejot-backoffice",
       "entrypoint": "OutboundProxy",
     },
+    {
+      "binding": "CODEMODE_COMPILER",
+      "service": "rejot-codemode-compiler",
+    },
   ],
   "durable_objects": {
     "bindings": [
