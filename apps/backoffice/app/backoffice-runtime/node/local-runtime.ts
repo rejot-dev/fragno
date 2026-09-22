@@ -8,6 +8,7 @@ import {
 } from "../authority-resolver";
 import type { BackofficeRuntimeEnv } from "../backoffice-runtime-env";
 import type { BackofficeDatabaseAdapterFactory } from "../database-adapters";
+import type { WorkerTypeChecker } from "../dynamic-workers/compile-worker";
 import { createInMemoryBackofficeDatabaseAdapters } from "../in-memory-database-adapters";
 import { noopBackofficeKernelObserver, type BackofficeKernelObserver } from "../kernel";
 import { LocalObjectFactory, type LocalObjectFactoryOverrides } from "../local-object-factory";
@@ -50,6 +51,7 @@ export type CreateLocalBackofficeRuntimeOptions = {
   objectFactories?: LocalObjectFactoryOverrides;
   authorityResolver?: BackofficeAuthorityResolver;
   kernelObserver?: BackofficeKernelObserver;
+  workerTypeChecker?: WorkerTypeChecker;
   maxDrainIterations?: number;
   durableHooks?: LocalBackofficeDurableHooks;
   /** Enables file-backed SQLite object storage, auth and Fragment databases for a Node process. */
@@ -106,6 +108,14 @@ export async function createLocalBackofficeRuntime(
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
     fragmentHostOperations: null,
     objectRuntime: null,
+    codemodeEnv:
+      options.runtimeEnv.LOADER && options.runtimeEnv.compileWorker
+        ? {
+            LOADER: options.runtimeEnv.LOADER,
+            compileWorker: options.runtimeEnv.compileWorker,
+          }
+        : null,
+    workerTypeChecker: options.workerTypeChecker ?? null,
     fragnoRuntime: {
       ...defaultFragnoRuntime,
       time: {

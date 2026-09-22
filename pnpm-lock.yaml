@@ -3337,7 +3337,7 @@ importers:
   packages/workflow-visualizer-tokens:
     dependencies:
       js-tokens:
-        specifier: ^10.0.0
+        specifier: 'catalog:'
         version: 10.0.0
     devDependencies:
       '@fragno-private/typescript-config':

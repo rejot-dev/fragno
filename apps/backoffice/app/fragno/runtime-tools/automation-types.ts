@@ -66,6 +66,7 @@ export type AutomationCommandOptionSpec = {
 
 export type AutomationCommandHelp = {
   summary: string;
+  usage?: string;
   options: readonly AutomationCommandOptionSpec[];
   examples?: readonly string[];
 };

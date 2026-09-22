@@ -29,6 +29,7 @@ import type { EventRuntime } from "./families/event-runtime";
 import type { FormsRuntime } from "./families/forms-runtime";
 import type { GitHubRuntime } from "./families/github-runtime";
 import type { InternalRuntime } from "./families/internal";
+import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import type { RegisteredMcpCommandContext } from "./families/mcp-runtime";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
 import type { RegisteredPiCommandContext } from "./families/pi-runtime";
@@ -75,6 +76,7 @@ export type BashHostContext = {
   resend: RegisteredResendCommandContext | null;
   sandbox?: { runtime: SandboxRuntime } | null;
   telegram: RegisteredTelegramCommandContext | null;
+  javascript?: { runtime: JavaScriptRuntime } | null;
   upload?: { runtime: UploadRuntime } | null;
   web?: { runtime: WebRuntime } | null;
 };

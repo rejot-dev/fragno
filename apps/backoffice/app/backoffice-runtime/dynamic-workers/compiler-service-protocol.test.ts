@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import type { TypeCheckFileSource } from "./compile-worker";
 import {
@@ -72,10 +72,13 @@ describe("compiler service protocol", () => {
       }),
     );
 
-    expect(Object.hasOwn(project.files, "__proto__")).toBe(true);
-    expect(Object.hasOwn(project.files, "toString")).toBe(true);
-    expect(project.files["__proto__"]).toBe("export default 'prototype';");
-    expect(project.files.toString).toBe("export default 'string';");
+    assert(Object.hasOwn(project.files, "__proto__"));
+    assert(Object.hasOwn(project.files, "toString"));
+    assert(project.files.__proto__ === "export default 'prototype';");
+    assert(
+      Object.getOwnPropertyDescriptor(project.files, "toString")?.value ===
+        "export default 'string';",
+    );
   });
 
   test("streams complete type-check projects with concurrent source reads", async () => {

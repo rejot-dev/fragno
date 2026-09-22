@@ -21,6 +21,7 @@
 /// <reference path="/static/codemode/providers/reson8.d.ts" />
 /// <reference path="/static/codemode/providers/sandbox.d.ts" />
 /// <reference path="/static/codemode/providers/telegram.d.ts" />
+/// <reference path="/static/codemode/providers/js.d.ts" />
 /// <reference path="/static/codemode/providers/upload.d.ts" />
 /// <reference path="/static/codemode/sources/mcp.d.ts" />
 
@@ -53,6 +54,7 @@ interface BackofficeCodemodeScopedProviders {
   reson8: Reson8CodemodeProvider;
   sandbox: SandboxCodemodeProvider;
   telegram: TelegramCodemodeProvider;
+  js: JsCodemodeProvider;
   upload: UploadCodemodeProvider;
 }
 declare const context: {
