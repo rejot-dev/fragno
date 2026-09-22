@@ -5,7 +5,10 @@ import {
   zodSchemaToJsonSchema,
 } from "@/lib/zod/zod-formatter";
 
-import type { FileContent } from "../interface";
+const backofficeUiCatalogReferenceIntroduction = `# Production Component Catalog
+
+This reference is generated from the definitions used by runtime validation and rendering. Props are
+strict: use only the fields shown by each props type and satisfy every listed limit.`;
 
 type ConstrainedJsonSchema = JsonSchemaObject & {
   minLength?: number;
@@ -53,7 +56,7 @@ function collectSchemaLimits(schema: JsonSchemaObject, path: string): string[] {
   return lines;
 }
 
-export function renderComponentReference() {
+function renderComponentReference() {
   return Object.entries(backofficeUiComponentDefinitions)
     .map(([name, definition]) => {
       const propsSchema = zodSchemaToJsonSchema(definition.props, "input");
@@ -93,18 +96,6 @@ ${JSON.stringify(definition.example, null, 2)}
     .join("\n\n");
 }
 
-const generatingBackofficeUisModules = import.meta.glob<string>(
-  "../../../content/static/skills/generating-backoffice-uis/*.md",
-  { eager: true, query: "?raw", import: "default" },
-);
-
-export const GENERATING_BACKOFFICE_UIS_SKILL_CONTENT = Object.fromEntries(
-  Object.entries(generatingBackofficeUisModules).map(([path, content]) => {
-    const staticPath = path.replace("../../../content/static/", "");
-    const renderedContent = content.replace(
-      "<!-- BACKOFFICE_UI_COMPONENT_REFERENCE -->",
-      renderComponentReference(),
-    );
-    return [staticPath, renderedContent];
-  }),
-) satisfies Record<string, FileContent>;
+export function generateBackofficeUiCatalogReferenceMarkdown() {
+  return `${backofficeUiCatalogReferenceIntroduction}\n\n${renderComponentReference()}\n`;
+}

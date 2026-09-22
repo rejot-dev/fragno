@@ -2,15 +2,16 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "dependsOn": ["$TURBO_EXTENDS$", "codemode:generate"]
+      "dependsOn": ["$TURBO_EXTENDS$", "static:generate"]
     },
-    "codemode:generate": {
+    "static:generate": {
       "dependsOn": ["^build"],
       "outputs": [
         "content/static/terminal/terminal-spec.json",
         "content/static/codemode/system.d.ts",
         "content/static/codemode/providers/**",
-        "content/static/codemode/sources/mcp.d.ts"
+        "content/static/codemode/sources/mcp.d.ts",
+        "content/static/skills/generating-backoffice-uis/CATALOG.md"
       ]
     },
     "types:generate": {
