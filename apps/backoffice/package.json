@@ -21,6 +21,7 @@
     "deploy": "node scripts/run-worker-release.mjs deploy",
     "dev": "react-router dev",
     "preview": "node scripts/run-vite-preview.mjs",
+    "preview:containers": "node scripts/run-vite-preview.mjs --containers",
     "types:check": "tsc -b --noEmit",
     "types:check:watch": "tsc -b --noEmit --watch",
     "types:generate": "wrangler types --config wrangler.jsonc --env-interface CloudflareEnv --env-file .dev.vars.example && react-router typegen",
