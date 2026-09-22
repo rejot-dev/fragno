@@ -251,6 +251,25 @@
   }
 }
 
+@keyframes bo-dashboard-inspector-enter {
+  from {
+    opacity: 0;
+    transform: translateX(0.5rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.bo-dashboard-inspector {
+  animation-name: bo-dashboard-inspector-enter;
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  animation-fill-mode: both;
+}
+
 @keyframes bo-session-workspace-enter {
   from {
     opacity: 0;
@@ -276,6 +295,14 @@
     transition-duration: 220ms;
     transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
   }
+}
+
+.backoffice-scroll-invisible {
+  scrollbar-width: none;
+}
+
+.backoffice-scroll-invisible::-webkit-scrollbar {
+  display: none;
 }
 
 .backoffice-scroll {

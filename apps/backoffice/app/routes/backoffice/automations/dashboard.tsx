@@ -16,7 +16,17 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { Fragment, type ReactNode } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import {
   useLoaderData,
   useOutletContext,
@@ -27,6 +37,7 @@ import { z } from "zod";
 
 import { eq, or, useLiveQuery } from "@tanstack/react-db";
 
+import { VerticalResizeHandle } from "@/components/backoffice/vertical-resize-handle";
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
 import {
@@ -60,6 +71,15 @@ const SELECTION_KIND_PARAM = "selection";
 const SELECTION_ID_PARAM = "selected";
 const WORKFLOW_SCRIPT_ID_PARAM = "workflowScript";
 const ACTIVE_WORKFLOW_LIMIT = 40;
+const DEFAULT_INSPECTOR_WIDTH = 448;
+const MIN_INSPECTOR_WIDTH = 320;
+const MAX_INSPECTOR_WIDTH = 720;
+const MIN_SWIMLANE_WIDTH = 704;
+const SWIMLANE_GRID_COLUMNS_CLASS_NAME =
+  "grid-cols-[minmax(10rem,18rem)_minmax(14rem,1fr)_minmax(16rem,1.1fr)]";
+const INSPECTOR_RESIZE_STEP = 24;
+const INSPECTOR_WIDTH_STORAGE_KEY = "backoffice:automation-dashboard-inspector-width";
+const DASHBOARD_SPLIT_MEDIA_QUERY = "(min-width: 80rem)";
 const DASHBOARD_SEARCH_NAVIGATION_OPTIONS = {
   defaultShouldRevalidate: false,
   preventScrollReset: true,
@@ -473,7 +493,9 @@ function LaneHeader({
         <span className="text-[var(--bo-muted)]">{icon}</span>
         <h2 className="text-sm font-semibold text-[var(--bo-fg)]">{title}</h2>
       </div>
-      <p className="mt-1 pl-6 text-[11px] text-[var(--bo-muted-2)]">{description}</p>
+      <p className="backoffice-scroll-invisible mt-1 overflow-x-auto pl-6 text-[11px] whitespace-nowrap text-[var(--bo-muted-2)]">
+        {description}
+      </p>
     </div>
   );
 }
@@ -757,7 +779,9 @@ function DashboardRouteGrid({
   const highlightedSourceId = selectedRoute ? routeSourceId(selectedRoute) : activeSource?.id;
 
   return (
-    <div className="grid auto-rows-[5.75rem] grid-cols-[18rem_minmax(20rem,1fr)_minmax(22rem,1.1fr)] items-stretch gap-x-3 px-3">
+    <div
+      className={`grid auto-rows-[5.75rem] items-stretch gap-x-3 px-3 ${SWIMLANE_GRID_COLUMNS_CLASS_NAME}`}
+    >
       {gridRows.map((row) => {
         const { source, route } = row;
         const latestInstance = route ? latestWorkflowRunForRoute(route, workflowInstances) : null;
@@ -890,7 +914,9 @@ function EventRouteGrid({
           : (activeSource?.id ?? null);
 
   return (
-    <div className="grid auto-rows-[5.75rem] grid-cols-[18rem_minmax(20rem,1fr)_minmax(22rem,1.1fr)] items-stretch gap-x-3 px-3">
+    <div
+      className={`grid auto-rows-[5.75rem] items-stretch gap-x-3 px-3 ${SWIMLANE_GRID_COLUMNS_CLASS_NAME}`}
+    >
       {rows.map((row, rowIndex) => {
         const source = row.source;
         const eventDefinition = row.eventDefinition;
@@ -981,15 +1007,196 @@ const parseSelectionKind = (value: string | null): DashboardSelectionKind | null
   return null;
 };
 
-export function AutomationSwimlaneDashboard({
-  view = "workflows",
-}: {
-  view?: AutomationSwimlaneView;
-}) {
-  const { collections, selectedScope } = useOutletContext<AutomationLayoutContext>();
-  const loaderData = useLoaderData<typeof loader>();
-  const [searchParams, setSearchParams] = useSearchParams();
+function readStoredInspectorWidth(): number {
+  if (typeof window === "undefined") {
+    return DEFAULT_INSPECTOR_WIDTH;
+  }
+  try {
+    const storedWidth = Number(window.localStorage.getItem(INSPECTOR_WIDTH_STORAGE_KEY));
+    return Number.isFinite(storedWidth) && storedWidth > 0
+      ? Math.min(MAX_INSPECTOR_WIDTH, Math.max(MIN_INSPECTOR_WIDTH, storedWidth))
+      : DEFAULT_INSPECTOR_WIDTH;
+  } catch {
+    return DEFAULT_INSPECTOR_WIDTH;
+  }
+}
 
+function inspectorMaxWidth(containerWidth: number): number {
+  return Math.max(
+    MIN_INSPECTOR_WIDTH,
+    Math.min(MAX_INSPECTOR_WIDTH, containerWidth - MIN_SWIMLANE_WIDTH),
+  );
+}
+
+function useDashboardInspectorResize() {
+  const dashboardSplitRef = useRef<HTMLDivElement>(null);
+  const draggingInspectorRef = useRef(false);
+  const [inspectorDragging, setInspectorDragging] = useState(false);
+  const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH);
+  const [storedInspectorWidthLoaded, setStoredInspectorWidthLoaded] = useState(false);
+  const [inspectorMaximumWidth, setInspectorMaximumWidth] = useState(MAX_INSPECTOR_WIDTH);
+  const clampInspectorWidth = useCallback(
+    (width: number) => Math.min(inspectorMaximumWidth, Math.max(MIN_INSPECTOR_WIDTH, width)),
+    [inspectorMaximumWidth],
+  );
+
+  useEffect(() => {
+    const container = dashboardSplitRef.current;
+    if (!container) {
+      return undefined;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      const nextMaximumWidth = window.matchMedia(DASHBOARD_SPLIT_MEDIA_QUERY).matches
+        ? inspectorMaxWidth(container.getBoundingClientRect().width)
+        : MAX_INSPECTOR_WIDTH;
+      setInspectorMaximumWidth(nextMaximumWidth);
+      setInspectorWidth((currentWidth) =>
+        Math.min(nextMaximumWidth, Math.max(MIN_INSPECTOR_WIDTH, currentWidth)),
+      );
+    });
+    resizeObserver.observe(container);
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    setInspectorWidth(readStoredInspectorWidth());
+    setStoredInspectorWidthLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!storedInspectorWidthLoaded) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(INSPECTOR_WIDTH_STORAGE_KEY, String(Math.round(inspectorWidth)));
+    } catch {
+      // Inspector sizing persistence is optional when storage is unavailable.
+    }
+  }, [inspectorWidth, storedInspectorWidthLoaded]);
+
+  const stopInspectorDragging = useCallback(() => {
+    if (!draggingInspectorRef.current) {
+      return;
+    }
+    draggingInspectorRef.current = false;
+    setInspectorDragging(false);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, []);
+
+  const resizeInspectorFromPointer = useCallback(
+    (event: PointerEvent) => {
+      const container = dashboardSplitRef.current;
+      if (!draggingInspectorRef.current || !container) {
+        return;
+      }
+      const bounds = container.getBoundingClientRect();
+      setInspectorWidth(clampInspectorWidth(bounds.right - event.clientX));
+    },
+    [clampInspectorWidth],
+  );
+
+  useEffect(() => {
+    window.addEventListener("pointermove", resizeInspectorFromPointer);
+    window.addEventListener("pointerup", stopInspectorDragging);
+    window.addEventListener("pointercancel", stopInspectorDragging);
+    window.addEventListener("blur", stopInspectorDragging);
+    return () => {
+      window.removeEventListener("pointermove", resizeInspectorFromPointer);
+      window.removeEventListener("pointerup", stopInspectorDragging);
+      window.removeEventListener("pointercancel", stopInspectorDragging);
+      window.removeEventListener("blur", stopInspectorDragging);
+      stopInspectorDragging();
+    };
+  }, [resizeInspectorFromPointer, stopInspectorDragging]);
+
+  function resizeInspectorFromKeyboard(event: KeyboardEvent<HTMLDivElement>) {
+    const direction = event.key === "ArrowLeft" ? 1 : event.key === "ArrowRight" ? -1 : 0;
+    if (direction === 0 && event.key !== "Home" && event.key !== "End") {
+      return;
+    }
+    event.preventDefault();
+    if (event.key === "Home") {
+      setInspectorWidth(MIN_INSPECTOR_WIDTH);
+      return;
+    }
+    if (event.key === "End") {
+      setInspectorWidth(inspectorMaximumWidth);
+      return;
+    }
+    setInspectorWidth((currentWidth) =>
+      clampInspectorWidth(currentWidth + direction * INSPECTOR_RESIZE_STEP),
+    );
+  }
+
+  function startInspectorDragging(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    draggingInspectorRef.current = true;
+    setInspectorDragging(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }
+
+  return {
+    dashboardSplitRef,
+    inspectorDragging,
+    inspectorWidth,
+    inspectorMaximumWidth,
+    resetInspectorWidth: () => {
+      setInspectorWidth(clampInspectorWidth(DEFAULT_INSPECTOR_WIDTH));
+    },
+    resizeInspectorFromKeyboard,
+    startInspectorDragging,
+  };
+}
+
+function resolveInspectorSelection({
+  selectionKind,
+  selectedSource,
+  selectedEvent,
+  selectedRoute,
+  eventDefinitions,
+}: {
+  selectionKind: DashboardSelectionKind | null;
+  selectedSource: DashboardSource | null;
+  selectedEvent: DashboardEventDefinitionWithSource | null | undefined;
+  selectedRoute: DashboardRoute | null;
+  eventDefinitions: DashboardEventDefinitionWithSource[];
+}): DashboardInspectorSelection | null {
+  if (selectionKind === "source" && selectedSource) {
+    return {
+      kind: "source",
+      source: selectedSource,
+      eventDefinitions: eventDefinitions.filter(
+        (eventDefinition) => normalizedSourceId(eventDefinition.source) === selectedSource.id,
+      ),
+    };
+  }
+  if (selectionKind === "event" && selectedEvent) {
+    return { kind: "event", eventDefinition: selectedEvent };
+  }
+  if (selectionKind === "trigger" && selectedRoute) {
+    return { kind: "trigger", route: selectedRoute };
+  }
+  if (selectionKind === "action" && selectedRoute) {
+    return { kind: "action", route: selectedRoute };
+  }
+  return null;
+}
+
+function workflowScriptIdForRoute(route: DashboardRoute): string | null {
+  return route.action.kind === "start_workflow"
+    ? toAutomationScriptIdFromAbsolutePath(route.action.workflowScriptPath)
+    : null;
+}
+
+function useAutomationDashboardData(
+  collections: AutomationLayoutContext["collections"],
+  view: AutomationSwimlaneView,
+) {
   const routesState = useAutomationRoutes(collections);
   const eventSourcesQuery = useLiveQuery(
     (query) =>
@@ -1086,6 +1293,45 @@ export function AutomationSwimlaneDashboard({
   });
   const eventRows =
     view === "events" ? eventSwimlaneRows(sources, eventDefinitions, eventRoutes) : [];
+  const errors = [
+    routesState.status === "error" ? routesState.message : null,
+    eventSourcesQuery.isError ? "Event source synchronization failed." : null,
+    eventDefinitionsQuery.isError ? "Event catalog synchronization failed." : null,
+    workflowsQuery.isError ? "Workflow synchronization failed." : null,
+  ].filter((message): message is string => Boolean(message));
+
+  return {
+    routes,
+    routesLoading: routesState.status === "loading",
+    eventDefinitions,
+    workflowInstances,
+    workflowRoutes,
+    eventRoutes,
+    sources,
+    eventRows,
+    errors,
+  };
+}
+
+type DashboardSelectionUpdate = {
+  kind: DashboardSelectionKind;
+  id: string;
+  workflowScriptId: string | null;
+  clearSourceFilter: boolean;
+};
+
+function useDashboardSearchSelection({
+  routes,
+  sources,
+  eventDefinitions,
+  eventRows,
+}: {
+  routes: DashboardRoute[];
+  sources: DashboardSource[];
+  eventDefinitions: DashboardEventDefinitionWithSource[];
+  eventRows: EventSwimlaneRow[];
+}) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedSourceId = normalizedSourceId(searchParams.get(SOURCE_FILTER_PARAM) ?? "");
   const activeSource = sources.find((source) => source.id === requestedSourceId) ?? null;
   const selectionKind = parseSelectionKind(searchParams.get(SELECTION_KIND_PARAM));
@@ -1096,41 +1342,20 @@ export function AutomationSwimlaneDashboard({
     eventDefinitions.find(
       (eventDefinition) => `${eventDefinition.source}:${eventDefinition.eventType}` === selectionId,
     ) ?? eventRows.find((row) => row.eventId === selectionId)?.eventDefinition;
-  const inspectorSelection: DashboardInspectorSelection | null =
-    selectionKind === "source" && selectedSource
-      ? {
-          kind: "source",
-          source: selectedSource,
-          eventDefinitions: eventDefinitions.filter(
-            (eventDefinition) => normalizedSourceId(eventDefinition.source) === selectedSource.id,
-          ),
-        }
-      : selectionKind === "event" && selectedEvent
-        ? { kind: "event", eventDefinition: selectedEvent }
-        : selectionKind === "trigger" && selectedRoute
-          ? { kind: "trigger", route: selectedRoute }
-          : selectionKind === "action" && selectedRoute
-            ? { kind: "action", route: selectedRoute }
-            : null;
-  const showInspector = inspectorSelection !== null;
-  const errors = [
-    routesState.status === "error" ? routesState.message : null,
-    eventSourcesQuery.isError ? "Event source synchronization failed." : null,
-    eventDefinitionsQuery.isError ? "Event catalog synchronization failed." : null,
-    workflowsQuery.isError ? "Workflow synchronization failed." : null,
-  ].filter((message): message is string => Boolean(message));
+  const inspectorSelection = resolveInspectorSelection({
+    selectionKind,
+    selectedSource,
+    selectedEvent,
+    selectedRoute,
+    eventDefinitions,
+  });
 
-  const updateSelection = ({
+  function updateSelection({
     kind,
     id,
     workflowScriptId,
-    clearSourceFilter = false,
-  }: {
-    kind: DashboardSelectionKind;
-    id: string;
-    workflowScriptId?: string;
-    clearSourceFilter?: boolean;
-  }) => {
+    clearSourceFilter,
+  }: DashboardSelectionUpdate) {
     setSearchParams((currentSearchParams) => {
       const nextSearchParams = new URLSearchParams(currentSearchParams);
       const currentSelectionKind = parseSelectionKind(
@@ -1158,7 +1383,258 @@ export function AutomationSwimlaneDashboard({
       }
       return nextSearchParams;
     }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
+  }
+
+  function selectWorkflowSource(source: DashboardSource) {
+    const isClearing = activeSource?.id === source.id;
+    setSearchParams((currentSearchParams) => {
+      const nextSearchParams = new URLSearchParams(currentSearchParams);
+      if (isClearing) {
+        nextSearchParams.delete(SOURCE_FILTER_PARAM);
+        nextSearchParams.delete(SELECTION_KIND_PARAM);
+        nextSearchParams.delete(SELECTION_ID_PARAM);
+      } else {
+        nextSearchParams.set(SOURCE_FILTER_PARAM, source.id);
+        nextSearchParams.set(SELECTION_KIND_PARAM, "source");
+        nextSearchParams.set(SELECTION_ID_PARAM, source.id);
+      }
+      nextSearchParams.delete(WORKFLOW_SCRIPT_ID_PARAM);
+      return nextSearchParams;
+    }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
+  }
+
+  function selectEventSource(source: DashboardSource) {
+    updateSelection({
+      kind: "source",
+      id: source.id,
+      workflowScriptId: null,
+      clearSourceFilter: false,
+    });
+  }
+
+  function selectEvent(eventDefinition: DashboardEventDefinitionWithSource) {
+    updateSelection({
+      kind: "event",
+      id: `${eventDefinition.source}:${eventDefinition.eventType}`,
+      workflowScriptId: null,
+      clearSourceFilter: true,
+    });
+  }
+
+  function selectTrigger(route: DashboardRoute) {
+    updateSelection({
+      kind: "trigger",
+      id: route.id,
+      workflowScriptId: null,
+      clearSourceFilter: true,
+    });
+  }
+
+  function selectWorkflowAction(route: DashboardRoute) {
+    updateSelection({
+      kind: "action",
+      id: route.id,
+      workflowScriptId: workflowScriptIdForRoute(route),
+      clearSourceFilter: true,
+    });
+  }
+
+  function selectEventAction(route: DashboardRoute) {
+    updateSelection({
+      kind: "action",
+      id: route.id,
+      workflowScriptId: workflowScriptIdForRoute(route),
+      clearSourceFilter: false,
+    });
+  }
+
+  function clearSelection() {
+    setSearchParams((currentSearchParams) => {
+      const nextSearchParams = new URLSearchParams(currentSearchParams);
+      nextSearchParams.delete(SOURCE_FILTER_PARAM);
+      nextSearchParams.delete(SELECTION_KIND_PARAM);
+      nextSearchParams.delete(SELECTION_ID_PARAM);
+      nextSearchParams.delete(WORKFLOW_SCRIPT_ID_PARAM);
+      return nextSearchParams;
+    }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
+  }
+
+  return {
+    activeSource,
+    selectionKind,
+    selectionId,
+    inspectorSelection,
+    selectWorkflowSource,
+    selectEventSource,
+    selectEvent,
+    selectTrigger,
+    selectWorkflowAction,
+    selectEventAction,
+    clearSelection,
   };
+}
+
+function DashboardLaneHeaders({
+  view,
+  activeSource,
+}: {
+  view: AutomationSwimlaneView;
+  activeSource: DashboardSource | null;
+}) {
+  const sourceDescription = activeSource
+    ? `Highlighting routes from ${activeSource.label}`
+    : view === "events"
+      ? "Available event sources are always visible"
+      : "Sources with configured workflow routes";
+
+  return (
+    <div
+      className={`grid gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 ${SWIMLANE_GRID_COLUMNS_CLASS_NAME}`}
+    >
+      <LaneHeader
+        dotClassName="bg-[#94a86d]"
+        icon={<CircleDot className="h-3 w-3" strokeWidth={1.8} />}
+        title="Sources"
+        description={sourceDescription}
+      />
+      <LaneHeader
+        dotClassName="bg-[#c47c31]"
+        icon={<Zap className="h-3 w-3" strokeWidth={1.8} />}
+        title={view === "workflows" ? "When" : "Events"}
+        description={
+          view === "workflows"
+            ? "Events, schedules, matchers, and priority"
+            : "Every registered or routed event"
+        }
+      />
+      <LaneHeader
+        dotClassName="bg-[#6b5f73]"
+        icon={<Braces className="h-3 w-3" strokeWidth={1.8} />}
+        title={view === "workflows" ? "Then" : "Routing"}
+        description={
+          view === "workflows"
+            ? "Workflow starts and workflow events"
+            : "Every configured route action"
+        }
+      />
+    </div>
+  );
+}
+
+function DashboardSwimlaneGrid({
+  view,
+  sources,
+  workflowRoutes,
+  eventRoutes,
+  eventRows,
+  workflowInstances,
+  activeSource,
+  selectionKind,
+  selectionId,
+  routesLoading,
+  onSelectWorkflowSource,
+  onSelectEventSource,
+  onSelectEvent,
+  onSelectTrigger,
+  onSelectWorkflowAction,
+  onSelectEventAction,
+}: {
+  view: AutomationSwimlaneView;
+  sources: DashboardSource[];
+  workflowRoutes: DashboardRoute[];
+  eventRoutes: DashboardRoute[];
+  eventRows: EventSwimlaneRow[];
+  workflowInstances: DashboardWorkflowInstance[];
+  activeSource: DashboardSource | null;
+  selectionKind: DashboardSelectionKind | null;
+  selectionId: string;
+  routesLoading: boolean;
+  onSelectWorkflowSource: (source: DashboardSource) => void;
+  onSelectEventSource: (source: DashboardSource) => void;
+  onSelectEvent: (eventDefinition: DashboardEventDefinitionWithSource) => void;
+  onSelectTrigger: (route: DashboardRoute) => void;
+  onSelectWorkflowAction: (route: DashboardRoute) => void;
+  onSelectEventAction: (route: DashboardRoute) => void;
+}) {
+  if (view === "workflows") {
+    return (
+      <DashboardRouteGrid
+        sources={sources}
+        routes={workflowRoutes}
+        workflowInstances={workflowInstances}
+        activeSource={activeSource}
+        selectionKind={selectionKind}
+        selectionId={selectionId}
+        routesLoading={routesLoading}
+        onSelectSource={onSelectWorkflowSource}
+        onSelectTrigger={onSelectTrigger}
+        onSelectAction={onSelectWorkflowAction}
+      />
+    );
+  }
+
+  return (
+    <EventRouteGrid
+      rows={eventRows}
+      routes={eventRoutes}
+      workflowInstances={workflowInstances}
+      activeSource={activeSource}
+      selectionKind={selectionKind}
+      selectionId={selectionId}
+      onSelectSource={onSelectEventSource}
+      onSelectEvent={onSelectEvent}
+      onSelectTrigger={onSelectTrigger}
+      onSelectAction={onSelectEventAction}
+    />
+  );
+}
+
+export function AutomationSwimlaneDashboard({
+  view = "workflows",
+}: {
+  view?: AutomationSwimlaneView;
+}) {
+  const { collections, selectedScope } = useOutletContext<AutomationLayoutContext>();
+  const loaderData = useLoaderData<typeof loader>();
+  const {
+    routes,
+    routesLoading,
+    eventDefinitions,
+    workflowInstances,
+    workflowRoutes,
+    eventRoutes,
+    sources,
+    eventRows,
+    errors,
+  } = useAutomationDashboardData(collections, view);
+  const {
+    activeSource,
+    selectionKind,
+    selectionId,
+    inspectorSelection,
+    selectWorkflowSource,
+    selectEventSource,
+    selectEvent,
+    selectTrigger,
+    selectWorkflowAction,
+    selectEventAction,
+    clearSelection,
+  } = useDashboardSearchSelection({ routes, sources, eventDefinitions, eventRows });
+  const {
+    dashboardSplitRef,
+    inspectorDragging,
+    inspectorWidth,
+    inspectorMaximumWidth,
+    resetInspectorWidth,
+    resizeInspectorFromKeyboard,
+    startInspectorDragging,
+  } = useDashboardInspectorResize();
+  const showInspector = inspectorSelection !== null;
+
+  const dashboardSplitStyle = {
+    "--dashboard-inspector-divider-width": showInspector ? "1px" : "0px",
+    "--dashboard-inspector-width": showInspector ? `${inspectorWidth}px` : "0px",
+  } as CSSProperties;
 
   return (
     <section className="flex w-full max-w-none flex-1 flex-col space-y-3 antialiased">
@@ -1172,127 +1648,52 @@ export function AutomationSwimlaneDashboard({
       ) : null}
 
       <div
-        className={`grid min-w-0 flex-1 gap-3 ${
-          showInspector ? "xl:grid-cols-[minmax(0,1fr)_28rem]" : ""
-        }`}
+        ref={dashboardSplitRef}
+        data-dashboard-inspector-split
+        style={dashboardSplitStyle}
+        className={`grid min-w-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_var(--dashboard-inspector-divider-width)_var(--dashboard-inspector-width)] xl:gap-0 ${inspectorDragging ? "xl:transition-none" : "xl:transition-[grid-template-columns] xl:duration-200 xl:ease-out"}`}
       >
-        <div className="min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
+        <div
+          className={`min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] ${showInspector ? "xl:border-r-0" : ""}`}
+        >
           <div className="backoffice-scroll overflow-x-auto">
-            <div
-              className={`min-w-[1100px] ${showInspector ? "xl:w-[calc(100%+28.75rem)]" : "w-full"}`}
-            >
-              <div className="grid grid-cols-[18rem_minmax(20rem,1fr)_minmax(22rem,1.1fr)] gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3">
-                <LaneHeader
-                  dotClassName="bg-[#94a86d]"
-                  icon={<CircleDot className="h-3 w-3" strokeWidth={1.8} />}
-                  title="Sources"
-                  description={
-                    activeSource
-                      ? `Highlighting routes from ${activeSource.label}`
-                      : view === "events"
-                        ? "Available event sources are always visible"
-                        : "Sources with configured workflow routes"
-                  }
-                />
-                <LaneHeader
-                  dotClassName="bg-[#c47c31]"
-                  icon={<Zap className="h-3 w-3" strokeWidth={1.8} />}
-                  title={view === "workflows" ? "When" : "Events"}
-                  description={
-                    view === "workflows"
-                      ? "Events, schedules, matchers, and priority"
-                      : "Every registered or routed event"
-                  }
-                />
-                <LaneHeader
-                  dotClassName="bg-[#6b5f73]"
-                  icon={<Braces className="h-3 w-3" strokeWidth={1.8} />}
-                  title={view === "workflows" ? "Then" : "Routing"}
-                  description={
-                    view === "workflows"
-                      ? "Workflow starts and workflow events"
-                      : "Every configured route action"
-                  }
-                />
-              </div>
-
-              {view === "workflows" ? (
-                <DashboardRouteGrid
-                  sources={sources}
-                  routes={workflowRoutes}
-                  workflowInstances={workflowInstances}
-                  activeSource={activeSource}
-                  selectionKind={selectionKind}
-                  selectionId={selectionId}
-                  routesLoading={routesState.status === "loading"}
-                  onSelectSource={(source) => {
-                    const isClearing = activeSource?.id === source.id;
-                    setSearchParams((currentSearchParams) => {
-                      const nextSearchParams = new URLSearchParams(currentSearchParams);
-                      if (isClearing) {
-                        nextSearchParams.delete(SOURCE_FILTER_PARAM);
-                        nextSearchParams.delete(SELECTION_KIND_PARAM);
-                        nextSearchParams.delete(SELECTION_ID_PARAM);
-                      } else {
-                        nextSearchParams.set(SOURCE_FILTER_PARAM, source.id);
-                        nextSearchParams.set(SELECTION_KIND_PARAM, "source");
-                        nextSearchParams.set(SELECTION_ID_PARAM, source.id);
-                      }
-                      nextSearchParams.delete(WORKFLOW_SCRIPT_ID_PARAM);
-                      return nextSearchParams;
-                    }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
-                  }}
-                  onSelectTrigger={(route) => {
-                    updateSelection({ kind: "trigger", id: route.id, clearSourceFilter: true });
-                  }}
-                  onSelectAction={(route) => {
-                    updateSelection({
-                      kind: "action",
-                      id: route.id,
-                      clearSourceFilter: true,
-                      workflowScriptId:
-                        route.action.kind === "start_workflow"
-                          ? toAutomationScriptIdFromAbsolutePath(route.action.workflowScriptPath)
-                          : undefined,
-                    });
-                  }}
-                />
-              ) : (
-                <EventRouteGrid
-                  rows={eventRows}
-                  routes={eventRoutes}
-                  workflowInstances={workflowInstances}
-                  activeSource={activeSource}
-                  selectionKind={selectionKind}
-                  selectionId={selectionId}
-                  onSelectSource={(source) => {
-                    updateSelection({ kind: "source", id: source.id });
-                  }}
-                  onSelectEvent={(eventDefinition) => {
-                    updateSelection({
-                      kind: "event",
-                      id: `${eventDefinition.source}:${eventDefinition.eventType}`,
-                      clearSourceFilter: true,
-                    });
-                  }}
-                  onSelectTrigger={(route) => {
-                    updateSelection({ kind: "trigger", id: route.id, clearSourceFilter: true });
-                  }}
-                  onSelectAction={(route) => {
-                    updateSelection({
-                      kind: "action",
-                      id: route.id,
-                      workflowScriptId:
-                        route.action.kind === "start_workflow"
-                          ? toAutomationScriptIdFromAbsolutePath(route.action.workflowScriptPath)
-                          : undefined,
-                    });
-                  }}
-                />
-              )}
+            <div className="w-full min-w-[43rem]">
+              <DashboardLaneHeaders view={view} activeSource={activeSource} />
+              <DashboardSwimlaneGrid
+                view={view}
+                sources={sources}
+                workflowRoutes={workflowRoutes}
+                eventRoutes={eventRoutes}
+                eventRows={eventRows}
+                workflowInstances={workflowInstances}
+                activeSource={activeSource}
+                selectionKind={selectionKind}
+                selectionId={selectionId}
+                routesLoading={routesLoading}
+                onSelectWorkflowSource={selectWorkflowSource}
+                onSelectEventSource={selectEventSource}
+                onSelectEvent={selectEvent}
+                onSelectTrigger={selectTrigger}
+                onSelectWorkflowAction={selectWorkflowAction}
+                onSelectEventAction={selectEventAction}
+              />
             </div>
           </div>
         </div>
+
+        {showInspector ? (
+          <VerticalResizeHandle
+            label="Resize dashboard inspector"
+            min={MIN_INSPECTOR_WIDTH}
+            max={inspectorMaximumWidth}
+            value={inspectorWidth}
+            valueText={`Inspector ${Math.round(inspectorWidth)} pixels wide`}
+            visibleFrom="xl"
+            onDoubleClick={resetInspectorWidth}
+            onKeyDown={resizeInspectorFromKeyboard}
+            onPointerDown={startInspectorDragging}
+          />
+        ) : null}
 
         {showInspector ? (
           <DashboardInspector
@@ -1303,16 +1704,7 @@ export function AutomationSwimlaneDashboard({
             filesScopePath={filesScopeBasePath(selectedScope)}
             eventsCatalogPath={automationScopeTabPath(selectedScope, "events-catalog")}
             scope={selectedScope}
-            onClear={() => {
-              setSearchParams((currentSearchParams) => {
-                const nextSearchParams = new URLSearchParams(currentSearchParams);
-                nextSearchParams.delete(SOURCE_FILTER_PARAM);
-                nextSearchParams.delete(SELECTION_KIND_PARAM);
-                nextSearchParams.delete(SELECTION_ID_PARAM);
-                nextSearchParams.delete(WORKFLOW_SCRIPT_ID_PARAM);
-                return nextSearchParams;
-              }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
-            }}
+            onClear={clearSelection}
           />
         ) : null}
       </div>
