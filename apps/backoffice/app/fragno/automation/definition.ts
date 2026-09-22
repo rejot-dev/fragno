@@ -11,7 +11,6 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
 
 import { automationActorsSchema } from "./actors";
 import {
@@ -62,7 +61,6 @@ import {
   type StarterAutomationRoutesSeedResult,
 } from "./routing";
 import { createAutomationRouteServices } from "./routing-storage-runtime";
-import { createAutomationSandboxServices } from "./sandboxes-storage-runtime";
 import { automationFragmentSchema } from "./schema";
 
 export type AutomationIngestResult = {
@@ -111,7 +109,6 @@ export interface AutomationFragmentConfig {
   env?: CloudflareEnv;
   runtime?: BackofficeRuntimeServices;
   ownerScope: BackofficeContextScope;
-  sandboxProviders?: Record<string, SandboxRuntimeProvider>;
   createPiAutomationContext?: (input: {
     event: AutomationEvent;
     execution: BackofficeExecutionContext;
@@ -408,7 +405,7 @@ const handleSendWorkflowEventRouteAction = async ({
 export const automationFragmentDefinition = defineFragment<AutomationFragmentConfig>("automations")
   .extend(withDatabase(automationFragmentSchema))
   .usesService<"workflows", AutomationWorkflowsService>("workflows")
-  .providesBaseService(({ defineService, config, serviceDeps }) => {
+  .providesBaseService(({ defineService, config }) => {
     const builtInEventDefinitionsById = new Map(
       config.builtInEventDefinitions.map((definition) => [
         buildAutomationEventDefinitionId(definition.source, definition.eventType),
@@ -418,12 +415,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     const storeServices = createAutomationStoreServices(defineService);
     const projectServices = createAutomationProjectServices(defineService, {
       ownerScope: config.ownerScope,
-    });
-    const sandboxServices = createAutomationSandboxServices(defineService, {
-      workflows: serviceDeps.workflows,
-      ownerScope: config.ownerScope,
-      sandboxProviders: config.sandboxProviders,
-      ingestEvent: ingestAutomationEvent,
     });
     const routeServices = createAutomationRouteServices(defineService);
     const eventServices = createAutomationEventServices(defineService);
@@ -436,7 +427,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     return defineService({
       ...storeServices,
       ...projectServices,
-      ...sandboxServices,
       ...routeServices,
       ...eventServices,
       ...eventSourceServices,

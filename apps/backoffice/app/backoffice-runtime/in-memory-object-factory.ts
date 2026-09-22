@@ -14,6 +14,7 @@ import { InMemoryMcpObject } from "../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../workers/otp.do";
 import { InMemoryResendObject } from "../../workers/resend.do";
 import { InMemoryReson8Object } from "../../workers/reson8.do";
+import { InMemorySandboxManagerObject } from "../../workers/sandbox-manager.do";
 import { InMemoryTelegramObject } from "../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../workers/upload.do";
 import { createDurableObjectDatabaseAdapterScope } from "./database-adapters";
@@ -250,6 +251,8 @@ const inMemoryObjectFactories = {
       runtime,
     }),
   SANDBOX: createUnavailableObject,
+  SANDBOX_MANAGER: ({ state, env, runtime }) =>
+    new InMemorySandboxManagerObject({ state, env: env as CloudflareEnv, runtime }),
   GITHUB: ({ state, env, runtime }) =>
     new InMemoryGitHubObject({
       state,

@@ -9,6 +9,7 @@ export type BackofficeDatabaseAdapterKind =
   | "api"
   | "auth"
   | "automations"
+  | "sandbox-manager"
   | "billing"
   | "cloudflare"
   | "forms"

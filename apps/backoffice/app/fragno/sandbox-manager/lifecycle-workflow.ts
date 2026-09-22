@@ -2,65 +2,22 @@ import { defineWorkflow, WaitForEventTimeoutError } from "@fragno-dev/workflows/
 
 import type { InstantiatedFragmentFromDefinition } from "@fragno-dev/core";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { SandboxRuntimeHandle, SandboxRuntimeProvider } from "@/sandbox/contracts";
 
-import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
-import type { AutomationEvent } from "./contracts";
-import type { AutomationFragmentConfig, automationFragmentDefinition } from "./definition";
-import type { SandboxLifecycleWorkflowParams } from "./sandboxes-storage-runtime";
-import { automationFragmentSchema } from "./schema";
+import type { SandboxManagerFragmentConfig, sandboxManagerFragmentDefinition } from "./definition";
+import { sandboxManagerFragmentSchema } from "./schema";
+import type { SandboxLifecycleWorkflowParams } from "./services";
 
-type AutomationFragment = Pick<
-  InstantiatedFragmentFromDefinition<typeof automationFragmentDefinition>,
+type SandboxManagerFragment = Pick<
+  InstantiatedFragmentFromDefinition<typeof sandboxManagerFragmentDefinition>,
   "callServices" | "services"
 >;
 
-type SandboxLifecycleWorkflowConfig = Pick<
-  AutomationFragmentConfig,
-  "ownerScope" | "sandboxProviders"
-> & {
-  getAutomationFragment: () => AutomationFragment | undefined;
+type SandboxLifecycleWorkflowConfig = Pick<SandboxManagerFragmentConfig, "sandboxProviders"> & {
+  getSandboxManagerFragment: () => SandboxManagerFragment | undefined;
 };
 
 const DEFAULT_STARTUP_TIMEOUT_MS = 15_000;
-
-const sandboxScopeSubject = (scope: BackofficeContextScope, sandboxId: string) => ({
-  ...(scope.kind === "org" || scope.kind === "project" ? { orgId: scope.orgId } : {}),
-  ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
-  sandboxId,
-});
-
-const buildSandboxFailedEvent = ({
-  config,
-  params,
-  errorMessage,
-}: {
-  config: SandboxLifecycleWorkflowConfig;
-  params: SandboxLifecycleWorkflowParams;
-  errorMessage: string;
-}): AutomationEvent => {
-  return {
-    id: crypto.randomUUID(),
-    scope: config.ownerScope,
-    source: "sandbox",
-    eventType: "instance.failed",
-    occurredAt: new Date().toISOString(),
-    payload: {
-      sandboxId: params.id,
-      provider: params.provider,
-      status: "error",
-      reason: "terminal_error",
-      error: { message: errorMessage },
-    },
-    actors: {
-      initiator: AUTOMATION_SYSTEM_INITIATOR,
-      principal: null,
-      delegation: [],
-    },
-    subject: sandboxScopeSubject(config.ownerScope, params.id),
-  };
-};
 
 export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowConfig) =>
   defineWorkflow(
@@ -75,7 +32,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
       const ownsSandboxBeforeStart = await step.do(
         "check sandbox lifecycle ownership before start",
         async () => {
-          const fragment = requireAutomationFragment(config);
+          const fragment = requireSandboxManagerFragment(config);
           const instance = await fragment.callServices(() =>
             fragment.services.getSandboxInstance({ id: sandboxId }),
           );
@@ -87,7 +44,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
       }
 
       await step.do("mark sandbox starting", (tx) => {
-        const fragment = requireAutomationFragment(config);
+        const fragment = requireSandboxManagerFragment(config);
         tx.serviceCalls(
           () => [fragment.services.markSandboxInstanceStarting({ id: sandboxId })] as const,
         );
@@ -99,7 +56,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
         async (tx) => {
           tx.onTerminalError.mutate((ctx) => {
             const errorMessage = "Sandbox startup failed after retries.";
-            const uow = ctx.forSchema(automationFragmentSchema);
+            const uow = ctx.forSchema(sandboxManagerFragmentSchema);
             const now = uow.now();
             uow.update("sandbox_instance", sandboxId, (b) =>
               b.set({
@@ -108,20 +65,18 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
                 updatedAt: now,
               }),
             );
-            const failedEvent = buildSandboxFailedEvent({
-              config,
-              params,
-              errorMessage,
-            });
             uow.triggerHook(
-              "internalIngestEvent",
+              "deliverLifecycleEvent",
               {
-                event: failedEvent,
-                reclassificationChain: [
-                  { source: failedEvent.source, eventType: failedEvent.eventType },
-                ],
+                id: `${event.instanceId}:failed:start`,
+                type: "failed",
+                sandboxId,
+                provider: params.provider,
+                status: "error",
+                reason: "terminal_error",
+                error: { message: errorMessage },
               },
-              { id: failedEvent.id },
+              { id: `${event.instanceId}:failed:start` },
             );
           });
 
@@ -143,7 +98,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
       const ownsSandboxAfterStart = await step.do(
         "check sandbox lifecycle ownership after start",
         async () => {
-          const fragment = requireAutomationFragment(config);
+          const fragment = requireSandboxManagerFragment(config);
           const instance = await fragment.callServices(() =>
             fragment.services.getSandboxInstance({ id: sandboxId }),
           );
@@ -155,7 +110,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
       }
 
       await step.do("mark sandbox running", (tx) => {
-        const fragment = requireAutomationFragment(config);
+        const fragment = requireSandboxManagerFragment(config);
         tx.serviceCalls(
           () =>
             [
@@ -192,7 +147,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
       const ownsSandboxBeforeStop = await step.do(
         "check sandbox lifecycle ownership before stop",
         async () => {
-          const fragment = requireAutomationFragment(config);
+          const fragment = requireSandboxManagerFragment(config);
           const instance = await fragment.callServices(() =>
             fragment.services.getSandboxInstance({ id: sandboxId }),
           );
@@ -204,7 +159,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
       }
 
       await step.do("mark sandbox stopping", (tx) => {
-        const fragment = requireAutomationFragment(config);
+        const fragment = requireSandboxManagerFragment(config);
         tx.serviceCalls(
           () =>
             [
@@ -225,7 +180,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
         async (tx) => {
           tx.onTerminalError.mutate((ctx) => {
             const errorMessage = "Sandbox stop reconciliation failed after retries.";
-            const uow = ctx.forSchema(automationFragmentSchema);
+            const uow = ctx.forSchema(sandboxManagerFragmentSchema);
             const now = uow.now();
             uow.update("sandbox_instance", sandboxId, (b) =>
               b.set({
@@ -234,20 +189,18 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
                 updatedAt: now,
               }),
             );
-            const failedEvent = buildSandboxFailedEvent({
-              config,
-              params,
-              errorMessage,
-            });
             uow.triggerHook(
-              "internalIngestEvent",
+              "deliverLifecycleEvent",
               {
-                event: failedEvent,
-                reclassificationChain: [
-                  { source: failedEvent.source, eventType: failedEvent.eventType },
-                ],
+                id: `${event.instanceId}:failed:stop`,
+                type: "failed",
+                sandboxId,
+                provider: params.provider,
+                status: "error",
+                reason: "terminal_error",
+                error: { message: errorMessage },
               },
-              { id: failedEvent.id },
+              { id: `${event.instanceId}:failed:stop` },
             );
           });
 
@@ -256,7 +209,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
       );
 
       await step.do("mark sandbox stopped", (tx) => {
-        const fragment = requireAutomationFragment(config);
+        const fragment = requireSandboxManagerFragment(config);
         tx.serviceCalls(
           () =>
             [
@@ -275,13 +228,13 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
     },
   );
 
-const requireAutomationFragment = (config: SandboxLifecycleWorkflowConfig) => {
-  const fragment = config.getAutomationFragment();
+function requireSandboxManagerFragment(config: SandboxLifecycleWorkflowConfig) {
+  const fragment = config.getSandboxManagerFragment();
   if (!fragment) {
-    throw new Error("Sandbox lifecycle workflow requires the automations fragment.");
+    throw new Error("Sandbox lifecycle workflow requires the sandbox manager fragment.");
   }
   return fragment;
-};
+}
 
 const requireSandboxProvider = (
   config: SandboxLifecycleWorkflowConfig,

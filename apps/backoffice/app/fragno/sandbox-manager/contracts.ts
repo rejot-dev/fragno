@@ -28,7 +28,7 @@ const dateSchema = z.preprocess((value) => {
 const nullableDateSchema = z.preprocess((value) => value ?? null, dateSchema.nullable());
 
 export const sandboxProviderSchema = z.literal(CLOUDFLARE_SANDBOX_PROVIDER);
-export const sandboxInstanceIdSchema = z.string().trim().min(1);
+export const sandboxInstanceIdSchema = z.string().trim().min(1).max(50);
 export const sandboxInstanceStatusSchema = z.enum([
   "requested",
   "starting",
@@ -118,6 +118,32 @@ export const sandboxInstanceStopRequestInputSchema = z.object({
 });
 
 export type SandboxProvider = SandboxProviderId;
+
+export type SandboxLifecycleEvent =
+  | {
+      id: string;
+      type: "ready";
+      sandboxId: string;
+      provider: SandboxProvider;
+      status: "running";
+    }
+  | {
+      id: string;
+      type: "stopped";
+      sandboxId: string;
+      provider: SandboxProvider;
+      status: "stopped";
+      reason?: "workflow_terminal" | "stop_requested";
+    }
+  | {
+      id: string;
+      type: "failed";
+      sandboxId: string;
+      provider: SandboxProvider;
+      status: "error";
+      reason: "terminal_error";
+      error: { message: string };
+    };
 export type SandboxInstanceStatus = z.infer<typeof sandboxInstanceStatusSchema>;
 export type SandboxInstanceRecord = z.infer<typeof sandboxInstanceSchema>;
 export type SandboxInstanceListInput = z.infer<typeof sandboxInstanceListInputSchema>;

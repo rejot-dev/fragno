@@ -15,7 +15,6 @@ type TableCollection<TTable extends AnyTable> = Collection<FragnoCollectionRow<T
 export type AutomationCollections = {
   kvStore: TableCollection<(typeof automationFragmentSchema.tables)["kv_store"]>;
   projects: TableCollection<(typeof automationFragmentSchema.tables)["project"]>;
-  sandboxInstances: TableCollection<(typeof automationFragmentSchema.tables)["sandbox_instance"]>;
   routes: TableCollection<(typeof automationFragmentSchema.tables)["automation_route"]>;
   routeScheduleStates: TableCollection<
     (typeof automationFragmentSchema.tables)["automation_route_schedule_state"]
@@ -49,7 +48,6 @@ export function createAutomationCollections(
   return {
     kvStore: coordinator.collection(automationFragmentSchema, "kv_store"),
     projects: coordinator.collection(automationFragmentSchema, "project"),
-    sandboxInstances: coordinator.collection(automationFragmentSchema, "sandbox_instance"),
     routes: coordinator.collection(automationFragmentSchema, "automation_route"),
     routeScheduleStates: coordinator.collection(
       automationFragmentSchema,

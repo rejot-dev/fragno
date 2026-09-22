@@ -92,6 +92,11 @@
         "script_name": "rejot-backoffice",
       },
       {
+        "name": "SANDBOX_MANAGER",
+        "class_name": "SandboxManager",
+        "script_name": "rejot-backoffice",
+      },
+      {
         "name": "GITHUB",
         "class_name": "GitHub",
         "script_name": "rejot-backoffice",
