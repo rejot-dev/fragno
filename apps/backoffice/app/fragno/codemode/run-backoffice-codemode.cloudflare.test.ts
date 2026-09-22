@@ -35,6 +35,21 @@ import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 describe("runBackofficeCodemode", () => {
+  test("returns a compile error when no compiler is configured", async () => {
+    const result = await runBackofficeCodemode({
+      env: { LOADER: env.LOADER },
+      families: runtimeToolFamilies,
+      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+      code: "42",
+    });
+
+    expect(result).toEqual({
+      result: undefined,
+      error: "Failed to compile codemode: Backoffice codemode compiler service is not configured.",
+      toolCalls: [],
+    });
+  });
+
   test("runs dynamic worker code with state.* against Upload", async () => {
     const upload = new MemoryUploadObject({ "input.txt": "hello" });
     const stateBackend = createTestStateBackend({ upload });
@@ -899,6 +914,8 @@ const createScopedMcpRuntimeServices = (
     adapters: {} as BackofficeRuntimeServices["adapters"],
     authorityResolver: unrestrictedBackofficeAuthorityResolver,
     kernelObserver: noopBackofficeKernelObserver,
+    codemodeEnv: null,
+    workerTypeChecker: null,
     config: {
       authEmailVerification: { enabled: false },
       signUpInvitationsEnabled: true,

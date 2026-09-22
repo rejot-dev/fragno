@@ -29,6 +29,8 @@ import { eventCatalogToolFamily, eventFireToolFamily, type EventRuntime } from "
 import { formsToolFamily, type FormsRuntime } from "./families/forms";
 import { githubToolFamily, type GitHubRuntime } from "./families/github";
 import { internalToolFamily, type InternalRuntime } from "./families/internal";
+import { javaScriptCheckToolFamily, javaScriptRunToolFamily } from "./families/javascript";
+import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import { mcpToolFamily, type McpRuntime } from "./families/mcp";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
 import { piToolFamily, type PiRuntime } from "./families/pi";
@@ -66,6 +68,7 @@ export type CoreBackofficeRuntimeMap = {
   reson8?: Reson8Runtime;
   sandbox?: SandboxRuntime;
   telegram?: TelegramRuntime;
+  javascript?: JavaScriptRuntime;
   upload?: UploadRuntime;
   web?: WebRuntime;
 };
@@ -95,6 +98,8 @@ export const runtimeToolFamilies = [
   reson8ToolFamily,
   sandboxToolFamily,
   telegramToolFamily,
+  javaScriptCheckToolFamily,
+  javaScriptRunToolFamily,
   uploadToolFamily,
   internalToolFamily,
 ] as const satisfies readonly BackofficeRuntimeToolFamily[];
