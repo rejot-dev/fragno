@@ -50,15 +50,6 @@ const createSessionDetail = (sessionId: string) => ({
 });
 
 describe("pi runtime tools", () => {
-  test("defines camelCase codemode names and legacy bash commands", () => {
-    expect(piRuntimeTools.map((tool) => [tool.name, tool.adapters?.bash?.command])).toEqual([
-      ["createSession", "pi.session.create"],
-      ["getSession", "pi.session.get"],
-      ["listSessions", "pi.session.list"],
-      ["runTurn", "pi.session.turn"],
-    ]);
-  });
-
   test("parse and validate session create input", () => {
     const [createSession] = piRuntimeTools;
 

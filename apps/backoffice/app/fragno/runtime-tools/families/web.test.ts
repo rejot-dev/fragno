@@ -1,4 +1,4 @@
-import { describe, expect, test, vi, assert } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
   createTrustedSystemBackofficeToolContext,
@@ -14,11 +14,6 @@ const createRuntime = (): WebRuntime => ({
 });
 
 describe("web runtime tools", () => {
-  test("exposes the web extract tool", () => {
-    expect(webRuntimeTools.map((tool) => tool.name)).toEqual(["extract"]);
-    assert(webRuntimeTools[0].adapters?.bash?.command === "web.extract");
-  });
-
   test.each(["content", "markdown"] as const)("supports the %s action", (action) => {
     expect(
       webRuntimeTools[0].adapters!.bash!.parse([

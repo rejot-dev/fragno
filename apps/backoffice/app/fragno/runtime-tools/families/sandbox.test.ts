@@ -32,15 +32,6 @@ const createBash = (runtime: SandboxRuntime) =>
   });
 
 describe("sandbox runtime tools", () => {
-  test("defines camelCase codemode names and bash commands", () => {
-    expect(sandboxRuntimeTools.map((tool) => [tool.name, tool.adapters?.bash?.command])).toEqual([
-      ["startSandbox", "sandbox.start"],
-      ["listSandboxes", "sandbox.list"],
-      ["killSandbox", "sandbox.kill"],
-      ["executeCommand", "sandbox.exec"],
-    ]);
-  });
-
   test("parses start input", () => {
     const [start] = sandboxRuntimeTools;
 

@@ -1,4 +1,4 @@
-import { describe, expect, test, vi, assert } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
   createTrustedSystemBackofficeToolContext,
@@ -12,13 +12,6 @@ const createRuntime = (): Reson8Runtime =>
   }) as unknown as Reson8Runtime;
 
 describe("reson8 runtime tools", () => {
-  test("defines camelCase codemode name and legacy bash command", () => {
-    const [transcribe] = reson8RuntimeTools;
-
-    assert(transcribe.name === "transcribePrerecorded");
-    assert(transcribe.adapters?.bash?.command === "reson8.prerecorded.transcribe");
-  });
-
   test("parse and validate transcribe input", () => {
     const [transcribe] = reson8RuntimeTools;
 

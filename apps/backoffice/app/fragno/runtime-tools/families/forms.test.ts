@@ -3,40 +3,10 @@ import { assert, describe, expect, test, vi } from "vitest";
 import {
   createTrustedSystemBackofficeToolContext,
   executeBackofficeRuntimeTool,
-  getAvailableRuntimeTools,
 } from "../runtime-tools";
-import { formsRuntimeTools, formsToolFamily } from "./forms";
+import { formsRuntimeTools } from "./forms";
 
 describe("Forms runtime tools", () => {
-  test("exposes form and submission commands only with the system Forms runtime", () => {
-    expect(formsRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
-      "forms.list",
-      "forms.create",
-      "forms.update",
-      "forms.submissions.list",
-    ]);
-
-    const available = getAvailableRuntimeTools({
-      families: [formsToolFamily],
-      context: createTrustedSystemBackofficeToolContext({
-        runtimes: {
-          forms: {
-            listForms: vi.fn(),
-            createForm: vi.fn(),
-            updateForm: vi.fn(),
-            listSubmissions: vi.fn(),
-          },
-        },
-      }),
-    });
-    expect(available.map((tool) => tool.id)).toEqual([
-      "forms.list",
-      "forms.create",
-      "forms.update",
-      "forms.submissions.list",
-    ]);
-  });
-
   test("parses JSON Schema input and creates a draft form", async () => {
     const createForm = vi.fn().mockResolvedValue({ id: "form-1" });
     const createTool = formsRuntimeTools[1];

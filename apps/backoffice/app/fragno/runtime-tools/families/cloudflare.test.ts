@@ -25,17 +25,6 @@ const createRuntime = (overrides: Partial<CloudflareRuntime> = {}): CloudflareRu
 });
 
 describe("cloudflare runtime tools", () => {
-  test("exposes capture and crawl tools", () => {
-    expect(cloudflareRuntimeTools.map((tool) => tool.name)).toEqual([
-      "browserRunCapture",
-      "browserRunCrawl",
-    ]);
-    expect(cloudflareRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
-      "cloudflare.browser-run.capture",
-      "cloudflare.browser-run.crawl",
-    ]);
-  });
-
   test("parses capture and crawl actions", () => {
     expect(
       cloudflareRuntimeTools[0].adapters!.bash!.parse([

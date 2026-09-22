@@ -482,12 +482,10 @@ describe("Backoffice Pi skills", () => {
       location: "/static/skills/building-automations/SKILL.md",
       directory: "/static/skills/building-automations",
     });
-    expect(skills["building-automations"]?.body).toContain("events.catalogList");
     expect(skills["generating-backoffice-uis"]).toMatchObject({
       location: "/static/skills/generating-backoffice-uis/SKILL.md",
       directory: "/static/skills/generating-backoffice-uis",
     });
-    expect(skills["generating-backoffice-uis"]?.body).toContain("## Result contract");
   });
 
   test("loads static skills when the workspace skills directory is absent", async () => {

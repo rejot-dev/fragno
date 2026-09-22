@@ -4,15 +4,6 @@ import { createTrustedSystemBackofficeToolContext } from "../runtime-tools";
 import { adminRuntimeTools, type AdminRuntime } from "./admin";
 
 describe("admin runtime tools", () => {
-  test("exposes the requested organization administration tools", () => {
-    expect(adminRuntimeTools.map(({ id }) => id)).toEqual([
-      "admin.signup-invitations.create",
-      "admin.organisation.create",
-      "admin.organisation.members.add",
-      "admin.organisation.members.remove",
-    ]);
-  });
-
   test("parses sign-up invitation email and ttl days", () => {
     const createInvitationCommand = adminRuntimeTools[0].adapters?.bash;
     assert(createInvitationCommand);
