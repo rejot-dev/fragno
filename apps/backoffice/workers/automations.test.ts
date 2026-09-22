@@ -81,9 +81,8 @@ const config: BackofficeRuntimeConfig = {
   },
 };
 
-const createSourceReader =
-  (execution: BackofficeExecutionContext) =>
-  ({ path }: { path: string }) =>
+function createSourceReader(execution: BackofficeExecutionContext) {
+  return ({ path }: { path: string }) =>
     readBackofficeAutomationSource({
       objects,
       kernel: new BackofficeKernel({
@@ -94,6 +93,7 @@ const createSourceReader =
       config,
       path,
     });
+}
 
 const scopedEvent = (orgId: string): AutomationEvent => ({
   id: `github:issue.opened:${orgId}`,
