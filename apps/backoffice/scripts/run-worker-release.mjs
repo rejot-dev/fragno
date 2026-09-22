@@ -9,16 +9,19 @@ const workerVersionIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:@\d+(?:\.\d+)?%?)?$/i;
 const workerCommands = {
   bootstrap: [
-    ["deploy", "--config", "build/server/wrangler.json"],
+    ["deploy", "--config", "dist/rejot_codemode_compiler/wrangler.json"],
     ["deploy", "--config", "dist/rejot_backoffice/wrangler.json", "--containers-rollout=none"],
+    ["deploy", "--config", "build/server/wrangler.json"],
   ],
   upload: [
-    ["versions", "upload", "--config", "build/server/wrangler.json"],
+    ["versions", "upload", "--config", "dist/rejot_codemode_compiler/wrangler.json"],
     ["versions", "upload", "--config", "dist/rejot_backoffice/wrangler.json"],
+    ["versions", "upload", "--config", "build/server/wrangler.json"],
   ],
   deploy: [
-    ["versions", "deploy", "--config", "wrangler.web.jsonc"],
+    ["versions", "deploy", "--config", "wrangler.compiler.jsonc"],
     ["versions", "deploy", "--config", "wrangler.jsonc"],
+    ["versions", "deploy", "--config", "wrangler.web.jsonc"],
   ],
 };
 

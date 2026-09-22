@@ -47,6 +47,7 @@ overrides:
   zod@^4.0.0: 4.5.4
 
 patchedDependencies:
+  '@cloudflare/worker-bundler@0.2.2': 57e354ce5b0a9fe3b481b3745de50a79f3307c5a9370df5f65443d0967ef9212
   '@earendil-works/pi-ai@0.83.0': 4380048e94c9736daf6ae0322d9005b41b1494f93cf761e6a8fb4463a0283586
 
 importers:
@@ -202,7 +203,7 @@ importers:
         version: 0.12.4
       '@cloudflare/worker-bundler':
         specifier: 0.2.2
-        version: 0.2.2
+        version: 0.2.2(patch_hash=57e354ce5b0a9fe3b481b3745de50a79f3307c5a9370df5f65443d0967ef9212)
       '@earendil-works/pi-agent-core':
         specifier: 'catalog:'
         version: 0.83.0(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.5.4))(ws@8.21.3)(zod@4.5.4)
@@ -341,6 +342,9 @@ importers:
       typebox:
         specifier: 1.1.38
         version: 1.1.38
+      typescript-runtime:
+        specifier: npm:typescript@6.0.3
+        version: typescript@6.0.3
       yaml:
         specifier: 2.9.0
         version: 2.9.0
@@ -20103,7 +20107,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@cloudflare/worker-bundler@0.2.2':
+  '@cloudflare/worker-bundler@0.2.2(patch_hash=57e354ce5b0a9fe3b481b3745de50a79f3307c5a9370df5f65443d0967ef9212)':
     dependencies:
       '@typescript/vfs': 1.6.4(typescript@6.0.3)
       es-module-lexer: 2.3.1

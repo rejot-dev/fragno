@@ -2,7 +2,7 @@ import type { WorkerCompiler } from "./compile-worker";
 import { createWorkerBundle } from "./worker-bundle";
 
 export const compileInMemoryWorker: WorkerCompiler = async (input) => {
-  if (Object.keys(input.dependencies ?? {}).length > 0) {
+  if (Object.keys(input.dependencies).length > 0) {
     throw new Error("In-memory Worker compilation does not support npm dependencies.");
   }
 
