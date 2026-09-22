@@ -43,6 +43,8 @@ const createRuntime = (): BackofficeRuntimeServices => {
     kernelObserver: noopBackofficeKernelObserver,
     fragmentHostOperations: null,
     objectRuntime: null,
+    codemodeEnv: null,
+    workerTypeChecker: null,
     adapters: {} as BackofficeRuntimeServices["adapters"],
     config: {
       authEmailVerification: { enabled: false },

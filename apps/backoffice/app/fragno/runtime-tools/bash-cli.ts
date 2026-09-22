@@ -492,6 +492,7 @@ export const buildCommandHelp = (spec: {
   name: string;
   help: {
     summary: string;
+    usage?: string;
     options: readonly AutomationCommandOptionSpec[];
     examples?: readonly string[];
   };
@@ -503,7 +504,7 @@ export const buildCommandHelp = (spec: {
   outputLines.push("");
   outputLines.push(spec.help.summary);
   outputLines.push("");
-  outputLines.push(`Usage: ${spec.name} [options]`);
+  outputLines.push(`Usage: ${spec.help.usage ?? `${spec.name} [options]`}`);
   outputLines.push("");
   outputLines.push("Options:");
 

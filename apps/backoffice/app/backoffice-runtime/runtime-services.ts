@@ -2,6 +2,8 @@ import type { FragmentDurableObjectHostOperations } from "@fragno-dev/db/dispatc
 
 import type { FragnoRuntime } from "@fragno-dev/core";
 
+import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
+
 import {
   createBackofficeAuthorityResolver,
   type BackofficeAuthorityResolver,
@@ -13,6 +15,8 @@ import {
   type BackofficeDatabaseAdapterFactory,
   type BackofficeDatabaseAdapterScope,
 } from "./database-adapters";
+import type { WorkerCompiler, WorkerTypeChecker } from "./dynamic-workers/compile-worker";
+import { createWorkerTypeCheckerServiceClient } from "./dynamic-workers/compiler-service-client";
 import { noopBackofficeKernelObserver, type BackofficeKernelObserver } from "./kernel";
 import type { BackofficeObjectRegistry } from "./object-registry";
 
@@ -60,6 +64,8 @@ export type BackofficeRuntimeServices = {
     registerRefresh: (refresh: () => Promise<void>) => void;
     clearDurableHooks: () => Promise<void>;
   } | null;
+  codemodeEnv: BackofficeCodemodeEnv | null;
+  workerTypeChecker: WorkerTypeChecker | null;
   fragnoRuntime?: FragnoRuntime;
 };
 
@@ -166,6 +172,10 @@ export const createCloudflareBackofficeRuntimeServices = (
 ): BackofficeRuntimeServices => {
   const adapters = cloudflareDatabaseAdapters();
   const objects = createCloudflareBackofficeObjectRegistry(env);
+  const testCompilerEnv = env as CloudflareEnv & {
+    compileWorker?: WorkerCompiler;
+    typeCheckFiles?: WorkerTypeChecker;
+  };
 
   return {
     objects,
@@ -178,6 +188,13 @@ export const createCloudflareBackofficeRuntimeServices = (
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
     fragmentHostOperations: null,
     objectRuntime: null,
+    codemodeEnv:
+      env.LOADER && (env.CODEMODE_COMPILER || testCompilerEnv.compileWorker)
+        ? (testCompilerEnv as BackofficeCodemodeEnv)
+        : null,
+    workerTypeChecker: env.CODEMODE_COMPILER
+      ? createWorkerTypeCheckerServiceClient(env.CODEMODE_COMPILER)
+      : (testCompilerEnv.typeCheckFiles ?? null),
   };
 };
 
