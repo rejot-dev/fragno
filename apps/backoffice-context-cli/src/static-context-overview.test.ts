@@ -62,7 +62,7 @@ describe("Backoffice static context overview", () => {
       "# Example reference\n\nContinue with [details](details.md).\n",
     );
     await writeFixtureFile(root, "skills/example/details.md", "# Example details\n");
-    await writeFixtureFile(root, "docs/unreferenced.md", "# Unreferenced\n");
+    await writeFixtureFile(root, "notes/unreferenced.md", "# Unreferenced\n");
 
     const output = await createStaticContextOverviewMarkdown(root);
 
@@ -76,7 +76,7 @@ describe("Backoffice static context overview", () => {
       "> **Load when:** Load example context when the user asks for an example.",
     );
     expect(output).toContain("/static/skills/example/details.md — Example details");
-    expect(output).toContain("- `/static/docs/unreferenced.md`");
+    expect(output).toContain("- `/static/notes/unreferenced.md`");
   });
 
   it("writes and checks the generated Markdown file", async () => {

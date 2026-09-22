@@ -1,7 +1,6 @@
 import systemGuidanceTemplate from "../../../content/static/SYSTEM.md?raw";
 import { createStaticFileCollection } from "../../file-collection/create-static-file-collection";
 import type { FileCollection } from "../../file-collection/file-collection";
-import { STATIC_DOC_CONTENT } from "./docs";
 import { GENERAL_SKILL_CONTENT } from "./skills";
 import { STATIC_AUTOMATION_CONTENT } from "./static-automations";
 import { STATIC_CODEMODE_CONTENT } from "./static-codemode";
@@ -11,7 +10,6 @@ export const renderStaticGuidance = ({ codemodeDts }: { codemodeDts: string }) =
 
 export const STATIC_FILE_CONTENT = {
   "SYSTEM.md": systemGuidanceTemplate,
-  ...STATIC_DOC_CONTENT,
   ...STATIC_AUTOMATION_CONTENT,
   ...GENERAL_SKILL_CONTENT,
   ...STATIC_CODEMODE_CONTENT,

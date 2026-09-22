@@ -389,7 +389,7 @@ describe("BackofficeStateBackend", () => {
 
     test("reading the static mount throws EISDIR", async () => {
       const tools = createStateTools(new MemoryUploadObject(), {
-        "docs/readme.md": "hello",
+        "examples/readme.md": "hello",
       });
 
       await expect(tools.readFile?.execute({ path: "/static" })).rejects.toThrow("EISDIR");
@@ -397,9 +397,9 @@ describe("BackofficeStateBackend", () => {
 
     test("reading a static file does not contact Upload", async () => {
       const upload = new MemoryUploadObject();
-      const tools = createStateTools(upload, { "docs/readme.md": "hello" });
+      const tools = createStateTools(upload, { "examples/readme.md": "hello" });
 
-      await expect(tools.readFile?.execute({ path: "/static/docs/readme.md" })).resolves.toBe(
+      await expect(tools.readFile?.execute({ path: "/static/examples/readme.md" })).resolves.toBe(
         "hello",
       );
       expect(upload.requests).toEqual([]);
@@ -1463,7 +1463,7 @@ describe("BackofficeStateBackend", () => {
       ).resolves.toBe("/workspace/projects/config.json");
       await expect(
         tools.resolvePath?.execute({
-          base: "/static/docs",
+          base: "/static/examples",
           path: "../SYSTEM.md",
         }),
       ).resolves.toBe("/static/SYSTEM.md");

@@ -3,7 +3,7 @@
 # Backoffice static agent-context graph
 
 - **Static mount:** `/static/`
-- **Files:** 63
+- **Files:** 48
 - **Entry points:** 1 `SYSTEM.md` + 16 skills
 
 ## How context is loaded
@@ -243,19 +243,4 @@
 ## Not reachable from `SYSTEM.md` or any `SKILL.md`
 
 - `/static/automations/project-files-configure.workflow.js`
-- `/static/docs/automations/README.md`
-- `/static/docs/automations/router.md`
-- `/static/docs/automations/scripts.md`
-- `/static/docs/automations/triggers-and-schedules.md`
-- `/static/docs/events/event-catalog.md`
-- `/static/docs/events/README.md`
-- `/static/docs/file-system.md`
-- `/static/docs/interfaces/api.md`
-- `/static/docs/interfaces/integrations.md`
-- `/static/docs/interfaces/mcp.md`
-- `/static/docs/interfaces/README.md`
-- `/static/docs/marketplace.md`
-- `/static/docs/README.md`
-- `/static/docs/sandboxes.md`
-- `/static/docs/store.md`
 - `/static/terminal/terminal-spec.json`
