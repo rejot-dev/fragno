@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { SessionResizeHandle } from "../session-resize-handle";
+import { VerticalResizeHandle } from "@/components/backoffice/vertical-resize-handle";
 
 const DEFAULT_THREAD_WIDTH = 54;
 const MIN_THREAD_WIDTH = 32;
@@ -126,7 +126,7 @@ export function SessionWorkspaceSplit({
 
       {hasWorkspace ? (
         <>
-          <SessionResizeHandle
+          <VerticalResizeHandle
             label="Resize session workspace"
             min={MIN_THREAD_WIDTH}
             max={100 - MIN_WORKSPACE_WIDTH}
