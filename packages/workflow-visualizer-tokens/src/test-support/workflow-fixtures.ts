@@ -348,32 +348,6 @@ export const WORKFLOW_VISUALIZER_FIXTURES: ReadonlyArray<readonly [path: string,
 `,
     ],
     [
-      "automations/project-files-configure.workflow.js",
-      `defineWorkflow(
-  { name: "project-files-configure" },
-  async (event, step) => {
-    const automationEvent = event.payload.automationEvent;
-
-    if (
-      automationEvent.source !== "automations" ||
-      automationEvent.eventType !== "project.created"
-    ) {
-      return { skipped: true, reason: "not-project-created" };
-    }
-
-    const projectId = automationEvent.subject?.projectId ?? automationEvent.payload.project?.id;
-    if (!projectId) {
-      throw new Error("project.created event is missing subject.projectId.");
-    }
-
-    return await step.do("configure project database filesystem", async () => {
-      return await internal.projectFilesConfigure({ projectId });
-    });
-  },
-);
-`,
-    ],
-    [
       "automations/reson8-transcribe-oga-upload-v2.workflow.js",
       `defineWorkflow({ name: "reson8-transcribe-oga-upload-v2" }, async (_event, step) => {
   await step.do("request OGA upload", async () => ({

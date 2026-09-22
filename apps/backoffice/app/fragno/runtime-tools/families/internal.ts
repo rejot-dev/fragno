@@ -1,15 +1,11 @@
 import { z } from "zod";
 
-import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
-import { FileSystemError } from "@/files/fs-errors";
-import { createMasterFileSystem } from "@/files/master-file-system";
 import {
   seedWorkspaceStarterFiles,
   type WorkspaceStarterFilesSeedOutput,
 } from "@/files/seed-workspace-starter-files";
-import { createSystemFilesContext } from "@/files/system-context";
 import type { StarterAutomationRoutesSeedResult } from "@/fragno/automation";
 import type { DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import {
@@ -30,19 +26,8 @@ import {
 } from "../runtime-tools";
 import type { DurableHooksRuntime } from "./automations-durable-hooks";
 
-export type ProjectDatabaseFileSystemConfigureOutput = {
-  projectId: string;
-  provider: "database";
-  configured: boolean;
-  created: string[];
-  skipped: string[];
-};
-
 export type InternalRuntime = {
   seedWorkspaceStarterFiles(input?: { force?: boolean }): Promise<WorkspaceStarterFilesSeedOutput>;
-  configureProjectDatabaseFileSystem(input: {
-    projectId: string;
-  }): Promise<ProjectDatabaseFileSystemConfigureOutput>;
   seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
   pushStaticMarketplaceEntries(input?: {
     force?: boolean;
@@ -59,14 +44,6 @@ const workspaceStarterFilesSeedOutputSchema = z.object({
   force: z.boolean(),
   created: z.array(z.string()),
   overwritten: z.array(z.string()),
-  skipped: z.array(z.string()),
-});
-
-const projectDatabaseFileSystemConfigureOutputSchema = z.object({
-  projectId: z.string(),
-  provider: z.literal("database"),
-  configured: z.boolean(),
-  created: z.array(z.string()),
   skipped: z.array(z.string()),
 });
 
@@ -126,13 +103,11 @@ export const createInternalRuntime = ({
   objects,
   config: _config,
   orgId,
-  origin = "https://backoffice.local",
   families: _families,
 }: {
   objects: BackofficeObjectRegistry;
   config: BackofficeRuntimeConfig;
   orgId: string;
-  origin?: string;
   families: readonly BackofficeRuntimeToolFamily[];
 }): InternalRuntime => {
   return {
@@ -146,45 +121,6 @@ export const createInternalRuntime = ({
       await objects.automations.forOrg(orgId).commands.seedStarterAutomationRoutes(),
     pushStaticMarketplaceEntries: async (input) =>
       await objects.automations.forOrg(orgId).commands.requestStaticMarketplacePublications(input),
-    configureProjectDatabaseFileSystem: async ({ projectId }) => {
-      const uploadObject = objects.upload.forProject({ orgId, projectId });
-      const config = await uploadObject.commands.setAdminConfig(
-        { provider: "database", defaultProvider: "database" },
-        orgId,
-        origin,
-      );
-      const fs = await createMasterFileSystem(
-        createSystemFilesContext({
-          objects,
-          execution: createBackofficeSystemExecution({ kind: "project", orgId, projectId }),
-          staticFileArtifacts: () => ({}),
-        }),
-      );
-      const created: string[] = [];
-      const skipped: string[] = [];
-      const readmePath = "/workspace/README.md";
-      try {
-        await fs.readFileBuffer(readmePath);
-        skipped.push(readmePath);
-      } catch (error) {
-        if (!(error instanceof FileSystemError) || error.code !== "ENOENT") {
-          throw error;
-        }
-        await fs.writeFile(
-          readmePath,
-          `# Project workspace\n\nThis is the db-backed workspace for project ${projectId}.\n`,
-        );
-        created.push(readmePath);
-      }
-
-      return {
-        projectId,
-        provider: "database",
-        configured: config.providers.database?.configured === true,
-        created,
-        skipped,
-      };
-    },
   };
 };
 
@@ -223,44 +159,6 @@ const filesSeedExecuteTool = defineBackofficeRuntimeTool({
           ? { data: output }
           : {
               stdout: `provider=${output.provider}\nforce=${output.force ? "yes" : "no"}\ncreated=${output.created.length}\noverwritten=${output.overwritten.length}\nskipped=${output.skipped.length}\n`,
-            },
-    },
-  },
-});
-
-const projectFilesConfigureTool = defineBackofficeRuntimeTool({
-  id: "internal.project.files.configure",
-  namespace: "internal",
-  name: "projectFilesConfigure",
-  description: "Configure a project-scoped database-backed workspace filesystem.",
-  reference: {
-    workflow: {
-      description:
-        "Selects the database upload provider and initializes the project workspace README when it is missing.",
-    },
-  },
-  requiredPermissions: ["manage"],
-  inputSchema: z.object({ projectId: z.string().trim().min(1) }),
-  outputSchema: projectDatabaseFileSystemConfigureOutputSchema,
-  execute: async (input, context: InternalToolContext) =>
-    await getRuntime(context).configureProjectDatabaseFileSystem(input),
-  adapters: {
-    bash: {
-      command: "internal.project.files.configure",
-      help: {
-        summary: "internal.project.files.configure configures a db-backed project workspace.",
-        options: [{ name: "projectId", description: "Project id to configure." }],
-        examples: ["internal.project.files.configure --projectId project_123 --format json"],
-      },
-      parse: defineCliArgsParser<{ projectId: string }>("internal.project.files.configure", {
-        projectId: { required: true },
-      }),
-      outputOptions: (_args, parsed) => readOutputOptions(parsed),
-      format: (output, options) =>
-        options.format === "json" || options.print
-          ? { data: output }
-          : {
-              stdout: `projectId=${output.projectId}\nprovider=${output.provider}\nconfigured=${output.configured ? "yes" : "no"}\ncreated=${output.created.length}\nskipped=${output.skipped.length}\n`,
             },
     },
   },
@@ -493,7 +391,6 @@ const hooksGetTool = defineBackofficeRuntimeTool({
 
 const internalRuntimeTools = [
   filesSeedExecuteTool,
-  projectFilesConfigureTool,
   automationRoutesSeedStarterTool,
   marketplacePushTool,
   hooksListTool,

@@ -44,7 +44,6 @@ const EXPECTED_DURABLE_STEPS: Record<string, string[]> = {
   ],
   "automations/pi-default-agent-configure.workflow.js": ["store default pi agent"],
   "automations/telegram-test-command.workflow.js": ["wait 3 seconds", "send delayed test reply"],
-  "automations/project-files-configure.workflow.js": ["configure project database filesystem"],
   "automations/reson8-transcribe-oga-upload-v2.workflow.js": [
     "request OGA upload",
     "receive OGA upload",
@@ -1670,7 +1669,7 @@ describe("workflow token state machine", () => {
         await store.get({ key: "before" });
         event.payload.items.map(() => telegram.sendMessage({ text: "not direct" }));
         await step.do("inner", async () => {
-          await internal.projectFilesConfigure({ projectId: event.payload.projectId });
+          await internal.filesSeedExecute({});
         });
         await pi.runTurn({ prompt: "finish" });
       });
@@ -1680,7 +1679,7 @@ describe("workflow token state machine", () => {
     const inner = stepByLabel(snapshot.graph, "inner");
 
     expect(invocationLabels(outer)).toEqual(["store.get", "event.payload.items.map", "pi.runTurn"]);
-    expect(invocationLabels(inner)).toEqual(["internal.projectFilesConfigure"]);
+    expect(invocationLabels(inner)).toEqual(["internal.filesSeedExecute"]);
     expect(
       outer.analysis.invocations.map((invocation) =>
         source.slice(invocation.source.start.offset, invocation.source.end.offset),
@@ -1705,7 +1704,7 @@ describe("workflow token state machine", () => {
         const internal = event.payload.internal;
         const org = event.payload.org;
         await step.do("boundaries", async () => {
-          await internal.projectFilesConfigure({ projectId: "shadowed" });
+          await internal.filesSeedExecute({});
           await org.internal.filesSeedExecute({});
           const helper = async () => telegram.sendMessage({ text: "nested" });
           return helper;
@@ -1725,7 +1724,7 @@ describe("workflow token state machine", () => {
         const user = context.user(event.payload.userId);
         await step.do("scoped providers", async () => {
           await org.internal.filesSeedExecute({});
-          await project.internal.projectFilesConfigure({ projectId: event.payload.projectId });
+          await project.internal.automationsRoutesSeedStarter({});
           await user.internal.automationsRoutesSeedStarter({});
         });
       });`,
@@ -1733,7 +1732,7 @@ describe("workflow token state machine", () => {
 
     expect(invocationLabels(stepByLabel(snapshot.graph, "scoped providers"))).toEqual([
       "org.internal.filesSeedExecute",
-      "project.internal.projectFilesConfigure",
+      "project.internal.automationsRoutesSeedStarter",
       "user.internal.automationsRoutesSeedStarter",
     ]);
   });
@@ -1743,7 +1742,7 @@ describe("workflow token state machine", () => {
       "automations/partial-invocation.workflow.js",
       `defineWorkflow({ name: "partial-invocation" }, async (event, step) => {
         await step.do("configure", async () => {
-          await internal.projectFilesConfigure({ projectId: event.payload.projectId`,
+          await internal.filesSeedExecute({ force: event.payload.force`,
       { finish: false },
     );
     const step = stepByLabel(snapshot.graph, "configure");
@@ -1752,7 +1751,7 @@ describe("workflow token state machine", () => {
       status: "partial",
       invocations: [
         {
-          callee: { root: "internal", path: ["projectFilesConfigure"] },
+          callee: { root: "internal", path: ["filesSeedExecute"] },
           construction: { status: "partial", phase: "arguments" },
         },
       ],

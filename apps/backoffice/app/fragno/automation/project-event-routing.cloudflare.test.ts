@@ -14,8 +14,6 @@ import {
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import { createMasterFileSystem, createSystemFilesContext } from "@/files";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
-import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
-import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import { createAutomationRuntimeExecution } from "./authority";
@@ -70,26 +68,6 @@ describe("project automation event routing", () => {
       context: {
         execution: createBackofficeSystemExecution({ kind: "org", orgId }),
         propagationContext: null,
-      },
-    });
-    await orgRoutes("POST", "/routes", {
-      body: {
-        id: "system-project-files-configure",
-        name: "Configure project files",
-        enabled: false,
-        trigger: {
-          kind: "event",
-          source: "automations",
-          eventType: "project.created",
-          matcher: null,
-        },
-        priority: 15,
-        action: {
-          kind: "start_workflow",
-          authority: { kind: "organization-automation", grants: [] },
-          workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
-          instanceIdTemplate: "project-files-configure-${event.id}",
-        },
       },
     });
     const createProjectResponse = await orgRoutes("POST", "/projects", {
@@ -223,7 +201,7 @@ describe("project automation event routing", () => {
     );
   });
 
-  test("emits project.created hooks and mounts configured project workspaces by slug", async () => {
+  test("emits project.created hooks and mounts project workspaces by slug", async () => {
     const orgId = "org-1";
     runtime = await createInMemoryBackofficeRuntime({ env: { LOADER: env.LOADER } });
 
@@ -257,21 +235,6 @@ describe("project automation event routing", () => {
           }),
         }),
       ]),
-    );
-
-    const internal = createInternalRuntime({
-      objects: runtime.objects,
-      config: runtime.services.config,
-      orgId,
-      families: runtimeToolFamilies,
-    });
-    await expect(internal.configureProjectDatabaseFileSystem({ projectId })).resolves.toMatchObject(
-      {
-        projectId,
-        provider: "database",
-        configured: true,
-        created: ["/workspace/README.md"],
-      },
     );
 
     const fs = await createMasterFileSystem(

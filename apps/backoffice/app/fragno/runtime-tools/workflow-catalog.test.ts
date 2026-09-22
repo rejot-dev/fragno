@@ -16,20 +16,6 @@ import {
 const internalCatalog = createRuntimeToolWorkflowCatalog([internalToolFamily]);
 
 describe("runtime-tool workflow catalog", () => {
-  it("projects canonical runtime-tool descriptions into serializable metadata", () => {
-    expect(
-      internalCatalog.find((tool) => tool.qualifiedName === "internal.projectFilesConfigure"),
-    ).toEqual({
-      id: "internal.project.files.configure",
-      namespace: "internal",
-      name: "projectFilesConfigure",
-      qualifiedName: "internal.projectFilesConfigure",
-      summary: "Configure a project-scoped database-backed workspace filesystem.",
-      description:
-        "Selects the database upload provider and initializes the project workspace README when it is missing.",
-    });
-  });
-
   it("links direct and supported scoped provider calls to their durable steps", () => {
     const visualization = visualizeWorkflowSource(
       "automations/runtime-tools.workflow.js",
@@ -38,12 +24,12 @@ describe("runtime-tool workflow catalog", () => {
         const project = context.project(event.payload.projectId);
         const user = context.user(event.payload.userId);
         await step.do("configure", async () => {
-          await internal.projectFilesConfigure({ projectId: event.payload.projectId });
+          await internal.filesSeedExecute({});
           await org.internal.filesSeedExecute({});
-          await project.internal.projectFilesConfigure({ projectId: event.payload.projectId });
+          await project.internal.automationsRoutesSeedStarter({});
           await user.internal.automationsRoutesSeedStarter({});
           await context.current.internal.automationsRoutesSeedStarter({});
-          await something.internal.projectFilesConfigure({ projectId: "not-a-runtime-tool" });
+          await something.internal.filesSeedExecute({});
         });
       });`,
     );
@@ -60,9 +46,9 @@ describe("runtime-tool workflow catalog", () => {
         .get(step.id)
         ?.map((call) => ({ qualifiedName: call.tool.qualifiedName, scope: call.scope })),
     ).toEqual([
-      { qualifiedName: "internal.projectFilesConfigure", scope: "current" },
+      { qualifiedName: "internal.filesSeedExecute", scope: "current" },
       { qualifiedName: "internal.filesSeedExecute", scope: "org" },
-      { qualifiedName: "internal.projectFilesConfigure", scope: "project" },
+      { qualifiedName: "internal.automationsRoutesSeedStarter", scope: "project" },
       { qualifiedName: "internal.automationsRoutesSeedStarter", scope: "user" },
       { qualifiedName: "internal.automationsRoutesSeedStarter", scope: "current" },
     ]);

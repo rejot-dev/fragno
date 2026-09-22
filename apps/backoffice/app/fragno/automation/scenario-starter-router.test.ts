@@ -411,10 +411,10 @@ describe("starter automation router scenarios", () => {
     );
   });
 
-  test("scenario router helpers inspect core and Marketplace channel routes", async () => {
+  test("scenario router helpers inspect Marketplace channel routes", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: "scenario router helpers inspect core and Marketplace channel routes",
+        name: "scenario router helpers inspect Marketplace channel routes",
 
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
@@ -425,17 +425,6 @@ describe("starter automation router scenarios", () => {
           then.router.routes({
             orgId: "org-1",
             include: [
-              {
-                id: "system-project-files-configure",
-                action: {
-                  kind: "start_workflow",
-                  authority: {
-                    kind: "organization-automation",
-                    grants: [BACKOFFICE_PERMISSION.internal.manage],
-                  },
-                  workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
-                },
-              },
               {
                 id: "telegram-identity-claim-completed",
                 action: {
@@ -456,24 +445,18 @@ describe("starter automation router scenarios", () => {
             priority: 120,
             trigger: { kind: "event" },
           }),
-          then.assert(
-            "assert core and channel routes are visible through TanStack DB",
-            async (ctx) => {
-              const database = ctx.tanstack.automations.forOrg("org-1");
-              await database.drain();
-              const routes = await queryOnce((query) =>
-                query.from({ route: database.collections.routes }),
-              );
-              const expectedIds = [
-                "system-project-files-configure",
-                "telegram-identity-claim-completed",
-              ];
-              const missing = expectedIds.filter(
-                (expectedId) => !routes.some((route) => route.id === expectedId),
-              );
-              assert.equal(missing.length, 0);
-            },
-          ),
+          then.assert("assert channel routes are visible through TanStack DB", async (ctx) => {
+            const database = ctx.tanstack.automations.forOrg("org-1");
+            await database.drain();
+            const routes = await queryOnce((query) =>
+              query.from({ route: database.collections.routes }),
+            );
+            const expectedIds = ["telegram-identity-claim-completed"];
+            const missing = expectedIds.filter(
+              (expectedId) => !routes.some((route) => route.id === expectedId),
+            );
+            assert.equal(missing.length, 0);
+          }),
           then.router.missing({ orgId: "org-1", id: "no-such-route" }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],

@@ -2,8 +2,6 @@ import { assert, describe, test } from "vitest";
 
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { ORGANIZATION_STARTER_AUTOMATION_ROUTES } from "@/fragno/automation/content/starter-routing";
-
 import { resolveFilesContentRenderer, type FilesContentPreview } from "./content-renderers";
 
 describe("files content rendering", () => {
@@ -26,35 +24,6 @@ describe("files content rendering", () => {
     assert(markup.includes('aria-label="Workflow graph"'));
     assert(markup.includes("daily-digest"));
     assert(markup.includes("Send digest"));
-  });
-
-  test("renders the configured project-created start route", () => {
-    const workflowPath = "/static/automations/project-files-configure.workflow.js";
-    const route = ORGANIZATION_STARTER_AUTOMATION_ROUTES.find(
-      (candidate) =>
-        candidate.action.kind === "start_workflow" &&
-        candidate.action.workflowScriptPath === workflowPath,
-    );
-    assert(route);
-    const preview: FilesContentPreview = {
-      title: "project-files-configure.workflow.js",
-      contentType: "text/javascript",
-      metadata: null,
-      textContent:
-        'defineWorkflow({ name: "project-files-configure" }, async (_event, step) => {});',
-      workflowRouting: {
-        status: "ready",
-        routes: [{ ...route, nextOccurrenceAt: null }],
-      },
-    };
-
-    const renderer = resolveFilesContentRenderer(preview);
-    assert(renderer);
-    const markup = renderToStaticMarkup(renderer.render(preview));
-
-    assert(markup.includes("Runs on"));
-    assert(markup.includes("automations / project.created"));
-    assert(markup.includes("Configure project files"));
   });
 
   test("renders multiple schedule routes with enabled state and next occurrence", () => {
