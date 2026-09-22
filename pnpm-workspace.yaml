@@ -14,6 +14,7 @@ catalog:
   "@earendil-works/pi-tui": 0.83.0
   "@types/react": ^19.2.14
   "@types/react-dom": ^19.2.3
+  js-tokens: 10.0.0
   react: ^19.2.7
   react-dom: ^19.2.7
   typescript: npm:@typescript/typescript6@^6.0.2
@@ -55,4 +56,5 @@ minimumReleaseAgeExclude:
   - pi-mcp-adapter@2.29.0
 
 patchedDependencies:
+  "@cloudflare/worker-bundler@0.2.2": patches/@cloudflare__worker-bundler@0.2.2.patch
   "@earendil-works/pi-ai@0.83.0": patches/@earendil-works__pi-ai-0.83.0.patch

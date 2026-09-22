@@ -65,7 +65,11 @@ function emitWorkerLocalDevVarsPlugin(): Plugin {
       }
 
       const environmentName = this.environment.name;
-      if (environmentName !== "ssr" && environmentName !== "rejot_backoffice") {
+      if (
+        environmentName !== "ssr" &&
+        environmentName !== "rejot_backoffice" &&
+        environmentName !== "rejot_codemode_compiler"
+      ) {
         return;
       }
 
@@ -74,7 +78,9 @@ function emitWorkerLocalDevVarsPlugin(): Plugin {
       const emittedDevVars =
         environmentName === "ssr"
           ? selectLocalDevVars(localDevVars, webWorkerLocalDevVarNames)
-          : localDevVars;
+          : environmentName === "rejot_backoffice"
+            ? localDevVars
+            : "";
       const devVarsAsset = bundle[".dev.vars"];
       if (devVarsAsset?.type === "asset") {
         devVarsAsset.source = emittedDevVars;
@@ -103,7 +109,10 @@ export default defineConfig(({ command }) => {
     plugins: [
       cloudflare({
         configPath: "./wrangler.web.jsonc",
-        auxiliaryWorkers: [{ configPath: "./wrangler.jsonc" }],
+        auxiliaryWorkers: [
+          { configPath: "./wrangler.compiler.jsonc" },
+          { configPath: "./wrangler.jsonc" },
+        ],
         viteEnvironment: {
           name: "ssr",
         },

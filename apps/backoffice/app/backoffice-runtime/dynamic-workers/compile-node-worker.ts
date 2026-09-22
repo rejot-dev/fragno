@@ -3,7 +3,7 @@ import { createWorkerBundle } from "./worker-bundle";
 
 /** Compiles the single bundled JavaScript module accepted by Node's Deno codemode runtime. */
 export const compileNodeWorker: WorkerCompiler = async (input) => {
-  if (Object.keys(input.dependencies ?? {}).length > 0) {
+  if (Object.keys(input.dependencies).length > 0) {
     throw new Error("Node codemode compilation does not support npm dependencies.");
   }
 

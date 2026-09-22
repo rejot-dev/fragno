@@ -1,27 +1,12 @@
-import {
-  InMemoryFileSystem,
-  createWorker,
-  installDependencies,
-  type Modules,
-} from "@cloudflare/worker-bundler";
-
-import { createWorkerBundle, type WorkerBundle } from "./worker-bundle";
-
-const COMPILER_OWNED_PATHS = new Set([
-  "package.json",
-  "wrangler.json",
-  "wrangler.jsonc",
-  "wrangler.toml",
-]);
-const WORKER_PACKAGE_EXPORT_CONDITIONS = ["workerd", "worker", "browser"];
+import type { WorkerBundle } from "./worker-bundle";
 
 export type CompileWorkerInput = {
   files: Readonly<Record<string, string>>;
   entryPoint: string;
-  dependencies?: Readonly<Record<string, string>>;
+  dependencies: Readonly<Record<string, string>>;
   runtime: {
     compatibilityDate: string;
-    compatibilityFlags?: readonly string[];
+    compatibilityFlags: readonly string[];
   };
 };
 
@@ -30,13 +15,42 @@ export type CompiledWorker = {
   warnings: string[];
 };
 
-export type WorkerCompiler = (input: CompileWorkerInput) => Promise<CompiledWorker>;
+/** Lazily reads one project file when the compiler request stream needs it. */
+export type TypeCheckFileSource = {
+  path: string;
+  read: () => Promise<string>;
+};
+
+export type TypeCheckFilesInput = {
+  files: readonly TypeCheckFileSource[];
+  sourcePaths: readonly string[];
+};
+
+/** Complete project stream consumed once inside the compiler Worker. */
+export type TypeCheckProjectInput = {
+  files: AsyncIterable<readonly [path: string, content: string]>;
+  sourcePaths: readonly string[];
+};
+
+export type TypeCheckDiagnostic = {
+  code: number;
+  path: string | null;
+  line: number | null;
+  column: number | null;
+  message: string;
+};
+
+export type TypeCheckFilesResult = {
+  diagnostics: TypeCheckDiagnostic[];
+};
 
 export type WorkerCompilationErrorCode =
   | "INVALID_INPUT"
   | "DEPENDENCY_INSTALL_FAILED"
-  | "UNSUPPORTED_MODULE";
+  | "UNSUPPORTED_MODULE"
+  | "INTERNAL_ERROR";
 
+/** Failure returned by the stateless codemode compiler service. */
 export class WorkerCompilationError extends Error {
   readonly code: WorkerCompilationErrorCode;
 
@@ -47,103 +61,14 @@ export class WorkerCompilationError extends Error {
   }
 }
 
-const validateCompileWorkerInput = (input: CompileWorkerInput) => {
-  const entryPoint = input.entryPoint.trim();
-  if (!entryPoint) {
-    throw new WorkerCompilationError(
-      "INVALID_INPUT",
-      "Worker compilation requires an entry point.",
-    );
-  }
-  if (!(entryPoint in input.files)) {
-    throw new WorkerCompilationError(
-      "INVALID_INPUT",
-      `Worker entry point '${entryPoint}' is missing from the source files.`,
-    );
-  }
+/** Compiles source files into a Worker bundle without owning where compilation executes. */
+export type WorkerCompiler = (input: CompileWorkerInput) => Promise<CompiledWorker>;
 
-  for (const path of Object.keys(input.files)) {
-    if (COMPILER_OWNED_PATHS.has(path) || path.startsWith("node_modules/")) {
-      throw new WorkerCompilationError(
-        "INVALID_INPUT",
-        `Worker source path '${path}' is owned by the compiler.`,
-      );
-    }
-  }
+/** Type checks JavaScript source by streaming an explicit project into the compiler Worker. */
+export type WorkerTypeChecker = (input: TypeCheckFilesInput) => Promise<TypeCheckFilesResult>;
 
-  for (const [packageName, versionRange] of Object.entries(input.dependencies ?? {})) {
-    if (
-      !packageName.trim() ||
-      packageName !== packageName.trim() ||
-      !versionRange.trim() ||
-      versionRange !== versionRange.trim()
-    ) {
-      throw new WorkerCompilationError(
-        "INVALID_INPUT",
-        "Worker dependencies require non-empty, trimmed package names and version ranges.",
-      );
-    }
-  }
-
-  return entryPoint;
-};
-
-const readEsModuleSources = (modules: Modules) => {
-  const moduleSources: Record<string, string> = {};
-
-  for (const [moduleName, module] of Object.entries(modules)) {
-    if (typeof module !== "string") {
-      throw new WorkerCompilationError(
-        "UNSUPPORTED_MODULE",
-        `Worker bundler emitted non-ES module '${moduleName}'.`,
-      );
-    }
-    moduleSources[moduleName] = module;
-  }
-
-  return moduleSources;
-};
-
-export const compileWorker: WorkerCompiler = async (input) => {
-  const entryPoint = validateCompileWorkerInput(input);
-  const compatibilityFlags = [...new Set(input.runtime.compatibilityFlags ?? [])];
-  const fileSystem = new InMemoryFileSystem({
-    ...input.files,
-    "package.json": JSON.stringify({ private: true, dependencies: input.dependencies ?? {} }),
-    "wrangler.json": JSON.stringify({
-      main: entryPoint,
-      compatibility_date: input.runtime.compatibilityDate,
-      compatibility_flags: compatibilityFlags,
-    }),
-  });
-
-  // Installing explicitly lets dependency failures surface before bundling.
-  // createWorker reuses the populated node_modules tree instead of fetching it again.
-  const installation = await installDependencies(fileSystem);
-  if (installation.warnings.length > 0) {
-    throw new WorkerCompilationError(
-      "DEPENDENCY_INSTALL_FAILED",
-      `Failed to install Worker dependencies: ${installation.warnings.join("; ")}`,
-    );
-  }
-
-  const build = await createWorker({
-    files: fileSystem,
-    entryPoint,
-    bundle: true,
-    target: "es2022",
-    conditions: WORKER_PACKAGE_EXPORT_CONDITIONS,
-  });
-
-  return {
-    bundle: createWorkerBundle({
-      mainModule: build.mainModule,
-      modules: readEsModuleSources(build.modules),
-      runtime: {
-        compatibilityDate: input.runtime.compatibilityDate,
-        compatibilityFlags,
-      },
-    }),
-    warnings: build.warnings ?? [],
-  };
+/** Private streaming RPC API implemented by the independently deployed compiler Worker. */
+export type WorkerCompilerService = {
+  compileWorker(request: Request): Promise<Response>;
+  typeCheckFiles(request: Request): Promise<Response>;
 };

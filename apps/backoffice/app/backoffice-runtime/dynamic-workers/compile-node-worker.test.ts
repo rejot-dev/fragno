@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { compileNodeWorker } from "./compile-node-worker";
 
-const runtime = { compatibilityDate: "2026-06-11" };
+const runtime = { compatibilityDate: "2026-06-11", compatibilityFlags: [] };
 
 describe("compileNodeWorker", () => {
   test("creates a bundle from one JavaScript entry point", async () => {
@@ -10,6 +10,7 @@ describe("compileNodeWorker", () => {
       compileNodeWorker({
         files: { "worker.js": "export default {};" },
         entryPoint: "worker.js",
+        dependencies: {},
         runtime,
       }),
     ).resolves.toMatchObject({
@@ -38,6 +39,7 @@ describe("compileNodeWorker", () => {
           "helper.js": "export {};",
         },
         entryPoint: "worker.js",
+        dependencies: {},
         runtime,
       }),
     ).rejects.toThrow("requires one JavaScript entry point");

@@ -1,8 +1,8 @@
-import {
-  compileWorker,
-  type CompiledWorker,
-  type WorkerCompiler,
+import type {
+  CompiledWorker,
+  WorkerCompiler,
 } from "@/backoffice-runtime/dynamic-workers/compile-worker";
+import { createWorkerCompilerServiceClient } from "@/backoffice-runtime/dynamic-workers/compiler-service-client";
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 import { createMcpCodemodeProviders } from "@/fragno/codemode/mcp-codemode-tools";
 import {
@@ -34,6 +34,7 @@ export type BackofficeCodemodeEnv = {
    * sandbox sealed.
    */
   OUTBOUND?: Fetcher;
+  CODEMODE_COMPILER?: Fetcher;
   compileWorker?: WorkerCompiler;
 };
 
@@ -215,6 +216,17 @@ export const createBackofficeCodemodeResolvedProviders = async ({
   return providers;
 };
 
+/** Resolves the in-process test compiler or private production compiler service. */
+export function resolveBackofficeWorkerCompiler(env: BackofficeCodemodeEnv): WorkerCompiler {
+  if (env.compileWorker) {
+    return env.compileWorker;
+  }
+  if (env.CODEMODE_COMPILER) {
+    return createWorkerCompilerServiceClient(env.CODEMODE_COMPILER);
+  }
+  throw new Error("Backoffice codemode compiler service is not configured.");
+}
+
 export const runBackofficeCodemode = async ({
   code,
   dependencies,
@@ -240,18 +252,16 @@ export const runBackofficeCodemode = async ({
     toolCalls,
   });
 
-  const compile = env.compileWorker ?? compileWorker;
+  const executableCode = normalizeBackofficeCodemodeCode(code);
   let compiled: CompiledWorker;
   try {
+    const compile = resolveBackofficeWorkerCompiler(env);
     compiled = await compile({
       files: {
-        "executor.js": executor.createExecutorModule(
-          normalizeBackofficeCodemodeCode(code),
-          providers,
-        ),
+        "executor.js": executor.createExecutorModule(executableCode, providers),
       },
       entryPoint: "executor.js",
-      dependencies,
+      dependencies: dependencies ?? {},
       runtime: {
         compatibilityDate: "2026-05-07",
         compatibilityFlags: ["nodejs_compat"],

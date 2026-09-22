@@ -1,0 +1,19 @@
+diff --git a/dist/typescript.d.ts b/dist/typescript.d.ts
+index 7b492f1b7317747e90ef691c2d6bd467d617ef1c..82aa27292e11197d54f82a6441507dbc456744cc 100644
+--- a/dist/typescript.d.ts
++++ b/dist/typescript.d.ts
+@@ -7,0 +8 @@ type CreateTypeCheckerOptions = {
++  libraryFiles?: Readonly<Record<string, string>>;
+diff --git a/dist/typescript.js b/dist/typescript.js
+index cd514eb148f1681abff28c181e2868dcb99d732c..79abf5a9357c2c889990fb39427680c98da38cfc 100644
+--- a/dist/typescript.js
++++ b/dist/typescript.js
+@@ -114456 +114456 @@ async function createTypescriptLanguageService(options) {
+-	const typescriptEnv = createVirtualTypeScriptEnvironment(await createSystem(options.fileSystem, compilerOptions), keys, typescript_browser_default, compilerOptions);
++	const typescriptEnv = createVirtualTypeScriptEnvironment(await createSystem(options.fileSystem, compilerOptions, options.libraryFiles), keys, typescript_browser_default, compilerOptions);
+@@ -114512 +114512 @@ function parseTsConfig(fileSystem) {
+-async function createSystem(fileSystem, compileOptions) {
++async function createSystem(fileSystem, compileOptions, configuredLibraryFiles) {
+@@ -114514 +114514 @@ async function createSystem(fileSystem, compileOptions) {
+-	const libraryFiles = await createDefaultTypeScriptLibMap();
++	const libraryFiles = configuredLibraryFiles === void 0 ? await createDefaultTypeScriptLibMap() : new Map(Object.entries(configuredLibraryFiles));
