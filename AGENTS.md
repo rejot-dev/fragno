@@ -31,6 +31,7 @@ the optional API for our users. We're dogfooding everything in `apps/backoffice`
   local behavior local.
 - No barrel files.
 - Top-level functions are defined with the `function` keyword. A file should have as few exports as possible. Prefer not testing over exporting.
+- NO tautological tests
 
 Establish trust at boundaries: validate untrusted data, cast authoritative data, and keep
 uninterpreted data opaque. Strengthen the source instead of compensating in every consumer.
