@@ -12,11 +12,6 @@ import { automationEventRoutes } from "./event-routes";
 import { automationProjectRoutes } from "./project-routes";
 import type { AutomationProjectExecutionTarget } from "./projects";
 import { automationRouteRoutes } from "./route-routes";
-import type {
-  SandboxInstanceRecord,
-  SandboxInstanceRequestInput,
-  SandboxProvider,
-} from "./sandboxes";
 import { automationStoreRoutes } from "./store-routes";
 
 type AutomationFragmentServices = {
@@ -68,14 +63,7 @@ export type {
 } from "./event-definitions";
 export type { AutomationRouteDefinition, StarterAutomationRoutesSeedResult } from "./routing";
 
-export { CLOUDFLARE_SANDBOX_PROVIDER } from "./sandboxes";
-export type {
-  AutomationIngestResult,
-  AutomationProjectExecutionTarget,
-  SandboxInstanceRecord,
-  SandboxInstanceRequestInput,
-  SandboxProvider,
-};
+export type { AutomationIngestResult, AutomationProjectExecutionTarget };
 export type { AutomationEvent, AutomationEventSubject } from "./contracts";
 
 export type { AutomationRuntimeHostContext, AutomationRuntime } from "./engine/runtime";

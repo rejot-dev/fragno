@@ -45,8 +45,6 @@ import {
   setAutomationRouteMutationActors,
 } from "./route-routes";
 import type { AutomationRouteAction } from "./routing";
-import { defineSandboxLifecycleWorkflow } from "./sandbox-lifecycle-workflow";
-import { SANDBOX_LIFECYCLE_WORKFLOW_NAME } from "./sandboxes-storage-runtime";
 import {
   parseWorkflowCompletionTarget,
   workflowCompletedEventType,
@@ -132,7 +130,7 @@ export const createAutomationsRuntime = (
   runtime: BackofficeFragmentRuntimeOptions,
   config: Pick<
     AutomationFragmentConfig,
-    "env" | "runtime" | "readAutomationSource" | "ownerScope" | "sandboxProviders"
+    "env" | "runtime" | "readAutomationSource" | "ownerScope"
   > & {
     kernel: BackofficeKernel;
     pi: Omit<CreatePiRuntimeDefinitionOptions, "scope" | "kernel" | "runtimeToolContext"> & {
@@ -206,28 +204,10 @@ export const createAutomationsRuntime = (
           getAutomationFragment: () => automationFragment,
           getWorkflowsFragment: (): AutomationsRuntime["workflowsFragment"] => workflowsFragment,
         }),
-        SANDBOX_LIFECYCLE: defineSandboxLifecycleWorkflow({
-          ownerScope: config.ownerScope,
-          sandboxProviders: config.sandboxProviders,
-          getAutomationFragment: () => automationFragment,
-        }),
         ...pi.workflows,
       },
       runtime: config.runtime?.fragnoRuntime ?? defaultFragnoRuntime,
       onWorkflowTerminal: async function notifyWorkflowOwnerOfTerminalInstance(payload) {
-        if (payload.workflowName === SANDBOX_LIFECYCLE_WORKFLOW_NAME) {
-          if (!automationFragment) {
-            throw new Error("Sandbox lifecycle terminal hook requires the automations fragment.");
-          }
-
-          const fragment = automationFragment;
-          await fragment.callServices(() =>
-            fragment.services.stopSandboxInstanceForTerminalWorkflow({
-              workflowInstanceId: payload.instanceId,
-            }),
-          );
-        }
-
         const completionTarget = parseWorkflowCompletionTarget(payload.params);
         if (!completionTarget) {
           return;
@@ -586,7 +566,6 @@ export const createAutomationsRuntime = (
       }),
       readAutomationSource: config.readAutomationSource,
       ownerScope: config.ownerScope,
-      sandboxProviders: config.sandboxProviders,
     },
     {
       databaseAdapter,

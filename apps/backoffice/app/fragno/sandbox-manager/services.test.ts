@@ -6,10 +6,10 @@ import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { InMemoryAdapter } from "@fragno-dev/db";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
-import { createAutomationFragment } from "./index";
-import { CLOUDFLARE_SANDBOX_PROVIDER, sandboxInstanceSchema } from "./sandboxes";
+import { CLOUDFLARE_SANDBOX_PROVIDER, sandboxInstanceSchema } from "./contracts";
+import { createSandboxManagerFragment } from "./sandbox-manager-fragment";
 
-const createAutomation = (idSeed: string) => {
+function createSandboxManager(idSeed: string) {
   const databaseAdapter = new InMemoryAdapter({ idSeed });
   const workflows = createWorkflowsFragment(
     {
@@ -25,23 +25,23 @@ const createAutomation = (idSeed: string) => {
     },
   );
 
-  const automation = createAutomationFragment(
+  const sandboxManager = createSandboxManagerFragment(
     {
-      builtInEventDefinitions: [],
-      ownerScope: { kind: "org", orgId: "org_123" },
+      sandboxProviders: {},
+      deliverLifecycleEvent: async () => undefined,
     },
     {
       databaseAdapter,
       dbRoundtripGuard: true,
-      mountRoute: "/api/automations",
+      mountRoute: "/api/sandbox-manager",
     },
     { workflows: workflows.services },
   );
 
-  return { automation, workflows };
-};
+  return { sandboxManager, workflows };
+}
 
-describe("automation sandbox instance services", () => {
+describe("sandbox manager instance services", () => {
   test("rejects invalid persisted sandbox timestamps", () => {
     expect(() =>
       sandboxInstanceSchema.parse({
@@ -64,7 +64,7 @@ describe("automation sandbox instance services", () => {
   });
 
   test("requests, lists, gets, and updates sandbox lifecycle status", async () => {
-    const { automation: fragment } = createAutomation("automation-sandbox-services-test");
+    const { sandboxManager: fragment } = createSandboxManager("sandbox-manager-services-test");
 
     const created = await fragment.callServices(() =>
       fragment.services.requestSandboxInstance({
@@ -131,47 +131,5 @@ describe("automation sandbox instance services", () => {
       provider: CLOUDFLARE_SANDBOX_PROVIDER,
       status: "starting",
     });
-  });
-
-  test("records sandbox lifecycle events in the automation event list", async () => {
-    const { automation: fragment } = createAutomation("automation-sandbox-events-test");
-
-    await fragment.callServices(() =>
-      fragment.services.requestSandboxInstance({
-        id: "org_123::dev",
-        provider: CLOUDFLARE_SANDBOX_PROVIDER,
-        sleepAfter: "15m",
-      }),
-    );
-
-    await fragment.callServices(() =>
-      fragment.services.markSandboxInstanceRunning({
-        id: "org_123::dev",
-        provider: CLOUDFLARE_SANDBOX_PROVIDER,
-        keepAlive: false,
-        sleepAfter: "15m",
-      }),
-    );
-
-    const eventPage = await fragment.callServices(() =>
-      fragment.services.listEvents({ limit: 10 }),
-    );
-
-    expect(eventPage.events).toEqual([
-      expect.objectContaining({
-        scope: { kind: "org", orgId: "org_123" },
-        source: "sandbox",
-        eventType: "instance.ready",
-        payload: expect.objectContaining({
-          sandboxId: "org_123::dev",
-          provider: CLOUDFLARE_SANDBOX_PROVIDER,
-          status: "running",
-        }),
-        subject: expect.objectContaining({
-          orgId: "org_123",
-          sandboxId: "org_123::dev",
-        }),
-      }),
-    ]);
   });
 });

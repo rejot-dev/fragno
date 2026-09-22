@@ -46,9 +46,6 @@ import type {
   MarketplaceIngestionRequestInput,
   MarketplaceIngestionRequestResult,
   MarketplaceIngestionRestartResult,
-  SandboxInstanceRecord,
-  SandboxInstanceRequestInput,
-  SandboxProvider,
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
@@ -103,8 +100,6 @@ import {
 import { PI_SUPPORTED_MODELS, type PiApiKeys, type PiRuntimeState } from "@/fragno/pi/pi-shared";
 import type { PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
-import { createCloudflareSandboxProvider } from "@/sandbox/cloudflare-sandbox-provider";
-import { CLOUDFLARE_SANDBOX_PROVIDER } from "@/sandbox/contracts";
 
 import {
   createBackofficeFragmentDurableObject,
@@ -318,19 +313,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
             env: this.#env,
             runtime: this.#runtimeServices,
             ownerScope: config.scope,
-            sandboxProviders: this.#env?.SANDBOX
-              ? {
-                  [CLOUDFLARE_SANDBOX_PROVIDER]: createCloudflareSandboxProvider({
-                    sandboxNamespace: this.#env.SANDBOX,
-                    sdk: {
-                      async getSandbox(namespace, id, options) {
-                        const { getSandbox } = await import("@cloudflare/sandbox");
-                        return getSandbox(namespace, id, options);
-                      },
-                    },
-                  }),
-                }
-              : undefined,
             kernel: this.#kernel,
             pi: this.#createPiRuntimeOptions(config.scope),
             readAutomationSource: automationSourceReader,
@@ -1122,71 +1104,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     );
   }
 
-  async listSandboxInstances(input?: {
-    provider?: SandboxProvider;
-    limit?: number;
-  }): Promise<SandboxInstanceRecord[]> {
-    await this.#ensureConfigured({ scope: this.#requireScope() });
-    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
-
-    return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.listSandboxInstances(input),
-    );
-  }
-
-  async getSandboxInstance(input: { id: string }): Promise<SandboxInstanceRecord | null> {
-    await this.#ensureConfigured({ scope: this.#requireScope() });
-    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
-
-    return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.getSandboxInstance(input),
-    );
-  }
-
-  async requestSandboxInstance(input: SandboxInstanceRequestInput): Promise<SandboxInstanceRecord> {
-    await this.#ensureConfigured({ scope: this.#requireScope() });
-    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
-    const existing = await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.getSandboxInstance({ id: input.id }),
-    );
-    if (
-      existing &&
-      (existing.status === "requested" ||
-        existing.status === "starting" ||
-        existing.status === "running" ||
-        existing.status === "stopping")
-    ) {
-      return existing;
-    }
-
-    return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.requestSandboxInstance(input),
-    );
-  }
-
-  async requestSandboxInstanceStop(input: { id: string }): Promise<SandboxInstanceRecord | null> {
-    await this.#ensureConfigured({ scope: this.#requireScope() });
-    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
-    const instance = await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.getSandboxInstance({ id: input.id }),
-    );
-    const workflowInstanceId = instance?.workflowInstanceId;
-    if (!workflowInstanceId) {
-      return instance;
-    }
-
-    return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.requestSandboxInstanceStop({
-        id: input.id,
-        workflowInstanceId,
-      }),
-    );
-  }
-
-  async alarm() {
-    await this.#host.alarm();
-  }
-
   async getPiRuntimeState(): Promise<PiRuntimeState> {
     await this.#ensureConfigured({ scope: this.#requireScope() });
     return buildPiRuntimeState(this.#env);
@@ -1245,6 +1162,10 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       }
       throw error;
     }
+  }
+
+  async alarm() {
+    await this.#host.alarm();
   }
 }
 
@@ -1353,22 +1274,6 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async resolveProjectForExecution(input: { projectId?: string; slug?: string }) {
     return await this.#object.resolveProjectForExecution(input);
-  }
-
-  async listSandboxInstances(input?: { provider?: SandboxProvider; limit?: number }) {
-    return await this.#object.listSandboxInstances(input);
-  }
-
-  async getSandboxInstance(input: { id: string }) {
-    return await this.#object.getSandboxInstance(input);
-  }
-
-  async requestSandboxInstance(input: SandboxInstanceRequestInput) {
-    return await this.#object.requestSandboxInstance(input);
-  }
-
-  async requestSandboxInstanceStop(input: { id: string }) {
-    return await this.#object.requestSandboxInstanceStop(input);
   }
 
   async getPiRuntimeState(): Promise<PiRuntimeState> {

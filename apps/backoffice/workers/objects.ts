@@ -14,6 +14,7 @@ import { Otp } from "./otp.do";
 import { OutboundProxy } from "./outbound-proxy";
 import { Resend } from "./resend.do";
 import { Reson8 } from "./reson8.do";
+import { SandboxManager } from "./sandbox-manager.do";
 import { Sandbox } from "./sandbox.do";
 import { Telegram } from "./telegram.do";
 import { Upload } from "./upload.do";
@@ -43,6 +44,7 @@ export {
   Resend,
   Reson8,
   Sandbox,
+  SandboxManager,
   Telegram,
   Upload,
 };

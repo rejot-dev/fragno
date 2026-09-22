@@ -1,13 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
 
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
-import { CLOUDFLARE_SANDBOX_PROVIDER } from "@/fragno/automation";
+import { CLOUDFLARE_SANDBOX_PROVIDER } from "@/fragno/sandbox-manager/contracts";
 
 import { createSandboxRouteRuntime } from "./sandbox-route-runtime";
 
 describe("createSandboxRouteRuntime", () => {
-  test("requests sandbox lifecycle startup through org-scoped Automations", async () => {
-    const automations = {
+  test("requests sandbox lifecycle startup through org-scoped sandbox manager", async () => {
+    const sandboxManager = {
       listSandboxInstances: vi.fn(async () => []),
       getSandboxInstance: vi.fn(async () => null),
       requestSandboxInstance: vi.fn(async ({ id, provider }) => ({
@@ -27,17 +27,16 @@ describe("createSandboxRouteRuntime", () => {
         updatedAt: new Date(),
       })),
       requestSandboxInstanceStop: vi.fn(async () => null),
-    };
-    const sandbox = {
-      configure: vi.fn(async () => undefined),
-      exec: vi.fn(async () => ({ success: true, stdout: "", stderr: "", exitCode: 0 })),
-      destroy: vi.fn(async () => undefined),
-      getRuntimeStatus: vi.fn(async () => ({ status: "running" as const })),
+      executeSandboxCommand: vi.fn(async () => ({
+        ok: true as const,
+        stdout: "sandbox-ok\n",
+        stderr: "",
+        exitCode: 0,
+      })),
     };
     const runtime = createSandboxRouteRuntime({
       objects: {
-        automations: { forOrg: vi.fn(() => ({ commands: automations })) },
-        sandbox: { forName: vi.fn(() => ({ commands: sandbox })) },
+        sandboxManager: { forOrg: vi.fn(() => ({ commands: sandboxManager })) },
       } as unknown as BackofficeObjectRegistry,
       orgId: " org-1 ",
     });
@@ -45,16 +44,27 @@ describe("createSandboxRouteRuntime", () => {
     await expect(
       runtime.startSandbox({ id: "Dev", keepAlive: true, sleepAfter: "15m" }),
     ).resolves.toEqual({ id: "dev", status: "requested" });
-    expect(sandbox.configure).not.toHaveBeenCalled();
-    expect(sandbox.exec).not.toHaveBeenCalled();
-    expect(automations.requestSandboxInstance).toHaveBeenCalledWith({
-      id: "org-1::dev",
+    expect(sandboxManager.requestSandboxInstance).toHaveBeenCalledWith({
+      id: "dev",
       provider: CLOUDFLARE_SANDBOX_PROVIDER,
       keepAlive: true,
       sleepAfter: "15m",
       startupCommand: "true",
       startupTimeoutMs: undefined,
-      ownerScope: { kind: "org", orgId: "org-1" },
+    });
+
+    await expect(
+      runtime.executeCommand({ sandboxId: "Dev", command: "echo sandbox-ok" }),
+    ).resolves.toEqual({
+      ok: true,
+      stdout: "sandbox-ok\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    expect(sandboxManager.executeSandboxCommand).toHaveBeenCalledWith({
+      sandboxId: "dev",
+      command: "echo sandbox-ok",
+      timeoutMs: undefined,
     });
   });
 });

@@ -148,6 +148,10 @@
         "class_name": "Sandbox",
       },
       {
+        "name": "SANDBOX_MANAGER",
+        "class_name": "SandboxManager",
+      },
+      {
         "name": "GITHUB",
         "class_name": "GitHub",
       },
@@ -191,6 +195,7 @@
     "Otp": { "type": "durable-object", "storage": "sqlite" },
     "Upload": { "type": "durable-object", "storage": "sqlite" },
     "Sandbox": { "type": "durable-object", "storage": "sqlite" },
+    "SandboxManager": { "type": "durable-object", "storage": "sqlite" },
     "GitHub": { "type": "durable-object", "storage": "sqlite" },
     "GitHubWebhookRouter": { "type": "durable-object", "storage": "sqlite" },
     "Automations": { "type": "durable-object", "storage": "sqlite" },

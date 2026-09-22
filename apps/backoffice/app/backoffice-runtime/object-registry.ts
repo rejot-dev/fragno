@@ -32,9 +32,6 @@ import type {
   MarketplaceIngestionRequestInput,
   MarketplaceIngestionRequestResult,
   MarketplaceIngestionRestartResult,
-  SandboxInstanceRecord,
-  SandboxInstanceRequestInput,
-  SandboxProvider,
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import type { AutomationActor } from "@/fragno/automation/actors";
@@ -92,7 +89,12 @@ import type {
 } from "@/fragno/marketplace/contracts";
 import type { PiRuntimeState } from "@/fragno/pi/pi-shared";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
-import type { SandboxInstanceStatus } from "@/sandbox/contracts";
+import type {
+  SandboxInstanceRecord,
+  SandboxInstanceRequestInput,
+  SandboxProvider,
+} from "@/fragno/sandbox-manager/contracts";
+import type { SandboxCommandResult, SandboxInstanceStatus } from "@/sandbox/contracts";
 
 import type { BackofficeContextScope, BackofficeExecutionContext } from "./context";
 
@@ -353,13 +355,6 @@ export type AutomationsObject = {
     projectId?: string;
     slug?: string;
   }): Promise<AutomationProjectExecutionTarget | null>;
-  listSandboxInstances(input?: {
-    provider?: SandboxProvider;
-    limit?: number;
-  }): Promise<SandboxInstanceRecord[]>;
-  getSandboxInstance(input: { id: string }): Promise<SandboxInstanceRecord | null>;
-  requestSandboxInstance(input: SandboxInstanceRequestInput): Promise<SandboxInstanceRecord>;
-  requestSandboxInstanceStop(input: { id: string }): Promise<SandboxInstanceRecord | null>;
   getPiRuntimeState(): Promise<PiRuntimeState>;
   getDurableHookQueue(
     fragment: AutomationsDurableHookFragment,
@@ -412,6 +407,21 @@ export type FormsObject = DurableHookCommands;
 export type GitHubObject = DurableHookCommands & {
   ensureAdminConfig(orgId: string): Promise<AwaitedMethodReturn<GitHub, "ensureAdminConfig">>;
   redeliverFailedInstallationWebhooks(installationId: string): Promise<void>;
+};
+
+export type SandboxManagerObject = {
+  listSandboxInstances(input?: {
+    provider?: SandboxProvider;
+    limit?: number;
+  }): Promise<SandboxInstanceRecord[]>;
+  getSandboxInstance(input: { id: string }): Promise<SandboxInstanceRecord | null>;
+  requestSandboxInstance(input: SandboxInstanceRequestInput): Promise<SandboxInstanceRecord>;
+  requestSandboxInstanceStop(input: { id: string }): Promise<SandboxInstanceRecord | null>;
+  executeSandboxCommand(input: {
+    sandboxId: string;
+    command: string;
+    timeoutMs?: number;
+  }): Promise<SandboxCommandResult>;
 };
 
 type SandboxObject = {
@@ -474,7 +484,8 @@ export type BackofficeObjectBindingName =
   | "GITHUB_WEBHOOK_ROUTER"
   | "CLOUDFLARE"
   | "FORMS"
-  | "SANDBOX";
+  | "SANDBOX"
+  | "SANDBOX_MANAGER";
 
 export type BackofficeObjectBinding<_TCommands> = {
   name: BackofficeObjectBindingName;
@@ -515,6 +526,7 @@ export const backofficeObjectScopePolicy = {
   FORMS: ["singleton"],
 
   SANDBOX: ["named"],
+  SANDBOX_MANAGER: ["singleton", "org", "user", "project"],
 } satisfies Record<BackofficeObjectBindingName, readonly BackofficeObjectScopeKind[]>;
 
 export const isBackofficeObjectScopeAllowed = (
@@ -775,6 +787,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   forms: scoped(factory, binding<FormsObject>("FORMS")),
 
   sandbox: scoped(factory, binding<SandboxObject>("SANDBOX")),
+  sandboxManager: scoped(factory, binding<SandboxManagerObject>("SANDBOX_MANAGER")),
 });
 
 export type BackofficeObjectRegistry = ReturnType<typeof createBackofficeObjectRegistry>;
