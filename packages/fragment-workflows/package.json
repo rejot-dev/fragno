@@ -42,8 +42,7 @@
       "default": "./dist/node/step-identity.js"
     },
     "./step-emission-control": {
-      "types": "./dist/browser/step-emission-control.d.ts",
-      "browser": "./dist/browser/step-emission-control.js",
+      "types": "./dist/node/step-emission-control.d.ts",
       "default": "./dist/node/step-emission-control.js"
     },
     "./remote-workflow": {
