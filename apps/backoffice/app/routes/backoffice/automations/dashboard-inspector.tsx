@@ -73,7 +73,7 @@ export function DashboardInspector({
   onClear: () => void;
 }) {
   return (
-    <aside className="min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] xl:sticky xl:top-3 xl:max-h-[calc(100vh-7.5rem)] xl:overflow-hidden">
+    <aside className="bo-dashboard-inspector min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] xl:sticky xl:top-3 xl:max-h-[calc(100vh-7.5rem)] xl:overflow-hidden xl:border-l-0">
       <div className="flex min-h-11 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] px-3">
         <p className="text-[11px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
           Inspector
