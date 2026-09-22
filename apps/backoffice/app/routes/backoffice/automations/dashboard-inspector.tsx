@@ -75,7 +75,7 @@ export function DashboardInspector({
   return (
     <aside className="bo-dashboard-inspector min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] xl:sticky xl:top-3 xl:max-h-[calc(100vh-7.5rem)] xl:overflow-hidden xl:border-l-0">
       <div className="flex min-h-11 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] px-3">
-        <p className="text-[11px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
+        <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           Inspector
         </p>
         {selection ? (
@@ -184,7 +184,7 @@ function RecentEventInspector({
 
   return (
     <div className="p-3">
-      <p className="text-[10px] font-semibold tracking-[0.18em] text-orange-700 uppercase dark:text-orange-300">
+      <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-strong)] uppercase">
         Event
       </p>
       <h2 className="mt-1 font-mono text-sm font-semibold break-all text-[var(--bo-fg)]">
@@ -193,7 +193,7 @@ function RecentEventInspector({
       <p className="mt-1 text-xs text-[var(--bo-muted)]">{eventDefinition.label}</p>
 
       <div className="mt-4 flex items-center justify-between border-b border-[color:var(--bo-border)] pb-2">
-        <p className="text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+        <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           Recent events
         </p>
         <span className="text-xs text-[var(--bo-muted-2)] tabular-nums">{recentEvents.length}</span>
@@ -204,7 +204,7 @@ function RecentEventInspector({
             <details key={event.id} className="group py-2">
               <summary className="cursor-pointer list-none marker:content-none">
                 <p className="font-mono text-[11px] break-all text-[var(--bo-fg)]">{event.id}</p>
-                <p className="mt-1 text-[10px] text-[var(--bo-muted-2)] tabular-nums">
+                <p className="mt-1 text-xs text-[var(--bo-muted-2)] tabular-nums">
                   {formatTimestamp(event.occurredAt)}
                 </p>
               </summary>
@@ -240,7 +240,7 @@ function EventDefinitionDisclosure({
           strokeWidth={1.8}
         />
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-mono text-xs text-[var(--bo-fg)]">
+          <span className="block truncate font-mono text-[11px] text-[var(--bo-fg)]">
             {eventDefinition.eventType}
           </span>
           <span className="mt-0.5 block truncate text-xs text-[var(--bo-muted)]">
@@ -267,7 +267,7 @@ function ActionPayloadDetail({ payload }: { payload: unknown }) {
           <Braces className="h-3.5 w-3.5" strokeWidth={1.8} />
         </span>
         <div>
-          <p className="text-[11px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+          <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Payload
           </p>
           <p className="mt-1 text-sm font-medium text-[var(--bo-fg)]">
@@ -276,11 +276,11 @@ function ActionPayloadDetail({ payload }: { payload: unknown }) {
         </div>
       </div>
       {forwardsTriggerEvent ? (
-        <p className="px-3 py-3 text-[13px] leading-5 text-[var(--bo-muted)]">
+        <p className="px-3 py-3 text-sm text-[var(--bo-muted)]">
           The complete event that activated this route is sent to the workflow instance.
         </p>
       ) : (
-        <pre className="backoffice-scroll max-h-48 overflow-auto bg-[var(--bo-panel-2)] px-3 py-3 font-mono text-xs leading-5 break-words whitespace-pre-wrap text-[var(--bo-fg)]">
+        <pre className="backoffice-scroll max-h-48 overflow-auto bg-[var(--bo-panel-2)] px-3 py-3 font-mono text-[11px] leading-5 break-words whitespace-pre-wrap text-[var(--bo-fg)]">
           {JSON.stringify(payload, null, 2)}
         </pre>
       )}
@@ -318,13 +318,15 @@ function ActionInspector({
   return (
     <div className="space-y-3 p-3">
       <div className="min-w-0">
-        <p className="text-[10px] font-semibold tracking-[0.18em] text-violet-700 uppercase dark:text-violet-300">
+        <p className="text-[10px] font-semibold tracking-[0.22em] text-violet-700 uppercase dark:text-violet-300">
           Action · {route.action.kind}
         </p>
-        <h2 className="mt-1 truncate text-lg font-semibold text-[var(--bo-fg)]">
+        <h2 className="mt-1 truncate text-sm font-semibold text-[var(--bo-fg)]">
           {automationRouteActionLabel(route)}
         </h2>
-        <p className="mt-1 font-mono text-xs break-all text-[var(--bo-muted-2)]">{route.name}</p>
+        <p className="mt-1 font-mono text-[11px] break-all text-[var(--bo-muted-2)]">
+          {route.name}
+        </p>
       </div>
 
       <section className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
@@ -396,7 +398,7 @@ function WorkflowGraph({
 
   if (source.scriptError) {
     return (
-      <div className="mt-3 border border-red-500/35 bg-red-500/8 p-3 text-sm leading-5 text-red-800 dark:text-red-200">
+      <div className="mt-3 border border-[color:var(--bo-failed)]/40 bg-[var(--bo-failed-bg)] p-3 text-sm text-[var(--bo-failed)]">
         {source.scriptError}
       </div>
     );
@@ -415,10 +417,10 @@ function WorkflowGraph({
       <div className="flex min-h-9 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <span
-            className={`h-1.5 w-1.5 shrink-0 rounded-full ${workflowRuns.selectedRun ? "bg-emerald-500" : "bg-[var(--bo-muted-2)]"}`}
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${workflowRuns.selectedRun ? "bg-[var(--bo-live)]" : "bg-[var(--bo-muted-2)]"}`}
             aria-hidden="true"
           />
-          <p className="text-[10px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
+          <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Live execution
           </p>
         </div>
@@ -433,7 +435,7 @@ function WorkflowGraph({
         </p>
       </div>
       {workflowRuns.error ? (
-        <div className="border-b border-red-500/25 bg-red-500/8 px-3 py-2 text-xs leading-4 text-red-800 dark:text-red-200">
+        <div className="border-b border-[color:var(--bo-failed)]/40 bg-[var(--bo-failed-bg)] px-3 py-2 text-xs text-[var(--bo-failed)]">
           {workflowRuns.error}
         </div>
       ) : null}

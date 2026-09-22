@@ -1,5 +1,6 @@
 import "./app.css";
 
+import plusJakartaSansLatinUrl from "@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-normal.woff2?url";
 import {
   isRouteErrorResponse,
   Links,
@@ -15,15 +16,14 @@ import { getRouteErrorDebugDetails } from "./routes/backoffice/route-errors";
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
   { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
-  { rel: "preconnect", href: "https://fonts.googleapis.com" },
+  // Preloaded so the @font-face in app.css resolves before the first paint; without it the
+  // page paints in the system fallback and swaps to the brand font later.
   {
-    rel: "preconnect",
-    href: "https://fonts.gstatic.com",
+    rel: "preload",
+    as: "font",
+    type: "font/woff2",
+    href: plusJakartaSansLatinUrl,
     crossOrigin: "anonymous",
-  },
-  {
-    rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=optional",
   },
 ];
 

@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { cn } from "@/lib/utils";
+
 import { BackofficeFragmentMark } from "./fragment-mark";
 
 type BackofficeSystemStateTone = "loading" | "empty" | "error";
@@ -17,6 +19,7 @@ export function BackofficeSystemState({
   label = DEFAULT_LABELS[tone],
   actions,
   children,
+  flush = false,
 }: {
   tone: BackofficeSystemStateTone;
   title: string;
@@ -24,13 +27,20 @@ export function BackofficeSystemState({
   label?: string;
   actions?: ReactNode;
   children?: ReactNode;
+  // Set when the panel sits flush against the surrounding chrome (tab rail, top bar,
+  // view edges): clips the top and side edges of the panel shadow ring so only the
+  // bottom edge remains, and hides the corner mark that hangs over the clipped edge.
+  flush?: boolean;
 }) {
   return (
     <section
       role={tone === "error" ? "alert" : "status"}
       aria-live={tone === "loading" ? "polite" : undefined}
       data-tone={tone}
-      className="bo-fragment-surface bo-panel-surface bo-system-state bg-[var(--bo-panel)] p-4"
+      className={cn(
+        "bo-fragment-surface bo-panel-surface bo-system-state bg-[var(--bo-panel)] p-4",
+        flush && "[clip-path:inset(0_0_-1rem)] after:hidden!",
+      )}
     >
       <div className="flex items-start gap-3">
         <div className="flex size-10 shrink-0 items-center justify-center bg-[var(--bo-panel-2)] shadow-[inset_0_0_0_1px_var(--bo-border)]">

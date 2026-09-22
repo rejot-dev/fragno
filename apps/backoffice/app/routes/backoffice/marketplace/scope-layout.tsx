@@ -100,7 +100,7 @@ function MarketplaceWorkspaceHeader({
   return (
     <section className="bo-fragment-surface overflow-hidden bg-[var(--bo-header-bg)]">
       <h1 className="sr-only">Marketplace for {selectedScope.label}</h1>
-      <div className="flex flex-col bg-[color:var(--bo-sidebar-bg)] px-2 pt-4">
+      <div className="flex flex-col bg-[color:var(--bo-sidebar-bg)] px-4 pt-4">
         <OverflowTabRow items={tabs} ariaLabel="Marketplace workspace sections" variant="browser" />
       </div>
     </section>

@@ -796,7 +796,7 @@ function ConnectionConfigureForm({
 }) {
   const needsTokenEndpoint = authMode === "oauth" || authMode === "client_credentials";
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0 lg:first:border-t-0">
       <div>
         <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Configure
@@ -944,7 +944,7 @@ function ConnectionDetail({
   const [headersValue, setHeadersValue] = useState('{"Accept":"application/json"}');
   const [requestBodyMode, setRequestBodyMode] = useState<RequestBodyMode>("empty");
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0 lg:first:border-t-0">
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
@@ -1264,7 +1264,7 @@ function WebhookConfigureForm({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0 lg:first:border-t-0">
       <div>
         <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Configure
@@ -1671,7 +1671,7 @@ function WebhookDetail({
   saving: boolean;
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0 lg:first:border-t-0">
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
@@ -1717,7 +1717,7 @@ function WebhookDetail({
 
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-8 text-center">
+    <div className="flex min-h-0 flex-1 items-center justify-center border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-8 text-center max-lg:border-l-0 lg:first:border-t-0">
       <div>
         <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Nothing selected
@@ -1776,7 +1776,7 @@ export default function BackofficeAutomationApiConfiguration() {
 
   return (
     <section className="grid min-h-[min(820px,calc(100vh-15rem))] flex-1 grid-rows-1 gap-4 lg:grid-cols-[minmax(300px,400px)_minmax(0,1fr)]">
-      <div className="flex min-h-0 flex-col gap-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+      <div className="flex min-h-0 flex-col gap-4 border border-t-0 border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-r-0">
         <div>
           <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">API</p>
           <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Connections & webhooks</h2>

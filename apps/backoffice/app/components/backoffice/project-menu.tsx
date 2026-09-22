@@ -46,7 +46,7 @@ export function BackofficeProjectMenu({
       <Menu.Trigger
         type="button"
         aria-label={`Switch project. Current project: ${currentProject?.label ?? "none"}`}
-        className="group flex min-h-12 w-full min-w-0 cursor-pointer items-center gap-2.5 py-3.5 pr-5.5 pl-6 text-left transition-[scale,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
+        className="group flex min-h-12 w-full min-w-0 cursor-pointer items-center gap-2.5 py-3.5 pr-4 pl-6 text-left outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
       >
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="text-[11px] font-semibold text-[var(--bo-muted-2)]">Project</span>

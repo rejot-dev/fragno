@@ -65,10 +65,15 @@ export function BackofficeSidebarNav({
   const location = useLocation();
 
   return (
+    // Offsets track the top bar (h-16 plus its 1px border) through the spacing scale; app.css
+    // overrides --spacing, so h-16 is not 4rem here.
     <aside
-      className={`sticky top-16 z-20 hidden h-[calc(100svh-4rem)] shrink-0 self-start border-r border-[color:var(--bo-border)] bg-[color:var(--bo-sidebar-bg)] transition-[width] duration-150 ease-out min-[960px]:flex min-[960px]:flex-col ${collapsed ? "w-16" : "w-72"}`}
+      className={`sticky top-[calc(--spacing(16)+1px)] z-20 hidden h-[calc(100svh-(--spacing(16)+1px))] shrink-0 self-start border-r border-[color:var(--bo-border)] bg-[color:var(--bo-sidebar-bg)] transition-[width] duration-150 ease-out min-[960px]:flex min-[960px]:flex-col ${collapsed ? "w-16" : "w-72"}`}
     >
-      <nav aria-label="Backoffice" className="flex flex-col gap-2.5 px-2 py-4">
+      <nav
+        aria-label="Backoffice"
+        className={cn("flex flex-col gap-2.5 py-4", collapsed ? "px-2" : "px-4")}
+      >
         {PRIMARY_NAVIGATION.map((item) => (
           <NavLink
             key={item.to}
@@ -102,8 +107,8 @@ export function BackofficeSidebarNav({
           onCollapsedChange(!collapsed);
         }}
         className={cn(
-          "mt-auto mb-3 flex size-9 shrink-0 items-center justify-center rounded-[4px] border border-transparent text-[var(--bo-muted)] transition-[background-color,border-color,color,transform] duration-150 ease-out hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.94]",
-          collapsed ? "self-center" : "mr-3 self-end",
+          "mt-auto mb-3 flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-[4px] border border-transparent text-[var(--bo-muted)] transition-[background-color,border-color,color,transform] duration-150 ease-out hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.94]",
+          collapsed ? "self-center" : "mr-4 self-end",
         )}
       >
         {collapsed ? (

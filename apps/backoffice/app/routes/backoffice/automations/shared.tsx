@@ -71,7 +71,7 @@ function AutomationTabRail({
   }));
 
   return (
-    <div className="flex flex-col bg-[color:var(--bo-sidebar-bg)] px-2 pt-4">
+    <div className="flex flex-col bg-[color:var(--bo-sidebar-bg)] px-4 pt-4">
       <OverflowTabRow items={items} ariaLabel="Automation workspace sections" variant="browser" />
     </div>
   );
@@ -187,7 +187,7 @@ export function AutomationNotice({
     <div
       className={
         tone === "error"
-          ? "border border-red-400/40 bg-red-500/8 p-3 text-sm text-red-700 dark:text-red-200"
+          ? "border border-[color:var(--bo-failed)]/40 bg-[var(--bo-failed-bg)] p-3 text-sm text-[var(--bo-failed)]"
           : "border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3 text-sm text-[var(--bo-muted)]"
       }
     >

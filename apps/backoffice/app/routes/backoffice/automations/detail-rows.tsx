@@ -15,16 +15,14 @@ export function AutomationDetailRows({
     layout === "inspector"
       ? "grid grid-cols-[7rem_minmax(0,1fr)] gap-2 px-3 py-2.5"
       : `grid gap-1.5 px-3 py-2.5 ${compact ? "grid-cols-[6rem_minmax(0,1fr)]" : "md:grid-cols-[9rem_1fr] md:px-4 md:py-3"}`;
-  const labelClassName =
-    layout === "inspector"
-      ? "text-[9px] tracking-[0.14em] text-[var(--bo-muted-2)] uppercase"
-      : "text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase";
 
   return (
     <dl className="divide-y divide-[color:var(--bo-border)]">
       {rows.map((row) => (
         <div key={row.label} className={rowClassName}>
-          <dt className={labelClassName}>{row.label}</dt>
+          <dt className="text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+            {row.label}
+          </dt>
           <dd className="min-w-0 font-mono text-[11px] break-all text-[var(--bo-fg)]">
             {row.to ? (
               <Link

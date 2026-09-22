@@ -2,7 +2,6 @@ import {
   Bot,
   Braces,
   CalendarClock,
-  Check,
   CircleDot,
   Cloud,
   GitBranch,
@@ -13,7 +12,6 @@ import {
   ShieldCheck,
   Upload,
   Workflow,
-  X,
   Zap,
 } from "lucide-react";
 import {
@@ -37,6 +35,10 @@ import { z } from "zod";
 
 import { eq, or, useLiveQuery } from "@tanstack/react-db";
 
+import {
+  BackofficeStatusLight,
+  type BackofficeStatusTone,
+} from "@/components/backoffice/status-light";
 import { VerticalResizeHandle } from "@/components/backoffice/vertical-resize-handle";
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
@@ -429,17 +431,17 @@ const scheduleLabel = (route: DashboardRoute) => {
   return `Cron · ${route.trigger.cadence.expression} · ${route.trigger.cadence.timeZone}`;
 };
 
-const statusTone = (status: string) => {
+const statusTone = (status: string): BackofficeStatusTone => {
   if (["complete", "completed", "success", "succeeded"].includes(status)) {
-    return "success" as const;
+    return "live";
   }
   if (["errored", "error", "failed", "terminated"].includes(status)) {
-    return "error" as const;
+    return "failed";
   }
   if (["active", "running"].includes(status)) {
-    return "active" as const;
+    return "info";
   }
-  return "waiting" as const;
+  return "waiting";
 };
 
 function SourceIcon({ source }: { source: string }) {
@@ -493,7 +495,7 @@ function LaneHeader({
         <span className="text-[var(--bo-muted)]">{icon}</span>
         <h2 className="text-sm font-semibold text-[var(--bo-fg)]">{title}</h2>
       </div>
-      <p className="backoffice-scroll-invisible mt-1 overflow-x-auto pl-6 text-[11px] whitespace-nowrap text-[var(--bo-muted-2)]">
+      <p className="backoffice-scroll-invisible mt-1 overflow-x-auto pl-6 text-xs whitespace-nowrap text-[var(--bo-muted-2)]">
         {description}
       </p>
     </div>
@@ -524,10 +526,10 @@ function SourceCard({
         <SourceIcon source={source.id} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-semibold text-[var(--bo-fg)]">
+        <span className="block truncate text-sm font-semibold text-[var(--bo-fg)]">
           {source.label}
         </span>
-        <span className="mt-0.5 block truncate text-[10px] tracking-[0.12em] text-[var(--bo-muted-2)] uppercase">
+        <span className="mt-0.5 block truncate text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           Event source
         </span>
       </span>
@@ -561,11 +563,11 @@ function TriggerCard({
       aria-pressed={selected}
       onClick={onSelect}
       className={`group h-full w-full min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${
-        selected ? "ring-2 ring-orange-600/30" : ""
+        selected ? "ring-2 ring-[color:var(--bo-accent)]/30" : ""
       }`}
     >
       <div className="flex items-start gap-2.5">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-orange-500/10 text-orange-700 dark:text-orange-300">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-[var(--bo-accent-bg)] text-[var(--bo-accent-strong)]">
           {route.trigger.kind === "schedule" ? (
             <CalendarClock className="h-3.5 w-3.5" strokeWidth={1.8} />
           ) : (
@@ -574,12 +576,12 @@ function TriggerCard({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-[13px] font-semibold text-[var(--bo-fg)]">{route.name}</p>
-            <span className="shrink-0 text-[9px] font-semibold tracking-[0.12em] text-[var(--bo-muted-2)] uppercase">
+            <p className="truncate text-sm font-semibold text-[var(--bo-fg)]">{route.name}</p>
+            <span className="shrink-0 text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
               P{route.priority}
             </span>
           </div>
-          <p className="mt-0.5 text-[10px] font-semibold tracking-[0.13em] text-orange-700 uppercase dark:text-orange-300">
+          <p className="mt-0.5 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-strong)] uppercase">
             {triggerLabel}
             {route.enabled ? "" : " · Disabled"}
           </p>
@@ -601,54 +603,31 @@ function EventCard({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const isScheduledOccurrence = eventDefinition.eventType.startsWith("schedule:");
+
   return (
     <button
       type="button"
       aria-pressed={selected}
       onClick={onSelect}
-      className={`flex h-full w-full min-w-0 items-center gap-2.5 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${selected ? "ring-2 ring-orange-600/30" : ""}`}
+      className={`flex h-full w-full min-w-0 items-center gap-2.5 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${selected ? "ring-2 ring-[color:var(--bo-accent)]/30" : ""}`}
     >
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-orange-500/10 text-orange-700 dark:text-orange-300">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-[var(--bo-accent-bg)] text-[var(--bo-accent-strong)]">
         <Zap className="h-3.5 w-3.5" strokeWidth={1.8} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate font-mono text-[12px] font-semibold text-[var(--bo-fg)]">
-          {eventDefinition.eventType.startsWith("schedule:")
-            ? "Scheduled occurrence"
-            : eventDefinition.eventType}
+        <span
+          className={`block truncate text-sm font-semibold text-[var(--bo-fg)] ${
+            isScheduledOccurrence ? "" : "font-mono"
+          }`}
+        >
+          {isScheduledOccurrence ? "Scheduled occurrence" : eventDefinition.eventType}
         </span>
-        <span className="mt-0.5 block truncate text-[11px] text-[var(--bo-muted-2)]">
+        <span className="mt-0.5 block truncate text-xs text-[var(--bo-muted-2)]">
           {eventDefinition.label}
         </span>
       </span>
     </button>
-  );
-}
-
-function WorkflowStatus({ status }: { status: string }) {
-  const tone = statusTone(status);
-  const className =
-    tone === "success"
-      ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
-      : tone === "error"
-        ? "bg-red-500/12 text-red-700 dark:text-red-300"
-        : tone === "active"
-          ? "bg-sky-500/12 text-sky-700 dark:text-sky-300"
-          : "bg-amber-500/12 text-amber-700 dark:text-amber-300";
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.1em] uppercase ${className}`}
-    >
-      {tone === "success" ? (
-        <Check className="h-2 w-2" />
-      ) : tone === "error" ? (
-        <X className="h-2 w-2" />
-      ) : (
-        <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      )}
-      {status}
-    </span>
   );
 }
 
@@ -719,22 +698,24 @@ function ActionCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="truncate text-[13px] font-semibold text-[var(--bo-fg)]">
-                {destination}
-              </p>
-              <p className={`mt-0.5 truncate text-[11px] font-medium ${appearance.labelClassName}`}>
+              <p className="truncate text-sm font-semibold text-[var(--bo-fg)]">{destination}</p>
+              <p className={`mt-0.5 truncate text-xs font-medium ${appearance.labelClassName}`}>
                 {route.action.kind === "reclassify_event" && route.trigger.kind === "event"
                   ? `${route.trigger.source}:${route.trigger.eventType} → ${route.action.source}:${route.action.eventType}`
                   : routeActionLabel(route)}
               </p>
               {route.action.kind === "reclassify_event" ? (
-                <p className="mt-1 truncate font-mono text-[10px] text-[var(--bo-muted-2)]">
+                <p className="mt-1 truncate font-mono text-[11px] text-[var(--bo-muted-2)]">
                   {Object.keys(route.action.payload.fields).length} projected payload field
                   {Object.keys(route.action.payload.fields).length === 1 ? "" : "s"}
                 </p>
               ) : null}
             </div>
-            {instance ? <WorkflowStatus status={instance.status} /> : null}
+            {instance ? (
+              <BackofficeStatusLight tone={statusTone(instance.status)}>
+                {instance.status}
+              </BackofficeStatusLight>
+            ) : null}
           </div>
           {instance ? (
             <p className="mt-1 truncate font-mono text-[11px] text-[var(--bo-muted-2)] tabular-nums">
@@ -1498,7 +1479,7 @@ function DashboardLaneHeaders({
         description={sourceDescription}
       />
       <LaneHeader
-        dotClassName="bg-[#c47c31]"
+        dotClassName="bg-[var(--bo-accent)]"
         icon={<Zap className="h-3 w-3" strokeWidth={1.8} />}
         title={view === "workflows" ? "When" : "Events"}
         description={
@@ -1640,7 +1621,7 @@ export function AutomationSwimlaneDashboard({
     <section className="flex w-full max-w-none flex-1 flex-col space-y-3 antialiased">
       {errors.length > 0 ? (
         <AutomationNotice tone="error">
-          <p className="text-xs tracking-[0.22em] uppercase">
+          <p className="text-[10px] font-semibold tracking-[0.22em] uppercase">
             Some dashboard data could not be synchronized
           </p>
           <p className="mt-2 text-sm">{errors.join(" ")}</p>
@@ -1654,9 +1635,11 @@ export function AutomationSwimlaneDashboard({
         className={`grid min-w-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_var(--dashboard-inspector-divider-width)_var(--dashboard-inspector-width)] xl:gap-0 ${inspectorDragging ? "xl:transition-none" : "xl:transition-[grid-template-columns] xl:duration-200 xl:ease-out"}`}
       >
         <div
-          className={`min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] ${showInspector ? "xl:border-r-0" : ""}`}
+          className={`flex min-w-0 flex-col border-b border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] ${
+            errors.length > 0 ? "border-t" : ""
+          }`}
         >
-          <div className="backoffice-scroll overflow-x-auto">
+          <div className="backoffice-scroll grow overflow-x-auto">
             <div className="w-full min-w-[43rem]">
               <DashboardLaneHeaders view={view} activeSource={activeSource} />
               <DashboardSwimlaneGrid

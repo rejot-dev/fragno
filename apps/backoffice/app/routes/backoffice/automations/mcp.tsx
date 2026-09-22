@@ -238,7 +238,7 @@ function ServerConfigureForm({
       : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0 lg:first:border-t-0">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
@@ -738,7 +738,7 @@ function ServerDetail({
   const showBearerControls = server.authMode === "bearer";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0 lg:first:border-t-0">
       <div className="space-y-4">
         <ServerStatusPanel
           server={server}
@@ -940,7 +940,7 @@ export default function BackofficeOrganizationMcpConfiguration() {
 
   return (
     <section className="grid min-h-[min(760px,calc(100vh-15rem))] flex-1 grid-rows-1 gap-4 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)]">
-      <div className="flex min-h-0 flex-col gap-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+      <div className="flex min-h-0 flex-col gap-4 border border-t-0 border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-r-0">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">MCP</p>
@@ -1055,7 +1055,7 @@ export default function BackofficeOrganizationMcpConfiguration() {
             }
           />
         ) : (
-          <div className="flex min-h-0 flex-1 items-center justify-center border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-8 text-center">
+          <div className="flex min-h-0 flex-1 items-center justify-center border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-8 text-center max-lg:border-l-0 lg:first:border-t-0">
             <div>
               <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                 No server selected
