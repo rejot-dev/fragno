@@ -28,7 +28,6 @@
       "default": "./dist/node/index.js"
     },
     "./types": {
-      "browser": "./dist/browser/types.js",
       "types": "./dist/node/types.d.ts",
       "default": "./dist/node/types.js"
     },
