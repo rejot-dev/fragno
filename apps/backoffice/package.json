@@ -20,6 +20,8 @@
     "deploy:upload": "node scripts/run-worker-release.mjs upload",
     "deploy": "node scripts/run-worker-release.mjs deploy",
     "dev": "react-router dev",
+    "preheap:profile": "turbo run build --filter=@fragno-apps/backoffice-rr --output-logs=errors-only",
+    "heap:profile": "node scripts/profile-worker-heap.mjs",
     "preview": "node scripts/run-vite-preview.mjs",
     "preview:containers": "node scripts/run-vite-preview.mjs --containers",
     "types:check": "tsc -b --noEmit",
