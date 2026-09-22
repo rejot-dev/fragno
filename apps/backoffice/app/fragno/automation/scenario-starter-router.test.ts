@@ -1633,56 +1633,6 @@ describe("starter automation router scenarios", () => {
     );
   });
 
-  test("telegram-user-pi-linking skips slash commands other than /pi", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        name: "telegram-user-pi-linking skips unrelated slash commands",
-
-        fakes: ({ fake }) => ({
-          telegram: fake.telegram(),
-          pi: fake.pi(),
-        }),
-
-        setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-          given.telegram.configured({
-            orgId: "org-1",
-            botUsername: "fragno_bot",
-          }),
-        ],
-
-        steps: ({ when, then }) => [
-          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
-          when.workflow.createInstance({
-            orgId: "org-1",
-            remoteWorkflowName: "telegram-user-pi-linking",
-            instanceId: "telegram-pi-unrelated-command",
-            path: "/workspace/automations/telegram-user-pi-linking.workflow.js",
-            event: telegramMessageEvent({
-              id: "telegram:message:unrelated-pi-command",
-              text: "/help",
-            }),
-          }),
-
-          then.telegram.noMessages(),
-          then.assert("assert Pi was not called", (ctx) => {
-            const calls = ctx.fakes.pi?.createSessionCalls ?? [];
-            if (calls.length !== 0) {
-              throw new Error(`Expected no Pi session creation, got ${calls.length}.`);
-            }
-          }),
-          then.workflow.instance({
-            remoteWorkflowName: "telegram-user-pi-linking",
-            instanceId: "telegram-pi-unrelated-command",
-            status: "complete",
-            output: { skipped: true, reason: "not-telegram-pi-message" },
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
   test("Telegram text reuses a Pi session and forwards assistant text", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({

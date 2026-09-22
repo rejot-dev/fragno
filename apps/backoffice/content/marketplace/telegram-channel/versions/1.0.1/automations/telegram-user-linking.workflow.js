@@ -1,15 +1,7 @@
 defineWorkflow({ name: "telegram-user-linking" }, async (event, step) => {
-  const automationEvent = /** @type {WorkflowEvent<{text?: string; chatId: string}>} */ (event);
+  const automationEvent = /** @type {WorkflowEvent<{chatId: string}>} */ (event);
   const workflowInstanceId = event.instanceId;
   const chatId = automationEvent.payload.chatId;
-
-  if (
-    automationEvent.source !== "telegram" ||
-    automationEvent.eventType !== "message.received" ||
-    automationEvent.payload.text !== "/start"
-  ) {
-    return { skipped: true, reason: "not-telegram-start" };
-  }
 
   const telegramActor = automationEvent.actors.initiator;
   if (

@@ -386,47 +386,6 @@ describe("Telegram Channel OTP linking automation in memory", () => {
     );
   });
 
-  test("telegram-user-linking skips non-/start Telegram events", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        name: "telegram-user-linking skips non-start Telegram events",
-
-        fakes: ({ fake }) => ({
-          telegram: fake.telegram(),
-        }),
-
-        setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-          given.telegram.configured({
-            orgId: "org-1",
-            botUsername: "fragno_bot",
-          }),
-        ],
-
-        steps: ({ when, then }) => [
-          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
-          when.workflow.createInstance({
-            orgId: "org-1",
-            remoteWorkflowName: "telegram-user-linking",
-            instanceId: "telegram-link-non-start",
-            ...telegramLinkingWorkflowRequest(
-              telegramMessageEvent({ id: "telegram:message:non-start", text: "hello" }),
-            ),
-          }),
-
-          then.telegram.noMessages(),
-          then.workflow.instance({
-            remoteWorkflowName: "telegram-user-linking",
-            instanceId: "telegram-link-non-start",
-            status: "complete",
-            output: { skipped: true, reason: "not-telegram-start" },
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
   test("telegram-user-linking rejects a completed claim with a different OTP id", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({

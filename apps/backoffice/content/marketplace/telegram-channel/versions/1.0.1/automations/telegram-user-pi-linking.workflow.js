@@ -4,14 +4,6 @@ defineWorkflow({ name: "telegram-user-pi-linking" }, async (event, step) => {
   const text = automationEvent.payload.text ?? "";
   const chatId = automationEvent.payload.chatId;
 
-  if (
-    automationEvent.source !== "telegram" ||
-    automationEvent.eventType !== "message.received" ||
-    (text !== "/pi" && text.startsWith("/"))
-  ) {
-    return { skipped: true, reason: "not-telegram-pi-message" };
-  }
-
   const telegramActor = automationEvent.actors.initiator;
   if (
     telegramActor.scope !== "external" ||
