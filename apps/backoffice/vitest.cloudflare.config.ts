@@ -35,6 +35,8 @@ export default defineProject({
   test: {
     name: "cloudflare",
     globals: true,
+    setupFiles: ["./workers/vitest-compiler-setup.ts"],
+    testTimeout: 15_000,
     include: ["app/**/*.cloudflare.test.ts", "workers/**/*.cloudflare.test.ts"],
     deps: {
       optimizer: {

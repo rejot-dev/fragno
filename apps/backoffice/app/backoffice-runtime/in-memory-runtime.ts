@@ -1,5 +1,6 @@
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 
+import type { WorkerTypeChecker } from "@/backoffice-runtime/dynamic-workers/compile-worker";
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 
 import {
@@ -40,6 +41,7 @@ export type CreateInMemoryBackofficeRuntimeOptions = {
   objectFactories?: InMemoryObjectFactoryOverrides;
   authorityResolver?: BackofficeAuthorityResolver;
   kernelObserver?: BackofficeKernelObserver;
+  workerTypeChecker?: WorkerTypeChecker;
   maxDrainIterations?: number;
 };
 
@@ -78,6 +80,8 @@ export const createInMemoryBackofficeRuntime = async (
         { now: () => objectFactory.now() },
       ),
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
+    codemodeEnv: null,
+    workerTypeChecker: options.workerTypeChecker ?? null,
     fragnoRuntime: {
       ...defaultFragnoRuntime,
       time: {

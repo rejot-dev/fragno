@@ -309,6 +309,30 @@ export class DynamicWorkerExecutor {
     ].join("\n");
   }
 
+  createJavaScriptModuleExecutorModule(
+    modulePath: string,
+    providers: readonly ResolvedProvider[],
+  ): string {
+    const exposedProviderNames = providers
+      .filter((provider) => !INTERNAL_PROVIDER_NAMES.has(provider.name))
+      .map((provider) => provider.name);
+    if (providers.some((provider) => provider.name === "__context")) {
+      exposedProviderNames.push("context");
+    }
+
+    const executeJavaScriptModule = [
+      "async () => {",
+      ...exposedProviderNames.map(
+        (providerName) => `  globalThis[${JSON.stringify(providerName)}] = ${providerName};`,
+      ),
+      "  globalThis.defineWorkflow = defineWorkflow;",
+      `  await import(${JSON.stringify(modulePath)});`,
+      "}",
+    ].join("\n");
+
+    return this.createExecutorModule(executeJavaScriptModule, providers);
+  }
+
   async runEntrypoint<TEntrypoint, TResult extends object>({
     bundle,
     globalOutbound = this.#globalOutbound,

@@ -10,6 +10,7 @@ import {
 import { backofficeRouteScopeSinglePathSegment } from "@/backoffice-runtime/route-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
+import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
 import { createBackofficeStaticFileCollection } from "@/files/content/static";
 import type { AutomationActors } from "@/fragno/automation/actors";
 import {
@@ -40,6 +41,7 @@ import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtim
 import { createFormsRuntime } from "@/fragno/runtime-tools/families/forms-runtime";
 import { createGitHubRuntime } from "@/fragno/runtime-tools/families/github-runtime";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
+import { createJavaScriptRuntime } from "@/fragno/runtime-tools/families/javascript-runtime";
 import { createMcpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import {
   createOtpRuntime,
@@ -99,6 +101,19 @@ const selectedOrgScope = (
 ): Extract<BackofficeExecutionContext["scope"], { kind: "org" }> | null =>
   execution.scope.kind === "org" ? execution.scope : null;
 
+function createExecutionStaticFileCollection({
+  runtime,
+  execution,
+}: Pick<RouteBackedRuntimeContextOptions, "runtime" | "execution">) {
+  return createBackofficeStaticFileCollection(
+    createCodemodeStaticArtifactsResolver({
+      objects: runtime.objects,
+      config: runtime.config,
+      execution,
+    }),
+  );
+}
+
 const createExecutionStateBackend = ({
   runtime,
   kernel,
@@ -106,13 +121,7 @@ const createExecutionStateBackend = ({
 }: Pick<RouteBackedRuntimeContextOptions, "runtime" | "kernel" | "execution">):
   | BackofficeStateBackend
   | undefined => {
-  const staticFileCollection = createBackofficeStaticFileCollection(
-    createCodemodeStaticArtifactsResolver({
-      objects: runtime.objects,
-      config: runtime.config,
-      execution,
-    }),
-  );
+  const staticFileCollection = createExecutionStaticFileCollection({ runtime, execution });
   if (execution.scope.kind === "system") {
     return createBackofficeSystemStateBackend({ staticFileCollection });
   }
@@ -160,18 +169,26 @@ export const createRouteBackedRuntimeContext = ({
 }: RouteBackedRuntimeContextOptions): InteractiveRuntimeToolContext => {
   const org = ownerOrgScope(execution);
   const selectedOrg = selectedOrgScope(execution);
+  const stateBackend = createExecutionStateBackend({ runtime, kernel, execution });
+  const javaScriptStateBackend =
+    stateBackend ??
+    createBackofficeSystemStateBackend({
+      staticFileCollection: createExecutionStaticFileCollection({ runtime, execution }),
+      systemFileCollection: createStaticFileCollection({}),
+    });
   const automationsObject = kernel.scoped(
     "AUTOMATIONS",
     execution.scope,
     runtime.objects.automations,
   );
+  const codemodeEnv = runtime.codemodeEnv;
 
   const formsObjects = runtime.objects.forms;
 
   return {
     execution,
     backofficeKernel: kernel,
-    stateBackend: createExecutionStateBackend({ runtime, kernel, execution }),
+    stateBackend,
     admin:
       runtime.config.bindings.auth && execution.scope.kind === "system"
         ? {
@@ -406,6 +423,27 @@ export const createRouteBackedRuntimeContext = ({
                   orgId: selectedOrg.orgId,
                 })
               : unavailableRuntime(unavailableMessage("SANDBOX", execution)),
+          }
+        : null,
+    javascript:
+      runtime.workerTypeChecker || codemodeEnv
+        ? {
+            runtime: createJavaScriptRuntime({
+              getStateBackend: async () => javaScriptStateBackend,
+              typeCheckFiles: runtime.workerTypeChecker,
+              executeModule: codemodeEnv
+                ? async (code, toolContext) => {
+                    const { runBackofficeJavaScriptModule } =
+                      await import("@/fragno/codemode/javascript-module-execute");
+                    return await runBackofficeJavaScriptModule({
+                      code,
+                      env: codemodeEnv,
+                      families: runtimeToolFamilies,
+                      toolContext,
+                    });
+                  }
+                : null,
+            }),
           }
         : null,
     upload:
