@@ -10,13 +10,6 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileContent> = {
   async (event, step) => {
     const automationEvent = event;
 
-    if (
-      automationEvent.source !== "auth" ||
-      automationEvent.eventType !== "organization.created"
-    ) {
-      return { skipped: true, reason: "not-organization-created" };
-    }
-
     const orgId = automationEvent.subject?.orgId;
     if (!orgId) {
       throw new Error("organization.created event is missing subject.orgId.");

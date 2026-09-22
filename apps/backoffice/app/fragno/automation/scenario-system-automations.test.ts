@@ -673,38 +673,6 @@ describe("system automation scenarios", () => {
     );
   });
 
-  test("workspace-file-initialization skips non-organization-created events", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        name: "workspace initialization skips non-organization-created events",
-
-        files: backofficeFiles.systemOnly(),
-
-        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
-
-        steps: ({ when, then }) => [
-          when.workflow.createInstance({
-            orgId: "org-1",
-            remoteWorkflowName: "workspace-file-initialization",
-            instanceId: "workspace-file-initialization-skip",
-            path: "/system/automations/workspace-file-initialization.workflow.js",
-            event: systemUnrelatedEvent,
-          }),
-
-          then.workflow.instance({
-            remoteWorkflowName: "workspace-file-initialization",
-            instanceId: "workspace-file-initialization-skip",
-            status: "complete",
-            output: { skipped: true, reason: "not-organization-created" },
-          }),
-          then.connection.unconfigured({ orgId: "org-1", id: "upload" }),
-          then.files.missing({ orgId: "org-1", path: "/workspace/AGENTS.md" }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
   test("configured capabilities expose codemode types from /static on demand", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
