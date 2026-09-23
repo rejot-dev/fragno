@@ -2,4 +2,4 @@
 "@fragno-dev/pi-harness": patch
 ---
 
-fix: compact streamed Pi message emissions to reduce workflow outbox size.
+fix: encode streamed Pi events incrementally to keep allocation and outbox growth linear.
