@@ -124,50 +124,43 @@ type ProjectedMessageUpdateEvent = Extract<
   { type: "message_update" }
 >["assistantMessageEvent"];
 
-type AssistantTextContent = Extract<AssistantMessage["content"][number], { type: "text" }>;
 type AssistantThinkingContent = Extract<AssistantMessage["content"][number], { type: "thinking" }>;
 type ProjectedAssistantMessage = PiHarnessFrontendAssistantMessage;
-
-type CompactContentTransition =
-  | { readonly kind: "append"; readonly content: string }
-  | { readonly kind: "replace"; readonly content: string };
+type AssistantMessageMetadata = Pick<
+  AssistantMessage,
+  "usage" | "stopReason" | "errorMessage" | "timestamp"
+>;
 
 type CompactAssistantMessageEvent =
   | {
       readonly type: "text_start";
       readonly contentIndex: number;
-      readonly text: string;
     }
   | {
       readonly type: "text_delta";
       readonly contentIndex: number;
       readonly delta: string;
-      readonly contentTransition: CompactContentTransition;
     }
   | {
       readonly type: "text_end";
       readonly contentIndex: number;
       readonly content: string;
-      readonly text: string;
     }
   | {
       readonly type: "thinking_start";
       readonly contentIndex: number;
-      readonly thinking: string;
       readonly redacted?: boolean;
     }
   | {
       readonly type: "thinking_delta";
       readonly contentIndex: number;
       readonly delta: string;
-      readonly contentTransition: CompactContentTransition;
       readonly redacted?: boolean;
     }
   | {
       readonly type: "thinking_end";
       readonly contentIndex: number;
       readonly content: string;
-      readonly thinking: string;
       readonly redacted?: boolean;
     }
   | {
@@ -179,13 +172,11 @@ type CompactAssistantMessageEvent =
       readonly type: "toolcall_delta";
       readonly contentIndex: number;
       readonly delta: string;
-      readonly toolCall: PiHarnessFrontendToolCall;
     }
   | {
       readonly type: "toolcall_end";
       readonly contentIndex: number;
       readonly toolCall: PiHarnessFrontendToolCall;
-      readonly partialToolCall: PiHarnessFrontendToolCall;
     };
 
 type CompactAssistantMessageMetadataUpdate = {
@@ -312,8 +303,20 @@ type SubscribedEvent<TType extends PiHarnessSubscribedEvent["type"]> = Extract<
   { type: TType }
 >;
 
+const assistantMessageMetadata = ({
+  usage,
+  stopReason,
+  errorMessage,
+  timestamp,
+}: AssistantMessage): AssistantMessageMetadata => ({
+  usage,
+  stopReason,
+  errorMessage,
+  timestamp,
+});
+
 const compactAssistantMessageMetadataUpdate = (
-  previous: ProjectedAssistantMessage,
+  previous: AssistantMessageMetadata,
   next: AssistantMessage,
 ): CompactAssistantMessageMetadataUpdate | undefined => {
   const update: CompactAssistantMessageMetadataUpdate = {
@@ -377,16 +380,6 @@ const streamedMessageUpdateEvent = (
   }
 
   throw new Error("PI_HARNESS_EVENT_PROTOCOL_UNKNOWN_MESSAGE_UPDATE");
-};
-
-const textContentFromPartial = (
-  event: Extract<StreamedAssistantMessageEvent, { type: "text_start" | "text_delta" | "text_end" }>,
-): AssistantTextContent => {
-  const content = event.partial.content[event.contentIndex];
-  if (content?.type !== "text") {
-    throw new Error("PI_HARNESS_EVENT_PROTOCOL_TEXT_UPDATE_WITHOUT_TEXT_BLOCK");
-  }
-  return content;
 };
 
 const thinkingContentFromPartial = (
@@ -457,80 +450,41 @@ const projectAssistantMessage = ({
 const projectAgentMessage = (message: AgentMessage): ProjectedAgentMessage =>
   message.role === "assistant" ? projectAssistantMessage(message) : message;
 
-const compactContentTransition = (
-  previousContent: string | undefined,
-  content: string,
-): CompactContentTransition =>
-  previousContent !== undefined && content.startsWith(previousContent)
-    ? { kind: "append", content: content.slice(previousContent.length) }
-    : { kind: "replace", content };
-
-const assertAssistantContentIndexIsNotSparse = (
-  event: StreamedAssistantMessageEvent,
-  previousMessage: ProjectedAssistantMessage,
-): void => {
-  if (event.contentIndex > previousMessage.content.length) {
-    throw new Error(`PI_HARNESS_EVENT_PROTOCOL_SPARSE_CONTENT_INDEX:${event.contentIndex}`);
-  }
-};
-
 const compactAssistantMessageEvent = (
   event: StreamedAssistantMessageEvent,
-  previousMessage: ProjectedAssistantMessage,
 ): CompactAssistantMessageEvent => {
-  assertAssistantContentIndexIsNotSparse(event, previousMessage);
-
   switch (event.type) {
-    case "text_start": {
-      const content = textContentFromPartial(event);
+    case "text_start":
       return {
         type: event.type,
         contentIndex: event.contentIndex,
-        text: content.text,
       };
-    }
-    case "text_delta": {
-      const content = textContentFromPartial(event);
-      const previousContent = previousMessage.content[event.contentIndex];
+    case "text_delta":
       return {
         type: event.type,
         contentIndex: event.contentIndex,
         delta: event.delta,
-        contentTransition: compactContentTransition(
-          previousContent?.type === "text" ? previousContent.text : undefined,
-          content.text,
-        ),
       };
-    }
-    case "text_end": {
-      const content = textContentFromPartial(event);
+    case "text_end":
       return {
         type: event.type,
         contentIndex: event.contentIndex,
         content: event.content,
-        text: content.text,
       };
-    }
     case "thinking_start": {
       const content = thinkingContentFromPartial(event);
       return {
         type: event.type,
         contentIndex: event.contentIndex,
-        thinking: content.thinking,
         ...thinkingMetadataFields(content),
       };
     }
     case "thinking_delta": {
       const content = thinkingContentFromPartial(event);
-      const previousContent = previousMessage.content[event.contentIndex];
       return {
         type: event.type,
         contentIndex: event.contentIndex,
         delta: event.delta,
-        contentTransition: compactContentTransition(
-          previousContent?.type === "thinking" ? previousContent.thinking : undefined,
-          content.thinking,
-        ),
         ...thinkingMetadataFields(content),
       };
     }
@@ -540,7 +494,6 @@ const compactAssistantMessageEvent = (
         type: event.type,
         contentIndex: event.contentIndex,
         content: event.content,
-        thinking: content.thinking,
         ...thinkingMetadataFields(content),
       };
     }
@@ -555,19 +508,44 @@ const compactAssistantMessageEvent = (
         type: event.type,
         contentIndex: event.contentIndex,
         delta: event.delta,
-        toolCall: projectToolCall(toolCallFromPartial(event)),
       };
     case "toolcall_end":
       return {
         type: event.type,
         contentIndex: event.contentIndex,
         toolCall: projectToolCall(event.toolCall),
-        partialToolCall: projectToolCall(toolCallFromPartial(event)),
       };
   }
 
   throw new Error("PI_HARNESS_EVENT_PROTOCOL_UNKNOWN_STREAMING_MESSAGE_UPDATE");
 };
+
+function isPrimitiveOnlyMessageUpdate(event: PiHarnessCompactEvent): event is CompactMessageUpdate {
+  if (event.type !== "message_update") {
+    return false;
+  }
+
+  // Metadata updates can contain provider-owned usage objects that still require a snapshot.
+  if (event.metadata !== undefined) {
+    return false;
+  }
+
+  switch (event.update.type) {
+    case "text_start":
+    case "text_delta":
+    case "text_end":
+    case "thinking_start":
+    case "thinking_delta":
+    case "thinking_end":
+    case "toolcall_delta":
+      return true;
+    case "toolcall_start":
+    case "toolcall_end":
+      return false;
+  }
+
+  throw new Error("PI_HARNESS_EVENT_PROTOCOL_UNKNOWN_COMPACT_MESSAGE_UPDATE");
+}
 
 const streamedAssistantMessageEvent = (
   update: CompactAssistantMessageEvent,
@@ -607,20 +585,20 @@ const streamedAssistantMessageEvent = (
   throw new Error("PI_HARNESS_EVENT_PROTOCOL_UNKNOWN_COMPACT_MESSAGE_UPDATE");
 };
 
-const applyCompactContentTransition = (
-  content: string,
-  transition: CompactContentTransition,
-): string => (transition.kind === "append" ? content + transition.content : transition.content);
-
 const applyCompactAssistantMessageEvent = (
   message: ProjectedAssistantMessage,
   update: CompactAssistantMessageEvent,
+  toolCallJsonByContentIndex: Map<number, string>,
 ): void => {
+  if (update.contentIndex > message.content.length) {
+    throw new Error(`PI_HARNESS_EVENT_PROTOCOL_SPARSE_CONTENT_INDEX:${update.contentIndex}`);
+  }
+
   switch (update.type) {
     case "text_start":
       message.content[update.contentIndex] = {
         type: "text",
-        text: update.text,
+        text: "",
       };
       return;
     case "text_delta": {
@@ -630,20 +608,20 @@ const applyCompactAssistantMessageEvent = (
       }
       message.content[update.contentIndex] = {
         type: "text",
-        text: applyCompactContentTransition(content.text, update.contentTransition),
+        text: content.text + update.delta,
       };
       return;
     }
     case "text_end":
       message.content[update.contentIndex] = {
         type: "text",
-        text: update.text,
+        text: update.content,
       };
       return;
     case "thinking_start":
       message.content[update.contentIndex] = {
         type: "thinking",
-        thinking: update.thinking,
+        thinking: "",
         ...(update.redacted === undefined ? {} : { redacted: update.redacted }),
       };
       return;
@@ -654,7 +632,7 @@ const applyCompactAssistantMessageEvent = (
       }
       message.content[update.contentIndex] = {
         type: "thinking",
-        thinking: applyCompactContentTransition(content.thinking, update.contentTransition),
+        thinking: content.thinking + update.delta,
         ...(update.redacted === undefined ? {} : { redacted: update.redacted }),
       };
       return;
@@ -662,16 +640,37 @@ const applyCompactAssistantMessageEvent = (
     case "thinking_end":
       message.content[update.contentIndex] = {
         type: "thinking",
-        thinking: update.thinking,
+        thinking: update.content,
         ...(update.redacted === undefined ? {} : { redacted: update.redacted }),
       };
       return;
     case "toolcall_start":
-    case "toolcall_delta":
+      toolCallJsonByContentIndex.set(
+        update.contentIndex,
+        piToolCallArgumentsText(update.toolCall) ?? "",
+      );
       message.content[update.contentIndex] = update.toolCall;
       return;
+    case "toolcall_delta": {
+      const content = message.content[update.contentIndex];
+      if (content?.type !== "toolCall") {
+        throw new Error("PI_HARNESS_EVENT_PROTOCOL_TOOL_CALL_DELTA_WITHOUT_TOOL_CALL_BLOCK");
+      }
+      const previousJson = toolCallJsonByContentIndex.get(update.contentIndex);
+      if (previousJson === undefined) {
+        throw new Error("PI_HARNESS_EVENT_PROTOCOL_TOOL_CALL_DELTA_WITHOUT_TOOL_CALL_START");
+      }
+      const partialJson = previousJson + update.delta;
+      toolCallJsonByContentIndex.set(update.contentIndex, partialJson);
+      message.content[update.contentIndex] = {
+        ...content,
+        partialJson,
+      } as PiHarnessFrontendToolCall;
+      return;
+    }
     case "toolcall_end":
-      message.content[update.contentIndex] = update.partialToolCall;
+      toolCallJsonByContentIndex.delete(update.contentIndex);
+      message.content[update.contentIndex] = update.toolCall;
   }
 };
 
@@ -783,17 +782,46 @@ function assertPiHarnessEncodedEvent(value: unknown): asserts value is PiHarness
 export class PiHarnessEventEncoder {
   readonly #messages = new MessageEncoder();
   readonly #values = new ValueEncoder();
-  #activeAssistantMessage: ProjectedAssistantMessage | undefined;
+  #activeAssistantMetadata: AssistantMessageMetadata | undefined;
 
   encode(event: PiHarnessSubscribedEvent): PiHarnessEncodedEvent {
-    return snapshotPiHarnessJsonValue(
-      {
-        protocol: "pi-harness-event",
-        version: 2,
-        event: this.#encodeEvent(event),
-      },
-      `$event.${event.type}`,
-    );
+    const compactEvent = this.#encodeEvent(event);
+    const envelope: PiHarnessEncodedEvent = {
+      protocol: "pi-harness-event",
+      version: 2,
+      event: compactEvent,
+    };
+    const encoded = isPrimitiveOnlyMessageUpdate(compactEvent)
+      ? envelope
+      : snapshotPiHarnessJsonValue(envelope, `$event.${event.type}`);
+    this.#advanceAssistantMetadata(event, compactEvent);
+    return encoded;
+  }
+
+  #advanceAssistantMetadata(
+    event: PiHarnessSubscribedEvent,
+    compactEvent: PiHarnessCompactEvent,
+  ): void {
+    if (event.type === "message_start") {
+      this.#activeAssistantMetadata =
+        event.message.role === "assistant"
+          ? snapshotPiHarnessJsonValue(assistantMessageMetadata(event.message))
+          : undefined;
+    } else if (event.type === "message_update") {
+      if (compactEvent.type !== "message_update") {
+        throw new Error("PI_HARNESS_EVENT_PROTOCOL_INVALID_COMPACT_MESSAGE_UPDATE");
+      }
+      if (compactEvent.metadata === undefined) {
+        return;
+      }
+      this.#activeAssistantMetadata = snapshotPiHarnessJsonValue(
+        assistantMessageMetadata(
+          (event.assistantMessageEvent as StreamedAssistantMessageEvent).partial,
+        ),
+      );
+    } else if (event.type === "message_end") {
+      this.#activeAssistantMetadata = undefined;
+    }
   }
 
   #encodeEvent(event: PiHarnessSubscribedEvent): PiHarnessCompactEvent {
@@ -813,16 +841,12 @@ export class PiHarnessEventEncoder {
           toolResults: event.toolResults.map((message) => this.#messages.encode(message)),
         };
       case "message_start":
-        this.#activeAssistantMessage =
-          event.message.role === "assistant"
-            ? snapshotPiHarnessJsonValue(projectAssistantMessage(event.message))
-            : undefined;
         return {
           type: event.type,
           message: this.#messages.encode(event.message),
         };
       case "message_update": {
-        if (!this.#activeAssistantMessage) {
+        if (!this.#activeAssistantMetadata) {
           throw new Error("PI_HARNESS_EVENT_PROTOCOL_MESSAGE_UPDATE_WITHOUT_ASSISTANT_START");
         }
         if (event.message.role !== "assistant") {
@@ -830,16 +854,10 @@ export class PiHarnessEventEncoder {
         }
 
         const assistantMessageEvent = streamedMessageUpdateEvent(event.assistantMessageEvent);
-        const update = compactAssistantMessageEvent(
-          assistantMessageEvent,
-          this.#activeAssistantMessage,
-        );
+        const update = compactAssistantMessageEvent(assistantMessageEvent);
         const metadata = compactAssistantMessageMetadataUpdate(
-          this.#activeAssistantMessage,
+          this.#activeAssistantMetadata,
           assistantMessageEvent.partial,
-        );
-        this.#activeAssistantMessage = snapshotPiHarnessJsonValue(
-          projectAssistantMessage(assistantMessageEvent.partial),
         );
 
         return {
@@ -849,7 +867,6 @@ export class PiHarnessEventEncoder {
         };
       }
       case "message_end":
-        this.#activeAssistantMessage = undefined;
         return {
           type: event.type,
           message: this.#messages.encode(event.message),
@@ -943,6 +960,7 @@ export const piHarnessEventProtocol = {
 export class PiHarnessEventDecoder {
   readonly #messages = new MessageDecoder();
   readonly #values = new ValueDecoder();
+  readonly #toolCallJsonByContentIndex = new Map<number, string>();
   #activeAssistantMessage: ProjectedAssistantMessage | undefined;
 
   decode(value: unknown): PiHarnessFrontendEvent {
@@ -973,6 +991,7 @@ export class PiHarnessEventDecoder {
         };
       case "message_start": {
         const message = this.#messages.decode(encoded.message);
+        this.#toolCallJsonByContentIndex.clear();
         this.#activeAssistantMessage = message.role === "assistant" ? message : undefined;
         return { type: encoded.type, message };
       }
@@ -982,7 +1001,11 @@ export class PiHarnessEventDecoder {
         }
 
         const reconstructedMessage = snapshotPiHarnessJsonValue(this.#activeAssistantMessage);
-        applyCompactAssistantMessageEvent(reconstructedMessage, encoded.update);
+        applyCompactAssistantMessageEvent(
+          reconstructedMessage,
+          encoded.update,
+          this.#toolCallJsonByContentIndex,
+        );
         const message = encoded.metadata
           ? assistantMessageWithMetadataUpdate(reconstructedMessage, encoded.metadata)
           : reconstructedMessage;
@@ -996,6 +1019,7 @@ export class PiHarnessEventDecoder {
       }
       case "message_end": {
         const message = this.#messages.decode(encoded.message);
+        this.#toolCallJsonByContentIndex.clear();
         this.#activeAssistantMessage = undefined;
         return { type: encoded.type, message };
       }

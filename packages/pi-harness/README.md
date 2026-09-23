@@ -110,6 +110,31 @@ assistant metadata and signatures. Import the projected event types separately w
 import type { PiHarnessFrontendEvent } from "@fragno-dev/pi-harness/harness/agent-harness-event-protocol";
 ```
 
+### Measure event protocol allocation
+
+Run the isolated allocation benchmark when changing the compact event protocol:
+
+```bash
+pnpm --filter @fragno-dev/pi-harness measure:event-encoder
+```
+
+The benchmark runs text streams and large `write_file` tool-call argument streams in fresh Node
+processes. It reports sampled encoder and decoder allocation together with the encoded JSON bytes
+produced for increasing payload sizes. Decoder cases use smaller payloads because replaying a
+quadratic stream is intentionally expensive. The command fails when allocation or encoded bytes grow
+more than 1.25 times the corresponding input growth, distinguishing approximately linear growth from
+quadratic cumulative-payload behavior.
+
+Use shorter cases while iterating or write the complete profiles to JSON:
+
+```bash
+pnpm --filter @fragno-dev/pi-harness measure:event-encoder -- \
+  --sizes 16384,32768 \
+  --runs 1 \
+  --streams 1 \
+  --json benchmark-results/pi-event-encoder.json
+```
+
 ## Operation completion hook
 
 Interactive workflow input may include an opaque, JSON-serializable `actor`. It remains part of the
