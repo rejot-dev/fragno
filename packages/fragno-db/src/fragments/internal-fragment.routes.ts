@@ -275,6 +275,10 @@ export const createInternalFragmentOutboxRoutes = () =>
           const startedAt = Date.now();
           let pollCount = 0;
           let entriesRead = initialEntries.length;
+          let framesWritten = 0;
+          let frameCharacters = 0;
+          let largestFrameCharacters = 0;
+          let heartbeatFrames = 0;
           let errorCount = 0;
           let completionReason: "aborted" | "expired" | "failed" = "failed";
           console.info("fragno.outbox_stream.started", {
@@ -296,6 +300,14 @@ export const createInternalFragmentOutboxRoutes = () =>
             clearTimeout(timeout);
             if (!writeCompleted) {
               await stream.abort();
+            } else {
+              framesWritten += 1;
+              // Encoding again just to count wire bytes would inflate the heap being measured.
+              frameCharacters += frame.length;
+              largestFrameCharacters = Math.max(largestFrameCharacters, frame.length);
+              if (frame === "\n") {
+                heartbeatFrames += 1;
+              }
             }
             return writeCompleted;
           };
@@ -385,6 +397,10 @@ export const createInternalFragmentOutboxRoutes = () =>
               durationMs: Date.now() - startedAt,
               pollCount,
               entriesRead,
+              framesWritten,
+              frameCharacters,
+              largestFrameCharacters,
+              heartbeatFrames,
               errorCount,
               completionReason,
             });

@@ -13,7 +13,7 @@ function queryMetrics({
   rowsWritten: number;
   rowsReturned: number;
 }) {
-  return { sql, rowsRead, rowsWritten, rowsReturned };
+  return { sql, rowsRead, rowsWritten, rowsReturned, executionMs: 2 };
 }
 
 describe("createCloudflareDatabaseQueryInstrumentation", () => {
@@ -61,6 +61,7 @@ describe("createCloudflareDatabaseQueryInstrumentation", () => {
           rowsRead: 500,
           rowsWritten: 125,
           rowsReturned: 0,
+          executionMs: 2,
         },
       ],
       [
@@ -77,7 +78,16 @@ describe("createCloudflareDatabaseQueryInstrumentation", () => {
           rowsRead: 600,
           rowsWritten: 0,
           rowsReturned: 2,
+          executionMs: 2,
         },
+      ],
+      [
+        "backoffice.durable_object_sql.window_metrics",
+        expect.objectContaining({ databaseKind: "automations", queryCount: 1, executionMs: 2 }),
+      ],
+      [
+        "backoffice.durable_object_sql.window_metrics",
+        expect.objectContaining({ databaseKind: "workflows", queryCount: 1, executionMs: 2 }),
       ],
     ]);
   });
@@ -103,13 +113,49 @@ describe("createCloudflareDatabaseQueryInstrumentation", () => {
       );
     }
 
-    expect(logQueryMetrics).toHaveBeenCalledOnce();
+    expect(logQueryMetrics).toHaveBeenCalledTimes(2);
     expect(logQueryMetrics.mock.calls[0]?.[1]).toMatchObject({
       queryCount: 10,
       rowsRead: 1_000,
       rowsWritten: 0,
       rowsReturned: 100,
+      executionMs: 20,
     });
+    expect(logQueryMetrics.mock.calls[1]).toEqual([
+      "backoffice.durable_object_sql.window_metrics",
+      expect.objectContaining({ queryCount: 10, executionMs: 20 }),
+    ]);
+  });
+
+  test("counts zero-row polls in active windows without emitting per-poll SQL logs", () => {
+    let now = 0;
+    const logQueryMetrics = vi.fn();
+    const database = createCloudflareDatabaseQueryInstrumentation({
+      durableObjectId: "object-1",
+      nowEpochMs: () => now,
+      logQueryMetrics,
+    }).forDatabase({ kind: "workflows", name: null });
+
+    database.recordQuery(
+      queryMetrics({ sql: "select * from outbox", rowsRead: 0, rowsWritten: 0, rowsReturned: 0 }),
+    );
+    now = 10;
+    database.recordQuery(
+      queryMetrics({
+        sql: "insert into emissions values (?)",
+        rowsRead: 0,
+        rowsWritten: 100,
+        rowsReturned: 1,
+      }),
+    );
+
+    expect(logQueryMetrics.mock.calls).toEqual([
+      ["backoffice.durable_object_sql.query_metrics", expect.objectContaining({ queryCount: 1 })],
+      [
+        "backoffice.durable_object_sql.window_metrics",
+        expect.objectContaining({ queryCount: 2, rowsWritten: 100, executionMs: 4 }),
+      ],
+    ]);
   });
 
   test("discards low-activity windows instead of logging idle polling", () => {

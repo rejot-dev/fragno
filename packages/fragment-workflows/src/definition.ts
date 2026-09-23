@@ -8,8 +8,7 @@ import type { Cursor } from "@fragno-dev/db";
 import { WorkflowsLogger } from "./debug-log";
 import { buildScopedInstanceRowId } from "./instance-ref";
 import { runWorkflowsTick } from "./new-runner";
-import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./runner/step-live-pump";
-import type { WorkflowStepLivePump, WorkflowStepLivePumpHandle } from "./runner/step-live-pump";
+import type { WorkflowStepLivePump } from "./runner/step-live-pump";
 import type {
   WorkflowEventRecord,
   WorkflowInstanceRecord,
@@ -367,7 +366,12 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       onWorkflowStepEmissionsCleanup: defineHook(async function (
         payload: WorkflowStepEmissionsCleanupHookPayload,
       ) {
-        await this.handlerTx()
+        const cleanupStartedAt = performance.now();
+        console.info("fragno.workflow_step_emissions_cleanup.started", {
+          instanceRef: payload.instanceRef,
+          stepKey: payload.stepKey,
+        });
+        const cleanup = await this.handlerTx()
           .retrieve(({ forSchema }) =>
             forSchema(workflowsSchema).find("workflow_step_emission", (b) =>
               b
@@ -402,8 +406,21 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 externalIds: rows.map((row) => row.id.externalId),
               });
             }
+            return {
+              emissionsDeleted: rows.length,
+              outboxMutationsDeleted: rows.reduce(
+                (count, row) => count + row.$outboxMutations.length,
+                0,
+              ),
+            };
           })
           .execute();
+        console.info("fragno.workflow_step_emissions_cleanup.completed", {
+          instanceRef: payload.instanceRef,
+          stepKey: payload.stepKey,
+          durationMs: performance.now() - cleanupStartedAt,
+          ...cleanup,
+        });
       }),
     };
   })

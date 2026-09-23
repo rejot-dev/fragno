@@ -10,6 +10,7 @@ const DATABASE_QUERY_ROWS_READ_THRESHOLD = 1_000;
 const DATABASE_QUERY_ROWS_WRITTEN_THRESHOLD = 100;
 const DATABASE_QUERY_SQL_LOG_LIMIT = 1_000;
 const DATABASE_QUERY_METRICS_EVENT = "backoffice.durable_object_sql.query_metrics";
+const DATABASE_WINDOW_METRICS_EVENT = "backoffice.durable_object_sql.window_metrics";
 
 type DatabaseQueryMetricsBucket = {
   databaseKind: BackofficeDatabaseAdapterKind;
@@ -20,7 +21,10 @@ type DatabaseQueryMetricsBucket = {
   rowsRead: number;
   rowsWritten: number;
   rowsReturned: number;
+  executionMs: number;
 };
+
+type DatabaseWindowMetricsBucket = Omit<DatabaseQueryMetricsBucket, "sql" | "sqlTruncated">;
 
 function formatDatabaseQuerySql(sql: string): { sql: string; sqlTruncated: boolean } {
   const compactSql = sql.replace(/\s+/g, " ").trim();
@@ -43,8 +47,8 @@ export function createCloudflareDatabaseQueryInstrumentation({
   durableObjectId: string;
   nowEpochMs: () => number;
   logQueryMetrics: (
-    event: typeof DATABASE_QUERY_METRICS_EVENT,
-    fields: DatabaseQueryMetricsBucket & {
+    event: typeof DATABASE_QUERY_METRICS_EVENT | typeof DATABASE_WINDOW_METRICS_EVENT,
+    fields: (DatabaseQueryMetricsBucket | DatabaseWindowMetricsBucket) & {
       durableObjectId: string;
       windowStartedAt: string;
       windowDurationMs: number;
@@ -55,9 +59,11 @@ export function createCloudflareDatabaseQueryInstrumentation({
   let windowRowsRead = 0;
   let windowRowsWritten = 0;
   const buckets = new Map<string, DatabaseQueryMetricsBucket>();
+  const windowBuckets = new Map<string, DatabaseWindowMetricsBucket>();
 
   const resetWindow = (now: number) => {
     buckets.clear();
+    windowBuckets.clear();
     windowStartedAtEpochMs = now;
     windowRowsRead = 0;
     windowRowsWritten = 0;
@@ -86,6 +92,14 @@ export function createCloudflareDatabaseQueryInstrumentation({
           ...bucket,
         });
       }
+      for (const bucket of windowBuckets.values()) {
+        logQueryMetrics(DATABASE_WINDOW_METRICS_EVENT, {
+          durableObjectId,
+          windowStartedAt,
+          windowDurationMs,
+          ...bucket,
+        });
+      }
     }
 
     resetWindow(now);
@@ -100,17 +114,38 @@ export function createCloudflareDatabaseQueryInstrumentation({
       flushWindow(now);
     }
 
+    const databaseKey = `${database.kind}\u0000${database.name ?? ""}`;
+    const windowBucket = windowBuckets.get(databaseKey);
+    if (windowBucket) {
+      windowBucket.queryCount += 1;
+      windowBucket.rowsRead += metrics.rowsRead;
+      windowBucket.rowsWritten += metrics.rowsWritten;
+      windowBucket.rowsReturned += metrics.rowsReturned;
+      windowBucket.executionMs += metrics.executionMs;
+    } else {
+      windowBuckets.set(databaseKey, {
+        databaseKind: database.kind,
+        databaseName: database.name,
+        queryCount: 1,
+        rowsRead: metrics.rowsRead,
+        rowsWritten: metrics.rowsWritten,
+        rowsReturned: metrics.rowsReturned,
+        executionMs: metrics.executionMs,
+      });
+    }
+
     if (metrics.rowsRead === 0 && metrics.rowsWritten === 0) {
       return;
     }
 
-    const key = `${database.kind}\u0000${database.name ?? ""}\u0000${metrics.sql}`;
+    const key = `${databaseKey}\u0000${metrics.sql}`;
     const existing = buckets.get(key);
     if (existing) {
       existing.queryCount += 1;
       existing.rowsRead += metrics.rowsRead;
       existing.rowsWritten += metrics.rowsWritten;
       existing.rowsReturned += metrics.rowsReturned;
+      existing.executionMs += metrics.executionMs;
     } else {
       buckets.set(key, {
         databaseKind: database.kind,
@@ -120,6 +155,7 @@ export function createCloudflareDatabaseQueryInstrumentation({
         rowsRead: metrics.rowsRead,
         rowsWritten: metrics.rowsWritten,
         rowsReturned: metrics.rowsReturned,
+        executionMs: metrics.executionMs,
       });
     }
 
