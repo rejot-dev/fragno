@@ -440,10 +440,19 @@ describe("internal fragment describe routes", () => {
           durationMs: expect.any(Number),
           pollCount: expect.any(Number),
           entriesRead: expect.any(Number),
+          framesWritten: expect.any(Number),
+          frameCharacters: expect.any(Number),
+          largestFrameCharacters: expect.any(Number),
+          heartbeatFrames: expect.any(Number),
           errorCount: 0,
           completionReason: "aborted",
         }),
       );
+      const completed = info.mock.calls.find(
+        ([event]) => event === "fragno.outbox_stream.completed",
+      )?.[1] as { framesWritten: number; heartbeatFrames: number; frameCharacters: number };
+      expect(completed.framesWritten - completed.heartbeatFrames).toBeGreaterThanOrEqual(1);
+      expect(completed.frameCharacters).toBeGreaterThan(1);
       expect(
         info.mock.calls.filter(([event]) => event === "fragno.outbox_stream.completed"),
       ).toHaveLength(1);

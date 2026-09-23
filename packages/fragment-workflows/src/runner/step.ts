@@ -496,6 +496,8 @@ export class RunnerStep implements WorkflowStep {
       queueEventConsumption,
       isEventConsumptionQueued,
     });
+    const stepStartedAt = performance.now();
+    let emissionsEnqueued = 0;
     const schedulerAbortController = new AbortController();
     const schedulerLease = livePumpHandle.runWhile({
       kind: "writer",
@@ -505,6 +507,7 @@ export class RunnerStep implements WorkflowStep {
     const tx = {
       ...txQueue.tx,
       emit: (payload: unknown) => {
+        emissionsEnqueued += 1;
         emissionScope.enqueueOutgoing(payload);
       },
       onEvent: (type: string, handler: (event: WorkflowStepEvent) => void | Promise<void>) => {
@@ -554,6 +557,15 @@ export class RunnerStep implements WorkflowStep {
       await schedulerLease;
       await emissionScope.flushAndClose(this.#handlerTx);
       await livePumpHandle.close();
+      console.info("fragno.workflow_step_emissions.completed", {
+        workflowName: this.#workflowName,
+        instanceId: this.#instanceId,
+        stepKey,
+        emissionsEnqueued,
+        successfulFlushCount: emissionScope.meta.successfulFlushCount,
+        emptyFlushCount: emissionScope.meta.emptyFlushCount,
+        durationMs: performance.now() - stepStartedAt,
+      });
       this.#queueStepEmissionCleanup({
         workflowName: this.#workflowName,
         instanceId: this.#instanceId,

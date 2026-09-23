@@ -70,6 +70,7 @@ export type DurableObjectQueryMetrics = {
   rowsRead: number;
   rowsWritten: number;
   rowsReturned: number;
+  executionMs: number;
 };
 
 /** Records query-level Durable Object SQLite usage synchronously without receiving bound values. */
@@ -169,6 +170,7 @@ class DOConnection implements DatabaseConnection {
   }
 
   async executeQuery<O>(compiledQuery: CompiledQuery): Promise<QueryResult<O>> {
+    const queryStartedAt = this.#config.queryInstrumentation ? performance.now() : 0;
     let cursor: SqlStorageCursor<Record<string, SqlStorageValue>>;
     try {
       cursor = this.#config.ctx.storage.sql.exec(compiledQuery.sql, ...compiledQuery.parameters);
@@ -189,6 +191,7 @@ class DOConnection implements DatabaseConnection {
         rowsRead,
         rowsWritten,
         rowsReturned: rows.length,
+        executionMs: performance.now() - queryStartedAt,
       });
     } catch {
       // Observability must not turn a successfully executed database query into a failure.

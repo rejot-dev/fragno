@@ -72,7 +72,9 @@ describe("Durable Object SQLite dialect", () => {
       rowsRead: 37,
       rowsWritten: 4,
       rowsReturned: 2,
+      executionMs: expect.any(Number),
     });
+    expect(recordQuery.mock.calls[0]?.[0].executionMs).toBeGreaterThanOrEqual(0);
   });
 
   test("rejects promise-returning instrumentation callbacks", () => {
