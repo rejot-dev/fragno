@@ -1290,20 +1290,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           })
           .build();
       },
-      observeStepEmissions: function <TOutEmission = unknown>(params: {
-        workflowName: string;
-        instanceId: string;
-      }) {
-        const handle = deps.stepEmissions.getOrCreate(
-          workflowStepLivePumpKey(params.workflowName, params.instanceId),
-          () =>
-            createWorkflowStepLivePump({
-              workflowName: params.workflowName,
-              instanceId: params.instanceId,
-            }),
-        );
-        return handle as WorkflowStepLivePumpHandle<TOutEmission>;
-      },
       /**
        * Send an event to a workflow instance. Wakes the instance if it is waiting for this event type.
        *

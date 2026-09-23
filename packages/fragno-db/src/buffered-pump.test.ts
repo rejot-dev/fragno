@@ -8,7 +8,6 @@ import { SQLocalDriverConfig } from "./adapters/generic-sql/driver-config";
 import { SqlAdapter } from "./adapters/generic-sql/generic-sql-adapter";
 import {
   BufferedDatabasePump,
-  BufferedPumpObserveTimeoutError,
   BufferedPumpSchedulerLeaseActiveError,
   BufferedPumpRegistry,
   type BufferedFlushContext,
@@ -284,9 +283,7 @@ describe("BufferedDatabasePump", () => {
   });
 
   test("materializes outgoing factories immediately before flush with current buffer view", async () => {
-    const recorded = recordedFlush(async (ctx) => ({
-      snapshot: [...(ctx.batch.outgoingByScope.get("s") ?? [])],
-    }));
+    const recorded = recordedFlush(async () => ({}));
     const pump = new BufferedDatabasePump({ flush: recorded.flush });
     const scope = pump.openScope("s", { tag: "scope-meta" });
     await resetAfterOpenScopeFlush(pump, recorded);
@@ -373,36 +370,6 @@ describe("BufferedDatabasePump", () => {
 
     expect(deliveries).toEqual(["to-a"]);
     expect(observed).toEqual(["observed-1", "observed-2"]);
-  });
-
-  test("delivers observations without retaining snapshots when snapshots are disabled", async () => {
-    const pump = new BufferedDatabasePump({
-      snapshotMode: "disabled",
-      flush: async () => ({ observedItems: ["observed"] }),
-    });
-    const observed: string[] = [];
-    pump.observe((message) => {
-      observed.push(message);
-    });
-
-    await pump.flushNow(handlerTx);
-
-    expect(observed).toEqual(["observed"]);
-    await expect(pump.observeWithReplay(() => undefined)).rejects.toThrow(
-      "observeWithReplay() is unavailable when snapshotMode is disabled",
-    );
-    await expect(pump.waitForObserved(() => true)).rejects.toThrow(
-      "waitForObserved() is unavailable when snapshotMode is disabled",
-    );
-    await expect(pump.publishObserved(["published"])).rejects.toThrow(
-      "publishObserved() is unavailable when snapshotMode is disabled",
-    );
-    await expect(pump.snapshotState(handlerTx)).rejects.toThrow(
-      "snapshotState() is unavailable when snapshotMode is disabled",
-    );
-    await expect(pump.snapshot(handlerTx)).rejects.toThrow(
-      "snapshotState() is unavailable when snapshotMode is disabled",
-    );
   });
 
   test("suppresses repeated scope deliveries with the same cursor", async () => {
@@ -698,49 +665,6 @@ describe("BufferedDatabasePump", () => {
     assert(checkpointFlushCompleted);
   });
 
-  test("snapshot uses explicit snapshot override when provided", async () => {
-    const pump = new BufferedDatabasePump({
-      flush: async () => ({ observedItems: ["observed"], snapshot: ["snapshot"] }),
-    });
-
-    await pump.flushNow(handlerTx);
-
-    await expect(pump.snapshot(handlerTx)).resolves.toEqual(["snapshot"]);
-  });
-
-  test("observe after-cursors suppress already observed items", async () => {
-    type Item = { id: string; payload: string };
-    let call = 0;
-    const pump = new BufferedDatabasePump<Item, unknown, Item>({
-      flush: async () => ({
-        observedItems:
-          call++ === 0
-            ? [
-                { id: "row-1", payload: "first" },
-                { id: "row-2", payload: "second" },
-              ]
-            : [
-                { id: "row-2", payload: "second" },
-                { id: "row-3", payload: "third" },
-              ],
-      }),
-      cursorForObservedItem: (item) => item.id,
-    });
-
-    const snapshot = await pump.snapshot(handlerTx);
-    const observed: Item[] = [];
-    const unsubscribe = pump.observe(
-      (item) => {
-        observed.push(item);
-      },
-      { after: snapshot },
-    );
-    await pump.flushNow(handlerTx);
-    unsubscribe();
-
-    expect(observed).toEqual([{ id: "row-3", payload: "third" }]);
-  });
-
   test("passive observers do not start scheduler loops or database flushes", async () => {
     let flushCount = 0;
     const pump = new BufferedDatabasePump<string, unknown, string>({
@@ -758,125 +682,6 @@ describe("BufferedDatabasePump", () => {
     assert(pump.activeSchedulerLeaseCount() === 0);
     assert(pump.activeSchedulerLoopCount() === 0);
     unsubscribe();
-  });
-
-  test("observeWithReplay closes the gap between an initial snapshot and subscription", async () => {
-    type Item = { id: string; payload: string };
-    const pump = new BufferedDatabasePump<Item, unknown, Item>({
-      flush: async () => ({ observedItems: [{ id: "row-1", payload: "initial" }] }),
-      cursorForObservedItem: (item) => item.id,
-    });
-
-    const snapshot = await pump.snapshot(handlerTx);
-    await pump.publishObserved([{ id: "row-2", payload: "published-before-subscribe" }]);
-    const observed: Item[] = [];
-    const unsubscribe = await pump.observeWithReplay(
-      (item) => {
-        observed.push(item);
-      },
-      { after: snapshot },
-    );
-
-    expect(observed).toEqual([{ id: "row-2", payload: "published-before-subscribe" }]);
-    unsubscribe();
-  });
-
-  test("waitForObserved resolves with the first matching observed item", async () => {
-    const pump = new BufferedDatabasePump<string, unknown, string>({
-      flush: async () => ({ observedItems: [] }),
-      intervalMs: 1,
-    });
-
-    const wait = pump.waitForObserved((item) => item === "match", { timeoutMs: 100 });
-    await pump.publishObserved(["skip", "match", "later"]);
-
-    assert((await wait) === "match");
-    assert(pump.activeSchedulerLeaseCount() === 0);
-  });
-
-  test("waitForObserved replays items published after the caller's snapshot", async () => {
-    type Item = { id: string; payload: string };
-    const pump = new BufferedDatabasePump<Item, unknown, Item>({
-      flush: async () => ({ observedItems: [{ id: "row-1", payload: "old" }] }),
-      cursorForObservedItem: (item) => item.id,
-    });
-    const snapshot = await pump.snapshot(handlerTx);
-    await pump.publishObserved([{ id: "row-2", payload: "new" }]);
-
-    await expect(
-      pump.waitForObserved((item) => item.payload === "new", {
-        after: snapshot,
-        timeoutMs: 100,
-      }),
-    ).resolves.toEqual({ id: "row-2", payload: "new" });
-  });
-
-  test("waitForObserved respects after-cursors", async () => {
-    type Item = { id: string; payload: string };
-    const pump = new BufferedDatabasePump<Item, unknown, Item>({
-      flush: async () => ({ observedItems: [] }),
-      cursorForObservedItem: (item) => item.id,
-      intervalMs: 1,
-    });
-    const snapshot = [{ id: "row-1", payload: "old" }];
-
-    const wait = pump.waitForObserved((item) => item.payload === "new", {
-      after: snapshot,
-      timeoutMs: 100,
-    });
-    await pump.publishObserved([
-      { id: "row-1", payload: "old replay" },
-      { id: "row-2", payload: "new" },
-    ]);
-
-    await expect(wait).resolves.toEqual({ id: "row-2", payload: "new" });
-  });
-
-  test("waitForObserved rejects on timeout and unsubscribes", async () => {
-    const pump = new BufferedDatabasePump<string, unknown, string>({
-      flush: async () => ({ observedItems: [] }),
-      intervalMs: 1,
-    });
-
-    await expect(
-      pump.waitForObserved((item) => item === "never", {
-        timeoutMs: 5,
-        timeoutMessage: "no matching item",
-      }),
-    ).rejects.toMatchObject({
-      name: "BufferedPumpObserveTimeoutError",
-      message: "no matching item",
-      timeoutMs: 5,
-    } satisfies Partial<BufferedPumpObserveTimeoutError>);
-    assert(pump.activeSchedulerLeaseCount() === 0);
-  });
-
-  test("publishObserved appends only newly observed items to snapshots", async () => {
-    type Item = { id: string; payload: string };
-    const pump = new BufferedDatabasePump<Item, unknown, Item>({
-      flush: async () => ({ observedItems: [{ id: "row-1", payload: "first" }] }),
-      cursorForObservedItem: (item) => item.id,
-    });
-    const observed: Item[] = [];
-    pump.observe((item) => {
-      observed.push(item);
-    });
-
-    await pump.flushNow(handlerTx);
-    await pump.publishObserved([
-      { id: "row-1", payload: "stale" },
-      { id: "row-2", payload: "second" },
-      { id: "row-2", payload: "duplicate" },
-    ]);
-
-    expect(observed).toEqual([
-      { id: "row-1", payload: "first" },
-      { id: "row-2", payload: "second" },
-    ]);
-    await expect(pump.snapshot(handlerTx)).resolves.toEqual([
-      { id: "row-1", payload: "first" },
-      { id: "row-2", payload: "second" },
-    ]);
   });
 
   test("flush failures restore drained outgoing buffers and rethrow", async () => {

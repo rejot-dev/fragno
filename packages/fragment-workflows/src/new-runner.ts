@@ -17,11 +17,7 @@ import {
 } from "./runner/plan-writes";
 import { createRunnerState, type RunnerState } from "./runner/state";
 import { isRunnerStepSuspended, RunnerStep } from "./runner/step";
-import {
-  workflowStepLivePumpKey,
-  type WorkflowStepEmission,
-  type WorkflowStepLivePumpRegistry,
-} from "./runner/step-live-pump";
+import type { WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
 import type {
   RunnerTaskKind,
   WorkflowEventRecord,
@@ -69,7 +65,6 @@ type RunnerTickContext = {
   executionId: string;
   createEpoch: () => string;
   stepEmissions?: WorkflowStepLivePumpRegistry;
-  stepEmissionsToPublish: WorkflowStepEmission[];
 };
 
 type RunnerTickSelectionResult = {
@@ -328,12 +323,7 @@ function planEarlyReschedule(
   return null;
 }
 
-function addStepCommittedEmissions(
-  uow: IUnitOfWork,
-  state: RunnerState,
-  executionId: string,
-  publishedStepEmissions: WorkflowStepEmission[],
-) {
+function addStepCommittedEmissions(uow: IUnitOfWork, state: RunnerState, executionId: string) {
   const mutatedStepKeys = new Set<string>([
     ...state.mutations.stepCreates.keys(),
     ...state.mutations.stepUpdates.keys(),
@@ -344,9 +334,8 @@ function addStepCommittedEmissions(
     if (!mutatedStepKeys.has(request.stepKey)) {
       continue;
     }
-    const localObservedAt = new Date();
     const payload = createWorkflowStepCommittedControlPayload(request.epoch);
-    const id = schemaUow.create("workflow_step_emission", {
+    schemaUow.create("workflow_step_emission", {
       instanceRef: request.instanceRef,
       stepKey: request.stepKey,
       executionId,
@@ -355,16 +344,6 @@ function addStepCommittedEmissions(
       actor: "system",
       payload,
       createdAt: schemaUow.now(),
-    });
-    publishedStepEmissions.push({
-      id: id.toString(),
-      actor: "system",
-      stepKey: request.stepKey,
-      executionId,
-      epoch: request.epoch,
-      sequence: 0,
-      payload,
-      createdAt: localObservedAt,
     });
   }
 }
@@ -392,7 +371,7 @@ async function planRunTask(
     operations: [
       (uow) => {
         applyRunnerMutations(uow, state, ctx.workflowsByName, ctx.executionId);
-        addStepCommittedEmissions(uow, state, ctx.executionId, ctx.stepEmissionsToPublish);
+        addStepCommittedEmissions(uow, state, ctx.executionId);
         applyOutcome(uow, selection.instance, outcome);
       },
     ],
@@ -577,7 +556,6 @@ export async function runWorkflowsTick(options: {
   // Instance-scoped tick: we only fetch data for the payload's instance/run.
   let processed = 0;
   let mutatePhase = false;
-  let stepEmissionsToPublish: WorkflowStepEmission[] = [];
 
   try {
     await options
@@ -586,10 +564,8 @@ export async function runWorkflowsTick(options: {
         // transform hooks are synchronous and run too late, so we use onAfterRetrieve.
         onAfterRetrieve: async (uow, results) => {
           const executionId = createExecutionId();
-          const attemptStepEmissionsToPublish: WorkflowStepEmission[] = [];
           processed = 0;
           mutatePhase = false;
-          stepEmissionsToPublish = attemptStepEmissionsToPublish;
 
           const retrieveResults = results as [
             WorkflowInstanceRecord[],
@@ -613,7 +589,6 @@ export async function runWorkflowsTick(options: {
               executionId,
               createEpoch,
               stepEmissions: options.stepEmissions,
-              stepEmissionsToPublish: attemptStepEmissionsToPublish,
             },
             options.payload,
           );
@@ -668,11 +643,6 @@ export async function runWorkflowsTick(options: {
     }
     throw err;
   }
-
-  const livePump = options.stepEmissions?.get(
-    workflowStepLivePumpKey(options.payload.workflowName, options.payload.instanceId),
-  );
-  await livePump?.publishObserved(stepEmissionsToPublish);
 
   return processed;
 }

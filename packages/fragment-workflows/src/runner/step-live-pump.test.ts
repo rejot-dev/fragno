@@ -8,6 +8,7 @@ import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test"
 import { workflowsSchema } from "../schema";
 import {
   createWorkflowEventConsumedControlPayload,
+  createWorkflowStepStartedControlPayload,
   isWorkflowEventConsumedControlPayload,
 } from "../step-emission-control";
 import { createWorkflowsTestHarness, type WorkflowsTestHarness } from "../test";
@@ -125,6 +126,10 @@ describe("WorkflowStepLivePump", () => {
           .map((row) => row.actor)
           .sort(),
       ).toEqual(["system", "user"]);
+      const scope = emissionBus.getScopeMeta("do:interactive");
+      expect(scope?.successfulFlushCount).toBeGreaterThanOrEqual(1);
+      await flushBus(harness, emissionBus);
+      expect(scope?.emptyFlushCount).toBeGreaterThanOrEqual(1);
     } finally {
       releaseStep.resolve();
       await tick;
@@ -249,71 +254,7 @@ describe("WorkflowStepLivePump", () => {
     }
   });
 
-  test("remote observers can read outbound rows written by another bus", async () => {
-    const stepEntered = deferred();
-    const releaseStep = deferred();
-    const observed = createAsyncQueue<unknown>();
-
-    const workflow = defineWorkflow<
-      "step-emission-bus-remote-observer-workflow",
-      undefined,
-      { ok: true }
-    >({ name: "step-emission-bus-remote-observer-workflow" }, async (_event, step) => {
-      await step.do("interactive", async (tx) => {
-        tx.emit({ type: "remote-started" });
-        stepEntered.resolve();
-        await releaseStep.promise;
-      });
-      return { ok: true };
-    });
-
-    const localRegistry = createStepEmissions();
-    const harness = await createWorkflowsTestHarness({
-      workflows: { EMISSION_BUS: workflow },
-      adapter: { type: "in-memory" },
-      testBuilder: buildDatabaseFragmentsTest(),
-      autoTickHooks: false,
-      fragmentConfig: { stepEmissions: localRegistry },
-    });
-
-    const instanceId = await harness.createInstance("EMISSION_BUS");
-    const instance = await readInstance(harness);
-    const localBus = harness.fragment.inContext(function () {
-      return openBus<{ type: string }>(localRegistry, {
-        workflowName: "step-emission-bus-remote-observer-workflow",
-        instanceId,
-      });
-    });
-
-    const tick = harness.tick(buildPayload(instance, "create"));
-    const remoteRegistry = createStepEmissions();
-    const remoteBus = harness.fragment.inContext(function () {
-      return openBus<{ type: string }>(remoteRegistry, {
-        workflowName: "step-emission-bus-remote-observer-workflow",
-        instanceId,
-      });
-    });
-    const unsubscribe = remoteBus.observe((message) => {
-      if (message.actor === "user") {
-        observed.push(message.payload);
-      }
-    });
-
-    try {
-      await stepEntered.promise;
-      await flushBus(harness, localBus);
-      await flushBus(harness, remoteBus);
-
-      expect(await observed.next()).toEqual({ type: "remote-started" });
-      assert(observed.pendingCount() === 0);
-    } finally {
-      unsubscribe();
-      releaseStep.resolve();
-      await tick;
-    }
-  });
-
-  test("snapshot returns the cached emissions and cursor from the last flush", async () => {
+  test("flush persists outbound emissions in order", async () => {
     const stepEntered = deferred();
     const releaseStep = deferred();
     const stepEmissions = createStepEmissions();
@@ -354,8 +295,16 @@ describe("WorkflowStepLivePump", () => {
       await stepEntered.promise;
       await flushBus(harness, emissionBus);
 
-      const snapshot = await snapshotBus(harness, emissionBus);
-      const outboundOnly = snapshot.filter(
+      const persistedRows = (await readStepEmissionRows(
+        harness,
+        "step-emission-bus-snapshot-outbound-workflow",
+        instanceId,
+      )) as Array<{
+        actor: string;
+        payload: { type?: string; tag?: string };
+        sequence: number;
+      }>;
+      const outboundOnly = persistedRows.filter(
         (m) => m.actor === "user" && m.payload.type !== undefined,
       );
       const payloads = outboundOnly.map((m) => m.payload);
@@ -372,7 +321,7 @@ describe("WorkflowStepLivePump", () => {
     }
   });
 
-  test("snapshot accumulates emissions across multiple live flushes", async () => {
+  test("persists emissions across multiple live flushes", async () => {
     const firstEmitted = deferred();
     const releaseSecondEmission = deferred();
     const secondEmitted = deferred();
@@ -416,23 +365,29 @@ describe("WorkflowStepLivePump", () => {
     try {
       await firstEmitted.promise;
       await flushBus(harness, emissionBus);
-      const firstSnapshot = await snapshotBus(harness, emissionBus);
+      const firstRows = (await readStepEmissionRows(
+        harness,
+        "step-emission-bus-cumulative-snapshot-workflow",
+        instanceId,
+      )) as Array<{ actor: string; payload: { tag: string }; sequence: number }>;
       expect(
-        firstSnapshot
+        firstRows
           .filter((message) => message.actor === "user")
           .map((message) => message.payload.tag),
       ).toEqual(["first"]);
       expect(
-        firstSnapshot
-          .filter((message) => message.actor === "user")
-          .map((message) => message.sequence),
+        firstRows.filter((message) => message.actor === "user").map((message) => message.sequence),
       ).toEqual([1]);
 
       releaseSecondEmission.resolve();
       await secondEmitted.promise;
       await flushBus(harness, emissionBus);
-      const secondSnapshot = await snapshotBus(harness, emissionBus);
-      const secondOutbound = secondSnapshot.filter((message) => message.actor === "user");
+      const secondRows = (await readStepEmissionRows(
+        harness,
+        "step-emission-bus-cumulative-snapshot-workflow",
+        instanceId,
+      )) as Array<{ actor: string; payload: { tag: string }; sequence: number }>;
+      const secondOutbound = secondRows.filter((message) => message.actor === "user");
       expect(secondOutbound.map((message) => message.payload.tag)).toEqual(
         expect.arrayContaining(["first", "second"]),
       );
@@ -452,7 +407,7 @@ describe("WorkflowStepLivePump", () => {
     }
   });
 
-  test("observe after snapshot skips snapshotted emissions per observer", async () => {
+  test("observers receive only emissions flushed after subscription", async () => {
     const beforeThird = deferred();
     const releaseStep = deferred();
     const stepEmissions = createStepEmissions();
@@ -490,32 +445,27 @@ describe("WorkflowStepLivePump", () => {
     });
 
     const tick = harness.tick(buildPayload(instance, "create"));
-    const lateObserver = createAsyncQueue<{ tag: string; sequence: number | null }>();
-    const earlyObserver = createAsyncQueue<{ tag: string; sequence: number | null }>();
-    let unsubscribeLate = () => {};
-    let unsubscribeEarly = () => {};
+    const observed = createAsyncQueue<{ tag: string; sequence: number | null }>();
+    let unsubscribe = () => {};
 
     try {
       await beforeThird.promise;
       await flushBus(harness, emissionBus);
 
-      const snapshot = await snapshotBus(harness, emissionBus);
-      expect(snapshot.filter((m) => m.actor === "user").map((m) => m.payload.tag)).toEqual([
-        "first",
-        "second",
-      ]);
+      const persistedRows = (await readStepEmissionRows(
+        harness,
+        "step-emission-bus-from-cursors-workflow",
+        instanceId,
+      )) as Array<{ actor: string; payload: { tag: string } }>;
+      expect(
+        persistedRows
+          .filter((message) => message.actor === "user")
+          .map((message) => message.payload.tag),
+      ).toEqual(["first", "second"]);
 
-      unsubscribeLate = emissionBus.observe(
-        (message) => {
-          if (message.actor === "user") {
-            lateObserver.push({ tag: message.payload.tag, sequence: message.sequence });
-          }
-        },
-        { after: snapshot },
-      );
-      unsubscribeEarly = emissionBus.observe((message) => {
+      unsubscribe = emissionBus.observe((message) => {
         if (message.actor === "user") {
-          earlyObserver.push({ tag: message.payload.tag, sequence: message.sequence });
+          observed.push({ tag: message.payload.tag, sequence: message.sequence });
         }
       });
 
@@ -523,15 +473,10 @@ describe("WorkflowStepLivePump", () => {
       await tick;
       await flushBus(harness, emissionBus);
 
-      expect(await lateObserver.next()).toEqual({ tag: "third", sequence: 0 });
-      assert((await earlyObserver.next()).tag === "first");
-      assert((await earlyObserver.next()).tag === "second");
-      assert((await earlyObserver.next()).tag === "third");
-      assert(lateObserver.pendingCount() === 0);
-      assert(earlyObserver.pendingCount() === 0);
+      expect(await observed.next()).toEqual({ tag: "third", sequence: 0 });
+      assert(observed.pendingCount() === 0);
     } finally {
-      unsubscribeLate();
-      unsubscribeEarly();
+      unsubscribe();
       releaseStep.resolve();
       await drainDurableHooks(harness.fragment);
     }
@@ -751,8 +696,8 @@ describe("WorkflowStepLivePump", () => {
       executionId: "losing-execution",
       epoch: "losing-contested-epoch",
       sequence: 0,
-      actor: "user",
-      payload: { phase: "contested" },
+      actor: "system",
+      payload: createWorkflowStepStartedControlPayload(),
     });
     seedUow.create("workflow_step_emission", {
       instanceRef: instance.id,
@@ -932,10 +877,14 @@ const sendEventAndFlush = async (
       ])
       .execute();
 
-    const busHandle = harness.services.observeStepEmissions({
-      workflowName: params.workflowName,
-      instanceId: params.instanceId,
-    });
+    const busHandle = harness.fragment.$internal.deps.stepEmissions.getOrCreate(
+      workflowStepLivePumpKey(params.workflowName, params.instanceId),
+      () =>
+        createWorkflowStepLivePump({
+          workflowName: params.workflowName,
+          instanceId: params.instanceId,
+        }),
+    );
     await busHandle.flushAndClose(this.handlerTx);
   });
 };
@@ -948,14 +897,6 @@ const flushBus = async (
     await bus.flushNow(this.handlerTx);
   });
 };
-
-const snapshotBus = async <T>(
-  harness: WorkflowsTestHarness,
-  bus: { snapshot(handlerTx: DatabaseRequestContext["handlerTx"]): Promise<T[]> },
-): Promise<T[]> =>
-  await harness.fragment.inContext(async function () {
-    return await bus.snapshot(this.handlerTx);
-  });
 
 const deferred = <T = void>() => Promise.withResolvers<T>();
 

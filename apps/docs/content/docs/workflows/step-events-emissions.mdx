@@ -109,18 +109,9 @@ Use `step.waitForEvent(...)` when the event itself is the durable step boundary.
 `tx.onEvent(...)` when a long-running `step.do` callback must receive events while it continues
 running.
 
-## Observe current-step emissions
+## Inspect persisted emissions
 
-The HTTP route streams both persisted snapshot rows and new live emissions:
-
-```http
-GET /:workflowName/instances/:instanceId/current-step/emissions
-```
-
-Pass `once=true` for the current snapshot without keeping the stream open. Framework clients expose
-the same route through `useCurrentStepEmissions`.
-
-The instance history route also returns emissions that are still persisted at read time. Because
+The instance history route returns emissions that are still persisted at read time. Because
 completed attempt emissions are cleaned up asynchronously, do not treat the history response as a
 permanent emission archive.
 

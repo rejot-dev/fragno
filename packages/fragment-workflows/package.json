@@ -32,10 +32,6 @@
       "types": "./dist/node/debug-log.d.ts",
       "default": "./dist/node/debug-log.js"
     },
-    "./stream-step-emissions": {
-      "types": "./dist/node/stream-step-emissions.d.ts",
-      "default": "./dist/node/stream-step-emissions.js"
-    },
     "./step-identity": {
       "types": "./dist/browser/step-identity.d.ts",
       "browser": "./dist/browser/step-identity.js",
@@ -105,7 +101,6 @@
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/lofi": "workspace:*",
     "@standard-schema/spec": "^1.1.0",
-    "nanostores": "^1.2.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {

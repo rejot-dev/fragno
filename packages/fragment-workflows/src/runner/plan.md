@@ -185,16 +185,12 @@ Use the generic selector before interpreting emissions in:
    - exclude `event-consumed` markers from proven noncanonical executions;
    - only canonical consumption markers suppress workflow events.
 
-3. **Generic workflow clients**
-   - current-step emission projections;
-   - execution-activity projections.
-
-4. **Pi server projection**
+3. **Pi server projection**
    - session detail;
    - transcript projection;
    - draft/tool activity.
 
-5. **Remote workflow reconstruction**
+4. **Remote workflow reconstruction**
    - ensure forwarded previous emissions and consumed events are already canonical.
 
 Keep raw database/scenario inspection APIs raw where useful for diagnostics.

@@ -53,19 +53,6 @@ export class BufferedPumpSchedulerLeaseActiveError extends Error {
   }
 }
 
-export class BufferedPumpObserveTimeoutError extends Error {
-  readonly timeoutMs: number;
-
-  constructor(
-    timeoutMs: number,
-    message = `Timed out waiting for observed pump item after ${timeoutMs}ms.`,
-  ) {
-    super(message);
-    this.name = "BufferedPumpObserveTimeoutError";
-    this.timeoutMs = timeoutMs;
-  }
-}
-
 const DEFAULT_BUFFERED_PUMP_INTERVAL_MS = 100;
 
 const normalizeError = (error: unknown): Error =>
@@ -77,7 +64,6 @@ type QueuedBufferedItem<TItem, TOutgoing, TScopeMeta> =
 
 type BufferedPumpObserver<TObserved> = {
   handler: (message: TObserved) => void | Promise<void>;
-  cursors: Set<string>;
   deliveryTail: Promise<void>;
 };
 
@@ -124,22 +110,6 @@ export type BufferedScopeDelivery<TScopeDelivery = unknown> = {
 export type BufferedFlushResult<TObserved = unknown, TScopeDelivery = unknown> = {
   scopeDeliveries?: Array<BufferedScopeDelivery<TScopeDelivery>>;
   observedItems?: TObserved[];
-  snapshot?: TObserved[];
-};
-
-export type BufferedPumpCursorFor<TItem> = (item: TItem) => string | undefined;
-
-export type BufferedPumpObserveOptions<TItem> = {
-  after?: readonly TItem[];
-};
-
-export type BufferedPumpWaitForObservedOptions<TItem> = BufferedPumpObserveOptions<TItem> & {
-  timeoutMs?: number;
-  timeoutMessage?: string;
-};
-
-export type BufferedPumpSnapshot<TItem> = {
-  readonly items: TItem[];
 };
 
 export type BufferedOpenScopeContext<TOpenScopeMeta = unknown, TScopeMeta = TOpenScopeMeta> = {
@@ -272,13 +242,9 @@ export class BufferedDatabasePump<
   readonly #onError: (error: Error) => void;
   readonly #scopes = new Map<string, BufferedScopeState<TOutgoing, TScopeDelivery, TScopeMeta>>();
   readonly #observers = new Set<BufferedPumpObserver<TObserved>>();
-  readonly #cursorForObservedItem: BufferedPumpCursorFor<TObserved> | undefined;
   readonly #resolveScopeMeta: BufferedResolveScopeMeta<TOpenScopeMeta, TScopeMeta> | undefined;
   readonly #debugLabel: (() => string) | undefined;
-  readonly #snapshotMode: "enabled" | "disabled";
   readonly #scopeDeliveryCursors = new Map<string, Set<string>>();
-  #lastSnapshot: TObserved[] = [];
-  #hasFlushed = false;
   #lastError: Error | undefined;
   #pumpTail = Promise.resolve();
   readonly #writableFlushWaiters: Array<{
@@ -297,16 +263,12 @@ export class BufferedDatabasePump<
     ) => Promise<BufferedFlushResult<TObserved, TScopeDelivery>>;
     intervalMs?: number;
     onError?: (error: Error) => void;
-    cursorForObservedItem?: BufferedPumpCursorFor<TObserved>;
     resolveScopeMeta?: BufferedResolveScopeMeta<TOpenScopeMeta, TScopeMeta>;
     debugLabel?: () => string;
-    snapshotMode?: "enabled" | "disabled";
   }) {
     this.#flush = options.flush;
-    this.#cursorForObservedItem = options.cursorForObservedItem;
     this.#resolveScopeMeta = options.resolveScopeMeta;
     this.#debugLabel = options.debugLabel;
-    this.#snapshotMode = options.snapshotMode ?? "enabled";
     this.#onError =
       options.onError ??
       ((error) => {
@@ -486,118 +448,15 @@ export class BufferedDatabasePump<
     return this.#debugLabel?.() ?? "buffered-pump";
   }
 
-  observe(
-    handler: (message: TObserved) => void | Promise<void>,
-    options?: BufferedPumpObserveOptions<TObserved>,
-  ): () => void {
-    return this.#registerObserver(handler, options).unsubscribe;
-  }
-
-  async observeWithReplay(
-    handler: (message: TObserved) => void | Promise<void>,
-    options?: BufferedPumpObserveOptions<TObserved>,
-  ): Promise<() => void> {
-    this.#assertSnapshotsEnabled("observeWithReplay");
-    const registered = this.#registerObserver(handler, options);
-    try {
-      await this.#deliverObservedToObserver(registered.observer, this.#lastSnapshot);
-      return registered.unsubscribe;
-    } catch (error) {
-      registered.unsubscribe();
-      throw error;
-    }
-  }
-
-  async waitForObserved(
-    predicate: (message: TObserved) => boolean | Promise<boolean>,
-    options: BufferedPumpWaitForObservedOptions<TObserved> = {},
-  ): Promise<TObserved> {
-    this.#assertSnapshotsEnabled("waitForObserved");
-    let isSettled = false;
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    let resolveResult!: (message: TObserved) => void;
-    let rejectResult!: (error: Error) => void;
-    const result = new Promise<TObserved>((resolve, reject) => {
-      resolveResult = resolve;
-      rejectResult = reject;
-    });
-    const settle = (complete: () => void) => {
-      if (isSettled) {
-        return;
-      }
-      isSettled = true;
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-      registered.unsubscribe();
-      complete();
+  observe(handler: (message: TObserved) => void | Promise<void>): () => void {
+    const observer: BufferedPumpObserver<TObserved> = {
+      handler,
+      deliveryTail: Promise.resolve(),
     };
-    const registered = this.#registerObserver(
-      async (message) => {
-        try {
-          if (!(await predicate(message))) {
-            return;
-          }
-          settle(() => {
-            resolveResult(message);
-          });
-        } catch (error) {
-          settle(() => {
-            rejectResult(normalizeError(error));
-          });
-        }
-      },
-      { after: options.after },
-    );
-
-    if (options.timeoutMs !== undefined) {
-      timeout = setTimeout(() => {
-        settle(() => {
-          rejectResult(
-            new BufferedPumpObserveTimeoutError(options.timeoutMs!, options.timeoutMessage),
-          );
-        });
-      }, options.timeoutMs);
-      timeout.unref?.();
-    }
-
-    try {
-      await this.#deliverObservedToObserver(registered.observer, this.#lastSnapshot);
-    } catch (error) {
-      settle(() => {
-        rejectResult(normalizeError(error));
-      });
-    }
-    return await result;
-  }
-
-  async publishObserved(messages: readonly TObserved[]): Promise<void> {
-    this.#assertSnapshotsEnabled("publishObserved");
-    if (messages.length === 0) {
-      return;
-    }
-    const messagesToPublish = this.#hasFlushed
-      ? this.#unobservedMessages(this.#cursorsFor(this.#lastSnapshot), messages)
-      : messages;
-    if (messagesToPublish.length === 0) {
-      return;
-    }
-    if (this.#hasFlushed) {
-      this.#lastSnapshot = [...this.#lastSnapshot, ...messagesToPublish];
-    }
-    await this.#deliverObserved(messagesToPublish);
-  }
-
-  async snapshotState(handlerTx: DatabaseHandlerTx): Promise<BufferedPumpSnapshot<TObserved>> {
-    this.#assertSnapshotsEnabled("snapshotState");
-    if (!this.#hasFlushed) {
-      await this.refreshObserved(handlerTx);
-    }
-    return { items: this.#lastSnapshot.slice() };
-  }
-
-  async snapshot(handlerTx: DatabaseHandlerTx): Promise<TObserved[]> {
-    return (await this.snapshotState(handlerTx)).items;
+    this.#observers.add(observer);
+    return () => {
+      this.#observers.delete(observer);
+    };
   }
 
   async #runPumpOnce(handlerTx: DatabaseHandlerTx, includeWritableScopes: boolean): Promise<void> {
@@ -622,30 +481,17 @@ export class BufferedDatabasePump<
         scopes: includeWritableScopes ? this.#scopeSnapshots() : new Map(),
         batch,
       });
-      const observedItems = result.observedItems ?? [];
       if (includeWritableScopes) {
         await this.#deliverToScopes(result.scopeDeliveries ?? []);
       }
-      if (this.#snapshotMode === "enabled") {
-        this.#lastSnapshot = (result.snapshot ?? observedItems).slice();
-      }
-      this.#hasFlushed = true;
       this.#lastError = undefined;
-      await this.#deliverObserved(observedItems);
+      await this.#deliverObserved(result.observedItems ?? []);
     } catch (error) {
       const normalizedError = normalizeError(error);
       this.#lastError = normalizedError;
       this.#restoreDrained(drainedOutgoingByScope);
       this.#onError(normalizedError);
       throw normalizedError;
-    }
-  }
-
-  #assertSnapshotsEnabled(method: string): void {
-    if (this.#snapshotMode === "disabled") {
-      throw new Error(
-        `BufferedDatabasePump.${method}() is unavailable when snapshotMode is disabled.`,
-      );
     }
   }
 
@@ -743,60 +589,12 @@ export class BufferedDatabasePump<
     messages: readonly TObserved[],
   ): Promise<void> {
     for (const message of messages) {
-      if (this.#isAlreadyObserved(observer.cursors, message)) {
-        continue;
-      }
       const delivery = observer.deliveryTail.then(async () => {
         await observer.handler(message);
       });
       observer.deliveryTail = delivery.catch(() => {});
       await delivery;
     }
-  }
-
-  #registerObserver(
-    handler: (message: TObserved) => void | Promise<void>,
-    options?: BufferedPumpObserveOptions<TObserved>,
-  ): { observer: BufferedPumpObserver<TObserved>; unsubscribe: () => void } {
-    const observer: BufferedPumpObserver<TObserved> = {
-      handler,
-      cursors: this.#cursorsFor(options?.after ?? []),
-      deliveryTail: Promise.resolve(),
-    };
-    this.#observers.add(observer);
-    return {
-      observer,
-      unsubscribe: () => {
-        this.#observers.delete(observer);
-      },
-    };
-  }
-
-  #isAlreadyObserved(cursors: Set<string>, message: TObserved): boolean {
-    const cursor = this.#cursorForObservedItem?.(message);
-    if (!cursor) {
-      return false;
-    }
-    if (cursors.has(cursor)) {
-      return true;
-    }
-    cursors.add(cursor);
-    return false;
-  }
-
-  #unobservedMessages(cursors: Set<string>, messages: readonly TObserved[]): TObserved[] {
-    return messages.filter((message) => !this.#isAlreadyObserved(cursors, message));
-  }
-
-  #cursorsFor(items: readonly TObserved[]): Set<string> {
-    const cursors = new Set<string>();
-    for (const item of items) {
-      const cursor = this.#cursorForObservedItem?.(item);
-      if (cursor) {
-        cursors.add(cursor);
-      }
-    }
-    return cursors;
   }
 
   #resolveWritableFlushWaiters(completedSequence: number, error?: unknown): void {
