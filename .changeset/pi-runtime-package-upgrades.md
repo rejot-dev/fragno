@@ -1,5 +1,4 @@
 ---
-"@fragno-dev/pi-fragment": patch
 "@fragno-dev/pi-harness": patch
 ---
 

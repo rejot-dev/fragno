@@ -1,168 +1,155 @@
-# Pi Fragment (@fragno-dev/pi-fragment)
+# Pi Harness (`@fragno-dev/pi-harness`)
 
 ## Summary
 
-Workflow-backed AI agent sessions with durable state, deterministic tool replay, and typed client
-APIs for sessions and messages.
+Pi Harness is a Fragno fragment for workflow-backed Pi `AgentHarness` sessions. It provides durable
+session and command routes, replay-safe workflow integration, session projections, and typed client
+integrations.
+
+The package supersedes `@fragno-dev/pi-fragment`. Some exported identifiers still contain
+`PiFragment` for compatibility; the package, fragment definition, and database namespace are
+`pi-harness`.
 
 ## Use when
 
-- You want to embed AI agents directly into your product.
-- Agent turns must survive retries, restarts, and long-running execution.
-- Tool calls need to be replay-safe so side effects do not run twice.
+- You are embedding Pi agents in a product.
+- Agent sessions must survive retries, restarts, and long-running workflow execution.
+- Tool execution must be reconstructed safely during workflow replay.
+- A frontend needs typed session, session-detail, and command clients.
 
-## Config
+## Integration boundary
 
-The fragment config defines agent and tool registries.
+Pi Harness owns session projection and command transport. The application owns:
 
-What you provide:
+- the workflow registry;
+- model and provider configuration;
+- tool definitions and tool authorization;
+- the workflow runner or durable-hooks dispatcher;
+- authentication and authorization around mounted routes.
 
-- `agents`: registry of agent definitions created with `defineAgent()`.
-- `tools`: registry of tool factories.
-- `defaultSteeringMode` (optional): default steering mode for sessions/messages.
-- `toolSideEffectReducers` (optional): reducers for reconstructing stateful tool side effects.
-- `logging` (optional): internal pi-fragment diagnostics.
-
-What the fragment needs via options/services:
-
-- `databaseAdapter`: required for sessions and persisted workflow state.
-- `mountRoute` (optional): choose where Pi routes are mounted.
-- `services.workflows`: required; Pi depends on a Workflows fragment instance.
-
-## What you get
-
-- Durable agent sessions stored in your database.
-- Asynchronous message processing through workflows.
-- Persisted tool-call journal with deterministic replay.
-- Typed client hooks for listing sessions, creating sessions, and sending messages.
-
-## Docs
-
-There is not yet a published Markdown docs section for Pi. Use these local references first:
-
-- `packages/pi-fragment/README.md`
-- `packages/pi-fragment/CLI.md`
-- `packages/pi-fragment/src/index.ts`
-- `packages/pi-fragment/src/client/clients.ts`
-- `apps/docs/app/routes/pi.tsx`
-
-Also read Workflows docs/reference because Pi depends on it:
-
-- `curl -L "https://fragno.dev/docs/workflows/quickstart" -H "accept: text/markdown"`
-- `./references/first-party-fragments/workflows.md`
+Use the `fragno-workflows` skill for workflow definitions, replay-safe steps, dispatchers, events,
+emissions, and workflow tests.
 
 ## Prerequisites
 
-- A database and `@fragno-dev/db` adapter.
-- `@fragno-dev/workflows` configured with a runner/dispatcher.
-- A model/provider setup for your agent definitions.
+- `@fragno-dev/workflows` and `@fragno-dev/db`;
+- a supported Fragno database adapter and applied migrations;
+- model/provider configuration for `AgentHarness`;
+- a workflow runner or durable-hooks dispatcher that advances workflow instances.
 
 ## Install
 
-`npm install @fragno-dev/pi-fragment @fragno-dev/workflows @fragno-dev/db`
+```bash
+npm install @fragno-dev/pi-harness @fragno-dev/workflows @fragno-dev/db
+```
 
 ## Server setup
 
-1. Build the Pi registry with `createPi()`.
-2. Create a Workflows fragment for `pi.workflows`.
-3. Instantiate Pi with
-   `createPiFragment(pi.config, { databaseAdapter, mountRoute? }, { workflows: workflowsFragment.services })`.
-4. Mount both the Workflows and Pi routes.
-5. Generate and apply DB migrations.
-
-Example server module:
+Create an interactive workflow, register it with both the Workflows fragment and Pi Harness, then
+mount both fragments:
 
 ```ts
 import { defaultFragnoRuntime } from "@fragno-dev/core";
-import { createPi, createPiFragment, defineAgent } from "@fragno-dev/pi-fragment";
+import { createPiHarness, createPiWorkflows } from "@fragno-dev/pi-harness/factory";
+import { createInteractiveChatWorkflow } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
-import { databaseAdapter } from "./db";
 
-const pi = createPi()
-  .agent(
-    defineAgent("support-agent", {
-      systemPrompt: "You are a helpful support agent.",
-      model,
-      tools: ["search"],
-    }),
-  )
-  .tool("search", async () => ({
-    name: "search",
-    description: "Lookup references",
-    inputSchema: { type: "object", properties: { query: { type: "string" } } },
-    handler: async ({ query }: { query: string }) => `Result for ${query}`,
-  }))
-  .build();
+const interactiveChat = createInteractiveChatWorkflow({
+  options: {
+    model,
+    models,
+    systemPrompt: "You are a helpful support agent.",
+    tools: [searchTool],
+  },
+});
+
+const piConfig = { workflows: [interactiveChat] };
+const workflows = createPiWorkflows(piConfig);
 
 const workflowsFragment = createWorkflowsFragment(
-  {
-    workflows: pi.workflows,
-    runtime: defaultFragnoRuntime,
-  },
+  { workflows, runtime: defaultFragnoRuntime },
   { databaseAdapter, mountRoute: "/api/workflows" },
 );
 
-export const piFragment = createPiFragment(
-  pi.config,
+export const piHarness = createPiHarness(
+  piConfig,
   { databaseAdapter, mountRoute: "/api/pi" },
   { workflows: workflowsFragment.services },
 );
 ```
 
-## Database migrations
+For application-dependent tools, system prompts, or resources, pass a function as the workflow's
+`options` value. It runs before each operation and may return runtime-only values such as tool
+`execute` functions; durable workflow state must remain serializable.
 
-Generate migrations from the server module that wires Pi and Workflows, or generate them from each
-fragment module and apply both sets.
+Custom workflows can use the lower-level helpers from
+`@fragno-dev/pi-harness/workflows/workflow-agent-harness`. Restore the session from workflow
+history, run one harness operation inside a durable step, and apply the committed step result before
+starting the next operation.
 
-Examples:
+## Routes
 
-- `npx fragno-cli db generate lib/pi.ts --format drizzle -o db/pi.schema.ts`
-- `npx fragno-cli db generate lib/pi.ts --output migrations/001_pi.sql`
+After mounting the fragment, the route surface is:
+
+- `POST /workflows/:workflowName/sessions`
+- `GET /workflows/:workflowName/sessions`
+- `GET /workflows/:workflowName/sessions/:sessionId`
+- `GET /workflows/:workflowName/sessions/:sessionId/export/pi-jsonl`
+- `GET /workflows/:workflowName/sessions/:sessionId/wait-for-agent-end`
+- `POST /workflows/:workflowName/sessions/:sessionId/command`
+
+Session creation accepts a workflow name, optional name and metadata, and workflow input. Commands
+include prompts, skills, prompt templates, compaction, steering, follow-ups, and aborts. Command
+submission is asynchronous; observe the session detail or wait-for-agent-end route for progress.
 
 ## Client setup
 
-Use the framework-specific client entrypoint, e.g. React:
+Use the framework-specific client entrypoint. The client export names retain the existing
+`PiFragment` terminology:
 
 ```ts
-import { createPiFragmentClient } from "@fragno-dev/pi-fragment/react";
+import { createPiFragmentClient } from "@fragno-dev/pi-harness/react";
 
-export const piClient = createPiFragmentClient({
-  mountRoute: "/api/pi",
-});
+export const pi = createPiFragmentClient({ baseUrl: "/api/pi" });
+
+const sessions = pi.useSessions();
+const session = pi.useSessionDetail();
+const createSession = pi.useCreateSession();
+const sendCommand = pi.useCommandSession();
 ```
 
-## Routes and hooks
+The client also has Solid, Svelte, Vue, and vanilla entrypoints. Read
+`packages/pi-harness/src/client/clients.ts` when the generated hook or mutator shape matters.
 
-Routes:
+## Operation completion hooks
 
-- `POST /sessions`
-- `GET /sessions`
-- `GET /sessions/:sessionId`
-- `GET /sessions/:sessionId/active`
-- `POST /sessions/:sessionId/messages`
+`PiFragmentConfig.onOperationCompleted` is a durable hook for committed terminal outcomes. Its
+payload includes the session operation and model usage. Make the handler idempotent using the hook
+context's idempotency key. Register both the Workflows and Pi Harness fragments with the same Node
+durable-hooks processor when using durable hooks.
 
-Hooks/stores:
+## Database and operations
 
-- `useSessions`
-- `useSessionDetail`
-- `useSession`
-- `useCreateSession`
-- `useActiveSession`
-- `useSendMessage`
+Generate migrations from the application module that wires Workflows and Pi Harness, then apply the
+result with the application's normal migration workflow. Pi Harness stores session metadata in the
+`pi-harness` schema namespace; workflow state and history come from the Workflows fragment.
 
-## Operational notes
-
-- `POST /sessions/:sessionId/messages` is asynchronous and returns an acknowledgment payload.
-- Session detail/active endpoints are how the client observes workflow progress.
-- If you use stateful tools, register a side-effect reducer so replay reconstructs tool state.
+The mounted routes still require application authentication and authorization. Route protection is
+not provided by the fragment.
 
 ## Common pitfalls
 
-- Mounting Pi without mounting/configuring the Workflows fragment.
-- Forgetting to wire a runner/dispatcher, so sessions never advance.
-- Treating message submission as synchronous instead of polling/streaming session state.
+- Registering a workflow with Pi Harness but not with the Workflows fragment.
+- Mounting Pi Harness without wiring `workflowsFragment.services`.
+- Running without a workflow runner or durable-hooks dispatcher.
+- Putting non-serializable model/tool runtime values into workflow parameters or step results.
+- Treating command submission as synchronous.
+- Using the deleted `@fragno-dev/pi-fragment` package or its old package paths.
 
-## Next steps
+## Local references
 
-- Add product-specific tools and reducers.
-- Build a session UI on top of `useSession` / `useActiveSession`.
+- `packages/pi-harness/README.md`
+- `packages/pi-harness/src/pi/factory.ts`
+- `packages/pi-harness/src/routes.ts`
+- `apps/docs/app/routes/pi.tsx`
+- `apps/docs/content/docs/pi/custom-workflows.mdx`

@@ -196,21 +196,21 @@ Docs: no published Markdown docs yet; use local references:
 - `packages/github-app-fragment/README.md`
 - `apps/docs/app/routes/github.tsx`
 
-### Pi (`@fragno-dev/pi-fragment`)
+### Pi Harness (`@fragno-dev/pi-harness`)
 
-Definition: Durable AI agents with workflow-backed sessions, deterministic tool replay, and typed
-session/message clients.
+Definition: Workflow-backed Pi `AgentHarness` sessions with durable command routes, deterministic
+replay, projections, and typed clients.
 
-Use when: you want product-embedded agents whose sessions survive retries/restarts and whose tools
-must replay safely.
+Use when: you want product-embedded agents whose sessions survive retries/restarts, whose tools run
+inside replay-safe workflow steps, or whose frontend needs typed session and command clients.
 
 Reference: `./references/first-party-fragments/pi.md`.
 
-Docs: no published Markdown docs yet; use local references:
+Docs: use the package README and local application examples:
 
-- `packages/pi-fragment/README.md`
-- `packages/pi-fragment/CLI.md`
+- `packages/pi-harness/README.md`
 - `apps/docs/app/routes/pi.tsx`
+- `apps/docs/content/docs/pi/custom-workflows.mdx`
 
 ### Resend (`@fragno-dev/resend-fragment`)
 
@@ -333,7 +333,7 @@ relative to this skill file.
 | `first-party-fragments/auth.md`              | Auth fragment one-pager (install, routes, client, migrations)                                   |
 | `first-party-fragments/forms.md`             | Forms fragment one-pager (schemas, hooks, admin routes, migrations)                             |
 | `first-party-fragments/github.md`            | GitHub App fragment one-pager (app auth, webhooks, sync routes, client, migrations)             |
-| `first-party-fragments/pi.md`                | Pi fragment one-pager (agents, workflows dependency, sessions, client, migrations)              |
+| `first-party-fragments/pi.md`                | Pi Harness one-pager (AgentHarness workflows, sessions, commands, clients, migrations)          |
 | `first-party-fragments/resend.md`            | Resend fragment one-pager (outbound/inbound email, threads, hooks, migrations)                  |
 | `first-party-fragments/stripe.md`            | Stripe fragment one-pager (subscriptions, webhooks, admin hooks)                                |
 | `first-party-fragments/telegram.md`          | Telegram fragment one-pager (webhook, commands, chats/messages, hooks, migrations)              |

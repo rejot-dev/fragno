@@ -2,7 +2,6 @@
 "@fragno-dev/core": patch
 "@fragno-dev/db": patch
 "@fragno-dev/workflows": patch
-"@fragno-dev/pi-fragment": patch
 "@fragno-dev/pi-harness": patch
 ---
 
