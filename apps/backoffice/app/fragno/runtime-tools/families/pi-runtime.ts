@@ -45,6 +45,7 @@ export type PiSessionListArgs = {
 export type PiSessionTurnArgs = {
   sessionId: string;
   text: string;
+  timeoutMs?: number;
 };
 
 export type PiSessionTurnResult = PiSessionDetail & {
@@ -188,7 +189,7 @@ const createPiRuntime = (
       label: "pi.session.list",
     });
   },
-  runTurn: async ({ sessionId, text }) => {
+  runTurn: async ({ sessionId, text, timeoutMs = 120_000 }) => {
     const normalizedSessionId = sessionId.trim();
     if (!normalizedSessionId) {
       throw new Error("pi.session.turn requires a session id");
@@ -199,20 +200,14 @@ const createPiRuntime = (
       throw new Error("pi.session.turn requires non-empty text");
     }
 
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+      throw new Error("pi.session.turn requires a positive timeout in milliseconds");
+    }
+
     const pathParams = {
       workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
       sessionId: normalizedSessionId,
     };
-    const waitResponse = callRoute(
-      "GET",
-      "/workflows/:workflowName/sessions/:sessionId/wait-for-agent-end",
-      {
-        pathParams,
-        query: { timeoutMs: "60000" },
-      },
-    );
-    void waitResponse.catch(() => undefined);
-
     const promptResponse = await callRoute(
       "POST",
       "/workflows/:workflowName/sessions/:sessionId/command",
@@ -231,11 +226,18 @@ const createPiRuntime = (
       });
     }
 
-    const detailResponse = await waitResponse;
+    const detailResponse = await callRoute(
+      "GET",
+      "/workflows/:workflowName/sessions/:sessionId/commands/:commandId/wait",
+      {
+        pathParams: { ...pathParams, commandId: promptResponse.data.commandId },
+        query: { timeoutMs: String(timeoutMs) },
+      },
+    );
     if (detailResponse.type !== "json" || !isSuccessStatus(detailResponse.status)) {
       return throwOnRouteRuntimeError(detailResponse, {
         runtimeLabel: "Pi",
-        label: "pi.session.turn wait-for-agent-end",
+        label: "pi.session.turn wait-for-command-step",
       });
     }
 

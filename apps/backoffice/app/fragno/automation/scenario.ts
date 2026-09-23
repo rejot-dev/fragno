@@ -1184,7 +1184,9 @@ const createFakePiApi = (
     const url = new URL(request.url);
     const pathname = url.pathname;
     const sessionMatch =
-      /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/([^/]+))?$/u.exec(pathname);
+      /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/(commands\/[^/]+\/wait|[^/]+))?$/u.exec(
+        pathname,
+      );
     const workflowName = sessionMatch?.[1] ?? BACKOFFICE_PI_WORKFLOW_NAME;
     const sessionId = sessionMatch?.[2] ?? "";
     const suffix = sessionMatch?.[3] ?? "";
@@ -1241,7 +1243,7 @@ const createFakePiApi = (
       return session;
     }
 
-    if (request.method === "GET" && suffix === "wait-for-agent-end") {
+    if (request.method === "GET" && /^commands\/[^/]+\/wait$/u.test(suffix)) {
       await new Promise((resolve) => {
         setTimeout(resolve, 0);
       });

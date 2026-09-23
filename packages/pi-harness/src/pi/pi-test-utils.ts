@@ -843,6 +843,8 @@ type BuildHarnessOptions = {
     service: WorkflowsHarness["fragment"]["services"],
   ) => WorkflowsFragmentServices;
   autoTickHooks?: boolean;
+  workflowsNamespace?: string;
+  piNamespace?: string;
   workflows?: WorkflowRegistryEntry[];
 };
 
@@ -860,6 +862,9 @@ export const buildHarness: (
     adapter: options.adapter ?? { type: "kysely-sqlite" },
     testBuilder: buildDatabaseFragmentsTest(),
     autoTickHooks: options.autoTickHooks ?? false,
+    ...(options.workflowsNamespace
+      ? { fragmentOptions: { databaseNamespace: options.workflowsNamespace } }
+      : {}),
     fragmentConfig: {
       stepEmissions,
     },
@@ -876,6 +881,7 @@ export const buildHarness: (
     .withRoutes([piRoutesFactory])
     .withOptions({
       databaseAdapter: workflowsHarness.test.adapter,
+      ...(options.piNamespace ? { databaseNamespace: options.piNamespace } : {}),
     })
     .withServices({ workflows: workflowsService })
     .build();

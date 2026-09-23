@@ -93,6 +93,7 @@ const sessionListInputSchema = z.object({
 const sessionTurnInputSchema = z.object({
   sessionId: z.string().trim().min(1),
   text: z.string().trim().min(1),
+  timeoutMs: z.number().int().positive().optional(),
 });
 
 const sessionExtraOutputSchema = {
@@ -154,6 +155,7 @@ const parseSessionList = defineCliArgsParser<PiSessionListArgs>("pi.session.list
 const parseSessionTurn = defineCliArgsParser<PiSessionTurnArgs>("pi.session.turn", {
   sessionId: { required: true },
   text: { required: true },
+  timeoutMs: { option: "timeout-ms", kind: "integer" },
 });
 
 const jsonByDefaultOutputOptions = (args: string[]) => {
@@ -358,6 +360,12 @@ const sessionTurnTool = defineBackofficeRuntimeTool({
             valueRequired: true,
             valueName: "text",
             description: "User message text to send for this turn",
+          },
+          {
+            name: "timeout-ms",
+            valueRequired: true,
+            valueName: "milliseconds",
+            description: "Maximum time to wait for the agent to finish (default: 120000)",
           },
         ],
         examples: [

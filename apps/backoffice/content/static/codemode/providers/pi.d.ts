@@ -93,6 +93,7 @@ type PiListSessionsOutput = {
 type PiRunTurnInput = {
   sessionId: string;
   text: string;
+  timeoutMs?: number;
 };
 type PiRunTurnOutput = {
   id: string;

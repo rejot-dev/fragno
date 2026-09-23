@@ -12,7 +12,6 @@ import { serviceCalls } from "@fragno-dev/db";
 import { validateWorkflowParams } from "@fragno-dev/workflows";
 
 import { piHarnessDefinition, type PiSessionDetailSnapshot } from "./pi/definition";
-import { piHarnessEventProtocol } from "./pi/harness/agent-harness-event-protocol";
 import {
   createWorkflowBackedSessionEntryIdAllocator,
   WorkflowBackedSessionStorage,
@@ -25,19 +24,26 @@ import {
   sessionDetailSchema,
 } from "./pi/route-schemas";
 import {
+  createPiSessionCommandId,
+  piSessionCommandWaitability,
+} from "./pi/session-command-protocol";
+import {
   PiSessionDataIntegrityError,
   PiSessionDataUnavailableError,
   projectPiSessionFromWorkflowInstance,
   type PiSessionCommandPayload,
   type PiSessionDetail,
 } from "./pi/types";
-import type { PiHarnessEmission } from "./pi/workflows/workflow-agent-harness";
+import {
+  CommandStepFailedError,
+  CommandStepWaitTimeoutError,
+  CommandWorkflowTerminatedError,
+  waitForCommandStep,
+} from "./pi/wait-for-command-step";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
-const DEFAULT_AGENT_END_WAIT_TIMEOUT_MS = 60_000;
-const MAX_AGENT_END_WAIT_TIMEOUT_MS = 120_000;
-
+const DEFAULT_COMMAND_STEP_WAIT_TIMEOUT_MS = 120_000;
 const createCommandPayload = (
   commandId: string,
   command: z.infer<typeof commandInputSchema>,
@@ -63,9 +69,6 @@ const createCommandPayload = (
 
   throw new Error("Unsupported Pi session command kind.");
 };
-
-const normalizeAgentEndWaitTimeout = (timeoutMs: number | undefined): number =>
-  Math.min(timeoutMs ?? DEFAULT_AGENT_END_WAIT_TIMEOUT_MS, MAX_AGENT_END_WAIT_TIMEOUT_MS);
 
 const parsePositiveIntegerQueryValue = (value: string | null): number | undefined => {
   if (value === null) {
@@ -326,7 +329,7 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
       }),
       defineRoute({
         method: "GET",
-        path: "/workflows/:workflowName/sessions/:sessionId/wait-for-agent-end",
+        path: "/workflows/:workflowName/sessions/:sessionId/commands/:commandId/wait",
         queryParameters: ["timeoutMs"],
         outputSchema: sessionDetailSchema,
         errorCodes: [
@@ -334,57 +337,62 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
           "SESSION_DATA_UNAVAILABLE",
           "SESSION_DATA_INTEGRITY_ERROR",
           "WORKFLOW_INSTANCE_MISSING",
-          "AGENT_END_TIMEOUT",
+          "INVALID_COMMAND_ID",
+          "COMMAND_NOT_WAITABLE",
+          "COMMAND_STEP_TIMEOUT",
+          "COMMAND_STEP_FAILED",
+          "COMMAND_WORKFLOW_TERMINAL",
         ],
         handler: async function ({ pathParams, query }, { json, error }) {
           const timeoutMs = parsePositiveIntegerQueryValue(query.get("timeoutMs"));
           const workflowName = pathParams.workflowName;
           const sessionId = pathParams.sessionId;
-          const workflowsService = serviceDeps.workflows;
-          const waitTimeoutMs = normalizeAgentEndWaitTimeout(timeoutMs);
+          const commandId = pathParams.commandId;
+          const waitability = piSessionCommandWaitability(commandId);
+          if (waitability === "invalid") {
+            return error(
+              { message: "Invalid command id.", code: "INVALID_COMMAND_ID" },
+              { status: 400 },
+            );
+          }
+          if (waitability === "control") {
+            return error(
+              { message: "Control commands cannot be waited on.", code: "COMMAND_NOT_WAITABLE" },
+              { status: 400 },
+            );
+          }
+          const waitTimeoutMs = timeoutMs ?? DEFAULT_COMMAND_STEP_WAIT_TIMEOUT_MS;
 
           try {
-            const emissionBusHandle = workflowsService.observeStepEmissions<PiHarnessEmission>({
+            await waitForCommandStep({
+              handlerTx: this.handlerTx.bind(this),
+              workflows: serviceDeps.workflows,
               workflowName,
               instanceId: sessionId,
+              commandId,
+              timeoutMs: waitTimeoutMs,
             });
 
-            const handlerTx = this.handlerTx.bind(this);
-            const schedulerAbortController = new AbortController();
-            const schedulerLease = emissionBusHandle.runWhile({
-              kind: "observer",
-              signal: schedulerAbortController.signal,
-              handlerTx,
-            });
-            try {
-              const emissionSnapshot = await emissionBusHandle.pump.snapshot(handlerTx);
-              await emissionBusHandle.pump.waitForObserved(
-                (emission) =>
-                  emission.payload.kind === "harness-event" &&
-                  piHarnessEventProtocol.eventType(emission.payload.event) === "agent_end",
-                {
-                  after: emissionSnapshot,
-                  timeoutMs: waitTimeoutMs,
-                  timeoutMessage: `Timed out waiting for agent_end for ${workflowName}/${sessionId}.`,
-                },
-              );
+            const result = await this.handlerTx()
+              .withServiceCalls(
+                () => [services.getSessionDetailSnapshot(workflowName, sessionId)] as const,
+              )
+              .transform(({ serviceResult: [snapshot] }) => snapshot)
+              .execute();
 
-              const result = await this.handlerTx()
-                .withServiceCalls(
-                  () => [services.getSessionDetailSnapshot(workflowName, sessionId)] as const,
-                )
-                .transform(({ serviceResult: [snapshot] }) => snapshot)
-                .execute();
-
-              return json(toSessionDetail(result));
-            } finally {
-              schedulerAbortController.abort();
-              await schedulerLease;
-              await emissionBusHandle.close();
-            }
+            return json(toSessionDetail(result));
           } catch (err) {
-            if (err instanceof Error && err.name === "BufferedPumpObserveTimeoutError") {
-              return error({ message: err.message, code: "AGENT_END_TIMEOUT" }, { status: 408 });
+            if (err instanceof CommandStepWaitTimeoutError) {
+              return error({ message: err.message, code: "COMMAND_STEP_TIMEOUT" }, { status: 408 });
+            }
+            if (err instanceof CommandStepFailedError) {
+              return error({ message: err.message, code: "COMMAND_STEP_FAILED" }, { status: 409 });
+            }
+            if (err instanceof CommandWorkflowTerminatedError) {
+              return error(
+                { message: err.message, code: "COMMAND_WORKFLOW_TERMINAL" },
+                { status: 409 },
+              );
             }
             const loadError = toSessionDetailLoadError(err, workflowName, sessionId);
             return error(loadError.body, loadError.init);
@@ -402,7 +410,7 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
           const workflowName = pathParams.workflowName;
           const sessionId = pathParams.sessionId;
           const workflowsService = serviceDeps.workflows;
-          const commandId = createId();
+          const commandId = createPiSessionCommandId(command.kind);
           const payload = createCommandPayload(commandId, command);
 
           try {
