@@ -647,127 +647,6 @@ describe("Workflows Runner", () => {
     }
   });
 
-  test("central step emission bus observes step commit marker before the tick resolves", async () => {
-    const observed: unknown[] = [];
-    const stepEmissions = createStepEmissions();
-
-    const CommitFlushWorkflow = defineWorkflow<
-      "central-message-bus-commit-flush-workflow",
-      undefined,
-      { ok: true }
-    >({ name: "central-message-bus-commit-flush-workflow" }, async (_event, step) => {
-      await step.do("commit marker", async (tx) => {
-        tx.emit({ type: "started" });
-      });
-      return { ok: true };
-    });
-
-    const harness = await createWorkflowsTestHarness({
-      workflows: { COMMIT_FLUSH: CommitFlushWorkflow },
-      adapter: { type: "in-memory" },
-      testBuilder: buildDatabaseFragmentsTest(),
-      autoTickHooks: false,
-      fragmentConfig: { stepEmissions },
-    });
-
-    const instanceId = await harness.createInstance("COMMIT_FLUSH");
-    const [instance] = (
-      await harness.db
-        .createUnitOfWork("read")
-        .forSchema(workflowsSchema)
-        .find("workflow_instance", (b) => b.whereIndex("primary"))
-        .executeRetrieve()
-    )[0];
-    expect(instance).toBeTruthy();
-
-    const emissionBus = harness.fragment.inContext(function () {
-      return openBus(stepEmissions, {
-        workflowName: "central-message-bus-commit-flush-workflow",
-        instanceId,
-      });
-    });
-    const unsubscribe = emissionBus.observe((message) => {
-      observed.push(message.payload);
-    });
-    let flushCount = 0;
-    const originalFlushNow = emissionBus.flushNow.bind(emissionBus);
-    emissionBus.flushNow = async (handlerTx) => {
-      flushCount += 1;
-      await originalFlushNow(handlerTx);
-    };
-
-    try {
-      await harness.tick(buildPayload(instance!, "create"));
-
-      expect(observed).toEqual(
-        expect.arrayContaining([expect.objectContaining({ control: "step-committed" })]),
-      );
-      expect(flushCount).toBe(1);
-    } finally {
-      unsubscribe();
-    }
-  });
-
-  test("central step emission bus snapshot dedupes a commit marker already observed by a flush", async () => {
-    const stepEmissions = createStepEmissions();
-
-    const CommitSnapshotWorkflow = defineWorkflow<
-      "central-message-bus-commit-snapshot-workflow",
-      undefined,
-      { ok: true }
-    >({ name: "central-message-bus-commit-snapshot-workflow" }, async (_event, step) => {
-      await step.do("commit marker", async (tx) => {
-        tx.emit({ type: "started" });
-      });
-      return { ok: true };
-    });
-
-    const harness = await createWorkflowsTestHarness({
-      workflows: { COMMIT_SNAPSHOT: CommitSnapshotWorkflow },
-      adapter: { type: "in-memory" },
-      testBuilder: buildDatabaseFragmentsTest(),
-      autoTickHooks: false,
-      fragmentConfig: { stepEmissions },
-    });
-
-    const instanceId = await harness.createInstance("COMMIT_SNAPSHOT");
-    const [instance] = (
-      await harness.db
-        .createUnitOfWork("read")
-        .forSchema(workflowsSchema)
-        .find("workflow_instance", (b) => b.whereIndex("primary"))
-        .executeRetrieve()
-    )[0];
-    expect(instance).toBeTruthy();
-
-    let handlerTx!: DatabaseRequestContext["handlerTx"];
-    const emissionBus = harness.fragment.inContext(function () {
-      handlerTx = this.handlerTx.bind(this);
-      return openBus(stepEmissions, {
-        workflowName: "central-message-bus-commit-snapshot-workflow",
-        instanceId,
-      });
-    });
-    const flushNow = emissionBus.flushNow.bind(emissionBus);
-    const publishObserved = emissionBus.publishObserved.bind(emissionBus);
-    emissionBus.publishObserved = async (messages) => {
-      await flushNow(handlerTx);
-      await publishObserved(messages);
-    };
-
-    await harness.tick(buildPayload(instance!, "create"));
-
-    const snapshot = await snapshotBus(harness, emissionBus);
-    const commitMarkers = snapshot.filter(
-      (message) =>
-        typeof message.payload === "object" &&
-        message.payload !== null &&
-        "control" in message.payload &&
-        message.payload.control === "step-committed",
-    );
-    expect(commitMarkers).toHaveLength(1);
-  });
-
   test("central step emission bus drains emissions queued behind an in-flight flush before step close", async () => {
     const observed = createAsyncQueue<unknown>();
     const stepEmissions = createStepEmissions();
@@ -833,150 +712,6 @@ describe("Workflows Runner", () => {
       assert(observed.pendingCount() === 0);
     } finally {
       unsubscribe();
-    }
-  });
-
-  test("central step emission bus exposes final outbound rows flushed during step close to remote observers", async () => {
-    const observed = createAsyncQueue<unknown>();
-
-    const EmissionBusWorkflow = defineWorkflow<
-      "central-message-bus-close-remote-outbound-workflow",
-      undefined,
-      { ok: true }
-    >({ name: "central-message-bus-close-remote-outbound-workflow" }, async (_event, step) => {
-      await step.do("interactive", async (tx) => {
-        tx.emit({ type: "message_update", text: "final text" });
-        tx.emit({ type: "message_end", text: "final text" });
-        tx.emit({ type: "turn_end" });
-        tx.emit({ type: "agent_end" });
-      });
-      return { ok: true };
-    });
-
-    const stepEmissions = createStepEmissions();
-    const harness = await createWorkflowsTestHarness({
-      workflows: { EMISSION_BUS: EmissionBusWorkflow },
-      adapter: { type: "in-memory" },
-      testBuilder: buildDatabaseFragmentsTest(),
-      autoTickHooks: false,
-      fragmentConfig: { stepEmissions },
-    });
-
-    const instanceId = await harness.createInstance("EMISSION_BUS");
-    const [instance] = (
-      await harness.db
-        .createUnitOfWork("read")
-        .forSchema(workflowsSchema)
-        .find("workflow_instance", (b) => b.whereIndex("primary"))
-        .executeRetrieve()
-    )[0];
-    expect(instance).toBeTruthy();
-
-    const remoteRegistry = createStepEmissions();
-    const remoteBus = harness.fragment.inContext(function () {
-      return openBus<{ type: string; text?: string }>(remoteRegistry, {
-        workflowName: "central-message-bus-close-remote-outbound-workflow",
-        instanceId,
-      });
-    });
-    const unsubscribe = remoteBus.observe((message) => {
-      if (message.actor === "user") {
-        observed.push(message.payload);
-      }
-    });
-
-    try {
-      await harness.tick(buildPayload(instance!, "create"));
-      await flushBus(harness, remoteBus);
-
-      expect(await observed.next()).toEqual({ type: "message_update", text: "final text" });
-      expect(await observed.next()).toEqual({ type: "message_end", text: "final text" });
-      expect(await observed.next()).toEqual({ type: "turn_end" });
-      expect(await observed.next()).toEqual({ type: "agent_end" });
-      assert(observed.pendingCount() === 0);
-    } finally {
-      unsubscribe();
-    }
-  });
-
-  test("central step emission bus observes outbound rows written by another process", async () => {
-    const stepEntered = deferred();
-    const releaseStep = deferred();
-    const observed = createAsyncQueue<unknown>();
-
-    const EmissionBusWorkflow = defineWorkflow<
-      "central-message-bus-remote-outbound-workflow",
-      undefined,
-      { ok: true }
-    >({ name: "central-message-bus-remote-outbound-workflow" }, async (_event, step) => {
-      await step.do("interactive", async (tx) => {
-        tx.emit({ type: "remote-started" });
-        stepEntered.resolve();
-        await releaseStep.promise;
-      });
-      return { ok: true };
-    });
-
-    const localRegistry = createStepEmissions();
-    const harness = await createWorkflowsTestHarness({
-      workflows: { EMISSION_BUS: EmissionBusWorkflow },
-      adapter: { type: "in-memory" },
-      testBuilder: buildDatabaseFragmentsTest(),
-      autoTickHooks: false,
-      fragmentConfig: { stepEmissions: localRegistry },
-    });
-
-    const instanceId = await harness.createInstance("EMISSION_BUS");
-    const [instance] = (
-      await harness.db
-        .createUnitOfWork("read")
-        .forSchema(workflowsSchema)
-        .find("workflow_instance", (b) => b.whereIndex("primary"))
-        .executeRetrieve()
-    )[0];
-    expect(instance).toBeTruthy();
-
-    const localBus = harness.fragment.inContext(function () {
-      return openBus<{ type: string }>(localRegistry, {
-        workflowName: "central-message-bus-remote-outbound-workflow",
-        instanceId,
-      });
-    });
-
-    const tick = harness.tick(buildPayload(instance!, "create"));
-    const remoteRegistry = createStepEmissions();
-    const remoteBus = harness.fragment.inContext(function () {
-      return openBus<{ type: string }>(remoteRegistry, {
-        workflowName: "central-message-bus-remote-outbound-workflow",
-        instanceId,
-      });
-    });
-    const unsubscribe = remoteBus.observe((message) => {
-      if (message.actor === "user") {
-        observed.push(message.payload);
-      }
-    });
-
-    try {
-      await stepEntered.promise;
-      await flushBus(harness, localBus);
-      expect(
-        (
-          await readStepEmissionRows(
-            harness,
-            "central-message-bus-remote-outbound-workflow",
-            instanceId,
-          )
-        ).map((row) => row.actor),
-      ).toContain("user");
-
-      await flushBus(harness, remoteBus);
-      expect(await observed.next()).toEqual({ type: "remote-started" });
-      assert(observed.pendingCount() === 0);
-    } finally {
-      unsubscribe();
-      releaseStep.resolve();
-      await tick;
     }
   });
 
@@ -1204,10 +939,14 @@ describe("Workflows Runner", () => {
         ])
         .execute();
 
-      const busHandle = harness.services.observeStepEmissions({
-        workflowName: params.workflowName,
-        instanceId: params.instanceId,
-      });
+      const busHandle = harness.fragment.$internal.deps.stepEmissions.getOrCreate(
+        workflowStepLivePumpKey(params.workflowName, params.instanceId),
+        () =>
+          createWorkflowStepLivePump({
+            workflowName: params.workflowName,
+            instanceId: params.instanceId,
+          }),
+      );
       await busHandle.flushAndClose(this.handlerTx);
     });
   };
@@ -1220,14 +959,6 @@ describe("Workflows Runner", () => {
       await bus.flushNow(this.handlerTx);
     });
   };
-
-  const snapshotBus = async <T>(
-    harness: WorkflowsTestHarness,
-    bus: { snapshot(handlerTx: DatabaseRequestContext["handlerTx"]): Promise<T[]> },
-  ): Promise<T[]> =>
-    await harness.fragment.inContext(async function () {
-      return await bus.snapshot(this.handlerTx);
-    });
 
   const deferred = <T = void>() => Promise.withResolvers<T>();
 

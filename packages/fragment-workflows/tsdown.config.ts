@@ -10,7 +10,6 @@ export default defineConfig([
       "./src/schema.ts",
       "./src/workflow.ts",
       "./src/debug-log.ts",
-      "./src/stream-step-emissions.ts",
       "./src/step-identity.ts",
       "./src/step-emission-control.ts",
       "./src/remote-workflow.ts",

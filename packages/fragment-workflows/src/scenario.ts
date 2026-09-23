@@ -1,5 +1,4 @@
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
-import { BufferedPumpObserveTimeoutError } from "@fragno-dev/db/buffered-pump";
 
 import type {
   AnyFragnoInstantiatedFragment,
@@ -24,7 +23,6 @@ import {
   type TestDb,
 } from "@fragno-dev/test";
 
-import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./runner/step-live-pump";
 import { workflowsSchema } from "./schema";
 import type { WorkflowEventActor } from "./system-events";
 import {
@@ -3095,51 +3093,15 @@ export async function runScenario<
             }
             break;
           }
-          const workflowFragment = (await currentRunner.getFragments()).workflows.fragment;
-          const matched = await workflowFragment.inContext(async function () {
-            const handle = workflowFragment.$internal.deps.stepEmissions.getOrCreate(
-              workflowStepLivePumpKey(workflowName, instanceId),
-              () =>
-                createWorkflowStepLivePump({
-                  workflowName,
-                  instanceId,
-                }),
-            );
-            const handlerTx = this.handlerTx.bind(this);
-            const schedulerAbortController = new AbortController();
-            const schedulerLease = handle.runWhile({
-              kind: "observer",
-              signal: schedulerAbortController.signal,
-              handlerTx,
+          const deadline = Date.now() + timeoutMs;
+          let matched = await findPersistedMatch();
+          while (!matched && Date.now() < deadline) {
+            await new Promise<void>((resolve) => {
+              const timeout = setTimeout(resolve, Math.min(10, deadline - Date.now()));
+              timeout.unref?.();
             });
-            try {
-              const snapshot = await handle.pump.snapshot(handlerTx);
-              const snapshotMatch = snapshot
-                .map((message) => ({ workflowName, instanceId, ...message }))
-                .find((message) => (step.match ? step.match(message, context) : true));
-              if (snapshotMatch) {
-                return snapshotMatch;
-              }
-
-              const message = await handle.pump.waitForObserved(
-                (observed) => {
-                  const candidate = { workflowName, instanceId, ...observed };
-                  return step.match ? step.match(candidate, context) : true;
-                },
-                { after: snapshot, timeoutMs },
-              );
-              return { workflowName, instanceId, ...message };
-            } catch (error) {
-              if (error instanceof BufferedPumpObserveTimeoutError) {
-                return undefined;
-              }
-              throw error;
-            } finally {
-              schedulerAbortController.abort();
-              await schedulerLease;
-              await handle.close();
-            }
-          });
+            matched = await findPersistedMatch();
+          }
           const persistedAfterTimeout = matched ?? (await findPersistedMatch());
           if (!persistedAfterTimeout) {
             throw new Error(`EMISSION_NOT_OBSERVED: ${workflowName}/${instanceId}`);

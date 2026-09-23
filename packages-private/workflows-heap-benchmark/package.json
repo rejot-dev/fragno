@@ -1,0 +1,28 @@
+{
+  "name": "@fragno-private/workflows-heap-benchmark",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "dev": "wrangler dev --local --port 8797 --inspector-port 9237",
+    "measure": "node scripts/measure-workflow-heap.mjs",
+    "types:check": "tsc --noEmit",
+    "types:generate": "wrangler types worker-configuration.d.ts --env-interface WorkflowHeapBenchmarkEnv",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "dependencies": {
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "@fragno-dev/workflows": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260804.1",
+    "@types/node": "^24.10.9",
+    "typescript": "catalog:",
+    "wrangler": "^4.118.0",
+    "ws": "^8.21.3"
+  }
+}

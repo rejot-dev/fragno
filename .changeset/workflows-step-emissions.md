@@ -2,4 +2,4 @@
 "@fragno-dev/workflows": patch
 ---
 
-feat: persist and stream workflow step emissions.
+feat: persist workflow step emissions for durable history and replay.

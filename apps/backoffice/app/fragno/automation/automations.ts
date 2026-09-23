@@ -499,7 +499,6 @@ export const createAutomationsRuntime = (
       ["GET", "/"],
       ["GET", "/:workflowName/instances"],
       ["GET", "/:workflowName/instances/:instanceId"],
-      ["GET", "/:workflowName/instances/:instanceId/current-step/emissions"],
       ["GET", "/:workflowName/instances/:instanceId/history"],
     ] as const;
     for (const [method, route] of readRoutes) {

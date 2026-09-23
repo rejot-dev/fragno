@@ -20,8 +20,6 @@ Tips:
 - Inspect step `status`, `attempts`, `nextRetryAt`, `wakeAt`, and error fields.
 - Inspect events to verify their type and whether they were delivered and consumed.
 - Inspect emissions to understand values emitted by the active step.
-- Use the current-step emissions route with `once=true` for a snapshot, or without it for a live
-  JSON stream.
 
 Internal workflow diagnostics can be enabled with the fragment's `logging` config. These logs are
 written to the runtime console and are not returned by the history endpoint.

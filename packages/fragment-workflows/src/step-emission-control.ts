@@ -28,6 +28,11 @@ export type WorkflowStepCanonicalRecord = {
   committedByExecutionId: string;
 };
 
+type WorkflowStepExecutionRecord = {
+  stepKey: string;
+  executionId: string;
+};
+
 export type WorkflowStepExecutionActivity = {
   stepKey: string;
   epoch: string;
@@ -44,7 +49,7 @@ type WorkflowStepCommittedScope = {
 
 export function selectNoncanonicalWorkflowExecutionIds(options: {
   steps: readonly WorkflowStepCanonicalRecord[];
-  emissions: readonly WorkflowStepActivityEmission[];
+  emissions: readonly WorkflowStepExecutionRecord[];
 }): ReadonlySet<string> {
   const terminalStepsByKey = new Map(
     options.steps.flatMap((step) =>

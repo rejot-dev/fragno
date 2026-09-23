@@ -303,8 +303,6 @@ export const createInternalFragmentOutboxRoutes = () =>
           const handlerTx: DatabaseHandlerTx = (options) => this.handlerTx(options);
           const pump = new BufferedDatabasePump<never, never, OutboxEntry>({
             intervalMs: OUTBOX_STREAM_PUMP_INTERVAL_MS,
-            snapshotMode: "disabled",
-            cursorForObservedItem: (entry) => entry.versionstamp,
             onError: (error) => {
               errorCount += 1;
               console.error("[outbox-stream] flush failed", error);

@@ -1,40 +1,14 @@
 import { createClientBuilder } from "@fragno-dev/core/client";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
-import { computed } from "nanostores";
 
-import { selectWorkflowStepPresentationEmissions } from "../step-emission-control";
 import { currentStepLabel, isTerminalStatus, isWaitingStatus, statusLabel } from "../workflow";
 import { workflowsFragmentDefinitionClient } from "./definition";
 import { workflowsRoutesFactoryClient } from "./routes";
-
-type CurrentStepEmission = {
-  actor: string;
-  stepKey: string;
-  executionId: string;
-  epoch: string;
-  payload: unknown;
-};
-
-const filterCurrentStepEmissions = <TEmission extends CurrentStepEmission>(
-  emissions: TEmission[],
-) => selectWorkflowStepPresentationEmissions(emissions);
 
 export function createWorkflowsClients(fragnoConfig: FragnoPublicClientConfig = {}) {
   const builder = createClientBuilder(workflowsFragmentDefinitionClient, fragnoConfig, [
     workflowsRoutesFactoryClient,
   ]);
-  const rawCurrentStepEmissions = builder.createHook(
-    "/:workflowName/instances/:instanceId/current-step/emissions",
-  );
-  const currentStepEmissions = builder.createStore(
-    (args: Parameters<typeof rawCurrentStepEmissions.store>[0]) => {
-      const store = rawCurrentStepEmissions.store(args);
-      return computed(store, (state) =>
-        state.data ? { ...state, data: filterCurrentStepEmissions(state.data) } : state,
-      );
-    },
-  );
-
   return {
     useWorkflows: builder.createHook("/"),
     useWorkflowInstances: builder.createHook("/:workflowName/instances"),
@@ -84,7 +58,6 @@ export function createWorkflowsClients(fragnoConfig: FragnoPublicClientConfig = 
       },
     ),
     useInstance: builder.createHook("/:workflowName/instances/:instanceId"),
-    useCurrentStepEmissions: currentStepEmissions,
     useInstanceHistory: builder.createHook("/:workflowName/instances/:instanceId/history"),
     useRetryFailedStep: builder.createMutator(
       "POST",
