@@ -1,0 +1,55 @@
+Astronomers using NASA's James Webb Space Telescope examined the atmosphere of
+WASP-39 b, a hot gas giant that circles a star about 700 light-years from Earth.
+The planet is roughly as massive as Saturn but follows an orbit much closer to
+its star than Mercury does to the Sun. That tight orbit heats the atmosphere to
+about 1,600 degrees Fahrenheit and makes the planet a useful target for
+transmission spectroscopy.
+
+During a transit, some starlight passes through the planet's atmosphere before
+reaching the telescope. Different gases absorb different wavelengths, leaving
+patterns that instruments can measure. Webb observed the transit with several
+instrument modes covering a broad span of infrared light. Teams then compared
+the measurements with atmospheric models to identify the chemicals responsible
+for the observed features.
+
+The resulting spectra provided a detailed chemical inventory. Researchers
+reported water vapor, carbon monoxide, carbon dioxide, sodium, potassium, and
+sulfur dioxide. The carbon dioxide detection built on an earlier Webb result and
+showed how clearly the telescope could identify a molecule important to
+planetary climate. The sulfur dioxide finding was especially notable because
+scientists concluded that it is produced by photochemistry rather than simply
+rising unchanged from deeper layers.
+
+High-energy light from the host star can break apart molecules in the upper
+atmosphere. The fragments then participate in reactions that create sulfur
+dioxide. Similar light-driven chemistry shapes the atmospheres of planets in the
+solar system, including Earth, but it had not previously been established so
+clearly for an exoplanet. The result gave researchers a new way to study how
+radiation from a star changes the chemistry of a nearby planet.
+
+The observations also offered clues about how WASP-39 b formed. Ratios among
+carbon, oxygen, sulfur, and hydrogen can preserve evidence of the materials a
+planet collected while it grew. The measured abundances suggest that the planet
+accumulated oxygen-rich solids and may have formed farther from its star before
+migrating inward. That interpretation connects the present atmosphere with the
+planet's earlier history in the protoplanetary disk.
+
+The spectra did not show methane or hydrogen sulfide at the levels some models
+had predicted. Those absences also constrain atmospheric chemistry because a
+useful spectrum records both what is present and what is missing. Researchers
+found signs that clouds are scattered across the planet rather than forming a
+single, uniform layer. The combination of multiple instruments helped separate
+cloud effects from molecular absorption.
+
+WASP-39 b is not considered habitable, and the project was not a search for
+life. Instead, it served as a demanding test of methods that can later be
+applied to smaller and cooler worlds. The study demonstrated that Webb can
+retrieve several chemical signatures from one atmosphere and that independent
+teams can compare results across different observing modes.
+
+Scientists expect future observations to examine more planets with different
+temperatures, masses, and host stars. Each atmosphere will add another point of
+comparison for models of planet formation, migration, clouds, and chemistry.
+Together, those observations are intended to move exoplanet research from
+detecting individual molecules toward explaining how whole planetary systems
+develop.

@@ -1,0 +1,63 @@
+A study from the U.S. Department of Energy examined how solar power could expand
+while the country works toward a carbon-free electricity system. The analysis
+found that solar energy could provide about 40 percent of U.S. electricity by
+2035 and roughly 45 percent by 2050. Reaching those levels would require rapid
+construction, major changes to the power grid, and continued investment in
+manufacturing and workers.
+
+The study did not assume that solar panels would replace every other source of
+electricity. Instead, it modeled solar as part of a broader system that includes
+wind, hydropower, nuclear generation, energy storage, transmission, and flexible
+demand. A diverse system can supply electricity when sunlight is unavailable and
+can respond to seasonal and regional differences. Existing technologies were
+sufficient for much of the modeled growth, although further innovation could
+lower costs and simplify deployment.
+
+Deployment would need to accelerate substantially. The country would add large
+utility-scale solar projects as well as systems on homes, businesses, parking
+structures, and other developed land. Rooftop and community solar could broaden
+participation, while large projects would deliver much of the total energy.
+Decisions about siting would influence transmission needs, land use, wildlife,
+agriculture, and relationships with nearby communities.
+
+A grid with much more solar must move electricity across longer distances and
+balance changing output throughout the day. New transmission lines could connect
+high-quality solar resources with population centers. Batteries and other
+storage technologies could shift afternoon electricity into the evening. Grid
+operators could also use flexible industrial loads, electric vehicles, building
+controls, and improved forecasting to align demand with available power.
+
+Energy efficiency is an important part of the scenario. Efficient buildings and
+equipment reduce the amount of new generation needed even as transportation and
+heating become more electrified. Electrification can increase total electricity
+use while reducing overall fossil-fuel consumption. The study therefore
+evaluates solar growth alongside changes in vehicles, buildings, and industry
+rather than treating the power sector in isolation.
+
+The transition could support a large workforce. The study estimated that solar
+employment could reach between 500,000 and 1.5 million people by 2035. Jobs
+would include manufacturing, construction, installation, operations,
+engineering, permitting, finance, and grid planning. Training and labor
+standards would influence whether communities can access stable careers and
+whether projects can be completed quickly enough.
+
+Costs and benefits would not be distributed automatically. Households with
+suitable roofs and available capital can adopt solar more easily than renters or
+families with low incomes. Community solar, financing programs, consumer
+protections, and targeted incentives can help address those differences.
+Policymakers would also need to plan for communities and workers affected by
+declining fossil-fuel generation.
+
+Domestic manufacturing could reduce supply risks and capture more economic
+value. Solar modules are only one part of the system; inverters, racking,
+electrical equipment, batteries, software, and construction materials are also
+required. Research can improve efficiency, durability, recycling, and the use of
+abundant materials. Stronger recycling systems would recover useful materials as
+early generations of equipment reach the end of service.
+
+The study presents a technically possible pathway rather than a prediction.
+Permitting delays, transmission constraints, supply chains, public acceptance,
+financing, and policy changes could all alter the outcome. Its central
+conclusion is that solar can become a major source of U.S. electricity without
+sacrificing reliability, but only if deployment is coordinated with storage,
+transmission, efficiency, and equitable planning.

@@ -1,0 +1,62 @@
+The American Folklife Center at the Library of Congress preserves recordings,
+photographs, manuscripts, and other materials documenting cultural traditions.
+Its holdings include songs, stories, interviews, occupational knowledge,
+community celebrations, and accounts of everyday life. Digital collections make
+a growing portion of that material available to people who cannot visit the
+Library in Washington.
+
+Creating an online collection involves more than scanning a page or copying an
+audio file. Archivists first assess the physical materials, intellectual
+organization, rights information, and descriptive records. Fragile recordings
+may require conservation or specialized playback equipment. Handwritten
+documents and older photographs can present their own challenges of condition,
+format, and legibility.
+
+Digital files must be created at a quality suitable for preservation as well as
+public access. Staff may produce a high-resolution preservation copy and smaller
+derivatives for web use. Audio recordings can require adjustments to playback
+speed or equipment, but archivists aim to preserve the source rather than
+redesign it. File formats, storage systems, checksums, and backups are managed
+so the digital objects remain usable over time.
+
+Description is essential because a digital file without context can be difficult
+to discover or interpret. Catalog records identify creators, places, dates,
+languages, subjects, performers, interviewers, and collection relationships when
+that information is known. Notes may explain historical terminology or gaps in
+the record. Transcripts and captions can improve access, although producing them
+for large collections requires significant time and expertise.
+
+Rights and cultural responsibilities shape what can be placed online. Some
+collections are in the public domain, while others remain protected by copyright
+or donor agreements. Recordings may also contain sensitive cultural knowledge,
+personal information, or material that communities do not want distributed
+without context. The Library reviews legal restrictions and may consult source
+communities when access raises concerns beyond ordinary copyright questions.
+
+Online presentation can reunite related materials that are physically stored in
+different boxes or formats. A user might listen to a field recording while
+viewing the collector's notes, photographs, and correspondence. Search and
+metadata allow researchers to follow a performer, location, genre, or subject
+across many items. Teachers and families can use the same tools to explore local
+history and cultural expression.
+
+Digitization also changes who can contribute knowledge about a collection.
+Community members may recognize an unidentified speaker, correct a place name,
+explain a custom, or provide the history of a song. Archivists can incorporate
+verified information into descriptive records while preserving evidence about
+where the new knowledge came from. This collaborative work can make collections
+more accurate and more meaningful.
+
+The online collections do not represent the full archive. Selection depends on
+preservation needs, demand, rights, funding, and the condition of original
+materials. Large collections may appear gradually as staff process and describe
+groups of items. Researchers still sometimes need to consult finding aids,
+contact reference staff, or visit the reading room to understand materials that
+have not been digitized.
+
+The Center's digital work serves two goals that must remain connected: widening
+access now and preserving evidence for the future. Technology makes recordings
+and documents easier to share, but it also requires continuous maintenance as
+formats and systems change. The long-term value comes from combining digital
+infrastructure with archival description, legal review, conservation, and
+relationships with the communities represented in the collections.
