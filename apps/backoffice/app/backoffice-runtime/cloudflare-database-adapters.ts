@@ -16,8 +16,8 @@ export const cloudflareDatabaseAdapters = (
       ? createCloudflareDatabaseQueryInstrumentation({
           durableObjectId: scope.id,
           nowEpochMs: Date.now,
-          logQueryMetrics(event, fields) {
-            console.info(event, fields);
+          logQueryMetrics(_event, _fields) {
+            // Diagnostic A/B only: avoid retaining thousands of SQL log objects in the inspector.
             return undefined;
           },
         })

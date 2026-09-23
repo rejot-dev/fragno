@@ -222,7 +222,7 @@ describe("runtime tool reference generation", () => {
           inputType: "PiRunTurnInput",
           outputType: "PiRunTurnOutput",
           bashCommand: "pi.session.turn",
-          bashOptions: ["session-id", "text"],
+          bashOptions: ["session-id", "text", "timeout-ms"],
         },
       ],
     },
