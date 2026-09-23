@@ -227,8 +227,8 @@ const buildPiRuntime = (
   skills: BackofficePiSkillResolver,
   resolveSystemPrompt: BackofficeSystemPromptResolver,
   onOperationCompleted: PiFragmentConfig["onOperationCompleted"],
+  models: Models = createBackofficePiModels(apiKeys),
 ) => {
-  const models = createBackofficePiModels(apiKeys);
   const workflows = [
     createBackofficeInteractiveChatWorkflow({
       config,
@@ -279,6 +279,7 @@ export type CreatePiRuntimeDefinitionOptions = {
   kernel: BackofficeKernel;
   runtimeToolContext: PiRuntimeToolContextSource;
   codemode: PiCodemodeRuntime;
+  models?: Models;
   onOperationCompleted?: PiFragmentConfig["onOperationCompleted"];
 };
 
@@ -300,6 +301,7 @@ export const createPiRuntimeDefinition = (
     skills,
     resolveSystemPrompt,
     options.onOperationCompleted,
+    options.models,
   );
 
   const createFragment: PiRuntimeDefinition["createFragment"] = ({
@@ -447,7 +449,7 @@ export const createPiRuntimeDefinition = (
         "/workflows/:workflowName/sessions",
         "/workflows/:workflowName/sessions/:sessionId",
         "/workflows/:workflowName/sessions/:sessionId/export/pi-jsonl",
-        "/workflows/:workflowName/sessions/:sessionId/wait-for-agent-end",
+        "/workflows/:workflowName/sessions/:sessionId/commands/:commandId/wait",
       ] as const;
       for (const route of readRoutes) {
         const response = await ifMatchesRoute(

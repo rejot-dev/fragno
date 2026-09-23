@@ -1,4 +1,4 @@
-import { describe, expect, it, assert } from "vitest";
+import { describe, expect, it, assert, vi } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
@@ -858,7 +858,7 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme" &&
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/commands/command-1/wait?timeoutMs=120000&scope=org%3Aacme" &&
               request.method === "GET"
             ) {
               return new Response(JSON.stringify(turnDetail), {
@@ -872,7 +872,7 @@ describe("createPiRouteRuntime", () => {
                 "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme" &&
               request.method === "POST"
             ) {
-              return new Response(JSON.stringify({ status: "active" }), {
+              return new Response(JSON.stringify({ commandId: "command-1", status: "active" }), {
                 status: 200,
                 headers: { "content-type": "application/json" },
               });
@@ -978,17 +978,17 @@ describe("createPiRouteRuntime", () => {
         body: undefined,
       },
       {
-        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme",
-        method: "GET",
-        body: undefined,
-      },
-      {
         url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme",
         method: "POST",
         body: {
           kind: "prompt",
           input: { text: "route turn" },
         },
+      },
+      {
+        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/commands/command-1/wait?timeoutMs=120000&scope=org%3Aacme",
+        method: "GET",
+        body: undefined,
       },
     ]);
   });
@@ -1042,7 +1042,7 @@ describe("createPiRouteRuntime", () => {
     ]);
   });
 
-  it("starts waiting for agent end before sending the prompt command", async () => {
+  it("sends the command before waiting and reads an already settled step", async () => {
     const requests: Array<{ url: string; method: string }> = [];
     const assistantMessage = {
       role: "assistant",
@@ -1077,7 +1077,6 @@ describe("createPiRouteRuntime", () => {
       updatedAt: now.toISOString(),
       workflow: { status: "waiting" },
     };
-    let waitResolver: ((response: Response) => void) | null = null;
     let commandHandled = false;
 
     const env = {
@@ -1091,14 +1090,10 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme"
+              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/commands/command-1/wait?timeoutMs=120000&scope=org%3Aacme"
             ) {
-              if (commandHandled) {
-                return Response.json(detail);
-              }
-              return await new Promise<Response>((resolve) => {
-                waitResolver = resolve;
-              });
+              assert(commandHandled);
+              return Response.json(detail);
             }
 
             if (
@@ -1106,8 +1101,7 @@ describe("createPiRouteRuntime", () => {
               "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme"
             ) {
               commandHandled = true;
-              waitResolver?.(Response.json(detail));
-              return Response.json({ status: "active" });
+              return Response.json({ commandId: "command-1", status: "active" });
             }
 
             return Response.json({ message: "unexpected request" }, { status: 500 });
@@ -1124,18 +1118,64 @@ describe("createPiRouteRuntime", () => {
     });
     const turned = await withTimeout(
       runtime.runTurn({ sessionId: "session-2", text: "hello" }),
-      "runTurn should resolve after wait-for-agent-end returns detail",
+      "runTurn should resolve after the command step settles",
     );
 
     assert(turned.assistantText === "assistant:done");
     expect(turned.stream).toEqual([]);
     expect(requests.map((request) => request.url)).toEqual([
-      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme",
       "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/commands/command-1/wait?timeoutMs=120000&scope=org%3Aacme",
     ]);
   });
 
-  it("uses the latest assistant text from wait-for-agent-end detail after tool calls", async () => {
+  it("waits beyond 60 seconds using the requested turn timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const requests: string[] = [];
+      const env = {
+        AUTOMATIONS: {
+          idFromName: (orgId: string) => `pi:${orgId}`,
+          get: () => ({
+            fetch: async (request: Request) => {
+              const url = new URL(request.url);
+              requests.push(`${request.method} ${url.pathname}${url.search}`);
+              if (request.method === "GET" && url.pathname.endsWith("/commands/command-1/wait")) {
+                return await new Promise<Response>((resolve) => {
+                  setTimeout(
+                    () => resolve(Response.json(createTurnResult("session-2", "late answer"))),
+                    60_001,
+                  );
+                });
+              }
+              if (request.method === "POST" && url.pathname.endsWith("/command")) {
+                return Response.json({ commandId: "command-1", status: "active" });
+              }
+              return Response.json({ message: "unexpected request" }, { status: 500 });
+            },
+          }),
+        },
+      } as unknown as CloudflareEnv;
+      const scope = { kind: "org", orgId: "acme" } as const;
+      const runtime = createPiRouteRuntime({
+        object: createAutomationsObjects(env).automations.forOrg("acme"),
+        scope,
+        execution: createPiTestExecution(scope),
+      });
+      const turn = runtime.runTurn({ sessionId: "session-2", text: "hello", timeoutMs: 90_000 });
+      await vi.advanceTimersByTimeAsync(60_001);
+
+      assert((await turn).assistantText === "late answer");
+      expect(requests).toEqual([
+        "POST /api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme",
+        "GET /api/pi/workflows/interactive-chat-workflow/sessions/session-2/commands/command-1/wait?timeoutMs=90000&scope=org%3Aacme",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses the latest assistant text from settled command detail after tool calls", async () => {
     const requests: Array<{ url: string; method: string }> = [];
     const previousAssistantMessage = {
       role: "assistant",
@@ -1189,7 +1229,7 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme"
+              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/commands/command-1/wait?timeoutMs=120000&scope=org%3Aacme"
             ) {
               return Response.json({
                 id: "session-2",
@@ -1215,7 +1255,7 @@ describe("createPiRouteRuntime", () => {
               path ===
               "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme"
             ) {
-              return Response.json({ status: "active" });
+              return Response.json({ commandId: "command-1", status: "active" });
             }
 
             return Response.json({ message: "unexpected request" }, { status: 500 });
@@ -1234,8 +1274,8 @@ describe("createPiRouteRuntime", () => {
 
     assert(turned.assistantText === "new answer after tool");
     expect(requests.map((request) => request.url)).toEqual([
-      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme",
       "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/commands/command-1/wait?timeoutMs=120000&scope=org%3Aacme",
     ]);
   });
 
@@ -1299,7 +1339,7 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme" &&
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/commands/command-1/wait?timeoutMs=120000&scope=org%3Aacme" &&
               request.method === "GET"
             ) {
               return Response.json({
@@ -1350,7 +1390,7 @@ describe("createPiRouteRuntime", () => {
     );
   });
 
-  it("surfaces pi.session.turn wait-for-agent-end failures", async () => {
+  it("surfaces pi.session.turn command-step failures", async () => {
     const env = {
       AUTOMATIONS: {
         idFromName: (orgId: string) => `pi:${orgId}`,
@@ -1361,10 +1401,10 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme" &&
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/commands/command-1/wait?timeoutMs=120000&scope=org%3Aacme" &&
               request.method === "GET"
             ) {
-              return new Response(JSON.stringify({ message: "Agent end unavailable" }), {
+              return new Response(JSON.stringify({ message: "Command step unavailable" }), {
                 status: 500,
                 headers: { "content-type": "application/json" },
               });
@@ -1375,7 +1415,7 @@ describe("createPiRouteRuntime", () => {
                 "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme" &&
               request.method === "POST"
             ) {
-              return new Response(JSON.stringify({ status: "active" }), {
+              return new Response(JSON.stringify({ commandId: "command-1", status: "active" }), {
                 status: 200,
                 headers: { "content-type": "application/json" },
               });
@@ -1398,7 +1438,7 @@ describe("createPiRouteRuntime", () => {
     });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
-      "Pi returned 500: Agent end unavailable",
+      "Pi returned 500: Command step unavailable",
     );
   });
 });

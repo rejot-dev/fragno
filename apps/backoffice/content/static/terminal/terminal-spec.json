@@ -2904,6 +2904,12 @@
         "description": "User message text to send for this turn"
       },
       {
+        "name": "timeout-ms",
+        "valueRequired": true,
+        "valueName": "milliseconds",
+        "description": "Maximum time to wait for the agent to finish (default: 120000)"
+      },
+      {
         "name": "help",
         "description": "Show this help text",
         "valueRequired": false,

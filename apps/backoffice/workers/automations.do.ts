@@ -2,6 +2,8 @@ import type { PiFragmentConfig } from "@fragno-dev/pi-harness/types";
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
+import type { Models } from "@earendil-works/pi-ai";
+
 import {
   backofficeContextScopesEqual,
   createBackofficeServiceExecution,
@@ -231,6 +233,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #internalRequestEnv: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET"> | null;
   readonly #nowEpochMs: () => number;
+  readonly #piModels: Models | undefined;
   readonly #kernel: BackofficeKernel;
   readonly #host: BackofficeFragmentDurableObject<
     AutomationDurableObjectConfig,
@@ -252,12 +255,14 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     nowEpochMs = Date.now,
     readAutomationSource,
     createPiRuntime,
+    piModels,
   }: {
     state: BackofficeObjectState;
     env?: unknown;
     runtime: BackofficeRuntimeServices;
     nowEpochMs?: () => number;
     readAutomationSource?: AutomationSourceReader;
+    piModels?: Models;
     createPiRuntime?: (
       execution: BackofficeExecutionContext,
       kernel: BackofficeKernel,
@@ -285,6 +290,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       }),
     };
     this.#nowEpochMs = nowEpochMs;
+    this.#piModels = piModels;
     this.#kernel = new BackofficeKernel(this.#runtimeServices);
     this.#scope = backofficeContextScopeFromDurableObjectId(state.id, "AUTOMATIONS");
     this.#createPiRuntime = createPiRuntime;
@@ -419,6 +425,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
   #createPiRuntimeOptions(scope: BackofficeContextScope) {
     return {
       apiKeys: piApiKeys(this.#env),
+      models: this.#piModels,
       codemode: this.#env
         ? createPiCodemodeRuntime(this.#env)
         : createUnavailablePiCodemodeRuntime(),

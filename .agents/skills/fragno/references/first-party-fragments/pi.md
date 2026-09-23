@@ -95,12 +95,13 @@ After mounting the fragment, the route surface is:
 - `GET /workflows/:workflowName/sessions`
 - `GET /workflows/:workflowName/sessions/:sessionId`
 - `GET /workflows/:workflowName/sessions/:sessionId/export/pi-jsonl`
-- `GET /workflows/:workflowName/sessions/:sessionId/wait-for-agent-end`
+- `GET /workflows/:workflowName/sessions/:sessionId/commands/:commandId/wait`
 - `POST /workflows/:workflowName/sessions/:sessionId/command`
 
 Session creation accepts a workflow name, optional name and metadata, and workflow input. Commands
 include prompts, skills, prompt templates, compaction, steering, follow-ups, and aborts. Command
-submission is asynchronous; observe the session detail or wait-for-agent-end route for progress.
+submission is asynchronous; wait for the returned command ID or observe the session detail for
+progress.
 
 ## Client setup
 

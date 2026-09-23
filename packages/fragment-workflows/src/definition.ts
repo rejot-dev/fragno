@@ -120,6 +120,12 @@ type ListInstancesParams = {
   order?: "asc" | "desc";
 };
 
+type WorkflowStepOutcome =
+  | { status: "not-started" | "waiting" }
+  | { status: "completed" }
+  | { status: "errored"; error: { name: string; message: string } }
+  | { status: "instance-terminal"; instanceStatus: string };
+
 type ListHistoryParams = {
   workflowName: string;
   instanceId: string;
@@ -809,6 +815,49 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               cursor: instances.cursor,
               hasNextPage: instances.hasNextPage,
             };
+          })
+          .build();
+      },
+      getStepOutcome: function (workflowName: string, instanceId: string, stepKey: string) {
+        const instanceRef = buildScopedInstanceRowId(workflowName, instanceId);
+        return this.serviceTx(workflowsSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("workflow_instance", (b) =>
+                b
+                  .whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                    eb.and(
+                      eb("workflowName", "=", workflowName),
+                      eb("instanceId", "=", instanceId),
+                    ),
+                  )
+                  .select(["status"]),
+              )
+              .findFirst("workflow_step", (b) =>
+                b
+                  .whereIndex("idx_workflow_step_instanceRef_stepKey", (eb) =>
+                    eb.and(eb("instanceRef", "=", instanceRef), eb("stepKey", "=", stepKey)),
+                  )
+                  .select(["status", "errorName", "errorMessage"]),
+              ),
+          )
+          .transformRetrieve(([instance, step]): WorkflowStepOutcome => {
+            if (!instance) {
+              throw new WorkflowInstanceNotFoundError(workflowName, instanceId);
+            }
+            if (step?.status === "completed") {
+              return { status: "completed" };
+            }
+            if (step?.status === "errored") {
+              return {
+                status: "errored",
+                error: { name: step.errorName ?? "Error", message: step.errorMessage ?? "" },
+              };
+            }
+            if (TERMINAL_STATUSES.has(instance.status as InstanceStatus["status"])) {
+              return { status: "instance-terminal", instanceStatus: instance.status };
+            }
+            return { status: step ? "waiting" : "not-started" };
           })
           .build();
       },

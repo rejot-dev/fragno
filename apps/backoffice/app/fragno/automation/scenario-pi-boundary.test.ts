@@ -1,6 +1,13 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
+import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
+
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import {
+  createAssistantMessageEventStream,
+  createModels,
+  type AssistantMessage,
+} from "@earendil-works/pi-ai";
 
 import {
   createBackofficeSystemExecution,
@@ -11,9 +18,13 @@ import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { automationActorsSchema } from "@/fragno/automation/actors";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { createPiCodemodeRuntime } from "@/fragno/pi/pi-codemode";
+import { createBackofficeAuthContext } from "@/fragno/pi/pi-harness-options";
 import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
 import { createPiToolFactory } from "@/fragno/pi/pi-tools";
+import { createPiRouteRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -303,6 +314,129 @@ describe("scenario Pi boundary", () => {
       }),
     );
   });
+
+  test("runTurn waits for a real persisted Pi command step", async () => {
+    const answer = "settled Backoffice answer";
+    const models = createModels({
+      authContext: createBackofficeAuthContext({ openai: "scenario-api-key" }),
+    });
+    const provider = openaiProvider();
+    const createAnswerStream = (model: {
+      api: AssistantMessage["api"];
+      provider: string;
+      id: string;
+    }) => {
+      const stream = createAssistantMessageEventStream();
+      const message: AssistantMessage = {
+        role: "assistant",
+        content: [{ type: "text", text: answer }],
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "stop",
+        timestamp: Date.now(),
+      };
+      stream.push({ type: "start", partial: message });
+      stream.push({ type: "text_start", contentIndex: 0, partial: message });
+      stream.push({ type: "text_delta", contentIndex: 0, delta: answer, partial: message });
+      stream.push({ type: "text_end", contentIndex: 0, content: answer, partial: message });
+      stream.push({ type: "done", reason: "stop", message });
+      return stream;
+    };
+    models.setProvider({
+      ...provider,
+      stream: (model) => createAnswerStream(model),
+      streamSimple: (model) => createAnswerStream(model),
+    });
+
+    await runBackofficeScenario(
+      defineBackofficeScenario<{ sessionId?: string }>({
+        name: "Backoffice Pi turn commits before returning settled detail",
+        vars: () => ({}),
+        objectFactories: {
+          AUTOMATIONS: ({ state, env, runtime, nowEpochMs, readAutomationSource }) =>
+            new InMemoryAutomationsObject({
+              state,
+              env,
+              runtime,
+              nowEpochMs,
+              readAutomationSource,
+              piModels: models,
+            }),
+        },
+        setup: ({ given }) => [
+          given.auth.user({ id: "admin-1", role: "admin" }),
+          given.pi.configured({ scope: { kind: "system" } }),
+        ],
+        steps: ({ when, then }) => [
+          when.pi.createSession({
+            scope: { kind: "system" },
+            userId: "admin-1",
+            captureSessionIdAs: "sessionId",
+          }),
+          then.assert("runTurn returns the committed command and session detail", async (ctx) => {
+            const sessionId = ctx.vars.sessionId;
+            if (!sessionId) {
+              throw new Error("Pi session id was not captured.");
+            }
+            const scope = { kind: "system" as const };
+            const object = ctx.runtime.objects.automations.for(scope);
+            const execution = createBackofficeUserExecution({ scope, userId: "admin-1" });
+            const pi = createPiRouteRuntime({ object, scope, execution });
+            const turn = pi.runTurn({ sessionId, text: "hello Backoffice", timeoutMs: 10_000 });
+            let settled = false;
+            void turn.then(
+              () => {
+                settled = true;
+              },
+              () => {
+                settled = true;
+              },
+            );
+            for (let attempt = 0; attempt < 100 && !settled; attempt += 1) {
+              await ctx.runtime.drain();
+              await new Promise((resolve) => setTimeout(resolve, 0));
+            }
+            const result = await turn;
+            expect(result.assistantText).toBe(answer);
+            expect(result.terminalState.messages).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  role: "assistant",
+                  content: [{ type: "text", text: answer }],
+                }),
+              ]),
+            );
+
+            const workflows = createWorkflowsRouteCaller({
+              object,
+              context: { execution, propagationContext: null },
+            });
+            const history = await workflows("GET", "/:workflowName/instances/:instanceId/history", {
+              pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME, instanceId: sessionId },
+            });
+            assert(history.type === "json");
+            expect(history.data.steps).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  name: expect.stringMatching(/^command:/u),
+                  status: "completed",
+                }),
+              ]),
+            );
+          }),
+        ],
+      }),
+    );
+  }, 20_000);
 
   test("runs Pi sessions in system scope", async () => {
     await runBackofficeScenario(
