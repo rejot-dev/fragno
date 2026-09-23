@@ -24,7 +24,19 @@ source.
 
 ## Release
 
-Upload an inactive version of both Workers with one shared tag:
+When a release adds a Durable Object class, an inactive upload cannot provision its namespace.
+Bootstrap that release instead:
+
+```bash
+pnpm --dir apps/backoffice run deploy:bootstrap
+```
+
+Bootstrap builds and **activates** the object Worker first to provision its classes, then activates
+the web Worker. It skips container image rollout (`--containers-rollout=none`); deploy container
+changes separately if the release requires them. This is a live release, not an inactive upload.
+
+For releases without new Durable Object classes, upload an inactive version of both Workers with one
+shared tag:
 
 ```bash
 VERSION_TAG=release-$(date -u +%Y%m%d-%H%M%S)

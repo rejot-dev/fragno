@@ -8,13 +8,14 @@ const wranglerExecutable = process.platform === "win32" ? "wrangler.cmd" : "wran
 const workerVersionIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:@\d+(?:\.\d+)?%?)?$/i;
 const workerCommands = {
+  // New Durable Object classes must be provisioned on the object Worker before the web Worker can bind to them.
   bootstrap: [
-    ["deploy", "--config", "build/server/wrangler.json"],
     ["deploy", "--config", "dist/rejot_backoffice/wrangler.json", "--containers-rollout=none"],
+    ["deploy", "--config", "build/server/wrangler.json"],
   ],
   upload: [
-    ["versions", "upload", "--config", "build/server/wrangler.json"],
     ["versions", "upload", "--config", "dist/rejot_backoffice/wrangler.json"],
+    ["versions", "upload", "--config", "build/server/wrangler.json"],
   ],
   deploy: [
     ["versions", "deploy", "--config", "wrangler.web.jsonc"],
