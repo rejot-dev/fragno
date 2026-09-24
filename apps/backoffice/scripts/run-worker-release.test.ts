@@ -63,7 +63,6 @@ describe("Backoffice Worker release orchestration", () => {
     const commands = await recordWorkerReleaseCommands("bootstrap", ["--", "--dry-run"]);
 
     assert.deepEqual(commands, [
-      ["deploy", "--config", "build/server/wrangler.json", "--dry-run"],
       [
         "deploy",
         "--config",
@@ -71,6 +70,7 @@ describe("Backoffice Worker release orchestration", () => {
         "--containers-rollout=none",
         "--dry-run",
       ],
+      ["deploy", "--config", "build/server/wrangler.json", "--dry-run"],
     ]);
   });
 
@@ -78,7 +78,6 @@ describe("Backoffice Worker release orchestration", () => {
     const commands = await recordWorkerReleaseCommands("upload", ["--", "--tag", "release-test"]);
 
     assert.deepEqual(commands, [
-      ["versions", "upload", "--config", "build/server/wrangler.json", "--tag", "release-test"],
       [
         "versions",
         "upload",
@@ -87,6 +86,7 @@ describe("Backoffice Worker release orchestration", () => {
         "--tag",
         "release-test",
       ],
+      ["versions", "upload", "--config", "build/server/wrangler.json", "--tag", "release-test"],
     ]);
   });
 
