@@ -78,7 +78,7 @@ export type DurableObjectQueryInstrumentation = {
   recordQuery(metrics: DurableObjectQueryMetrics): undefined;
 };
 
-/** Configures Durable Object SQLite access and explicit query instrumentation. */
+/** Configures Durable Object SQLite access; pass null to skip per-query measurements. */
 export interface DODialectConfig {
   ctx: DurableObjectState;
   queryInstrumentation: DurableObjectQueryInstrumentation | null;
@@ -170,7 +170,8 @@ class DOConnection implements DatabaseConnection {
   }
 
   async executeQuery<O>(compiledQuery: CompiledQuery): Promise<QueryResult<O>> {
-    const queryStartedAt = this.#config.queryInstrumentation ? performance.now() : 0;
+    const queryInstrumentation = this.#config.queryInstrumentation;
+    const queryStartedAt = queryInstrumentation ? performance.now() : 0;
     let cursor: SqlStorageCursor<Record<string, SqlStorageValue>>;
     try {
       cursor = this.#config.ctx.storage.sql.exec(compiledQuery.sql, ...compiledQuery.parameters);
@@ -181,26 +182,26 @@ class DOConnection implements DatabaseConnection {
     }
 
     const rows = cursor.toArray() as O[];
-    const rowsRead = cursor.rowsRead;
     const rowsWritten = cursor.rowsWritten;
-    const numAffectedRows = rowsWritten > 0 ? BigInt(rowsWritten) : undefined;
 
-    try {
-      this.#config.queryInstrumentation?.recordQuery({
-        sql: compiledQuery.sql,
-        rowsRead,
-        rowsWritten,
-        rowsReturned: rows.length,
-        executionMs: performance.now() - queryStartedAt,
-      });
-    } catch {
-      // Observability must not turn a successfully executed database query into a failure.
+    if (queryInstrumentation) {
+      try {
+        queryInstrumentation.recordQuery({
+          sql: compiledQuery.sql,
+          rowsRead: cursor.rowsRead,
+          rowsWritten,
+          rowsReturned: rows.length,
+          executionMs: performance.now() - queryStartedAt,
+        });
+      } catch {
+        // Observability must not turn a successfully executed database query into a failure.
+      }
     }
 
     return {
       insertId: undefined, // Durable Objects doesn't provide last_row_id like D1
-      rows: rows || [],
-      numAffectedRows,
+      rows,
+      numAffectedRows: rowsWritten > 0 ? BigInt(rowsWritten) : undefined,
     };
   }
 
