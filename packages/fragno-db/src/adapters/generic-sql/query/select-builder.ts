@@ -85,13 +85,17 @@ export function projectJsonSelectedColumnValue(
   sqliteStorageMode?: SQLiteStorageMode,
 ): RawBuilder<unknown> {
   const columnReference = sql.ref(reference);
-  if (
-    driverConfig.databaseType === "sqlite" &&
-    isSQLiteBlobStoredColumn(column, sqliteStorageMode)
-  ) {
-    return sql<string>`case when ${columnReference} is null then null else ${sql.lit(
-      SQLITE_JSON_BLOB_HEX_PREFIX,
-    )} || hex(${columnReference}) end`;
+  if (driverConfig.databaseType === "sqlite") {
+    if (column.type === "json") {
+      // SQLite's JSON object functions otherwise quote stored JSON text. Marking it as JSON lets
+      // the outer query-tree parse produce the final value without a second payload-sized parse.
+      return sql`json(${columnReference})`;
+    }
+    if (isSQLiteBlobStoredColumn(column, sqliteStorageMode)) {
+      return sql<string>`case when ${columnReference} is null then null else ${sql.lit(
+        SQLITE_JSON_BLOB_HEX_PREFIX,
+      )} || hex(${columnReference}) end`;
+    }
   }
   return projectSelectedColumnValue(column, reference, driverConfig);
 }

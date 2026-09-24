@@ -7,7 +7,7 @@ import {
 } from "../../adapters/generic-sql/sqlite-storage";
 import type { NamingResolver } from "../../naming/sql-naming";
 import type { AnyColumn, AnyTable } from "../../schema/create";
-import { decodeResult } from "../value-decoding";
+import { decodeJsonProjectedResult, decodeResult } from "../value-decoding";
 import type { CompiledQueryTreeChildNode, CompiledQueryTreeRootNode } from "./query-tree";
 
 const parseJsonValue = (value: unknown): unknown => {
@@ -48,6 +48,7 @@ const decodeNodeColumns = (
   row: Record<string, unknown>,
   table: AnyTable,
   driverConfig: DriverConfig,
+  jsonColumnSource: "stored" | "projected",
   sqliteStorageMode?: SQLiteStorageMode,
   resolver?: NamingResolver,
 ): Record<string, unknown> => {
@@ -80,7 +81,9 @@ const decodeNodeColumns = (
     }
   }
 
-  return decodeResult(columnOnlyRow, table, driverConfig, sqliteStorageMode, resolver);
+  return jsonColumnSource === "projected"
+    ? decodeJsonProjectedResult(columnOnlyRow, table, driverConfig, sqliteStorageMode, resolver)
+    : decodeResult(columnOnlyRow, table, driverConfig, sqliteStorageMode, resolver);
 };
 
 type MySQLOrderedJoinManyItem = [ordinal: number, row: Record<string, unknown>];
@@ -148,7 +151,14 @@ export const decodeQueryTreeRow = (
   sqliteStorageMode?: SQLiteStorageMode,
   resolver?: NamingResolver,
 ): Record<string, unknown> => {
-  const output = decodeNodeColumns(row, node.table, driverConfig, sqliteStorageMode, resolver);
+  const output = decodeNodeColumns(
+    row,
+    node.table,
+    driverConfig,
+    node.kind === "child" ? "projected" : "stored",
+    sqliteStorageMode,
+    resolver,
+  );
 
   for (const child of node.children) {
     output[child.alias] = decodeChildNode(

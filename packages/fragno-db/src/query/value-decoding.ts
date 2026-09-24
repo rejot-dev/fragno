@@ -4,6 +4,7 @@ import type { NamingResolver } from "../naming/sql-naming";
 import type { AnyTable } from "../schema/create";
 import { FragnoId, FragnoReference, getTableRelations } from "../schema/create";
 import { createSQLSerializer } from "./serialize/create-sql-serializer";
+import type { SQLSerializer } from "./serialize/sql-serializer";
 
 const isNullish = (value: unknown): value is null | undefined =>
   value === null || value === undefined;
@@ -40,20 +41,48 @@ export function decodeResult(
   sqliteStorageMode?: SQLiteStorageMode,
   resolver?: NamingResolver,
 ): Record<string, unknown> {
-  const serializer = createSQLSerializer(driverConfig, sqliteStorageMode);
+  return decodeResultWithSerializer(
+    result,
+    table,
+    createSQLSerializer(driverConfig, sqliteStorageMode),
+    resolver,
+    "stored",
+  );
+}
+
+/** Decodes database JSON projections whose JSON columns are already application values. */
+export function decodeJsonProjectedResult(
+  result: Record<string, unknown>,
+  table: AnyTable,
+  driverConfig: DriverConfig,
+  sqliteStorageMode?: SQLiteStorageMode,
+  resolver?: NamingResolver,
+): Record<string, unknown> {
+  return decodeResultWithSerializer(
+    result,
+    table,
+    createSQLSerializer(driverConfig, sqliteStorageMode),
+    resolver,
+    "projected",
+  );
+}
+
+function decodeResultWithSerializer(
+  result: Record<string, unknown>,
+  table: AnyTable,
+  serializer: SQLSerializer,
+  resolver: NamingResolver | undefined,
+  jsonColumnSource: "stored" | "projected",
+): Record<string, unknown> {
   const output: Record<string, unknown> = {};
-  // First pass: collect all column values
   const columnValues: Record<string, unknown> = {};
   const columnMap = resolver ? resolver.getColumnNameMap(table) : undefined;
-
-  // Collect all relation data (including nested) keyed by relation name
   const relationData: Record<string, Record<string, unknown>> = {};
 
   for (const k in result) {
     const colonIndex = k.indexOf(":");
     const value = result[k];
 
-    // Direct column (no colon)
     if (colonIndex === -1) {
       const logicalName = columnMap?.[k] ?? k;
       const col = table.columns[logicalName];
@@ -61,26 +90,24 @@ export function decodeResult(
         continue;
       }
 
-      // Store all column values (including hidden ones for FragnoId creation)
-      columnValues[logicalName] = serializer.deserialize(value, col);
+      columnValues[logicalName] =
+        jsonColumnSource === "projected" && col.type === "json"
+          ? value
+          : serializer.deserialize(value, col);
       continue;
     }
 
-    // Relation column (has colon)
     const relationName = k.slice(0, colonIndex);
     const remainder = k.slice(colonIndex + 1);
-
     const relation = getTableRelations(table)[relationName];
     if (relation === undefined) {
       continue;
     }
 
-    // Collect relation data with the remaining key path
     relationData[relationName] ??= {};
     relationData[relationName][remainder] = value;
   }
 
-  // Process each relation's data recursively
   for (const relationName in relationData) {
     const relation = getTableRelations(table)[relationName];
     if (!relation) {
@@ -97,38 +124,32 @@ export function decodeResult(
       continue;
     }
 
-    // Recursively decode the relation data
-    output[relationName] = decodeResult(
+    output[relationName] = decodeResultWithSerializer(
       relationRow,
       relation.table,
-      driverConfig,
-      sqliteStorageMode,
+      serializer,
       resolver,
+      jsonColumnSource,
     );
   }
 
-  // Second pass: create output with FragnoId objects where appropriate
   for (const k in columnValues) {
     const col = table.columns[k];
     if (!col) {
       continue;
     }
 
-    // Filter out hidden columns (like _internalId, _version) from results
     if (col.isHidden) {
       continue;
     }
 
-    // For external ID columns, create FragnoId if we have both external and internal IDs
     if (col.role === "external-id" && columnValues["_internalId"] !== undefined) {
       output[k] = new FragnoId({
         externalId: columnValues[k] as string,
         internalId: columnValues["_internalId"] as bigint,
-        // _version is always selected as a hidden column, so it should always be present
         version: columnValues["_version"] as number,
       });
     } else if (col.role === "reference") {
-      // For reference columns, create FragnoReference with internal ID
       output[k] = FragnoReference.fromInternal(columnValues[k] as bigint);
     } else {
       output[k] = columnValues[k];
