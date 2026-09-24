@@ -109,7 +109,7 @@ export type BufferedScopeDelivery<TScopeDelivery = unknown> = {
 
 export type BufferedFlushResult<TObserved = unknown, TScopeDelivery = unknown> = {
   scopeDeliveries?: Array<BufferedScopeDelivery<TScopeDelivery>>;
-  observedItems?: TObserved[];
+  observedItems?: Iterable<TObserved> | AsyncIterable<TObserved>;
 };
 
 export type BufferedOpenScopeContext<TOpenScopeMeta = unknown, TScopeMeta = TOpenScopeMeta> = {
@@ -576,8 +576,8 @@ export class BufferedDatabasePump<
     return false;
   }
 
-  async #deliverObserved(messages: readonly TObserved[]): Promise<void> {
-    for (const message of messages) {
+  async #deliverObserved(messages: Iterable<TObserved> | AsyncIterable<TObserved>): Promise<void> {
+    for await (const message of messages) {
       for (const observer of this.#observers) {
         await this.#deliverObservedToObserver(observer, [message]);
       }

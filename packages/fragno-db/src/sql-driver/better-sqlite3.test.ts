@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 
 import SQLite from "better-sqlite3";
-import { SqliteDialect } from "kysely";
+import { Kysely, SqliteDialect } from "kysely";
 
 import type { GenericSQLPlugin } from "./query-executor/plugin";
 import { sql } from "./sql";
@@ -108,6 +108,50 @@ describe("better-sqlite3", () => {
     expect(result.rows).toEqual([{ id: 1, name: "Alice", __metadata: { transformed: true } }]);
 
     await adapter.destroy();
+  });
+
+  it("retains and releases the connection while streaming, including early cancellation", async () => {
+    const dialect = new SqliteDialect({ database: new SQLite(":memory:") });
+    const adapter = new SqlDriverAdapter(dialect);
+    await adapter.executeQuery(sql`CREATE TABLE test (id INTEGER)`.compile(dialect));
+    await adapter.executeQuery(sql`INSERT INTO test VALUES (1), (2)`.compile(dialect));
+    const db = new Kysely<{ test: { id: number } }>({ dialect });
+    const query = db.selectFrom("test").select("id").orderBy("id").compile();
+    const iterator = adapter.streamQuery(query, 1);
+
+    expect((await iterator.next()).value?.rows).toEqual([{ id: 1 }]);
+    let nextQueryFinished = false;
+    const nextQuery = adapter.executeQuery(sql`SELECT 3`.compile(dialect)).then((result) => {
+      nextQueryFinished = true;
+      return result;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert(!nextQueryFinished);
+
+    await iterator.return?.(undefined);
+    expect((await nextQuery).rows).toEqual([{ 3: 3 }]);
+    await adapter.destroy();
+    await db.destroy();
+  });
+
+  it("releases the connection when a streamed result plugin fails", async () => {
+    const dialect = new SqliteDialect({ database: new SQLite(":memory:") });
+    const adapter = new SqlDriverAdapter(dialect);
+    await adapter.executeQuery(sql`CREATE TABLE test (id INTEGER)`.compile(dialect));
+    await adapter.executeQuery(sql`INSERT INTO test VALUES (1)`.compile(dialect));
+    const db = new Kysely<{ test: { id: number } }>({ dialect });
+    const failingAdapter = adapter.withPlugin({
+      async transformResult() {
+        throw new Error("stream result transformation failed");
+      },
+    });
+
+    await expect(
+      failingAdapter.streamQuery(db.selectFrom("test").select("id").compile(), 1).next(),
+    ).rejects.toThrow("stream result transformation failed");
+    expect((await adapter.executeQuery(sql`SELECT 2`.compile(dialect))).rows).toEqual([{ 2: 2 }]);
+    await adapter.destroy();
+    await db.destroy();
   });
 
   it("should properly destroy and release resources", async () => {

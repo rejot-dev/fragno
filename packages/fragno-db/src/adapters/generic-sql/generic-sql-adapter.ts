@@ -12,6 +12,7 @@ import type {
   TypedUnitOfWork,
   UOWExecutor,
   UOWInstrumentation,
+  RetrievalOperation,
   UnitOfWorkConfig as BaseUnitOfWorkConfig,
 } from "../../query/unit-of-work/unit-of-work";
 import { UnitOfWork } from "../../query/unit-of-work/unit-of-work";
@@ -50,6 +51,8 @@ export interface SqlAdapterOptions {
   sqliteStorageMode?: SQLiteStorageMode;
   namingStrategy?: SqlNamingStrategy;
 }
+
+const FRAGNO_SQL_STREAM_CHUNK_SIZE = 50;
 
 export const sqliteProfiles: Record<SQLiteProfile, SQLiteStorageMode> = {
   default: sqliteStorageDefault,
@@ -183,6 +186,53 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
 
   registerSchema(schema: AnySchema, namespace: string | null): void {
     this.#schemaNamespaceMap.set(schema, namespace);
+  }
+
+  /** Iterates one indexed page using native streaming or a bounded buffered query. */
+  async *streamRetrieval(operation: RetrievalOperation<AnySchema>): AsyncIterableIterator<unknown> {
+    if (operation.type !== "find" || operation.withCursor || operation.withSingleResult) {
+      throw new Error("SqlAdapter.streamRetrieval requires a multi-row find operation.");
+    }
+    if (
+      this.driverConfig.retrievalExecution.kind === "buffered-page" &&
+      (operation.options.pageSize === undefined ||
+        !Number.isSafeInteger(operation.options.pageSize) ||
+        operation.options.pageSize < 1)
+    ) {
+      throw new Error(
+        "SqlAdapter.streamRetrieval buffered-page execution requires a positive page size.",
+      );
+    }
+
+    const query = this.#createOperationCompiler().compileFind(operation);
+    if (!query) {
+      return;
+    }
+    const resolver = createNamingResolver(
+      operation.schema,
+      operation.namespace ?? null,
+      this.namingStrategy,
+    );
+    const decoder = new UnitOfWorkDecoder(this.driverConfig, this.sqliteStorageMode, resolver);
+    const decodeRow = (row: Record<string, unknown>) => {
+      const [decoded] = decoder.decode([[row]], [operation]);
+      return (decoded as unknown[])[0];
+    };
+
+    if (this.driverConfig.retrievalExecution.kind === "buffered-page") {
+      // Some Kysely drivers expose streamQuery but only throw at runtime without optional support.
+      const result = await this.#driver.executeQuery(query);
+      for (const row of result.rows) {
+        yield decodeRow(row);
+      }
+      return;
+    }
+
+    for await (const chunk of this.#driver.streamQuery(query, FRAGNO_SQL_STREAM_CHUNK_SIZE)) {
+      for (const row of chunk.rows) {
+        yield decodeRow(row);
+      }
+    }
   }
 
   async getSchemaVersion(namespace: string): Promise<string | undefined> {

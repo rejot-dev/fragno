@@ -39,6 +39,14 @@ export class SqlDriverAdapter {
     return await this.#executor.executeQuery(query);
   }
 
+  /** Streams query chunks without releasing the connection between yields. */
+  streamQuery(
+    query: CompiledQuery,
+    chunkSize: number,
+  ): AsyncIterableIterator<QueryResult<Record<string, unknown>>> {
+    return this.#executor.streamQuery(query, chunkSize);
+  }
+
   async transaction<T>(callback: (trx: SqlDriverAdapter) => Promise<T>): Promise<T> {
     if (this.#driver === null) {
       throw new Error("Cannot start transaction: adapter was created with custom executor");

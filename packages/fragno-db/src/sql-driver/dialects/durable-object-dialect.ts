@@ -278,11 +278,52 @@ class DOConnection implements DatabaseConnection {
     }
   }
 
-  // oxlint-disable-next-line require-yield
   async *streamQuery<O>(
-    _compiledQuery: CompiledQuery,
-    _chunkSize: number,
+    compiledQuery: CompiledQuery,
+    chunkSize: number,
   ): AsyncIterableIterator<QueryResult<O>> {
-    throw new Error("DO Driver does not support streaming");
+    if (!Number.isInteger(chunkSize) || chunkSize < 1) {
+      throw new Error("Durable Object SQLite stream chunk size must be positive.");
+    }
+    const queryStartedAt = this.#config.queryInstrumentation ? performance.now() : 0;
+    let cursor: SqlStorageCursor<Record<string, SqlStorageValue>>;
+    try {
+      cursor = this.#config.ctx.storage.sql.exec(compiledQuery.sql, ...compiledQuery.parameters);
+    } catch (error) {
+      throw new Error(`Durable Object SQLite rejected query: ${compiledQuery.sql}`, {
+        cause: error,
+      });
+    }
+
+    let rowsReturned = 0;
+    let rows: O[] = [];
+    // Cursor iteration is synchronous within a chunk; only delivery yields to the event loop.
+    // Cloudflare does not guarantee snapshot isolation across those yields.
+    for (const row of cursor) {
+      // Look ahead before yielding: a query bounded to one chunk is fully consumed
+      // synchronously, so writing its rows cannot resume a live DO cursor after an await.
+      if (rows.length === chunkSize) {
+        rowsReturned += rows.length;
+        yield { rows };
+        rows = [];
+      }
+      rows.push(row as O);
+    }
+    if (rows.length > 0) {
+      rowsReturned += rows.length;
+      yield { rows };
+    }
+    // Only report counters for fully consumed cursors, as required by the metrics contract.
+    try {
+      this.#config.queryInstrumentation?.recordQuery({
+        sql: compiledQuery.sql,
+        rowsRead: cursor.rowsRead,
+        rowsWritten: cursor.rowsWritten,
+        rowsReturned,
+        executionMs: performance.now() - queryStartedAt,
+      });
+    } catch {
+      // Observability must not turn a successfully executed database query into a failure.
+    }
   }
 }

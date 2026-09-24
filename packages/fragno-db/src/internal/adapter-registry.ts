@@ -11,6 +11,7 @@ import {
   createInternalFragmentOutboxRoutes,
   createInternalFragmentSyncRoutes,
 } from "../fragments/internal-fragment.routes";
+import { streamOutboxEntries, type OutboxStreamOptions } from "../fragments/stream-outbox-entries";
 import type { DatabaseTransactionInstrumentation } from "../query/unit-of-work/execute-unit-of-work";
 import type { SyncCommandDefinition, SyncCommandTargetRegistration } from "../sync/types";
 import { enableOutboxForSchema, getOutboxStateForAdapter, type OutboxState } from "./outbox-state";
@@ -42,6 +43,7 @@ type SchemaRegistrationOptions = {
 
 type AdapterRegistry = {
   internalFragment: InternalFragmentInstance;
+  streamOutboxEntries: (options: OutboxStreamOptions) => ReturnType<typeof streamOutboxEntries>;
   schemas: Map<string, SchemaInfo>;
   fragments: Map<string, FragmentMeta>;
   outboxState: OutboxState;
@@ -167,6 +169,7 @@ const createRegistry = (adapter: DatabaseAdapter<unknown>): AdapterRegistry => {
 
   registry = {
     internalFragment: undefined as unknown as InternalFragmentInstance,
+    streamOutboxEntries: (options) => streamOutboxEntries(adapter, options),
     schemas,
     fragments,
     outboxState,

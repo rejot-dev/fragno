@@ -2,7 +2,11 @@ import type { RequestContextStorage } from "@fragno-dev/core/internal/request-co
 
 import type { SqlNamingStrategy } from "../naming/sql-naming";
 import type { QueryPolicySet } from "../query/query-policy";
-import type { IUnitOfWork, TypedUnitOfWork } from "../query/unit-of-work/unit-of-work";
+import type {
+  IUnitOfWork,
+  RetrievalOperation,
+  TypedUnitOfWork,
+} from "../query/unit-of-work/unit-of-work";
 import type { AnySchema } from "../schema/create";
 import type { SQLProvider } from "../shared/providers";
 import type { PreparedMigrations } from "./generic-sql/migration/prepared-migrations";
@@ -74,6 +78,9 @@ export interface DatabaseAdapter<TUOWConfig = void> {
   ) => TypedUnitOfWork<T>;
 
   createBaseUnitOfWork: (name?: string, config?: TUOWConfig) => IUnitOfWork;
+
+  /** Iterates a bounded read-only find; native cursors are used only when the adapter supports them. */
+  streamRetrieval: (operation: RetrievalOperation<AnySchema>) => AsyncIterableIterator<unknown>;
 
   prepareMigrations?: (schema: AnySchema, namespace: string | null) => PreparedMigrations;
 
