@@ -36,6 +36,66 @@ export abstract class QueryExecutorBase implements QueryExecutor {
     });
   }
 
+  async *streamQuery<R>(
+    compiledQuery: CompiledQuery,
+    chunkSize: number,
+  ): AsyncIterableIterator<QueryResult<R>> {
+    // ConnectionProvider's callback owns the connection; a one-chunk handoff keeps it
+    // alive through the caller's awaits without buffering an unbounded result set.
+    let pending: QueryResult<R> | undefined;
+    let wakeConsumer = () => {};
+    let resumeProducer = () => {};
+    let finished = false;
+    let stopped = false;
+    let failure: Error | undefined;
+    const producer = (async () => {
+      try {
+        await this.provideConnection(async (connection) => {
+          for await (const result of connection.streamQuery<R>(compiledQuery, chunkSize)) {
+            if (stopped) {
+              break;
+            }
+            pending = await this.#transformResult(result);
+            await new Promise<void>((resolve) => {
+              resumeProducer = resolve;
+              wakeConsumer();
+            });
+            if (stopped) {
+              break;
+            }
+          }
+        });
+      } catch (error) {
+        failure = error instanceof Error ? error : new Error(String(error));
+      } finally {
+        finished = true;
+        wakeConsumer();
+      }
+    })();
+    try {
+      while (!finished || pending !== undefined) {
+        if (pending === undefined) {
+          await new Promise<void>((resolve) => {
+            wakeConsumer = resolve;
+          });
+          continue;
+        }
+        const chunk = pending;
+        pending = undefined;
+        yield chunk;
+        resumeProducer();
+      }
+      await producer;
+      if (failure !== undefined) {
+        throw failure;
+      }
+    } finally {
+      stopped = true;
+      resumeProducer();
+      await producer;
+    }
+  }
+
   abstract withConnectionProvider(connectionProvider: ConnectionProvider): QueryExecutorBase;
 
   abstract withPlugin(plugin: GenericSQLPlugin): QueryExecutorBase;

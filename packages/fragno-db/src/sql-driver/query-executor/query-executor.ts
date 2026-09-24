@@ -26,6 +26,12 @@ export interface QueryExecutor extends ConnectionProvider {
    */
   executeQuery<R>(compiledQuery: CompiledQuery): Promise<QueryResult<R>>;
 
+  /** Streams bounded result chunks while retaining the database connection. */
+  streamQuery<R>(
+    compiledQuery: CompiledQuery,
+    chunkSize: number,
+  ): AsyncIterableIterator<QueryResult<R>>;
+
   /**
    * Returns a copy of this executor with a new connection provider.
    */

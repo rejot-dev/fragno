@@ -12,11 +12,13 @@ import {
   type ImplicitDatabaseDependencies,
 } from "../db-fragment-definition-builder";
 import { isHookStatus, type DurableHookPropagationContext, type HookStatus } from "../hooks/hooks";
+import { assembleOutboxEntry } from "../outbox/assemble-outbox-entry";
 import {
   encodeVersionstamp,
   versionstampToHex,
+  type OutboxEntry,
   type OutboxOperation,
-  type OutboxPayload,
+  type OutboxRefMap,
 } from "../outbox/outbox";
 import type { Cursor } from "../query/cursor";
 import { dbNow, type DbNow } from "../query/db-now";
@@ -27,8 +29,10 @@ import {
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
 } from "./internal-fragment.schema";
+import type { OutboxStreamOptions } from "./stream-outbox-entries";
 
 type AdapterRegistry = {
+  streamOutboxEntries: (options: OutboxStreamOptions) => AsyncIterableIterator<OutboxEntry>;
   listSchemas: () => Array<{
     name: string;
     namespace: string | null;
@@ -678,14 +682,10 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
                 mutationIndex += 1;
               }
 
-              return {
-                id: entry.id,
-                versionstamp: entry.versionstamp,
-                uowId: entry.uowId,
-                payload: superjson.serialize({ version: 2, operations } satisfies OutboxPayload),
-                refMap: entry.refMap ?? undefined,
-                createdAt: entry.createdAt,
-              };
+              return assembleOutboxEntry(
+                { ...entry, refMap: entry.refMap as OutboxRefMap | null },
+                operations,
+              );
             });
           })
           .build();

@@ -6,7 +6,11 @@ import {
   suffixNamingStrategy,
   type SqlNamingStrategy,
 } from "../../naming/sql-naming";
-import { UnitOfWork, type UnitOfWorkConfig } from "../../query/unit-of-work/unit-of-work";
+import {
+  UnitOfWork,
+  type RetrievalOperation,
+  type UnitOfWorkConfig,
+} from "../../query/unit-of-work/unit-of-work";
 import type { AnySchema } from "../../schema/create";
 import {
   fragnoDatabaseAdapterNameFakeSymbol,
@@ -88,6 +92,28 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
     for (const [namespaceKey, { schema, namespace }] of this.#schemaByNamespace) {
       const resolver = createNamingResolver(schema, namespace, this.namingStrategy);
       ensureNamespaceStore(this.#store, namespaceKey, schema, resolver);
+    }
+  }
+
+  /** In-memory iteration buffers one explicitly bounded page before yielding its decoded rows. */
+  async *streamRetrieval(operation: RetrievalOperation<AnySchema>): AsyncIterableIterator<unknown> {
+    if (operation.type !== "find" || operation.withCursor || operation.withSingleResult) {
+      throw new Error("InMemoryAdapter.streamRetrieval requires a multi-row find operation.");
+    }
+    if (
+      operation.options.pageSize === undefined ||
+      !Number.isSafeInteger(operation.options.pageSize) ||
+      operation.options.pageSize < 1
+    ) {
+      throw new Error(
+        "InMemoryAdapter.streamRetrieval buffered-page execution requires a positive page size.",
+      );
+    }
+    const uow = this.createBaseUnitOfWork();
+    (uow as UnitOfWork).addRetrievalOperation(operation);
+    const [result] = await uow.executeRetrieve();
+    for (const row of result as unknown[]) {
+      yield row;
     }
   }
 

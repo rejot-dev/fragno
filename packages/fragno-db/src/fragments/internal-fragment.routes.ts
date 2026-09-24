@@ -250,41 +250,18 @@ export const createInternalFragmentOutboxRoutes = () =>
           return json(limitResult.response, { status: limitResult.status });
         }
 
-        const listEntries = async (handlerTx: DatabaseHandlerTx): Promise<OutboxEntry[]> => {
-          const entries = await handlerTx({ name: "internal.outbox.stream.list" })
-            .withServiceCalls(
-              () =>
-                [
-                  services.outboxService.list({
-                    afterVersionstamp,
-                    limit: limitResult.limit,
-                  }),
-                ] as const,
-            )
-            .transform(({ serviceResult: [result] }) => result as OutboxEntry[])
-            .execute();
-
-          afterVersionstamp = entries[entries.length - 1]?.versionstamp ?? afterVersionstamp;
-          return entries;
-        };
-
-        let initialEntries = await listEntries((options) => this.handlerTx(options));
-
         return jsonStream(async (stream) => {
           const streamId = crypto.randomUUID();
           const startedAt = Date.now();
           let pollCount = 0;
-          let entriesRead = initialEntries.length;
+          let entriesRead = 0;
           let framesWritten = 0;
           let frameCharacters = 0;
           let largestFrameCharacters = 0;
           let heartbeatFrames = 0;
           let errorCount = 0;
           let completionReason: "aborted" | "expired" | "failed" = "failed";
-          console.info("fragno.outbox_stream.started", {
-            streamId,
-            initialEntryCount: initialEntries.length,
-          });
+          console.info("fragno.outbox_stream.started", { streamId });
 
           const writeOutboxStreamFrame = async (frame: string): Promise<boolean> => {
             let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -319,14 +296,27 @@ export const createInternalFragmentOutboxRoutes = () =>
               errorCount += 1;
               console.error("[outbox-stream] flush failed", error);
             },
-            flush: async ({ handlerTx }) => {
+            flush: async () => {
               pollCount += 1;
-              const entries = await listEntries(handlerTx);
-              entriesRead += entries.length;
-              if (entries.length === 0) {
-                await writeOutboxStreamFrame("\n");
-              }
-              return { observedItems: entries };
+              return {
+                observedItems: (async function* () {
+                  let foundEntry = false;
+                  for await (const entry of registry.streamOutboxEntries({
+                    afterVersionstamp,
+                    limit: limitResult.limit,
+                  })) {
+                    if (schedulerAbortController.signal.aborted) {
+                      return;
+                    }
+                    foundEntry = true;
+                    entriesRead += 1;
+                    yield entry;
+                  }
+                  if (!foundEntry && !schedulerAbortController.signal.aborted) {
+                    await writeOutboxStreamFrame("\n");
+                  }
+                })(),
+              };
             },
           });
 
@@ -344,17 +334,12 @@ export const createInternalFragmentOutboxRoutes = () =>
           });
 
           stopObserving = pump.observe(async (entry) => {
-            await writeOutboxStreamFrame(`${JSON.stringify(entry)}\n`);
+            if (await writeOutboxStreamFrame(`${JSON.stringify(entry)}\n`)) {
+              afterVersionstamp = entry.versionstamp;
+            }
           });
 
           try {
-            for (const entry of initialEntries) {
-              if (!(await writeOutboxStreamFrame(`${JSON.stringify(entry)}\n`))) {
-                break;
-              }
-            }
-            // The stream callback is long-lived, so release the initial page before polling starts.
-            initialEntries = [];
             await pump.flushNow(handlerTx);
             schedulerLease = pump.runWhile({
               kind: "observer",
@@ -456,7 +441,7 @@ export const createInternalFragmentSyncRoutes = () =>
                 () =>
                   [services.outboxService.list({ afterVersionstamp, limit: undefined })] as const,
               )
-              .transform(({ serviceResult: [entries] }) => entries as OutboxEntry[])
+              .transform(({ serviceResult: [entries] }) => entries)
               .execute(),
           countOutboxMutations: async (afterVersionstamp) => {
             const count = await this.handlerTx({ name: "internal.sync.countOutboxMutations" })

@@ -15,6 +15,10 @@ export interface CompiledQuery {
 
 export interface DatabaseConnection {
   executeQuery<R>(compiledQuery: CompiledQuery): Promise<QueryResult<R>>;
+  streamQuery<R>(
+    compiledQuery: CompiledQuery,
+    chunkSize: number,
+  ): AsyncIterableIterator<QueryResult<R>>;
 }
 
 export interface QueryResult<O> {

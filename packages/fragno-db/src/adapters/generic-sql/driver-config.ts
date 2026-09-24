@@ -19,9 +19,18 @@ export const supportedDriverTypes = [
 
 export type SupportedDriverType = (typeof supportedDriverTypes)[number];
 
+/** Describes whether indexed retrievals use a native cursor or materialize one bounded page. */
+export type SqlRetrievalExecution =
+  | { readonly kind: "native-stream" }
+  | { readonly kind: "buffered-page" };
+
+const nativeStreamRetrieval = Object.freeze({ kind: "native-stream" } as const);
+const bufferedPageRetrieval = Object.freeze({ kind: "buffered-page" } as const);
+
 export abstract class DriverConfig {
   abstract readonly driverType: SupportedDriverType;
   abstract readonly databaseType: SupportedDatabase;
+  abstract readonly retrievalExecution: SqlRetrievalExecution;
 
   abstract readonly supportsReturning: boolean;
   abstract readonly supportsJson: boolean;
@@ -237,6 +246,7 @@ export type OutboxVersionstampStrategy =
 export class SQLocalDriverConfig extends DriverConfig {
   override readonly driverType = "sqlocal";
   override readonly databaseType = "sqlite";
+  override readonly retrievalExecution = bufferedPageRetrieval;
   override readonly supportsReturning = true;
   override readonly supportsJson = false;
   override readonly internalIdColumn = "_internalId";
@@ -250,6 +260,7 @@ export class SQLocalDriverConfig extends DriverConfig {
 export class CloudflareDurableObjectsDriverConfig extends DriverConfig {
   override readonly driverType = "cloudflare_durable_objects";
   override readonly databaseType = "sqlite";
+  override readonly retrievalExecution = nativeStreamRetrieval;
   override readonly supportsReturning = true;
   override readonly supportsJson = false;
   override readonly internalIdColumn = "_internalId";
@@ -285,6 +296,7 @@ export class CloudflareDurableObjectsDriverConfig extends DriverConfig {
 export class BetterSQLite3DriverConfig extends DriverConfig {
   override readonly driverType = "better-sqlite3";
   override readonly databaseType = "sqlite";
+  override readonly retrievalExecution = nativeStreamRetrieval;
   override readonly supportsReturning = true;
   override readonly supportsJson = false;
   override readonly internalIdColumn = "_internalId";
@@ -314,6 +326,8 @@ export class BetterSQLite3DriverConfig extends DriverConfig {
 export class NodePostgresDriverConfig extends DriverConfig {
   override readonly driverType = "pg";
   override readonly databaseType = "postgresql";
+  // Kysely's PostgreSQL streamQuery requires the optional pg-cursor configuration.
+  override readonly retrievalExecution = bufferedPageRetrieval;
   override readonly supportsReturning = true;
   override readonly supportsJson = true;
   override readonly internalIdColumn = "_internalId";
@@ -351,6 +365,7 @@ export class NodePostgresDriverConfig extends DriverConfig {
 export class PGLiteDriverConfig extends DriverConfig {
   override readonly driverType = "pglite";
   override readonly databaseType = "postgresql";
+  override readonly retrievalExecution = bufferedPageRetrieval;
   override readonly supportsReturning = true;
   override readonly supportsJson = true;
   override readonly internalIdColumn = "_internalId";
@@ -379,6 +394,7 @@ export class PGLiteDriverConfig extends DriverConfig {
 export class MySQL2DriverConfig extends DriverConfig {
   override readonly driverType = "mysql2";
   override readonly databaseType = "mysql";
+  override readonly retrievalExecution = nativeStreamRetrieval;
   override readonly supportsReturning = false;
   override readonly supportsJson = true;
   override readonly internalIdColumn = undefined;

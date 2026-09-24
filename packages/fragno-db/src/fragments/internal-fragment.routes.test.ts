@@ -7,13 +7,11 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
+import { InMemoryAdapter } from "../adapters/in-memory/in-memory-adapter";
 import { getInternalFragment, getRegistryForAdapterSync } from "../internal/adapter-registry";
 import type { DatabaseRequestContext } from "../mod";
 import { FRAGNO_OUTBOX_PAGE_SIZE } from "../outbox/outbox";
-import type {
-  DatabaseTransactionInstrumentation,
-  TxResult,
-} from "../query/unit-of-work/execute-unit-of-work";
+import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
 import { schema, idColumn, column } from "../schema/create";
 import type { SyncCommandDefinition } from "../sync/types";
 import { withDatabase } from "../with-database";
@@ -362,6 +360,41 @@ describe("internal fragment describe routes", () => {
 
       assert(response.type === "json");
       expect(response.data).toHaveLength(FRAGNO_OUTBOX_PAGE_SIZE);
+      const lastVersionstamp = (response.data as Array<{ versionstamp: string }>).at(
+        -1,
+      )!.versionstamp;
+      const nextPage = await alphaFragment.callRoute(
+        "GET",
+        "/_internal/outbox" as never,
+        {
+          query: { afterVersionstamp: lastVersionstamp },
+        } as unknown as Parameters<typeof alphaFragment.callRoute>[2],
+      );
+      assert(nextPage.type === "json");
+
+      const streamed = await alphaFragment.callRoute("GET", "/_internal/outbox/stream" as never);
+      assert(streamed.type === "jsonStream");
+      try {
+        for (const expectedEntry of response.data as Array<{ versionstamp: string }>) {
+          const frame = await streamed.stream.next();
+          assert(!frame.done);
+          expect((frame.value as { versionstamp: string }).versionstamp).toBe(
+            expectedEntry.versionstamp,
+          );
+        }
+        const nextFrame = await Promise.race([
+          streamed.stream.next(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Timed out waiting for next outbox page.")), 2_000),
+          ),
+        ]);
+        assert(!nextFrame.done);
+        expect((nextFrame.value as { versionstamp: string }).versionstamp).toBe(
+          (nextPage.data as Array<{ versionstamp: string }>)[0]?.versionstamp,
+        );
+      } finally {
+        await streamed.stream.return(undefined);
+      }
     } finally {
       await close();
     }
@@ -398,7 +431,17 @@ describe("internal fragment describe routes", () => {
     const existingEntries = outboxResponse.data as Array<{ versionstamp: string }>;
     expect(existingEntries).toHaveLength(1);
 
-    await createAlphaItem("second");
+    await alphaFragment.inContext(async function (this: DatabaseRequestContext) {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          forSchema(alphaSchema).create("alpha_items", { name: "second" });
+          forSchema(alphaSchema).create("alpha_items", { name: "third" });
+        })
+        .execute();
+    });
+    const listedResponse = await alphaFragment.callRoute("GET", "/_internal/outbox" as never);
+    assert(listedResponse.type === "json");
+    const expectedEntry = (listedResponse.data as Array<{ versionstamp: string }>)[1];
 
     const streamResponse = await alphaFragment.callRoute(
       "GET",
@@ -421,16 +464,21 @@ describe("internal fragment describe routes", () => {
         }),
       ]);
       assert(nextFrame.done === false);
-      const streamedEntry = nextFrame.value as { versionstamp: string };
+      const streamedEntry = nextFrame.value as {
+        versionstamp: string;
+        payload: { json: { operations: unknown[] } };
+      };
       expect(streamedEntry.versionstamp).toEqual(expect.any(String));
       expect(streamedEntry.versionstamp).not.toBe(existingEntries[0].versionstamp);
+      expect(streamedEntry).toEqual(expectedEntry);
+      expect(streamedEntry.payload.json.operations).toHaveLength(2);
     } finally {
       await streamResponse.stream.return(undefined);
     }
 
     expect(info).toHaveBeenCalledWith(
       "fragno.outbox_stream.started",
-      expect.objectContaining({ streamId: expect.any(String), initialEntryCount: 1 }),
+      expect.objectContaining({ streamId: expect.any(String) }),
     );
     await vi.waitFor(() => {
       expect(info).toHaveBeenCalledWith(
@@ -461,28 +509,51 @@ describe("internal fragment describe routes", () => {
     await close();
   });
 
+  it("streams complete multi-mutation entries through the in-memory adapter", async () => {
+    const adapter = new InMemoryAdapter();
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({ databaseAdapter: adapter, mountRoute: "/alpha", outbox: { enabled: true } })
+      .build();
+
+    try {
+      await alphaFragment.inContext(async function (this: DatabaseRequestContext) {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            forSchema(alphaSchema).create("alpha_items", { name: "first" });
+            forSchema(alphaSchema).create("alpha_items", { name: "second" });
+          })
+          .execute();
+      });
+      const listed = await alphaFragment.callRoute("GET", "/_internal/outbox" as never);
+      assert(listed.type === "json");
+      const streamed = await alphaFragment.callRoute("GET", "/_internal/outbox/stream" as never);
+      assert(streamed.type === "jsonStream");
+      try {
+        const first = await streamed.stream.next();
+        assert(!first.done);
+        expect(first.value).toEqual((listed.data as unknown[])[0]);
+        expect(
+          (first.value as { payload: { json: { operations: unknown[] } } }).payload.json.operations,
+        ).toHaveLength(2);
+      } finally {
+        await streamed.stream.return(undefined);
+      }
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it("counts one initial outbox pump failure once", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const { adapter, close } = await setupAdapter();
-    const initialPumpError = new Error("INITIAL_OUTBOX_PUMP_FAILED");
-    let failNextHandlerTransaction = false;
-    const transactionInstrumentation: DatabaseTransactionInstrumentation = {
-      run(context, execute) {
-        if (context.transactionKind === "handler" && failNextHandlerTransaction) {
-          failNextHandlerTransaction = false;
-          throw initialPumpError;
-        }
-        return execute();
-      },
-    };
+    const { adapter, close } = await setupAdapter({ migrateInternal: false });
     const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
     const alphaFragment = instantiate(alphaDef)
       .withOptions({
         databaseAdapter: adapter,
         mountRoute: "/alpha",
         outbox: { enabled: true },
-        transactionInstrumentation,
       })
       .build();
 
@@ -493,7 +564,6 @@ describe("internal fragment describe routes", () => {
       );
       assert(streamResponse.status === 200);
       assert(streamResponse.type === "jsonStream");
-      failNextHandlerTransaction = true;
 
       await expect(streamResponse.stream.next()).resolves.toEqual({ value: undefined, done: true });
       await vi.waitFor(() => {
