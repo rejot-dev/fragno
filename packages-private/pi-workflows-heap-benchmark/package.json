@@ -1,0 +1,34 @@
+{
+  "name": "@fragno-private/pi-workflows-heap-benchmark",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "measure": "node --env-file-if-exists=.env --expose-gc --max-old-space-size=256 --import tsx src/workflow/pi-workflow-benchmark-server.ts",
+    "measure:outbox": "node --expose-gc --max-old-space-size=256 --import tsx src/outbox/outbox-benchmark-server.ts",
+    "analyze": "node --max-old-space-size=4096 --import tsx src/heap-profile/heap-profile-cli.ts",
+    "test": "vitest run",
+    "types:check": "tsc --noEmit",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "catalog:",
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "@fragno-dev/node": "workspace:*",
+    "@fragno-dev/pi-harness": "workspace:*",
+    "@fragno-dev/workflows": "workspace:*",
+    "better-sqlite3": "12.11.1",
+    "kysely": "^0.28.10"
+  },
+  "devDependencies": {
+    "@jridgewell/trace-mapping": "0.3.31",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^26.6.2",
+    "tsx": "^4.21.0",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
