@@ -22,6 +22,17 @@ const eventSchema = schema("query_tree_date_projection", (s) =>
 
 const events = eventSchema.tables.events;
 
+const jsonProjectionSchema = schema("query_tree_json_projection", (s) =>
+  s
+    .addTable("parents", (t) => t.addColumn("id", idColumn()))
+    .addTable("children", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("parentId", column("string"))
+        .addColumn("payload", column("json")),
+    ),
+);
+
 describe("QueryTreeSQLCompiler", () => {
   it("compiles cross-schema children through their ordinary correlated index condition", () => {
     const resolver = createNamingResolver(eventSchema, "tenant", suffixNamingStrategy);
@@ -52,6 +63,33 @@ describe("QueryTreeSQLCompiler", () => {
                as "$outboxMutations" from "events_tenant" as "_fragno_root""
     `);
     expect(query.parameters).toEqual(["tenant", "events"]);
+  });
+
+  it("embeds SQLite JSON columns as values in child projections", () => {
+    const child: CompiledQueryTreeChildNode = {
+      kind: "child",
+      alias: "children",
+      table: jsonProjectionSchema.tables.children,
+      cardinality: "many",
+      onIndexName: "primary",
+      select: ["payload"],
+      children: [],
+    };
+    const root: CompiledQueryTreeRootNode = {
+      kind: "root",
+      table: jsonProjectionSchema.tables.parents,
+      useIndex: "primary",
+      select: ["id"],
+      children: [child],
+    };
+    const compiler = new QueryTreeSQLCompiler(
+      createColdKysely("sqlite"),
+      new BetterSQLite3DriverConfig(),
+    );
+
+    const query = compiler.compile(root);
+
+    expect(query.sql).toContain(`'payload', json("_fragno_children_0"."payload")`);
   });
 
   it("projects MySQL DATE values in root and JSON child selections", () => {

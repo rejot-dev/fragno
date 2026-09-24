@@ -7,7 +7,7 @@ import {
   MySQL2DriverConfig,
 } from "../adapters/generic-sql/driver-config";
 import { column, idColumn, referenceColumn, schema, FragnoId } from "../schema/create";
-import { decodeResult } from "./value-decoding";
+import { decodeJsonProjectedResult, decodeResult } from "./value-decoding";
 
 describe("decodeResult", () => {
   const testSchema = schema("test", (s) => {
@@ -59,6 +59,29 @@ describe("decodeResult", () => {
       const result = decodeResult({ age: 25 }, usersTable, sqliteConfig);
 
       expect(result).toEqual({ age: 25 });
+    });
+
+    it("preserves JSON values already decoded by a database projection", () => {
+      const projectionSchema = schema("projected_json_values", (s) =>
+        s.addTable("values", (t) =>
+          t.addColumn("id", idColumn()).addColumn("payload", column("json")),
+        ),
+      );
+      const valuesTable = projectionSchema.tables.values;
+      const objectPayload = { nested: [1, 2, 3] };
+
+      expect(
+        decodeJsonProjectedResult({ payload: objectPayload }, valuesTable, sqliteConfig),
+      ).toEqual({ payload: objectPayload });
+      expect(
+        decodeJsonProjectedResult({ payload: "plain text" }, valuesTable, sqliteConfig),
+      ).toEqual({ payload: "plain text" });
+      expect(decodeJsonProjectedResult({ payload: false }, valuesTable, sqliteConfig)).toEqual({
+        payload: false,
+      });
+      expect(decodeResult({ payload: '"plain text"' }, valuesTable, sqliteConfig)).toEqual({
+        payload: "plain text",
+      });
     });
 
     it("should decode boolean values from sqlite", () => {

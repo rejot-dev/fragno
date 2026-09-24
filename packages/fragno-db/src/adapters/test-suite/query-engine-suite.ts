@@ -1914,6 +1914,53 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
       }
     });
 
+    it("returns projected JSON values from joinMany without changing their JSON type", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const create = createSuiteUnitOfWork(adapter, "create-json-join-data");
+        create.create("users", {
+          id: "json-join-user",
+          name: "JSON Join",
+          email: "json-join@example.com",
+          age: 1,
+        });
+        for (const [name, payload] of [
+          ["json-array", [1, 2, 3]],
+          ["json-object", { nested: { value: "preserved" } }],
+        ] as const) {
+          create.create("events", {
+            id: `event-${name}`,
+            user_id: "json-join-user",
+            name,
+            happened_on: new Date("2026-09-24T00:00:00.000Z"),
+            payload,
+            big_score: BigInt(1),
+          });
+        }
+        await create.executeMutations();
+
+        const [users] = await createSuiteUnitOfWork(adapter, "read-json-join-data")
+          .find("users", (b) =>
+            b
+              .whereIndex("primary", (eb) => eb("id", "=", "json-join-user"))
+              .joinMany("events", "events", (events) =>
+                events
+                  .onIndex("events_user_idx", (eb) => eb("user_id", "=", eb.parent("id")))
+                  .select(["name", "payload"])
+                  .orderByIndex("events_name_idx", "asc"),
+              ),
+          )
+          .executeRetrieve();
+
+        expect(users[0]?.events.map(({ name, payload }) => ({ name, payload }))).toEqual([
+          { name: "json-array", payload: [1, 2, 3] },
+          { name: "json-object", payload: { nested: { value: "preserved" } } },
+        ]);
+      } finally {
+        await close?.();
+      }
+    });
+
     it("returns empty arrays for empty joinMany relations and null for filtered-out joinOne relations", async () => {
       const { adapter, close } = await createContext();
       try {
