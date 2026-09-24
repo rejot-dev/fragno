@@ -331,11 +331,8 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
         method: "GET",
         path: "/workflows/:workflowName/sessions/:sessionId/commands/:commandId/wait",
         queryParameters: ["timeoutMs"],
-        outputSchema: sessionDetailSchema,
         errorCodes: [
           "SESSION_NOT_FOUND",
-          "SESSION_DATA_UNAVAILABLE",
-          "SESSION_DATA_INTEGRITY_ERROR",
           "WORKFLOW_INSTANCE_MISSING",
           "INVALID_COMMAND_ID",
           "COMMAND_NOT_WAITABLE",
@@ -343,7 +340,7 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
           "COMMAND_STEP_FAILED",
           "COMMAND_WORKFLOW_TERMINAL",
         ],
-        handler: async function ({ pathParams, query }, { json, error }) {
+        handler: async function ({ pathParams, query }, { empty, error }) {
           const timeoutMs = parsePositiveIntegerQueryValue(query.get("timeoutMs"));
           const workflowName = pathParams.workflowName;
           const sessionId = pathParams.sessionId;
@@ -373,14 +370,7 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
               timeoutMs: waitTimeoutMs,
             });
 
-            const result = await this.handlerTx()
-              .withServiceCalls(
-                () => [services.getSessionDetailSnapshot(workflowName, sessionId)] as const,
-              )
-              .transform(({ serviceResult: [snapshot] }) => snapshot)
-              .execute();
-
-            return json(toSessionDetail(result));
+            return empty(204);
           } catch (err) {
             if (err instanceof CommandStepWaitTimeoutError) {
               return error({ message: err.message, code: "COMMAND_STEP_TIMEOUT" }, { status: 408 });
@@ -394,8 +384,22 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
                 { status: 409 },
               );
             }
-            const loadError = toSessionDetailLoadError(err, workflowName, sessionId);
-            return error(loadError.body, loadError.init);
+            if (err instanceof WorkflowInstanceNotFoundError) {
+              return error(
+                {
+                  message: `Session ${workflowName}/${sessionId} not found.`,
+                  code: "SESSION_NOT_FOUND",
+                },
+                { status: 404 },
+              );
+            }
+            return error(
+              {
+                message: err instanceof Error ? err.message : "Failed to wait for command step.",
+                code: "WORKFLOW_INSTANCE_MISSING",
+              },
+              { status: 500 },
+            );
           }
         },
       }),

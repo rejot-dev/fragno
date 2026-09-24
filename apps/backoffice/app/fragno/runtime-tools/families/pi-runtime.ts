@@ -226,7 +226,7 @@ const createPiRuntime = (
       });
     }
 
-    const detailResponse = await callRoute(
+    const waitResponse = await callRoute(
       "GET",
       "/workflows/:workflowName/sessions/:sessionId/commands/:commandId/wait",
       {
@@ -234,13 +234,22 @@ const createPiRuntime = (
         query: { timeoutMs: String(timeoutMs) },
       },
     );
-    if (detailResponse.type !== "json" || !isSuccessStatus(detailResponse.status)) {
-      return throwOnRouteRuntimeError(detailResponse, {
+    if (waitResponse.type !== "empty" || waitResponse.status !== 204) {
+      return throwOnRouteRuntimeError(waitResponse, {
         runtimeLabel: "Pi",
         label: "pi.session.turn wait-for-command-step",
       });
     }
 
+    const detailResponse = await callRoute("GET", "/workflows/:workflowName/sessions/:sessionId", {
+      pathParams,
+    });
+    if (detailResponse.type !== "json" || !isSuccessStatus(detailResponse.status)) {
+      return throwOnRouteRuntimeError(detailResponse, {
+        runtimeLabel: "Pi",
+        label: "pi.session.turn detail",
+      });
+    }
     const detail = detailResponse.data;
 
     return {

@@ -46,23 +46,6 @@ function assertError<T extends { type: string }>(response: T): Extract<T, { type
   return response as Extract<T, { type: "error" }>;
 }
 
-function textMessages(messages: Array<{ role?: string; content?: unknown }>, role: string) {
-  return messages.flatMap((message) => {
-    if (message.role !== role || !Array.isArray(message.content)) {
-      return [];
-    }
-    return message.content.flatMap((block) =>
-      block &&
-      typeof block === "object" &&
-      "type" in block &&
-      block.type === "text" &&
-      "text" in block
-        ? [String(block.text)]
-        : [],
-    );
-  });
-}
-
 function textStream(text: string, waitBeforeEnd: Promise<unknown>): StreamFn {
   return () => {
     const stream = createAssistantMessageEventStream();
@@ -167,7 +150,7 @@ describe("pi-harness wait-for-command-step route", () => {
     );
   }
 
-  it("waits for the command step commit before returning the settled session", async () => {
+  it("waits for the command step commit before acknowledging completion", async () => {
     const sessionId = await createSession();
     const commandId = await sendPrompt(sessionId, "hello");
     let waitSettled = false;
@@ -184,10 +167,8 @@ describe("pi-harness wait-for-command-step route", () => {
     releaseAssistant.resolve();
     await run;
 
-    const response = assertJson(await withTimeout(wait));
-    expect(textMessages(response.data.agent.state.messages, "user")).toEqual(["hello"]);
-    expect(textMessages(response.data.agent.state.messages, "assistant")).toEqual(["final answer"]);
-    expect(response.data.agent).not.toHaveProperty("events");
+    const response = await withTimeout(wait);
+    assert(response.type === "empty" && response.status === 204);
   });
 
   it("uses the Workflows namespace when Pi and Workflows share a namespaced database", async () => {
@@ -202,8 +183,8 @@ describe("pi-harness wait-for-command-step route", () => {
     );
     releaseAssistant.resolve();
     await run;
-    const response = assertJson(await withTimeout(wait));
-    expect(textMessages(response.data.agent.state.messages, "assistant")).toEqual(["final answer"]);
+    const response = await withTimeout(wait);
+    assert(response.type === "empty" && response.status === 204);
   });
 
   it("finds a fast command even when the wait starts after it has committed", async () => {
@@ -214,8 +195,8 @@ describe("pi-harness wait-for-command-step route", () => {
       { workflowName: workflow.name, instanceId: sessionId, reason: "event" },
       { maxTicks: 1 },
     );
-    const response = assertJson(await withTimeout(waitForCommand(sessionId, commandId)));
-    expect(textMessages(response.data.agent.state.messages, "assistant")).toEqual(["final answer"]);
+    const response = await withTimeout(waitForCommand(sessionId, commandId));
+    assert(response.type === "empty" && response.status === 204);
   });
 
   it("times out when the command has not reached a settled step", async () => {
