@@ -112,21 +112,49 @@ async function* parseNDJSONStream<T>(
         break;
       }
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
+      const chunk = decoder.decode(value, { stream: true });
+      let lineStart = 0;
+      let newlineIndex = chunk.indexOf("\n");
 
-      // Keep the last incomplete line in the buffer
-      buffer = lines.pop() || "";
+      if (buffer.length === 0 && newlineIndex === chunk.length - 1) {
+        // ResponseStream writes one frame per chunk in-process. JSON.parse accepts the trailing
+        // newline, so this path avoids split-array allocation and partial-frame bookkeeping.
+        if (/\S/u.test(chunk)) {
+          yield JSON.parse(chunk) as T extends unknown[] ? T[number] : T;
+        }
+        continue;
+      }
 
-      for (const line of lines) {
-        if (line.trim()) {
+      if (buffer.length > 0) {
+        if (newlineIndex === -1) {
+          buffer += chunk;
+          continue;
+        }
+        const completedLine = buffer + chunk.slice(0, newlineIndex);
+        buffer = "";
+        if (/\S/u.test(completedLine)) {
+          yield JSON.parse(completedLine) as T extends unknown[] ? T[number] : T;
+        }
+        lineStart = newlineIndex + 1;
+        newlineIndex = chunk.indexOf("\n", lineStart);
+      }
+
+      while (newlineIndex !== -1) {
+        const line = chunk.slice(lineStart, newlineIndex);
+        if (/\S/u.test(line)) {
           yield JSON.parse(line) as T extends unknown[] ? T[number] : T;
         }
+        lineStart = newlineIndex + 1;
+        newlineIndex = chunk.indexOf("\n", lineStart);
       }
+      buffer = chunk.slice(lineStart);
     }
 
-    // Process any remaining data in the buffer
-    if (buffer.trim()) {
+    const decoderTail = decoder.decode();
+    if (decoderTail.length > 0) {
+      buffer += decoderTail;
+    }
+    if (/\S/u.test(buffer)) {
       yield JSON.parse(buffer) as T extends unknown[] ? T[number] : T;
     }
   } finally {
