@@ -1,0 +1,65 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  compareServerBenchmarkWorkloads,
+  parseServerBenchmarkMetrics,
+  type PiWorkflowBenchmarkMetrics,
+  type ServerMemoryMetrics,
+} from "./server-benchmark-metrics";
+
+const memory: ServerMemoryMetrics = {
+  baselineHeapUsedBytes: 10,
+  peakHeapUsedBytes: 20,
+  peakHeapDeltaBytes: 10,
+  baselineRssBytes: 100,
+  peakRssBytes: 140,
+  peakRssDeltaBytes: 40,
+  baselineExternalBytes: 5,
+  peakExternalBytes: 8,
+  peakExternalDeltaBytes: 3,
+  postWorkloadHeapUsedBytes: 18,
+  retainedHeapUsedBytes: 11,
+  retainedHeapDeltaBytes: 1,
+  retainedRssBytes: 110,
+  timeline: [{ elapsedMs: 0, heapUsedBytes: 10, rssBytes: 100, externalBytes: 5 }],
+};
+
+const workflow: PiWorkflowBenchmarkMetrics = {
+  ...memory,
+  kind: "pi-workflow",
+  nodeVersion: "v26.10.0",
+  outboxMode: "poll",
+  transport: "node-http",
+  measurementScope: "server",
+  provider: "recorded:openai",
+  modelId: "test-model@4x",
+  outboxEntriesRead: 700,
+  durationMs: 20_000,
+  status: { status: "waiting", runGeneration: 1 },
+};
+
+describe("server benchmark metrics", () => {
+  it("validates the server process boundary and memory timeline", () => {
+    expect(parseServerBenchmarkMetrics(JSON.parse(JSON.stringify(workflow)))).toEqual(workflow);
+    expect(() =>
+      parseServerBenchmarkMetrics({ ...workflow, measurementScope: "server-and-client" }),
+    ).toThrow("invalid process memory fields");
+  });
+
+  it("matches equivalent workflow runs and rejects changed workloads", () => {
+    expect(
+      compareServerBenchmarkWorkloads(workflow, { ...workflow, outboxMode: "stream" }),
+    ).toEqual({ status: "matched", warnings: [] });
+
+    expect(
+      compareServerBenchmarkWorkloads(workflow, {
+        ...workflow,
+        outboxMode: "stream",
+        outboxEntriesRead: 900,
+      }),
+    ).toEqual({
+      status: "mismatched",
+      warnings: ["Outbox entries read differs by more than 5%."],
+    });
+  });
+});
