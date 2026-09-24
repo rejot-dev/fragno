@@ -136,7 +136,7 @@ describe("SQLQueryCompiler", () => {
       });
 
       expect(query.sql).toMatchInlineSnapshot(
-        `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+        `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) returning "users"."_internalId" as "_internalId""`,
       );
     });
 
@@ -227,7 +227,7 @@ describe("SQLQueryCompiler", () => {
       });
 
       expect(query.sql).toMatchInlineSnapshot(
-        `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+        `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) returning "users"."_internalId" as "_internalId""`,
       );
       expect(query.sql).toContain("returning");
     });
