@@ -366,14 +366,22 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       onWorkflowStepEmissionsCleanup: defineHook(async function (
         payload: WorkflowStepEmissionsCleanupHookPayload,
       ) {
-        const cleanupStartedAt = performance.now();
-        console.info("fragno.workflow_step_emissions_cleanup.started", {
-          instanceRef: payload.instanceRef,
-          stepKey: payload.stepKey,
-        });
-        const cleanup = await this.handlerTx()
+        const progress = payload.progress ?? {
+          startedAtEpochMs: Date.now(),
+          batches: 0,
+          emissionsDeleted: 0,
+          outboxMutationsDeleted: 0,
+        };
+        if (payload.progress === null) {
+          console.info("fragno.workflow_step_emissions_cleanup.started", {
+            instanceRef: payload.instanceRef,
+            stepKey: payload.stepKey,
+          });
+        }
+
+        const batch = await this.handlerTx()
           .retrieve(({ forSchema }) =>
-            forSchema(workflowsSchema).find("workflow_step_emission", (b) =>
+            forSchema(workflowsSchema).findWithCursor("workflow_step_emission", (b) =>
               b
                 .whereIndex(
                   "idx_workflow_step_emission_instance_step_epoch_createdAt_sequence_id",
@@ -384,43 +392,61 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                       eb("epoch", "=", payload.epoch),
                     ),
                 )
+                .orderByIndex(
+                  "idx_workflow_step_emission_instance_step_epoch_createdAt_sequence_id",
+                  "asc",
+                )
+                .select(["id", "instanceRef", "stepKey", "epoch", "createdAt", "sequence"])
+                .pageSize(100)
                 .withOutboxMutations(),
             ),
           )
-          .mutate(({ forSchema, retrieveResult: [rows] }) => {
+          .mutate(({ forSchema, retrieveResult: [page] }) => {
             const workflows = forSchema(workflowsSchema);
-            for (const row of rows) {
+            for (const row of page.items) {
               workflows.delete("workflow_step_emission", row.id, (b) => b.check().omitOutbox());
               for (const mutation of row.$outboxMutations) {
                 workflows.outbox.deleteMutation(mutation.id);
               }
             }
 
-            if (rows.length > 0) {
+            if (page.items.length > 0) {
               workflows.outbox.notifyTruncate("workflow_step_emission", {
                 match: {
                   instanceRef: payload.instanceRef,
                   stepKey: payload.stepKey,
                   epoch: payload.epoch,
                 },
-                externalIds: rows.map((row) => row.id.externalId),
+                externalIds: page.items.map((row) => row.id.externalId),
               });
             }
-            return {
-              emissionsDeleted: rows.length,
-              outboxMutationsDeleted: rows.reduce(
-                (count, row) => count + row.$outboxMutations.length,
-                0,
-              ),
+            const nextProgress = {
+              startedAtEpochMs: progress.startedAtEpochMs,
+              batches: progress.batches + 1,
+              emissionsDeleted: progress.emissionsDeleted + page.items.length,
+              outboxMutationsDeleted:
+                progress.outboxMutationsDeleted +
+                page.items.reduce((count, row) => count + row.$outboxMutations.length, 0),
             };
+            if (page.hasNextPage) {
+              // The continuation commits with this page's deletes, so retries find only remaining rows.
+              workflows.triggerHook("onWorkflowStepEmissionsCleanup", {
+                ...payload,
+                progress: nextProgress,
+              });
+            }
+            return { progress: nextProgress, hasNextPage: page.hasNextPage };
           })
           .execute();
-        console.info("fragno.workflow_step_emissions_cleanup.completed", {
-          instanceRef: payload.instanceRef,
-          stepKey: payload.stepKey,
-          durationMs: performance.now() - cleanupStartedAt,
-          ...cleanup,
-        });
+
+        if (!batch.hasNextPage) {
+          console.info("fragno.workflow_step_emissions_cleanup.completed", {
+            instanceRef: payload.instanceRef,
+            stepKey: payload.stepKey,
+            durationMs: Date.now() - progress.startedAtEpochMs,
+            ...batch.progress,
+          });
+        }
       }),
     };
   })

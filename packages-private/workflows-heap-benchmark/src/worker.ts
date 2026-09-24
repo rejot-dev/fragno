@@ -3,6 +3,7 @@ import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { createFragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
+import type { FragnoId } from "@fragno-dev/db/schema";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import { defineWorkflow } from "@fragno-dev/workflows/workflow";
 
@@ -15,6 +16,7 @@ const BENCHMARK_START_EVENT_TYPE = "benchmark-start";
 const HISTORICAL_SEED_CHUNK_SIZE = 250;
 
 type BenchmarkWorkflowParams = {
+  historicalEmissionCount: number;
   batchCount: number;
   emissionsPerBatch: number;
   payloadBytes: number;
@@ -100,10 +102,7 @@ export class WorkflowBenchmarkObject {
 
   constructor(state: DurableObjectState, env: WorkflowHeapBenchmarkEnv) {
     this.#databaseAdapter = new SqlAdapter({
-      dialect: new DurableObjectDialect({
-        ctx: state,
-        queryInstrumentation: null,
-      }),
+      dialect: new DurableObjectDialect({ ctx: state, queryInstrumentation: null }),
       driverConfig: new CloudflareDurableObjectsDriverConfig(),
     });
     this.#host = createFragmentDurableObjectHost({
@@ -151,6 +150,7 @@ export class WorkflowBenchmarkObject {
       fragment.services.createInstance(BENCHMARK_WORKFLOW_NAME, {
         id: BENCHMARK_INSTANCE_ID,
         params: {
+          historicalEmissionCount: input.historicalEmissionCount,
           batchCount: input.batchCount,
           emissionsPerBatch: input.emissionsPerBatch,
           payloadBytes: input.payloadBytes,
@@ -232,7 +232,16 @@ export class WorkflowBenchmarkObject {
       throw new Error(`Benchmark workflow did not complete: ${status.status}`);
     }
 
-    return status;
+    const instance = await this.#readBenchmarkInstance();
+    const params = instance.params as BenchmarkWorkflowParams;
+    const maxAlarmPasses = Math.ceil((params.batchCount * params.emissionsPerBatch + 2) / 100) + 2;
+    for (let pass = 0; pass < maxAlarmPasses; pass += 1) {
+      if ((await this.#countBenchmarkEmissions(instance.id)) === params.historicalEmissionCount) {
+        return status;
+      }
+      await this.#host.alarm();
+    }
+    throw new Error("Benchmark workflow cleanup did not drain within the alarm pass limit.");
   }
 
   async #result(): Promise<unknown> {
@@ -241,21 +250,25 @@ export class WorkflowBenchmarkObject {
       fragment.services.getInstanceStatus(BENCHMARK_WORKFLOW_NAME, BENCHMARK_INSTANCE_ID),
     );
     const instance = await this.#readBenchmarkInstance();
+
+    return {
+      status,
+      persistedEmissionCount: await this.#countBenchmarkEmissions(instance.id),
+    };
+  }
+
+  async #countBenchmarkEmissions(instanceId: FragnoId): Promise<number> {
     const [emissionCount] = await this.#databaseAdapter
       .createUnitOfWork(workflowsSchema, workflowsSchema.name, "count-benchmark-emissions")
       .find("workflow_step_emission", (builder) =>
         builder
           .whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (expression) =>
-            expression("instanceRef", "=", instance.id),
+            expression("instanceRef", "=", instanceId),
           )
           .selectCount(),
       )
       .executeRetrieve();
-
-    return {
-      status,
-      persistedEmissionCount: emissionCount,
-    };
+    return emissionCount;
   }
 
   async #readBenchmarkInstance() {

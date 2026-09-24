@@ -23,7 +23,8 @@ pnpm --filter @fragno-private/workflows-heap-benchmark measure -- \
 
 Each case starts a fresh local Wrangler process and uses a distinct Durable Object. Historical
 emissions are seeded before measurement. The measured workflow then emits fixed-size batches over
-multiple live-pump intervals.
+multiple live-pump intervals and drains its step-emission cleanup. The result check requires that
+only the previously seeded emissions remain; an incomplete durable-hook chain fails the benchmark.
 
 ## Pi-like measurement
 
@@ -43,6 +44,33 @@ pnpm --filter @fragno-private/workflows-heap-benchmark measure -- \
 
 Each measured case lasts approximately 3.6 seconds. It compares the allocation cost of the same 300
 new emissions and 30 flush opportunities against short and long pre-existing histories.
+
+## Fast peak-heap A/B check
+
+For a directional check of a DB or workflow change, prepare two preinstalled worktrees that differ
+only in the code being tested. Run this from **each** repository root, setting `VARIANT=baseline` in
+one and `VARIANT=optimized` in the other:
+
+```bash
+VARIANT=baseline # Use optimized in the other worktree.
+pnpm exec turbo run build --filter=@fragno-private/workflows-heap-benchmark --output-logs=errors-only
+pnpm --filter @fragno-private/workflows-heap-benchmark measure -- \
+  --mode heap --histories 1000 --runs 2 \
+  --batch-count 30 --emissions-per-batch 10 \
+  --payload-bytes 256 --interval-ms 110 \
+  --json "/tmp/workflow-heap-fast-${VARIANT}.json"
+```
+
+Compare the printed median `peakDelta` and the **absolute peaks** at
+`results[].measurement.peakUsedBytes` in both reports. Each run seeds 1,000 historical emissions,
+then measures the same 300 new emissions in a fresh local Workerd process without allocation
+sampling or forced GC during the run. Keep the arguments and Wrangler version identical. A full A/B
+including worktree creation, offline installation, both builds, four runs, and cleanup took **63.979
+s** on September 23, 2026; warm worktrees avoid that setup but timing is not guaranteed.
+
+This is a quick **screen**, not a measurement of a full Backoffice model turn. Peak can depend on
+history length and natural GC; confirm promising results at other history sizes and in comparable
+production-preview turns before claiming a peak-heap win.
 
 ## Quick optimization loop
 
