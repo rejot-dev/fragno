@@ -16,7 +16,6 @@ import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import { UnitOfWorkEncoder } from "../uow-encoder";
 import {
-  mapSelect,
   mapSelectColumns,
   projectSelectedColumn,
   extendSelect,
@@ -273,12 +272,14 @@ export abstract class SQLQueryCompiler {
       .insertInto(this.getTableName(table))
       .values(encodedValues);
 
-    // Apply RETURNING if supported
     if (this.driverConfig.supportsReturning) {
-      const columns = mapSelect(true, table, this.resolver, {
-        tableName: this.getTableName(table),
-      });
-      insert = this.applyReturning(insert, columns);
+      const internalId = table.getInternalIdColumn().name;
+      const physicalInternalId = this.resolver
+        ? this.resolver.getColumnName(table.name, internalId)
+        : internalId;
+      insert = this.applyReturning(insert, [
+        `${this.getTableName(table)}.${physicalInternalId} as ${internalId}`,
+      ]);
     }
 
     return insert.compile();

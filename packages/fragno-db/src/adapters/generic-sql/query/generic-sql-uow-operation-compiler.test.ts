@@ -1,6 +1,8 @@
 import { describe, test, expect, assert } from "vitest";
 
+import { createNamingResolver, schemaNamingStrategy } from "../../../naming/sql-naming";
 import { Cursor } from "../../../query/cursor";
+import { QueryTreeFindBuilder } from "../../../query/unit-of-work/query-tree";
 import { schema, column, idColumn, referenceColumn, FragnoId } from "../../../schema/create";
 import {
   BetterSQLite3DriverConfig,
@@ -97,6 +99,75 @@ const customIdSchema = schema("customid", (s) => {
 describe("GenericSQLUOWOperationCompiler", () => {
   const driverConfig = new BetterSQLite3DriverConfig();
 
+  test("compiles mixed query-tree and ordinary operations in their own schemas and namespaces", () => {
+    const compiler = new GenericSQLUOWOperationCompiler(
+      new NodePostgresDriverConfig(),
+      undefined,
+      (schema, namespace) => createNamingResolver(schema, namespace, schemaNamingStrategy),
+    );
+    const alphaBuilder = new QueryTreeFindBuilder(
+      testSchema,
+      "users",
+      testSchema.tables.users,
+      "tenant_alpha",
+    );
+    alphaBuilder.whereIndex("idx_email", (eb) => eb("email", "=", "alpha@example.com"));
+    const alphaTree = alphaBuilder.build();
+    assert(alphaTree.kind === "root");
+
+    const treeFind = compiler.compileFind({
+      type: "find",
+      schema: testSchema,
+      namespace: "tenant_alpha",
+      table: testSchema.tables.users,
+      indexName: "idx_email",
+      options: { useIndex: "idx_email", select: true, queryTree: alphaTree },
+    });
+    const alphaCreate = compiler.compileCreate({
+      type: "create",
+      schema: testSchema,
+      namespace: "tenant_alpha",
+      table: "users",
+      values: { name: "Alpha" },
+      generatedExternalId: "alpha-1",
+    });
+    const betaCreate = compiler.compileCreate({
+      type: "create",
+      schema: testSchema,
+      namespace: "tenant_beta",
+      table: "users",
+      values: { name: "Beta" },
+      generatedExternalId: "beta-1",
+    });
+    const otherSchemaCreate = compiler.compileCreate({
+      type: "create",
+      schema: customIdSchema,
+      namespace: "tenant_alpha",
+      table: "products",
+      values: { name: "Product", price: 10 },
+      generatedExternalId: "product-1",
+    });
+    const ordinaryFind = compiler.compileFind({
+      type: "find",
+      schema: testSchema,
+      namespace: "tenant_alpha",
+      table: testSchema.tables.users,
+      indexName: "primary",
+      options: { useIndex: "primary", select: ["name"], pageSize: 1 },
+    });
+
+    expect(treeFind?.sql).toContain('from "tenant_alpha"."users" as "_fragno_root"');
+    expect(treeFind?.parameters).toEqual(["alpha@example.com"]);
+    expect(alphaCreate?.query.sql).toContain('insert into "tenant_alpha"."users"');
+    expect(alphaCreate?.query.parameters).toEqual(["alpha-1", "Alpha"]);
+    expect(betaCreate?.query.sql).toContain('insert into "tenant_beta"."users"');
+    expect(betaCreate?.query.parameters).toEqual(["beta-1", "Beta"]);
+    expect(otherSchemaCreate?.query.sql).toContain('insert into "tenant_alpha"."products"');
+    expect(otherSchemaCreate?.query.parameters).toEqual(["product-1", "Product", 10]);
+    expect(ordinaryFind?.sql).toContain('from "tenant_alpha"."users"');
+    expect(ordinaryFind?.parameters).toEqual([1]);
+  });
+
   test("compileCount operation", () => {
     const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
@@ -172,7 +243,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     expect(result).not.toBeNull();
     expect(result!.query.sql).toMatchInlineSnapshot(
-      `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+      `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) returning "users"."_internalId" as "_internalId""`,
     );
     expect(result!.expectedAffectedRows).toBeNull();
   });
@@ -339,7 +410,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.query.sql).toMatchInlineSnapshot(
-        `"insert into "users" ("id", "name", "email") values ($1, $2, $3) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+        `"insert into "users" ("id", "name", "email") values ($1, $2, $3) returning "users"."_internalId" as "_internalId""`,
       );
     });
 
@@ -359,7 +430,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.query.sql).toMatchInlineSnapshot(
-        `"insert into "users" ("id", "name", "email") values (?, ?, ?) returning "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version""`,
+        `"insert into "users" ("id", "name", "email") values (?, ?, ?) returning "users"."_internalId" as "_internalId""`,
       );
     });
   });
@@ -382,7 +453,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.query.sql).toMatchInlineSnapshot(
-        `"insert into "posts" ("id", "title", "content", "userId") values (?, ?, ?, (select "_internalId" from "users" where "id" = ? limit ?)) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`,
+        `"insert into "posts" ("id", "title", "content", "userId") values (?, ?, ?, (select "_internalId" from "users" where "id" = ? limit ?)) returning "posts"."_internalId" as "_internalId""`,
       );
     });
 
@@ -405,7 +476,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       // Should not have nested SELECT for the userId value
       expect(result!.query.sql).not.toMatch(/\(select.*from.*users/i);
       expect(result!.query.sql).toMatchInlineSnapshot(
-        `"insert into "posts" ("id", "title", "content", "userId") values (?, ?, ?, ?) returning "posts"."id" as "id", "posts"."title" as "title", "posts"."content" as "content", "posts"."userId" as "userId", "posts"."viewCount" as "viewCount", "posts"."publishedAt" as "publishedAt", "posts"."_internalId" as "_internalId", "posts"."_version" as "_version""`,
+        `"insert into "posts" ("id", "title", "content", "userId") values (?, ?, ?, ?) returning "posts"."_internalId" as "_internalId""`,
       );
     });
   });
@@ -580,7 +651,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.query.sql).toMatchInlineSnapshot(
-        `"insert into "products" ("productId", "name", "price") values (?, ?, ?) returning "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version""`,
+        `"insert into "products" ("productId", "name", "price") values (?, ?, ?) returning "products"."_internalId" as "_internalId""`,
       );
     });
 

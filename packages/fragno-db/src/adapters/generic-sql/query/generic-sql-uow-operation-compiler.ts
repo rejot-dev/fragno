@@ -19,7 +19,14 @@ import type { SQLiteStorageMode } from "../sqlite-storage";
 import { createSQLQueryCompiler } from "./create-sql-query-compiler";
 import { buildCursorCondition } from "./cursor-utils";
 import { QueryTreeSQLCompiler } from "./query-tree-sql-compiler";
-import { SQLQueryCompiler } from "./sql-query-compiler";
+import { SQLQueryCompiler, type AnyKysely } from "./sql-query-compiler";
+
+type ScopedCompilers = {
+  db: AnyKysely;
+  resolver: NamingResolver;
+  sql: SQLQueryCompiler | null;
+  queryTree: QueryTreeSQLCompiler | null;
+};
 
 /**
  * Generic SQL UOW Operation Compiler.
@@ -29,6 +36,8 @@ import { SQLQueryCompiler } from "./sql-query-compiler";
  */
 export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<CompiledQuery> {
   private readonly sqliteStorageMode?: SQLiteStorageMode;
+  private readonly scopedCompilers = new WeakMap<AnySchema, Map<string | null, ScopedCompilers>>();
+  private coldKysely: AnyKysely | null = null;
 
   constructor(
     driverConfig: DriverConfig,
@@ -39,39 +48,55 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     this.sqliteStorageMode = sqliteStorageMode;
   }
 
-  /**
-   * Get SQL compiler for a specific namespace
-   */
+  private getScopedCompilers(schema: AnySchema, namespace: string | null): ScopedCompilers {
+    let byNamespace = this.scopedCompilers.get(schema);
+    if (!byNamespace) {
+      byNamespace = new Map();
+      this.scopedCompilers.set(schema, byNamespace);
+    }
+
+    let scoped = byNamespace.get(namespace);
+    if (!scoped) {
+      const resolver = this.getNamingResolver(schema, namespace);
+      this.coldKysely ??= createColdKysely(this.driverConfig.databaseType);
+      const schemaName = resolver.getSchemaName();
+      scoped = {
+        db: schemaName ? this.coldKysely.withSchema(schemaName) : this.coldKysely,
+        resolver,
+        sql: null,
+        queryTree: null,
+      };
+      byNamespace.set(namespace, scoped);
+    }
+    return scoped;
+  }
+
   private getSQLCompiler(
     schema: AnySchema,
     namespace: string | null | undefined,
   ): SQLQueryCompiler {
-    const resolver = this.getNamingResolver(schema, namespace ?? null);
-    const kysely = createColdKysely(this.driverConfig.databaseType);
-    const schemaName = resolver.getSchemaName();
-    const scopedKysely = schemaName ? kysely.withSchema(schemaName) : kysely;
-    return createSQLQueryCompiler(
-      scopedKysely,
+    const scoped = this.getScopedCompilers(schema, namespace ?? null);
+    scoped.sql ??= createSQLQueryCompiler(
+      scoped.db,
       this.driverConfig,
       this.sqliteStorageMode,
-      resolver,
+      scoped.resolver,
     );
+    return scoped.sql;
   }
 
   private getQueryTreeCompiler(
     schema: AnySchema,
     namespace: string | null | undefined,
   ): QueryTreeSQLCompiler {
-    const resolver = this.getNamingResolver(schema, namespace ?? null);
-    const kysely = createColdKysely(this.driverConfig.databaseType);
-    const schemaName = resolver.getSchemaName();
-    const scopedKysely = schemaName ? kysely.withSchema(schemaName) : kysely;
-    return new QueryTreeSQLCompiler(
-      scopedKysely,
+    const scoped = this.getScopedCompilers(schema, namespace ?? null);
+    scoped.queryTree ??= new QueryTreeSQLCompiler(
+      scoped.db,
       this.driverConfig,
       this.sqliteStorageMode,
-      resolver,
+      scoped.resolver,
     );
+    return scoped.queryTree;
   }
 
   override compileCount(
@@ -95,8 +120,6 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
   }
 
   override compileFind(op: RetrievalOperation<AnySchema> & { type: "find" }): CompiledQuery | null {
-    const sqlCompiler = this.getSQLCompiler(op.schema, op.namespace);
-
     // Extract options
     const {
       useIndex: _useIndex,
@@ -115,6 +138,8 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
         withCursor: op.withCursor,
       });
     }
+
+    const sqlCompiler = this.getSQLCompiler(op.schema, op.namespace);
 
     // Get index columns for ordering and cursor pagination
     let indexColumns: AnyColumn[] = [];
