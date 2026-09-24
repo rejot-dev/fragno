@@ -4,7 +4,7 @@ Status: open
 
 Created: September 2, 2026
 
-Last updated: September 23, 2026
+Last updated: September 24, 2026
 
 ## Goal
 
@@ -20,12 +20,12 @@ and walk twice as much historical state.
 
 ## Summary
 
-A local long-response run produced a 31,412-character assistant message, 691 Automations outbox
-entries, and 6.6 MB of NDJSON. The worker allocated approximately 5.95 GB during the 120-second
-allocation-sampling window, although most of that memory was short-lived.
+The original September 2 long-response run produced a 31,412-character assistant message, 691
+Automations outbox entries, and 6.6 MB of NDJSON. The worker allocated approximately 5.95 GB during
+the 120-second allocation-sampling window, although most of that memory was short-lived.
 
-The primary allocation source was not writing NDJSON to the HTTP response. It was the Workflows step
-live pump rebuilding the complete workflow emission projection every 100 ms:
+At the time, the primary allocation source was not writing NDJSON to the HTTP response. It was the
+Workflows step live pump rebuilding the complete workflow emission projection every 100 ms:
 
 ```text
 streaming model event
@@ -48,23 +48,38 @@ Two additional amplifiers were observed:
 
 1. Each outbox HTTP client owns an independent 300 ms database polling loop. Multiple browser and
    CLI streams duplicate that work.
-2. Local debugger console entries retain structured SQL query-metric objects and their generated SQL
-   strings until Wrangler reloads the worker or `Runtime.discardConsoleEntries` is called.
+2. In the earlier instrumented builds, local debugger console entries retained structured SQL
+   query-metric objects and generated SQL strings until Wrangler reloaded the worker or
+   `Runtime.discardConsoleEntries` was called. Backoffice no longer enables that instrumentation.
 
 ## Current status
+
+**Executive summary (September 24):** The original full-history user-emission pump and cumulative Pi
+encoder paths are fixed, and Backoffice SQL query-metric instrumentation is disabled. Compiler
+reuse, narrow `INSERT RETURNING`, batched outbox inserts, and 100-emission durable cleanup pages are
+in the current worktree. They reduce measured cumulative allocation or bound individual cleanup
+attempts, but **no completed, comparable heap-only run of the current build establishes a lower
+natural-GC peak**. The first preview after disabling SQL instrumentation failed to finish cleanup;
+it has no valid peak result. Prioritize a completed comparable-output preview and deterministic
+short/long history checks, then verify retry-safe cleanup, shared outbox polling, and long Pi waits.
+The September 22–23 numbers below describe historical, differently instrumented dirty worktrees, not
+a single current-binary A/B.
 
 ### Resolved
 
 The current worktree resolves the two original quadratic-allocation paths:
 
 - The workflow live pump no longer retrieves, decodes, canonicalizes, and delivers the complete
-  persisted user-emission history on every 100 ms pass. The isolated benchmark increased history
-  from 100 to 10,000 emissions and measured only 21% more sampled allocation with almost unchanged
-  duration.
+  persisted user-emission history on every 100 ms pass. It still retrieves persisted system
+  controls. The isolated benchmark increased history from 100 to 10,000 user emissions and measured
+  only 21% more sampled allocation with almost unchanged duration.
 - The Pi event encoder updates common text, thinking, and tool-call deltas incrementally. All
   isolated encoder and decoder growth checks passed the configured linear-growth limit.
 - Production-preview measurement is now reproducible. Vite development mode is excluded because its
   `ModuleRunner` retained approximately 282 MiB of transformed source and inline source maps.
+- Backoffice configures `queryInstrumentation: null`, so it no longer collects or logs SQL query
+  metrics on the request path. The Durable Object dialect retains an opt-in callback but skips
+  row-read counters, timing, and metrics-object construction when disabled.
 
 These changes reduced the production-preview workload from approximately 5.95 GB to 1.151 GB of
 sampled allocation, approximately 80.7% overall and 76.2% per output character. Post-GC and settled
@@ -94,47 +109,105 @@ peak. Do not use periodic forced GC as a product fix.
 
 ### Separate high-priority issue: terminal cleanup SQL and payload scaling
 
-`onWorkflowStepEmissionsCleanup` still retrieves the full matching emission/outbox-mutation set,
-constructs all deletion operations and external IDs, and emits one truncate notification. Across
-three preview runs, the truncate listed 5,884–7,568 IDs; a single cleanup deletion lasted
-12.78–21.05 seconds, including a 21.045-second execution in the GC-checkpoint run. This is an
-unbounded SQL and payload scaling problem **even though cleanup is not proven to dominate peak live
-JS heap**.
+Earlier `onWorkflowStepEmissionsCleanup` retrieved the full matching emission/outbox-mutation set,
+queued every delete, and emitted one truncate containing 5,884–7,568 IDs; cleanup storage operations
+took up to 21.045 seconds. The current worktree processes at most **100 emissions per durable
+hook**, commits a bounded truncate with each page, and durably schedules the next page in the same
+transaction. In two comparable-size preview checks, the complete cleanup took 4.56–4.67 seconds and
+one run's longest observed SQLite transaction took 51 ms. The cleanup still issues individual
+checked deletes, total work scales with history, and the separate natural-GC peak goal is **not**
+resolved.
 
-### Follow-up measurements
+### Follow-up: phase allocation and SQL-log control
 
-The September 22 rerun found approximately 80% lower cumulative sampled allocation for a comparable
-long response, and the isolated workflow-history and Pi event-protocol benchmarks showed near-linear
-behavior. Storage span volume remained high, multi-client outbox ownership was unverified, and the
-current `pi.runTurn` waiter failed before observing completion.
+A further production-preview heap-only run with 26,997 assistant characters peaked at **117.99
+MiB**. In the matching-binary sampled run (29,732 characters), the window labeled streaming
+attributed approximately **37%** of sampled allocation to query compilation and **30%** to outbox
+insertion/result serialization. The sampler switch lagged the cleanup marker and included some
+cleanup DELETE compilation, so these are **not reliable streaming-only percentages**; its 99.72 MiB
+sampled peak is **not** comparable to the unsampled absolute peak. In the log-enabled cleanup
+traces, 6,518–7,450 structured SQL query-metric console calls accompanied 6.3–7.1 MB of preview
+output and a 9.54–19.61-second storage execution/transaction. Two diagnostic no-SQL-log runs still
+peaked at **93.63–107.30 MiB** with shorter (20,536–21,991 character) responses. The lower peaks
+cannot be attributed to log suppression without matched output and GC behavior.
 
-That full rerun accidentally used the Vite development server. Its approximately 334 MiB baseline
-was not application state: a fresh heap snapshot attributed 281.84 MiB of 297.08 MiB self size to
-Vite `ModuleRunner` transformed-source strings and inline source maps.
+The profiler's cleanup-completed marker observes **callback return**, not the end of the storage
+transaction: traces continued for up to another 19.61 seconds. Its zero sampled allocation for the
+subsecond callback window does **not** prove cleanup was allocation-free. Use trace end times when
+assigning phase-specific work. Query compilation/serialization is the main measured streaming
+allocation opportunity; high-volume SQL logging and whole-history cleanup are independently proven
+amplifiers.
 
-The September 23 production-preview rerun started at 46.17 MiB, peaked at 110.73 MiB during the
+### Scoped SQL compiler A/B
+
+Two production-preview heap-only turns per compiler variant, with the same prompt/model and
+length-nearest outputs of 37,392–38,286 and 28,821–30,987 characters, gave **opposite peak-heap
+comparisons**. The working-tree compiler cache did not demonstrate a repeatable natural-GC peak
+reduction. In a separate fixed-emission workflow, three allocation samples per variant showed
+**17–26% less cumulative allocation** with the cache, while heap-only peak changes went in opposite
+directions for short versus long histories. Keep the allocation improvement and the unresolved peak
+goal distinct. The fixed-workload A/B results remain useful for evaluating allocation, not peak.
+
+### Narrow RETURNING, outbox batching, and durable cleanup
+
+Compiler `INSERT` statements now return only the internal ID; normalized outbox mutations insert in
+chunks of at most ten rows; terminal cleanup processes at most 100 emissions per durable hook with
+atomic continuation and bounded truncate IDs. SQLite/PGlite tests, a real-SQLite 207-row
+cleanup-and-restart scenario, and a 6,000-emission Workerd run pass. The final cleanup design cut
+comparable-size preview cleanup wall time from roughly 11 seconds with in-hook paging to roughly 4.6
+seconds, **but** its fixed-workload natural-GC peak rose 0.80 MiB with 100 historical rows and 4.80
+MiB with 10,000, relative to in-hook paging. Two combined preview turns of 28,691 and 29,157
+characters peaked at 116.57 and 118.10 MiB. Individual preview A/B attribution and a repeatable peak
+improvement have not been established. The earlier artifact's 32.45-second cleanup-duration field
+was wrong: it measured an outer alarm span rather than the delete-bearing storage transactions;
+marker-to-marker wall time was approximately 4.67 seconds.
+
+### Backoffice SQL-metric collector removed; cleanup reads narrowed
+
+An intermediate bounded SQL logger reduced console events **21,198 → 1,864** across two preview
+turns, but the output lengths differed and peak-heap savings were not established. Even its bounded
+windows still emitted events proportional to heavy workload. The current worktree **removes the
+Backoffice SQL collector** and configures the dialect's supported query-instrumentation callback as
+`null`, skipping per-query measurements. Those intermediate A/B measurements do not describe the
+current build's console behavior. A post-removal preview attempt on September 23 emitted **zero
+SQL-metric events**, but its Workerd alarm exceeded its execution limit and cleanup markers never
+arrived; it yielded **no valid peak-heap result**
+(`/tmp/p12-streaming-query-metrics-disabled-2026-09-23.json`).
+
+The workflow cleanup hook now retrieves only IDs and index fields needed for pagination, rather than
+decoding emission payloads. In three fresh-process fixed Workerd runs with 300 new emissions of 8
+KiB each, median natural-GC peak fell **21.54 → 18.90 MiB** (2.64 MiB, 12.3%). The real-SQLite
+restart/cleanup scenario still verifies all 207 rows, truncated IDs, and outbox-mutation state. The
+29,106-character post-projection preview peaked at 115.36 MiB, between two 28,795–28,845-character
+logging-only peaks of 110.63 and 116.31 MiB. Other post-projection turns varied more in length; **a
+lower Backoffice natural-GC peak remains unproven**.
+
+### Measurement provenance and limits
+
+The September 22 full-app rerun used the Vite development server. Its approximately 334 MiB baseline
+was mostly development tooling: a heap snapshot attributed 281.84 MiB of 297.08 MiB self size to
+transformed source and inline source maps. **Do not compare that baseline to product heap.** Its
+isolated history and protocol benchmarks remain relevant.
+
+The September 23 production-preview rerun started at 46.17 MiB, peaked at 110.73 MiB during a
 sampled 120-second workload, fell to 54.56 MiB after GC, and settled at 50.45 MiB after console
-discard and another GC. It sampled 1.151 GB of cumulative allocation, approximately 80.7% below the
-September 2 run and approximately 76.2% lower per output character. The lower settled heap confirms
-that the primary retained and cumulative-allocation behavior improved, but the sampled absolute peak
-was approximately 21.7% higher and the baseline-to-peak delta was approximately 74.5% larger than in
-the original run. The issue therefore remains open for peak transient heap and storage-operation
-volume. A separate heap-only preview run confirmed the approximately 110 MiB peak without allocation
-sampling, but did **not** establish terminal cleanup as its direct cause. In that later run
-`pi.runTurn` completed successfully after the worktree's waiter code changed.
+discard and another GC. It sampled 1.151 GB, approximately 80.7% less cumulative allocation than
+September 2 and approximately 76.2% less per output character, but its absolute peak was higher. A
+separate heap-only preview peaked at 110.38 MiB without allocation sampling. Its peak was about 34
+seconds _after_ cleanup ended; later spontaneous GC drops and the controlled GC checkpoints show
+collectible garbage, not a proven continuously live cleanup object graph. One idle listener alone
+added at most 5.16 MB before GC in 50 seconds.
 
-Detailed reports:
-
-- [`references/2026_09_22-streaming-outbox-peak-heap-rerun.md`](references/2026_09_22-streaming-outbox-peak-heap-rerun.md)
-  records the isolated benchmarks and the provisional development-server run.
-- [`references/2026_09_23-streaming-outbox-preview-heap-profile.md`](references/2026_09_23-streaming-outbox-preview-heap-profile.md)
-  records the sampled production-preview heap comparison, allocation profile, trace split, and
-  artifacts.
-- [`references/2026_09_23-streaming-outbox-preview-heap-only.md`](references/2026_09_23-streaming-outbox-preview-heap-only.md)
-  records the unsampled heap experiment, cleanup/peak timing, and corrected attribution.
-- [`references/2026_09_23-streaming-outbox-peak-cause.md`](references/2026_09_23-streaming-outbox-peak-cause.md)
-  records the idle-listener control, GC checkpoints, and evidence distinguishing collectible
-  streaming allocations from a retained cleanup object graph.
+Model output, listener attachment, SQL-logging mode, dirty-worktree code, GC timing, and sampled
+versus heap-only instrumentation differed across subsequent runs. Sampled allocation measures
+cumulative bytes, not simultaneous live heap. An outbox `truncate` or cleanup callback log is not
+proof that its storage trace has finished. The September 23 post-removal preview failed with an
+alarm execution-time error and no cleanup markers; it cannot be counted as a peak measurement.
+Storage-operation volume, including per-emission persistence and repeated system-control queries,
+remains a separate scaling concern. On September 24, source and available local JSON manifests were
+checked, and 157 focused tests passed (12 workflow, 93 DB, 52 Pi); this is not a new model-backed
+peak measurement. Raw local profiles and `/tmp` JSON manifests are disposable; use the benchmark
+scripts below for reproducible future evidence.
 
 ## Fast reproduction procedure
 
@@ -220,26 +293,30 @@ listeners only when explicitly testing shared outbox ownership.
 
 ### 4. Profile through one CDP connection
 
-Use one long-lived CDP client for the complete measurement so allocation sampling, heap polling, and
-profile collection belong to the same inspector session.
+Use one long-lived CDP client per run. **Run heap-only and sampled turns separately**; the latter
+ranks cumulative allocation sites and does not provide the authoritative peak.
 
-Before the turn:
+Before each turn:
 
 1. enable `Runtime` and `HeapProfiler`;
 2. call `Runtime.discardConsoleEntries`;
 3. call `HeapProfiler.collectGarbage` with a timeout longer than 30 seconds;
 4. wait briefly, then record `Runtime.getHeapUsage`;
-5. start allocation sampling with a 32 KiB interval and collected minor/major objects included;
+5. start allocation sampling with a 32 KiB interval and collected minor/major objects included
+   **only for the sampled turn**;
 6. poll `Runtime.getHeapUsage` every 100 ms.
 
-Run the long prompt with a 120-second codemode timeout. Keep profiling for the complete fixed
-120-second window even if `pi.runTurn` returns before the underlying workflow finishes or reports a
-waiter error. Verify completion afterward with `pi.getSession`.
+For current A/B runs, use the bounded 150-stanza prompt and the
+[`benchmark:streaming-heap`](../scripts/benchmark-streaming-heap.md) harness (300-second codemode
+limit, shorter Pi waiter, and a cleanup-marker deadline). Prefer its repeated heap-only runs and
+separate sampled run over a fixed 120-second allocation window: do not stop measuring before the
+final cleanup storage transaction ends. Failed runs or missing markers do not yield valid peaks.
+Verify completion afterward with `pi.getSession`.
 
 At the end:
 
-1. record heap usage before stopping sampling;
-2. stop and save the allocation profile;
+1. record heap usage after the final cleanup storage transaction completes;
+2. stop and save the allocation profile if sampling was enabled;
 3. force GC and record heap usage;
 4. discard console entries, force GC again, and record settled heap usage;
 5. stop the outbox listener;
@@ -250,7 +327,8 @@ sampling both materially distort Workerd RSS.
 
 ### 5. Capture trace evidence last
 
-After the turn, identify the largest trace in the workload time window and record:
+After the turn, identify the causally contiguous workflow **and cleanup** traces in the workload
+time window (durable-hook context may not propagate) and record:
 
 - full trace ID and wall time;
 - total spans;
@@ -521,10 +599,13 @@ Repeated generated SQL strings had this retainer path:
   -> generated SQL string
 ```
 
-`apps/backoffice/app/backoffice-runtime/cloudflare-database-query-instrumentation.ts` logs one
-structured object per aggregated SQL bucket whenever a five-second window or row threshold flushes.
-Wrangler's inspector proxy enables the Runtime domain and calls `Runtime.discardConsoleEntries` on
-worker reload, but not periodically during a long-lived debug session.
+At the time of this snapshot,
+`apps/backoffice/app/backoffice-runtime/cloudflare-database-query-instrumentation.ts` logged one
+structured object per aggregated SQL bucket whenever a five-second window or row threshold flushed.
+The worktree removes that logger and disables the optional dialect query instrumentation in
+Backoffice. Wrangler's inspector proxy enables the Runtime domain and calls
+`Runtime.discardConsoleEntries` on worker reload, but not periodically during a long-lived debug
+session.
 
 Calling `Runtime.discardConsoleEntries`, followed by a forced GC, reduced used heap from
 approximately 65.0 MB to 56.7 MB.
@@ -536,10 +617,12 @@ investigations and increases peak pressure during query-heavy streams.
 
 ### P0: bound terminal step-emission cleanup SQL and working memory
 
-The full-set cleanup is unbounded in work and payload size; its share of transient allocation has
-not been isolated. Benchmark cleanup against fixed short and long emission histories while polling
-heap without allocation sampling. Replace the one-shot cleanup working set with a bounded,
-replay-safe cleanup operation.
+The current worktree replaces the one-shot cleanup with 100-row durable pages and bounded truncate
+notifications. Each page performs one retrieve/mutate UOW and atomically schedules its continuation.
+The 207-row SQLite scenario and 6,000-emission Workerd run prove final-state cleanup;
+short-/long-history heap-only controls show that this implementation **raised** the peak relative to
+in-hook paging. Reassess that cost and test interruption/concurrent retries and resumed client
+projection before declaring cleanup complete.
 
 Required properties:
 
@@ -548,8 +631,8 @@ Required properties:
 - Continue cleanup durably across attempts without interactive transactions or an in-memory source
   of truth.
 - Preserve two-phase OCC, idempotency, and retry safety if a cleanup attempt fails after committing.
-- Remove the requirement to materialize every external ID in one truncate payload. Introduce a
-  match-based or otherwise bounded invalidation operation rather than making a large optional field.
+- Keep truncate notifications and their external-ID lists bounded per page; verify that every
+  deleted ID is invalidated for resumed clients.
 - Preserve client projection correctness when deleted emissions are present in IndexedDB or another
   resumed outbox consumer.
 - Keep each hook attempt within Fragno's one-retrieval-round-trip and one-mutation-round-trip
@@ -564,22 +647,29 @@ history. Keep the outbox listener and console-log state controlled across both c
 
 Instrumentation now separates streaming, cleanup, and post-cleanup allocation sampling and provides
 a separate heap-only mode:
-[`../scripts/profile-streaming-heap.md`](../scripts/profile-streaming-heap.md). The workflow-step
-summary reports emissions enqueued, successful and empty flush counts, and attempt duration; the
-outbox stream summary reports polls, rows, and frame characters without re-encoding payloads; the
-Durable Object SQL window summary includes zero-row queries and SQL execution time. Correlate
-summaries by step and timestamp. The profiler's phase switch can miss allocations at its boundaries,
-and sampled runs must not be used for the authoritative peak. Compare comparable-length turns with
-one listener, using the **heap-only** mode for absolute peak and the **sampled** mode to rank
-allocation stacks by phase.
+[`../scripts/profile-streaming-heap.md`](../scripts/profile-streaming-heap.md). The
+[single-command benchmark](../scripts/benchmark-streaming-heap.md) builds preview, provisions a
+local benchmark account, repeats the heap-only turns, runs a separate allocation sample and the
+fixed-workload benchmark, and records a JSON manifest. The workflow-step summary reports emissions
+enqueued, successful and empty flush counts, and attempt duration; the outbox stream summary reports
+polls, rows, and frame characters without re-encoding payloads. For SQL activity, use storage traces
+rather than reinstating query measurement on the production path. Correlate summaries by step and
+timestamp. The profiler's `cleanup` phase ends at callback return **before the transaction may
+finish**; its labeled `post-cleanup` phase can still include cleanup work. The sampler switch can
+also miss allocations at that boundary. Sampled runs must not be used for the authoritative peak.
+Compare comparable-length turns with one listener, using the **heap-only** mode for absolute peak
+and the **sampled** mode to rank allocation stacks by phase.
 
 The GC checkpoints show that the peak is mostly collectible work, not retained application state.
-The previous full allocation profile identified SuperJSON, Fragno DB/query construction, SSE
-parsing, and SQL instrumentation as remaining owners. Profile allocations in separate streaming,
-cleanup, and post-cleanup windows to identify the phase-specific hot stacks. Reduce avoidable
-serialization and repeated query construction; verify improvement with the same output scale and a
-preview heap-only run **without explicit GC during the measured turn**. GC checkpoints are
-diagnostic only, not the product fix.
+The sampled profile identified **per-operation query compiler construction** and **outbox/result
+serialization** as large allocation paths, but sampler switching captured some cleanup allocations
+in its labeled streaming window. Compiler reuse, narrow `RETURNING`, and batched outbox INSERTs have
+now been measured incrementally with fixed Workerd emissions; their combined effect on the
+production-preview peak remains unproven. Do not infer peak savings from cumulative allocation
+alone. Compare individually against a fixed emission/output workload and a production-preview
+heap-only run **without explicit GC during the measured turn**. A console-log-suppressed A/B reduced
+log volume and sometimes reduced peak, but had shorter outputs and large GC-timing variance, so it
+does not prove a peak fix. GC checkpoints are diagnostic only, not the product fix.
 
 ### Completed: make workflow emission flushing delta-based
 
@@ -599,6 +689,21 @@ replay, replacement transitions, metadata, and tool-call behavior.
 
 Keep the protocol benchmark and projection scenarios as regressions.
 
+### Completed: disable Backoffice SQL query-metric instrumentation
+
+A single 6,620-emission cleanup produced 7,450 structured SQL query-metric console calls and about
+7.1 MB of preview output. The corresponding storage transaction occupied 19.61 seconds; two
+no-SQL-log runs with shorter histories took 0.81–7.43 seconds at their longest storage
+execution/transaction. Logging is an avoidable amplification even though its share of the natural-GC
+heap peak remains unproven.
+
+A bounded intermediate logger still emitted 1,864 SQL summaries across two preview turns and
+provided no established natural-GC peak reduction. The Backoffice collector has been deleted. The
+Durable Object dialect retains its opt-in `queryInstrumentation` API, but Backoffice passes `null`;
+its disabled path skips per-query timing, row-read access, and metrics-object construction. Storage
+traces remain available for on-demand diagnosis. Do not claim a lower product peak without a
+comparable heap-only A/B. Periodic forced GC is not a product fix.
+
 ### P2: share outbox observation work
 
 A scope should not create one independent 300 ms database poller per HTTP client.
@@ -617,22 +722,6 @@ At minimum:
 This overlaps with the async pump ownership work in
 `apps/backoffice/open-issues/backoffice-tracing-more.md`.
 
-### P3: bound debugger logging retention
-
-Do not leave thousands of structured query-metric objects retained by the DevTools console.
-
-Candidate changes, in preferred order:
-
-1. Aggregate query metrics more aggressively so one workload produces far fewer console calls.
-2. Avoid logging a fresh structured object for every SQL bucket when local observability already
-   records equivalent information.
-3. Add an explicit local-debug maintenance path that discards console entries between profiling
-   phases.
-4. Consider logging a bounded serialized summary rather than an object graph if the structured
-   console object is not required by developers.
-
-Do not treat periodic forced GC as a fix.
-
 ### P4: make long Pi turn waits honest
 
 The original implementation started one `wait-for-agent-end?timeoutMs=60000` request, so long valid
@@ -642,9 +731,12 @@ turns returned a 408 while the agent continued and completed. The September 22 a
 later September 23 heap-only build, the worktree's waiter implementation had changed; `pi.runTurn`
 returned successfully after a 67-second turn.
 
-Verify the new command-step waiter with scenario tests for a short turn, a turn longer than 60
-seconds, timeout, interruption, and failure. A valid long turn must remain observable until its real
-terminal state rather than reporting failure while work continues.
+The current command-step waiter queries Workflows through its namespaced service. Focused route
+tests cover the namespace, a short completion, timeout, terminal instance, and command failure; a
+model-backed 67-second turn also returned successfully. These do **not** prove an end-to-end
+long-wait guarantee. Add scenario coverage for a turn longer than 60 seconds, interruption, and
+failure while work continues. A valid long turn must remain observable until its real terminal
+state.
 
 ## Verification requirements
 
@@ -661,7 +753,8 @@ The scenario should prove:
    allocation.
 7. Two outbox clients do not create two independent database polling loops in one process.
 8. Closing the final listener stops outbox stream storage spans promptly.
-9. Query-metric logging does not leave console handles proportional to SQL execution count.
+9. Backoffice keeps SQL query instrumentation disabled and remaining lifecycle logs do not leave
+   console handles proportional to SQL execution count.
 10. Long `pi.runTurn` calls do not report failure while the underlying agent remains active and
     later succeeds.
 11. Terminal step-emission cleanup peak heap is bounded by cleanup batch size rather than complete
