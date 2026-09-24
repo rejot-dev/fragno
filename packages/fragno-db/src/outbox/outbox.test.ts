@@ -488,6 +488,56 @@ describe("Fragno DB Outbox", () => {
     await cleanup();
   });
 
+  it.each(adapterConfigs)(
+    "persists outbox mutations across insert batches (%s)",
+    async (adapterConfig) => {
+      const { fragment, internalFragment, cleanup } = await buildOutboxTest({
+        ...adapterConfig,
+        outboxEnabled: true,
+      });
+      const emails = Array.from({ length: 55 }, (_, index) => `batch-${index}@example.com`);
+
+      try {
+        await fragment.inContext(async function (this: DatabaseRequestContext) {
+          await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              const users = forSchema(outboxSchema);
+              for (const email of emails) {
+                users.create("users", { email });
+              }
+            })
+            .execute();
+        });
+
+        const entries = await listOutbox(internalFragment);
+        const mutationRows = await listOutboxMutations(internalFragment);
+        expect(entries).toHaveLength(1);
+        expect(mutationRows).toHaveLength(emails.length);
+
+        const payload = superjson.deserialize(
+          entries[0].payload as SuperJSONResult,
+        ) as OutboxPayload;
+        expect(payload.operations).toHaveLength(emails.length);
+        expect(
+          payload.operations.map((operation) =>
+            operation.op === "create" ? operation.values["email"] : null,
+          ),
+        ).toEqual(emails);
+        expect(new Set(mutationRows.map((row) => row.mutationVersionstamp)).size).toBe(
+          emails.length,
+        );
+        expect(mutationRows.map((row) => row.entryVersionstamp)).toEqual(
+          Array(emails.length).fill(entries[0].versionstamp),
+        );
+        expect(await findUser(fragment, emails[0])).not.toBeNull();
+        expect(await findUser(fragment, emails[54])).not.toBeNull();
+      } finally {
+        await cleanup();
+      }
+    },
+    30_000,
+  );
+
   it("orders outbox entries by commit order across concurrent UOWs", async () => {
     const { fragment, internalFragment, cleanup } = await buildOutboxTest({
       type: "kysely-sqlite",

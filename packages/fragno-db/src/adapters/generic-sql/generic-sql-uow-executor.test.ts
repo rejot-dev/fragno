@@ -223,16 +223,15 @@ describe("executeMutation", () => {
     const normalizedOperationInserts = queries.filter((query) =>
       query.sql.includes('insert into "fragno_db_outbox_mutations"'),
     );
-    expect(normalizedOperationInserts).toHaveLength(2);
+    expect(normalizedOperationInserts).toHaveLength(1);
 
     const mutationInsert = normalizedOperationInserts[0]!;
-    expect(mutationInsert.parameters).toContain("update");
     expect(mutationInsert.parameters).toContain("record-1");
-
-    const truncateInsert = normalizedOperationInserts[1]!;
-    expect(truncateInsert.parameters).toContain("truncate");
-    expect(truncateInsert.parameters).toContain(null);
-    expect(truncateInsert.parameters).toContainEqual(
+    expect(mutationInsert.parameters.indexOf("update")).toBeLessThan(
+      mutationInsert.parameters.indexOf("truncate"),
+    );
+    expect(mutationInsert.parameters).toContain(null);
+    expect(mutationInsert.parameters).toContainEqual(
       expect.objectContaining({
         json: expect.objectContaining({
           op: "truncate",
