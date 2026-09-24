@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, assert } from "vitest";
 
 import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
 
+import { internalSchema } from "@fragno-dev/db";
 import type { DatabaseRequestContext } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
@@ -406,6 +407,57 @@ describe("WorkflowStepLivePump", () => {
       await drainDurableHooks(harness.fragment);
     }
   });
+
+  test("cleans a long completed step in bounded truncate pages", async () => {
+    const workflow = defineWorkflow<"step-emission-bounded-cleanup", undefined, { ok: true }>(
+      { name: "step-emission-bounded-cleanup" },
+      async (_event, step) => {
+        await step.do("interactive", async (tx) => {
+          const largePayload = "x".repeat(8_192);
+          for (let index = 0; index < 205; index += 1) {
+            tx.emit({ index, largePayload });
+          }
+        });
+        return { ok: true };
+      },
+    );
+    const harness = await createWorkflowsTestHarness({
+      workflows: { EMISSION_BUS: workflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      fragmentOptions: { outbox: { enabled: true } },
+    });
+
+    try {
+      const instanceId = await harness.createInstance("EMISSION_BUS");
+      const instance = await readInstance(harness);
+      await harness.tick(buildPayload(instance, "create"));
+      const before = await readStepEmissionRows(harness, workflow.name, instanceId);
+      expect(before.length).toBeGreaterThan(200);
+
+      await harness.restart();
+      await drainDurableHooks(harness.fragment);
+      expect(await readStepEmissionRows(harness, workflow.name, instanceId)).toEqual([]);
+
+      const [mutations] = await harness.db
+        .createUnitOfWork("read-cleanup-outbox")
+        .forSchema(internalSchema)
+        .find("fragno_db_outbox_mutations", (b) => b.whereIndex("idx_outbox_mutations_entry"))
+        .executeRetrieve();
+      const truncateIds = mutations
+        .filter((row) => row.op === "truncate" && row.table === "workflow_step_emission")
+        .map((row) => (row.payload as { json: { externalIds: string[] } }).json.externalIds);
+      expect(truncateIds.length).toBeGreaterThan(1);
+      assert(truncateIds.every((ids) => ids.length > 0 && ids.length <= 100));
+      expect(new Set(truncateIds.flat())).toEqual(new Set(before.map((row) => row.id.externalId)));
+      expect(mutations.filter((row) => row.table === "workflow_step_emission")).toHaveLength(
+        truncateIds.length,
+      );
+    } finally {
+      await harness.test.cleanup();
+    }
+  }, 30_000);
 
   test("observers receive only emissions flushed after subscription", async () => {
     const beforeThird = deferred();

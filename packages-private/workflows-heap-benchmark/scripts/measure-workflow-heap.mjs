@@ -514,6 +514,11 @@ function assertBenchmarkResult(result, optionsForRun) {
   if (output?.emittedPayloadBytes !== expectedEmittedCount * optionsForRun.payloadBytes) {
     throw new Error("Benchmark emitted payload byte count did not match its input");
   }
+  if (result?.persistedEmissionCount !== optionsForRun.historicalEmissionCount) {
+    throw new Error(
+      `Benchmark cleanup left ${result?.persistedEmissionCount} emissions; expected ${optionsForRun.historicalEmissionCount}`,
+    );
+  }
 }
 
 async function fetchJson(url, init = {}) {

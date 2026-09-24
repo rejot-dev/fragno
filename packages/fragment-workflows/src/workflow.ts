@@ -661,6 +661,12 @@ export type WorkflowStepEmissionsCleanupHookPayload = {
   instanceRef: string;
   stepKey: string;
   epoch: string;
+  progress: {
+    startedAtEpochMs: number;
+    batches: number;
+    emissionsDeleted: number;
+    outboxMutationsDeleted: number;
+  } | null;
 };
 
 export type WorkflowRestartedHookPayload = {

@@ -572,6 +572,7 @@ export class RunnerStep implements WorkflowStep {
         instanceRef: this.#state.instance.id.toString(),
         stepKey: identity.stepKey,
         epoch: emissionScope.meta.epoch,
+        progress: null,
       });
     }
 
@@ -894,6 +895,7 @@ export class RunnerStep implements WorkflowStep {
           instanceRef: this.#state.instance.id.toString(),
           stepKey,
           epoch: emissionScope.meta.epoch,
+          progress: null,
         });
       }
 
