@@ -17,11 +17,11 @@ const SAMPLE_INTERVAL_MS = 100;
 const COMMAND_TIMEOUT_MS = 180_000;
 
 function usage() {
-  return `Usage: node apps/backoffice/scripts/profile-streaming-heap.mjs --mode sampled|heap-only --output /tmp/heap-run [--post-ms 30000] -- <turn command and args>
+  return `Usage: node apps/backoffice/scripts/profile-streaming-heap.mjs --mode sampled|heap-only --output /tmp/heap-run [--post-ms 30000] [--marker-timeout-ms 180000] -- <turn command and args>
 
 Run against a production build served by Vite preview with one outbox listener and one active turn.
 Requires WORKERD_CDP_URL (default http://localhost:9229), BACKOFFICE_URL, and valid CLI credentials.
-The command must finish a workflow step and trigger its step-emission cleanup within 3 minutes.
+The command must finish a workflow step and trigger its step-emission cleanup before the marker deadline.
 Writes .summary.json, .memory.tsv, .stdout, .stderr, and per-phase .allocation.json files.
 Do not compare sampled-run peak heap with heap-only-run peak heap.`;
 }
@@ -49,7 +49,12 @@ function parseArguments(args) {
   if (!Number.isSafeInteger(postMs) || postMs < 0) {
     throw new Error("--post-ms must be a nonnegative integer");
   }
-  return { mode, output: resolve(getValue("--output")), postMs, command };
+  const markerOption = options.indexOf("--marker-timeout-ms");
+  const markerTimeoutMs = markerOption < 0 ? 180_000 : Number(options[markerOption + 1]);
+  if (!Number.isSafeInteger(markerTimeoutMs) || markerTimeoutMs <= 0) {
+    throw new Error("--marker-timeout-ms must be a positive integer");
+  }
+  return { mode, output: resolve(getValue("--output")), postMs, markerTimeoutMs, command };
 }
 
 class InspectorClient {
@@ -141,7 +146,7 @@ function summarizeAllocation(profile) {
 }
 
 async function main() {
-  const { mode, output, postMs, command } = parseArguments(process.argv.slice(2));
+  const { mode, output, postMs, markerTimeoutMs, command } = parseArguments(process.argv.slice(2));
   await mkdir(dirname(output), { recursive: true });
   const inspectorUrl = new URL(process.env.WORKERD_CDP_URL ?? "http://localhost:9229");
   const response = await fetch(new URL("/json/list", inspectorUrl));
@@ -240,7 +245,17 @@ async function main() {
     ) {
       return;
     }
-    markers.push({ event, stepKey: markerKey, elapsedMs: Date.now() - startedAt });
+    // Inspector delivery can lag the console call; trace correlation needs the event's own time.
+    if (!Number.isFinite(params.timestamp)) {
+      phaseFailed(new Error(`Missing console timestamp in inspector marker: ${event}`));
+      return;
+    }
+    markers.push({
+      event,
+      stepKey: markerKey,
+      elapsedMs: Date.now() - startedAt,
+      consoleEpochMs: params.timestamp,
+    });
     if (event === CLEANUP_STARTED && currentPhase === "streaming") {
       currentPhase = "cleanup";
       phaseQueue = phaseQueue
@@ -316,8 +331,8 @@ async function main() {
         phaseFinished,
         new Promise((_done, fail) => {
           markerTimeout = setTimeout(() => {
-            fail(new Error("Cleanup markers not observed in 3 minutes"));
-          }, 180_000);
+            fail(new Error(`Cleanup markers not observed within ${markerTimeoutMs}ms`));
+          }, markerTimeoutMs);
         }),
       ]);
     } finally {
@@ -347,6 +362,8 @@ async function main() {
     const result = {
       mode,
       command,
+      startedAtEpochMs: startedAt,
+      markerTimeoutMs,
       baseline,
       peakUsedBytes: Math.max(baseline.usedSize, ...samples.map((sample) => sample.usedSize)),
       markers,

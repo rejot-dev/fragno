@@ -13,7 +13,8 @@ import type { Route } from "./+types/backoffice-codemode";
 const backofficeCodemodeBodySchema = z.object({
   code: z.string().min(1),
   dependencies: z.record(z.string().min(1), z.string().min(1)).optional(),
-  timeout: z.number().int().positive().max(120_000).optional(),
+  // Long-running Pi turns can exceed two minutes while their workflow continues streaming.
+  timeout: z.number().int().positive().max(300_000).optional(),
 });
 
 export async function loader() {

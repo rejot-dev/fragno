@@ -22,6 +22,7 @@
     "dev": "react-router dev",
     "preheap:profile": "turbo run build --filter=@fragno-apps/backoffice-rr --output-logs=errors-only",
     "heap:profile": "node scripts/profile-worker-heap.mjs",
+    "benchmark:streaming-heap": "node scripts/benchmark-streaming-heap.mjs",
     "preview": "node scripts/run-vite-preview.mjs",
     "preview:containers": "node scripts/run-vite-preview.mjs --containers",
     "types:check": "tsc -b --noEmit",
