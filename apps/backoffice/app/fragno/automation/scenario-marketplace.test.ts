@@ -36,6 +36,8 @@ import {
   CODEMODE_CAPABILITY_ACTOR,
   CODEMODE_WORKFLOW,
 } from "@/fragno/automation/engine/codemode-invocation";
+import type { AutomationRouteAction } from "@/fragno/automation/routing";
+import { automationFragmentSchema } from "@/fragno/automation/schema";
 import {
   MARKETPLACE_INSTALL_WORKFLOW_PATH,
   marketplaceArtifactUploadName,
@@ -105,6 +107,63 @@ const TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE =
   BASE_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_ARTIFACT_FILE_KEY];
 const UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE =
   UPDATED_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_ARTIFACT_FILE_KEY];
+
+async function seedTelegramChannelRouteWithoutAuthorityGrants(
+  ctx: BackofficeScenarioContext,
+  input: { orgId: string; listingId: string },
+): Promise<void> {
+  const automations = ctx.runtime.objects.automations.forOrg(input.orgId);
+  await automations.commands.listMarketplaceIngestions();
+
+  const durableObjectId = (automations.http as unknown as { readonly id: DurableObjectId }).id;
+  const databaseAdapter = ctx.runtime.adapters
+    .forScope({ type: "named", id: durableObjectId.toString() })
+    .createAdapter({ kind: "automations" });
+  const uow = databaseAdapter.createUnitOfWork(
+    automationFragmentSchema,
+    "automations",
+    "seed Telegram Channel 1.0.0 route",
+  );
+  const actors = createBackofficeSystemExecution({ kind: "org", orgId: input.orgId }).actors;
+
+  uow.create("automation_route", {
+    id: "telegram-start-linking",
+    name: "Telegram /start identity linking",
+    enabled: true,
+    priority: 100,
+    trigger: {
+      kind: "event",
+      source: "telegram",
+      eventType: "message.received",
+      matcher: { path: "$.payload.text", op: "eq", value: "/start" },
+    },
+    action: {
+      kind: "start_workflow",
+      authority: { kind: "organization-automation" },
+      workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
+      instanceIdTemplate: "telegram-link-${event.id}",
+    } as unknown as AutomationRouteAction,
+    description: null,
+    metadata: {
+      createdByActors: actors,
+      updatedByActors: actors,
+      managedBy: {
+        kind: "marketplace",
+        listingId: input.listingId,
+        resourceKey: "telegram-start-linking-route",
+        version: "1.0.0",
+      },
+    },
+    createdAt: uow.now(),
+    updatedAt: uow.now(),
+  });
+
+  const result = await uow.executeMutations();
+  if (!result.success) {
+    throw new Error("Failed to seed the Telegram Channel 1.0.0 route.");
+  }
+}
+
 function githubPullRequestWebhookEvent(action: "opened" | "synchronize"): AutomationEvent {
   const repository = {
     id: 1001,
@@ -497,6 +556,60 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                     repo: { full_name: "ada-labs/backoffice" },
                   },
                 },
+              },
+            },
+          }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
+  test("upgrades Telegram Channel routes persisted before authority grants", async () => {
+    const telegramChannelListingId = marketplaceListingId({
+      ownerScope: { kind: "system" },
+      slug: "telegram-channel",
+    });
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "upgrade a persisted Telegram Channel 1.0.0 route to 1.0.1",
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ when, then }) => [
+          then.assert("seed the route shape persisted by Telegram Channel 1.0.0", async (ctx) => {
+            await seedTelegramChannelRouteWithoutAuthorityGrants(ctx, {
+              orgId: "org-1",
+              listingId: telegramChannelListingId,
+            });
+          }),
+          when.marketplace.install({
+            targetScope: { kind: "org", orgId: "org-1" },
+            slug: "telegram-channel",
+            version: "1.0.1",
+          }),
+          then.router.route({
+            orgId: "org-1",
+            id: "telegram-start-linking",
+            action: {
+              kind: "start_workflow",
+              authority: {
+                kind: "organization-automation",
+                grants: [
+                  BACKOFFICE_PERMISSION.identity.resolve,
+                  BACKOFFICE_PERMISSION.otp.create,
+                  BACKOFFICE_PERMISSION.store.modify,
+                  BACKOFFICE_PERMISSION.telegram.send,
+                ],
+              },
+              workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
+              instanceIdTemplate: "telegram-link-${event.id}",
+            },
+            metadata: {
+              managedBy: {
+                kind: "marketplace",
+                listingId: telegramChannelListingId,
+                resourceKey: "telegram-start-linking-route",
+                version: "1.0.1",
               },
             },
           }),
