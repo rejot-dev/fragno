@@ -24,6 +24,7 @@ export type OutboxBenchmarkClientConfig = {
 };
 
 export type OutboxBenchmarkClientResult = {
+  controlFramesConsumed: number;
   clientCount: number;
   payloadBytesConsumed: number;
   checksum: number;
@@ -148,6 +149,9 @@ export function parseOutboxBenchmarkClientMessage(value: unknown): OutboxBenchma
   const result = value["result"];
   if (
     !isPositiveInteger(result["clientCount"]) ||
+    typeof result["controlFramesConsumed"] !== "number" ||
+    !Number.isSafeInteger(result["controlFramesConsumed"]) ||
+    result["controlFramesConsumed"] < 0 ||
     !isPositiveInteger(result["payloadBytesConsumed"]) ||
     typeof result["checksum"] !== "number" ||
     !Number.isSafeInteger(result["checksum"]) ||
@@ -166,6 +170,7 @@ export function parseOutboxBenchmarkClientMessage(value: unknown): OutboxBenchma
   return {
     type: "complete",
     result: {
+      controlFramesConsumed: result["controlFramesConsumed"],
       clientCount: result["clientCount"],
       payloadBytesConsumed: result["payloadBytesConsumed"],
       checksum: result["checksum"],

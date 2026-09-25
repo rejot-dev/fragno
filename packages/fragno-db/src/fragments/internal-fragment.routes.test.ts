@@ -11,11 +11,25 @@ import { InMemoryAdapter } from "../adapters/in-memory/in-memory-adapter";
 import { getInternalFragment, getRegistryForAdapterSync } from "../internal/adapter-registry";
 import type { DatabaseRequestContext } from "../mod";
 import { FRAGNO_OUTBOX_PAGE_SIZE } from "../outbox/outbox";
+import { parseOutboxStreamFrame } from "../outbox/outbox-stream";
 import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
 import { schema, idColumn, column } from "../schema/create";
 import type { SyncCommandDefinition } from "../sync/types";
 import { withDatabase } from "../with-database";
 import { SchemaRegistryCollisionError, internalSchema } from "./internal-fragment";
+
+async function nextOutboxEntry(stream: AsyncGenerator): Promise<IteratorResult<unknown>> {
+  while (true) {
+    const result = await stream.next();
+    if (result.done) {
+      return result;
+    }
+    const frame = parseOutboxStreamFrame(result.value);
+    if (frame.type === "entry") {
+      return { done: false, value: frame.entry };
+    }
+  }
+}
 
 const alphaSchema = schema("alpha", (s) =>
   s.addTable("alpha_items", (t) =>
@@ -47,6 +61,11 @@ const setupAdapter = async ({ migrateInternal = true } = {}) => {
   }
 
   const close = async () => {
+    const hub = getRegistryForAdapterSync(adapter).outboxObservationHub;
+    await vi.waitFor(() => {
+      assert(hub.activeObserverCount() === 0);
+      assert(hub.activeSchedulerLoopCount() === 0);
+    });
     await adapter.close();
     sqliteDatabase.close();
   };
@@ -372,18 +391,22 @@ describe("internal fragment describe routes", () => {
       );
       assert(nextPage.type === "json");
 
-      const streamed = await alphaFragment.callRoute("GET", "/_internal/outbox/stream" as never);
+      const streamed = await alphaFragment.callRoute(
+        "GET",
+        "/_internal/outbox/stream" as never,
+        { query: { protocol: "1" } } as never,
+      );
       assert(streamed.type === "jsonStream");
       try {
         for (const expectedEntry of response.data as Array<{ versionstamp: string }>) {
-          const frame = await streamed.stream.next();
+          const frame = await nextOutboxEntry(streamed.stream);
           assert(!frame.done);
           expect((frame.value as { versionstamp: string }).versionstamp).toBe(
             expectedEntry.versionstamp,
           );
         }
         const nextFrame = await Promise.race([
-          streamed.stream.next(),
+          nextOutboxEntry(streamed.stream),
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error("Timed out waiting for next outbox page.")), 2_000),
           ),
@@ -450,6 +473,7 @@ describe("internal fragment describe routes", () => {
         query: {
           afterVersionstamp: existingEntries[0].versionstamp,
           limit: "1",
+          protocol: "1",
         },
       } as unknown as Parameters<typeof alphaFragment.callRoute>[2],
     );
@@ -458,7 +482,7 @@ describe("internal fragment describe routes", () => {
 
     try {
       const nextFrame = await Promise.race([
-        streamResponse.stream.next(),
+        nextOutboxEntry(streamResponse.stream),
         new Promise<never>((_, reject) => {
           setTimeout(() => reject(new Error("Timed out waiting for outbox stream frame.")), 1_000);
         }),
@@ -531,15 +555,23 @@ describe("internal fragment describe routes", () => {
       });
     };
 
-    const first = await alphaFragment.callRoute("GET", "/_internal/outbox/stream" as never);
-    const second = await alphaFragment.callRoute("GET", "/_internal/outbox/stream" as never);
+    const first = await alphaFragment.callRoute(
+      "GET",
+      "/_internal/outbox/stream" as never,
+      { query: { protocol: "1" } } as never,
+    );
+    const second = await alphaFragment.callRoute(
+      "GET",
+      "/_internal/outbox/stream" as never,
+      { query: { protocol: "1" } } as never,
+    );
     assert(first.type === "jsonStream");
     assert(second.type === "jsonStream");
     const hub = getRegistryForAdapterSync(adapter).outboxObservationHub;
 
     try {
-      const firstEntry = first.stream.next();
-      const secondEntry = second.stream.next();
+      const firstEntry = nextOutboxEntry(first.stream);
+      const secondEntry = nextOutboxEntry(second.stream);
       await vi.waitFor(() => {
         assert(hub.activeObserverCount() === 2);
         assert(hub.activeSchedulerLoopCount() === 1);
@@ -557,7 +589,7 @@ describe("internal fragment describe routes", () => {
         assert(hub.activeSchedulerLoopCount() === 1);
       });
 
-      const remainingEntry = second.stream.next();
+      const remainingEntry = nextOutboxEntry(second.stream);
       await createAlphaItem("second");
       const remainingFrame = await remainingEntry;
       assert(!remainingFrame.done);
@@ -594,10 +626,14 @@ describe("internal fragment describe routes", () => {
       });
       const listed = await alphaFragment.callRoute("GET", "/_internal/outbox" as never);
       assert(listed.type === "json");
-      const streamed = await alphaFragment.callRoute("GET", "/_internal/outbox/stream" as never);
+      const streamed = await alphaFragment.callRoute(
+        "GET",
+        "/_internal/outbox/stream" as never,
+        { query: { protocol: "1" } } as never,
+      );
       assert(streamed.type === "jsonStream");
       try {
-        const first = await streamed.stream.next();
+        const first = await nextOutboxEntry(streamed.stream);
         assert(!first.done);
         expect(first.value).toEqual((listed.data as unknown[])[0]);
         expect(
@@ -611,7 +647,7 @@ describe("internal fragment describe routes", () => {
     }
   });
 
-  it("counts one initial outbox pump failure once", async () => {
+  it("fails before streaming when the initial snapshot is unavailable", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { adapter, close } = await setupAdapter({ migrateInternal: false });
@@ -628,20 +664,107 @@ describe("internal fragment describe routes", () => {
       const streamResponse = await alphaFragment.callRoute(
         "GET",
         "/_internal/outbox/stream" as never,
+        { query: { protocol: "1" } } as never,
       );
-      assert(streamResponse.status === 200);
-      assert(streamResponse.type === "jsonStream");
-
-      await expect(streamResponse.stream.next()).resolves.toEqual({ value: undefined, done: true });
-      await vi.waitFor(() => {
-        expect(info).toHaveBeenCalledWith(
-          "fragno.outbox_stream.completed",
-          expect.objectContaining({ errorCount: 1, completionReason: "failed" }),
-        );
-      });
+      assert(streamResponse.status === 500);
+      expect(info).not.toHaveBeenCalledWith("fragno.outbox_stream.started", expect.anything());
     } finally {
       info.mockRestore();
       error.mockRestore();
+      await close();
+    }
+  });
+
+  it.each([null, "0", "2"])(
+    "rejects unsupported stream protocol %s before reading storage",
+    async (protocol) => {
+      const { adapter, close } = await setupAdapter({ migrateInternal: false });
+      const fragment = instantiate(
+        defineFragment("protocol-test").extend(withDatabase(alphaSchema)).build(),
+      )
+        .withOptions({ databaseAdapter: adapter, mountRoute: "/alpha", outbox: { enabled: true } })
+        .build();
+      try {
+        const url = new URL("http://localhost/alpha/_internal/outbox/stream");
+        if (protocol !== null) {
+          url.searchParams.set("protocol", protocol);
+        }
+        const response = await fragment.handler(new Request(url));
+        assert(response.status === 400);
+        expect(await response.json()).toMatchObject({ code: "UNSUPPORTED_OUTBOX_PROTOCOL" });
+      } finally {
+        await close();
+      }
+    },
+  );
+
+  it("starts an empty stream with identity and an explicit catch-up boundary", async () => {
+    const { adapter, close } = await setupAdapter();
+    const fragment = instantiate(
+      defineFragment("protocol-test").extend(withDatabase(alphaSchema)).build(),
+    )
+      .withOptions({ databaseAdapter: adapter, mountRoute: "/alpha", outbox: { enabled: true } })
+      .build();
+    const description = await fragment.callRoute("GET", "/_internal" as never);
+    assert(description.type === "json");
+    const response = await fragment.callRoute(
+      "GET",
+      "/_internal/outbox/stream" as never,
+      { query: { protocol: "1" } } as never,
+    );
+    assert(response.type === "jsonStream");
+    try {
+      expect((await response.stream.next()).value).toEqual({
+        type: "started",
+        protocolVersion: 1,
+        adapterIdentity: (description.data as { adapterIdentity: string }).adapterIdentity,
+        catchUpTargetVersionstamp: null,
+        catchUpPageSize: 50,
+      });
+      expect((await response.stream.next()).value).toEqual({
+        type: "caught-up",
+        throughVersionstamp: null,
+      });
+      expect((await response.stream.next()).value).toEqual({ type: "heartbeat" });
+    } finally {
+      await response.stream.return(undefined);
+      await close();
+    }
+  });
+
+  it("ends a consumed response with rotate after its thirty-second lease", async () => {
+    const { adapter, close } = await setupAdapter();
+    const fragment = instantiate(
+      defineFragment("protocol-test").extend(withDatabase(alphaSchema)).build(),
+    )
+      .withOptions({ databaseAdapter: adapter, mountRoute: "/alpha", outbox: { enabled: true } })
+      .build();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const response = await fragment.callRoute(
+        "GET",
+        "/_internal/outbox/stream" as never,
+        { query: { protocol: "1" } } as never,
+      );
+      assert(response.type === "jsonStream");
+      const frames: unknown[] = [];
+      const consuming = (async () => {
+        for await (const frame of response.stream) {
+          frames.push(frame);
+        }
+      })();
+      await vi.advanceTimersByTimeAsync(30_001);
+      await consuming;
+      expect(frames[0]).toMatchObject({ type: "started" });
+      expect(frames.at(-1)).toEqual({ type: "rotate", reason: "lease-expired" });
+      expect(
+        frames.filter((frame) => (frame as { type: string }).type === "caught-up"),
+      ).toHaveLength(1);
+      const hub = getRegistryForAdapterSync(adapter).outboxObservationHub;
+      assert(hub.activeObserverCount() === 0);
+      assert(hub.activeSchedulerLoopCount() === 0);
+    } finally {
+      vi.useRealTimers();
       await close();
     }
   });
@@ -660,7 +783,7 @@ describe("internal fragment describe routes", () => {
 
     try {
       const response = await alphaFragment.handler(
-        new Request("http://localhost/alpha/_internal/outbox/stream"),
+        new Request("http://localhost/alpha/_internal/outbox/stream?protocol=1"),
       );
       assert(response.status === 200);
 

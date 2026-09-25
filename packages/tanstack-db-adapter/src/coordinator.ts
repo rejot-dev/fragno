@@ -5,6 +5,7 @@ import type { AnySchema, AnyTable, FragnoId, FragnoReference } from "@fragno-dev
 import type { Collection } from "@tanstack/db";
 import type { PersistedCollectionPersistence } from "@tanstack/db-sqlite-persistence-core";
 
+import { outboxStreamResumeCursor } from "./checkpoint";
 import {
   openFragnoBrowserPersistenceWithDiagnostics,
   type FragnoBrowserPersistenceDiagnostics,
@@ -19,6 +20,7 @@ import {
 import { FragnoInternalFetcher } from "./coordinator/fragno-internal-fetcher";
 import { orderFragnoPersistenceWrites } from "./coordinator/fragno-ordered-persistence";
 import { FragnoOutboxSynchronizer } from "./coordinator/fragno-outbox-synchronizer";
+import { FragnoOutboxTransportError } from "./outbox-transport-error";
 
 /**
  * Problem statement
@@ -49,12 +51,12 @@ import { FragnoOutboxSynchronizer } from "./coordinator/fragno-outbox-synchroniz
  *   -> coordinator.preload() closes registration and preloads every registered collection
  *   -> each collection's sync callback subscribes to the shared outbox synchronizer
  *   -> read the database's one exact persisted outbox checkpoint
- *   -> GET ordered outbox pages from the aligned checkpoint boundary
+ *   -> open a framed outbox stream from the aligned checkpoint boundary
  *   -> validate and decode each outbox entry once
  *   -> route every operation to its schema/table collection
  *   -> commit all affected collections before advancing the database checkpoint
  *   -> mark every collection ready together
- *   -> later open the live stream from the exact catch-up checkpoint
+ *   -> continue live delivery on the same response after its caught-up marker
  *   -> TanStack live queries update the UI
  *
  * Invariants
@@ -125,6 +127,7 @@ export type FragnoOutboxCoordinatorDependencies = {
 export type FragnoCollectionOptions = {
   /** Use `full` only for tables that never receive updates; Fragno update entries contain patches. */
   rowUpdateMode?: "partial" | "full";
+  /** Scans persisted rows once per sync registration to skip missing catch-up truncate deletes. */
   skipMissingTruncateDeletes?: boolean;
 };
 
@@ -165,9 +168,9 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
   },
 ): Promise<FragnoOutboxCoordinator<TSchemas>> {
   // State transitions:
-  // opening -> idle -> registering -> catching-up -> caught-up -> live
-  // opening | registering | catching-up | caught-up | live -> failed
-  // idle | registering | catching-up | caught-up | live | failed -> disposed
+  // opening -> idle -> registering -> catching-up -> live
+  // live -> rotating | retrying -> replaying -> live
+  // Only classified transport interruptions retry; protocol, HTTP, and application failures stop.
   let state: FragnoOutboxCoordinatorState = "opening";
 
   const internalFetcher = new FragnoInternalFetcher({
@@ -176,7 +179,7 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
   });
 
   // Fetch the backend adapter identity before opening local persistence.
-  const { adapterIdentity, currentVersionstamp } = await internalFetcher.describe();
+  const { adapterIdentity } = await internalFetcher.describe();
 
   // Derive one stable, filename-safe local database name from baseUrl and adapter identity.
   const databaseHash = await sha256Hex(
@@ -194,6 +197,8 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
   });
   const persistence = orderFragnoPersistenceWrites(persistenceResource.persistence);
 
+  let completedCatchUpPages = 0;
+  let totalCatchUpPages = 1;
   let internalCollection: FragnoInternalCollection | undefined;
   let outboxSynchronizer: FragnoOutboxSynchronizer | undefined;
   let collectionRegistry: FragnoCollectionRegistry<TSchemas> | undefined;
@@ -210,14 +215,9 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
       "preloading coordinator metadata",
     );
 
-    let completedCatchUpPages = 0;
-    const initialCheckpoint = internalCollection.getCheckpoint();
-    const totalCatchUpPages = catchUpPageCount(
-      initialCheckpoint?.versionstamp,
-      currentVersionstamp,
-    );
     outboxSynchronizer = new FragnoOutboxSynchronizer({
       fetcher: internalFetcher,
+      adapterIdentity,
       checkpointStore: internalCollection,
       onCatchUpPage() {
         completedCatchUpPages += 1;
@@ -294,25 +294,44 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
 
   const isDisposed = () => state === "disposed";
 
+  const firstCatchUp = Promise.withResolvers<void>();
+  // Cleanup may reject readiness before a caller has started preload.
+  void firstCatchUp.promise.catch(() => {});
+
   const startStreaming = () => {
     streamPromise ??= (async () => {
       let retryAttempt = 0;
 
       while (!isDisposed()) {
         try {
-          await initializedOutboxSynchronizer.stream({
-            onOpen() {
+          await initializedOutboxSynchronizer.streamSession({
+            onStarted(targetVersionstamp) {
+              completedCatchUpPages = 0;
+              totalCatchUpPages = catchUpPageCount(
+                initializedInternalCollection.getCheckpoint()?.versionstamp,
+                targetVersionstamp,
+              );
+            },
+            onCaughtUp() {
               retryAttempt = 0;
-              if (state === "caught-up" || state === "replaying") {
-                transitionTo("live");
-              }
+              transitionTo("live");
+              firstCatchUp.resolve();
             },
           });
+          if (!isDisposed()) {
+            transitionTo("rotating");
+            transitionTo("replaying");
+          }
         } catch (error) {
-          if (isDisposed() || isAbortError(error)) {
+          if (isDisposed()) {
             return;
           }
 
+          if (!(error instanceof FragnoOutboxTransportError)) {
+            firstCatchUp.reject(error);
+            transitionToFailed(error);
+            return;
+          }
           transitionTo("retrying", error);
           retryAttempt += 1;
           await waitForRetry(retryAttempt);
@@ -320,20 +339,14 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
             return;
           }
 
-          try {
-            transitionTo("replaying");
-            await initializedOutboxSynchronizer.replay();
-          } catch (replayError) {
-            if (isDisposed() || isAbortError(replayError)) {
-              return;
-            }
-            transitionTo("retrying", replayError);
-            continue;
-          }
+          transitionTo("replaying");
         }
       }
     })();
-    void streamPromise.catch(transitionToFailed);
+    void streamPromise.catch((error: unknown) => {
+      firstCatchUp.reject(error);
+      transitionToFailed(error);
+    });
   };
 
   return {
@@ -377,10 +390,9 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
           );
 
           transitionTo("catching-up");
-          await initializedOutboxSynchronizer.catchUp();
-          await collectionsReady;
-          transitionTo("caught-up");
           startStreaming();
+          await firstCatchUp.promise;
+          await collectionsReady;
         } catch (error) {
           transitionToFailed(error);
           throw error;
@@ -396,6 +408,7 @@ export async function createFragnoOutboxCoordinator<const TSchemas extends reado
       cleanupPromise ??= (async () => {
         transitionTo("disposed");
         initializedOutboxSynchronizer.dispose();
+        firstCatchUp.reject(new DOMException("Fragno outbox coordinator disposed.", "AbortError"));
         await preloadPromise?.catch(() => {});
         await streamPromise?.catch(() => {});
 
@@ -446,10 +459,6 @@ async function waitForFragnoOutboxStartupStage<T>(
   }
 }
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
-}
-
 function waitForRetry(attempt: number): Promise<void> {
   const delayMs = Math.min(1_000, 25 * 2 ** Math.min(attempt - 1, 5));
   return new Promise<void>((resolve) => {
@@ -465,9 +474,8 @@ function catchUpPageCount(
     return 1;
   }
 
-  const checkpointVersion = checkpointVersionstamp
-    ? BigInt(`0x${checkpointVersionstamp.slice(0, 20)}`)
-    : 0n;
+  const resumeCursor = outboxStreamResumeCursor(checkpointVersionstamp);
+  const checkpointVersion = resumeCursor ? BigInt(`0x${resumeCursor.slice(0, 20)}`) : -1n;
   const currentVersion = BigInt(`0x${currentVersionstamp.slice(0, 20)}`);
   const remainingEntries =
     currentVersion > checkpointVersion ? currentVersion - checkpointVersion : 0n;

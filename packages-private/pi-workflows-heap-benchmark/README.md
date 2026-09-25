@@ -68,12 +68,16 @@ Override the workload with `--entries COUNT`, `--history-entries COUNT`, `--payl
 separate HTTP responses against the same fragment and database adapter. The result reports aggregate
 throughput and payload bytes, the slowest client duration, and the number of SQLite outbox reads
 observed during the measured workload. Every client must consume the same payload bytes and
-checksum.
+checksum. Stream clients request `protocol=1`, count/checksum only `entry` frames, and reconnect
+immediately after `rotate`. `controlFramesConsumed` separately counts control frames across current
+and lagging clients, including connection preparation; it is not a measured-window-only counter.
+Legacy sidecars without that field default it to zero.
 
 Because entries are preloaded before clients connect, ordinary multi-client stream runs measure
 catch-up isolation and compatible catch-up grouping rather than steady-state shared live polling.
 Pass `--live` with `--stream` to preload historical entries, connect current clients at the tail
-plus historical catch-up clients, reset measured SQL reads, and then append the measured entries.
+plus historical catch-up clients, wait for every current client's explicit `caught-up` marker, reset
+measured SQL reads, and then append the measured entries. Heartbeats no longer establish readiness.
 Lagging clients receive evenly spaced historical cursors: the first uses `limit=1` and subsequent
 clients use 50-entry pages. Override the default one lagging client with `--lagging-clients COUNT`
 and the default 100-entry history with `--history-entries COUNT`.

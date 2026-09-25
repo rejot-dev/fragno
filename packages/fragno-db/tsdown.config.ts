@@ -8,6 +8,7 @@ export default defineConfig([
       "./src/durable-hooks.ts",
       "./src/id.ts",
       "./src/outbox/outbox.ts",
+      "./src/outbox/outbox-stream.ts",
       "./src/database-namespace.ts",
       "./src/schema/create.ts",
       "./src/query/mod.ts",

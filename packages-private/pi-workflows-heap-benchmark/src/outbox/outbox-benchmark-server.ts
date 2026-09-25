@@ -185,20 +185,26 @@ async function closeOutboxBenchmarkServer(server: Server): Promise<void> {
 async function closeDatabaseAdapterAfterStreamCancellation(
   databaseAdapter: SqlAdapter,
 ): Promise<void> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+  // A socket can close before the response lease and its bounded cursor finish. Allow the
+  // server's 30-second lease to expire rather than racing teardown with a one-second retry cap.
+  const deadline = performance.now() + 35_000;
+  while (true) {
     try {
       await databaseAdapter.close();
       return;
     } catch (error) {
-      lastError = error;
-      // Observer cancellation and bounded cursor exhaustion complete independently of HTTP close.
+      if (
+        !(error instanceof Error) ||
+        error.message !== "This database connection is busy executing a query" ||
+        performance.now() >= deadline
+      ) {
+        throw error;
+      }
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 20);
       });
     }
   }
-  throw lastError;
 }
 
 async function spawnOutboxBenchmarkClient(): Promise<ChildProcess> {
@@ -399,6 +405,7 @@ async function runOutboxBenchmark(): Promise<void> {
       durationMs: measured.durationMs,
       entriesPerSecond: (config.entryCount * config.clientCount) / (measured.durationMs / 1_000),
       checksum: consumption.checksum,
+      controlFramesConsumed: consumption.controlFramesConsumed,
       slowestClientDurationMs: consumption.slowestClientDurationMs,
       laggingEntriesConsumed: consumption.laggingEntriesConsumedByClient.reduce(
         (total, count) => total + count,

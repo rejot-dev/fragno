@@ -1,9 +1,12 @@
+import { parseOutboxStreamFrame, type OutboxStreamFrame } from "@fragno-dev/db/outbox-stream";
+
 import type {
   OutboxBenchmarkClientConfig,
   OutboxBenchmarkClientResult,
 } from "./outbox-benchmark-protocol";
 
 type OutboxSingleClientResult = {
+  controlFramesConsumed: number;
   payloadBytesConsumed: number;
   checksum: number;
 };
@@ -24,7 +27,8 @@ type PreparedLiveOutboxClientWorkloads = {
 };
 
 type OutboxStreamConnection = {
-  readFrame: () => Promise<string>;
+  controlFrameCount: () => number;
+  readFrame: () => Promise<OutboxStreamFrame>;
   close: () => Promise<void>;
 };
 
@@ -84,6 +88,9 @@ function outboxUrl(
 ): URL {
   const url = new URL(`${baseUrl}/_internal/${route}`);
   url.searchParams.set("limit", String(pageSize));
+  if (route === "outbox/stream") {
+    url.searchParams.set("protocol", "1");
+  }
   if (afterVersionstamp !== undefined) {
     url.searchParams.set("afterVersionstamp", afterVersionstamp);
   }
@@ -104,25 +111,53 @@ async function openOutboxStreamConnection(
     throw new Error(`Outbox-only stream failed with status ${response.status}.`);
   }
 
-  const reader = response.body.getReader();
+  let reader = response.body.getReader();
+  let cursor = afterVersionstamp;
+  let rotating = false;
+  let controlFramesConsumed = 0;
   const decoder = new TextDecoder();
   let buffer = "";
   let closed = false;
 
   return {
+    controlFrameCount: () => controlFramesConsumed,
     readFrame: async () => {
       while (true) {
         const newlineIndex = buffer.indexOf("\n");
         if (newlineIndex !== -1) {
           const frame = buffer.slice(0, newlineIndex);
           buffer = buffer.slice(newlineIndex + 1);
-          return frame;
+          const parsed = parseOutboxStreamFrame(JSON.parse(frame));
+          if (parsed.type === "entry") {
+            cursor = parsed.entry.versionstamp;
+          } else {
+            controlFramesConsumed += 1;
+          }
+          if (parsed.type === "rotate") {
+            rotating = true;
+          }
+          return parsed;
         }
 
         const { done, value } = await reader.read();
         if (done) {
           buffer += decoder.decode();
-          throw new Error("Outbox-only stream ended before the workload completed.");
+          if (!rotating || buffer.length > 0) {
+            throw new Error("Outbox-only stream ended before the workload completed.");
+          }
+          reader.releaseLock();
+          const nextResponse = await fetch(
+            outboxUrl(config.baseUrl, "outbox/stream", pageSize, cursor),
+            { signal: abortController.signal },
+          );
+          if (!nextResponse.ok || !nextResponse.body) {
+            throw new Error(
+              `Outbox-only stream reconnect failed with status ${nextResponse.status}.`,
+            );
+          }
+          reader = nextResponse.body.getReader();
+          rotating = false;
+          continue;
         }
         if (!(value instanceof Uint8Array)) {
           throw new Error("Outbox-only stream returned a non-byte chunk.");
@@ -151,16 +186,16 @@ async function consumeStreamingEntries(
   let checksum = 0;
   while (entriesConsumed < config.entryCount) {
     const frame = await connection.readFrame();
-    if (!/\S/u.test(frame)) {
+    if (frame.type !== "entry") {
       continue;
     }
-    const entry = consumeOutboxBenchmarkEntry(JSON.parse(frame), config.payloadBytes);
+    const entry = consumeOutboxBenchmarkEntry(frame.entry, config.payloadBytes);
     payloadBytesConsumed += entry.payloadBytes;
     checksum = (checksum + entry.checksum) >>> 0;
     entriesConsumed += 1;
     await sleep(config.consumerDelayMs);
   }
-  return { payloadBytesConsumed, checksum };
+  return { payloadBytesConsumed, checksum, controlFramesConsumed: connection.controlFrameCount() };
 }
 
 async function openPolledOutboxWorkload(
@@ -199,7 +234,7 @@ async function openPolledOutboxWorkload(
   }
 
   return {
-    result: { payloadBytesConsumed, checksum },
+    result: { payloadBytesConsumed, checksum, controlFramesConsumed: 0 },
     close: async () => {},
   };
 }
@@ -228,6 +263,7 @@ function openOutboxClientWorkload(
 function aggregateClientResults(
   completed: Array<{ workload: OpenOutboxSingleClientWorkload; durationMs: number }>,
   laggingEntriesConsumedByClient: number[],
+  laggingControlFramesConsumed: number,
 ): OutboxBenchmarkClientResult {
   const first = completed[0];
   if (!first) {
@@ -251,6 +287,9 @@ function aggregateClientResults(
   }
 
   return {
+    controlFramesConsumed:
+      laggingControlFramesConsumed +
+      completed.reduce((total, { workload }) => total + workload.result.controlFramesConsumed, 0),
     clientCount: completed.length,
     payloadBytesConsumed,
     checksum: first.workload.result.checksum,
@@ -284,7 +323,7 @@ export async function openOutboxClientWorkloads(
 
   try {
     return {
-      result: aggregateClientResults(completed, []),
+      result: aggregateClientResults(completed, [], 0),
       close: async () => {
         await Promise.all(completed.map(({ workload }) => workload.close()));
       },
@@ -316,9 +355,14 @@ export async function prepareLiveOutboxClientWorkloads(
           workload.afterVersionstamp,
         );
         currentConnections.push(connection);
-        const initialFrame = await connection.readFrame();
-        if (/\S/u.test(initialFrame)) {
-          throw new Error("Live outbox benchmark current client received catch-up data.");
+        while (true) {
+          const frame = await connection.readFrame();
+          if (frame.type === "caught-up") {
+            break;
+          }
+          if (frame.type === "entry") {
+            throw new Error("Live outbox benchmark current client received catch-up data.");
+          }
         }
       }),
     );
@@ -331,11 +375,16 @@ export async function prepareLiveOutboxClientWorkloads(
           observer.afterVersionstamp ?? undefined,
         );
         laggingConnections.push({ connection, clientIndex });
-        const firstFrame = await connection.readFrame();
-        if (!/\S/u.test(firstFrame)) {
-          throw new Error("Live outbox benchmark lagging client did not receive historical data.");
+        let firstFrame = await connection.readFrame();
+        while (firstFrame.type !== "entry") {
+          if (firstFrame.type === "caught-up") {
+            throw new Error(
+              "Live outbox benchmark lagging client did not receive historical data.",
+            );
+          }
+          firstFrame = await connection.readFrame();
         }
-        consumeOutboxBenchmarkEntry(JSON.parse(firstFrame), config.payloadBytes);
+        consumeOutboxBenchmarkEntry(firstFrame.entry, config.payloadBytes);
         laggingEntriesConsumedByClient[clientIndex] = 1;
       }),
     );
@@ -352,10 +401,10 @@ export async function prepareLiveOutboxClientWorkloads(
     laggingConnections.map(async ({ connection, clientIndex }) => {
       while (!closing) {
         const frame = await connection.readFrame();
-        if (!/\S/u.test(frame)) {
+        if (frame.type !== "entry") {
           continue;
         }
-        consumeOutboxBenchmarkEntry(JSON.parse(frame), config.payloadBytes);
+        consumeOutboxBenchmarkEntry(frame.entry, config.payloadBytes);
         laggingEntriesConsumedByClient[clientIndex] += 1;
         await sleep(config.consumerDelayMs);
       }
@@ -372,7 +421,16 @@ export async function prepareLiveOutboxClientWorkloads(
           durationMs: performance.now() - startedAt,
         };
       }),
-    ).then((completed) => aggregateClientResults(completed, laggingEntriesConsumedByClient)),
+    ).then((completed) =>
+      aggregateClientResults(
+        completed,
+        laggingEntriesConsumedByClient,
+        laggingConnections.reduce(
+          (total, { connection }) => total + connection.controlFrameCount(),
+          0,
+        ),
+      ),
+    ),
     laggingTask.then<OutboxBenchmarkClientResult>(() => {
       throw new Error("Live outbox benchmark lagging clients stopped unexpectedly.");
     }),

@@ -1,4 +1,4 @@
-import { assert, describe, expect, it } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -440,7 +440,11 @@ describe("Fragno TanStack adapter from scratch end-to-end", () => {
       const outboxRequests: URL[] = [];
       const reloadFetch: typeof globalThis.fetch = async (input, init) => {
         const url = new URL(input instanceof Request ? input.url : input.toString());
-        if (url.pathname.endsWith("/_internal/outbox")) {
+        assert(
+          !url.pathname.endsWith("/_internal/outbox"),
+          "Coordinator must never request paginated outbox data",
+        );
+        if (url.pathname.endsWith("/_internal/outbox/stream")) {
           outboxRequests.push(url);
         }
         return server.fetch(input, init);
@@ -474,6 +478,7 @@ describe("Fragno TanStack adapter from scratch end-to-end", () => {
           outboxPageAfterVersionstamp(persistedCheckpoint.versionstamp) ?? null,
         );
         assert.equal(catchUpRequest.searchParams.get("limit"), String(FRAGNO_OUTBOX_PAGE_SIZE));
+        assert.equal(catchUpRequest.searchParams.get("protocol"), "1");
       } finally {
         await secondCoordinator.cleanup();
       }
@@ -575,13 +580,7 @@ describe("Fragno TanStack adapter from scratch end-to-end", () => {
           () => coordinatorStatus.get("coordinator")?.state === "live",
         );
 
-        expect([...observedStates]).toEqual([
-          "idle",
-          "registering",
-          "catching-up",
-          "caught-up",
-          "live",
-        ]);
+        expect([...observedStates]).toEqual(["idle", "registering", "catching-up", "live"]);
         expect(coordinatorStatus.get("coordinator")).toMatchObject({
           state: "live",
           checkpoint: {
@@ -624,7 +623,7 @@ describe("Fragno TanStack adapter from scratch end-to-end", () => {
     }
   });
 
-  it("streams mutations committed between finite catch-up and stream connection", async () => {
+  it("keeps preload pending and catches mutations committed before the stream connects", async () => {
     const server = await createTestServer("catch-up-stream-handoff");
     const streamGate = Promise.withResolvers<void>();
     let shouldGateStream = true;
@@ -650,11 +649,16 @@ describe("Fragno TanStack adapter from scratch end-to-end", () => {
 
       try {
         await server.createDiscussion();
-        await coordinator.preload();
-        assert.equal(coordinator.state, "caught-up");
-
+        const preload = coordinator.preload();
+        await vi.waitFor(() => assert.equal(coordinator.state, "catching-up"));
+        let preloaded = false;
+        void preload.then(() => {
+          preloaded = true;
+        });
+        assert.equal(preloaded, false);
         await server.updateDiscussion();
         streamGate.resolve();
+        await preload;
 
         await waitForCollection(
           users,

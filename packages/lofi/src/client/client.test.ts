@@ -704,7 +704,9 @@ describe("LofiClient", () => {
   });
 
   it("streams entries from the outbox stream route", async () => {
-    const entries = [makeEntry("vs-1", "user-1"), makeEntry("vs-2", "user-2")];
+    const firstStamp = "000000000000000000000001";
+    const secondStamp = "000000000000000000000002";
+    const entries = [makeEntry(firstStamp, "user-1"), makeEntry(secondStamp, "user-2")];
     const encoder = new TextEncoder();
     const requests: Array<{ pathname: string; after: string | null; limit: string | null }> = [];
     const applied: Array<{ sourceKey: string; versionstamp: string; uowId: string }> = [];
@@ -722,10 +724,21 @@ describe("LofiClient", () => {
       return new Response(
         new ReadableStream<Uint8Array>({
           start(controller) {
-            for (const entry of entries) {
-              controller.enqueue(encoder.encode(`${JSON.stringify(entry)}\n`));
+            const frames = [
+              {
+                type: "started",
+                protocolVersion: 1,
+                adapterIdentity: "source",
+                catchUpTargetVersionstamp: secondStamp,
+                catchUpPageSize: 10,
+              },
+              ...entries.map((entry) => ({ type: "entry", entry })),
+              { type: "caught-up", throughVersionstamp: secondStamp },
+              { type: "heartbeat" },
+            ];
+            for (const frame of frames) {
+              controller.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`));
             }
-            controller.close();
           },
         }),
         { status: 200, headers: { "content-type": "application/x-ndjson" } },
@@ -760,19 +773,19 @@ describe("LofiClient", () => {
     expect(requests).toEqual([
       { pathname: "/_internal/outbox/stream", after: "vs-0", limit: "10" },
     ]);
-    assert(meta.get("app-outbox::outbox") === "vs-2");
+    assert(meta.get("app-outbox::outbox") === secondStamp);
     expect(applied).toEqual([
-      { sourceKey: "app-outbox::outbox", versionstamp: "vs-1", uowId: "uow-vs-1" },
-      { sourceKey: "app-outbox::outbox", versionstamp: "vs-2", uowId: "uow-vs-2" },
+      { sourceKey: "app-outbox::outbox", versionstamp: firstStamp, uowId: `uow-${firstStamp}` },
+      { sourceKey: "app-outbox::outbox", versionstamp: secondStamp, uowId: `uow-${secondStamp}` },
     ]);
     expect(completed).toEqual([
-      { appliedEntries: 1, lastVersionstamp: "vs-1" },
-      { appliedEntries: 1, lastVersionstamp: "vs-2" },
+      { appliedEntries: 1, lastVersionstamp: firstStamp },
+      { appliedEntries: 1, lastVersionstamp: secondStamp },
     ]);
   });
 
   it("reconnects after a stream read failure", async () => {
-    const entry = makeEntry("vs-1", "user-1");
+    const entry = makeEntry("000000000000000000000001", "user-1");
     const encoder = new TextEncoder();
     const meta = new Map<string, string>();
     const applied: string[] = [];
@@ -795,8 +808,12 @@ describe("LofiClient", () => {
       return new Response(
         new ReadableStream<Uint8Array>({
           start(controller) {
-            controller.enqueue(encoder.encode(`${JSON.stringify(entry)}\n`));
-            controller.close();
+            controller.enqueue(
+              encoder.encode(
+                `${JSON.stringify({ type: "started", protocolVersion: 1, adapterIdentity: "source", catchUpTargetVersionstamp: entry.versionstamp, catchUpPageSize: 50 })}\n`,
+              ),
+            );
+            controller.enqueue(encoder.encode(`${JSON.stringify({ type: "entry", entry })}\n`));
           },
         }),
         { status: 200 },
@@ -830,7 +847,7 @@ describe("LofiClient", () => {
 
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(errors).toHaveLength(1);
-    expect(applied).toEqual(["vs-1"]);
+    expect(applied).toEqual([entry.versionstamp]);
   });
 
   it("can restart a stream immediately after stopping", async () => {

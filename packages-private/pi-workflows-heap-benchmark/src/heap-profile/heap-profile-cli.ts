@@ -80,7 +80,7 @@ function formatBenchmarkWorkload(metrics: ServerBenchmarkMetrics): string[] {
         ? "no lagging clients"
         : `${metrics.laggingEntriesConsumed} entries consumed by ${metrics.laggingClientCount} lagging clients (${metrics.laggingEntriesConsumedByClient.join(", ")} per client)`;
     lines.push(
-      `Outbox (${metrics.scenario}): ${metrics.entryCount} entries × ${metrics.clientCount} current clients, ${mib(metrics.payloadBytesConsumed)} aggregate payload, checksum ${metrics.checksum}, ${lagging}, ${databaseReads}.`,
+      `Outbox (${metrics.scenario}): ${metrics.entryCount} entries × ${metrics.clientCount} current clients, ${mib(metrics.payloadBytesConsumed)} aggregate payload, checksum ${metrics.checksum}, ${metrics.controlFramesConsumed} control frames (including preparation), ${lagging}, ${databaseReads}.`,
     );
   }
   const peak = metrics.timeline.reduce((largest, sample) =>

@@ -2,7 +2,6 @@ import { assert, describe, expect, it } from "vitest";
 
 import {
   encodeVersionstamp,
-  FRAGNO_OUTBOX_PAGE_SIZE,
   outboxPageAfterVersionstamp,
   versionstampToHex,
 } from "@fragno-dev/db/outbox";
@@ -10,6 +9,7 @@ import { idColumn, schema } from "@fragno-dev/db/schema";
 import superjson from "superjson";
 
 import { shouldApplyOutboxCheckpoint, type FragnoOutboxCheckpoint } from "../checkpoint";
+import { createOutboxTestStream } from "../outbox-stream-test-fixture";
 import type { FragnoOutboxEntry } from "../protocol";
 import {
   FragnoOutboxSynchronizer,
@@ -21,14 +21,12 @@ const blogSchema = schema("blog", (builder) =>
     .addTable("users", (table) => table.addColumn("id", idColumn()))
     .addTable("posts", (table) => table.addColumn("id", idColumn())),
 );
-
 const usersTarget = {
   key: "4:blog5:users",
   namespace: "blog",
   schema: blogSchema,
   tableName: "users",
 };
-
 const postsTarget = {
   key: "4:blog5:posts",
   namespace: "blog",
@@ -36,21 +34,18 @@ const postsTarget = {
   tableName: "posts",
 };
 
-function outboxEntry(
-  transactionVersion: bigint,
-  tables: readonly ("users" | "posts")[] = ["users"],
-): FragnoOutboxEntry {
-  const versionstamp = versionstampToHex(encodeVersionstamp(transactionVersion, 0));
+function outboxEntry(version: number, tables = ["users"]): FragnoOutboxEntry {
+  const versionstamp = versionstampToHex(encodeVersionstamp(BigInt(version), 0));
   return {
     versionstamp,
-    uowId: `uow-${transactionVersion}`,
+    uowId: `uow-${version}`,
     payload: superjson.serialize({
       version: 2,
       operations: tables.map((table) => ({
         op: "create",
         schema: "blog",
         table,
-        externalId: `${table}-${transactionVersion}`,
+        externalId: `${table}-${version}`,
         versionstamp,
         values: {},
       })),
@@ -58,479 +53,354 @@ function outboxEntry(
   };
 }
 
-function subscriber(
-  options: {
-    target?: FragnoOutboxSubscriber["target"];
-    apply?: FragnoOutboxSubscriber["apply"];
-    applyBatch?: FragnoOutboxSubscriber["applyBatch"];
-    markReady?: FragnoOutboxSubscriber["markReady"];
-  } = {},
-): FragnoOutboxSubscriber {
-  return {
-    target: options.target ?? usersTarget,
-    apply: options.apply ?? (() => {}),
-    applyBatch:
-      options.applyBatch ??
-      ((deliveries) => {
-        for (const delivery of deliveries) {
-          options.apply?.(delivery);
-        }
-      }),
-    truncate() {},
-    markReady: options.markReady ?? (() => {}),
-  };
-}
-
-function createSynchronizer(
-  options: {
-    pages?: FragnoOutboxEntry[][];
-    checkpoint?: FragnoOutboxCheckpoint;
-    stream?: ReadableStream<Uint8Array>;
-  } = {},
+function createScenario(
+  entries: FragnoOutboxEntry[] = [],
+  initialCheckpoint?: FragnoOutboxCheckpoint,
+  liveEntries: FragnoOutboxEntry[] = [],
 ) {
-  const pages = [...(options.pages ?? [])];
-  const requests: Array<{ afterVersionstamp?: string }> = [];
-  const streamRequests: Array<{ afterVersionstamp?: string }> = [];
-  let checkpoint = options.checkpoint;
-
+  let checkpoint = initialCheckpoint;
+  const requests: Array<string | undefined> = [];
+  let body = createOutboxTestStream(entries, liveEntries);
+  const batches: string[][] = [];
+  const applied: string[] = [];
+  let readyCalls = 0;
+  const synchronizer = new FragnoOutboxSynchronizer({
+    adapterIdentity: "test-adapter",
+    fetcher: {
+      async openOutboxStream(options) {
+        requests.push(options.afterVersionstamp);
+        return body;
+      },
+    },
+    checkpointStore: {
+      getCheckpoint: () => checkpoint,
+      setCheckpoint(value) {
+        checkpoint = value;
+      },
+    },
+  });
+  const subscriber: FragnoOutboxSubscriber = {
+    target: usersTarget,
+    apply(delivery) {
+      applied.push(...delivery.changes.map((change) => change.key));
+    },
+    applyBatch(deliveries) {
+      batches.push(deliveries.flatMap((delivery) => delivery.changes.map((change) => change.key)));
+    },
+    truncate() {},
+    markReady() {
+      readyCalls++;
+    },
+  };
+  synchronizer.register(subscriber);
   return {
+    synchronizer,
+    subscriber,
+    batches,
+    applied,
     requests,
-    streamRequests,
     getCheckpoint: () => checkpoint,
-    synchronizer: new FragnoOutboxSynchronizer({
-      fetcher: {
-        async listOutbox(request) {
-          requests.push({ afterVersionstamp: request.afterVersionstamp });
-          return pages.shift() ?? [];
-        },
-        async openOutboxStream(request) {
-          streamRequests.push({ afterVersionstamp: request.afterVersionstamp });
-          return options.stream ?? ndjsonStream([]);
-        },
-      },
-      checkpointStore: {
-        getCheckpoint: () => checkpoint,
-        setCheckpoint(nextCheckpoint) {
-          checkpoint = nextCheckpoint;
-        },
-      },
-    }),
+    readyCalls: () => readyCalls,
+    setBody(value: ReadableStream<Uint8Array>) {
+      body = value;
+    },
+    run: () => synchronizer.streamSession({ onStarted() {}, onCaughtUp() {} }),
   };
 }
 
-function ndjsonStream(entries: readonly FragnoOutboxEntry[]): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  return new ReadableStream<Uint8Array>({
+function checkpointFor(entry: FragnoOutboxEntry): FragnoOutboxCheckpoint {
+  return { versionstamp: entry.versionstamp, uowId: entry.uowId };
+}
+
+function interruptedStream(entries: FragnoOutboxEntry[]): ReadableStream<Uint8Array> {
+  const frames = [
+    {
+      type: "started",
+      protocolVersion: 1,
+      adapterIdentity: "test-adapter",
+      catchUpTargetVersionstamp: outboxEntry(100).versionstamp,
+      catchUpPageSize: 50,
+    },
+    ...entries.map((entry) => ({ type: "entry", entry })),
+  ];
+  return new ReadableStream({
     start(controller) {
-      for (const entry of entries) {
-        controller.enqueue(encoder.encode(`${JSON.stringify(entry)}\n`));
+      for (const frame of frames) {
+        controller.enqueue(new TextEncoder().encode(`${JSON.stringify(frame)}\n`));
       }
       controller.close();
     },
   });
 }
 
-describe("FragnoOutboxSynchronizer", () => {
-  it("waits for target subscriptions and protects replacement registrations", async () => {
-    const { synchronizer } = createSynchronizer();
-    const registered = synchronizer.waitUntilRegistered([usersTarget.key]);
-    let appliedBy = "";
-
-    const unregisterFirst = synchronizer.register(
-      subscriber({
-        apply() {
-          appliedBy = "first";
+describe("FragnoOutboxSynchronizer stream sessions", () => {
+  it.each(["prepare", "batch", "live", "ready"] as const)(
+    "preserves subscriber %s failures as application errors",
+    async (phase) => {
+      const scenario = createScenario([outboxEntry(0)], undefined, [outboxEntry(1)]);
+      const failure = new TypeError(`Subscriber ${phase} failed`);
+      scenario.synchronizer.register({
+        ...scenario.subscriber,
+        async prepareCatchUp() {
+          if (phase === "prepare") {
+            throw failure;
+          }
         },
-      }),
-    );
-    await registered;
-
-    const unregisterSecond = synchronizer.register(
-      subscriber({
-        apply() {
-          appliedBy = "second";
+        applyBatch(deliveries) {
+          if (phase === "batch") {
+            throw failure;
+          }
+          scenario.subscriber.applyBatch(deliveries);
         },
-      }),
-    );
-    unregisterFirst();
-
-    const delivery = {
-      checkpoint: { versionstamp: "0000000000000001", uowId: "uow-1" },
-      changes: [],
-    };
-    synchronizer.applyChanges(usersTarget.key, delivery);
-    assert.equal(appliedBy, "second");
-
-    unregisterSecond();
-    expect(() => synchronizer.applyChanges(usersTarget.key, delivery)).toThrow(
-      "No Fragno collection is registered",
-    );
-    synchronizer.dispose();
-  });
-
-  it("groups decoded operations by registered physical target", async () => {
-    const context = createSynchronizer({ pages: [[outboxEntry(1n)]] });
-    let userDelivery: Parameters<FragnoOutboxSubscriber["apply"]>[0] | undefined;
-    let postApplyCalls = 0;
-    context.synchronizer.register(
-      subscriber({
         apply(delivery) {
-          userDelivery = delivery;
+          if (phase === "live") {
+            throw failure;
+          }
+          scenario.subscriber.apply(delivery);
         },
-      }),
-    );
-    context.synchronizer.register(
-      subscriber({
-        target: postsTarget,
-        apply() {
-          postApplyCalls += 1;
+        markReady() {
+          if (phase === "ready") {
+            throw failure;
+          }
+          scenario.subscriber.markReady();
         },
-      }),
-    );
+      });
+      await expect(scenario.run()).rejects.toBe(failure);
+      expect(scenario.getCheckpoint()).toEqual(
+        phase === "prepare" || phase === "batch" ? undefined : checkpointFor(outboxEntry(0)),
+      );
+      scenario.synchronizer.dispose();
+    },
+  );
 
-    await context.synchronizer.catchUp();
+  it.each(["started", "caught-up"] as const)(
+    "does not swallow an unowned abort from the %s callback",
+    async (phase) => {
+      const scenario = createScenario();
+      const failure = new DOMException("Callback was aborted independently", "AbortError");
+      await expect(
+        scenario.synchronizer.streamSession({
+          onStarted() {
+            if (phase === "started") {
+              throw failure;
+            }
+          },
+          onCaughtUp() {
+            if (phase === "caught-up") {
+              throw failure;
+            }
+          },
+        }),
+      ).rejects.toBe(failure);
+      scenario.synchronizer.dispose();
+    },
+  );
 
-    expect(userDelivery).toMatchObject({
-      checkpoint: {
-        versionstamp: outboxEntry(1n).versionstamp,
-        uowId: "uow-1",
-      },
-      changes: [
-        {
-          type: "insert",
-          key: "users-1",
-          value: { id: "users-1" },
-        },
-      ],
-    });
-    assert.equal(postApplyCalls, 0);
-    context.synchronizer.dispose();
+  it("applies bounded catch-up batches then live entries on the same response", async () => {
+    const scenario = createScenario(
+      Array.from({ length: 51 }, (_, index) => outboxEntry(index)),
+      undefined,
+      [outboxEntry(51)],
+    );
+    await scenario.run();
+    expect(scenario.batches.map((batch) => batch.length)).toEqual([50, 1]);
+    expect(scenario.batches.flat()).toEqual(
+      Array.from({ length: 51 }, (_, index) => `users-${index}`),
+    );
+    expect(scenario.applied).toEqual(["users-51"]);
+    expect(scenario.getCheckpoint()).toEqual(checkpointFor(outboxEntry(51)));
+    assert(scenario.readyCalls() === 1);
+    expect(scenario.requests).toEqual([undefined]);
+    scenario.synchronizer.dispose();
   });
 
-  it("delivers each catch-up page once per target with entry and operation order intact", async () => {
-    const firstEntry = outboxEntry(1n, ["users", "posts"]);
-    const secondEntry = outboxEntry(2n, ["posts", "users"]);
-    const context = createSynchronizer({ pages: [[firstEntry, secondEntry]] });
-    const userBatches: Parameters<FragnoOutboxSubscriber["applyBatch"]>[0][] = [];
-    const postBatches: Parameters<FragnoOutboxSubscriber["applyBatch"]>[0][] = [];
-    context.synchronizer.register(
-      subscriber({
-        applyBatch(deliveries) {
-          userBatches.push(deliveries);
-        },
-      }),
-    );
-    context.synchronizer.register(
-      subscriber({
-        target: postsTarget,
-        applyBatch(deliveries) {
-          postBatches.push(deliveries);
-        },
-      }),
-    );
-
-    await context.synchronizer.catchUp();
-
-    assert.equal(userBatches.length, 1);
-    assert.equal(postBatches.length, 1);
-    expect(
-      userBatches[0]!.map(({ checkpoint, changes }) => ({
-        checkpoint,
-        keys: changes.map((change) => change.key),
-      })),
-    ).toEqual([
-      {
-        checkpoint: { versionstamp: firstEntry.versionstamp, uowId: firstEntry.uowId },
-        keys: ["users-1"],
-      },
-      {
-        checkpoint: { versionstamp: secondEntry.versionstamp, uowId: secondEntry.uowId },
-        keys: ["users-2"],
-      },
-    ]);
-    expect(
-      postBatches[0]!.map(({ checkpoint, changes }) => ({
-        checkpoint,
-        keys: changes.map((change) => change.key),
-      })),
-    ).toEqual([
-      {
-        checkpoint: { versionstamp: firstEntry.versionstamp, uowId: firstEntry.uowId },
-        keys: ["posts-1"],
-      },
-      {
-        checkpoint: { versionstamp: secondEntry.versionstamp, uowId: secondEntry.uowId },
-        keys: ["posts-2"],
-      },
-    ]);
-    context.synchronizer.dispose();
+  it("marks empty collections ready at the caught-up marker", async () => {
+    const scenario = createScenario();
+    await scenario.run();
+    assert(scenario.readyCalls() === 1);
+    expect(scenario.getCheckpoint()).toBeUndefined();
+    scenario.synchronizer.dispose();
   });
 
-  it("replays only collections that did not commit before another collection failed", async () => {
-    const entry = outboxEntry(1n, ["users", "posts"]);
+  it("replays an aligned checkpoint without duplicating committed changes", async () => {
+    const checkpoint = checkpointFor(outboxEntry(75));
+    const scenario = createScenario(
+      Array.from({ length: 51 }, (_, index) => outboxEntry(50 + index)),
+      checkpoint,
+    );
+    await scenario.run();
+    expect(scenario.requests).toEqual([outboxPageAfterVersionstamp(checkpoint.versionstamp)]);
+    expect(scenario.batches.flat()).toEqual(
+      Array.from({ length: 25 }, (_, index) => `users-${76 + index}`),
+    );
+    expect(scenario.getCheckpoint()).toEqual(checkpointFor(outboxEntry(100)));
+    scenario.synchronizer.dispose();
+  });
+
+  it.each([1, 49, 99])("validates the exact UOW even at page boundary %s", async (version) => {
+    const entry = outboxEntry(version);
+    const scenario = createScenario([{ ...entry, uowId: "conflicting-uow" }], checkpointFor(entry));
+    await expect(scenario.run()).rejects.toThrow("changed from UOW");
+    expect(scenario.getCheckpoint()).toEqual(checkpointFor(entry));
+    assert(scenario.readyCalls() === 0);
+    scenario.synchronizer.dispose();
+  });
+
+  it("rejects a missing persisted checkpoint before applying newer entries", async () => {
+    const scenario = createScenario([outboxEntry(2)], checkpointFor(outboxEntry(1)));
+    await expect(scenario.run()).rejects.toThrow("checkpoint is missing");
+    expect(scenario.batches).toEqual([]);
+    scenario.synchronizer.dispose();
+  });
+
+  it("discards a partial catch-up batch on interruption and recovers on the next session", async () => {
+    const scenario = createScenario();
+    scenario.setBody(
+      interruptedStream(Array.from({ length: 53 }, (_, index) => outboxEntry(index))),
+    );
+    await expect(scenario.run()).rejects.toThrow("closed unexpectedly");
+    expect(scenario.getCheckpoint()).toEqual(checkpointFor(outboxEntry(49)));
+    assert(scenario.readyCalls() === 0);
+    scenario.setBody(
+      createOutboxTestStream(Array.from({ length: 5 }, (_, index) => outboxEntry(49 + index))),
+    );
+    await scenario.run();
+    expect(scenario.batches.map((batch) => batch.length)).toEqual([50, 4]);
+    expect(scenario.getCheckpoint()).toEqual(checkpointFor(outboxEntry(53)));
+    scenario.synchronizer.dispose();
+  });
+
+  it("commits a partial batch at planned rotation without claiming readiness", async () => {
+    const scenario = createScenario();
+    scenario.setBody(
+      interruptedStream([outboxEntry(0), outboxEntry(1)]).pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
+          transform(chunk, controller) {
+            controller.enqueue(chunk);
+          },
+          flush(controller) {
+            controller.enqueue(
+              new TextEncoder().encode('{"type":"rotate","reason":"lease-expired"}\n'),
+            );
+          },
+        }),
+      ),
+    );
+    await scenario.run();
+    expect(scenario.getCheckpoint()).toEqual(checkpointFor(outboxEntry(1)));
+    assert(scenario.readyCalls() === 0);
+    scenario.setBody(createOutboxTestStream([outboxEntry(1), outboxEntry(2), outboxEntry(3)]));
+    await scenario.run();
+    expect(scenario.batches).toEqual([
+      ["users-0", "users-1"],
+      ["users-2", "users-3"],
+    ]);
+    assert(scenario.readyCalls() === 1);
+    scenario.synchronizer.dispose();
+  });
+
+  it("rejects a changed adapter identity before applying entries", async () => {
+    const scenario = createScenario();
+    scenario.setBody(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              JSON.stringify({
+                type: "started",
+                protocolVersion: 1,
+                adapterIdentity: "other",
+                catchUpTargetVersionstamp: null,
+                catchUpPageSize: 50,
+              }) + "\n",
+            ),
+          );
+        },
+      }),
+    );
+    await expect(scenario.run()).rejects.toThrow("adapter identity changed");
+    assert(scenario.readyCalls() === 0);
+    scenario.synchronizer.dispose();
+  });
+
+  it("recovers partial cross-collection commits without applying them twice", async () => {
+    const entry = outboxEntry(1, ["users", "posts"]);
+    const scenario = createScenario([entry]);
     let usersCheckpoint: FragnoOutboxCheckpoint | undefined;
-    let postsCheckpoint: FragnoOutboxCheckpoint | undefined;
-    let userApplyCalls = 0;
-    let postApplyCalls = 0;
-
-    const registerSubscribers = (synchronizer: FragnoOutboxSynchronizer, failPosts: boolean) => {
-      synchronizer.register(
-        subscriber({
-          apply({ checkpoint }) {
-            if (!shouldApplyOutboxCheckpoint(usersCheckpoint, checkpoint)) {
-              return;
-            }
-            userApplyCalls += 1;
-            usersCheckpoint = checkpoint;
-          },
-        }),
-      );
-      synchronizer.register(
-        subscriber({
-          target: postsTarget,
-          apply({ checkpoint }) {
-            postApplyCalls += 1;
-            if (failPosts) {
-              throw new Error("posts failed");
-            }
-            if (shouldApplyOutboxCheckpoint(postsCheckpoint, checkpoint)) {
-              postsCheckpoint = checkpoint;
-            }
-          },
-        }),
-      );
-    };
-
-    const firstAttempt = createSynchronizer({ pages: [[entry]] });
-    registerSubscribers(firstAttempt.synchronizer, true);
-    await expect(firstAttempt.synchronizer.catchUp()).rejects.toThrow("posts failed");
-    assert.equal(firstAttempt.getCheckpoint(), undefined);
-    assert.equal(userApplyCalls, 1);
-    assert.equal(postApplyCalls, 1);
-    firstAttempt.synchronizer.dispose();
-
-    const replay = createSynchronizer({ pages: [[entry]] });
-    registerSubscribers(replay.synchronizer, false);
-    await replay.synchronizer.catchUp();
-
-    assert.equal(userApplyCalls, 1);
-    assert.equal(postApplyCalls, 2);
-    expect(replay.getCheckpoint()).toEqual({
-      versionstamp: entry.versionstamp,
-      uowId: entry.uowId,
-    });
-    replay.synchronizer.dispose();
-  });
-
-  it("streams from the exact catch-up checkpoint and advances it for live entries", async () => {
-    const firstEntry = outboxEntry(1n);
-    const liveEntry = outboxEntry(2n);
-    const context = createSynchronizer({
-      pages: [[firstEntry]],
-      stream: ndjsonStream([firstEntry, liveEntry]),
-    });
-    const appliedCheckpoints: FragnoOutboxCheckpoint[] = [];
-    let openCalls = 0;
-    context.synchronizer.register(
-      subscriber({
-        apply({ checkpoint }) {
-          appliedCheckpoints.push(checkpoint);
-        },
-      }),
-    );
-
-    await context.synchronizer.catchUp();
-    await expect(
-      context.synchronizer.stream({
-        onOpen() {
-          openCalls += 1;
-        },
-      }),
-    ).rejects.toThrow("Fragno outbox stream closed unexpectedly");
-
-    expect(context.streamRequests).toEqual([{ afterVersionstamp: firstEntry.versionstamp }]);
-    expect(appliedCheckpoints).toEqual([
-      { versionstamp: firstEntry.versionstamp, uowId: firstEntry.uowId },
-      { versionstamp: liveEntry.versionstamp, uowId: liveEntry.uowId },
-    ]);
-    expect(context.getCheckpoint()).toEqual({
-      versionstamp: liveEntry.versionstamp,
-      uowId: liveEntry.uowId,
-    });
-    assert.equal(openCalls, 1);
-    context.synchronizer.dispose();
-  });
-
-  it("rejects a streamed UOW that conflicts with the exact checkpoint", async () => {
-    const firstEntry = outboxEntry(1n);
-    const conflictingEntry = { ...firstEntry, uowId: "conflicting-uow" };
-    const context = createSynchronizer({
-      pages: [[firstEntry]],
-      stream: ndjsonStream([conflictingEntry]),
-    });
-    context.synchronizer.register(subscriber());
-
-    await context.synchronizer.catchUp();
-    await expect(context.synchronizer.stream({ onOpen() {} })).rejects.toThrow(
-      `Outbox versionstamp ${firstEntry.versionstamp} changed from UOW`,
-    );
-    expect(context.getCheckpoint()).toEqual({
-      versionstamp: firstEntry.versionstamp,
-      uowId: firstEntry.uowId,
-    });
-    context.synchronizer.dispose();
-  });
-
-  it("does not apply a catch-up page that resolves after disposal", async () => {
-    let resolvePage!: (entries: FragnoOutboxEntry[]) => void;
-    const page = new Promise<FragnoOutboxEntry[]>((resolve) => {
-      resolvePage = resolve;
-    });
-    let markRequestStarted!: () => void;
-    const requestStarted = new Promise<void>((resolve) => {
-      markRequestStarted = resolve;
-    });
-    let checkpoint: FragnoOutboxCheckpoint | undefined;
-    let applyCalls = 0;
-    let readyCalls = 0;
-    const synchronizer = new FragnoOutboxSynchronizer({
-      fetcher: {
-        listOutbox: async () => {
-          markRequestStarted();
-          return page;
-        },
-        openOutboxStream: async () => ndjsonStream([]),
-      },
-      checkpointStore: {
-        getCheckpoint: () => checkpoint,
-        setCheckpoint(nextCheckpoint) {
-          checkpoint = nextCheckpoint;
-        },
+    let usersApplied = 0;
+    let failPosts = true;
+    scenario.synchronizer.register({
+      ...scenario.subscriber,
+      applyBatch(deliveries) {
+        for (const delivery of deliveries) {
+          if (shouldApplyOutboxCheckpoint(usersCheckpoint, delivery.checkpoint)) {
+            usersApplied++;
+            usersCheckpoint = delivery.checkpoint;
+          }
+        }
       },
     });
-    synchronizer.register(
-      subscriber({
-        apply() {
-          applyCalls += 1;
-        },
-        markReady() {
-          readyCalls += 1;
-        },
-      }),
-    );
-
-    const catchUp = synchronizer.catchUp();
-    await requestStarted;
-    synchronizer.dispose();
-    resolvePage([outboxEntry(1n)]);
-
-    await expect(catchUp).rejects.toMatchObject({ name: "AbortError" });
-    assert.equal(applyCalls, 0);
-    assert.equal(readyCalls, 0);
-    assert.equal(checkpoint, undefined);
+    const posts: string[] = [];
+    scenario.synchronizer.register({
+      ...scenario.subscriber,
+      target: postsTarget,
+      applyBatch(deliveries) {
+        if (failPosts) {
+          throw new Error("posts failed");
+        }
+        posts.push(
+          ...deliveries.flatMap((delivery) => delivery.changes.map((change) => change.key)),
+        );
+      },
+    });
+    await expect(scenario.run()).rejects.toThrow("posts failed");
+    expect(scenario.getCheckpoint()).toBeUndefined();
+    failPosts = false;
+    scenario.setBody(createOutboxTestStream([entry]));
+    await scenario.run();
+    expect(usersApplied).toBe(1);
+    expect(posts).toEqual(["posts-1"]);
+    expect(scenario.getCheckpoint()).toEqual(checkpointFor(entry));
+    scenario.synchronizer.dispose();
   });
 
-  it("aborts an active stream during disposal", async () => {
-    let streamCancelled = false;
-    const context = createSynchronizer({
-      pages: [[]],
-      stream: new ReadableStream<Uint8Array>({
+  it("cancels active reads and rejects pending registrations on disposal", async () => {
+    const scenario = createScenario();
+    let cancelled = false;
+    scenario.setBody(
+      new ReadableStream({
         cancel() {
-          streamCancelled = true;
+          cancelled = true;
         },
       }),
-    });
-    context.synchronizer.register(subscriber());
-    await context.synchronizer.catchUp();
-    let markOpened!: () => void;
-    const opened = new Promise<void>((resolve) => {
-      markOpened = resolve;
-    });
-
-    const streaming = context.synchronizer.stream({ onOpen: markOpened });
-    await opened;
-    context.synchronizer.dispose();
-
-    await expect(streaming).rejects.toMatchObject({ name: "AbortError" });
-    assert(streamCancelled);
+    );
+    const pending = scenario.synchronizer.waitUntilRegistered([postsTarget.key]);
+    const pendingRejection = expect(pending).rejects.toThrow("disposed");
+    const session = scenario.run();
+    await Promise.resolve();
+    scenario.synchronizer.dispose();
+    await expect(session).rejects.toMatchObject({ name: "AbortError" });
+    await pendingRejection;
+    assert(cancelled);
+    assert(scenario.readyCalls() === 0);
   });
 
-  it("starts from the aligned page and loops until a partial page", async () => {
-    const pageStart = BigInt(FRAGNO_OUTBOX_PAGE_SIZE);
-    const initialVersion = pageStart + BigInt(Math.floor(FRAGNO_OUTBOX_PAGE_SIZE / 2));
-    const finalVersion = pageStart * 2n;
-    const initialCheckpoint = {
-      versionstamp: outboxEntry(initialVersion).versionstamp,
-      uowId: `uow-${initialVersion}`,
-    };
-    const firstPage = Array.from({ length: FRAGNO_OUTBOX_PAGE_SIZE }, (_, index) =>
-      outboxEntry(pageStart + BigInt(index)),
-    );
-    const finalPage = [outboxEntry(finalVersion)];
-    const context = createSynchronizer({
-      pages: [firstPage, finalPage],
-      checkpoint: initialCheckpoint,
-    });
-    let appliedEntries = 0;
-    let readyCalls = 0;
-    context.synchronizer.register(
-      subscriber({
-        apply() {
-          appliedEntries += 1;
-        },
-        markReady() {
-          readyCalls += 1;
-        },
-      }),
-    );
-
-    await context.synchronizer.catchUp();
-
-    expect(context.requests).toEqual([
-      {
-        afterVersionstamp: outboxPageAfterVersionstamp(initialCheckpoint.versionstamp),
+  it("protects replacement registrations when old subscribers unsubscribe", async () => {
+    const scenario = createScenario();
+    const unregister = scenario.synchronizer.register(scenario.subscriber);
+    let calls = 0;
+    scenario.synchronizer.register({
+      ...scenario.subscriber,
+      apply() {
+        calls++;
       },
-      { afterVersionstamp: outboxEntry(finalVersion - 1n).versionstamp },
-    ]);
-    assert.equal(appliedEntries, Number(finalVersion - initialVersion));
-    assert.equal(readyCalls, 1);
-    expect(context.getCheckpoint()).toEqual({
-      versionstamp: outboxEntry(finalVersion).versionstamp,
-      uowId: `uow-${finalVersion}`,
     });
-    context.synchronizer.dispose();
-  });
-
-  it("starts without a cursor when no checkpoint exists", async () => {
-    const context = createSynchronizer({ pages: [[outboxEntry(1n)]] });
-    let ready = false;
-    context.synchronizer.register(
-      subscriber({
-        markReady() {
-          ready = true;
-        },
-      }),
-    );
-
-    await context.synchronizer.catchUp();
-
-    expect(context.requests).toEqual([{ afterVersionstamp: undefined }]);
-    assert(ready);
-    expect(context.getCheckpoint()).toEqual({
-      versionstamp: outboxEntry(1n).versionstamp,
-      uowId: "uow-1",
+    unregister();
+    scenario.synchronizer.applyChanges(usersTarget.key, {
+      checkpoint: checkpointFor(outboxEntry(0)),
+      changes: [],
     });
-    context.synchronizer.dispose();
-  });
-
-  it("rejects an out-of-order page before advancing the checkpoint", async () => {
-    const context = createSynchronizer({ pages: [[outboxEntry(2n), outboxEntry(1n)]] });
-    context.synchronizer.register(subscriber());
-
-    await expect(context.synchronizer.catchUp()).rejects.toThrow(
-      "Fragno outbox page is not strictly ordered",
-    );
-    assert.equal(context.getCheckpoint(), undefined);
-    context.synchronizer.dispose();
+    expect(calls).toBe(1);
+    scenario.synchronizer.dispose();
   });
 });

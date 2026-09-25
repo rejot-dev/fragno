@@ -1,14 +1,15 @@
-import { FRAGNO_OUTBOX_PAGE_SIZE, outboxPageAfterVersionstamp } from "@fragno-dev/db/outbox";
+import { FRAGNO_OUTBOX_PAGE_SIZE } from "@fragno-dev/db/outbox";
 import type { AnySchema } from "@fragno-dev/db/schema";
 
 import type { OutboxOperation } from "@fragno-dev/db";
 
 import {
   checkpointForEntry,
+  outboxStreamResumeCursor,
   shouldApplyOutboxEntry,
   type FragnoOutboxCheckpoint,
 } from "../checkpoint";
-import { consumeNdjsonOutboxStream } from "../outbox-stream";
+import { consumeNdjsonOutboxStream, FragnoOutboxProtocolError } from "../outbox-stream";
 import {
   decodeFragnoOutboxPayload,
   fragnoOutboxOperationTarget,
@@ -19,10 +20,6 @@ import {
 type FragnoSynchronizedRow = Record<string, unknown>;
 
 type FragnoOutboxFetcher = {
-  listOutbox(options: {
-    afterVersionstamp?: string;
-    signal?: AbortSignal;
-  }): Promise<FragnoOutboxEntry[]>;
   openOutboxStream(options: {
     afterVersionstamp?: string;
     signal?: AbortSignal;
@@ -69,19 +66,21 @@ export class FragnoOutboxSynchronizer {
   readonly #subscribers = new Map<string, FragnoOutboxSubscriber>();
   readonly #registrationWaiters = new Set<RegistrationWaiter>();
 
-  #catchUpPromise: Promise<void> | undefined;
-  #streamPromise: Promise<void> | undefined;
-  #caughtUp = false;
+  #sessionPromise: Promise<void> | undefined;
+  readonly #adapterIdentity: string;
+  #ready = false;
   #disposed = false;
 
   readonly #onCatchUpPage?: (checkpoint: FragnoOutboxCheckpoint | undefined) => void;
 
   constructor(options: {
     fetcher: FragnoOutboxFetcher;
+    adapterIdentity: string;
     checkpointStore: FragnoOutboxCheckpointStore;
     onCatchUpPage?: (checkpoint: FragnoOutboxCheckpoint | undefined) => void;
   }) {
     this.#fetcher = options.fetcher;
+    this.#adapterIdentity = options.adapterIdentity;
     this.#checkpointStore = options.checkpointStore;
     this.#onCatchUpPage = options.onCatchUpPage;
   }
@@ -114,45 +113,20 @@ export class FragnoOutboxSynchronizer {
     });
   }
 
-  catchUp(): Promise<void> {
-    this.#catchUpPromise ??= this.#runCatchUp();
-    return this.#catchUpPromise;
-  }
-
-  async replay(): Promise<void> {
+  /** Runs catch-up and live delivery on one response; resolves only on planned rotation. */
+  streamSession(options: {
+    onStarted(targetVersionstamp: string | null): void;
+    onCaughtUp(): void;
+  }): Promise<void> {
     if (this.#disposed) {
-      throw new Error("Cannot replay a disposed Fragno outbox synchronizer.");
-    }
-
-    this.#caughtUp = false;
-    await this.#runCatchUp();
-  }
-
-  stream(options: { onOpen(): void }): Promise<void> {
-    if (this.#disposed) {
-      return Promise.reject(new Error("Cannot stream a disposed Fragno outbox synchronizer."));
-    }
-    if (!this.#caughtUp) {
-      return Promise.reject(new Error("Cannot stream before Fragno outbox catch-up completes."));
-    }
-
-    if (!this.#streamPromise) {
-      const streamPromise = this.#runStream(options);
-      this.#streamPromise = streamPromise;
-      void streamPromise.then(
-        () => {
-          if (this.#streamPromise === streamPromise) {
-            this.#streamPromise = undefined;
-          }
-        },
-        () => {
-          if (this.#streamPromise === streamPromise) {
-            this.#streamPromise = undefined;
-          }
-        },
+      return Promise.reject(
+        new DOMException("Fragno outbox synchronization was disposed.", "AbortError"),
       );
     }
-    return this.#streamPromise;
+    this.#sessionPromise ??= this.#runStreamSession(options).finally(() => {
+      this.#sessionPromise = undefined;
+    });
+    return this.#sessionPromise;
   }
 
   applyChanges(targetKey: string, delivery: FragnoOutboxDelivery): void {
@@ -184,7 +158,10 @@ export class FragnoOutboxSynchronizer {
     this.#registrationWaiters.clear();
   }
 
-  async #runCatchUp(): Promise<void> {
+  async #runStreamSession(options: {
+    onStarted(targetVersionstamp: string | null): void;
+    onCaughtUp(): void;
+  }): Promise<void> {
     if (this.#disposed) {
       throw new Error("Cannot catch up a disposed Fragno outbox synchronizer.");
     }
@@ -195,61 +172,98 @@ export class FragnoOutboxSynchronizer {
         .filter((preparation): preparation is Promise<void> => preparation !== undefined),
     );
 
-    let checkpoint = this.#checkpointStore.getCheckpoint();
-    let afterVersionstamp = checkpoint
-      ? outboxPageAfterVersionstamp(checkpoint.versionstamp)
-      : undefined;
-    let page = 0;
-
-    while (!this.#abortController.signal.aborted) {
-      page += 1;
-      const entries = await this.#fetcher.listOutbox({
-        afterVersionstamp,
-        signal: this.#abortController.signal,
-      });
-      if (this.#abortController.signal.aborted) {
-        throw new DOMException("Fragno outbox catch-up was aborted.", "AbortError");
-      }
-      assertOrderedOutboxPage(entries, afterVersionstamp);
-
-      checkpoint = this.#applyAndAdvancePage(checkpoint, entries);
-      this.#onCatchUpPage?.(checkpoint);
-
-      if (entries.length < FRAGNO_OUTBOX_PAGE_SIZE) {
-        this.markReady();
-        this.#caughtUp = true;
-        return;
-      }
-
-      afterVersionstamp = entries[entries.length - 1].versionstamp;
-    }
-
-    throw new DOMException("Fragno outbox catch-up was aborted.", "AbortError");
-  }
-
-  async #runStream(options: { onOpen(): void }): Promise<void> {
-    const afterVersionstamp = this.#checkpointStore.getCheckpoint()?.versionstamp;
+    const initialCheckpoint = this.#checkpointStore.getCheckpoint();
+    const afterVersionstamp = outboxStreamResumeCursor(initialCheckpoint?.versionstamp);
+    let checkpointVerified = initialCheckpoint === undefined;
+    let caughtUp = false;
+    let entries: FragnoOutboxEntry[] = [];
+    let completedBatches = 0;
+    const flushCatchUpBatch = () => {
+      this.#applyAndAdvancePage(this.#checkpointStore.getCheckpoint(), entries);
+      entries = [];
+      completedBatches += 1;
+      this.#onCatchUpPage?.(this.#checkpointStore.getCheckpoint());
+    };
     const body = await this.#fetcher.openOutboxStream({
       afterVersionstamp,
       signal: this.#abortController.signal,
     });
-    if (this.#disposed) {
-      throw new DOMException("Fragno outbox streaming was aborted.", "AbortError");
-    }
-
-    options.onOpen();
     await consumeNdjsonOutboxStream(body, {
       signal: this.#abortController.signal,
-      onEntry: (entry) => {
-        const checkpoint = this.#checkpointStore.getCheckpoint();
-        this.#applyAndAdvanceEntry(checkpoint, entry);
+      afterVersionstamp,
+      onFrame: (frame) => {
+        switch (frame.type) {
+          case "started":
+            if (frame.adapterIdentity !== this.#adapterIdentity) {
+              throw new FragnoOutboxProtocolError(
+                "Fragno outbox adapter identity changed during synchronization.",
+              );
+            }
+            if (
+              initialCheckpoint &&
+              (frame.catchUpTargetVersionstamp === null ||
+                frame.catchUpTargetVersionstamp < initialCheckpoint.versionstamp)
+            ) {
+              throw new FragnoOutboxProtocolError(
+                "Fragno outbox source is behind the persisted checkpoint.",
+              );
+            }
+            options.onStarted(frame.catchUpTargetVersionstamp);
+            break;
+          case "entry":
+            if (!checkpointVerified && initialCheckpoint) {
+              try {
+                shouldApplyOutboxEntry(initialCheckpoint, frame.entry);
+              } catch (cause) {
+                throw new FragnoOutboxProtocolError(
+                  cause instanceof Error ? cause.message : "Fragno outbox checkpoint conflict.",
+                  { cause },
+                );
+              }
+              if (frame.entry.versionstamp === initialCheckpoint.versionstamp) {
+                checkpointVerified = true;
+              } else if (frame.entry.versionstamp > initialCheckpoint.versionstamp) {
+                throw new FragnoOutboxProtocolError(
+                  "Fragno outbox persisted checkpoint is missing from replay.",
+                );
+              }
+            }
+            if (caughtUp) {
+              this.#applyAndAdvanceEntry(this.#checkpointStore.getCheckpoint(), frame.entry);
+            } else {
+              entries.push(frame.entry);
+              if (entries.length === FRAGNO_OUTBOX_PAGE_SIZE) {
+                flushCatchUpBatch();
+              }
+            }
+            break;
+          case "caught-up":
+            if (!checkpointVerified) {
+              throw new FragnoOutboxProtocolError(
+                "Fragno outbox persisted checkpoint was not verified.",
+              );
+            }
+            if (entries.length > 0 || completedBatches === 0) {
+              flushCatchUpBatch();
+            }
+            caughtUp = true;
+            if (!this.#ready) {
+              this.markReady();
+              this.#ready = true;
+            }
+            options.onCaughtUp();
+            break;
+          case "rotate":
+            // A planned boundary is safe to commit; an interrupted partial batch is discarded.
+            if (!caughtUp && entries.length > 0) {
+              flushCatchUpBatch();
+            }
+            break;
+          case "heartbeat":
+            break;
+        }
       },
     });
-
-    if (this.#abortController.signal.aborted) {
-      throw new DOMException("Fragno outbox streaming was aborted.", "AbortError");
-    }
-    throw new Error("Fragno outbox stream closed unexpectedly.");
   }
 
   #applyAndAdvancePage(
@@ -371,20 +385,4 @@ export function fragnoOutboxTargetKey(namespace: string, tableName: string): str
 
 function identifierSegment(value: string): string {
   return `${value.length}:${value}`;
-}
-
-function assertOrderedOutboxPage(
-  entries: readonly FragnoOutboxEntry[],
-  afterVersionstamp: string | undefined,
-): void {
-  let previousVersionstamp = afterVersionstamp;
-
-  for (const entry of entries) {
-    if (previousVersionstamp !== undefined && entry.versionstamp <= previousVersionstamp) {
-      throw new Error(
-        `Fragno outbox page is not strictly ordered after versionstamp ${previousVersionstamp}.`,
-      );
-    }
-    previousVersionstamp = entry.versionstamp;
-  }
 }

@@ -38,7 +38,6 @@ export class FragnoTableCollection {
       options.id,
       options.schemaVersion,
     );
-    let catchUpPresentKeys: Set<string> | undefined;
 
     this.collection = createCollection(
       persistedCollectionOptions<FragnoTableRow, string>({
@@ -57,31 +56,38 @@ export class FragnoTableCollection {
               throw new Error("Fragno table collections require TanStack sync metadata.");
             }
 
+            // A new registration owns a fresh key index; rotating its transport does not.
+            let presentKeys: Set<string> | undefined;
+            let preparation: Promise<void> | undefined;
             return options.outbox.register({
               target: options.target,
               ...(options.skipMissingTruncateDeletes
                 ? {
-                    async prepareCatchUp() {
-                      if (!persistence.adapter.scanRows) {
-                        throw new Error(
-                          `Persistence for ${options.id} cannot retrieve keys required to skip missing truncate deletes.`,
-                        );
-                      }
-                      const persistedRows = await persistence.adapter.scanRows(options.id);
-                      catchUpPresentKeys = new Set(persistedRows.map(({ key }) => String(key)));
+                    prepareCatchUp() {
+                      preparation ??= (async () => {
+                        if (!persistence.adapter.scanRows) {
+                          throw new Error(
+                            `Persistence for ${options.id} cannot retrieve keys required to skip missing truncate deletes.`,
+                          );
+                        }
+                        const persistedRows = await persistence.adapter.scanRows(options.id);
+                        presentKeys = new Set(persistedRows.map(({ key }) => String(key)));
+                      })();
+                      return preparation;
                     },
                   }
                 : {}),
               apply(delivery) {
-                applyDeliveries(controls, [delivery]);
+                applyDeliveries(controls, [delivery], presentKeys, "live");
               },
               applyBatch(deliveries) {
-                applyDeliveries(controls, deliveries, catchUpPresentKeys);
+                applyDeliveries(controls, deliveries, presentKeys, "catch-up");
               },
               truncate() {
                 controls.begin();
                 controls.truncate();
                 controls.commit();
+                presentKeys?.clear();
               },
               markReady() {
                 controls.markReady();
@@ -97,12 +103,16 @@ export class FragnoTableCollection {
 function applyDeliveries(
   controls: FragnoTableSyncControls,
   deliveries: readonly FragnoOutboxDelivery[],
-  catchUpPresentKeys?: Set<string>,
+  presentKeys: Set<string> | undefined,
+  deliveryMode: "live" | "catch-up",
 ): void {
   let appliedCheckpoint = controls.metadata!.collection.get(
     FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY,
   ) as FragnoOutboxCheckpoint | undefined;
   let nextCheckpoint: FragnoOutboxCheckpoint | undefined;
+  // Stage only touched keys, not a copy of the whole index. Failed writes/commits must not
+  // advance it, while later changes in the same batch must see earlier inserts and deletes.
+  const keyChanges = new Map<string, boolean>();
 
   controls.begin();
   for (const { checkpoint, changes } of deliveries) {
@@ -112,21 +122,18 @@ function applyDeliveries(
 
     for (const change of changes) {
       if (
+        deliveryMode === "catch-up" &&
         change.type === "delete" &&
         change.origin === "truncate" &&
-        catchUpPresentKeys &&
-        !catchUpPresentKeys.has(change.key)
+        presentKeys &&
+        !(keyChanges.get(change.key) ?? presentKeys.has(change.key))
       ) {
         continue;
       }
 
       controls.write(toTanStackChangeMessage(change));
-      if (catchUpPresentKeys) {
-        if (change.type === "delete") {
-          catchUpPresentKeys.delete(change.key);
-        } else {
-          catchUpPresentKeys.add(change.key);
-        }
+      if (presentKeys) {
+        keyChanges.set(change.key, change.type !== "delete");
       }
     }
     appliedCheckpoint = checkpoint;
@@ -143,6 +150,15 @@ function applyDeliveries(
     nextCheckpoint,
   );
   controls.commit();
+  if (presentKeys) {
+    for (const [key, present] of keyChanges) {
+      if (present) {
+        presentKeys.add(key);
+      } else {
+        presentKeys.delete(key);
+      }
+    }
+  }
 }
 
 function resolveCollectionPersistence(

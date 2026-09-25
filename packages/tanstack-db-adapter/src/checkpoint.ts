@@ -1,3 +1,5 @@
+import { outboxPageAfterVersionstamp } from "@fragno-dev/db/outbox";
+
 import type { FragnoOutboxEntry } from "./protocol";
 
 export const FRAGNO_OUTBOX_COLLECTION_CHECKPOINT_METADATA_KEY =
@@ -13,6 +15,17 @@ export type FragnoOutboxSource = {
   namespace: string;
   table: string;
 };
+
+/** Aligns stream replay while including the exact checkpoint entry for UOW verification. */
+export function outboxStreamResumeCursor(versionstamp: string | undefined): string | undefined {
+  if (versionstamp === undefined) {
+    return undefined;
+  }
+  const aligned = outboxPageAfterVersionstamp(versionstamp);
+  return aligned === versionstamp
+    ? (BigInt(`0x${versionstamp}`) - 1n).toString(16).padStart(24, "0")
+    : aligned;
+}
 
 export function checkpointForEntry(entry: FragnoOutboxEntry): FragnoOutboxCheckpoint {
   return {

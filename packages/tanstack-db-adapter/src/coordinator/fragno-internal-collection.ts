@@ -16,10 +16,10 @@ export type FragnoOutboxCoordinatorState =
   | "idle"
   | "registering"
   | "catching-up"
-  | "caught-up"
   | "replaying"
   | "live"
   | "retrying"
+  | "rotating"
   | "failed"
   | "disposed";
 

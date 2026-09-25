@@ -1,4 +1,5 @@
 import { FRAGNO_OUTBOX_PAGE_SIZE } from "@fragno-dev/db/outbox";
+import { parseOutboxStreamFrame, type OutboxStreamEntry } from "@fragno-dev/db/outbox-stream";
 
 import type { OutboxEntry, OutboxMutation, OutboxTruncateNotification } from "@fragno-dev/db";
 
@@ -363,10 +364,9 @@ export class LofiClient {
       let cursor = await this.getReadCursor(cursorKey);
 
       try {
-        const response = await this.fetcher(
-          buildOutboxUrl(this.outboxStreamUrl, cursor, this.limit),
-          { signal },
-        );
+        const url = new URL(buildOutboxUrl(this.outboxStreamUrl, cursor, this.limit));
+        url.searchParams.set("protocol", "1");
+        const response = await this.fetcher(url.toString(), { signal });
 
         if (!response.ok) {
           throw new Error(
@@ -400,6 +400,8 @@ export class LofiClient {
           }
           await this.onSyncComplete?.(syncResult);
         }
+        // The parser completes normally only after a planned lease rotation.
+        continue;
       } catch (error) {
         if (signal.aborted || isAbortError(error)) {
           return;
@@ -423,7 +425,7 @@ export class LofiClient {
     previousReadCursor,
     deliverEphemeral,
   }: {
-    entry: OutboxEntry;
+    entry: OutboxStreamEntry;
     cursorKey: string;
     sourceKey: string;
     previousReadCursor: string | undefined;
@@ -663,7 +665,9 @@ export class LofiClient {
   }
 }
 
-function decodeOutboxEntry(entry: OutboxEntry): Array<LofiMutation | OutboxTruncateNotification> {
+function decodeOutboxEntry(
+  entry: OutboxStreamEntry,
+): Array<LofiMutation | OutboxTruncateNotification> {
   const payload = decodeOutboxPayload(entry.payload);
   return payload.operations.map((operation) =>
     operation.op === "truncate" ? operation : toLofiMutation(operation),
@@ -705,7 +709,7 @@ function toLofiMutation(mutation: OutboxMutation): LofiMutation {
 async function* parseOutboxEntryStream(
   response: Response,
   signal: AbortSignal,
-): AsyncGenerator<OutboxEntry> {
+): AsyncGenerator<OutboxStreamEntry> {
   if (!response.body) {
     throw new Error("Invalid outbox stream response body");
   }
@@ -714,6 +718,16 @@ async function* parseOutboxEntryStream(
   const decoder = new TextDecoder();
   let buffer = "";
   let completed = false;
+  let started = false;
+  let rotated = false;
+  const cancelReader = () => {
+    void reader.cancel(signal.reason).catch(() => {});
+  };
+  if (signal.aborted) {
+    cancelReader();
+  } else {
+    signal.addEventListener("abort", cancelReader, { once: true });
+  }
 
   try {
     while (!signal.aborted) {
@@ -738,17 +752,28 @@ async function* parseOutboxEntryStream(
       buffer = lines.pop() ?? "";
 
       for (const line of lines) {
-        if (line.trim().length === 0) {
-          continue;
+        const frame = parseOutboxStreamFrame(JSON.parse(line));
+        if (rotated || (!started && frame.type !== "started")) {
+          throw new Error("Invalid Lofi outbox stream frame order.");
         }
-        yield JSON.parse(line) as OutboxEntry;
+        if (frame.type === "started") {
+          if (started) {
+            throw new Error("Duplicate Lofi outbox started frame.");
+          }
+          started = true;
+        } else if (frame.type === "rotate") {
+          rotated = true;
+        } else if (frame.type === "entry") {
+          yield frame.entry;
+        }
       }
     }
 
-    if (!signal.aborted && buffer.trim().length > 0) {
-      yield JSON.parse(buffer) as OutboxEntry;
+    if (!signal.aborted && (!rotated || buffer.length > 0)) {
+      throw new OutboxStreamReadError(new Error("Lofi outbox stream closed unexpectedly."));
     }
   } finally {
+    signal.removeEventListener("abort", cancelReader);
     if (!completed) {
       await reader.cancel();
     }

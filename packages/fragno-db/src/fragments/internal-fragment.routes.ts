@@ -4,6 +4,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import type { DatabaseHandlerTx } from "../db-fragment-definition-builder";
 import { FRAGNO_OUTBOX_PAGE_SIZE } from "../outbox/outbox";
+import type { OutboxStreamFrame } from "../outbox/outbox-stream";
 import { submitSyncRequest, type SyncRequestRecord } from "../sync/submit";
 import type { SubmitRequest, SyncCommandDefinition } from "../sync/types";
 import {
@@ -248,6 +249,47 @@ export const createInternalFragmentOutboxRoutes = () =>
           return json(limitResult.response, { status: limitResult.status });
         }
 
+        if (input.query.get("protocol") !== "1") {
+          return json(
+            { error: "Outbox streaming requires protocol=1.", code: "UNSUPPORTED_OUTBOX_PROTOCOL" },
+            { status: 400 },
+          );
+        }
+        if (afterVersionstamp !== undefined && !/^[0-9a-f]{24}$/u.test(afterVersionstamp)) {
+          return json(
+            { error: "Invalid outbox stream cursor.", code: "INVALID_CURSOR" },
+            { status: 400 },
+          );
+        }
+        const { adapterIdentity, catchUpTargetVersionstamp } = await this.handlerTx({
+          name: "internal.outbox.stream.start",
+        })
+          .withServiceCalls(
+            () =>
+              [
+                services.settingsService.getOrCreate(
+                  SETTINGS_NAMESPACE,
+                  ADAPTER_IDENTITY_KEY,
+                  crypto.randomUUID(),
+                ),
+                services.outboxService.latestVersionstamp(),
+              ] as const,
+          )
+          .transform(({ serviceResult: [adapterIdentity, catchUpTargetVersionstamp] }) => ({
+            adapterIdentity,
+            catchUpTargetVersionstamp,
+          }))
+          .execute();
+        if (
+          afterVersionstamp !== undefined &&
+          (catchUpTargetVersionstamp === null || afterVersionstamp > catchUpTargetVersionstamp)
+        ) {
+          return json(
+            { error: "Outbox stream cursor is ahead of the source.", code: "OUTBOX_CURSOR_AHEAD" },
+            { status: 409 },
+          );
+        }
+
         return jsonStream(async (stream) => {
           const streamId = crypto.randomUUID();
           const startedAt = Date.now();
@@ -287,7 +329,7 @@ export const createInternalFragmentOutboxRoutes = () =>
               // Encoding again just to count wire bytes would inflate the heap being measured.
               frameCharacters += frame.length;
               largestFrameCharacters = Math.max(largestFrameCharacters, frame.length);
-              if (frame === "\n") {
+              if (frame === '{"type":"heartbeat"}\n') {
                 heartbeatFrames += 1;
               }
             }
@@ -307,23 +349,53 @@ export const createInternalFragmentOutboxRoutes = () =>
             });
           });
 
-          const observer = registry.outboxObservationHub.registerOutboxObserver({
-            observerId: streamId,
-            afterVersionstamp,
-            limit: limitResult.limit,
-            writeFrame: writeOutboxStreamFrame,
-            recordPoll: () => {
-              pollCount += 1;
-            },
-            recordEntryRead: () => {
-              entriesRead += 1;
-            },
-            recordError: () => {
-              errorCount += 1;
-            },
-          });
-
+          const startedFrame: OutboxStreamFrame = {
+            type: "started",
+            protocolVersion: 1,
+            adapterIdentity,
+            catchUpTargetVersionstamp,
+            catchUpPageSize: limitResult.limit,
+          };
+          let observer:
+            | ReturnType<typeof registry.outboxObservationHub.registerOutboxObserver>
+            | undefined;
+          let streamLeaseTimeout: ReturnType<typeof setTimeout> | undefined;
           try {
+            if (!(await writeOutboxStreamFrame(`${JSON.stringify(startedFrame)}\n`))) {
+              return;
+            }
+
+            observer = registry.outboxObservationHub.registerOutboxObserver({
+              observerId: streamId,
+              catchUpTargetVersionstamp,
+              afterVersionstamp,
+              limit: limitResult.limit,
+              writeFrame: writeOutboxStreamFrame,
+              recordPoll: () => {
+                pollCount += 1;
+              },
+              recordEntryRead: () => {
+                entriesRead += 1;
+              },
+              recordError: () => {
+                errorCount += 1;
+              },
+            });
+
+            const activeObserver = observer;
+            const waitForStreamLeaseExpiry = new Promise<true>((resolve, reject) => {
+              streamLeaseTimeout = setTimeout(
+                () => {
+                  completionReason = "expired";
+                  void activeObserver.rotate(handlerTx).then(() => {
+                    resolve(true);
+                  }, reject);
+                },
+                Math.max(0, OUTBOX_STREAM_MAX_LIFETIME_MS - (Date.now() - startedAt)),
+              );
+              streamLeaseTimeout.unref?.();
+            });
+            void waitForStreamLeaseExpiry.catch(() => {});
             await observer.refreshNow(handlerTx);
             schedulerLease = observer.runWhile({
               signal: schedulerAbortController.signal,
@@ -332,13 +404,6 @@ export const createInternalFragmentOutboxRoutes = () =>
             // Some HTTP proxies continue draining a response after their client disconnects, so
             // cancellation alone cannot prove ownership. A finite lease bounds each observer's
             // scheduler ownership without stopping other connected observers.
-            let streamLeaseTimeout: ReturnType<typeof setTimeout> | undefined;
-            const waitForStreamLeaseExpiry = new Promise<true>((resolve) => {
-              streamLeaseTimeout = setTimeout(() => {
-                resolve(true);
-              }, OUTBOX_STREAM_MAX_LIFETIME_MS);
-              streamLeaseTimeout.unref?.();
-            });
             const streamExpired = await Promise.race([
               waitForAbort.then(() => {
                 return false;
@@ -348,16 +413,16 @@ export const createInternalFragmentOutboxRoutes = () =>
             clearTimeout(streamLeaseTimeout);
             if (streamExpired) {
               completionReason = "expired";
-              await stream.abort();
             }
           } catch (error) {
             // Shared pump failures are counted before refreshNow rethrows them.
-            if (observer.getFailure() !== error) {
+            if (observer?.getFailure() !== error) {
               errorCount += 1;
             }
             throw error;
           } finally {
-            observer.close();
+            clearTimeout(streamLeaseTimeout);
+            observer?.close();
             schedulerAbortController.abort();
             await schedulerLease;
             console.info("fragno.outbox_stream.completed", {

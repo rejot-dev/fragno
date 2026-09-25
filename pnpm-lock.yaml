@@ -423,6 +423,9 @@ importers:
 
   apps/backoffice-cli:
     dependencies:
+      '@fragno-dev/db':
+        specifier: workspace:*
+        version: link:../../packages/fragno-db
       '@rejot-dev/backoffice-local':
         specifier: workspace:*
         version: link:../../packages/backoffice-local

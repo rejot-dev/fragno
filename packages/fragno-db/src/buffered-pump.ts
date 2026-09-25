@@ -256,6 +256,8 @@ export class BufferedDatabasePump<
   readonly #intervalMs: number;
   readonly #schedulerLeases: BufferedPumpSchedulerLease[] = [];
   #schedulerLeader: BufferedPumpSchedulerLease | undefined;
+  #schedulerRefreshRequested = false;
+  #wakeScheduler: (() => void) | undefined;
 
   constructor(options: {
     flush: (
@@ -351,6 +353,15 @@ export class BufferedDatabasePump<
     await run;
   }
 
+  /** Coalesces a prompt scheduler pass, yielding to the event loop without acquiring a lease. */
+  requestSchedulerRefresh(): void {
+    if (this.#schedulerRefreshRequested) {
+      return;
+    }
+    this.#schedulerRefreshRequested = true;
+    this.#wakeScheduler?.();
+  }
+
   /** Wait for a writable flush that starts after this call, excluding an in-progress flush. */
   async waitForNextWritableFlush(): Promise<void> {
     const minimumSequence = this.#writableFlushStartedSequence + 1;
@@ -390,6 +401,7 @@ export class BufferedDatabasePump<
             this.#yieldSchedulerLeadership(lease);
             break;
           }
+          this.#schedulerRefreshRequested = false;
           try {
             if (lease.kind === "writer") {
               await this.flushNow(lease.handlerTx);
@@ -679,15 +691,28 @@ export class BufferedDatabasePump<
       const finish = (shouldFlush: boolean) => {
         clearTimeout(timer);
         signal.removeEventListener("abort", abort);
+        this.#wakeScheduler = undefined;
         resolve(shouldFlush);
       };
       const abort = () => {
         finish(false);
       };
-      const timer = setTimeout(() => {
-        finish(!signal.aborted);
-      }, this.#intervalMs);
+      let timer = setTimeout(
+        () => {
+          finish(!signal.aborted);
+        },
+        this.#schedulerRefreshRequested ? 0 : this.#intervalMs,
+      );
       timer.unref?.();
+      this.#wakeScheduler = () => {
+        clearTimeout(timer);
+        // Even backlog drains yield between bounded passes so I/O, cancellation, and lease
+        // handoff can run; a chain of already-resolved promises would starve these events.
+        timer = setTimeout(() => {
+          finish(!signal.aborted);
+        }, 0);
+        timer.unref?.();
+      };
       signal.addEventListener("abort", abort, { once: true });
     });
   }

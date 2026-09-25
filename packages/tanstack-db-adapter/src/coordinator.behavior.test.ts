@@ -1,5 +1,6 @@
 import { assert, describe, expect, it } from "vitest";
 
+import { parseOutboxStreamFrame } from "@fragno-dev/db/outbox-stream";
 import {
   column,
   FragnoReference,
@@ -685,7 +686,7 @@ describe("coordinator persistence and reload", () => {
       await scenario.sync();
       await scenario.reload();
       expect(sortedUsers(scenario)).toEqual([ada]);
-      expect(["caught-up", "live"]).toContain(scenario.coordinator.state);
+      assert(scenario.coordinator.state === "live");
     });
   });
 
@@ -699,6 +700,30 @@ describe("coordinator persistence and reload", () => {
         return async (input, init) => {
           const response = await serverFetch(input, init);
           const url = new URL(input instanceof Request ? input.url : input.toString());
+          if (url.pathname.endsWith("/_internal/outbox/stream") && response.body) {
+            const generation = identityGeneration;
+            const decoder = new TextDecoder();
+            let buffer = "";
+            return new Response(
+              response.body.pipeThrough(
+                new TransformStream<Uint8Array, Uint8Array>({
+                  transform(chunk, controller) {
+                    buffer += decoder.decode(chunk, { stream: true });
+                    let newline: number;
+                    while ((newline = buffer.indexOf("\n")) !== -1) {
+                      const frame = JSON.parse(buffer.slice(0, newline));
+                      buffer = buffer.slice(newline + 1);
+                      if (frame.type === "started") {
+                        frame.adapterIdentity = `${frame.adapterIdentity}:${generation}`;
+                      }
+                      controller.enqueue(new TextEncoder().encode(`${JSON.stringify(frame)}\n`));
+                    }
+                  },
+                }),
+              ),
+              { status: response.status, headers: response.headers },
+            );
+          }
           if (!url.pathname.endsWith("/_internal")) {
             return response;
           }
@@ -801,35 +826,279 @@ describe("coordinator lifecycle", () => {
   });
 });
 
+function rewriteOutboxResponse(
+  response: Response,
+  mode: "rotate" | "change-identity" | "invalid-payload" | "invalid-mutation",
+): Response {
+  assert(response.body);
+  const decoder = new TextDecoder();
+  let buffer = "";
+  return new Response(
+    response.body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          buffer += decoder.decode(chunk, { stream: true });
+          let newline: number;
+          while ((newline = buffer.indexOf("\n")) !== -1) {
+            const frame = parseOutboxStreamFrame(JSON.parse(buffer.slice(0, newline)));
+            buffer = buffer.slice(newline + 1);
+            if (mode === "change-identity" && frame.type === "started") {
+              frame.adapterIdentity = "different-source";
+            }
+            if (frame.type === "entry" && mode === "invalid-payload") {
+              frame.entry.payload = { json: { version: 999, operations: [] } };
+            }
+            if (frame.type === "entry" && mode === "invalid-mutation") {
+              frame.entry.payload = {
+                json: {
+                  version: 2,
+                  operations: [
+                    {
+                      schema: appSchema.name,
+                      namespace: "port_app",
+                      table: "users",
+                      op: "create",
+                      externalId: "invalid-user",
+                      values: null,
+                    },
+                  ],
+                },
+              };
+            }
+            controller.enqueue(new TextEncoder().encode(`${JSON.stringify(frame)}\n`));
+            if (mode === "rotate" && frame.type === "caught-up") {
+              controller.enqueue(
+                new TextEncoder().encode('{"type":"rotate","reason":"lease-expired"}\n'),
+              );
+              controller.terminate();
+              return;
+            }
+          }
+        },
+      }),
+    ),
+    { status: response.status, headers: response.headers },
+  );
+}
+
 describe("coordinator stream recovery", () => {
-  it("catches up mutations committed while the stream reconnects", async () => {
+  it.each([400, 401, 403, 404, 409, 429, 500, 503])(
+    "fails preload without retrying HTTP %s",
+    async (status) => {
+      let streamRequests = 0;
+      await withFromScratchTestScenario({
+        name: `fatal-http-${status}`,
+        schema: appSchema,
+        table: "users",
+        fetch(serverFetch) {
+          return async (input, init) => {
+            const url = new URL(input instanceof Request ? input.url : input.toString());
+            if (url.pathname.endsWith("/_internal/outbox/stream")) {
+              streamRequests++;
+              return new Response(null, { status });
+            }
+            return serverFetch(input, init);
+          };
+        },
+        async run(scenario) {
+          await expect(scenario.coordinator.preload()).rejects.toThrow(String(status));
+          assert(scenario.coordinator.state === "failed");
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          assert(streamRequests === 1);
+        },
+      });
+    },
+  );
+
+  it.each([
+    new Error("Fetch wrapper failed"),
+    new DOMException("Unowned cancellation", "AbortError"),
+  ])("fails preload for an unclassified fetch error: %s", async (failure) => {
     let streamRequests = 0;
     await withFromScratchTestScenario({
-      name: "reconnect-catch-up",
+      name: "fatal-fetch-error",
       schema: appSchema,
       table: "users",
       fetch(serverFetch) {
         return async (input, init) => {
           const url = new URL(input instanceof Request ? input.url : input.toString());
-          if (url.pathname.endsWith("/_internal/outbox/stream") && streamRequests++ === 0) {
-            return new Response(
-              new ReadableStream({
-                start(controller) {
-                  controller.error(new Error("interrupted stream"));
-                },
-              }),
-            );
+          if (url.pathname.endsWith("/_internal/outbox/stream")) {
+            streamRequests++;
+            throw failure;
           }
           return serverFetch(input, init);
         };
       },
       async run(scenario) {
-        await scenario.coordinator.preload();
-        await waitFor(() => scenario.coordinator.state === "retrying");
+        await expect(scenario.coordinator.preload()).rejects.toBe(failure);
+        assert(scenario.coordinator.state === "failed");
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        assert(streamRequests === 1);
+      },
+    });
+  });
+
+  it.each(["invalid-payload", "invalid-mutation"] as const)(
+    "fails preload without replaying a deterministic %s failure",
+    async (mode) => {
+      let streamRequests = 0;
+      await withFromScratchTestScenario({
+        name: `fatal-${mode}`,
+        schema: appSchema,
+        table: "users",
+        fetch(serverFetch) {
+          return async (input, init) => {
+            const response = await serverFetch(input, init);
+            const url = new URL(input instanceof Request ? input.url : input.toString());
+            if (!url.pathname.endsWith("/_internal/outbox/stream")) {
+              return response;
+            }
+            streamRequests++;
+            return rewriteOutboxResponse(response, mode);
+          };
+        },
+        async run(scenario) {
+          await createUsers(scenario, [ada]);
+          await expect(scenario.coordinator.preload()).rejects.toThrow(
+            mode === "invalid-payload"
+              ? "Unsupported Fragno outbox payload version"
+              : "Cannot convert undefined or null to object",
+          );
+          assert(scenario.coordinator.state === "failed");
+          assert(scenario.coordinator.internal.getCheckpoint() === undefined);
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          assert(streamRequests === 1);
+        },
+      });
+    },
+  );
+
+  it.each([false, true])(
+    "rotates without retry backoff and verifies replacement identity (changed=%s)",
+    async (changedIdentity) => {
+      let streamRequests = 0;
+      const reconnect = Promise.withResolvers<void>();
+      const requested = Promise.withResolvers<void>();
+      await withFromScratchTestScenario({
+        name: `planned-rotation-${changedIdentity}`,
+        schema: appSchema,
+        table: "users",
+        fetch(serverFetch) {
+          return async (input, init) => {
+            const url = new URL(input instanceof Request ? input.url : input.toString());
+            assert(!url.pathname.endsWith("/_internal/outbox"));
+            if (!url.pathname.endsWith("/_internal/outbox/stream")) {
+              return serverFetch(input, init);
+            }
+            streamRequests++;
+            if (streamRequests === 1) {
+              return rewriteOutboxResponse(await serverFetch(input, init), "rotate");
+            }
+            requested.resolve();
+            await reconnect.promise;
+            const response = await serverFetch(input, init);
+            return changedIdentity ? rewriteOutboxResponse(response, "change-identity") : response;
+          };
+        },
+        async run(scenario) {
+          const states: string[] = [];
+          const subscription = scenario.coordinator.internal.collection.subscribeChanges(() => {
+            states.push(scenario.coordinator.state);
+          });
+          try {
+            await scenario.coordinator.preload();
+            await requested.promise;
+            assert(scenario.coordinator.state === "replaying");
+            await createUsers(scenario, [ada]);
+            reconnect.resolve();
+            if (changedIdentity) {
+              await waitFor(() => scenario.coordinator.state === "failed");
+              assert(!scenario.collection.has(ada.id));
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            } else {
+              await waitFor(
+                () => scenario.coordinator.state === "live" && scenario.collection.has(ada.id),
+              );
+            }
+            assert(streamRequests === 2);
+            expect(states).toContain("rotating");
+            expect(states).not.toContain("retrying");
+          } finally {
+            reconnect.resolve();
+            subscription.unsubscribe();
+          }
+        },
+      });
+    },
+  );
+
+  it.each(["read-error", "eof"] as const)(
+    "catches up mutations committed while the stream reconnects after %s",
+    async (interruption) => {
+      let streamRequests = 0;
+      await withFromScratchTestScenario({
+        name: "reconnect-catch-up",
+        schema: appSchema,
+        table: "users",
+        fetch(serverFetch) {
+          return async (input, init) => {
+            const url = new URL(input instanceof Request ? input.url : input.toString());
+            if (url.pathname.endsWith("/_internal/outbox/stream") && streamRequests++ === 0) {
+              return new Response(
+                new ReadableStream({
+                  start(controller) {
+                    if (interruption === "eof") {
+                      controller.close();
+                    } else {
+                      controller.error(new TypeError("terminated"));
+                    }
+                  },
+                }),
+              );
+            }
+            return serverFetch(input, init);
+          };
+        },
+        async run(scenario) {
+          const preload = scenario.coordinator.preload();
+          await waitFor(() => scenario.coordinator.state === "retrying");
+          await createUsers(scenario, [ada]);
+          await preload;
+          await waitFor(
+            () => scenario.coordinator.state === "live" && scenario.collection.has(ada.id),
+          );
+        },
+      });
+    },
+  );
+
+  it("stops on an HTTP failure after readiness without discarding ready collections", async () => {
+    let streamRequests = 0;
+    await withFromScratchTestScenario({
+      name: "fatal-after-ready",
+      schema: appSchema,
+      table: "users",
+      fetch(serverFetch) {
+        return async (input, init) => {
+          const url = new URL(input instanceof Request ? input.url : input.toString());
+          if (!url.pathname.endsWith("/_internal/outbox/stream")) {
+            return serverFetch(input, init);
+          }
+          streamRequests++;
+          if (streamRequests === 1) {
+            return rewriteOutboxResponse(await serverFetch(input, init), "rotate");
+          }
+          return new Response(null, { status: 401 });
+        };
+      },
+      async run(scenario) {
         await createUsers(scenario, [ada]);
-        await waitFor(
-          () => scenario.coordinator.state === "live" && scenario.collection.has(ada.id),
-        );
+        await scenario.coordinator.preload();
+        await waitFor(() => scenario.coordinator.state === "failed");
+        assert(scenario.collection.status === "ready");
+        expect(sortedUsers(scenario)).toEqual([ada]);
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        assert(streamRequests === 2);
       },
     });
   });
@@ -850,12 +1119,12 @@ describe("coordinator stream recovery", () => {
             return new Response(
               new ReadableStream({
                 start(controller) {
-                  controller.error(new Error("interrupted stream"));
+                  controller.error(new TypeError("terminated"));
                 },
               }),
             );
           }
-          if (gateReplay && url.pathname.endsWith("/_internal/outbox")) {
+          if (gateReplay && url.pathname.endsWith("/_internal/outbox/stream")) {
             await replayGate.promise;
             gateReplay = false;
           }
@@ -863,11 +1132,12 @@ describe("coordinator stream recovery", () => {
         };
       },
       async run(scenario) {
-        await scenario.coordinator.preload();
+        const preload = scenario.coordinator.preload();
         await waitFor(() => scenario.coordinator.state === "replaying");
         await createUsers(scenario, [ada]);
         assert(scenario.coordinator.state === "replaying");
         replayGate.resolve();
+        await preload;
         await waitFor(
           () => scenario.coordinator.state === "live" && scenario.collection.has(ada.id),
         );
@@ -887,7 +1157,7 @@ describe("coordinator stream recovery", () => {
           if (url.pathname.endsWith("/_internal/outbox/stream")) {
             streamRequestTimes.push(performance.now());
             if (streamRequestTimes.length <= 3) {
-              throw new Error("stream unavailable");
+              throw new TypeError("fetch failed");
             }
           }
           return serverFetch(input, init);
@@ -913,7 +1183,7 @@ describe("coordinator stream recovery", () => {
         return async (input, init) => {
           const url = new URL(input instanceof Request ? input.url : input.toString());
           if (url.pathname.endsWith("/_internal/outbox/stream") && streamRequests++ === 0) {
-            throw new Error("first stream unavailable");
+            throw new TypeError("fetch failed");
           }
           return serverFetch(input, init);
         };

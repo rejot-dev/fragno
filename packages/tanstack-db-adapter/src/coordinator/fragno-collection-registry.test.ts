@@ -11,8 +11,8 @@ import { FragnoOutboxSynchronizer } from "./fragno-outbox-synchronizer";
 
 function createOutboxSynchronizer(): FragnoOutboxSynchronizer {
   return new FragnoOutboxSynchronizer({
+    adapterIdentity: "test-adapter",
     fetcher: {
-      listOutbox: async () => [],
       openOutboxStream: async () => new ReadableStream(),
     },
     checkpointStore: {

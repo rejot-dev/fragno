@@ -27,9 +27,10 @@ const workflowInstances = coordinator.collection(workflowsSchema, "workflow_inst
 await coordinator.preload();
 ```
 
-Collections can only be registered while the coordinator is `"idle"`. `preload()` performs finite
-catch-up, waits for accepted persistence writes to become durable, marks every collection ready, and
-opens one shared live stream from the exact database checkpoint.
+Collections can only be registered while the coordinator is `"idle"`. `preload()` opens one shared
+stream, applies finite catch-up, and marks collections ready at its explicit `caught-up` frame. Live
+entries continue on the same response. Readiness does not wait for disk persistence; use
+`flushPersistence()` when you need all accepted writes to be durable.
 
 Clean up the database-level resource when it is no longer used:
 
@@ -60,13 +61,24 @@ const coordinator = await createFragnoOutboxCoordinator({
 The coordinator derives these routes from `baseUrl`:
 
 - `GET /_internal`
-- `GET /_internal/outbox`
-- `GET /_internal/outbox/stream`
+- `GET /_internal/outbox/stream?protocol=1`
 
-Catch-up requests use aligned 50-entry pages. The coordinator decodes each entry once, routes its
-operations to registered physical targets, and opens the stream from the resulting exact checkpoint.
-Unexpected stream closure transitions through `"retrying"` and `"replaying"`, performs finite
-replay, and reconnects with exponential backoff.
+The adapter never requests paginated `/outbox` data. Each stream replays from an aligned checkpoint
+boundary, including the exact persisted entry to verify its UOW identity. Catch-up is applied in
+bounded 50-entry batches. The response's `started` frame fixes the target; only `caught-up` makes
+collections ready. Heartbeats are transport liveness, not readiness.
+
+A final `rotate` frame requests immediate reconnection without backoff. Only classified network
+failures and EOF without `rotate` transition through `"retrying"` and `"replaying"` with exponential
+backoff. Request validation, HTTP errors (including 401/404 and 5xx), malformed protocol or
+payloads, checkpoint conflicts, and application/callback errors transition to `"failed"` and reject
+pending `preload()`. Only coordinator-owned disposal silently stops the stream loop; an unrelated
+`AbortError` is a failure.
+
+An interrupted partial catch-up batch is discarded and replayed; a planned rotation commits its
+partial batch without marking it ready. Collections already ready remain usable during reconnection.
+Custom Fetch implementations must preserve native Fetch network-error semantics; response parsing
+and collection application are deliberately outside the network-error classification boundary.
 
 To retrieve source metadata without opening browser persistence, use the same typed description
 request:
@@ -100,8 +112,8 @@ Lifecycle states are:
   "idle" |
   "registering" |
   "catching-up" |
-  "caught-up" |
   "live" |
+  "rotating" |
   "retrying" |
   "replaying" |
   "failed" |
@@ -122,10 +134,10 @@ type FragnoOutboxCheckpoint = {
 };
 ```
 
-During finite catch-up, each affected collection applies one page in one TanStack transaction. Row
-changes and that collection's applied-entry checkpoint commit together. The shared database
-checkpoint advances only after every affected collection accepts the page, and ordered persistence
-prevents it from overtaking an earlier failed table write.
+During finite catch-up, each affected collection applies one bounded batch in one TanStack
+transaction. Row changes and that collection's applied-entry checkpoint commit together. The shared
+database checkpoint advances only after every affected collection accepts the page, and ordered
+persistence prevents it from overtaking an earlier failed table write.
 
 Separate TanStack collection commits remain independently observable. The coordinator provides
 ordered, replay-safe convergence, not atomic cross-collection UI visibility.
@@ -163,9 +175,12 @@ const emissions = coordinator.collection(workflowsSchema, "workflow_step_emissio
 Do not use `"full"` for tables that receive updates. Their outbox values are patches rather than
 complete rows.
 
-`skipMissingTruncateDeletes` scans persisted rows before finite catch-up and skips truncate-derived
-deletes for keys that are already absent. Ordinary deletes and live truncate delivery remain
-unchanged.
+`skipMissingTruncateDeletes` scans persisted rows once per collection synchronization registration
+and skips catch-up truncate-derived deletes for keys that are already absent. The key index is
+maintained by both catch-up and live changes, and cleared by explicit truncation. Stream rotations
+and reconnects reuse it without rescanning; a replacement registration initializes a fresh index.
+Ordinary deletes and live truncate delivery remain unchanged. Skipped deletes still advance the
+collection checkpoint.
 
 ## Catch-up progress
 

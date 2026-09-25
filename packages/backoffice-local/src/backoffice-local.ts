@@ -235,7 +235,7 @@ function backofficeAutomationsStreamPath(
   afterVersionstamp?: string,
 ): string {
   const path = `/api/automations-scoped/${scope.kind}/${encodeURIComponent(backofficeRuntimeScopeRouteId(scope))}/_internal/outbox/stream`;
-  const query = new URLSearchParams({ limit: String(FRAGNO_OUTBOX_PAGE_SIZE) });
+  const query = new URLSearchParams({ protocol: "1", limit: String(FRAGNO_OUTBOX_PAGE_SIZE) });
   if (afterVersionstamp) {
     query.set("afterVersionstamp", afterVersionstamp);
   }
@@ -1006,7 +1006,7 @@ export async function fetchBackofficeSystemPrompt(options: {
   return await response.text();
 }
 
-/** Opens the authenticated NDJSON mutation stream for one scoped Automations runtime. */
+/** Opens the authenticated protocol-1 framed NDJSON stream for one scoped Automations runtime. */
 export async function openBackofficeAutomationsStream(options: {
   baseUrl: string;
   scope: BackofficeScope;

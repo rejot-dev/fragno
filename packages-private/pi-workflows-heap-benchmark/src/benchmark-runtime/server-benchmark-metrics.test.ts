@@ -58,6 +58,7 @@ const outbox: OutboxBenchmarkMetrics = {
   pageSize: 50,
   entriesPerSecond: 833.33,
   checksum: 102_000,
+  controlFramesConsumed: 25,
   slowestClientDurationMs: 11_900,
   laggingEntriesConsumed: 61,
   laggingEntriesConsumedByClient: [19, 42],
@@ -108,6 +109,7 @@ describe("server benchmark metrics", () => {
       laggingEntriesConsumed: undefined,
       laggingEntriesConsumedByClient: undefined,
       outboxDatabaseReadCount: undefined,
+      controlFramesConsumed: undefined,
     };
 
     expect(parseServerBenchmarkMetrics(JSON.parse(JSON.stringify(legacy)))).toMatchObject({
@@ -119,8 +121,18 @@ describe("server benchmark metrics", () => {
       laggingEntriesConsumed: 0,
       laggingEntriesConsumedByClient: [],
       outboxDatabaseReadCount: null,
+      controlFramesConsumed: 0,
     });
   });
+
+  it.each([null, undefined, -1, 1.5])(
+    "rejects explicit invalid control-frame counts %s",
+    (controlFramesConsumed) => {
+      expect(() => parseServerBenchmarkMetrics({ ...outbox, controlFramesConsumed })).toThrow(
+        "invalid workload fields",
+      );
+    },
+  );
 
   it("rejects explicit nulls for legacy-compatible outbox metrics fields", () => {
     expect(() => parseServerBenchmarkMetrics({ ...outbox, clientCount: null })).toThrow(

@@ -36,6 +36,7 @@
     "test:watch": "vitest --watch"
   },
   "dependencies": {
+    "@fragno-dev/db": "workspace:*",
     "@rejot-dev/backoffice-local": "workspace:*"
   },
   "devDependencies": {

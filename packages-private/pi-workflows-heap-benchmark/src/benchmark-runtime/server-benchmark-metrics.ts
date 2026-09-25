@@ -53,6 +53,7 @@ export type OutboxBenchmarkMetrics = ServerBenchmarkBaseMetrics & {
   pageSize: number;
   entriesPerSecond: number;
   checksum: number;
+  controlFramesConsumed: number;
   slowestClientDurationMs: number;
   laggingEntriesConsumed: number;
   laggingEntriesConsumedByClient: number[];
@@ -182,6 +183,9 @@ export function parseServerBenchmarkMetrics(input: unknown): ServerBenchmarkMetr
     };
   }
 
+  const controlFramesConsumed = Object.hasOwn(input, "controlFramesConsumed")
+    ? input["controlFramesConsumed"]
+    : 0;
   const scenario = Object.hasOwn(input, "scenario") ? input["scenario"] : "backlog";
   const historyEntryCount = Object.hasOwn(input, "historyEntryCount")
     ? input["historyEntryCount"]
@@ -218,6 +222,7 @@ export function parseServerBenchmarkMetrics(input: unknown): ServerBenchmarkMetr
     !isNonNegativeInteger(input["pageSize"]) ||
     !isNonNegativeNumber(input["entriesPerSecond"]) ||
     !isNonNegativeInteger(input["checksum"]) ||
+    !isNonNegativeInteger(controlFramesConsumed) ||
     !isNonNegativeNumber(slowestClientDurationMs) ||
     !isNonNegativeInteger(laggingEntriesConsumed) ||
     !isNonNegativeIntegerArray(laggingEntriesConsumedByClient) ||
@@ -242,6 +247,7 @@ export function parseServerBenchmarkMetrics(input: unknown): ServerBenchmarkMetr
     pageSize: input["pageSize"],
     entriesPerSecond: input["entriesPerSecond"],
     checksum: input["checksum"],
+    controlFramesConsumed,
     slowestClientDurationMs,
     laggingEntriesConsumed,
     laggingEntriesConsumedByClient,

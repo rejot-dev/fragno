@@ -417,6 +417,54 @@ describe("BufferedDatabasePump", () => {
     expect(delivered).toEqual(["delivered"]);
   });
 
+  test("coalesces prompt refreshes without starting a lease or skipping the event-loop yield", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    let reads = 0;
+    const pump = new BufferedDatabasePump({
+      intervalMs: 300,
+      async flush() {
+        reads += 1;
+        return {};
+      },
+    });
+    const abort = new AbortController();
+    let lease: Promise<void> | undefined;
+    try {
+      pump.requestSchedulerRefresh();
+      pump.requestSchedulerRefresh();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(reads).toBe(0);
+      assert(pump.activeSchedulerLoopCount() === 0);
+      lease = pump.runWhile({ kind: "observer", signal: abort.signal, handlerTx });
+      await nextMicrotask();
+      expect(reads).toBe(0);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(reads).toBe(1);
+      await vi.advanceTimersByTimeAsync(100);
+      pump.requestSchedulerRefresh();
+      pump.requestSchedulerRefresh();
+      await nextMicrotask();
+      expect(reads).toBe(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(reads).toBe(2);
+      await vi.advanceTimersByTimeAsync(299);
+      expect(reads).toBe(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(reads).toBe(3);
+      pump.requestSchedulerRefresh();
+      abort.abort();
+      await lease;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(reads).toBe(3);
+      assert(pump.activeSchedulerLoopCount() === 0);
+      assert(vi.getTimerCount() === 0);
+    } finally {
+      abort.abort();
+      await lease;
+      vi.useRealTimers();
+    }
+  });
+
   test("an actor-owned scheduler lease stops polling after its signal aborts", async () => {
     let flushCount = 0;
     const pump = new BufferedDatabasePump({

@@ -1,3 +1,5 @@
+import { parseOutboxStreamFrame } from "@fragno-dev/db/outbox-stream";
+
 import type {
   PiWorkflowBenchmarkClientConfig,
   PiWorkflowBenchmarkClientResult,
@@ -64,6 +66,9 @@ function createOutboxUrl(
   afterVersionstamp: string | null,
 ): URL {
   const url = new URL(`${config.piBaseUrl}/_internal/${route}`);
+  if (route === "outbox/stream") {
+    url.searchParams.set("protocol", "1");
+  }
   if (afterVersionstamp) {
     url.searchParams.set("afterVersionstamp", afterVersionstamp);
   }
@@ -182,10 +187,14 @@ function startStreamingWorkflowOutbox(
       activeReader = reader;
       const decoder = new TextDecoder();
       let buffer = "";
+      let rotated = false;
       try {
         while (!abortController.signal.aborted) {
           const { done, value } = await reader.read();
           if (done) {
+            if (!abortController.signal.aborted && (!rotated || buffer.length > 0)) {
+              throw new Error("Pi workflow outbox stream closed unexpectedly.");
+            }
             break;
           }
           if (!(value instanceof Uint8Array)) {
@@ -196,9 +205,12 @@ function startStreamingWorkflowOutbox(
           while (newlineIndex !== -1) {
             const line = buffer.slice(0, newlineIndex);
             buffer = buffer.slice(newlineIndex + 1);
-            if (/\S/u.test(line)) {
-              afterVersionstamp = readOutboxVersionstamp(JSON.parse(line));
+            const frame = parseOutboxStreamFrame(JSON.parse(line));
+            if (frame.type === "entry") {
+              afterVersionstamp = frame.entry.versionstamp;
               versionstamps.push(afterVersionstamp);
+            } else if (frame.type === "rotate") {
+              rotated = true;
             }
             newlineIndex = buffer.indexOf("\n");
           }

@@ -22,6 +22,7 @@ import {
   uploadBackofficeWorkspaceFile,
 } from "@rejot-dev/backoffice-local";
 
+import { consumeAutomationOutboxStream } from "./automation-outbox-stream.js";
 import { writeBackofficeSystemPrompt } from "./system-prompt-output.js";
 
 const configuredBaseUrl = process.env["BACKOFFICE_URL"]?.replace(/\/$/, "") ?? null;
@@ -259,62 +260,6 @@ async function writeAutomationStreamLine(line: string): Promise<void> {
   }
 }
 
-async function consumeAutomationStream(
-  stream: ReadableStream<Uint8Array>,
-  signal: AbortSignal,
-  afterVersionstamp: string | undefined,
-): Promise<string | undefined> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let completed = false;
-  const cancelReader = () => {
-    void reader.cancel(signal.reason).catch(() => {});
-  };
-
-  if (signal.aborted) {
-    cancelReader();
-  } else {
-    signal.addEventListener("abort", cancelReader, { once: true });
-  }
-
-  async function consumeCompleteLines(final: boolean): Promise<void> {
-    const lines = buffer.split("\n");
-    buffer = final ? "" : (lines.pop() ?? "");
-
-    for (const line of lines) {
-      if (!line.trim()) {
-        continue;
-      }
-      const entry = JSON.parse(line) as { versionstamp: string };
-      await writeAutomationStreamLine(line);
-      afterVersionstamp = entry.versionstamp;
-    }
-  }
-
-  try {
-    while (!signal.aborted) {
-      const { done, value } = await reader.read();
-      if (done) {
-        completed = true;
-        buffer += decoder.decode();
-        await consumeCompleteLines(true);
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-      await consumeCompleteLines(false);
-    }
-    return afterVersionstamp;
-  } finally {
-    signal.removeEventListener("abort", cancelReader);
-    if (!completed) {
-      await reader.cancel(signal.reason).catch(() => {});
-    }
-    reader.releaseLock();
-  }
-}
-
 async function waitForAutomationStreamReconnect(signal: AbortSignal): Promise<void> {
   if (signal.aborted) {
     return;
@@ -359,11 +304,11 @@ async function listenToAutomations(args: string[]): Promise<void> {
           signal: abortController.signal,
         });
         hasOpenedStream = true;
-        afterVersionstamp = await consumeAutomationStream(
-          stream,
-          abortController.signal,
-          afterVersionstamp,
-        );
+        await consumeAutomationOutboxStream(stream, abortController.signal, async (entry) => {
+          await writeAutomationStreamLine(JSON.stringify(entry));
+          afterVersionstamp = entry.versionstamp;
+        });
+        continue;
       } catch (error) {
         if (abortController.signal.aborted) {
           return;

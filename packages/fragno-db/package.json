@@ -25,6 +25,10 @@
       "types": "./dist/outbox/outbox.d.ts",
       "default": "./dist/outbox/outbox.js"
     },
+    "./outbox-stream": {
+      "types": "./dist/outbox/outbox-stream.d.ts",
+      "default": "./dist/outbox/outbox-stream.js"
+    },
     "./database-namespace": {
       "types": "./dist/database-namespace.d.ts",
       "default": "./dist/database-namespace.js"
