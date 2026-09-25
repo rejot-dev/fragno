@@ -4,12 +4,15 @@ import {
   type DurableHooksErrorObserver,
 } from "../../hooks/durable-hooks-processor";
 import { getDurableHooksRuntimeByToken } from "../../hooks/durable-hooks-runtime";
+import type { DurableHooksInstrumentation } from "../../hooks/hooks";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
 import { createDurableHooksDispatcher, type DurableHooksDispatcher } from "./dispatcher";
 
 export type DurableHooksProcessorOptions = {
   pollIntervalMs?: number;
   onError?: DurableHooksErrorObserver;
+  /** Overrides each fragment's durable-hook instrumentation before processing starts. */
+  instrumentation?: DurableHooksInstrumentation;
 };
 
 export type { DurableHooksDispatcher };
@@ -20,6 +23,7 @@ export function createDurableHooksProcessor(
 ): DurableHooksDispatcher {
   const processor = createDurableHooksProcessorGroup(fragments, {
     onError: options.onError,
+    instrumentation: options.instrumentation,
   });
   const dispatcher = createDurableHooksDispatcher({
     processor,
