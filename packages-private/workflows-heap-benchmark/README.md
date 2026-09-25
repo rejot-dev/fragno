@@ -45,6 +45,30 @@ pnpm --filter @fragno-private/workflows-heap-benchmark measure -- \
 Each measured case lasts approximately 3.6 seconds. It compares the allocation cost of the same 300
 new emissions and 30 flush opportunities against short and long pre-existing histories.
 
+## Isolate terminal cleanup
+
+Use the same Workerd harness to seed one terminal step scope and measure only its durable cleanup:
+
+```bash
+pnpm --filter @fragno-private/workflows-heap-benchmark measure -- \
+  --workload cleanup \
+  --mode both \
+  --histories 100,10000 \
+  --runs 3 \
+  --batch-count 1 \
+  --emissions-per-batch 1 \
+  --payload-bytes 256 \
+  --interval-ms 0 \
+  --json benchmark-results/cleanup-current.json
+```
+
+For this workload, `--histories` is the number of emissions belonging to the cleanup target. The
+harness schedules the real `onWorkflowStepEmissionsCleanup` hook and invokes one durable-hook alarm
+per HTTP request, preserving the production 100-row page boundary while allowing event-loop and
+runtime scheduling between attempts. The final-state check requires every seeded emission to be
+deleted. Heap measurements retain `queryInstrumentation: null`; collect SQL diagnostics separately
+so query timing objects do not contaminate the memory comparison.
+
 ## Fast peak-heap A/B check
 
 For a directional check of a DB or workflow change, prepare two preinstalled worktrees that differ
@@ -109,6 +133,7 @@ Use `--mode heap` while iterating on peak heap without allocation-profiler disto
 ## Options
 
 ```text
+--workload <stream|cleanup>    Measured workflow phase (default: stream)
 --mode <heap|allocation|both>  Measurement mode (default: both)
 --histories <counts>           Comma-separated historical emission counts
 --runs <count>                 Fresh Workerd processes per case (default: 1)

@@ -10,6 +10,7 @@ import WebSocket from "ws";
 
 const packageDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const defaultOptions = {
+  workload: "stream",
   mode: "both",
   histories: [100, 10_000],
   runs: 1,
@@ -45,6 +46,12 @@ function parseArguments(args) {
     index += 1;
 
     switch (argument) {
+      case "--workload":
+        if (!new Set(["stream", "cleanup"]).has(value)) {
+          throw new Error("--workload must be stream or cleanup");
+        }
+        parsed.workload = value;
+        break;
       case "--mode":
         if (!new Set(["heap", "allocation", "both"]).has(value)) {
           throw new Error("--mode must be heap, allocation, or both");
@@ -103,6 +110,7 @@ function printUsage() {
   console.log(`Usage: pnpm measure -- [options]
 
 Options:
+  --workload <stream|cleanup>    Measured workflow phase (default: stream)
   --mode <heap|allocation|both>  Measurement mode (default: both)
   --histories <counts>           Comma-separated historical emission counts
   --runs <count>                 Fresh Workerd processes per case (default: 1)
@@ -124,7 +132,8 @@ async function runMeasurements(measurementOptions) {
     for (const historicalEmissionCount of measurementOptions.histories) {
       for (let run = 1; run <= measurementOptions.runs; run += 1) {
         console.error(
-          `Running ${mode} measurement: history=${historicalEmissionCount}, run=${run}/${measurementOptions.runs}`,
+          `Running ${measurementOptions.workload} ${mode} measurement: ` +
+            `history=${historicalEmissionCount}, run=${run}/${measurementOptions.runs}`,
         );
         results.push(
           await runOneMeasurement({
@@ -142,6 +151,7 @@ async function runMeasurements(measurementOptions) {
     generatedAt: new Date().toISOString(),
     wranglerVersion: await readWranglerVersion(),
     options: {
+      workload: measurementOptions.workload,
       mode: measurementOptions.mode,
       histories: measurementOptions.histories,
       runs: measurementOptions.runs,
@@ -170,6 +180,7 @@ async function runOneMeasurement(optionsForRun) {
     await fetchJson(`${baseUrl}/prepare?benchmarkId=${encodeURIComponent(benchmarkId)}`, {
       method: "POST",
       body: JSON.stringify({
+        workload: runOptions.workload,
         historicalEmissionCount: runOptions.historicalEmissionCount,
         batchCount: runOptions.batchCount,
         emissionsPerBatch: runOptions.emissionsPerBatch,
@@ -188,24 +199,18 @@ async function runOneMeasurement(optionsForRun) {
       await client.send("Runtime.discardConsoleEntries");
       await delay(250);
 
+      const run = () => runMeasuredWorkload(baseUrl, benchmarkId, runOptions);
       const measurement =
         runOptions.mode === "heap"
-          ? await measureHeap(client, async () =>
-              fetchJson(`${baseUrl}/run?benchmarkId=${encodeURIComponent(benchmarkId)}`, {
-                method: "POST",
-              }),
-            )
-          : await measureAllocation(client, async () =>
-              fetchJson(`${baseUrl}/run?benchmarkId=${encodeURIComponent(benchmarkId)}`, {
-                method: "POST",
-              }),
-            );
+          ? await measureHeap(client, run)
+          : await measureAllocation(client, run);
       const result = await fetchJson(
         `${baseUrl}/result?benchmarkId=${encodeURIComponent(benchmarkId)}`,
       );
       assertBenchmarkResult(result, runOptions);
 
       return {
+        workload: runOptions.workload,
         mode: runOptions.mode,
         historicalEmissionCount: runOptions.historicalEmissionCount,
         run: runOptions.run,
@@ -223,6 +228,23 @@ async function runOneMeasurement(optionsForRun) {
     await server.stop();
     await rm(persistenceDirectory, { recursive: true, force: true });
   }
+}
+
+async function runMeasuredWorkload(baseUrl, benchmarkId, optionsForRun) {
+  const benchmarkQuery = `benchmarkId=${encodeURIComponent(benchmarkId)}`;
+  if (optionsForRun.workload === "stream") {
+    return await fetchJson(`${baseUrl}/run?${benchmarkQuery}`, { method: "POST" });
+  }
+
+  const start = await fetchJson(`${baseUrl}/cleanup/start?${benchmarkQuery}`, { method: "POST" });
+  const cleanupBatches = start?.cleanupBatches;
+  if (!Number.isInteger(cleanupBatches) || cleanupBatches < 1) {
+    throw new Error(`Cleanup benchmark returned an invalid batch count: ${cleanupBatches}.`);
+  }
+  for (let batch = 0; batch < cleanupBatches; batch += 1) {
+    await fetchJson(`${baseUrl}/cleanup/page?${benchmarkQuery}`, { method: "POST" });
+  }
+  return start;
 }
 
 async function resolveRunPorts(optionsForRun) {
@@ -505,6 +527,12 @@ function summarizeAllocationProfile(profile) {
 function assertBenchmarkResult(result, optionsForRun) {
   const expectedEmittedCount = optionsForRun.batchCount * optionsForRun.emissionsPerBatch;
   const output = result?.status?.output;
+  if (optionsForRun.workload === "cleanup") {
+    if (result?.workload !== "cleanup" || result?.persistedEmissionCount !== 0) {
+      throw new Error(`Cleanup benchmark did not drain: ${JSON.stringify(result)}`);
+    }
+    return;
+  }
   if (result?.status?.status !== "complete") {
     throw new Error(`Benchmark result was not complete: ${JSON.stringify(result)}`);
   }
@@ -604,7 +632,7 @@ function median(values) {
 }
 
 function printReport(report) {
-  console.log("\nWorkflow heap benchmark");
+  console.log(`\nWorkflow heap benchmark (${report.options.workload})`);
   console.log(`Wrangler: ${report.wranglerVersion}`);
   for (const result of report.medians) {
     if (result.mode === "heap") {

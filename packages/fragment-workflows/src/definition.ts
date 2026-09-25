@@ -403,12 +403,14 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           )
           .mutate(({ forSchema, retrieveResult: [page] }) => {
             const workflows = forSchema(workflowsSchema);
-            for (const row of page.items) {
-              workflows.delete("workflow_step_emission", row.id, (b) => b.check().omitOutbox());
-              for (const mutation of row.$outboxMutations) {
-                workflows.outbox.deleteMutation(mutation.id);
-              }
-            }
+            workflows.deleteMany(
+              "workflow_step_emission",
+              page.items.map((row) => row.id),
+              (b) => b.check().omitOutbox(),
+            );
+            workflows.outbox.deleteMutations(
+              page.items.flatMap((row) => row.$outboxMutations.map((mutation) => mutation.id)),
+            );
 
             if (page.items.length > 0) {
               workflows.outbox.notifyTruncate("workflow_step_emission", {

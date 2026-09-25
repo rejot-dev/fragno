@@ -54,16 +54,18 @@ Two additional amplifiers were observed:
 
 ## Current status
 
-**Executive summary (September 24):** The original full-history user-emission pump and cumulative Pi
+**Executive summary (September 25):** The original full-history user-emission pump and cumulative Pi
 encoder paths are fixed, and Backoffice SQL query-metric instrumentation is disabled. Compiler
 reuse, narrow `INSERT RETURNING`, batched outbox inserts, and 100-emission durable cleanup pages are
 in the current worktree. They reduce measured cumulative allocation or bound individual cleanup
 attempts, but **no completed, comparable heap-only run of the current build establishes a lower
 natural-GC peak**. The first preview after disabling SQL instrumentation failed to finish cleanup;
-it has no valid peak result. Prioritize a completed comparable-output preview and deterministic
-short/long history checks, then verify retry-safe cleanup, shared outbox polling, and long Pi waits.
-The September 22–23 numbers below describe historical, differently instrumented dirty worktrees, not
-a single current-binary A/B.
+it has no valid peak result. A September 25 cleanup-only Workerd comparison now proves that the
+100-row hook boundary does not bound cumulative cleanup allocation or natural-GC peak across a long
+durable chain. Bounded bulk deletes now materially reduce that work, but the long-history peak still
+grows. Prioritize the remaining per-page cleanup overhead and a completed comparable-output preview,
+then verify retry-safe cleanup and long Pi waits. The September 22–23 numbers below describe
+historical, differently instrumented dirty worktrees, not a single current-binary A/B.
 
 ### Resolved
 
@@ -181,6 +183,88 @@ restart/cleanup scenario still verifies all 207 rows, truncated IDs, and outbox-
 29,106-character post-projection preview peaked at 115.36 MiB, between two 28,795–28,845-character
 logging-only peaks of 110.63 and 116.31 MiB. Other post-projection turns varied more in length; **a
 lower Backoffice natural-GC peak remains unproven**.
+
+### September 25 cleanup isolation and current allocation ranking
+
+The Workerd workflow benchmark now has a cleanup-only mode. It seeds one exact step/epoch target,
+schedules the real `onWorkflowStepEmissionsCleanup` hook, and invokes one durable-hook alarm per
+request. Three fresh-process runs compared 100 and 10,000 matching emissions with 256-byte payloads
+and production query instrumentation disabled:
+
+| Cleanup rows | Median peak delta | Median sampled allocation | Median duration |
+| -----------: | ----------------: | ------------------------: | --------------: |
+|          100 |          0.53 MiB |                  3.56 MiB |         0.333 s |
+|       10,000 |         35.58 MiB |                270.31 MiB |         5.917 s |
+
+The 100-row page bounds each hook's retrieval and truncate list, but the chain still accumulates
+short-lived mutation/query objects faster than natural GC collects them. A separate diagnostic run
+with query instrumentation enabled only for SQL counting observed 219 statements for 100 rows and
+21,702 for 10,000 rows. The long case contained 20,000 `DELETE` statements: one checked emission
+delete and one outbox-mutation delete per row. No individual statement exceeded 1 ms in that run;
+the problem is statement and object count, not one unbounded SQL statement.
+
+A one-emission streaming control isolated the remaining history-sensitive runner read. Increasing
+unrelated persisted emissions from zero to 10,000 raised median sampled allocation from 3.40 to
+12.54 MiB and median peak delta from 1.07 to 4.34 MiB. The added allocation was dominated by SQLite
+result materialization and Fragno row decoding. `runWorkflowsTick` still retrieves every
+`workflow_step_emission` for the instance, even though the live pump itself now reads only system
+controls.
+
+The current deterministic 4× recorded Pi stream produced 4,270 user emissions, cleaned them in 43
+pages, and sampled 1,099.9 MiB of server allocation with a 38.6 MiB heap rise. Excluding the
+recorded provider's benchmark-only message construction, the largest owners were outbox mutation
+serialization/insertion, outbox entry assembly, query compilation, and terminal delete compilation:
+
+- SuperJSON: 264.5 MiB exclusive;
+- Fragno DB: 211.2 MiB exclusive;
+- Kysely: 199.7 MiB exclusive;
+- outbox mutation insertion: 165.5 MiB nearest-project ownership;
+- outbox entry assembly: 146.5 MiB nearest-project ownership;
+- query-tree compilation: 75.0 MiB nearest-project ownership;
+- delete compilation: 66.5 MiB nearest-project ownership.
+
+The existing mixed outbox profile remains a separate payload-copying result: 1,712.9 MiB sampled
+allocation while delivering 250 MiB to two current clients plus two lagging clients, with a 33.4 MiB
+peak rise and no retained-heap increase after teardown. Its dominant avoidable work is raw SQLite
+row materialization followed by query-tree JSON parsing/decoding before framing; response UTF-8
+encoding is unavoidable but currently follows those extra representations. The Pi event encoder
+regression still scales linearly, with normalized allocation growth between 0.90× and 1.03×, so it
+is not the next target.
+
+The bounded bulk-delete implementation was then measured with the same three-run cleanup workload:
+
+| Cleanup rows | Peak before → after | Allocation before → after | Heap duration before → after |
+| -----------: | ------------------: | ------------------------: | ---------------------------: |
+|          100 |     0.53 → 0.00 MiB |           3.56 → 1.31 MiB |              0.333 → 0.290 s |
+|       10,000 |   35.58 → 19.80 MiB |        270.31 → 91.30 MiB |              5.917 → 1.672 s |
+
+`deleteMany` preserves per-row optimistic concurrency checks and compiles common-version rows as
+`version = ? AND id IN (...)`. The Durable Object driver advertises its 100-bind limit, so each
+100-row emission page compiles into checked chunks of 99 and one row; the 100 normalized outbox
+mutation IDs use one unchecked statement. The 10,000-row case therefore performs 300 deletion
+statements by construction instead of 20,000. The real Workerd cleanup completed, and adapter tests
+verify that a stale row rolls the entire bulk transaction back.
+
+This is a substantial improvement, but it does **not** satisfy the bounded-peak criterion: the
+10,000-row natural-GC peak still rose 19.80 MiB and sampled allocation remained 91.30 MiB. The
+remaining work is dominated by per-page retrieval, durable-hook continuation, truncate/outbox
+construction, query execution, and transaction scaffolding repeated across 100 pages.
+
+Recommended implementation order from here:
+
+1. Encode each shared outbox frame once and pass the same immutable `Uint8Array` to compatible
+   observers. `ResponseStream.writeRaw` already accepts bytes; the hub currently passes a string to
+   every observer, causing one UTF-8 allocation per response.
+2. Keep serialized outbox payloads opaque through retrieval and framing. The current stream query
+   materializes SQLite JSON, query-tree decoding parses it, and framing serializes it again. A raw
+   serialized payload path should bypass query-tree child decoding while retaining normalized
+   mutation rows for cleanup/compaction.
+3. Narrow the runner's instance-wide emission retrieval. At minimum, avoid decoding stale user
+   payloads that cannot participate in the current replay; preserve system controls and active-step
+   replay semantics.
+
+Do not start by increasing cleanup page size or forcing GC. Page size only trades hook overhead for
+larger individual transactions, while forced GC hides rather than removes the measured allocation.
 
 ### Measurement provenance and limits
 
@@ -619,10 +703,12 @@ investigations and increases peak pressure during query-heavy streams.
 
 The current worktree replaces the one-shot cleanup with 100-row durable pages and bounded truncate
 notifications. Each page performs one retrieve/mutate UOW and atomically schedules its continuation.
-The 207-row SQLite scenario and 6,000-emission Workerd run prove final-state cleanup;
-short-/long-history heap-only controls show that this implementation **raised** the peak relative to
-in-hook paging. Reassess that cost and test interruption/concurrent retries and resumed client
-projection before declaring cleanup complete.
+The 207-row SQLite scenario and 6,000-emission Workerd run prove final-state cleanup. The first
+September 25 cleanup-only comparison showed 270.31 MiB sampled allocation and a 35.58 MiB peak rise
+for 10,000 rows, including 20,000 individual `DELETE` statements. Bounded bulk deletes reduced that
+to 91.30 MiB sampled allocation, a 19.80 MiB peak rise, and 300 deletion statements by construction.
+The reduction is material, but the peak still grows with total history. Test interruption/concurrent
+retries and resumed client projection before declaring cleanup complete.
 
 Required properties:
 
@@ -639,9 +725,11 @@ Required properties:
   constraints.
 - Avoid one SQL execution or transaction whose duration grows with complete emission history.
 
-Add a scenario that runs the same terminal cleanup against short and long emission histories and
-proves that peak heap and maximum SQL execution time are bounded by cleanup batch size, not total
-history. Keep the outbox listener and console-log state controlled across both cases.
+Keep the cleanup-only short/long workload as a regression. Bounded bulk mutations now pass the
+functional regression and substantially reduce allocation, but they do not yet prove that peak heap
+is governed by page size rather than total history. Isolate and reduce the remaining per-page
+retrieval, durable-hook continuation, truncate/outbox, and transaction overhead. Keep query
+instrumentation out of authoritative memory runs and collect statement counts separately.
 
 ### P0 (primary): reduce streaming allocation and natural-GC peak
 

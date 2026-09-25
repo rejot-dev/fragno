@@ -14,8 +14,15 @@ const BENCHMARK_WORKFLOW_NAME = "workflow-step-live-pump-heap-benchmark";
 const BENCHMARK_INSTANCE_ID = "benchmark-instance";
 const BENCHMARK_START_EVENT_TYPE = "benchmark-start";
 const HISTORICAL_SEED_CHUNK_SIZE = 250;
+const CLEANUP_PAGE_SIZE = 100;
+const CLEANUP_STEP_KEY = "do:cleanup benchmark stream";
+const CLEANUP_EXECUTION_ID = "cleanup-benchmark-execution";
+const CLEANUP_EPOCH = "cleanup-benchmark-epoch";
+
+type BenchmarkWorkload = "stream" | "cleanup";
 
 type BenchmarkWorkflowParams = {
+  workload: BenchmarkWorkload;
   historicalEmissionCount: number;
   batchCount: number;
   emissionsPerBatch: number;
@@ -130,6 +137,12 @@ export class WorkflowBenchmarkObject {
       if (request.method === "POST" && url.pathname === "/run") {
         return jsonResponse(await this.#run());
       }
+      if (request.method === "POST" && url.pathname === "/cleanup/start") {
+        return jsonResponse(await this.#startCleanup());
+      }
+      if (request.method === "POST" && url.pathname === "/cleanup/page") {
+        return jsonResponse(await this.#runCleanupPage());
+      }
       if (request.method === "GET" && url.pathname === "/result") {
         return jsonResponse(await this.#result());
       }
@@ -150,6 +163,7 @@ export class WorkflowBenchmarkObject {
       fragment.services.createInstance(BENCHMARK_WORKFLOW_NAME, {
         id: BENCHMARK_INSTANCE_ID,
         params: {
+          workload: input.workload,
           historicalEmissionCount: input.historicalEmissionCount,
           batchCount: input.batchCount,
           emissionsPerBatch: input.emissionsPerBatch,
@@ -169,7 +183,10 @@ export class WorkflowBenchmarkObject {
 
     const instance = await this.#readBenchmarkInstance();
     const payload = {
-      type: "historical-benchmark-emission",
+      type:
+        input.workload === "cleanup"
+          ? "cleanup-benchmark-emission"
+          : "historical-benchmark-emission",
       payload: "h".repeat(input.payloadBytes),
     };
 
@@ -191,9 +208,11 @@ export class WorkflowBenchmarkObject {
       for (let sequence = chunkStart; sequence < chunkEnd; sequence += 1) {
         unitOfWork.create("workflow_step_emission", {
           instanceRef: instance.id,
-          stepKey: "do:historical benchmark stream",
-          executionId: "historical-benchmark-execution",
-          epoch: "historical-benchmark-epoch",
+          stepKey:
+            input.workload === "cleanup" ? CLEANUP_STEP_KEY : "do:historical benchmark stream",
+          executionId:
+            input.workload === "cleanup" ? CLEANUP_EXECUTION_ID : "historical-benchmark-execution",
+          epoch: input.workload === "cleanup" ? CLEANUP_EPOCH : "historical-benchmark-epoch",
           sequence,
           actor: "user",
           payload,
@@ -207,6 +226,7 @@ export class WorkflowBenchmarkObject {
     }
 
     return {
+      workload: input.workload,
       workflowName: BENCHMARK_WORKFLOW_NAME,
       instanceId: BENCHMARK_INSTANCE_ID,
       historicalEmissionCount: input.historicalEmissionCount,
@@ -216,6 +236,13 @@ export class WorkflowBenchmarkObject {
 
   async #run(): Promise<unknown> {
     const fragment = this.#getFragment();
+    const instance = await this.#readBenchmarkInstance();
+    const params = instance.params as BenchmarkWorkflowParams;
+
+    if (params.workload === "cleanup") {
+      throw new Error("Cleanup benchmarks must use the cleanup start and page endpoints.");
+    }
+
     await fragment.callServices(() =>
       fragment.services.sendEvent(BENCHMARK_WORKFLOW_NAME, BENCHMARK_INSTANCE_ID, {
         id: "benchmark-start-event",
@@ -232,16 +259,52 @@ export class WorkflowBenchmarkObject {
       throw new Error(`Benchmark workflow did not complete: ${status.status}`);
     }
 
-    const instance = await this.#readBenchmarkInstance();
-    const params = instance.params as BenchmarkWorkflowParams;
-    const maxAlarmPasses = Math.ceil((params.batchCount * params.emissionsPerBatch + 2) / 100) + 2;
-    for (let pass = 0; pass < maxAlarmPasses; pass += 1) {
-      if ((await this.#countBenchmarkEmissions(instance.id)) === params.historicalEmissionCount) {
-        return status;
-      }
+    const expectedBatches = Math.ceil(
+      (params.batchCount * params.emissionsPerBatch + 2) / CLEANUP_PAGE_SIZE,
+    );
+    for (let pass = 0; pass < expectedBatches; pass += 1) {
       await this.#host.alarm();
     }
-    throw new Error("Benchmark workflow cleanup did not drain within the alarm pass limit.");
+    const persistedEmissionCount = await this.#countBenchmarkEmissions(instance.id, params);
+    if (persistedEmissionCount !== params.historicalEmissionCount) {
+      throw new Error(
+        `Benchmark cleanup left ${persistedEmissionCount} emissions; expected ${params.historicalEmissionCount}.`,
+      );
+    }
+    return status;
+  }
+
+  async #startCleanup(): Promise<unknown> {
+    const fragment = this.#getFragment();
+    const instance = await this.#readBenchmarkInstance();
+    const params = instance.params as BenchmarkWorkflowParams;
+    if (params.workload !== "cleanup") {
+      throw new Error("Streaming benchmarks cannot start cleanup directly.");
+    }
+
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          forSchema(workflowsSchema).triggerHook("onWorkflowStepEmissionsCleanup", {
+            workflowName: BENCHMARK_WORKFLOW_NAME,
+            instanceId: BENCHMARK_INSTANCE_ID,
+            instanceRef: instance.id.toString(),
+            stepKey: CLEANUP_STEP_KEY,
+            epoch: CLEANUP_EPOCH,
+            progress: null,
+          });
+        })
+        .execute();
+    });
+    return {
+      workload: params.workload,
+      cleanupBatches: Math.max(1, Math.ceil(params.historicalEmissionCount / CLEANUP_PAGE_SIZE)),
+    };
+  }
+
+  async #runCleanupPage(): Promise<unknown> {
+    await this.#host.alarm();
+    return { processed: true };
   }
 
   async #result(): Promise<unknown> {
@@ -250,22 +313,40 @@ export class WorkflowBenchmarkObject {
       fragment.services.getInstanceStatus(BENCHMARK_WORKFLOW_NAME, BENCHMARK_INSTANCE_ID),
     );
     const instance = await this.#readBenchmarkInstance();
+    const params = instance.params as BenchmarkWorkflowParams;
 
     return {
+      workload: params.workload,
       status,
-      persistedEmissionCount: await this.#countBenchmarkEmissions(instance.id),
+      persistedEmissionCount: await this.#countBenchmarkEmissions(instance.id, params),
     };
   }
 
-  async #countBenchmarkEmissions(instanceId: FragnoId): Promise<number> {
+  async #countBenchmarkEmissions(
+    instanceId: FragnoId,
+    params: BenchmarkWorkflowParams,
+  ): Promise<number> {
     const [emissionCount] = await this.#databaseAdapter
       .createUnitOfWork(workflowsSchema, workflowsSchema.name, "count-benchmark-emissions")
       .find("workflow_step_emission", (builder) =>
-        builder
-          .whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (expression) =>
-            expression("instanceRef", "=", instanceId),
-          )
-          .selectCount(),
+        params.workload === "cleanup"
+          ? builder
+              .whereIndex(
+                "idx_workflow_step_emission_instance_step_epoch_createdAt_sequence_id",
+                (expression) =>
+                  expression.and(
+                    expression("instanceRef", "=", instanceId),
+                    expression("stepKey", "=", CLEANUP_STEP_KEY),
+                    expression("epoch", "=", CLEANUP_EPOCH),
+                  ),
+              )
+              .selectCount()
+          : builder
+              .whereIndex(
+                "idx_workflow_step_emission_instance_createdAt_sequence_id",
+                (expression) => expression("instanceRef", "=", instanceId),
+              )
+              .selectCount(),
       )
       .executeRetrieve();
     return emissionCount;
@@ -320,7 +401,12 @@ function parsePrepareInput(value: unknown): BenchmarkPrepareInput {
     throw new Error("Benchmark prepare input must be a JSON object.");
   }
 
+  if (value["workload"] !== "stream" && value["workload"] !== "cleanup") {
+    throw new Error("Benchmark workload must be stream or cleanup.");
+  }
+
   return {
+    workload: value["workload"],
     historicalEmissionCount: parseInteger(value, "historicalEmissionCount", 0, 100_000),
     batchCount: parseInteger(value, "batchCount", 1, 10_000),
     emissionsPerBatch: parseInteger(value, "emissionsPerBatch", 1, 10_000),
