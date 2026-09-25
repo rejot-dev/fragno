@@ -10,11 +10,23 @@ describe("outbox benchmark process protocol", () => {
     expect(
       parseOutboxBenchmarkClientMessage({
         type: "complete",
-        result: { payloadBytesConsumed: 131_072_000, checksum: 102_000 },
+        result: {
+          clientCount: 10,
+          payloadBytesConsumed: 1_310_720_000,
+          checksum: 102_000,
+          slowestClientDurationMs: 12_500,
+          laggingEntriesConsumedByClient: [19, 42],
+        },
       }),
     ).toEqual({
       type: "complete",
-      result: { payloadBytesConsumed: 131_072_000, checksum: 102_000 },
+      result: {
+        clientCount: 10,
+        payloadBytesConsumed: 1_310_720_000,
+        checksum: 102_000,
+        slowestClientDurationMs: 12_500,
+        laggingEntriesConsumedByClient: [19, 42],
+      },
     });
   });
 
@@ -24,15 +36,43 @@ describe("outbox benchmark process protocol", () => {
         type: "start",
         config: {
           mode: "stream",
+          workload: {
+            kind: "live",
+            afterVersionstamp: "000000000000000000630000",
+            laggingObservers: [
+              { afterVersionstamp: null, pageSize: 1 },
+              { afterVersionstamp: "000000000000000000310000", pageSize: 50 },
+            ],
+          },
           baseUrl: "http://127.0.0.1:1234/outbox-benchmark",
           entryCount: 1_000,
           payloadBytes: 128 * 1_024,
           consumerDelayMs: 5,
           pageSize: 50,
           pollIntervalMs: 300,
+          clientCount: 10,
         },
       }),
-    ).toMatchObject({ type: "start", config: { mode: "stream", entryCount: 1_000 } });
+    ).toMatchObject({
+      type: "start",
+      config: {
+        mode: "stream",
+        workload: {
+          kind: "live",
+          laggingObservers: [
+            { afterVersionstamp: null, pageSize: 1 },
+            { afterVersionstamp: "000000000000000000310000", pageSize: 50 },
+          ],
+        },
+        entryCount: 1_000,
+        clientCount: 10,
+      },
+    });
+  });
+
+  it("accepts the workload handshakes", () => {
+    expect(parseOutboxBenchmarkClientMessage({ type: "started" })).toEqual({ type: "started" });
+    expect(parseOutboxBenchmarkServerMessage({ type: "run" })).toEqual({ type: "run" });
   });
 
   it("rejects malformed process messages", () => {

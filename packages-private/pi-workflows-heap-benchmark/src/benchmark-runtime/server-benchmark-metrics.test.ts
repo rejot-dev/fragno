@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   compareServerBenchmarkWorkloads,
   parseServerBenchmarkMetrics,
+  type OutboxBenchmarkMetrics,
   type PiWorkflowBenchmarkMetrics,
   type ServerMemoryMetrics,
 } from "./server-benchmark-metrics";
@@ -38,6 +39,31 @@ const workflow: PiWorkflowBenchmarkMetrics = {
   status: { status: "waiting", runGeneration: 1 },
 };
 
+const outbox: OutboxBenchmarkMetrics = {
+  ...memory,
+  kind: "outbox-only",
+  scenario: "live",
+  nodeVersion: "v26.10.0",
+  outboxMode: "stream",
+  transport: "node-http",
+  measurementScope: "server",
+  durationMs: 12_000,
+  entryCount: 1_000,
+  historyEntryCount: 100,
+  clientCount: 10,
+  laggingClientCount: 2,
+  payloadBytesPerEntry: 1_024,
+  payloadBytesConsumed: 10_240_000,
+  consumerDelayMs: 1,
+  pageSize: 50,
+  entriesPerSecond: 833.33,
+  checksum: 102_000,
+  slowestClientDurationMs: 11_900,
+  laggingEntriesConsumed: 61,
+  laggingEntriesConsumedByClient: [19, 42],
+  outboxDatabaseReadCount: 22,
+};
+
 describe("server benchmark metrics", () => {
   it("validates the server process boundary and memory timeline", () => {
     expect(parseServerBenchmarkMetrics(JSON.parse(JSON.stringify(workflow)))).toEqual(workflow);
@@ -61,5 +87,47 @@ describe("server benchmark metrics", () => {
       status: "mismatched",
       warnings: ["Outbox entries read differs by more than 5%."],
     });
+  });
+
+  it("validates multi-client outbox metrics and treats client count as workload identity", () => {
+    expect(parseServerBenchmarkMetrics(JSON.parse(JSON.stringify(outbox)))).toEqual(outbox);
+    expect(compareServerBenchmarkWorkloads(outbox, { ...outbox, clientCount: 2 })).toEqual({
+      status: "mismatched",
+      warnings: ["Outbox workload dimensions differ."],
+    });
+  });
+
+  it("loads legacy single-client outbox metrics without a database-read counter", () => {
+    const legacy = {
+      ...outbox,
+      scenario: undefined,
+      historyEntryCount: undefined,
+      clientCount: undefined,
+      laggingClientCount: undefined,
+      slowestClientDurationMs: undefined,
+      laggingEntriesConsumed: undefined,
+      laggingEntriesConsumedByClient: undefined,
+      outboxDatabaseReadCount: undefined,
+    };
+
+    expect(parseServerBenchmarkMetrics(JSON.parse(JSON.stringify(legacy)))).toMatchObject({
+      scenario: "backlog",
+      historyEntryCount: 0,
+      clientCount: 1,
+      laggingClientCount: 0,
+      slowestClientDurationMs: outbox.durationMs,
+      laggingEntriesConsumed: 0,
+      laggingEntriesConsumedByClient: [],
+      outboxDatabaseReadCount: null,
+    });
+  });
+
+  it("rejects explicit nulls for legacy-compatible outbox metrics fields", () => {
+    expect(() => parseServerBenchmarkMetrics({ ...outbox, clientCount: null })).toThrow(
+      "Outbox benchmark metrics contain invalid workload fields.",
+    );
+    expect(() => parseServerBenchmarkMetrics({ ...outbox, slowestClientDurationMs: null })).toThrow(
+      "Outbox benchmark metrics contain invalid workload fields.",
+    );
   });
 });

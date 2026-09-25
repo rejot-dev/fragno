@@ -33,9 +33,11 @@ import {
   parseOutboxBenchmarkClientMessage,
   type OutboxBenchmarkClientConfig,
   type OutboxBenchmarkClientResult,
+  type OutboxBenchmarkLaggingObserver,
 } from "./outbox-benchmark-protocol";
 
 const OUTBOX_PAGE_SIZE = 50;
+const OUTBOX_LAGGING_PAGE_SIZE = 1;
 const OUTBOX_POLL_INTERVAL_MS = 300;
 const MEMORY_SAMPLE_INTERVAL_MS = 10;
 const ALLOCATION_SAMPLE_INTERVAL_BYTES = 128 * 1_024;
@@ -58,8 +60,27 @@ function createPayload(index: number, payloadBytes: number, filler: string): str
   return prefix + filler.slice(0, payloadBytes - prefix.length);
 }
 
-function preloadOutboxBacklog(
+function createLaggingObservers(
+  historyEntryCount: number,
+  laggingClientCount: number,
+): OutboxBenchmarkLaggingObserver[] {
+  return Array.from({ length: laggingClientCount }, (_, clientIndex) => {
+    const nextEntryIndex = Math.floor((clientIndex * historyEntryCount) / laggingClientCount);
+    return {
+      afterVersionstamp: nextEntryIndex === 0 ? null : outboxVersionstamp(nextEntryIndex - 1),
+      pageSize: clientIndex === 0 ? OUTBOX_LAGGING_PAGE_SIZE : OUTBOX_PAGE_SIZE,
+    };
+  });
+}
+
+function isOutboxDatabaseReadStatement(statement: string): boolean {
+  const normalized = statement.trimStart().toLowerCase();
+  return normalized.startsWith("select") && normalized.includes("fragno_db_outbox");
+}
+
+function insertOutboxEntries(
   sqlite: Database.Database,
+  startIndex: number,
   entryCount: number,
   payloadBytes: number,
 ): void {
@@ -84,7 +105,8 @@ function preloadOutboxBacklog(
   const filler = "0123456789abcdef".repeat(Math.ceil(payloadBytes / 16));
   const createdAt = Date.now();
   const insertAll = sqlite.transaction(() => {
-    for (let index = 0; index < entryCount; index += 1) {
+    for (let offset = 0; offset < entryCount; offset += 1) {
+      const index = startIndex + offset;
       const versionstamp = outboxVersionstamp(index);
       const uowId = `outbox-benchmark-uow-${index}`;
       const payload = createPayload(index, payloadBytes, filler);
@@ -160,6 +182,25 @@ async function closeOutboxBenchmarkServer(server: Server): Promise<void> {
   });
 }
 
+async function closeDatabaseAdapterAfterStreamCancellation(
+  databaseAdapter: SqlAdapter,
+): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    try {
+      await databaseAdapter.close();
+      return;
+    } catch (error) {
+      lastError = error;
+      // Observer cancellation and bounded cursor exhaustion complete independently of HTTP close.
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 20);
+      });
+    }
+  }
+  throw lastError;
+}
+
 async function spawnOutboxBenchmarkClient(): Promise<ChildProcess> {
   const client = forkBenchmarkClient(
     fileURLToPath(new URL("./outbox-benchmark-client.ts", import.meta.url)),
@@ -184,10 +225,10 @@ async function spawnOutboxBenchmarkClient(): Promise<ChildProcess> {
   }
 }
 
-async function runOutboxClientWorkload(
+async function prepareOutboxClientWorkload(
   client: ChildProcess,
   config: OutboxBenchmarkClientConfig,
-): Promise<OutboxBenchmarkClientResult> {
+): Promise<void> {
   const response = waitForBenchmarkChildMessage(
     client,
     parseOutboxBenchmarkClientMessage,
@@ -198,8 +239,28 @@ async function runOutboxClientWorkload(
   if (message.type === "failed") {
     throw new Error(`Outbox benchmark client failed: ${message.error}`);
   }
+  if (message.type !== "started") {
+    throw new Error("Outbox benchmark client did not prepare the workload.");
+  }
+}
+
+async function runPreparedOutboxClientWorkload(
+  client: ChildProcess,
+  startMeasuredWork: () => void,
+): Promise<OutboxBenchmarkClientResult> {
+  const response = waitForBenchmarkChildMessage(
+    client,
+    parseOutboxBenchmarkClientMessage,
+    "Outbox benchmark",
+  );
+  await sendBenchmarkChildMessage(client, { type: "run" });
+  startMeasuredWork();
+  const message = await response;
+  if (message.type === "failed") {
+    throw new Error(`Outbox benchmark client failed: ${message.error}`);
+  }
   if (message.type !== "complete") {
-    throw new Error("Outbox benchmark client sent a duplicate ready message.");
+    throw new Error("Outbox benchmark client did not complete the workload.");
   }
   return message.result;
 }
@@ -207,36 +268,75 @@ async function runOutboxClientWorkload(
 async function runOutboxBenchmark(): Promise<void> {
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
     console.log(
-      "Usage: pnpm measure:outbox -- [--stream] [--profile] [--entries COUNT] [--payload-kib KIB] [--consumer-delay-ms MS]\nPreloads a fixed outbox backlog, then consumes it through the buffered poll route or item-wise stream route over localhost HTTP. Defaults: 1000 entries, 128 KiB payloads, 5 ms consumer delay.",
+      "Usage: pnpm measure:outbox -- [--stream] [--live] [--profile] [--entries COUNT] [--history-entries COUNT] [--payload-kib KIB] [--consumer-delay-ms MS] [--clients COUNT] [--lagging-clients COUNT]\nBacklog mode preloads measured entries before connecting. --live connects current clients at the tail plus divergent historical clients, then appends measured entries. Defaults: 1000 measured entries, 100 historical entries, 128 KiB payloads, 5 ms consumer delay, 1 current client, 1 lagging client.",
     );
     return;
   }
 
   const config = parseOutboxBenchmarkArguments(process.argv.slice(2));
   const directory = await mkdtemp(path.join(tmpdir(), "fragno-outbox-benchmark-"));
-  const sqlite = new Database(path.join(directory, "outbox-benchmark.sqlite"));
+  const databasePath = path.join(directory, "outbox-benchmark.sqlite");
+  let outboxDatabaseReadCount = 0;
+  const sqlite = new Database(databasePath, {
+    verbose: (statement) => {
+      if (typeof statement === "string" && isOutboxDatabaseReadStatement(statement)) {
+        outboxDatabaseReadCount += 1;
+      }
+    },
+  });
+  sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("cache_size = -2048");
+  const writerSqlite = new Database(databasePath);
+  writerSqlite.pragma("journal_mode = WAL");
+  writerSqlite.pragma("cache_size = -2048");
   const databaseAdapter = new SqlAdapter({
     dialect: new SqliteDialect({ database: sqlite }),
     driverConfig: new BetterSQLite3DriverConfig(),
   });
   let server: Server | null = null;
   let client: ChildProcess | null = null;
+  let benchmarkError: unknown;
 
   try {
     const fragment = instantiateOutboxBenchmarkFragment(databaseAdapter);
     await migrate(fragment);
-    preloadOutboxBacklog(sqlite, config.entryCount, config.payloadBytes);
+    const initialEntryCount =
+      config.scenario === "live" ? config.historyEntryCount : config.entryCount;
+    insertOutboxEntries(writerSqlite, 0, initialEntryCount, config.payloadBytes);
     sqlite.pragma("shrink_memory");
 
     const benchmarkServer = await startOutboxBenchmarkServer(fragment);
     server = benchmarkServer.server;
     client = await spawnOutboxBenchmarkClient();
+    await prepareOutboxClientWorkload(client, {
+      mode: config.mode,
+      workload:
+        config.scenario === "live"
+          ? {
+              kind: "live",
+              afterVersionstamp: outboxVersionstamp(config.historyEntryCount - 1),
+              laggingObservers: createLaggingObservers(
+                config.historyEntryCount,
+                config.laggingClientCount,
+              ),
+            }
+          : { kind: "backlog" },
+      baseUrl: benchmarkServer.baseUrl,
+      entryCount: config.entryCount,
+      payloadBytes: config.payloadBytes,
+      consumerDelayMs: config.consumerDelayMs,
+      pageSize: OUTBOX_PAGE_SIZE,
+      pollIntervalMs: OUTBOX_POLL_INTERVAL_MS,
+      clientCount: config.clientCount,
+    });
     await forceServerGarbageCollection();
 
     const profileFilePath = path.resolve(
-      `outbox-${config.mode}-${Date.now()}-${process.pid}.heapprofile`,
+      `outbox-${config.scenario}-${config.mode}-${config.clientCount}-current-${config.laggingClientCount}-lagging-${Date.now()}-${process.pid}.heapprofile`,
     );
+    if (config.scenario === "backlog") {
+      outboxDatabaseReadCount = 0;
+    }
     const measurement = startServerMemoryMeasurement({
       profile: config.profile,
       profileFilePath,
@@ -247,19 +347,34 @@ async function runOutboxBenchmark(): Promise<void> {
     let consumption: OutboxBenchmarkClientResult;
     let measured: Awaited<ReturnType<typeof measurement.finish>>;
     try {
-      consumption = await runOutboxClientWorkload(client, {
-        mode: config.mode,
-        baseUrl: benchmarkServer.baseUrl,
-        entryCount: config.entryCount,
-        payloadBytes: config.payloadBytes,
-        consumerDelayMs: config.consumerDelayMs,
-        pageSize: OUTBOX_PAGE_SIZE,
-        pollIntervalMs: OUTBOX_POLL_INTERVAL_MS,
+      consumption = await runPreparedOutboxClientWorkload(client, () => {
+        if (config.scenario === "live") {
+          outboxDatabaseReadCount = 0;
+          insertOutboxEntries(
+            writerSqlite,
+            config.historyEntryCount,
+            config.entryCount,
+            config.payloadBytes,
+          );
+        }
       });
       measured = await measurement.finish();
     } catch (error) {
       await measurement.abort();
       throw error;
+    }
+
+    if (consumption.clientCount !== config.clientCount) {
+      throw new Error(
+        `Outbox benchmark completed ${consumption.clientCount} clients instead of ${config.clientCount}.`,
+      );
+    }
+    if (
+      config.scenario === "live" &&
+      (consumption.laggingEntriesConsumedByClient.length !== config.laggingClientCount ||
+        consumption.laggingEntriesConsumedByClient.some((count) => count < 1))
+    ) {
+      throw new Error("Live outbox benchmark did not keep every lagging observer active.");
     }
 
     await closeBenchmarkChild(client, { type: "close" });
@@ -272,14 +387,25 @@ async function runOutboxBenchmark(): Promise<void> {
       outboxMode: config.mode,
       transport: "node-http",
       measurementScope: "server",
+      scenario: config.scenario,
       entryCount: config.entryCount,
+      historyEntryCount: config.scenario === "live" ? config.historyEntryCount : 0,
+      clientCount: config.clientCount,
+      laggingClientCount: config.scenario === "live" ? config.laggingClientCount : 0,
       payloadBytesPerEntry: config.payloadBytes,
       payloadBytesConsumed: consumption.payloadBytesConsumed,
       consumerDelayMs: config.consumerDelayMs,
       pageSize: OUTBOX_PAGE_SIZE,
       durationMs: measured.durationMs,
-      entriesPerSecond: config.entryCount / (measured.durationMs / 1_000),
+      entriesPerSecond: (config.entryCount * config.clientCount) / (measured.durationMs / 1_000),
       checksum: consumption.checksum,
+      slowestClientDurationMs: consumption.slowestClientDurationMs,
+      laggingEntriesConsumed: consumption.laggingEntriesConsumedByClient.reduce(
+        (total, count) => total + count,
+        0,
+      ),
+      laggingEntriesConsumedByClient: consumption.laggingEntriesConsumedByClient,
+      outboxDatabaseReadCount,
     } satisfies OutboxBenchmarkMetrics;
 
     if (measured.profile.kind === "written") {
@@ -295,6 +421,8 @@ async function runOutboxBenchmark(): Promise<void> {
         2,
       ),
     );
+  } catch (error) {
+    benchmarkError = error;
   } finally {
     if (client) {
       await closeBenchmarkChild(client, { type: "close" }).catch(() => {
@@ -306,9 +434,21 @@ async function runOutboxBenchmark(): Promise<void> {
         server?.closeAllConnections();
       });
     }
-    await databaseAdapter.close();
-    sqlite.close();
-    await rm(directory, { recursive: true, force: true });
+    try {
+      writerSqlite.close();
+      await closeDatabaseAdapterAfterStreamCancellation(databaseAdapter);
+      await rm(directory, { recursive: true, force: true });
+    } catch (error) {
+      if (benchmarkError === undefined) {
+        benchmarkError = error;
+      } else {
+        console.error("Outbox benchmark cleanup failed after the workload error.", error);
+      }
+    }
+  }
+
+  if (benchmarkError !== undefined) {
+    throw benchmarkError instanceof Error ? benchmarkError : new Error(String(benchmarkError));
   }
 }
 

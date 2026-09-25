@@ -52,7 +52,7 @@ compact event deltas, inter-event timing, message metadata, and the terminal res
 explicit provider, capture selects the first configured provider in this order: OpenAI, Anthropic,
 Google.
 
-## Outbox backlog benchmark
+## Outbox benchmark
 
 The focused outbox benchmark preloads 1,000 complete entries with one 128 KiB mutation payload each.
 The child consumes the real poll or stream route with the canonical 50-entry page size and a 5 ms
@@ -63,10 +63,39 @@ pnpm --filter @fragno-private/pi-workflows-heap-benchmark measure:outbox -- --pr
 pnpm --filter @fragno-private/pi-workflows-heap-benchmark measure:outbox -- --stream --profile
 ```
 
-Override the workload with `--entries COUNT`, `--payload-kib KIB`, or `--consumer-delay-ms MS`.
+Override the workload with `--entries COUNT`, `--history-entries COUNT`, `--payload-kib KIB`,
+`--consumer-delay-ms MS`, `--clients COUNT`, or `--lagging-clients COUNT`. Concurrent clients use
+separate HTTP responses against the same fragment and database adapter. The result reports aggregate
+throughput and payload bytes, the slowest client duration, and the number of SQLite outbox reads
+observed during the measured workload. Every client must consume the same payload bytes and
+checksum.
+
+Because entries are preloaded before clients connect, ordinary multi-client stream runs measure
+catch-up isolation and compatible catch-up grouping rather than steady-state shared live polling.
+Pass `--live` with `--stream` to preload historical entries, connect current clients at the tail
+plus historical catch-up clients, reset measured SQL reads, and then append the measured entries.
+Lagging clients receive evenly spaced historical cursors: the first uses `limit=1` and subsequent
+clients use 50-entry pages. Override the default one lagging client with `--lagging-clients COUNT`
+and the default 100-entry history with `--history-entries COUNT`.
+
+For low-bandwidth catch-up and live-tail scaling runs:
+
+```sh
+# Catch-up workload
+pnpm --filter @fragno-private/pi-workflows-heap-benchmark measure:outbox -- --stream --clients 10 --entries 1000 --payload-kib 1 --consumer-delay-ms 1
+
+# Shared live poll plus one active historical limit=1 observer
+pnpm --filter @fragno-private/pi-workflows-heap-benchmark measure:outbox -- --stream --live --clients 1 --entries 1000 --history-entries 100 --payload-kib 1 --consumer-delay-ms 1
+pnpm --filter @fragno-private/pi-workflows-heap-benchmark measure:outbox -- --stream --live --clients 10 --entries 1000 --history-entries 100 --payload-kib 1 --consumer-delay-ms 1
+
+# Two current clients plus divergent origin/limit=1 and midpoint/limit=50 catch-up clients
+pnpm --filter @fragno-private/pi-workflows-heap-benchmark measure:outbox -- --stream --live --clients 2 --lagging-clients 2 --entries 1000 --history-entries 1000 --payload-kib 128 --consumer-delay-ms 5
+```
+
 Profiled runs write an `outbox-*.heapprofile` and matching `outbox-*.benchmark-metrics.json`
 sidecar. See `reports/2026-09-24-outbox-only-poll-vs-stream.md` for the five-pair server-only
-baseline.
+poll-versus-stream baseline and `reports/2026-09-25-shared-outbox-observation.md` for concurrent
+client scaling.
 
 ## Analyze server profiles
 

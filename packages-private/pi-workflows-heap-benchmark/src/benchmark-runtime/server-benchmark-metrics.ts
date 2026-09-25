@@ -42,13 +42,21 @@ export type PiWorkflowBenchmarkMetrics = ServerBenchmarkBaseMetrics & {
 
 export type OutboxBenchmarkMetrics = ServerBenchmarkBaseMetrics & {
   kind: "outbox-only";
+  scenario: "backlog" | "live";
   entryCount: number;
+  historyEntryCount: number;
+  clientCount: number;
+  laggingClientCount: number;
   payloadBytesPerEntry: number;
   payloadBytesConsumed: number;
   consumerDelayMs: number;
   pageSize: number;
   entriesPerSecond: number;
   checksum: number;
+  slowestClientDurationMs: number;
+  laggingEntriesConsumed: number;
+  laggingEntriesConsumedByClient: number[];
+  outboxDatabaseReadCount: number | null;
 };
 
 export type ServerBenchmarkMetrics = PiWorkflowBenchmarkMetrics | OutboxBenchmarkMetrics;
@@ -68,6 +76,10 @@ function isNonNegativeInteger(value: unknown): value is number {
 
 function isNonNegativeNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function isNonNegativeIntegerArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every(isNonNegativeInteger);
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -170,28 +182,70 @@ export function parseServerBenchmarkMetrics(input: unknown): ServerBenchmarkMetr
     };
   }
 
+  const scenario = Object.hasOwn(input, "scenario") ? input["scenario"] : "backlog";
+  const historyEntryCount = Object.hasOwn(input, "historyEntryCount")
+    ? input["historyEntryCount"]
+    : 0;
+  const clientCount = Object.hasOwn(input, "clientCount") ? input["clientCount"] : 1;
+  const laggingClientCount = Object.hasOwn(input, "laggingClientCount")
+    ? input["laggingClientCount"]
+    : 0;
+  const slowestClientDurationMs = Object.hasOwn(input, "slowestClientDurationMs")
+    ? input["slowestClientDurationMs"]
+    : base.durationMs;
+  const laggingEntriesConsumed = Object.hasOwn(input, "laggingEntriesConsumed")
+    ? input["laggingEntriesConsumed"]
+    : 0;
+  const laggingEntriesConsumedByClient = Object.hasOwn(input, "laggingEntriesConsumedByClient")
+    ? input["laggingEntriesConsumedByClient"]
+    : laggingClientCount === 0
+      ? []
+      : [laggingEntriesConsumed];
+  const outboxDatabaseReadCount = Object.hasOwn(input, "outboxDatabaseReadCount")
+    ? input["outboxDatabaseReadCount"]
+    : null;
   if (
     input["kind"] !== "outbox-only" ||
+    (scenario !== "backlog" && scenario !== "live") ||
     !isNonNegativeInteger(input["entryCount"]) ||
+    !isNonNegativeInteger(historyEntryCount) ||
+    !isNonNegativeInteger(clientCount) ||
+    clientCount < 1 ||
+    !isNonNegativeInteger(laggingClientCount) ||
     !isNonNegativeInteger(input["payloadBytesPerEntry"]) ||
     !isNonNegativeInteger(input["payloadBytesConsumed"]) ||
     !isNonNegativeInteger(input["consumerDelayMs"]) ||
     !isNonNegativeInteger(input["pageSize"]) ||
     !isNonNegativeNumber(input["entriesPerSecond"]) ||
-    !isNonNegativeInteger(input["checksum"])
+    !isNonNegativeInteger(input["checksum"]) ||
+    !isNonNegativeNumber(slowestClientDurationMs) ||
+    !isNonNegativeInteger(laggingEntriesConsumed) ||
+    !isNonNegativeIntegerArray(laggingEntriesConsumedByClient) ||
+    laggingEntriesConsumedByClient.length !== laggingClientCount ||
+    laggingEntriesConsumedByClient.reduce((total, count) => total + count, 0) !==
+      laggingEntriesConsumed ||
+    (outboxDatabaseReadCount !== null && !isNonNegativeInteger(outboxDatabaseReadCount))
   ) {
     throw new Error("Outbox benchmark metrics contain invalid workload fields.");
   }
   return {
     ...base,
     kind: input["kind"],
+    scenario,
     entryCount: input["entryCount"],
+    historyEntryCount,
+    clientCount,
+    laggingClientCount,
     payloadBytesPerEntry: input["payloadBytesPerEntry"],
     payloadBytesConsumed: input["payloadBytesConsumed"],
     consumerDelayMs: input["consumerDelayMs"],
     pageSize: input["pageSize"],
     entriesPerSecond: input["entriesPerSecond"],
     checksum: input["checksum"],
+    slowestClientDurationMs,
+    laggingEntriesConsumed,
+    laggingEntriesConsumedByClient,
+    outboxDatabaseReadCount,
   };
 }
 
@@ -252,7 +306,11 @@ export function compareServerBenchmarkWorkloads(
 
   if (baseline.kind === "outbox-only" && candidate.kind === "outbox-only") {
     if (
+      baseline.scenario !== candidate.scenario ||
       baseline.entryCount !== candidate.entryCount ||
+      baseline.historyEntryCount !== candidate.historyEntryCount ||
+      baseline.clientCount !== candidate.clientCount ||
+      baseline.laggingClientCount !== candidate.laggingClientCount ||
       baseline.payloadBytesPerEntry !== candidate.payloadBytesPerEntry ||
       baseline.consumerDelayMs !== candidate.consumerDelayMs ||
       baseline.pageSize !== candidate.pageSize

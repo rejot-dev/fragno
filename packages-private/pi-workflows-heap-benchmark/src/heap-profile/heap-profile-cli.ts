@@ -71,8 +71,16 @@ function formatBenchmarkWorkload(metrics: ServerBenchmarkMetrics): string[] {
       `Workflow: ${metrics.modelId}, ${metrics.outboxEntriesRead} outbox entries, final status ${metrics.status.status}.`,
     );
   } else {
+    const databaseReads =
+      metrics.outboxDatabaseReadCount === null
+        ? "database reads unavailable"
+        : `${metrics.outboxDatabaseReadCount} outbox database reads`;
+    const lagging =
+      metrics.laggingClientCount === 0
+        ? "no lagging clients"
+        : `${metrics.laggingEntriesConsumed} entries consumed by ${metrics.laggingClientCount} lagging clients (${metrics.laggingEntriesConsumedByClient.join(", ")} per client)`;
     lines.push(
-      `Outbox: ${metrics.entryCount} entries, ${mib(metrics.payloadBytesConsumed)} payload, checksum ${metrics.checksum}.`,
+      `Outbox (${metrics.scenario}): ${metrics.entryCount} entries × ${metrics.clientCount} current clients, ${mib(metrics.payloadBytesConsumed)} aggregate payload, checksum ${metrics.checksum}, ${lagging}, ${databaseReads}.`,
     );
   }
   const peak = metrics.timeline.reduce((largest, sample) =>

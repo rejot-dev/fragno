@@ -4,7 +4,7 @@ Status: open
 
 Created: September 2, 2026
 
-Last updated: September 24, 2026
+Last updated: September 25, 2026
 
 ## Goal
 
@@ -707,6 +707,16 @@ comparable heap-only A/B. Periodic forced GC is not a product fix.
 ### P2: share outbox observation work
 
 A scope should not create one independent 300 ms database poller per HTTP client.
+
+> **Implemented September 25, 2026:** Active stream responses on one database adapter now share one
+> registry-owned outbox pump and one elected scheduler loop. Catch-up observers progress in
+> compatible cursor-and-limit groups with at most four pages per tick; observers at the live tail
+> share one 50-entry poll and cannot be pinned by a historical or `limit=1` client. With one active
+> lagging client, live benchmarks for 1 and 10 current clients both measured 40 outbox SQL reads. A
+> 128 KiB workload with 2 current clients and 2 divergent catch-up clients measured the expected 60
+> reads, a 33.4 MiB peak heap rise, and no retained-heap increase after GC. See
+> `packages-private/pi-workflows-heap-benchmark/reports/2026-09-25-shared-outbox-observation.md`.
+> The idle-polling and lease refinements below remain open.
 
 Prefer one elected or registry-owned outbox pump per fragment instance, with each HTTP response as
 an observer. If process boundaries require polling, only one local observer should own the fallback
