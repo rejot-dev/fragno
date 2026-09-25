@@ -308,6 +308,8 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       name: "Automations",
       state,
       env,
+      fragmentHostOperations: this.#runtimeServices.fragmentHostOperations ?? undefined,
+      objectRuntime: runtime.objectRuntime,
       isConfigured: (stored): stored is AutomationDurableObjectConfig => Boolean(stored?.scope),
       createRuntime: (config) =>
         createAutomationsRuntime(

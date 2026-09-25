@@ -7,6 +7,7 @@ import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
 
+import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import {
   backofficeContextScopesEqual,
   createBackofficeServiceExecution,
@@ -15,18 +16,18 @@ import {
   type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import type { InMemoryObjectFactoryOverrides } from "@/backoffice-runtime/in-memory-object-factory";
 import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
-import type { InMemoryBackofficeRuntimeEnv } from "@/backoffice-runtime/in-memory-runtime-env";
 import {
   BackofficeForbiddenError,
   BackofficeKernel,
   type BackofficeKernelAction,
   type BackofficeKernelObserver,
 } from "@/backoffice-runtime/kernel";
+import type { LocalObjectFactoryOverrides } from "@/backoffice-runtime/local-object-factory";
+import type { LocalBackofficeDurableHooks } from "@/backoffice-runtime/node/local-runtime";
 import type {
   BackofficeActionRpcContext,
   BackofficeObjectAddress,
@@ -374,17 +375,19 @@ export type BackofficeScenarioContext<TVars extends ScenarioVars = ScenarioVars>
 
 export type BackofficeScenarioDefinitionInput<TVars extends ScenarioVars = ScenarioVars> = {
   name: string;
-  env?: Partial<InMemoryBackofficeRuntimeEnv>;
+  env?: Partial<BackofficeRuntimeEnv>;
   files?: BackofficeScenarioFilePreset;
   vars?: () => TVars;
   fakes?: (ctx: { fake: ScenarioFakeFactory }) => ScenarioFakes;
-  objectFactories?: InMemoryObjectFactoryOverrides;
+  objectFactories?: LocalObjectFactoryOverrides;
+  durableHooks?: LocalBackofficeDurableHooks;
   setup?: (builders: BackofficeScenarioStepBuilders<TVars>) => BackofficeScenarioStep[];
   steps: (builders: BackofficeScenarioStepBuilders<TVars>) => BackofficeScenarioStep[];
   options?: {
     drain?: boolean;
     allowErroredWorkflows?: boolean;
     allowFailedDurableHooks?: boolean;
+    sqliteDataDirectory?: string;
   };
 };
 
@@ -4468,8 +4471,8 @@ const fakeTelegramFile = (fakeTelegram: FakeTelegramApi, fileId: string): FakeTe
   return file;
 };
 
-const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverrides => {
-  const objectFactories: InMemoryObjectFactoryOverrides = {};
+const createObjectFactories = (fakes: ScenarioFakes): LocalObjectFactoryOverrides => {
+  const objectFactories: LocalObjectFactoryOverrides = {};
 
   if (fakes.telegram) {
     objectFactories.TELEGRAM = ({ state, env, runtime }) => {
@@ -4808,6 +4811,7 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
   };
   const runtime = await createInMemoryBackofficeRuntime({
     env: scenario.env,
+    sqliteDataDirectory: scenario.options?.sqliteDataDirectory,
     kernelObserver,
     readAutomationSource: async ({ execution, path }) => {
       const readSource = await snapshotTestAutomationSourceReader(
@@ -4821,6 +4825,7 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
       ...createObjectFactories(fakes),
       ...scenario.objectFactories,
     },
+    ...(scenario.durableHooks ? { durableHooks: scenario.durableHooks } : {}),
   });
   const journal: ScenarioJournal = { entries: [] };
   const vars = scenario.vars?.() ?? ({} as TVars);

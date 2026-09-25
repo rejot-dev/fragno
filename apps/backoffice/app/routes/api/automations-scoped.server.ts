@@ -1,11 +1,6 @@
 import type { RouterContextProvider } from "react-router";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { removeBackofficeInternalContextHeader } from "@/backoffice-runtime/internal-object-request";
-import {
-  backofficeObjectScopeFromContextScope,
-  encodeBackofficeObjectAddress,
-} from "@/backoffice-runtime/object-registry";
 import { forwardRequestOwnedResponse } from "@/backoffice-runtime/request-owned-response";
 import { requireBackofficeContextScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
@@ -17,14 +12,6 @@ export type AutomationsScopedRouteParams = {
   scopeId?: string;
   "*"?: string;
 };
-
-function getScopedAutomationsDurableObject(env: CloudflareEnv, scope: BackofficeContextScope) {
-  const objectName = encodeBackofficeObjectAddress({
-    binding: "AUTOMATIONS",
-    scope: backofficeObjectScopeFromContextScope(scope),
-  });
-  return env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(objectName));
-}
 
 export const forwardToScopedAutomationsFragment = async ({
   request,
@@ -45,8 +32,8 @@ export const forwardToScopedAutomationsFragment = async ({
     return new Response("Not Found", { status: 404 });
   }
 
-  const { env } = context.get(BackofficeWorkerContext);
-  const automationsDo = getScopedAutomationsDurableObject(env, scope);
+  const { runtime } = context.get(BackofficeWorkerContext);
+  const automationsDo = runtime.objects.automations.for(scope);
 
   const url = new URL(request.url);
   url.pathname = `${mountRoute}${suffix}`;
@@ -56,7 +43,7 @@ export const forwardToScopedAutomationsFragment = async ({
   // automatic storage spans remain owned by the stream request's trace.
   return forwardRequestOwnedResponse(
     request,
-    await automationsDo.fetch(
+    await automationsDo.http.fetch(
       removeBackofficeInternalContextHeader(new Request(url.toString(), request)),
     ),
   );

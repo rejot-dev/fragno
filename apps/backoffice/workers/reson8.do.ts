@@ -115,6 +115,8 @@ export class InMemoryReson8Object implements Reson8Object {
       name: "Reson8",
       state,
       env,
+      fragmentHostOperations: this.#runtime.fragmentHostOperations ?? undefined,
+      objectRuntime: runtime.objectRuntime,
       configKey: CONFIG_KEY,
       parseStored: (raw) => storedReson8ConfigSchema.parse(raw),
       isConfigured: (stored): stored is StoredReson8Config =>

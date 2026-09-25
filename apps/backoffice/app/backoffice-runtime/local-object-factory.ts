@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 
 import { InMemoryApiObject } from "../../workers/api.do";
@@ -17,18 +19,25 @@ import { InMemoryReson8Object } from "../../workers/reson8.do";
 import { InMemorySandboxManagerObject } from "../../workers/sandbox-manager.do";
 import { InMemoryTelegramObject } from "../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../workers/upload.do";
+import type { BackofficeRuntimeEnv } from "./backoffice-runtime-env";
 import { createDurableObjectDatabaseAdapterScope } from "./database-adapters";
-import {
-  InMemoryDurableObjectNamespace,
-  type InMemoryDurableObjectFactory,
-  type InMemoryDurableObjectInstance,
-} from "./in-memory-durable-objects";
-import type { InMemoryBackofficeRuntimeEnv } from "./in-memory-runtime-env";
-import { defaultInMemoryBackofficeRuntimeEnv } from "./in-memory-runtime-env";
 import {
   createAuthorizedBackofficeObjectRequest,
   removeBackofficeInternalContextHeader,
 } from "./internal-object-request";
+import {
+  InMemoryDurableObjectState,
+  LocalDurableObjectNamespace,
+  ProcessLocalObjectExecutionCoordinator,
+  type BackofficeDurableObjectState,
+  type BackofficeObjectExecutionCoordinator,
+  type LocalDurableObjectFactory,
+  type LocalDurableObjectInstance,
+} from "./local-durable-objects";
+import { createSqliteAuthDatabase } from "./node/sqlite-auth-database";
+import { SqliteDurableObjectState } from "./node/sqlite-durable-object-state";
+import { SqliteObjectCoordination } from "./node/sqlite-object-coordination";
+import type { SqliteBackofficeObjectStorage } from "./node/sqlite-object-storage";
 import type {
   BackofficeObjectAddress,
   BackofficeObjectBinding,
@@ -42,46 +51,65 @@ import { encodeBackofficeObjectAddress } from "./object-registry";
 import {
   parseAuthEmailVerificationRuntimeConfig,
   parseSignUpInvitationsEnabled,
+  type BackofficeFragmentHostOperations,
   type BackofficeRuntimeConfig,
   type BackofficeRuntimeServices,
 } from "./runtime-services";
 
-export type InMemoryBackofficeObjectFactory<TObject> = (input: {
+export type LocalBackofficeObjectFactory<TObject> = (input: {
   id: DurableObjectId;
   name: string;
-  state: Parameters<InMemoryDurableObjectFactory<TObject>>[0]["state"];
-  env: InMemoryBackofficeRuntimeEnv;
+  state: Parameters<LocalDurableObjectFactory<TObject>>[0]["state"];
+  env: BackofficeRuntimeEnv;
   runtime: BackofficeRuntimeServices;
   nowEpochMs: () => number;
-  readAutomationSource?: InMemoryObjectFactoryOptions["readAutomationSource"];
+  readAutomationSource?: LocalObjectFactoryOptions["readAutomationSource"];
+  sqliteDataDirectory?: string;
+  readonly getAuthDatabase: () => LocalAuthDatabase;
 }) => TObject;
 
-export type InMemoryObjectFactoryOverrides = Partial<
-  Record<BackofficeObjectBindingName, InMemoryBackofficeObjectFactory<unknown>>
+export type LocalObjectFactoryOverrides = Partial<
+  Record<BackofficeObjectBindingName, LocalBackofficeObjectFactory<unknown>>
 >;
 
-export type InMemoryObjectFactoryOptions = {
-  env?: Partial<InMemoryBackofficeRuntimeEnv>;
+export type LocalObjectFactoryOptions = {
+  runtimeEnv: BackofficeRuntimeEnv;
   getRuntimeServices: () => BackofficeRuntimeServices;
+  createFragmentHostOperations?: (objectId: string) => BackofficeFragmentHostOperations | null;
+  clearDurableHooks: (objectId: string) => Promise<void>;
   readAutomationSource?: AutomationSourceReader;
-  objectFactories?: InMemoryObjectFactoryOverrides;
+  objectFactories?: LocalObjectFactoryOverrides;
+  sqlite?: { directory: string; storage: SqliteBackofficeObjectStorage };
 };
 
-type NamespaceMap = Record<string, InMemoryDurableObjectNamespace<unknown>>;
+type NamespaceMap = Record<string, LocalDurableObjectNamespace<unknown>>;
 
-let inMemoryDateNowOverrideTail = Promise.resolve();
+type LocalAuthDatabase = ReturnType<typeof createInMemoryAuthDatabase>;
 
-async function acquireInMemoryDateNowOverride(): Promise<() => void> {
-  const precedingOverride = inMemoryDateNowOverrideTail;
-  let releaseCurrentOverride!: () => void;
-  inMemoryDateNowOverrideTail = new Promise<void>((resolve) => {
-    releaseCurrentOverride = resolve;
-  });
-  await precedingOverride;
-  return releaseCurrentOverride;
+type LocalAuthDatabases = {
+  readonly byState: WeakMap<BackofficeDurableObjectState, LocalAuthDatabase>;
+  readonly owned: Set<LocalAuthDatabase>;
+};
+
+function getLocalAuthDatabase(
+  databases: LocalAuthDatabases,
+  state: BackofficeDurableObjectState,
+  sqliteDataDirectory: string | undefined,
+  nowEpochMs: () => number,
+): LocalAuthDatabase {
+  const existing = databases.byState.get(state);
+  if (existing) {
+    return existing;
+  }
+  const database = sqliteDataDirectory
+    ? createSqliteAuthDatabase(sqliteDataDirectory, nowEpochMs)
+    : createInMemoryAuthDatabase(nowEpochMs);
+  databases.byState.set(state, database);
+  databases.owned.add(database);
+  return database;
 }
 
-class UnavailableInMemoryDurableObject {
+class UnavailableLocalDurableObject {
   async fetch() {
     return Response.json({ message: "Not configured", code: "NOT_CONFIGURED" }, { status: 400 });
   }
@@ -198,21 +226,21 @@ class UnavailableInMemoryDurableObject {
   }
 }
 
-const createUnavailableObject = () => new UnavailableInMemoryDurableObject();
+const createUnavailableLocalObject = () => new UnavailableLocalDurableObject();
 
-const inMemoryObjectFactories = {
+const localObjectFactories = {
   API: ({ state, env, runtime }) =>
     new InMemoryApiObject({
       state,
       env,
       runtime,
     }),
-  AUTH: ({ state, env, runtime }) =>
+  AUTH: ({ state, env, runtime, getAuthDatabase }) =>
     new InMemoryAuthObject({
       state,
       env: env as never,
       runtime,
-      database: createInMemoryAuthDatabase(),
+      database: getAuthDatabase(),
     }),
   TELEGRAM: ({ state, env, runtime }) =>
     new InMemoryTelegramObject({
@@ -250,7 +278,7 @@ const inMemoryObjectFactories = {
       env: env as never,
       runtime,
     }),
-  SANDBOX: createUnavailableObject,
+  SANDBOX: createUnavailableLocalObject,
   SANDBOX_MANAGER: ({ state, env, runtime }) =>
     new InMemorySandboxManagerObject({ state, env: env as CloudflareEnv, runtime }),
   GITHUB: ({ state, env, runtime }) =>
@@ -297,26 +325,44 @@ const inMemoryObjectFactories = {
       env,
       runtime,
     }),
-} satisfies Record<BackofficeObjectBindingName, InMemoryBackofficeObjectFactory<unknown>>;
+} satisfies Record<BackofficeObjectBindingName, LocalBackofficeObjectFactory<unknown>>;
 
-export class InMemoryObjectFactory implements BackofficeObjectFactory {
-  readonly env: InMemoryBackofficeRuntimeEnv;
+export class LocalObjectFactory implements BackofficeObjectFactory {
+  readonly env: BackofficeRuntimeEnv;
 
   #namespaces: NamespaceMap = {};
   readonly #getRuntimeServices: () => BackofficeRuntimeServices;
-  readonly #readAutomationSource?: InMemoryObjectFactoryOptions["readAutomationSource"];
-  readonly #objectFactories?: InMemoryObjectFactoryOverrides;
+  readonly #createFragmentHostOperations: NonNullable<
+    LocalObjectFactoryOptions["createFragmentHostOperations"]
+  >;
+  readonly #readAutomationSource?: LocalObjectFactoryOptions["readAutomationSource"];
+  readonly #objectFactories?: LocalObjectFactoryOverrides;
+  readonly #sqlite?: LocalObjectFactoryOptions["sqlite"];
+  readonly #executionCoordinator: BackofficeObjectExecutionCoordinator;
+  readonly #sqliteCoordination: SqliteObjectCoordination | null;
+  readonly #clearDurableHooks: (objectId: string) => Promise<void>;
+  readonly #authDatabases: LocalAuthDatabases = {
+    byState: new WeakMap(),
+    owned: new Set(),
+  };
   #timeOffsetMs = 0;
-  #activeTimeEpochMs: number | null = null;
+  readonly #drainTimeEpochMs = new AsyncLocalStorage<{
+    epochMs: number;
+    active: boolean;
+  }>();
 
-  constructor(options: InMemoryObjectFactoryOptions) {
-    this.env = {
-      ...defaultInMemoryBackofficeRuntimeEnv(),
-      ...options.env,
-    };
+  constructor(options: LocalObjectFactoryOptions) {
+    this.env = options.runtimeEnv;
     this.#getRuntimeServices = options.getRuntimeServices;
+    this.#createFragmentHostOperations = options.createFragmentHostOperations ?? (() => null);
     this.#readAutomationSource = options.readAutomationSource;
     this.#objectFactories = options.objectFactories;
+    this.#sqlite = options.sqlite;
+    this.#sqliteCoordination = options.sqlite
+      ? new SqliteObjectCoordination(options.sqlite.storage)
+      : null;
+    this.#executionCoordinator = new ProcessLocalObjectExecutionCoordinator();
+    this.#clearDurableHooks = options.clearDurableHooks;
     this.#registerNamespaces();
   }
 
@@ -330,7 +376,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
     assertBackofficeObjectAddressAllowed(address);
     const namespace = this.#namespaces[address.binding];
     if (!namespace) {
-      throw new Error(`In-memory Backoffice object binding ${address.binding} is not registered.`);
+      throw new Error(`Local Backoffice object binding ${address.binding} is not registered.`);
     }
     const id = namespace.idFromName(encodeBackofficeObjectAddress(address));
     await namespace.restart(id);
@@ -373,7 +419,21 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
     return { commands: stub, http };
   }
 
-  instances(): InMemoryDurableObjectInstance[] {
+  async restorePersistedInstances(): Promise<void> {
+    for (const id of this.#sqlite?.storage.objectIds() ?? []) {
+      const { namespace, durableObjectId } = this.#resolvePersistedObject(id);
+      await namespace.restorePersisted(durableObjectId);
+    }
+  }
+
+  async discoverPersistedInstances(): Promise<void> {
+    for (const id of this.#sqlite?.storage.objectIds() ?? []) {
+      const { namespace, durableObjectId } = this.#resolvePersistedObject(id);
+      await namespace.discoverPersisted(durableObjectId);
+    }
+  }
+
+  instances(): LocalDurableObjectInstance[] {
     return Object.values(this.#namespaces).flatMap((namespace) => namespace.instances());
   }
 
@@ -399,7 +459,8 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
   }
 
   now(): number {
-    return this.#activeTimeEpochMs ?? Date.now() + this.#timeOffsetMs;
+    const drainTime = this.#drainTimeEpochMs.getStore();
+    return drainTime?.active ? drainTime.epochMs : Date.now() + this.#timeOffsetMs;
   }
 
   advanceTime(ms: number): number {
@@ -409,22 +470,36 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
 
   async drainAlarms(): Promise<void> {
     const now = this.now();
-    const due = this.instances()
-      .map((instance) => ({ ...instance, alarmTimestamp: instance.state.alarmTimestamp }))
-      .filter(
-        ({ state, alarmTimestamp }) =>
-          alarmTimestamp !== null && alarmTimestamp <= now && state.consumeDueAlarm(now),
-      );
+    const due = Object.values(this.#namespaces).flatMap((namespace) =>
+      namespace.instances().flatMap((instance) => {
+        const alarm = instance.state.dueAlarm(now);
+        return alarm ? [{ namespace, instance, alarm }] : [];
+      }),
+    );
+    const failures: Error[] = [];
 
     await this.#runAtCurrentTime(async () => {
-      for (const { object, state } of due) {
-        await state.drainBlocking();
-        const alarm = (object as { alarm?: () => Promise<void> }).alarm;
-        if (alarm) {
-          await alarm.call(object);
+      for (const { namespace, instance, alarm: dueAlarm } of due) {
+        try {
+          await namespace.deliverAlarm(instance, dueAlarm, now);
+        } catch (cause) {
+          failures.push(
+            new Error(`Local Backoffice object alarm failed for ${instance.name}.`, { cause }),
+          );
         }
       }
     });
+
+    if (failures.length > 0) {
+      throw new AggregateError(failures, "One or more local Backoffice object alarms failed.");
+    }
+  }
+
+  async cleanup(): Promise<void> {
+    await this.#executionCoordinator.waitForIdle();
+    await this.#sqliteCoordination?.waitForIdle();
+    await Promise.all([...this.#authDatabases.owned].map(async (database) => database.destroy()));
+    this.#authDatabases.owned.clear();
   }
 
   createRuntimeConfig(): BackofficeRuntimeConfig {
@@ -462,29 +537,33 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
   }
 
   #registerNamespaces() {
-    for (const bindingName of Object.keys(
-      inMemoryObjectFactories,
-    ) as BackofficeObjectBindingName[]) {
+    for (const bindingName of Object.keys(localObjectFactories) as BackofficeObjectBindingName[]) {
       this.#register(
         { name: bindingName },
-        inMemoryObjectFactories[bindingName] as InMemoryBackofficeObjectFactory<unknown>,
+        localObjectFactories[bindingName] as LocalBackofficeObjectFactory<unknown>,
       );
     }
   }
 
   #register<TObject>(
     binding: BackofficeObjectBinding<TObject>,
-    createObject: InMemoryBackofficeObjectFactory<TObject>,
+    createObject: LocalBackofficeObjectFactory<TObject>,
   ) {
     const override = this.#objectFactories?.[binding.name] as
-      | InMemoryBackofficeObjectFactory<TObject>
+      | LocalBackofficeObjectFactory<TObject>
       | undefined;
     const factory = override ?? createObject;
 
-    this.#namespaces[binding.name] = new InMemoryDurableObjectNamespace({
+    this.#namespaces[binding.name] = new LocalDurableObjectNamespace({
       name: binding.name,
+      executionCoordinator: this.#executionCoordinator,
+      createState: (id) =>
+        this.#sqlite && this.#sqliteCoordination
+          ? new SqliteDurableObjectState(id, this.#sqlite.storage, this.#sqliteCoordination)
+          : new InMemoryDurableObjectState(id),
       createObject: (input) => {
         const runtime = this.#getRuntimeServices();
+        const state = input.state;
         return factory({
           ...input,
           env: this.env,
@@ -493,42 +572,66 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
             adapters: runtime.adapters.forScope(
               createDurableObjectDatabaseAdapterScope(input.state as unknown as DurableObjectState),
             ),
+            fragmentHostOperations: this.#createFragmentHostOperations(String(input.id)),
+            objectRuntime:
+              state instanceof SqliteDurableObjectState
+                ? {
+                    registerRefresh: (refresh) => {
+                      state.registerRuntimeRefresh(refresh);
+                    },
+                    clearDurableHooks: () => this.#clearDurableHooks(String(input.id)),
+                  }
+                : null,
           },
           nowEpochMs: () => this.now(),
           readAutomationSource: this.#readAutomationSource,
+          sqliteDataDirectory: this.#sqlite?.directory,
+          getAuthDatabase: () =>
+            getLocalAuthDatabase(this.#authDatabases, input.state, this.#sqlite?.directory, () =>
+              this.now(),
+            ),
         });
       },
-    }) as InMemoryDurableObjectNamespace<unknown>;
+    }) as LocalDurableObjectNamespace<unknown>;
   }
 
   #namespace<TObject>(
     binding: BackofficeObjectBinding<TObject>,
-  ): InMemoryDurableObjectNamespace<TObject> {
+  ): LocalDurableObjectNamespace<TObject> {
     const namespace = this.#namespaces[binding.name];
     if (!namespace) {
-      throw new Error(`In-memory Backoffice object binding ${binding.name} is not registered.`);
+      throw new Error(`Local Backoffice object binding ${binding.name} is not registered.`);
     }
 
-    return namespace as InMemoryDurableObjectNamespace<TObject>;
+    return namespace as LocalDurableObjectNamespace<TObject>;
   }
 
   #hasNamespace(bindingName: BackofficeObjectBindingName) {
     return Boolean(this.#namespaces[bindingName]);
   }
 
+  #resolvePersistedObject(id: string) {
+    const separator = id.indexOf(":");
+    const binding = id.slice(0, separator) as BackofficeObjectBindingName;
+    const namespace = this.#namespaces[binding];
+    if (!namespace || separator === -1) {
+      throw new Error(`Unknown persisted Backoffice object identity: ${id}`);
+    }
+    return {
+      namespace,
+      durableObjectId: namespace.idFromName(id.slice(separator + 1)),
+    };
+  }
+
   async #runAtCurrentTime<T>(callback: () => Promise<T>): Promise<T> {
-    // Date.now is process-global, so logical-time drains from different runtimes cannot overlap.
-    const releaseDateNowOverride = await acquireInMemoryDateNowOverride();
-    const originalNow = Date.now;
-    const activeTimeEpochMs = originalNow() + this.#timeOffsetMs;
-    this.#activeTimeEpochMs = activeTimeEpochMs;
-    Date.now = () => activeTimeEpochMs;
+    const drainTime = {
+      epochMs: Date.now() + this.#timeOffsetMs,
+      active: true,
+    };
     try {
-      return await callback();
+      return await this.#drainTimeEpochMs.run(drainTime, callback);
     } finally {
-      Date.now = originalNow;
-      this.#activeTimeEpochMs = null;
-      releaseDateNowOverride();
+      drainTime.active = false;
     }
   }
 }
