@@ -1247,7 +1247,7 @@ const createFakePiApi = (
       await new Promise((resolve) => {
         setTimeout(resolve, 0);
       });
-      return Response.json(toSessionDetail(session));
+      return new Response(null, { status: 204 });
     }
 
     if (request.method === "POST" && suffix === "command") {
