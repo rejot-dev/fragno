@@ -10,6 +10,7 @@ export function createNoopDialect({ supportsReturning }: { supportsReturning: bo
           async executeQuery() {
             return { rows: [] };
           },
+          async *streamQuery() {},
         };
       },
       async releaseConnection() {},
