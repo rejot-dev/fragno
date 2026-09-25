@@ -70,6 +70,7 @@ describe("createDurableHooksDispatcher", () => {
     });
 
     await dispatcher.wake();
+    await dispatcher.waitForIdle();
 
     expect(processDue).toHaveBeenCalledTimes(1);
   });

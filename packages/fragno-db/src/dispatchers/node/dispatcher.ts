@@ -9,6 +9,7 @@ export type DurableHooksDispatcher = {
   notify: (context: HookNotifyContext) => Promise<void>;
   wake: () => Promise<void>;
   drain: () => Promise<void>;
+  waitForIdle: () => Promise<void>;
   startPolling: () => void;
   stopPolling: () => void;
 };
@@ -72,18 +73,25 @@ export function createDurableHooksDispatcher(
 
     processing = true;
     currentPromise = (async () => {
-      do {
-        queued = false;
-        const shouldContinueAfterCompletion = continueAfterCompletionQueued;
-        continueAfterCompletionQueued = false;
-        try {
-          const run = await options.processor.processDue();
-          observeCompletion(run.completion, shouldContinueAfterCompletion && run.claimedCount > 0);
-        } catch (error) {
-          await reportDispatcherError(error);
-        }
-      } while (queued);
-      processing = false;
+      try {
+        do {
+          queued = false;
+          const shouldContinueAfterCompletion = continueAfterCompletionQueued;
+          continueAfterCompletionQueued = false;
+          try {
+            const run = await options.processor.processDue();
+            observeCompletion(
+              run.completion,
+              shouldContinueAfterCompletion && run.claimedCount > 0,
+            );
+          } catch (error) {
+            await reportDispatcherError(error);
+          }
+        } while (queued);
+      } finally {
+        processing = false;
+        currentPromise = undefined;
+      }
     })();
 
     return currentPromise;
@@ -128,6 +136,16 @@ export function createDurableHooksDispatcher(
         await options.processor.drain();
       } catch (error) {
         await reportDispatcherError(error);
+      }
+    },
+    waitForIdle: async () => {
+      while (currentPromise || activeCompletions.size > 0) {
+        if (currentPromise) {
+          await currentPromise;
+        }
+        if (activeCompletions.size > 0) {
+          await Promise.allSettled(activeCompletions);
+        }
       }
     },
     startPolling: () => {
