@@ -41,6 +41,8 @@ const createRuntime = (): BackofficeRuntimeServices => {
     objects,
     authorityResolver: unrestrictedBackofficeAuthorityResolver,
     kernelObserver: noopBackofficeKernelObserver,
+    fragmentHostOperations: null,
+    objectRuntime: null,
     adapters: {} as BackofficeRuntimeServices["adapters"],
     config: {
       authEmailVerification: { enabled: false },

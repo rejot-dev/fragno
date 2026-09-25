@@ -4,6 +4,8 @@
 # React Router
 /.react-router/
 /build/
+/build-node/
+/.backoffice-node/
 .source
 
 # Cloudflare

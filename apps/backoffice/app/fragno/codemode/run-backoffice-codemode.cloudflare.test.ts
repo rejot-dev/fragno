@@ -899,6 +899,8 @@ const createScopedMcpRuntimeServices = (
     adapters: {} as BackofficeRuntimeServices["adapters"],
     authorityResolver: unrestrictedBackofficeAuthorityResolver,
     kernelObserver: noopBackofficeKernelObserver,
+    fragmentHostOperations: null,
+    objectRuntime: null,
     config: {
       authEmailVerification: { enabled: false },
       signUpInvitationsEnabled: true,

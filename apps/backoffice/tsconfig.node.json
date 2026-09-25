@@ -1,12 +1,20 @@
 {
   "include": [
     "vite.config.ts",
+    "vite.node.config.ts",
+    "vite.node-server.config.ts",
     "react-router.config.ts",
     "source.config.ts",
     "vitest*.ts",
     "scripts/**/*.ts"
   ],
-  "exclude": ["scripts/better-auth-cli.ts"],
+  "exclude": [
+    "scripts/better-auth-cli.ts",
+    "scripts/node-server/node-process-config.ts",
+    "scripts/node-server/node-server-listeners.ts",
+    "scripts/node-server/node-server-proxy.scenario.test.ts",
+    "scripts/node-server/node-supervisor-disconnect.ts"
+  ],
   "compilerOptions": {
     "composite": true,
     "strict": true,

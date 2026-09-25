@@ -124,6 +124,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
           { adapters: runtime.adapters },
         ),
       durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
+      operations: runtime.fragmentHostOperations ?? undefined,
       onProcessError: (error) => {
         console.error("Forms hook processor error", error);
       },

@@ -206,6 +206,8 @@ export class InMemoryUploadObject implements UploadObject {
       name: "Upload",
       state,
       env,
+      fragmentHostOperations: this.#runtimeServices.fragmentHostOperations ?? undefined,
+      objectRuntime: runtime.objectRuntime,
       configKey: UPLOAD_ADMIN_CONFIG_KEY,
       parseStored: (raw) =>
         normalizeStoredUploadAdminConfig(raw) ?? (raw as StoredUploadAdminConfig),

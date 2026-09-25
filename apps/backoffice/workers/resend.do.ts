@@ -332,6 +332,8 @@ export class InMemoryResendObject implements ResendObject {
       name: "Resend",
       state,
       env,
+      fragmentHostOperations: this.#runtimeServices.fragmentHostOperations ?? undefined,
+      objectRuntime: runtime.objectRuntime,
       configKey: CONFIG_KEY,
       parseStored: (raw) => storedResendConfigSchema.parse(raw),
       isConfigured: (stored): stored is StoredResendConfig =>
