@@ -8,6 +8,8 @@ export default defineProject({
     name: "node",
     environment: "node",
     globals: true,
+    // Node 26's built-in web storage shadows happy-dom's isolated storage in client test files.
+    execArgv: ["--no-experimental-webstorage"],
     include: [
       "*.test.ts",
       "app/**/*.test.ts",
