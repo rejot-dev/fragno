@@ -47,26 +47,10 @@ export const resolvePiModelThinkingLevel = (
 ): PiThinkingLevel | undefined => PI_PROVIDER_THINKING_LEVELS[provider];
 
 export const PI_SUPPORTED_MODELS: PiModelOption[] = [
-  { provider: "openai", name: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
-  { provider: "openai", name: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
+  { provider: "openai", name: "gpt-6-luna", label: "GPT-6 Luna" },
   { provider: "openai", name: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
-  {
-    provider: "anthropic",
-    name: "claude-haiku-4-5",
-    label: "Claude Haiku 4.5",
-  },
-  {
-    provider: "anthropic",
-    name: "claude-sonnet-4-5",
-    label: "Claude Sonnet 4.5",
-  },
-  { provider: "anthropic", name: "claude-opus-4-5", label: "Claude Opus 4.5" },
-  { provider: "gemini", name: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
-  {
-    provider: "gemini",
-    name: "gemini-3.1-pro-preview",
-    label: "Gemini 3.1 Pro (Preview)",
-  },
+  { provider: "anthropic", name: "claude-opus-5-5", label: "Claude Opus 5.5" },
+  { provider: "gemini", name: "gemini-3.8-flash", label: "Gemini 3.8 Flash" },
 ];
 
 export const PI_TOOL_IDS = ["execCodeMode", "read", "search"] as const;
