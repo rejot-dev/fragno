@@ -44,18 +44,26 @@ vi.mock("@/fragno/upload-server", () => ({
   createUploadServerForProvider: createUploadServerForProviderMock,
 }));
 
-import { UPLOAD_ADMIN_CONFIG_KEY } from "@/fragno/upload";
+import { UPLOAD_ADMIN_CONFIG_KEY, resolveUploadAdminConfigInput } from "@/fragno/upload";
 
 import type { BackofficeDurableHookDependencies } from "./lib/backoffice-fragment-durable-object";
 import { Upload } from "./upload.do";
 
-const createState = (durableObjectName?: string) => {
+const createState = (durableObjectName = "v1:org:acme") => {
   const store = new Map<string, unknown>();
   let alarm: number | null = null;
   const storage = {
     get: vi.fn(async (key: string) => store.get(key)),
     put: vi.fn(async (key: string, value: unknown) => {
       store.set(key, value);
+    }),
+    list: vi.fn(async ({ prefix }: { prefix: string }) => {
+      return new Map([...store].filter(([key]) => key.startsWith(prefix)));
+    }),
+    delete: vi.fn(async (keys: string | string[]) => {
+      for (const key of Array.isArray(keys) ? keys : [keys]) {
+        store.delete(key);
+      }
     }),
     getAlarm: vi.fn(async () => alarm),
     setAlarm: vi.fn(async (scheduledTime: number) => {
@@ -68,8 +76,8 @@ const createState = (durableObjectName?: string) => {
 
   return {
     id: {
-      ...(durableObjectName ? { name: durableObjectName } : {}),
-      toString: () => `upload:${durableObjectName ?? "test"}`,
+      name: durableObjectName,
+      toString: () => `upload:${durableObjectName}`,
     },
     storage,
     blockConcurrencyWhile,
@@ -131,16 +139,24 @@ describe("Upload Durable Object", () => {
     }));
   });
 
-  test("returns NOT_CONFIGURED until admin config is saved", async () => {
+  test("automatically configures organization instances with database storage", async () => {
     const state = createState();
     const upload = new Upload(state, {} as CloudflareEnv);
 
-    const response = await upload.fetch(new Request("https://example.com/api/upload/files"));
-
-    assert(response.status === 400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: "NOT_CONFIGURED",
+    await expect(upload.getAdminConfig()).resolves.toMatchObject({
+      configured: true,
+      defaultProvider: "database",
+      providers: {
+        database: {
+          configured: true,
+          config: { storageKeyPrefix: "org/acme" },
+        },
+      },
     });
+
+    const response = await upload.fetch(new Request("https://example.com/api/upload/files"));
+    assert(response.status === 200);
+    await expect(response.text()).resolves.toBe("fragment-database");
   });
 
   test("fails initialization instead of replacing invalid named configuration", async () => {
@@ -161,19 +177,17 @@ describe("Upload Durable Object", () => {
     const state = createState("v1:named:marketplace%2Ftelegram-test-command");
     const upload = new Upload(state, {} as CloudflareEnv);
 
-    await vi.waitFor(async () => {
-      await expect(upload.getAdminConfig()).resolves.toMatchObject({
-        configured: true,
-        defaultProvider: "database",
-        providers: {
-          database: {
-            configured: true,
-            config: {
-              storageKeyPrefix: "named/marketplace/telegram-test-command",
-            },
+    await expect(upload.getAdminConfig()).resolves.toMatchObject({
+      configured: true,
+      defaultProvider: "database",
+      providers: {
+        database: {
+          configured: true,
+          config: {
+            storageKeyPrefix: "named/marketplace/telegram-test-command",
           },
         },
-      });
+      },
     });
 
     const response = await upload.fetch(new Request("https://example.com/api/upload/files"));
@@ -192,20 +206,42 @@ describe("Upload Durable Object", () => {
       const state = createState(name);
       const upload = new Upload(state, {} as CloudflareEnv);
 
-      await vi.waitFor(async () => {
-        await expect(upload.getAdminConfig()).resolves.toMatchObject({
-          configured: true,
-          defaultProvider: "database",
-          providers: {
-            database: { configured: true, config: { storageKeyPrefix } },
-          },
-        });
+      await expect(upload.getAdminConfig()).resolves.toMatchObject({
+        configured: true,
+        defaultProvider: "database",
+        providers: {
+          database: { configured: true, config: { storageKeyPrefix } },
+        },
       });
       await expect(upload.resetAdminConfig()).rejects.toThrow(
         "This upload instance uses fixed database storage.",
       );
     },
   );
+
+  test("preserves an existing organization provider configuration during startup", async () => {
+    const state = createState();
+    const resolved = resolveUploadAdminConfigInput({
+      orgId: "acme",
+      payload: VALID_R2_PAYLOAD,
+      now: "2026-09-25T10:00:00.000Z",
+    });
+    assert(resolved.ok);
+    await state.storage.put(UPLOAD_ADMIN_CONFIG_KEY, resolved.config);
+
+    const upload = new Upload(state, {} as CloudflareEnv);
+
+    const config = await upload.getAdminConfig();
+    expect(config).toMatchObject({
+      configured: true,
+      defaultProvider: "r2",
+      providers: {
+        r2: { configured: true },
+      },
+    });
+    expect(config.providers.database).toBeUndefined();
+    await expect(state.storage.get(UPLOAD_ADMIN_CONFIG_KEY)).resolves.toEqual(resolved.config);
+  });
 
   test("stores multi-provider config and routes requests by provider", async () => {
     const state = createState();
@@ -248,6 +284,34 @@ describe("Upload Durable Object", () => {
     expect(createUploadServerForProviderMock).toHaveBeenCalled();
     expect(createDurableHooksProcessorMock).toHaveBeenCalled();
     expect(migrateMock).toHaveBeenCalled();
+  });
+
+  test("resets organization configuration to the database storage baseline", async () => {
+    const state = createState();
+    const upload = new Upload(state, {} as CloudflareEnv);
+    await upload.setAdminConfig(VALID_R2_PAYLOAD, "acme");
+
+    const config = await upload.resetAdminConfig();
+
+    expect(config).toMatchObject({
+      configured: true,
+      defaultProvider: "database",
+      providers: {
+        database: { configured: true, config: { storageKeyPrefix: "org/acme" } },
+      },
+    });
+    expect(config.providers.r2).toBeUndefined();
+    const response = await upload.fetch(new Request("https://example.com/api/upload/files"));
+    await expect(response.text()).resolves.toBe("fragment-database");
+  });
+
+  test("rejects configuration for an organization other than its named scope", async () => {
+    const state = createState();
+    const upload = new Upload(state, {} as CloudflareEnv);
+
+    await expect(upload.setAdminConfig(VALID_R2_PAYLOAD, "other-org")).rejects.toThrow(
+      "Upload Durable Object is bound to a different organization.",
+    );
   });
 
   test("schedules durable hook processing for requests handled by a secondary provider", async () => {
@@ -337,21 +401,28 @@ describe("Upload Durable Object", () => {
     );
   });
 
-  test("returns empty queue when upload is not configured", async () => {
+  test("loads the durable hook queue from default organization database storage", async () => {
     const state = createState();
-    const upload = new Upload(state, {} as CloudflareEnv, testDurableHookDependencies);
-
-    const queue = await upload.getDurableHookQueue();
-
-    expect(queue).toEqual({
-      configured: false,
-      hooksEnabled: false,
-      namespace: null,
+    loadDurableHookQueueMock.mockResolvedValue({
+      configured: true,
+      hooksEnabled: true,
+      namespace: "upload",
       items: [],
       cursor: undefined,
       hasNextPage: false,
     });
-    expect(loadDurableHookQueueMock).not.toHaveBeenCalled();
+    const upload = new Upload(state, {} as CloudflareEnv, testDurableHookDependencies);
+
+    const queue = await upload.getDurableHookQueue();
+
+    expect(queue).toMatchObject({
+      configured: true,
+      hooksEnabled: true,
+      namespace: "upload",
+      items: [],
+      hasNextPage: false,
+    });
+    expect(loadDurableHookQueueMock).toHaveBeenCalledTimes(1);
   });
 
   test("loads durable hook queue when upload is configured", async () => {

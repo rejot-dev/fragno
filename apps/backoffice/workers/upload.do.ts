@@ -19,6 +19,7 @@ import {
   UPLOAD_PROVIDER_R2_BINDING,
   buildUploadAdminConfigResponse,
   createNamedDatabaseUploadConfig,
+  createOrganizationDatabaseUploadConfig,
   normalizeStoredUploadAdminConfig,
   resolveUploadAdminConfigInput,
   type StoredUploadAdminConfig,
@@ -126,9 +127,57 @@ type UploadRuntime = {
   fragmentsByProvider: Map<UploadProvider, UploadFragment>;
 };
 
+type UploadStoragePolicy =
+  | { kind: "configurable-organization"; orgId: string }
+  | { kind: "fixed-database"; namespace: string };
+
+function resolveUploadStoragePolicy(id: DurableObjectId): UploadStoragePolicy {
+  if (!id.name) {
+    throw new Error("Upload Durable Object requires a named identity.");
+  }
+
+  const objectScope = decodeBackofficeObjectScope(id.name);
+  if (!objectScope) {
+    throw new Error("Upload Durable Object has an invalid named identity.");
+  }
+
+  switch (objectScope.kind) {
+    case "org":
+      return { kind: "configurable-organization", orgId: objectScope.orgId };
+    case "named":
+      return { kind: "fixed-database", namespace: objectScope.name };
+    case "user":
+    case "project":
+      return { kind: "fixed-database", namespace: id.name };
+    case "singleton":
+      throw new Error("Upload Durable Object does not support singleton scope.");
+  }
+
+  throw new Error("Upload Durable Object has an unsupported scope.");
+}
+
+function createDefaultUploadConfig(policy: UploadStoragePolicy): StoredUploadAdminConfig {
+  return policy.kind === "configurable-organization"
+    ? createOrganizationDatabaseUploadConfig(policy.orgId)
+    : createNamedDatabaseUploadConfig(policy.namespace);
+}
+
+function assertUploadConfigMatchesStoragePolicy(
+  stored: StoredUploadAdminConfig,
+  policy: UploadStoragePolicy,
+): void {
+  const matchesPolicy =
+    policy.kind === "configurable-organization"
+      ? stored.namespace.kind === "org" && stored.namespace.orgId === policy.orgId
+      : stored.namespace.kind === "named" && stored.namespace.name === policy.namespace;
+  if (!matchesPolicy) {
+    throw new Error("Stored Upload configuration belongs to a different Durable Object scope.");
+  }
+}
+
 export class InMemoryUploadObject implements UploadObject {
   readonly #state: BackofficeObjectState & Pick<DurableObjectState, "id">;
-  readonly #fixedDatabaseNamespace: string | null;
+  readonly #storagePolicy: UploadStoragePolicy;
   readonly #env: Parameters<typeof createUploadServerForProvider>[3];
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #host: BackofficeFragmentDurableObject<
@@ -136,6 +185,7 @@ export class InMemoryUploadObject implements UploadObject {
     StoredUploadAdminConfig,
     UploadRuntime
   >;
+  readonly #initialization: Promise<void>;
 
   constructor({
     state,
@@ -149,17 +199,7 @@ export class InMemoryUploadObject implements UploadObject {
     durableHooks?: BackofficeDurableHookDependencies;
   }) {
     this.#state = state;
-    const durableObjectName = (state.id as DurableObjectId & { name?: string }).name;
-    const objectScope = durableObjectName ? decodeBackofficeObjectScope(durableObjectName) : null;
-    // Organization uploads remain administratively configurable. Named, user, and project uploads
-    // back isolated workspaces, so they derive a stable namespace from their Durable Object identity
-    // and stay pinned to database storage without requiring per-workspace configuration.
-    this.#fixedDatabaseNamespace =
-      objectScope?.kind === "named"
-        ? objectScope.name
-        : objectScope?.kind === "user" || objectScope?.kind === "project"
-          ? (durableObjectName ?? null)
-          : null;
+    this.#storagePolicy = resolveUploadStoragePolicy(state.id);
     this.#env = env;
     this.#runtimeServices = runtime;
     this.#host = createBackofficeFragmentDurableObject({
@@ -224,27 +264,15 @@ export class InMemoryUploadObject implements UploadObject {
       },
     });
 
-    void state.blockConcurrencyWhile(async () => {
+    this.#initialization = state.blockConcurrencyWhile(async () => {
       const stored = await this.#loadConfig();
-      if (!this.#fixedDatabaseNamespace) {
-        await this.#host.initializeFromStored(stored);
-        return;
-      }
-
       if (stored) {
-        if (
-          stored.namespace.kind !== "named" ||
-          stored.namespace.name !== this.#fixedDatabaseNamespace
-        ) {
-          throw new Error("Fixed Upload Durable Object is bound to a different namespace.");
-        }
+        assertUploadConfigMatchesStoragePolicy(stored, this.#storagePolicy);
         await this.#host.initializeFromStored(stored);
         return;
       }
 
-      await this.#host.storeAndInitialize(
-        createNamedDatabaseUploadConfig(this.#fixedDatabaseNamespace),
-      );
+      await this.#host.storeAndInitialize(createDefaultUploadConfig(this.#storagePolicy));
     });
   }
 
@@ -343,6 +371,7 @@ export class InMemoryUploadObject implements UploadObject {
   }
 
   async #refreshConfigured() {
+    await this.#initialization;
     await this.#host.initializeFromStored(await this.#loadConfig());
     return this.#host.getConfigured();
   }
@@ -368,19 +397,22 @@ export class InMemoryUploadObject implements UploadObject {
   }
 
   async getAdminConfig(): Promise<UploadAdminConfigResponse> {
-    const config = await this.#loadConfig();
-    return buildUploadAdminConfigResponse(config);
+    await this.#initialization;
+    return buildUploadAdminConfigResponse(await this.#loadConfig());
   }
 
   async resetAdminConfig(): Promise<UploadAdminConfigResponse> {
-    if (this.#fixedDatabaseNamespace) {
+    await this.#initialization;
+    if (this.#storagePolicy.kind === "fixed-database") {
       throw new Error("This upload instance uses fixed database storage.");
     }
 
+    const baseline = createDefaultUploadConfig(this.#storagePolicy);
     await this.#state.blockConcurrencyWhile(async () => {
       await this.#host.clearConfig();
+      await this.#host.storeAndInitialize(baseline);
     });
-    return buildUploadAdminConfigResponse(null);
+    return buildUploadAdminConfigResponse(baseline);
   }
 
   async setAdminConfig(
@@ -388,11 +420,12 @@ export class InMemoryUploadObject implements UploadObject {
     orgId: string,
     _origin?: string,
   ): Promise<UploadAdminConfigResponse> {
+    await this.#initialization;
     const parsedPayload = uploadConfigureInputSchema.safeParse(payload);
     if (!parsedPayload.success) {
       throw new Error("Only providers 'database', 'r2', and 'r2-binding' are supported.");
     }
-    if (this.#fixedDatabaseNamespace) {
+    if (this.#storagePolicy.kind === "fixed-database") {
       if (parsedPayload.data.provider !== UPLOAD_PROVIDER_DATABASE) {
         throw new Error("This upload instance uses fixed database storage.");
       }
@@ -401,6 +434,9 @@ export class InMemoryUploadObject implements UploadObject {
     }
 
     const args = setAdminConfigArgsSchema.parse({ orgId });
+    if (args.orgId !== this.#storagePolicy.orgId) {
+      throw new Error("Upload Durable Object is bound to a different organization.");
+    }
     const existing = await this.#loadConfig();
     const resolved = resolveUploadAdminConfigInput({
       payload: parsedPayload.data,

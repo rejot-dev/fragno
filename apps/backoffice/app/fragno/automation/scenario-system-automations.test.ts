@@ -425,20 +425,11 @@ describe("system automation scenarios", () => {
             remoteWorkflowName: "workspace-file-initialization",
             status: "complete",
             actors: BACKOFFICE_SYSTEM_ACTORS,
-            output: {
-              configured: true,
-              id: "upload",
-              provider: "database",
-            },
           }),
 
           then.workflow.steps({
             remoteWorkflowName: "workspace-file-initialization",
-            include: [
-              "configure upload database connection",
-              "seed workspace starter files",
-              "seed starter automation routes",
-            ],
+            include: ["seed workspace starter files", "seed starter automation routes"],
           }),
 
           then.assert("workspace initialization workflow runs in system scope", async (ctx) => {
@@ -456,6 +447,25 @@ describe("system automation scenarios", () => {
           }),
 
           then.router.missing({ orgId: "org-1", id: "system-project-files-configure" }),
+
+          then.assert(
+            "organization upload storage initializes without a workflow step",
+            async (ctx) => {
+              const config = await ctx.runtime.objects.upload
+                .forOrg("org-1")
+                .commands.getAdminConfig();
+              expect(config).toMatchObject({
+                configured: true,
+                defaultProvider: "database",
+                providers: {
+                  database: {
+                    configured: true,
+                    config: { storageKeyPrefix: "org/org-1" },
+                  },
+                },
+              });
+            },
+          ),
 
           then.files.exists({ orgId: "org-1", path: "/workspace/AGENTS.md" }),
           then.files.missing({
