@@ -249,12 +249,20 @@ describe("read tracking", () => {
     const createdId = uow.create("users", { name: "test" });
     uow.update("users", createdId, (b) => b.set({ name: "next" }));
     uow.delete("users", createdId);
+    uow.deleteMany("users", [
+      FragnoId.fromExternal("bulk-1", 0),
+      FragnoId.fromExternal("bulk-2", 0),
+    ]);
     uow.checkAbsent("users", "name_idx", { name: "missing" });
 
     const keys = collectWriteKeys(baseUow.getMutationOperations());
-    expect(keys).toHaveLength(3);
+    expect(keys).toHaveLength(5);
     expect(keys).toEqual(
-      expect.arrayContaining([expect.objectContaining({ table: "users", schema: "tenant" })]),
+      expect.arrayContaining([
+        expect.objectContaining({ table: "users", schema: "tenant" }),
+        { table: "users", schema: "tenant", externalId: "bulk-1" },
+        { table: "users", schema: "tenant", externalId: "bulk-2" },
+      ]),
     );
   });
 });

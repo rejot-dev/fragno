@@ -9,6 +9,7 @@ import type { MutationOperation } from "../../../query/unit-of-work/mutation-rec
 import type {
   RetrievalOperation,
   CompiledMutation,
+  CompiledMutationResult,
 } from "../../../query/unit-of-work/unit-of-work";
 import { materializeRuntimeCreateValues } from "../../../query/value-encoding";
 import type { AnyColumn, AnySchema } from "../../../schema/create";
@@ -342,6 +343,108 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       expectedAffectedRows: useReturningForCheck ? null : op.checkVersion ? 1n : null,
       expectedReturnedRows: useReturningForCheck ? 1 : null,
     };
+  }
+
+  override compileDeleteMany(
+    op: MutationOperation<AnySchema> & { type: "delete-many" },
+  ): CompiledMutationResult<CompiledQuery> {
+    if (op.ids.length === 0) {
+      return null;
+    }
+
+    const sqlCompiler = this.getSQLCompiler(op.schema, op.namespace);
+    const table = this.getTable(op.schema, op.table);
+    const idColumn = table.getIdColumn();
+    const versionColumn = table.getVersionColumn();
+    const versions = op.checkVersion
+      ? op.ids.map((id) => {
+          const version = this.getVersionToCheck(id, true);
+          if (version === undefined) {
+            throw new Error("Checked bulk deletes require versioned FragnoIds.");
+          }
+          return version;
+        })
+      : [];
+    const sharedVersion =
+      versions.length > 0 && versions.every((version) => version === versions[0])
+        ? versions[0]
+        : null;
+    const fixedParameterCount = sharedVersion === null ? 0 : 1;
+    const parametersPerId = op.checkVersion && sharedVersion === null ? 2 : 1;
+    const maxIdsPerStatement = Number.isFinite(this.driverConfig.maxParametersPerQuery)
+      ? Math.floor(
+          (this.driverConfig.maxParametersPerQuery - fixedParameterCount) / parametersPerId,
+        )
+      : op.ids.length;
+    if (maxIdsPerStatement < 1) {
+      throw new Error(
+        `Driver ${this.driverConfig.driverType} cannot bind one bulk delete ID with its configured parameter limit.`,
+      );
+    }
+
+    const useReturningForCheck =
+      op.checkVersion &&
+      this.driverConfig.supportsReturning &&
+      !this.driverConfig.supportsRowsAffected;
+    const compiled: CompiledMutation<CompiledQuery>[] = [];
+    for (let offset = 0; offset < op.ids.length; offset += maxIdsPerStatement) {
+      const ids = op.ids.slice(offset, offset + maxIdsPerStatement);
+      const conditionsResult =
+        sharedVersion !== null
+          ? buildCondition(table.columns, (eb) =>
+              eb.and(
+                eb(versionColumn.name, "=", sharedVersion),
+                eb(
+                  idColumn.name,
+                  "in",
+                  ids.map((id) => this.getExternalId(id)),
+                ),
+              ),
+            )
+          : op.checkVersion
+            ? buildCondition(table.columns, (eb) =>
+                eb.or(
+                  ...ids.map((id) => {
+                    const version = this.getVersionToCheck(id, true);
+                    if (version === undefined) {
+                      throw new Error("Checked bulk deletes require versioned FragnoIds.");
+                    }
+                    return eb.and(
+                      eb(idColumn.name, "=", this.getExternalId(id)),
+                      eb(versionColumn.name, "=", version),
+                    );
+                  }),
+                ),
+              )
+            : buildCondition(table.columns, (eb) =>
+                eb(
+                  idColumn.name,
+                  "in",
+                  ids.map((id) => this.getExternalId(id)),
+                ),
+              );
+
+      if (conditionsResult === false) {
+        continue;
+      }
+
+      const conditions: Condition | undefined =
+        conditionsResult === true ? undefined : conditionsResult;
+      const expectedRows = op.checkVersion ? ids.length : null;
+      compiled.push({
+        query: sqlCompiler.compileDelete(table, {
+          where: conditions,
+          returning: useReturningForCheck,
+        }),
+        ...(offset === 0 ? { operation: op } : {}),
+        op: "delete-many",
+        expectedAffectedRows:
+          useReturningForCheck || expectedRows === null ? null : BigInt(expectedRows),
+        expectedReturnedRows: useReturningForCheck ? expectedRows : null,
+      });
+    }
+
+    return compiled.length === 1 ? compiled[0] : compiled;
   }
 
   override compileCheck(

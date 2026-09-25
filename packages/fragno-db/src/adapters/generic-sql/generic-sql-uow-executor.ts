@@ -159,7 +159,9 @@ export async function executeMutation(
             createdInternalIds.push(null);
           }
         } else if (
-          (compiledMutation.op === "update" || compiledMutation.op === "delete") &&
+          (compiledMutation.op === "update" ||
+            compiledMutation.op === "delete" ||
+            compiledMutation.op === "delete-many") &&
           compiledMutation.expectedAffectedRows !== null
         ) {
           // Check affected rows for updates/deletes

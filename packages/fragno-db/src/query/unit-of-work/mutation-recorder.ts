@@ -62,6 +62,15 @@ export type MutationOperation<
       omitOutbox?: boolean;
     }
   | {
+      type: "delete-many";
+      schema: TSchema;
+      namespace?: string | null;
+      table: TTable["name"];
+      ids: readonly (FragnoId | string)[];
+      checkVersion: boolean;
+      omitOutbox: boolean;
+    }
+  | {
       type: "check";
       schema: TSchema;
       namespace?: string | null;
@@ -217,6 +226,39 @@ export class SchemaMutationRecorder<TSchema extends AnySchema> {
     });
   }
 
+  /** Records one bounded bulk delete while preserving per-row optimistic concurrency checks. */
+  deleteMany(
+    tableName: keyof TSchema["tables"] & string,
+    ids: readonly (FragnoId | string)[],
+    buildDelete?: (
+      builder: Omit<DeleteManyBuilder, "build">,
+    ) => Omit<DeleteManyBuilder, "build"> | void,
+  ): void {
+    if (ids.length === 0) {
+      return;
+    }
+
+    const copiedIds = [...ids];
+    const externalIds = copiedIds.map((id) => (typeof id === "string" ? id : id.externalId));
+    if (new Set(externalIds).size !== externalIds.length) {
+      throw new Error(`Cannot delete duplicate IDs from table "${tableName}" in one bulk delete.`);
+    }
+
+    const builder = new DeleteManyBuilder(tableName, copiedIds);
+    buildDelete?.(builder);
+    const { checkVersion, omitOutbox } = builder.build();
+
+    this.#record({
+      type: "delete-many",
+      schema: this.#schema,
+      namespace: this.#namespace,
+      table: tableName,
+      ids: copiedIds,
+      checkVersion,
+      omitOutbox,
+    });
+  }
+
   check(tableName: keyof TSchema["tables"] & string, id: FragnoId): void {
     this.#record({
       type: "check",
@@ -315,6 +357,44 @@ export class UpdateBuilder<TTable extends AnyTable> {
         ? { retryOnUniqueConflict: this.#retryOnUniqueConflict }
         : {}),
       set: this.#setValues,
+    };
+  }
+}
+
+export class DeleteManyBuilder {
+  readonly #tableName: string;
+  readonly #ids: readonly (FragnoId | string)[];
+
+  #checkVersion = false;
+  #omitOutbox = false;
+
+  constructor(tableName: string, ids: readonly (FragnoId | string)[]) {
+    this.#tableName = tableName;
+    this.#ids = ids;
+  }
+
+  check(): this {
+    if (this.#ids.some((id) => typeof id === "string")) {
+      throw new Error(
+        `Cannot use check() with string IDs on table "${this.#tableName}". ` +
+          `Version checking requires FragnoIds with version information.`,
+      );
+    }
+    this.#checkVersion = true;
+    return this;
+  }
+
+  /** Prevent these source deletions from producing ordinary outbox delete operations. */
+  omitOutbox(): this {
+    this.#omitOutbox = true;
+    return this;
+  }
+
+  /** @internal */
+  build(): { checkVersion: boolean; omitOutbox: boolean } {
+    return {
+      checkVersion: this.#checkVersion,
+      omitOutbox: this.#omitOutbox,
     };
   }
 }

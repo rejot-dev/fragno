@@ -6,6 +6,7 @@ import { QueryTreeFindBuilder } from "../../../query/unit-of-work/query-tree";
 import { schema, column, idColumn, referenceColumn, FragnoId } from "../../../schema/create";
 import {
   BetterSQLite3DriverConfig,
+  CloudflareDurableObjectsDriverConfig,
   MySQL2DriverConfig,
   NodePostgresDriverConfig,
 } from "../driver-config";
@@ -340,6 +341,95 @@ describe("GenericSQLUOWOperationCompiler", () => {
     expect(result).not.toBeNull();
     expect(result!.query.sql).toMatchInlineSnapshot(`"delete from "users" where "users"."id" = ?"`);
     expect(result!.expectedAffectedRows).toBeNull();
+  });
+
+  test("compileDeleteMany operation", () => {
+    const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+
+    const result = compiler.compileDeleteMany({
+      type: "delete-many",
+      schema: testSchema,
+      table: "users",
+      ids: ["user123", "user456"],
+      checkVersion: false,
+      omitOutbox: false,
+    });
+
+    const [compiled] = Array.isArray(result) ? result : result ? [result] : [];
+    expect(compiled?.query.sql).toMatchInlineSnapshot(
+      `"delete from "users" where "users"."id" in (?, ?)"`,
+    );
+    expect(compiled?.expectedAffectedRows).toBeNull();
+  });
+
+  test("compileDeleteMany operation with per-row version checks", () => {
+    const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+
+    const result = compiler.compileDeleteMany({
+      type: "delete-many",
+      schema: testSchema,
+      table: "users",
+      ids: [
+        new FragnoId({ externalId: "user123", internalId: 1n, version: 5 }),
+        new FragnoId({ externalId: "user456", internalId: 2n, version: 8 }),
+      ],
+      checkVersion: true,
+      omitOutbox: true,
+    });
+
+    const [compiled] = Array.isArray(result) ? result : result ? [result] : [];
+    expect(compiled?.query.sql).toMatchInlineSnapshot(
+      `"delete from "users" where (("users"."id" = ? and "users"."_version" = ?) or ("users"."id" = ? and "users"."_version" = ?))"`,
+    );
+    assert(compiled?.expectedAffectedRows === 2n);
+  });
+
+  test("chunks bulk deletes for drivers using the shared conservative bind limit", () => {
+    const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+    const ids = Array.from({ length: 1_000 }, (_, index) => `user-${index}`);
+
+    const result = compiler.compileDeleteMany({
+      type: "delete-many",
+      schema: testSchema,
+      table: "users",
+      ids,
+      checkVersion: false,
+      omitOutbox: false,
+    });
+
+    assert(Array.isArray(result));
+    expect(result).toHaveLength(2);
+    expect(result.map((mutation) => mutation.query.parameters.length)).toEqual([999, 1]);
+  });
+
+  test("chunks checked bulk deletes to the driver's bind parameter limit", () => {
+    const compiler = new GenericSQLUOWOperationCompiler(new CloudflareDurableObjectsDriverConfig());
+    const ids = Array.from(
+      { length: 100 },
+      (_, index) =>
+        new FragnoId({
+          externalId: `user-${index}`,
+          internalId: BigInt(index + 1),
+          version: 0,
+        }),
+    );
+
+    const result = compiler.compileDeleteMany({
+      type: "delete-many",
+      schema: testSchema,
+      table: "users",
+      ids,
+      checkVersion: true,
+      omitOutbox: true,
+    });
+
+    assert(Array.isArray(result));
+    expect(result).toHaveLength(2);
+    expect(result.map((mutation) => mutation.query.parameters.length)).toEqual([100, 2]);
+    expect(result.map((mutation) => mutation.expectedReturnedRows)).toEqual([99, 1]);
+    expect(result[0]?.query.sql).toContain('"_version" = ? and "users"."id" in (');
+    expect(result[0]?.operation).toMatchObject({ type: "delete-many", ids });
+    expect(result[1]?.operation).toBeUndefined();
   });
 
   test("compileCheck operation", () => {

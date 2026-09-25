@@ -4,6 +4,7 @@ import { Cursor } from "../../query/cursor";
 import type { MutationOperation } from "../../query/unit-of-work/mutation-recorder";
 import type {
   CompiledMutation,
+  CompiledMutationResult,
   RetrievalOperation,
   UOWCompiler,
 } from "../../query/unit-of-work/unit-of-work";
@@ -95,6 +96,10 @@ export abstract class UOWOperationCompiler<TCompiledQuery> {
   abstract compileDelete(
     op: MutationOperation<AnySchema> & { type: "delete" },
   ): CompiledMutation<TCompiledQuery> | null;
+
+  abstract compileDeleteMany(
+    op: MutationOperation<AnySchema> & { type: "delete-many" },
+  ): CompiledMutationResult<TCompiledQuery>;
 
   abstract compileCheck(
     op: MutationOperation<AnySchema> & { type: "check" },
@@ -203,7 +208,7 @@ export function createUOWCompilerFromOperationCompiler<TCompiledQuery>(
 
     compileMutationOperation(
       op: MutationOperation<AnySchema>,
-    ): CompiledMutation<TCompiledQuery> | null {
+    ): CompiledMutationResult<TCompiledQuery> {
       switch (op.type) {
         case "create":
           return operationCompiler.compileCreate(op);
@@ -211,6 +216,8 @@ export function createUOWCompilerFromOperationCompiler<TCompiledQuery>(
           return operationCompiler.compileUpdate(op);
         case "delete":
           return operationCompiler.compileDelete(op);
+        case "delete-many":
+          return operationCompiler.compileDeleteMany(op);
         case "check":
           return operationCompiler.compileCheck(op);
         case "check-absent":

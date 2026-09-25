@@ -352,6 +352,59 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
       }
     });
 
+    it("bulk deletes rows atomically with per-row version enforcement", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const create = createSuiteUnitOfWork(adapter, "create-bulk-delete-users");
+        for (const index of [1, 2, 3]) {
+          create.create("users", {
+            id: `bulk-delete-${index}`,
+            name: "Bulk Delete",
+            email: `bulk-delete-${index}@example.com`,
+            age: index,
+          });
+        }
+        assert((await create.executeMutations()).success);
+        const staleIds = create.getCreatedIds();
+
+        const bump = createSuiteUnitOfWork(adapter, "bump-bulk-delete-user");
+        bump.update("users", staleIds[1], (builder) => builder.set({ age: 22 }).check());
+        assert((await bump.executeMutations()).success);
+
+        const staleDelete = createSuiteUnitOfWork(adapter, "stale-bulk-delete-users");
+        staleDelete.deleteMany("users", staleIds, (builder) => builder.check());
+        assert(!(await staleDelete.executeMutations()).success);
+
+        const [rowsAfterConflict] = await createSuiteUnitOfWork(
+          adapter,
+          "read-after-bulk-delete-conflict",
+        )
+          .find("users", (builder) =>
+            builder.whereIndex("users_name_idx", (condition) =>
+              condition("name", "=", "Bulk Delete"),
+            ),
+          )
+          .executeRetrieve();
+        expect(rowsAfterConflict).toHaveLength(3);
+
+        const currentIds = rowsAfterConflict.map((row: { id: FragnoId }) => row.id);
+        const validDelete = createSuiteUnitOfWork(adapter, "valid-bulk-delete-users");
+        validDelete.deleteMany("users", currentIds, (builder) => builder.check());
+        assert((await validDelete.executeMutations()).success);
+
+        const [remainingRows] = await createSuiteUnitOfWork(adapter, "read-after-bulk-delete")
+          .find("users", (builder) =>
+            builder.whereIndex("users_name_idx", (condition) =>
+              condition("name", "=", "Bulk Delete"),
+            ),
+          )
+          .executeRetrieve();
+        expect(remainingRows).toEqual([]);
+      } finally {
+        await close?.();
+      }
+    });
+
     it("selects total counts and filtered counts", async () => {
       const { adapter, close } = await createContext();
       try {

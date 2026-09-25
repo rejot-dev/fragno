@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 
 import { DatabaseConstraintError, DatabaseTransactionError } from "../../errors";
 import {
@@ -13,6 +13,20 @@ import {
 
 const withProps = (message: string, props: Record<string, unknown>) =>
   Object.assign(new Error(message), props);
+
+describe("DriverConfig bind parameter limits", () => {
+  it.each([
+    [new BetterSQLite3DriverConfig(), 999],
+    [new SQLocalDriverConfig(), 999],
+    [new CloudflareDurableObjectsDriverConfig(), 100],
+    [new NodePostgresDriverConfig(), 999],
+    [new PGLiteDriverConfig(), 999],
+    [new MySQL2DriverConfig(), 999],
+  ] as const)("defines a finite limit for %s", (config, expectedLimit) => {
+    expect(config.maxParametersPerQuery).toBe(expectedLimit);
+    assert(Number.isFinite(config.maxParametersPerQuery));
+  });
+});
 
 describe("DriverConfig.normalizeError", () => {
   it.each([

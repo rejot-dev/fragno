@@ -815,6 +815,46 @@ const deleteRow = (
   };
 };
 
+const deleteManyRows = (
+  op: Extract<MutationOperation<AnySchema>, { type: "delete-many" }>,
+  namespaceStore: InMemoryNamespaceStore,
+  tableStore: InMemoryTableStore,
+  table: AnyTable,
+  options: ResolvedInMemoryAdapterOptions,
+  resolver?: NamingResolver,
+): (() => void) | null => {
+  const rollbacks: Array<() => void> = [];
+  try {
+    for (const id of op.ids) {
+      const rollback = deleteRow(
+        { ...op, type: "delete", id },
+        namespaceStore,
+        tableStore,
+        table,
+        options,
+        resolver,
+      );
+      if (rollback) {
+        rollbacks.push(rollback);
+      }
+    }
+  } catch (error) {
+    for (const rollback of rollbacks.reverse()) {
+      rollback();
+    }
+    throw error;
+  }
+
+  if (rollbacks.length === 0) {
+    return null;
+  }
+  return () => {
+    for (const rollback of rollbacks.reverse()) {
+      rollback();
+    }
+  };
+};
+
 const checkRow = (
   op: Extract<MutationOperation<AnySchema>, { type: "check" }>,
   tableStore: InMemoryTableStore,
@@ -1377,6 +1417,33 @@ export const createInMemoryUowExecutor = (
           }
           const tableStore = getTableStore(namespaceStore, table, resolver);
           const rollback = deleteRow(
+            operation,
+            namespaceStore,
+            tableStore,
+            table,
+            options,
+            resolver,
+          );
+          if (rollback) {
+            rollbackActions.push(rollback);
+          }
+          continue;
+        }
+
+        if (operation.type === "delete-many") {
+          const resolver = getResolver(operation.schema, operation.namespace, resolverFactory);
+          const namespaceStore = getNamespaceStore(
+            store,
+            operation.schema,
+            operation.namespace,
+            resolver,
+          );
+          const table = operation.schema.tables[operation.table];
+          if (!table) {
+            throw new Error(`Invalid table name ${operation.table}.`);
+          }
+          const tableStore = getTableStore(namespaceStore, table, resolver);
+          const rollback = deleteManyRows(
             operation,
             namespaceStore,
             tableStore,

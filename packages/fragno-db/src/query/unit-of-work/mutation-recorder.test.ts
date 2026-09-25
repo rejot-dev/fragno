@@ -25,7 +25,7 @@ const recorderSchema = schema("mutation_recorder", (s) =>
 
 type RecorderApi = Pick<
   SchemaMutationRecorder<typeof recorderSchema>,
-  "create" | "update" | "delete" | "check"
+  "create" | "update" | "delete" | "deleteMany" | "check"
 >;
 
 const recordMutationPlan = (records: RecorderApi) => {
@@ -39,6 +39,7 @@ const recordMutationPlan = (records: RecorderApi) => {
     builder.set({ note: "updated", createdAt: builder.now().plus({ minutes: 1 }) }).check(),
   );
   records.delete("record", id, (builder) => builder.check());
+  records.deleteMany("record", [id], (builder) => builder.check().omitOutbox());
   records.check("record", id);
 };
 
@@ -68,6 +69,7 @@ const normalizeMutationOperation = (operation: MutationOperation<typeof recorder
   ...operation,
   schema: { name: operation.schema.name, version: operation.schema.version },
   ...("id" in operation ? { id: normalizeMutationValue(operation.id) } : {}),
+  ...("ids" in operation ? { ids: normalizeMutationValue(operation.ids) } : {}),
   ...("values" in operation ? { values: normalizeMutationValue(operation.values) } : {}),
   ...("set" in operation ? { set: normalizeMutationValue(operation.set) } : {}),
 });
@@ -104,6 +106,34 @@ describe("MutationRecorder", () => {
         table: "record",
       },
     ]);
+  });
+
+  test("records bounded bulk deletes and rejects ambiguous version checks", () => {
+    const operations: MutationOperation<typeof recorderSchema>[] = [];
+    const records = new MutationRecorder((operation) => {
+      operations.push(operation as MutationOperation<typeof recorderSchema>);
+    }).forSchema(recorderSchema);
+    const first = new FragnoId({ externalId: "record-1", internalId: 1n, version: 2 });
+    const second = new FragnoId({ externalId: "record-2", internalId: 2n, version: 4 });
+
+    records.deleteMany("record", [first, second], (builder) => builder.check().omitOutbox());
+    records.deleteMany("record", []);
+
+    expect(operations).toMatchObject([
+      {
+        type: "delete-many",
+        table: "record",
+        ids: [first, second],
+        checkVersion: true,
+        omitOutbox: true,
+      },
+    ]);
+    expect(() => records.deleteMany("record", [first, first])).toThrow(
+      'Cannot delete duplicate IDs from table "record" in one bulk delete.',
+    );
+    expect(() => records.deleteMany("record", ["record-3"], (builder) => builder.check())).toThrow(
+      'Cannot use check() with string IDs on table "record".',
+    );
   });
 
   test("is the canonical mutation implementation used by UnitOfWork", () => {

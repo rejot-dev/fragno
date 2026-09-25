@@ -3,7 +3,7 @@ import { describe, expect, it, assert } from "vitest";
 import type { MutationOperation } from "../query/unit-of-work/mutation-recorder";
 import { materializeRuntimeCreateValues } from "../query/value-encoding";
 import type { AnySchema } from "../schema/create";
-import { column, idColumn, schema } from "../schema/create";
+import { FragnoId, column, idColumn, schema } from "../schema/create";
 import { buildOutboxPlan, finalizeOutboxPayload } from "./outbox-builder";
 
 const defaultsSchema = schema("outbox_defaults", (s) =>
@@ -103,6 +103,38 @@ describe("buildOutboxPlan", () => {
         table: "records",
         match: { label: "Temporary" },
         externalIds: ["record-1"],
+      }),
+    ]);
+  });
+
+  it("expands bulk deletes into ordered outbox delete operations", () => {
+    const plan = buildOutboxPlan([
+      {
+        type: "delete-many",
+        schema: defaultsSchema,
+        namespace: defaultsSchema.name,
+        table: "records",
+        ids: [
+          new FragnoId({ externalId: "record-1", internalId: 1n, version: 3 }),
+          new FragnoId({ externalId: "record-2", internalId: 2n, version: 7 }),
+        ],
+        checkVersion: true,
+        omitOutbox: false,
+      },
+    ]);
+
+    expect(finalizeOutboxPayload(plan, 1n, { now: new Date() }).operations).toEqual([
+      expect.objectContaining({
+        op: "delete",
+        table: "records",
+        externalId: "record-1",
+        checkVersion: 3,
+      }),
+      expect.objectContaining({
+        op: "delete",
+        table: "records",
+        externalId: "record-2",
+        checkVersion: 7,
       }),
     ]);
   });

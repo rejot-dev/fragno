@@ -253,6 +253,20 @@ export const collectWriteKeys = (
       continue;
     }
 
+    if (op.type === "delete-many") {
+      for (const id of op.ids) {
+        const externalId = getExternalId(id);
+        if (externalId !== undefined) {
+          keys.push({
+            schema: schemaName,
+            table: op.table,
+            externalId,
+          });
+        }
+      }
+      continue;
+    }
+
     const externalId = getExternalId(op.id);
     if (externalId !== undefined) {
       keys.push({

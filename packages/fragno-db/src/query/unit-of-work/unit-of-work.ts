@@ -12,6 +12,7 @@ import { applyReadQueryPolicies, type QueryPolicySet } from "../query-policy";
 import type { CheckAbsentIndexName, CheckAbsentIndexValues } from "./check-absent";
 import {
   DeleteBuilder,
+  DeleteManyBuilder,
   MutationRecorder,
   UpdateBuilder,
   type CreateOptions,
@@ -167,7 +168,7 @@ export interface CompiledMutation<TOutput> {
   /**
    * The type of mutation operation.
    */
-  op: "create" | "update" | "delete" | "check" | "check-absent";
+  op: "create" | "update" | "delete" | "delete-many" | "check" | "check-absent";
   /**
    * Number of rows this operation must affect for the transaction to succeed.
    * If actual affected rows doesn't match, it indicates a version conflict.
@@ -185,6 +186,11 @@ export interface CompiledMutation<TOutput> {
 /**
  * Compiler interface for Unit of Work operations
  */
+export type CompiledMutationResult<TOutput> =
+  | CompiledMutation<TOutput>
+  | CompiledMutation<TOutput>[]
+  | null;
+
 export interface UOWCompiler<TOutput> {
   /**
    * Compile a retrieval operation to the adapter's query format
@@ -194,7 +200,7 @@ export interface UOWCompiler<TOutput> {
   /**
    * Compile a mutation operation to the adapter's query format
    */
-  compileMutationOperation(op: MutationOperation<AnySchema>): CompiledMutation<TOutput> | null;
+  compileMutationOperation(op: MutationOperation<AnySchema>): CompiledMutationResult<TOutput>;
 }
 
 export type MutationResult =
@@ -1024,8 +1030,13 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       // Compile mutation operations using single compiler
       const mutationBatch: CompiledMutation<unknown>[] = [];
       for (const op of this.#mutationOps) {
-        const compiled = this.#compiler.compileMutationOperation(op);
-        if (compiled !== null) {
+        const compiledResult = this.#compiler.compileMutationOperation(op);
+        const compiledMutations = Array.isArray(compiledResult)
+          ? compiledResult
+          : compiledResult === null
+            ? []
+            : [compiledResult];
+        for (const compiled of compiledMutations) {
           compiled.uowId = this.#idempotencyKey;
           this.#config?.onQuery?.(compiled);
           mutationBatch.push(compiled);
@@ -1197,8 +1208,13 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
 
     const mutationBatch: CompiledMutation<TOutput>[] = [];
     for (const op of this.#mutationOps) {
-      const compiled = compiler.compileMutationOperation(op);
-      if (compiled !== null) {
+      const compiledResult = compiler.compileMutationOperation(op);
+      const compiledMutations = Array.isArray(compiledResult)
+        ? compiledResult
+        : compiledResult === null
+          ? []
+          : [compiledResult];
+      for (const compiled of compiledMutations) {
         compiled.uowId = this.#idempotencyKey;
         mutationBatch.push(compiled);
       }
@@ -1236,6 +1252,22 @@ export class TypedOutboxNotifier<const TSchema extends AnySchema> {
       namespace: null,
       table: "fragno_db_outbox_mutations",
       id,
+      checkVersion: false,
+      omitOutbox: true,
+    });
+  }
+
+  /** Deletes outbox mutation rows with one bounded bulk database operation. */
+  deleteMutations(ids: readonly (FragnoId | string)[]): void {
+    if (ids.length === 0) {
+      return;
+    }
+    this.#uow.addMutationOperation({
+      type: "delete-many",
+      schema: internalSchema,
+      namespace: null,
+      table: "fragno_db_outbox_mutations",
+      ids: [...ids],
       checkVersion: false,
       omitOutbox: true,
     });
@@ -1680,6 +1712,17 @@ export class TypedUnitOfWork<
     builderFn?: (builder: Omit<DeleteBuilder, "build">) => Omit<DeleteBuilder, "build"> | void,
   ): void {
     this.#mutations.delete(tableName, id, builderFn);
+  }
+
+  /** Deletes multiple rows with one bounded mutation operation. */
+  deleteMany(
+    tableName: keyof TSchema["tables"] & string,
+    ids: readonly (FragnoId | string)[],
+    builderFn?: (
+      builder: Omit<DeleteManyBuilder, "build">,
+    ) => Omit<DeleteManyBuilder, "build"> | void,
+  ): void {
+    this.#mutations.deleteMany(tableName, ids, builderFn);
   }
 
   /**

@@ -209,10 +209,18 @@ describe("outbox utilities", () => {
         checkVersion: false,
       },
       {
+        type: "delete-many",
+        schema: appSchema,
+        table: "users",
+        ids: ["user-3", "user-4"],
+        checkVersion: false,
+        omitOutbox: false,
+      },
+      {
         type: "check",
         schema: appSchema,
         table: "users",
-        id: FragnoId.fromExternal("user-3", 1),
+        id: FragnoId.fromExternal("user-5", 1),
       },
       {
         type: "check-absent",
@@ -247,7 +255,105 @@ describe("outbox utilities", () => {
         externalId: "user-2",
         versionstamp: "uow-003",
       },
+      {
+        op: "delete",
+        schema: "app",
+        table: "users",
+        externalId: "user-3",
+        versionstamp: "uow-007",
+      },
+      {
+        op: "delete",
+        schema: "app",
+        table: "users",
+        externalId: "user-4",
+        versionstamp: "uow-008",
+      },
     ]);
+  });
+
+  it("preserves source-operation indices after skipped checks", () => {
+    const appSchema = schema("app", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+    const callbackIndices: number[] = [];
+
+    const mutations = uowOperationsToLofiMutations(
+      [
+        {
+          type: "check",
+          schema: appSchema,
+          table: "users",
+          id: FragnoId.fromExternal("user-1", 0),
+        },
+        {
+          type: "update",
+          schema: appSchema,
+          table: "users",
+          id: "user-1",
+          checkVersion: false,
+          set: { name: "Grace" },
+        },
+      ],
+      {
+        versionstamp: (_operation, index) => {
+          callbackIndices.push(index);
+          return `custom-${index}`;
+        },
+      },
+    );
+
+    expect(callbackIndices).toEqual([1]);
+    expect(mutations).toEqual([
+      expect.objectContaining({ op: "update", versionstamp: "custom-1" }),
+    ]);
+
+    const [defaultMutation] = uowOperationsToLofiMutations([
+      {
+        type: "check",
+        schema: appSchema,
+        table: "users",
+        id: FragnoId.fromExternal("user-1", 0),
+      },
+      {
+        type: "update",
+        schema: appSchema,
+        table: "users",
+        id: "user-1",
+        checkVersion: false,
+        set: { name: "Grace" },
+      },
+    ]);
+    assert(defaultMutation?.versionstamp === "uow-002");
+  });
+
+  it("assigns expanded bulk deletes indices outside the source-operation range", () => {
+    const appSchema = schema("app", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+    const callbackIndices: number[] = [];
+
+    const mutations = uowOperationsToLofiMutations(
+      [
+        {
+          type: "delete-many",
+          schema: appSchema,
+          table: "users",
+          ids: ["user-1", "user-2"],
+          checkVersion: false,
+          omitOutbox: false,
+        },
+      ],
+      {
+        versionstamp: (_operation, index) => {
+          callbackIndices.push(index);
+          return `custom-${index}`;
+        },
+      },
+    );
+
+    expect(callbackIndices).toEqual([1, 2]);
+    expect(mutations.map((mutation) => mutation.versionstamp)).toEqual(["custom-1", "custom-2"]);
   });
 
   it("adds db-now defaults when converting create uow operations", () => {

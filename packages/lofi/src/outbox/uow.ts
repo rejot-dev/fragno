@@ -45,49 +45,62 @@ export function uowOperationsToLofiMutations(
   operations: readonly MutationOperation<AnySchema>[],
   options?: UowOperationsToLofiMutationsOptions,
 ): LofiMutation[] {
-  const mutations = operations.flatMap((operation, index): LofiMutation[] => {
+  const mutations: LofiMutation[] = [];
+  // Existing callbacks observe source-operation indices; expanded deletes use a disjoint range.
+  let expandedBulkDeleteIndex = operations.length;
+
+  for (const [operationIndex, operation] of operations.entries()) {
     if (operation.type === "check" || operation.type === "check-absent") {
-      return [];
+      continue;
     }
 
-    const versionstamp = resolveVersionstamp(operation, index, options);
-
-    if (operation.type === "create") {
-      return [
-        {
-          op: "create",
+    if (operation.type === "delete-many") {
+      for (const id of operation.ids) {
+        mutations.push({
+          op: "delete",
           schema: operation.schema.name,
           table: operation.table,
-          externalId: operation.generatedExternalId,
-          values: fillCreateDbNowDefaults(operation),
-          versionstamp,
-        },
-      ];
+          externalId: mutationIdToExternalId(id),
+          versionstamp: resolveVersionstamp(operation, expandedBulkDeleteIndex, options),
+        });
+        expandedBulkDeleteIndex += 1;
+      }
+      continue;
+    }
+
+    const versionstamp = resolveVersionstamp(operation, operationIndex, options);
+    if (operation.type === "create") {
+      mutations.push({
+        op: "create",
+        schema: operation.schema.name,
+        table: operation.table,
+        externalId: operation.generatedExternalId,
+        values: fillCreateDbNowDefaults(operation),
+        versionstamp,
+      });
+      continue;
     }
 
     if (operation.type === "update") {
-      return [
-        {
-          op: "update",
-          schema: operation.schema.name,
-          table: operation.table,
-          externalId: mutationIdToExternalId(operation.id),
-          set: operation.set as Record<string, unknown>,
-          versionstamp,
-        },
-      ];
-    }
-
-    return [
-      {
-        op: "delete",
+      mutations.push({
+        op: "update",
         schema: operation.schema.name,
         table: operation.table,
         externalId: mutationIdToExternalId(operation.id),
+        set: operation.set as Record<string, unknown>,
         versionstamp,
-      },
-    ];
-  });
+      });
+      continue;
+    }
+
+    mutations.push({
+      op: "delete",
+      schema: operation.schema.name,
+      table: operation.table,
+      externalId: mutationIdToExternalId(operation.id),
+      versionstamp,
+    });
+  }
 
   return options?.now ? resolveMutations(mutations, options.now.getTime()) : mutations;
 }

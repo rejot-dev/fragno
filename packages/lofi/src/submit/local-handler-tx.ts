@@ -91,43 +91,59 @@ const createLocalVersionstamp = (): string =>
 const getExternalId = (id: FragnoId | string): string =>
   typeof id === "string" ? id : id.externalId;
 
-const buildLocalMutation = (
+const buildLocalMutations = (
   operation: MutationOperation<AnySchema>,
   versionstamp: string,
-): LofiMutation | null => {
+): LofiMutation[] => {
   if (operation.type === "create") {
-    return {
-      op: "create",
-      schema: operation.schema.name,
-      table: operation.table,
-      externalId: operation.generatedExternalId,
-      values: operation.values as Record<string, unknown>,
-      versionstamp,
-    };
+    return [
+      {
+        op: "create",
+        schema: operation.schema.name,
+        table: operation.table,
+        externalId: operation.generatedExternalId,
+        values: operation.values as Record<string, unknown>,
+        versionstamp,
+      },
+    ];
   }
 
   if (operation.type === "update") {
-    return {
-      op: "update",
-      schema: operation.schema.name,
-      table: operation.table,
-      externalId: getExternalId(operation.id),
-      set: operation.set as Record<string, unknown>,
-      versionstamp,
-    };
+    return [
+      {
+        op: "update",
+        schema: operation.schema.name,
+        table: operation.table,
+        externalId: getExternalId(operation.id),
+        set: operation.set as Record<string, unknown>,
+        versionstamp,
+      },
+    ];
   }
 
   if (operation.type === "delete") {
-    return {
+    return [
+      {
+        op: "delete",
+        schema: operation.schema.name,
+        table: operation.table,
+        externalId: getExternalId(operation.id),
+        versionstamp,
+      },
+    ];
+  }
+
+  if (operation.type === "delete-many") {
+    return operation.ids.map((id) => ({
       op: "delete",
       schema: operation.schema.name,
       table: operation.table,
-      externalId: getExternalId(operation.id),
+      externalId: getExternalId(id),
       versionstamp,
-    };
+    }));
   }
 
-  return null;
+  return [];
 };
 
 const isFindOrCount = (
@@ -141,6 +157,7 @@ const isMutationOperation = (
   operation.type === "create" ||
   operation.type === "update" ||
   operation.type === "delete" ||
+  operation.type === "delete-many" ||
   operation.type === "check";
 
 const buildFindKeyCondition = (
@@ -299,6 +316,25 @@ const validateMutationChecks = async <TContext>(
       );
       if (currentVersion === null || currentVersion !== version) {
         return false;
+      }
+      continue;
+    }
+
+    if (operation.type === "delete-many" && operation.checkVersion) {
+      for (const id of operation.ids) {
+        const version = id instanceof FragnoId ? id.version : undefined;
+        if (version === undefined) {
+          return false;
+        }
+        const currentVersion = await getRowVersion(
+          executor,
+          operation.schema,
+          operation.schema.tables[operation.table],
+          getExternalId(id),
+        );
+        if (currentVersion === null || currentVersion !== version) {
+          return false;
+        }
       }
       continue;
     }
@@ -496,10 +532,7 @@ export const createLocalHandlerTx = <TContext>(
           continue;
         }
 
-        const mutation = buildLocalMutation(operation, txVersionstamp);
-        if (mutation) {
-          mutations.push(mutation);
-        }
+        mutations.push(...buildLocalMutations(operation, txVersionstamp));
       }
 
       if (mutations.length > 0) {

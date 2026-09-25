@@ -99,6 +99,21 @@ export function buildOutboxPlan(
         externalId: getExternalId(op.id),
         ...(checkVersion === undefined ? {} : { checkVersion }),
       });
+      continue;
+    }
+
+    if (op.type === "delete-many" && !op.omitOutbox) {
+      for (const id of op.ids) {
+        const checkVersion = op.checkVersion && id instanceof FragnoId ? id.version : undefined;
+        drafts.push({
+          op: "delete",
+          schema: schemaName,
+          namespace,
+          table: op.table,
+          externalId: getExternalId(id),
+          ...(checkVersion === undefined ? {} : { checkVersion }),
+        });
+      }
     }
   }
 

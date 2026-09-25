@@ -27,6 +27,9 @@ export type SqlRetrievalExecution =
 const nativeStreamRetrieval = Object.freeze({ kind: "native-stream" } as const);
 const bufferedPageRetrieval = Object.freeze({ kind: "buffered-page" } as const);
 
+// SQLite's historical 999-variable limit is a safe shared ceiling for every supported SQL driver.
+const CONSERVATIVE_MAX_PARAMETERS_PER_QUERY = 999;
+
 export abstract class DriverConfig {
   abstract readonly driverType: SupportedDriverType;
   abstract readonly databaseType: SupportedDatabase;
@@ -35,6 +38,11 @@ export abstract class DriverConfig {
   abstract readonly supportsReturning: boolean;
   abstract readonly supportsJson: boolean;
   abstract readonly outboxVersionstampStrategy: OutboxVersionstampStrategy;
+
+  /** Maximum bind parameters accepted by one statement. */
+  get maxParametersPerQuery(): number {
+    return CONSERVATIVE_MAX_PARAMETERS_PER_QUERY;
+  }
 
   /**
    * Column name for internal ID in RETURNING results.
@@ -259,6 +267,11 @@ export class SQLocalDriverConfig extends DriverConfig {
 
 export class CloudflareDurableObjectsDriverConfig extends DriverConfig {
   override readonly driverType = "cloudflare_durable_objects";
+
+  override get maxParametersPerQuery(): number {
+    // Durable Object SQLite rejects statements with more than 100 bound parameters.
+    return 100;
+  }
   override readonly databaseType = "sqlite";
   override readonly retrievalExecution = nativeStreamRetrieval;
   override readonly supportsReturning = true;
