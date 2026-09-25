@@ -56,6 +56,8 @@ export class InMemoryGitHubObject implements GitHubObject {
       name: "GitHub",
       state,
       env,
+      fragmentHostOperations: this.#runtimeServices.fragmentHostOperations ?? undefined,
+      objectRuntime: runtime.objectRuntime,
       toSource: (stored) => stored.source,
       fingerprint: (source) => JSON.stringify(source),
       createRuntime: (config) =>

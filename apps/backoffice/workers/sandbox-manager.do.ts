@@ -139,6 +139,7 @@ export class InMemorySandboxManagerObject extends RpcTarget implements SandboxMa
         { id: "workflows", target: (runtime) => runtime.workflowsFragment },
       ],
       durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
+      operations: runtimeServices.fragmentHostOperations ?? undefined,
       onProcessError: (error) => {
         console.error("Sandbox manager hook processor error", error);
       },

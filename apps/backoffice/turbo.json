@@ -4,6 +4,9 @@
     "build": {
       "dependsOn": ["$TURBO_EXTENDS$", "static:generate"]
     },
+    "build:node": {
+      "dependsOn": ["$TURBO_EXTENDS$", "static:generate"]
+    },
     "static:generate": {
       "dependsOn": ["^build"],
       "outputs": [

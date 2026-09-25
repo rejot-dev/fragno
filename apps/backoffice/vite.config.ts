@@ -9,29 +9,11 @@ import devtoolsJson from "vite-plugin-devtools-json";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 
+import { emitWaSqliteWasmAssetPlugin } from "./scripts/node-server/vite-wa-sqlite-wasm-asset";
+
 // Warm the public Worker entry during dev-server boot instead of on the first SSR request.
 const workerWarmupFiles = ["./workers/app.ts"];
-const waSqliteWasmUrl = new URL(import.meta.resolve("@journeyapps/wa-sqlite/dist/wa-sqlite.wasm"));
-
-function emitWaSqliteWasmAssetPlugin(): Plugin {
-  return {
-    name: "emit-wa-sqlite-wasm-asset",
-    apply: "build",
-    generateBundle() {
-      if (this.environment.name !== "client") {
-        return;
-      }
-
-      // The packaged OPFS worker loads this exact sibling URL but does not publish the WASM asset.
-      this.emitFile({
-        type: "asset",
-        fileName: "assets/wa-sqlite.wasm",
-        source: readFileSync(waSqliteWasmUrl),
-      });
-    },
-  };
-}
-
+const localViteHost = "127.0.0.1";
 const webWorkerLocalDevVarNames = [
   "BACKOFFICE_INTERNAL_REQUEST_SECRET",
   "AUTH_EMAIL_VERIFICATION_ENABLED",
@@ -146,11 +128,15 @@ export default defineConfig(({ command }) => {
         }
       : undefined,
     preview: {
+      host: localViteHost,
       port: 5173,
       strictPort: true,
       allowedHosts: [".trycloudflare.com", "local-wilco.recivo.email"],
     },
     server: {
+      host: localViteHost,
+      port: 5173,
+      strictPort: true,
       hmr: false,
       allowedHosts: ["local-wilco.recivo.email"],
       // Tunnel/proxy layers were caching /@fs workspace modules and preserving stale

@@ -1,6 +1,18 @@
 # Canonical env template for local docs development.
 # This file is also used by `pnpm run types:generate` to keep worker types deterministic.
 
+# Optional Node runtime override; defaults to this git-ignored directory.
+BACKOFFICE_SQLITE_DIR=./.backoffice-node
+
+# Node codemode requires Deno. Usually discovered from PATH, DENO_INSTALL, or ~/.deno/bin.
+# Set an explicit executable path when Deno is installed elsewhere.
+DENO_EXECUTABLE=
+
+# Node claims both 127.0.0.1 and ::1 by default so localhost cannot reach another process.
+# Set HOST explicitly only when the proxy runs elsewhere. Trust only the proxy's IP/CIDR for
+# X-Forwarded-Proto; false disables proxy trust.
+BACKOFFICE_TRUST_PROXY=loopback
+
 # For GitHub OAuth (login)
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
@@ -24,7 +36,9 @@ AUTH_EMAIL_VERIFICATION_ENABLED=false
 # Require an email-bound system administrator invitation before creating an account.
 SIGN_UP_INVITATIONS_ENABLED=false
 
-DOCS_PUBLIC_BASE_URL=http://localhost:5173/
+# Canonical public URL for links and proxy access. Use 127.0.0.1 for local Node development;
+# localhost remains an alias available only from loopback without proxy forwarding headers.
+DOCS_PUBLIC_BASE_URL=http://127.0.0.1:5173/
 
 # Pi model providers (configure at least one)
 OPENAI_API_KEY=

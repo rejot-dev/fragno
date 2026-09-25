@@ -2,17 +2,13 @@ import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { BACKOFFICE_INTERNAL_CONTEXT_HEADER } from "@/backoffice-runtime/internal-object-request";
 
-const {
-  requireBackofficeContextMock,
-  automationsFetchMock,
-  idFromNameMock,
-  getAutomationsStubMock,
-} = vi.hoisted(() => ({
-  requireBackofficeContextMock: vi.fn(),
-  automationsFetchMock: vi.fn(),
-  idFromNameMock: vi.fn(),
-  getAutomationsStubMock: vi.fn(),
-}));
+const { requireBackofficeContextMock, automationsFetchMock, automationsForScopeMock } = vi.hoisted(
+  () => ({
+    requireBackofficeContextMock: vi.fn(),
+    automationsFetchMock: vi.fn(),
+    automationsForScopeMock: vi.fn(),
+  }),
+);
 
 vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
   requireBackofficeContext: requireBackofficeContextMock,
@@ -21,28 +17,29 @@ vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
 import { action, loader } from "./automations-scoped";
 
 const automationsObject = {
-  fetch: automationsFetchMock,
+  http: {
+    fetch: automationsFetchMock,
+  },
 };
-const env = {
-  AUTOMATIONS: {
-    idFromName: idFromNameMock,
-    get: getAutomationsStubMock,
+const runtime = {
+  objects: {
+    automations: {
+      for: automationsForScopeMock,
+    },
   },
 };
 const context = {
-  get: () => ({ env }),
+  get: () => ({ runtime }),
 } as never;
 
 beforeEach(() => {
   requireBackofficeContextMock.mockReset();
   automationsFetchMock.mockReset();
-  idFromNameMock.mockReset();
-  getAutomationsStubMock.mockReset();
+  automationsForScopeMock.mockReset();
 
   requireBackofficeContextMock.mockResolvedValue({});
   automationsFetchMock.mockResolvedValue(new Response("ok"));
-  idFromNameMock.mockImplementation((name: string) => `id:${name}`);
-  getAutomationsStubMock.mockReturnValue(automationsObject);
+  automationsForScopeMock.mockReturnValue(automationsObject);
 });
 
 describe("scoped Automations outbox proxy", () => {
@@ -63,8 +60,10 @@ describe("scoped Automations outbox proxy", () => {
       kind: "org",
       orgId: "org-1",
     });
-    expect(idFromNameMock).toHaveBeenCalledWith("v1:org:org-1");
-    expect(getAutomationsStubMock).toHaveBeenCalledWith("id:v1:org:org-1");
+    expect(automationsForScopeMock).toHaveBeenCalledWith({
+      kind: "org",
+      orgId: "org-1",
+    });
     expect(automationsFetchMock).toHaveBeenCalledOnce();
 
     const forwardedRequest = automationsFetchMock.mock.calls[0][0] as Request;

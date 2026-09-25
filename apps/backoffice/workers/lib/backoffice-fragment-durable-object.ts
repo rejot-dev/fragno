@@ -2,6 +2,7 @@ import {
   createFragmentDurableObjectHost,
   type FragmentDurableObjectHost,
   type FragmentDurableObjectHostContext,
+  type FragmentDurableObjectHostOperations,
   type FragmentDurableObjectMount,
   type FragmentDurableObjectRuntimeHostContext,
 } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
@@ -13,6 +14,7 @@ import {
   backofficeContextScopesEqual,
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   createUnconfiguredDurableHookQueueResponse,
@@ -122,6 +124,7 @@ export type BackofficeFragmentDurableObjectOptions<
   state: BackofficeObjectState;
   /** Runtime-specific environment passed through to hosted fragments. */
   env: TEnv;
+  objectRuntime: BackofficeRuntimeServices["objectRuntime"];
   /** Storage key for the persisted config. Defaults to `${name.toLowerCase()}-config`. */
   configKey?: string;
   /** Storage key for the persisted outbox. Defaults to `${name.toLowerCase()}-outbox`. */
@@ -164,6 +167,8 @@ export type BackofficeFragmentDurableObjectOptions<
   getMigrationFragments?: (runtime: TRuntime) => readonly AnyFragnoInstantiatedDatabaseFragment[];
   /** Override durable hook reads. Intended for tests that use lightweight fragment doubles. */
   durableHooks?: BackofficeDurableHookDependencies;
+  /** Replaces Cloudflare alarm dispatch with a runtime-specific Fragno hook dispatcher. */
+  fragmentHostOperations?: FragmentDurableObjectHostOperations<TEnv>;
   /** Override which migrated fragments participate in durable-hook alarm processing. */
   getHookFragments?: (
     runtime: TRuntime,
@@ -346,6 +351,7 @@ export function createBackofficeFragmentDurableObject<
     mounts: options.mounts,
     durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
     initializationInstrumentation: cloudflareFragmentInitializationInstrumentation,
+    operations: options.fragmentHostOperations,
     onProcessError: (error: unknown) => {
       console.error(`${options.name} hook processor error`, error);
     },
@@ -399,6 +405,7 @@ export function createBackofficeFragmentDurableObject<
   const initializeFromStored = async (stored: TStored | null) => {
     if (!isConfigured(stored)) {
       current = { configured: false, stored };
+      await options.objectRuntime?.clearDurableHooks();
       await ensurePendingOutboxAlarm();
       return current;
     }
@@ -562,6 +569,25 @@ export function createBackofficeFragmentDurableObject<
 
     return defaultScopeMismatchResponse(options.name, expectedScope, requestScope.scope);
   };
+
+  // Node processes keep derived runtimes, not authoritative config caches. Reload at event and
+  // processor-discovery boundaries; only a changed source needs serialized initialization.
+  options.objectRuntime?.registerRefresh(async () => {
+    const stored = await loadStored();
+    if (isConfigured(stored) && current.configured) {
+      const source = toSource(stored);
+      if (current.fingerprint === fingerprint(source, stored)) {
+        current = { ...current, stored, source };
+        return;
+      }
+    } else if (!isConfigured(stored) && !current.configured) {
+      current = { configured: false, stored };
+      return;
+    }
+    await options.state.blockConcurrencyWhile(async () => {
+      await initializeFromStored(await loadStored());
+    });
+  });
 
   return {
     loadStored,

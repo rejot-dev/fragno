@@ -1,33 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { runInNewContext } from "node:vm";
 
-import type { WorkerCompiler } from "./dynamic-workers/compile-worker";
-import { compileInMemoryWorker } from "./dynamic-workers/compile-worker.in-memory";
-
-export type InMemoryBackofficeRuntimeEnv = {
-  LOADER?: WorkerLoader;
-  compileWorker?: WorkerCompiler;
-  DOCS_PUBLIC_BASE_URL?: string;
-  TURNSTILE_SITEKEY?: string;
-  GITHUB_CLIENT_ID?: string;
-  GITHUB_CLIENT_SECRET?: string;
-  AUTH_ACCESS_TOKEN_SECRET?: string;
-  BACKOFFICE_INTERNAL_REQUEST_SECRET?: string;
-  AUTH_ADMIN_GRANT_TOKEN?: string;
-  AUTH_EMAIL_VERIFICATION_ENABLED?: string;
-  SIGN_UP_INVITATIONS_ENABLED?: string;
-  GITHUB_APP_ID?: string;
-  GITHUB_APP_SLUG?: string;
-  GITHUB_APP_CLIENT_ID?: string;
-  GITHUB_APP_CLIENT_SECRET?: string;
-  GITHUB_APP_WEBHOOK_SECRET?: string;
-  GITHUB_APP_PRIVATE_KEY?: string;
-  CLOUDFLARE_WORKERS_ACCOUNT_ID?: string;
-  CLOUDFLARE_WORKERS_API_TOKEN?: string;
-  OPENAI_API_KEY?: string;
-  ANTHROPIC_API_KEY?: string;
-  GEMINI_API_KEY?: string;
-};
+import type { BackofficeRuntimeEnv } from "./backoffice-runtime-env";
+import { compileNodeWorker } from "./dynamic-workers/compile-node-worker";
 
 type WorkerLoaderFactory = () => {
   mainModule: string;
@@ -87,7 +62,25 @@ const createInMemoryWorkerLoader = (): WorkerLoader => {
         if (!Entrypoint) {
           throw new Error("In-memory WorkerLoader module did not export an entrypoint.");
         }
-        entrypoint = new Entrypoint();
+        const workerEntrypoint = new Entrypoint();
+        if (
+          workerEntrypoint === null ||
+          (typeof workerEntrypoint !== "object" && typeof workerEntrypoint !== "function")
+        ) {
+          throw new Error("In-memory WorkerLoader entrypoint must be an object.");
+        }
+        // Cloudflare RPC detaches return values. Mirror that boundary so node:vm objects do not
+        // leak foreign prototypes into persistence and JSON validation in the host process.
+        entrypoint = new Proxy(workerEntrypoint, {
+          get(target, property) {
+            const member = (target as Record<PropertyKey, unknown>)[property];
+            if (typeof member !== "function") {
+              return member;
+            }
+            const workerMethod = member.bind(target) as (...args: unknown[]) => unknown;
+            return async (...args: unknown[]) => structuredClone(await workerMethod(...args));
+          },
+        });
         instances.set(name, entrypoint);
       }
 
@@ -98,9 +91,10 @@ const createInMemoryWorkerLoader = (): WorkerLoader => {
   } as unknown as WorkerLoader;
 };
 
-export const defaultInMemoryBackofficeRuntimeEnv = (): InMemoryBackofficeRuntimeEnv => ({
+/** Creates the node:vm runtime environment used only by in-process tests. */
+export const defaultInMemoryBackofficeRuntimeEnv = (): BackofficeRuntimeEnv => ({
   LOADER: createInMemoryWorkerLoader(),
-  compileWorker: compileInMemoryWorker,
+  compileWorker: compileNodeWorker,
   DOCS_PUBLIC_BASE_URL: "https://example.com",
   TURNSTILE_SITEKEY: "0x4AAAAAACEAKTUMl498hZ6v",
   GITHUB_CLIENT_ID: "in-memory-github-client-id",

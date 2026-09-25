@@ -336,6 +336,7 @@ export class InMemoryOtpObject implements OtpObject {
           },
         ),
       durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
+      operations: this.#runtime.fragmentHostOperations ?? undefined,
       onProcessError: (error) => {
         console.error("OTP hook processor error", error);
       },

@@ -18,7 +18,8 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import type { BackofficeDatabaseAdapterFactory } from "./database-adapters";
-import { InMemoryObjectFactory } from "./in-memory-object-factory";
+import { defaultInMemoryBackofficeRuntimeEnv } from "./in-memory-runtime-env";
+import { LocalObjectFactory } from "./local-object-factory";
 import { createBackofficeObjectRegistry } from "./object-registry";
 import type { BackofficeRuntimeServices } from "./runtime-services";
 
@@ -34,7 +35,9 @@ const createFactory = () => {
     forScope: () => adapters,
   };
 
-  return new InMemoryObjectFactory({
+  return new LocalObjectFactory({
+    runtimeEnv: defaultInMemoryBackofficeRuntimeEnv(),
+    clearDurableHooks: async () => {},
     getRuntimeServices: () => ({ adapters }) as BackofficeRuntimeServices,
     objectFactories: {
       UPLOAD: ({ name }) => ({ name }),
@@ -58,7 +61,9 @@ function createClockDrainFactory(runDrain: (nowEpochMs: () => number) => Promise
     forScope: () => adapters,
   };
 
-  return new InMemoryObjectFactory({
+  return new LocalObjectFactory({
+    runtimeEnv: defaultInMemoryBackofficeRuntimeEnv(),
+    clearDurableHooks: async () => {},
     getRuntimeServices: () => ({ adapters }) as BackofficeRuntimeServices,
     objectFactories: {
       UPLOAD: ({ state, nowEpochMs }) => {
@@ -71,7 +76,7 @@ function createClockDrainFactory(runDrain: (nowEpochMs: () => number) => Promise
   });
 }
 
-describe("InMemoryObjectFactory", () => {
+describe("LocalObjectFactory", () => {
   it("uses canonical user scope names and reuses the same instance for the same address", () => {
     const factory = createFactory();
     const objects = createBackofficeObjectRegistry(factory);
@@ -119,15 +124,19 @@ describe("InMemoryObjectFactory", () => {
     ).toThrow("does not match requested binding AUTOMATIONS");
   });
 
-  it("runs background drains and alarms at the advanced logical time", async () => {
+  it("runs background drains and alarms with an isolated logical clock", async () => {
     const observedTimes: number[] = [];
+    const originalDateNow = Date.now;
+    const wallTimeBeforeDrain = Date.now();
     const adapters: BackofficeDatabaseAdapterFactory = {
       createAdapter: () => {
         throw new Error("Database adapter is not used by this object-factory test.");
       },
       forScope: () => adapters,
     };
-    const factory = new InMemoryObjectFactory({
+    const factory = new LocalObjectFactory({
+      runtimeEnv: defaultInMemoryBackofficeRuntimeEnv(),
+      clearDurableHooks: async () => {},
       getRuntimeServices: () => ({ adapters }) as BackofficeRuntimeServices,
       objectFactories: {
         UPLOAD: ({ state, nowEpochMs }) => {
@@ -156,13 +165,14 @@ describe("InMemoryObjectFactory", () => {
     await factory.drainAlarms();
 
     const [backgroundDateNow, backgroundFactoryNow, alarmDateNow, alarmFactoryNow] = observedTimes;
-    assert(backgroundDateNow === backgroundFactoryNow);
-    assert(alarmDateNow === alarmFactoryNow);
-    assert(backgroundDateNow >= advancedTime && backgroundDateNow < advancedTime + 60_000);
-    assert(alarmDateNow >= advancedTime && alarmDateNow < advancedTime + 60_000);
+    assert(backgroundFactoryNow >= advancedTime && backgroundFactoryNow < advancedTime + 60_000);
+    assert(alarmFactoryNow >= advancedTime && alarmFactoryNow < advancedTime + 60_000);
+    assert(backgroundDateNow >= wallTimeBeforeDrain && backgroundDateNow < advancedTime);
+    assert(alarmDateNow >= wallTimeBeforeDrain && alarmDateNow < advancedTime);
+    expect(Date.now).toBe(originalDateNow);
   });
 
-  it("serializes Date.now overrides across concurrent runtime drains", async () => {
+  it("keeps concurrent runtime drain clocks isolated without replacing Date.now", async () => {
     const originalDateNow = Date.now;
     const firstDrainStarted = createVoidDeferred();
     const releaseFirstDrain = createVoidDeferred();
@@ -193,14 +203,14 @@ describe("InMemoryObjectFactory", () => {
     const secondDrain = secondFactory.drainBackground();
 
     try {
-      await Promise.resolve();
-      expect(secondObservedTimes).toEqual([]);
+      await secondDrainStarted.promise;
+      expect(firstObservedTimes).toHaveLength(1);
+      expect(secondObservedTimes).toHaveLength(1);
+      expect(Date.now).toBe(originalDateNow);
 
       releaseFirstDrain.resolve();
-      await firstDrain;
-      await secondDrainStarted.promise;
       releaseSecondDrain.resolve();
-      await secondDrain;
+      await Promise.all([firstDrain, secondDrain]);
     } finally {
       releaseFirstDrain.resolve();
       releaseSecondDrain.resolve();
@@ -209,8 +219,13 @@ describe("InMemoryObjectFactory", () => {
 
     expect(firstObservedTimes).toHaveLength(2);
     expect(secondObservedTimes).toHaveLength(2);
-    for (const [dateNow, factoryNow] of [...firstObservedTimes, ...secondObservedTimes]) {
-      assert(dateNow === factoryNow);
+    expect(firstObservedTimes[0]?.[1]).toBe(firstObservedTimes[1]?.[1]);
+    expect(secondObservedTimes[0]?.[1]).toBe(secondObservedTimes[1]?.[1]);
+    for (const [dateNow, factoryNow] of firstObservedTimes) {
+      assert(factoryNow - dateNow >= 50_000);
+    }
+    for (const [dateNow, factoryNow] of secondObservedTimes) {
+      assert(factoryNow - dateNow >= 110_000);
     }
     expect(Date.now).toBe(originalDateNow);
   });

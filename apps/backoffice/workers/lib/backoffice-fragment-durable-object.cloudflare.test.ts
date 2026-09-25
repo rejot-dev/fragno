@@ -52,6 +52,7 @@ const runOutboxHarness = async <TResult>(
       TestOutboxItem
     >({
       name: "OutboxHarness",
+      objectRuntime: null,
       state,
       env: env as unknown as CloudflareEnv,
       configKey: "outbox-harness-config",

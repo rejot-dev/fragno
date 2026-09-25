@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BACKOFFICE_URL="${BACKOFFICE_URL:-http://localhost:5173}"
+BACKOFFICE_URL="${BACKOFFICE_URL:-http://127.0.0.1:5173}"
 MAX_RETRIES=10
 EMAIL="${BACKOFFICE_EMAIL:-${USER}@rejot.dev}"
 PASSWORD="${BACKOFFICE_PASSWORD:-wachtwoord}"

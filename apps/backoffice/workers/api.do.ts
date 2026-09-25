@@ -65,6 +65,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
           adapters: this.#runtimeServices.adapters,
         }),
       durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
+      operations: this.#runtimeServices.fragmentHostOperations ?? undefined,
       onProcessError: (error) => {
         console.error("API hook processor error", error);
       },

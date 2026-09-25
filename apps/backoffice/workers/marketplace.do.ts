@@ -62,6 +62,7 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
       env,
       createRuntime: () => createMarketplaceServer({ adapters: runtime.adapters }),
       durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
+      operations: runtime.fragmentHostOperations ?? undefined,
       onProcessError: (error) => {
         console.error("Marketplace hook processor error", error);
       },

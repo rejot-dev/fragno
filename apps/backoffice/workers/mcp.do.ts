@@ -69,6 +69,7 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
           adapters: this.#runtimeServices.adapters,
         }),
       durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
+      operations: this.#runtimeServices.fragmentHostOperations ?? undefined,
       onProcessError: (error) => {
         console.error("MCP hook processor error", error);
       },

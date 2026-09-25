@@ -17,6 +17,10 @@
         "build/**"
       ]
     },
+    "build:node": {
+      "dependsOn": ["^build"],
+      "outputs": ["build-node/**"]
+    },
     "types:check": {
       "dependsOn": ["^build"]
     },

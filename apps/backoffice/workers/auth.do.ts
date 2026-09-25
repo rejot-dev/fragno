@@ -416,14 +416,28 @@ export const createOrganizationAutomationHooks = (
   },
 });
 
-const resolveAuthBaseUrl = (request: Request): string => {
+function resolveAuthBaseUrl(request: Request): string {
   const requestUrl = new URL(request.url);
   const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
   if (forwardedProto === "http" || forwardedProto === "https") {
     requestUrl.protocol = `${forwardedProto}:`;
   }
+  if (requestUrl.protocol === "http:" && requestUrl.hostname === "localhost") {
+    requestUrl.hostname = "127.0.0.1";
+  }
   return requestUrl.origin;
-};
+}
+
+function listTrustedAuthOrigins(baseURL: string): string[] {
+  const baseUrl = new URL(baseURL);
+  if (baseUrl.protocol !== "http:" || baseUrl.hostname !== "127.0.0.1") {
+    return [baseUrl.origin];
+  }
+
+  const localhostUrl = new URL(baseUrl);
+  localhostUrl.hostname = "localhost";
+  return [baseUrl.origin, localhostUrl.origin];
+}
 
 type BetterAuthInstance = Pick<ReturnType<typeof betterAuth>, "handler" | "options" | "$context">;
 type BetterAuthContext = Awaited<ReturnType<typeof betterAuth>["$context"]>;
@@ -852,7 +866,7 @@ export class InMemoryAuthObject implements AuthObject {
       baseURL,
       basePath: "/api/auth",
       secret,
-      trustedOrigins: [baseURL],
+      trustedOrigins: listTrustedAuthOrigins(baseURL),
       onAPIError: {
         errorURL: `${baseURL}${BACKOFFICE_LOGIN_PATH}`,
       },
@@ -1284,7 +1298,11 @@ export class InMemoryAuthObject implements AuthObject {
     await previousGrant;
 
     try {
-      return await this.#grantBackofficeAdminByEmail(input);
+      // The first-admin decision spans asynchronous adapter calls, so SQL statement atomicity
+      // alone cannot protect it when another Node process also grants administrator access.
+      return await this.#state.blockConcurrencyWhile(
+        async () => await this.#grantBackofficeAdminByEmail(input),
+      );
     } finally {
       releaseGrant();
     }

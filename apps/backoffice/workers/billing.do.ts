@@ -61,6 +61,7 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
           transactionInstrumentation: cloudflareDatabaseTransactionInstrumentation,
         }),
       durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
+      operations: runtime.fragmentHostOperations ?? undefined,
       onProcessError: (error) => {
         console.error("Billing hook processor error", error);
       },

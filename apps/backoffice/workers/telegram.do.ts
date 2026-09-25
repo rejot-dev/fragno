@@ -328,6 +328,8 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
       name: "Telegram",
       state,
       env: {},
+      fragmentHostOperations: this.#runtime.fragmentHostOperations ?? undefined,
+      objectRuntime: runtime.objectRuntime,
       toSource: (stored) => ({
         botToken: stored.botToken,
         webhookSecretToken: stored.webhookSecretToken,
