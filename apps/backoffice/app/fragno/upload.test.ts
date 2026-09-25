@@ -4,6 +4,7 @@ import {
   UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
   buildUploadAdminConfigResponse,
   createNamedDatabaseUploadConfig,
+  createOrganizationDatabaseUploadConfig,
   normalizeStoredUploadAdminConfig,
   resolveNamedUploadStorageKeyPrefix,
   resolveUploadAdminConfigInput,
@@ -17,6 +18,32 @@ describe("upload admin contract", () => {
   test("enforces organization-prefixed storage key namespace", () => {
     const prefix = resolveUploadStorageKeyPrefix("org_ABC", "team/uploads");
     expect(prefix).toBe("org/org_ABC/team/uploads");
+  });
+
+  test("creates a database-backed organization namespace", () => {
+    const config = createOrganizationDatabaseUploadConfig("acme-dev", "2026-09-25T10:00:00.000Z");
+
+    expect(config).toMatchObject({
+      namespace: {
+        kind: "org",
+        orgId: "acme-dev",
+        storageKeyPrefix: "org/acme-dev",
+      },
+      defaultProvider: "database",
+      providers: {
+        database: { provider: "database" },
+      },
+    });
+    expect(buildUploadAdminConfigResponse(config)).toMatchObject({
+      configured: true,
+      defaultProvider: "database",
+      providers: {
+        database: {
+          configured: true,
+          config: { storageKeyPrefix: "org/acme-dev" },
+        },
+      },
+    });
   });
 
   test("creates a database-backed named namespace", () => {

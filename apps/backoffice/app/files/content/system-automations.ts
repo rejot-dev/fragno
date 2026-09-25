@@ -16,15 +16,6 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileContent> = {
     }
     const org = context.org(orgId);
 
-    const configured = await step.do("configure upload database connection", async () => {
-      await org.connections.configure({
-        id: "upload",
-        payload: { provider: "database" },
-      });
-
-      return { configured: true, id: "upload", provider: "database" };
-    });
-
     const seeded = await step.do("seed workspace starter files", async () => {
       return await org.internal.filesSeedExecute({});
     });
@@ -33,7 +24,7 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileContent> = {
       return await org.internal.automationsRoutesSeedStarter({});
     });
 
-    return { ...configured, seeded, automationRoutes };
+    return { seeded, automationRoutes };
   },
 );
 `,

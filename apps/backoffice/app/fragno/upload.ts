@@ -1003,31 +1003,65 @@ export const normalizeStoredUploadAdminConfig = (
   };
 };
 
-export const createNamedDatabaseUploadConfig = (
+function createDefaultDatabaseUploadProviderConfig(
+  now: string,
+): StoredUploadProviderConfigDatabase {
+  return {
+    provider: UPLOAD_PROVIDER_DATABASE,
+    database: {
+      limits: {
+        maxSingleUploadBytes: UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
+      },
+    },
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/** Creates the default database-backed Upload configuration for an organization scope. */
+export function createOrganizationDatabaseUploadConfig(
+  orgId: string,
+  now = new Date().toISOString(),
+): StoredUploadAdminConfig {
+  const normalizedOrgId = normalizeOrgId(orgId);
+  if (!normalizedOrgId) {
+    throw new Error("Organization Upload configuration requires a non-empty organization id.");
+  }
+
+  return {
+    namespace: {
+      kind: "org",
+      orgId: normalizedOrgId,
+      storageKeyPrefix: resolveUploadOrgPrefix(normalizedOrgId),
+    },
+    defaultProvider: UPLOAD_PROVIDER_DATABASE,
+    providers: {
+      [UPLOAD_PROVIDER_DATABASE]: createDefaultDatabaseUploadProviderConfig(now),
+    },
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/** Creates the fixed database-backed Upload configuration for a named workspace scope. */
+export function createNamedDatabaseUploadConfig(
   name: string,
   now = new Date().toISOString(),
-): StoredUploadAdminConfig => ({
-  namespace: {
-    kind: "named",
-    name: name.trim(),
-    storageKeyPrefix: resolveNamedUploadStorageKeyPrefix(name),
-  },
-  defaultProvider: UPLOAD_PROVIDER_DATABASE,
-  providers: {
-    [UPLOAD_PROVIDER_DATABASE]: {
-      provider: UPLOAD_PROVIDER_DATABASE,
-      database: {
-        limits: {
-          maxSingleUploadBytes: UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
-        },
-      },
-      createdAt: now,
-      updatedAt: now,
+): StoredUploadAdminConfig {
+  return {
+    namespace: {
+      kind: "named",
+      name: name.trim(),
+      storageKeyPrefix: resolveNamedUploadStorageKeyPrefix(name),
     },
-  },
-  createdAt: now,
-  updatedAt: now,
-});
+    defaultProvider: UPLOAD_PROVIDER_DATABASE,
+    providers: {
+      [UPLOAD_PROVIDER_DATABASE]: createDefaultDatabaseUploadProviderConfig(now),
+    },
+    createdAt: now,
+    updatedAt: now,
+  };
+}
 
 export const resolveUploadProviderStorageKeyPrefix = (
   config: StoredUploadAdminConfig,

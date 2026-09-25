@@ -80,18 +80,18 @@ describe("Backoffice codemode scenarios", () => {
   test("runs raw codemode through route-backed runtime tools", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: "codemode configures upload and writes automation state",
+        name: "codemode updates upload and writes automation state",
 
         files: backofficeFiles.workspaceStarter(),
 
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
         steps: ({ when, then }) => [
-          then.connection.unconfigured({ orgId: "org-1", id: "upload" }),
+          then.connection.configured({ orgId: "org-1", id: "upload" }),
 
           when.codemode.run({
             orgId: "org-1",
-            label: "configure upload and write store from codemode",
+            label: "update upload and write store from codemode",
             code: `async () => {
   await connections.configure({
     id: "upload",
