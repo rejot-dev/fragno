@@ -16,10 +16,10 @@ import { assembleOutboxEntry } from "../outbox/assemble-outbox-entry";
 import {
   encodeVersionstamp,
   versionstampToHex,
-  type OutboxEntry,
   type OutboxOperation,
   type OutboxRefMap,
 } from "../outbox/outbox";
+import type { OutboxObservationHub } from "../outbox/outbox-observation-hub";
 import type { Cursor } from "../query/cursor";
 import { dbNow, type DbNow } from "../query/db-now";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
@@ -29,10 +29,8 @@ import {
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
 } from "./internal-fragment.schema";
-import type { OutboxStreamOptions } from "./stream-outbox-entries";
-
 type AdapterRegistry = {
-  streamOutboxEntries: (options: OutboxStreamOptions) => AsyncIterableIterator<OutboxEntry>;
+  outboxObservationHub: OutboxObservationHub;
   listSchemas: () => Array<{
     name: string;
     namespace: string | null;

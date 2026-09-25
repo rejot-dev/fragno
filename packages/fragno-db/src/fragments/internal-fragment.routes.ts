@@ -2,9 +2,8 @@ import { defineRoutes } from "@fragno-dev/core";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
-import { BufferedDatabasePump } from "../buffered-pump";
 import type { DatabaseHandlerTx } from "../db-fragment-definition-builder";
-import { FRAGNO_OUTBOX_PAGE_SIZE, type OutboxEntry } from "../outbox/outbox";
+import { FRAGNO_OUTBOX_PAGE_SIZE } from "../outbox/outbox";
 import { submitSyncRequest, type SyncRequestRecord } from "../sync/submit";
 import type { SubmitRequest, SyncCommandDefinition } from "../sync/types";
 import {
@@ -40,7 +39,6 @@ type InternalDescribeError = {
 };
 
 const ADAPTER_IDENTITY_KEY = "adapter_identity" as const;
-const OUTBOX_STREAM_PUMP_INTERVAL_MS = 300;
 const OUTBOX_STREAM_WRITE_TIMEOUT_MS = 1_000;
 const OUTBOX_STREAM_MAX_LIFETIME_MS = 30_000;
 
@@ -244,7 +242,7 @@ export const createInternalFragmentOutboxRoutes = () =>
           );
         }
 
-        let afterVersionstamp = input.query.get("afterVersionstamp") ?? undefined;
+        const afterVersionstamp = input.query.get("afterVersionstamp") ?? undefined;
         const limitResult = parseLimitQueryParam(input.query.get("limit"));
         if (!limitResult.ok) {
           return json(limitResult.response, { status: limitResult.status });
@@ -265,16 +263,23 @@ export const createInternalFragmentOutboxRoutes = () =>
 
           const writeOutboxStreamFrame = async (frame: string): Promise<boolean> => {
             let timeout: ReturnType<typeof setTimeout> | undefined;
-            const writeCompleted = await Promise.race([
-              stream.writeRaw(frame),
-              new Promise<false>((resolve) => {
-                timeout = setTimeout(() => {
-                  resolve(false);
-                }, OUTBOX_STREAM_WRITE_TIMEOUT_MS);
-                timeout.unref?.();
-              }),
-            ]);
-            clearTimeout(timeout);
+            let writeCompleted: boolean;
+            try {
+              writeCompleted = await Promise.race([
+                stream.writeRaw(frame),
+                new Promise<false>((resolve) => {
+                  timeout = setTimeout(() => {
+                    resolve(false);
+                  }, OUTBOX_STREAM_WRITE_TIMEOUT_MS);
+                  timeout.unref?.();
+                }),
+              ]);
+            } catch (error) {
+              await stream.abort();
+              throw error;
+            } finally {
+              clearTimeout(timeout);
+            }
             if (!writeCompleted) {
               await stream.abort();
             } else {
@@ -290,37 +295,6 @@ export const createInternalFragmentOutboxRoutes = () =>
           };
 
           const handlerTx: DatabaseHandlerTx = (options) => this.handlerTx(options);
-          const pump = new BufferedDatabasePump<never, never, OutboxEntry>({
-            intervalMs: OUTBOX_STREAM_PUMP_INTERVAL_MS,
-            onError: (error) => {
-              errorCount += 1;
-              console.error("[outbox-stream] flush failed", error);
-            },
-            flush: async () => {
-              pollCount += 1;
-              return {
-                observedItems: (async function* () {
-                  let foundEntry = false;
-                  for await (const entry of registry.streamOutboxEntries({
-                    afterVersionstamp,
-                    limit: limitResult.limit,
-                  })) {
-                    if (schedulerAbortController.signal.aborted) {
-                      return;
-                    }
-                    foundEntry = true;
-                    entriesRead += 1;
-                    yield entry;
-                  }
-                  if (!foundEntry && !schedulerAbortController.signal.aborted) {
-                    await writeOutboxStreamFrame("\n");
-                  }
-                })(),
-              };
-            },
-          });
-
-          let stopObserving = () => {};
           let schedulerLease: Promise<void> | undefined;
           const schedulerAbortController = new AbortController();
           const waitForAbort = new Promise<void>((resolve) => {
@@ -333,21 +307,31 @@ export const createInternalFragmentOutboxRoutes = () =>
             });
           });
 
-          stopObserving = pump.observe(async (entry) => {
-            if (await writeOutboxStreamFrame(`${JSON.stringify(entry)}\n`)) {
-              afterVersionstamp = entry.versionstamp;
-            }
+          const observer = registry.outboxObservationHub.registerOutboxObserver({
+            observerId: streamId,
+            afterVersionstamp,
+            limit: limitResult.limit,
+            writeFrame: writeOutboxStreamFrame,
+            recordPoll: () => {
+              pollCount += 1;
+            },
+            recordEntryRead: () => {
+              entriesRead += 1;
+            },
+            recordError: () => {
+              errorCount += 1;
+            },
           });
 
           try {
-            await pump.flushNow(handlerTx);
-            schedulerLease = pump.runWhile({
-              kind: "observer",
+            await observer.refreshNow(handlerTx);
+            schedulerLease = observer.runWhile({
               signal: schedulerAbortController.signal,
               handlerTx,
             });
             // Some HTTP proxies continue draining a response after their client disconnects, so
-            // cancellation alone cannot prove ownership. A finite lease bounds every polling pump.
+            // cancellation alone cannot prove ownership. A finite lease bounds each observer's
+            // scheduler ownership without stopping other connected observers.
             let streamLeaseTimeout: ReturnType<typeof setTimeout> | undefined;
             const waitForStreamLeaseExpiry = new Promise<true>((resolve) => {
               streamLeaseTimeout = setTimeout(() => {
@@ -367,16 +351,15 @@ export const createInternalFragmentOutboxRoutes = () =>
               await stream.abort();
             }
           } catch (error) {
-            // Buffered pump failures are counted by onError before flushNow rethrows them.
-            if (pump.getFailure() !== error) {
+            // Shared pump failures are counted before refreshNow rethrows them.
+            if (observer.getFailure() !== error) {
               errorCount += 1;
             }
             throw error;
           } finally {
-            stopObserving();
+            observer.close();
             schedulerAbortController.abort();
             await schedulerLease;
-            await pump.drain();
             console.info("fragno.outbox_stream.completed", {
               streamId,
               durationMs: Date.now() - startedAt,

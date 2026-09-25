@@ -509,6 +509,73 @@ describe("internal fragment describe routes", () => {
     await close();
   });
 
+  it("shares one outbox polling loop across stream responses", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const { adapter, close } = await setupAdapter();
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({
+        databaseAdapter: adapter,
+        mountRoute: "/alpha",
+        outbox: { enabled: true },
+      })
+      .build();
+    const namespace = (alphaFragment.$internal.deps as { namespace: string | null }).namespace;
+    await adapter.prepareMigrations(alphaSchema, namespace).executeWithDriver(adapter.driver, 0);
+
+    const createAlphaItem = async (name: string) => {
+      await alphaFragment.inContext(async function (this: DatabaseRequestContext) {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => forSchema(alphaSchema).create("alpha_items", { name }))
+          .execute();
+      });
+    };
+
+    const first = await alphaFragment.callRoute("GET", "/_internal/outbox/stream" as never);
+    const second = await alphaFragment.callRoute("GET", "/_internal/outbox/stream" as never);
+    assert(first.type === "jsonStream");
+    assert(second.type === "jsonStream");
+    const hub = getRegistryForAdapterSync(adapter).outboxObservationHub;
+
+    try {
+      const firstEntry = first.stream.next();
+      const secondEntry = second.stream.next();
+      await vi.waitFor(() => {
+        assert(hub.activeObserverCount() === 2);
+        assert(hub.activeSchedulerLoopCount() === 1);
+      });
+
+      await createAlphaItem("first");
+      const [firstFrame, secondFrame] = await Promise.all([firstEntry, secondEntry]);
+      assert(!firstFrame.done);
+      assert(!secondFrame.done);
+      expect(firstFrame.value).toEqual(secondFrame.value);
+
+      await first.stream.return(undefined);
+      await vi.waitFor(() => {
+        assert(hub.activeObserverCount() === 1);
+        assert(hub.activeSchedulerLoopCount() === 1);
+      });
+
+      const remainingEntry = second.stream.next();
+      await createAlphaItem("second");
+      const remainingFrame = await remainingEntry;
+      assert(!remainingFrame.done);
+      expect((remainingFrame.value as { versionstamp: string }).versionstamp).not.toBe(
+        (secondFrame.value as { versionstamp: string }).versionstamp,
+      );
+    } finally {
+      await first.stream.return(undefined);
+      await second.stream.return(undefined);
+      await vi.waitFor(() => {
+        assert(hub.activeObserverCount() === 0);
+        assert(hub.activeSchedulerLoopCount() === 0);
+      });
+      info.mockRestore();
+      await close();
+    }
+  });
+
   it("streams complete multi-mutation entries through the in-memory adapter", async () => {
     const adapter = new InMemoryAdapter();
     const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
