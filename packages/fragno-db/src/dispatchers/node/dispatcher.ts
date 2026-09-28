@@ -43,7 +43,9 @@ export function createDurableHooksDispatcher(
     }
   }
 
-  let timer: ReturnType<typeof setInterval> | undefined;
+  let pollTimer: ReturnType<typeof setTimeout> | undefined;
+  let polling = false;
+  let activePoll: Promise<void> | undefined;
   let processing = false;
   let queued = false;
   let continueAfterCompletionQueued = false;
@@ -80,10 +82,9 @@ export function createDurableHooksDispatcher(
           continueAfterCompletionQueued = false;
           try {
             const run = await options.processor.processDue();
-            observeCompletion(
-              run.completion,
-              shouldContinueAfterCompletion && run.claimedCount > 0,
-            );
+            if (run.claimedCount > 0) {
+              observeCompletion(run.completion, shouldContinueAfterCompletion);
+            }
           } catch (error) {
             await reportDispatcherError(error);
           }
@@ -97,7 +98,7 @@ export function createDurableHooksDispatcher(
     return currentPromise;
   }
 
-  const poll = async () => {
+  async function poll(): Promise<void> {
     try {
       const nextWakeAt = await options.processor.getNextWakeAt();
       if (!nextWakeAt) {
@@ -109,7 +110,25 @@ export function createDurableHooksDispatcher(
     } catch (error) {
       await reportDispatcherError(error);
     }
-  };
+  }
+
+  // Delay from completion so a slow database scan cannot overlap with later polling ticks.
+  function schedulePoll(): void {
+    if (!polling || pollTimer || activePoll) {
+      return;
+    }
+
+    pollTimer = setTimeout(() => {
+      pollTimer = undefined;
+      const pollPromise = poll().finally(() => {
+        if (activePoll === pollPromise) {
+          activePoll = undefined;
+        }
+        schedulePoll();
+      });
+      activePoll = pollPromise;
+    }, pollIntervalMs);
+  }
 
   return {
     notify: async (_context) => {
@@ -139,7 +158,10 @@ export function createDurableHooksDispatcher(
       }
     },
     waitForIdle: async () => {
-      while (currentPromise || activeCompletions.size > 0) {
+      while (activePoll || currentPromise || activeCompletions.size > 0) {
+        if (activePoll) {
+          await activePoll;
+        }
         if (currentPromise) {
           await currentPromise;
         }
@@ -149,21 +171,21 @@ export function createDurableHooksDispatcher(
       }
     },
     startPolling: () => {
-      if (timer) {
+      if (polling) {
         return;
       }
 
-      timer = setInterval(() => {
-        void poll();
-      }, pollIntervalMs);
+      polling = true;
+      schedulePoll();
     },
     stopPolling: () => {
-      if (!timer) {
+      polling = false;
+      if (!pollTimer) {
         return;
       }
 
-      clearInterval(timer);
-      timer = undefined;
+      clearTimeout(pollTimer);
+      pollTimer = undefined;
     },
   };
 }

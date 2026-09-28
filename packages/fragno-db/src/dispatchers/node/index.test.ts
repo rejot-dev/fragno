@@ -75,6 +75,27 @@ describe("createDurableHooksDispatcher", () => {
     expect(processDue).toHaveBeenCalledTimes(1);
   });
 
+  it("should not wait for completion when no hooks were claimed", async () => {
+    const unusedCompletion = Promise.withResolvers<number>();
+    const processDue = vi.fn().mockResolvedValue({
+      claimedCount: 0,
+      completion: unusedCompletion.promise,
+    });
+    const dispatcher = createDurableHooksDispatcher({
+      processor: {
+        processDue,
+        getNextWakeAt: vi.fn().mockResolvedValue(null),
+        drain: vi.fn().mockResolvedValue(undefined),
+        namespace: "test",
+      },
+    });
+
+    await dispatcher.wake();
+
+    expect(processDue).toHaveBeenCalledTimes(1);
+    unusedCompletion.resolve(0);
+  });
+
   it("should await async process error reporting during wake", async () => {
     const processFailure = new Error("process failed");
     const errorReporting = Promise.withResolvers<void>();
@@ -221,6 +242,51 @@ describe("createDurableHooksDispatcher", () => {
 
     expect(processDue).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
+  });
+
+  it("should wait for an active poll and a full interval before polling again", async () => {
+    vi.useFakeTimers();
+    try {
+      const firstWake = Promise.withResolvers<Date | null>();
+      const processDue = vi.fn().mockResolvedValue(completedRun());
+      const getNextWakeAt = vi.fn().mockReturnValueOnce(firstWake.promise).mockResolvedValue(null);
+      const dispatcher = createDurableHooksDispatcher({
+        processor: {
+          processDue,
+          getNextWakeAt,
+          drain: vi.fn().mockResolvedValue(undefined),
+          namespace: "test",
+        },
+        pollIntervalMs: 1000,
+      });
+
+      dispatcher.startPolling();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(getNextWakeAt).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(getNextWakeAt).toHaveBeenCalledTimes(1);
+
+      let idle = false;
+      const waitForIdle = dispatcher.waitForIdle().then(() => {
+        idle = true;
+      });
+      await Promise.resolve();
+      assert(!idle);
+
+      firstWake.resolve(null);
+      await waitForIdle;
+      assert(idle);
+
+      await vi.advanceTimersByTimeAsync(999);
+      expect(getNextWakeAt).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(getNextWakeAt).toHaveBeenCalledTimes(2);
+
+      dispatcher.stopPolling();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("should skip polling when next wake is in the future", async () => {
