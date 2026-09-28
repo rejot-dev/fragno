@@ -1,0 +1,3 @@
+[submodule "ops/backoffice-infra"]
+	path = ops/backoffice-infra
+	url = git@github.com:rejot-dev/backoffice-infra.git

@@ -41,6 +41,19 @@ If you want to contact us in a more casual manner than creating an issue, you ca
 1. Clone the repository
 1. Run `pnpm exec turbo build types:check test`
 
+### Optional Backoffice infrastructure
+
+Production Backoffice infrastructure is maintained in a private, optional Git submodule. Authorized
+maintainers can initialize it without affecting the normal Fragno workspace:
+
+```bash
+git submodule update --init ops/backoffice-infra
+```
+
+Work inside `ops/backoffice-infra` as an independent repository. Commit and push infrastructure
+changes there first, then commit the updated submodule pointer in Fragno when the pinned revision
+should change. Fragno builds and tests do not require this submodule.
+
 ## Common Commands
 
 Note: Always run tasks through `turbo` and always include `--output-logs=errors-only`.
