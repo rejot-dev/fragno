@@ -5,6 +5,7 @@ import type { HandlerTxContext, HooksMap } from "@fragno-dev/db";
 import type {
   AnyTxResult,
   WorkflowStepEmissionsCleanupHookPayload,
+  WorkflowStepHookOperation,
   WorkflowStepWorkflowOperation,
 } from "../workflow";
 import type {
@@ -20,6 +21,10 @@ import type {
 export type WorkflowStepSnapshot = Partial<Omit<WorkflowStepRecord, "id">> & {
   id?: WorkflowStepRecord["id"];
 };
+
+export type WorkflowStepTxMutation =
+  | ((ctx: HandlerTxContext<HooksMap>) => void)
+  | WorkflowStepHookOperation;
 
 export type RunnerMutationBuffer = {
   stepCreates: Map<string, WorkflowStepCreateDraft>;
@@ -37,7 +42,7 @@ export type RunnerMutationBuffer = {
       data: WorkflowEventUpdate;
     }
   >;
-  txMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void>;
+  txMutations: WorkflowStepTxMutation[];
   txServiceCalls: AnyTxResult[];
   workflowServiceCalls: WorkflowStepWorkflowOperation[];
   stepEmissionCleanupRequests: WorkflowStepEmissionsCleanupHookPayload[];

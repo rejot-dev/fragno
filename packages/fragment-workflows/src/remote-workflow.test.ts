@@ -2,11 +2,14 @@ import { assert, describe, expect, expectTypeOf, test } from "vitest";
 
 import { Worker, threadId } from "node:worker_threads";
 
+import { schema } from "@fragno-dev/db/schema";
 import { z } from "zod";
 
+import { defineFragment, instantiate } from "@fragno-dev/core";
+import { getDurableHooksService, withDatabase } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
-import type { RemoteWorkflowStepHost } from "./remote-workflow";
+import type { RemoteWorkflowAllowedHook, RemoteWorkflowStepHost } from "./remote-workflow";
 import {
   REMOTE_WORKFLOW_MESSAGE_KEY,
   createWorkflowStepMessageTarget,
@@ -14,12 +17,23 @@ import {
 import { defineScenario, runScenario } from "./scenario";
 import { createWorkflowsTestHarness } from "./test";
 import {
+  NonRetryableError,
   defineRemoteWorkflow,
   defineWorkflow,
   type WorkflowEvent,
   type WorkflowOutputFromEntry,
   type WorkflowParamsFromEntry,
 } from "./workflow";
+
+const remoteHookTestSchema = schema("remote-hook-test", (s) => s);
+const remoteHookTestFragment = defineFragment("remote-hook-test")
+  .extend(withDatabase(remoteHookTestSchema))
+  .provideHooks(({ defineHook }) => ({
+    onRemoteOutcome: defineHook(async function () {}),
+    onRemoteRetryOutcome: defineHook(async function () {}),
+    onRemoteStepRecorded: defineHook(async function () {}),
+  }))
+  .build();
 
 type WorkerMessage = { type: "result"; result: unknown } | { type: "error"; error: string };
 
@@ -68,7 +82,7 @@ test("defineRemoteWorkflow accepts an output schema without an input schema", ()
   void invalidOutput;
 });
 
-const remoteWorkerSource = (messageKey: string) => String.raw`
+const remoteWorkerSource = (messageKey: string, target: string) => String.raw`
 const { parentPort, threadId } = require("node:worker_threads");
 
 const REMOTE_WORKFLOW_MESSAGE_KEY = ${JSON.stringify(messageKey)};
@@ -98,6 +112,9 @@ const createTxProxy = (txId) => ({
   previousConsumedEvents: async () => await request("tx.previousConsumedEvents", { txId }),
   workflowServiceCalls: async (factory) => {
     await request("tx.workflowServiceCalls", { txId, operations: factory() });
+  },
+  triggerHook: async (operation) => {
+    await request("tx.triggerHook", { txId, operation });
   },
   mutate: () => {
     throw new Error("REMOTE_WORKFLOW_TX_MUTATE_UNSUPPORTED");
@@ -194,7 +211,16 @@ parentPort.on("message", async (message) => {
 (async () => {
   try {
     const nested = await step.do("outer", async () => await step.do("shared", async () => "nested-value"));
-    const topLevel = await step.do("shared", async () => "top-level-value");
+    const topLevel = await step.do("shared", async (tx) => {
+      await tx.triggerHook({
+        target: ${JSON.stringify(target)},
+        schemaName: ${JSON.stringify(remoteHookTestSchema.name)},
+        hookName: "onRemoteStepRecorded",
+        payload: { step: "shared" },
+        when: "both",
+      });
+      return "top-level-value";
+    });
     parentPort.postMessage({ type: "result", result: { nested, topLevel, threadId } });
   } catch (error) {
     parentPort.postMessage({
@@ -208,9 +234,13 @@ parentPort.on("message", async (message) => {
 const runWorkflowBodyInWorker = async (
   _event: WorkflowEvent<unknown>,
   remote: RemoteWorkflowStepHost,
+  allowedHooks: readonly RemoteWorkflowAllowedHook[],
+  targetName: string,
 ): Promise<unknown> => {
-  const worker = new Worker(remoteWorkerSource(REMOTE_WORKFLOW_MESSAGE_KEY), { eval: true });
-  const target = createWorkflowStepMessageTarget(remote, worker);
+  const worker = new Worker(remoteWorkerSource(REMOTE_WORKFLOW_MESSAGE_KEY, targetName), {
+    eval: true,
+  });
+  const target = createWorkflowStepMessageTarget(remote, worker, allowedHooks);
   const detachTarget = target.attach();
 
   return await new Promise((resolve, reject) => {
@@ -289,6 +319,163 @@ describe("remote workflow step host", () => {
                 parentStepKey: "do:outer",
                 depth: 1,
               });
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("remote hook intents follow successful and terminal step outcomes", async () => {
+    const HookWorkflow = defineRemoteWorkflow<"remote-hook-outcomes", { fail: boolean }>(
+      { name: "remote-hook-outcomes" },
+      async (event, host) => {
+        await host.do(null, "record hook", undefined, async (tx) => {
+          if (!event.payload.fail) {
+            tx.mutate(({ forSchema }) => {
+              forSchema(remoteHookTestSchema).triggerHook("onRemoteOutcome", {
+                instanceId: event.instanceId,
+                source: "local-before",
+              });
+            });
+          }
+          tx.triggerHook({
+            namespace: "custom-hook-namespace",
+            hookName: "onRemoteOutcome",
+            payload: { instanceId: event.instanceId, source: "remote" },
+            when: "both",
+          });
+          if (event.payload.fail) {
+            throw new NonRetryableError("REMOTE_STEP_FAILED");
+          }
+          tx.mutate(({ forSchema }) => {
+            forSchema(remoteHookTestSchema).triggerHook("onRemoteOutcome", {
+              instanceId: event.instanceId,
+              source: "local-after",
+            });
+          });
+        });
+      },
+    );
+    const workflows = { HOOK: HookWorkflow };
+
+    await runScenario(
+      defineScenario({
+        name: "remote-hook-outcomes",
+        workflows,
+        harness: {
+          configureBuilder: (builder) =>
+            builder.withFragment(
+              "remoteHooks",
+              instantiate(remoteHookTestFragment).withOptions({
+                databaseNamespace: "custom-hook-namespace",
+              }),
+            ),
+        },
+        steps: ({ runner, workflow }) => [
+          runner.initializeAndRunUntilIdle({
+            workflow: "HOOK",
+            id: "remote-hook-success",
+            params: { fail: false },
+            remoteWorkflowName: "remote-hook-body",
+          }),
+          runner.initializeAndRunUntilIdle({
+            workflow: "HOOK",
+            id: "remote-hook-failure",
+            params: { fail: true },
+            remoteWorkflowName: "remote-hook-body",
+          }),
+          runner.runCreateUntilIdle({ workflow: "HOOK", instanceId: "remote-hook-success" }),
+          workflow.read({
+            read: async (ctx) => ({
+              success: await ctx.state.getStatus("HOOK", "remote-hook-success"),
+              failure: await ctx.state.getStatus("HOOK", "remote-hook-failure"),
+              hooks: await ctx.state.internal.getHooks({
+                namespace: "custom-hook-namespace",
+                hookName: "onRemoteOutcome",
+              }),
+            }),
+            assert: ({ success, failure, hooks }) => {
+              assert(success.status === "complete");
+              assert(failure.status === "errored");
+              expect(
+                hooks
+                  .toSorted((left, right) => Number(left.id - right.id))
+                  .map((hook) => hook.payload),
+              ).toEqual([
+                { instanceId: "remote-hook-success", source: "local-before" },
+                { instanceId: "remote-hook-success", source: "remote" },
+                { instanceId: "remote-hook-success", source: "local-after" },
+                { instanceId: "remote-hook-failure", source: "remote" },
+              ]);
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("remote hook intent is not persisted on a retryable attempt", async () => {
+    const RetryWorkflow = defineRemoteWorkflow(
+      { name: "remote-hook-retry" },
+      async (_event, host) => {
+        await host.do(null, "retry", { retries: { limit: 1, delay: "1 hour" } }, async (tx) => {
+          tx.triggerHook({
+            namespace: "remote_hook_test",
+            hookName: "onRemoteRetryOutcome",
+            payload: { result: "terminal" },
+            when: "both",
+          });
+          throw new Error("RETRY_LATER");
+        });
+      },
+    );
+    const workflows = { RETRY: RetryWorkflow };
+
+    await runScenario(
+      defineScenario({
+        name: "remote-hook-retry",
+        workflows,
+        harness: {
+          configureBuilder: (builder) =>
+            builder.withFragment("remoteHooks", instantiate(remoteHookTestFragment)),
+        },
+        steps: ({ runner, workflow }) => [
+          runner.initializeAndRunUntilIdle({
+            workflow: "RETRY",
+            id: "remote-retry-1",
+            remoteWorkflowName: "remote-retry-body",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus("RETRY", "remote-retry-1"),
+              hooks: await ctx.state.internal.getHooks({
+                namespace: "remote_hook_test",
+                hookName: "onRemoteRetryOutcome",
+              }),
+            }),
+            assert: ({ status, hooks }) => {
+              assert(status.status === "waiting");
+              expect(hooks).toEqual([]);
+            },
+          }),
+          runner.advanceTimeAndRunUntilIdle({
+            workflow: "RETRY",
+            instanceId: "remote-retry-1",
+            advanceBy: "2 hours",
+          }),
+          runner.tick({ workflow: "RETRY", instanceId: "remote-retry-1", reason: "retry" }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus("RETRY", "remote-retry-1"),
+              hooks: await ctx.state.internal.getHooks({
+                namespace: "remote_hook_test",
+                hookName: "onRemoteRetryOutcome",
+              }),
+            }),
+            assert: ({ status, hooks }) => {
+              assert(status.status === "errored");
+              expect(hooks.map((hook) => hook.payload)).toEqual([{ result: "terminal" }]);
             },
           }),
         ],
@@ -569,7 +756,20 @@ describe("remote workflow step host", () => {
   test("runs workflow body in a Worker while host owns durable steps", async () => {
     const WorkerRemoteWorkflow = defineRemoteWorkflow(
       { name: "worker-remote-workflow" },
-      async (event, remote) => await runWorkflowBodyInWorker(event, remote),
+      async (event, remote) =>
+        await runWorkflowBodyInWorker(
+          event,
+          remote,
+          [
+            {
+              target: "tenant",
+              schemaName: remoteHookTestSchema.name,
+              hookName: "onRemoteStepRecorded",
+              namespace: "remote_hook_test",
+            },
+          ],
+          "tenant",
+        ),
     );
 
     const workflows = { WORKER_REMOTE: WorkerRemoteWorkflow };
@@ -578,6 +778,10 @@ describe("remote workflow step host", () => {
       defineScenario({
         name: "worker-remote-workflow",
         workflows,
+        harness: {
+          configureBuilder: (builder) =>
+            builder.withFragment("remoteHooks", instantiate(remoteHookTestFragment)),
+        },
         steps: ({ runner, workflow }) => [
           runner.initializeAndRunUntilIdle({
             workflow: "WORKER_REMOTE",
@@ -605,6 +809,224 @@ describe("remote workflow step host", () => {
                 "do:outer>do:shared",
                 "do:shared",
               ]);
+            },
+          }),
+          workflow.read({
+            read: (ctx) =>
+              ctx.state.internal.getHooks({
+                namespace: "remote_hook_test",
+                hookName: "onRemoteStepRecorded",
+              }),
+            assert: (hooks) => {
+              expect(hooks).toEqual([expect.objectContaining({ payload: { step: "shared" } })]);
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("rejects unlisted hooks from the remote Worker before committing a step", async () => {
+    const DeniedWorkflow = defineRemoteWorkflow(
+      { name: "worker-remote-hook-denied" },
+      async (event, remote) =>
+        await runWorkflowBodyInWorker(
+          event,
+          remote,
+          [
+            {
+              target: "tenant",
+              schemaName: remoteHookTestSchema.name,
+              hookName: "onRemoteOutcome",
+              namespace: "remote_hook_test",
+            },
+          ],
+          "tenant",
+        ),
+    );
+
+    await runScenario(
+      defineScenario({
+        name: "worker-remote-hook-denied",
+        workflows: { DENIED: DeniedWorkflow },
+        harness: {
+          configureBuilder: (builder) =>
+            builder.withFragment("remoteHooks", instantiate(remoteHookTestFragment)),
+        },
+        steps: ({ runner, workflow }) => [
+          runner.initializeAndRunUntilIdle({
+            workflow: "DENIED",
+            id: "worker-remote-denied-1",
+            remoteWorkflowName: "worker-thread-body",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus("DENIED", "worker-remote-denied-1"),
+              hooks: await ctx.state.internal.getHooks({
+                namespace: "remote_hook_test",
+                hookName: "onRemoteStepRecorded",
+              }),
+            }),
+            assert: ({ status, hooks }) => {
+              expect(status).toMatchObject({
+                status: "errored",
+                error: {
+                  message:
+                    "REMOTE_WORKFLOW_HOOK_NOT_ALLOWED: tenant/remote-hook-test/onRemoteStepRecorded",
+                },
+              });
+              expect(hooks).toEqual([]);
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test.each([
+    ["shared schema object", true],
+    ["distinct schema objects", false],
+  ] as const)("routes remote hooks to the selected mount with %s", async (_label, sharedSchema) => {
+    const otherSchema = sharedSchema
+      ? remoteHookTestSchema
+      : schema(remoteHookTestSchema.name, (s) => s);
+    const otherFragment = defineFragment("remote-hook-other")
+      .extend(withDatabase(otherSchema))
+      .provideHooks(({ defineHook }) => ({
+        onRemoteStepRecorded: defineHook(async function () {}),
+      }))
+      .build();
+    const tenantAHooks: RemoteWorkflowAllowedHook[] = [];
+    const tenantBHooks: RemoteWorkflowAllowedHook[] = [];
+    const TenantAWorkflow = defineRemoteWorkflow(
+      { name: "remote-hook-tenant-a" },
+      async (event, remote) =>
+        await runWorkflowBodyInWorker(event, remote, tenantAHooks, "tenant-a"),
+    );
+    const TenantBWorkflow = defineRemoteWorkflow(
+      { name: "remote-hook-tenant-b" },
+      async (event, remote) =>
+        await runWorkflowBodyInWorker(event, remote, tenantBHooks, "tenant-b"),
+    );
+    const CrossTenantWorkflow = defineRemoteWorkflow(
+      { name: "remote-hook-cross-tenant" },
+      async (event, remote) =>
+        await runWorkflowBodyInWorker(event, remote, tenantAHooks, "tenant-b"),
+    );
+    const AmbiguousTargetWorkflow = defineRemoteWorkflow(
+      { name: "remote-hook-ambiguous-target" },
+      async (event, remote) =>
+        await runWorkflowBodyInWorker(
+          event,
+          remote,
+          [...tenantAHooks, ...tenantBHooks.map((hook) => ({ ...hook, target: "tenant-a" }))],
+          "tenant-a",
+        ),
+    );
+
+    await runScenario(
+      defineScenario({
+        name: `remote-hook-mounts-${sharedSchema ? "shared" : "distinct"}`,
+        workflows: {
+          TENANT_A: TenantAWorkflow,
+          TENANT_B: TenantBWorkflow,
+          CROSS_TENANT: CrossTenantWorkflow,
+          AMBIGUOUS_TARGET: AmbiguousTargetWorkflow,
+        },
+        harness: {
+          configureBuilder: (builder) =>
+            builder
+              .withFragment(
+                "tenantA",
+                instantiate(remoteHookTestFragment).withOptions({
+                  databaseNamespace: "tenant-a-hooks",
+                  mountRoute: "/test/tenant-a",
+                }),
+              )
+              .withFragment(
+                "tenantB",
+                instantiate(otherFragment).withOptions({
+                  databaseNamespace: "tenant-b-hooks",
+                  mountRoute: "/test/tenant-b",
+                }),
+              ),
+        },
+        steps: ({ runner, workflow }) => [
+          workflow.read({
+            read: (ctx) => ({
+              tenantA: getDurableHooksService(ctx.harness.fragments["tenantA"].fragment).namespace,
+              tenantB: getDurableHooksService(ctx.harness.fragments["tenantB"].fragment).namespace,
+            }),
+            assert: ({ tenantA, tenantB }) => {
+              expect(tenantA).toBe("tenant-a-hooks");
+              expect(tenantB).toBe("tenant-b-hooks");
+              tenantAHooks.push({
+                target: "tenant-a",
+                schemaName: remoteHookTestSchema.name,
+                hookName: "onRemoteStepRecorded",
+                namespace: tenantA,
+              });
+              tenantBHooks.push({
+                target: "tenant-b",
+                schemaName: otherSchema.name,
+                hookName: "onRemoteStepRecorded",
+                namespace: tenantB,
+              });
+            },
+          }),
+          runner.initializeAndRunUntilIdle({
+            workflow: "TENANT_A",
+            id: "tenant-a-step",
+            remoteWorkflowName: "worker-remote-body",
+          }),
+          runner.initializeAndRunUntilIdle({
+            workflow: "TENANT_B",
+            id: "tenant-b-step",
+            remoteWorkflowName: "worker-remote-body",
+          }),
+          runner.initializeAndRunUntilIdle({
+            workflow: "CROSS_TENANT",
+            id: "cross-tenant-step",
+            remoteWorkflowName: "worker-remote-body",
+          }),
+          runner.initializeAndRunUntilIdle({
+            workflow: "AMBIGUOUS_TARGET",
+            id: "ambiguous-target-step",
+            remoteWorkflowName: "worker-remote-body",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              tenantA: await ctx.state.internal.getHooks({
+                namespace: "tenant-a-hooks",
+                hookName: "onRemoteStepRecorded",
+              }),
+              tenantB: await ctx.state.internal.getHooks({
+                namespace: "tenant-b-hooks",
+                hookName: "onRemoteStepRecorded",
+              }),
+              crossTenant: await ctx.state.getStatus("CROSS_TENANT", "cross-tenant-step"),
+              ambiguousTarget: await ctx.state.getStatus(
+                "AMBIGUOUS_TARGET",
+                "ambiguous-target-step",
+              ),
+            }),
+            assert: ({ tenantA, tenantB, crossTenant, ambiguousTarget }) => {
+              expect(tenantA).toEqual([expect.objectContaining({ payload: { step: "shared" } })]);
+              expect(tenantB).toEqual([expect.objectContaining({ payload: { step: "shared" } })]);
+              expect(crossTenant).toMatchObject({
+                status: "errored",
+                error: {
+                  message:
+                    "REMOTE_WORKFLOW_HOOK_NOT_ALLOWED: tenant-b/remote-hook-test/onRemoteStepRecorded",
+                },
+              });
+              expect(ambiguousTarget).toMatchObject({
+                status: "errored",
+                error: {
+                  message:
+                    "REMOTE_WORKFLOW_HOOK_TARGET_AMBIGUOUS: tenant-a/remote-hook-test/onRemoteStepRecorded",
+                },
+              });
             },
           }),
         ],
