@@ -5,6 +5,7 @@ import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloud
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 import type { FragnoId } from "@fragno-dev/db/schema";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
+import { createWorkflowStepStartedControlPayload } from "@fragno-dev/workflows/step-emission-control";
 import { defineWorkflow } from "@fragno-dev/workflows/workflow";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
@@ -18,12 +19,20 @@ const CLEANUP_PAGE_SIZE = 100;
 const CLEANUP_STEP_KEY = "do:cleanup benchmark stream";
 const CLEANUP_EXECUTION_ID = "cleanup-benchmark-execution";
 const CLEANUP_EPOCH = "cleanup-benchmark-epoch";
+const PREVIOUS_EMISSIONS_STEP_NAME = "measure previous emissions";
+const PREVIOUS_EMISSIONS_STEP_KEY = `do:${PREVIOUS_EMISSIONS_STEP_NAME}`;
+const PREVIOUS_EMISSIONS_EXECUTION_ID = "previous-emissions-benchmark-execution";
+const PREVIOUS_EMISSIONS_EPOCH = "previous-emissions-benchmark-epoch";
+const UNRELATED_STEP_KEY = "do:unrelated benchmark stream";
 
-type BenchmarkWorkload = "stream" | "cleanup";
+type BenchmarkWorkload = "stream" | "cleanup" | "previous-emissions";
 
 type BenchmarkWorkflowParams = {
   workload: BenchmarkWorkload;
   historicalEmissionCount: number;
+  unrelatedEmissionCount: number;
+  replayEmissionCount: number;
+  readPreviousEmissions: boolean;
   batchCount: number;
   emissionsPerBatch: number;
   payloadBytes: number;
@@ -33,15 +42,25 @@ type BenchmarkWorkflowParams = {
 type BenchmarkWorkflowOutput = {
   emittedCount: number;
   emittedPayloadBytes: number;
-};
-
-type BenchmarkPrepareInput = BenchmarkWorkflowParams & {
-  historicalEmissionCount: number;
+  previousEmissionCount: number;
+  previousPayloadBytes: number;
 };
 
 type WorkflowHeapBenchmarkEnv = {
   WORKFLOW_BENCHMARK: DurableObjectNamespace;
 };
+
+function expectedPersistedBenchmarkEmissionCount(params: BenchmarkWorkflowParams): number {
+  if (params.workload === "previous-emissions") {
+    return (
+      params.unrelatedEmissionCount +
+      params.replayEmissionCount +
+      (params.unrelatedEmissionCount > 0 ? 1 : 0) +
+      (params.replayEmissionCount > 0 ? 1 : 0)
+    );
+  }
+  return params.historicalEmissionCount;
+}
 
 const WorkflowStepLivePumpHeapBenchmark = defineWorkflow<
   typeof BENCHMARK_WORKFLOW_NAME,
@@ -49,6 +68,26 @@ const WorkflowStepLivePumpHeapBenchmark = defineWorkflow<
   BenchmarkWorkflowOutput
 >({ name: BENCHMARK_WORKFLOW_NAME }, async (event, step) => {
   await step.waitForEvent("start benchmark", { type: BENCHMARK_START_EVENT_TYPE });
+
+  if (event.payload.workload === "previous-emissions") {
+    return await step.do(PREVIOUS_EMISSIONS_STEP_NAME, async (tx) => {
+      const previousEmissions = event.payload.readPreviousEmissions
+        ? await tx.previousEmissions()
+        : [];
+      const userEmissions = previousEmissions.filter((emission) => emission.actor === "user");
+      const previousPayloadBytes = userEmissions.reduce((total, emission) => {
+        const payload = emission.payload as { payload: string };
+        return total + payload.payload.length;
+      }, 0);
+
+      return {
+        emittedCount: 0,
+        emittedPayloadBytes: 0,
+        previousEmissionCount: userEmissions.length,
+        previousPayloadBytes,
+      };
+    });
+  }
 
   return await step.do("emit benchmark batches", async (tx) => {
     const payload = "x".repeat(event.payload.payloadBytes);
@@ -77,6 +116,8 @@ const WorkflowStepLivePumpHeapBenchmark = defineWorkflow<
     return {
       emittedCount,
       emittedPayloadBytes: emittedCount * event.payload.payloadBytes,
+      previousEmissionCount: 0,
+      previousPayloadBytes: 0,
     };
   });
 });
@@ -157,7 +198,7 @@ export class WorkflowBenchmarkObject {
     }
   }
 
-  async #prepare(input: BenchmarkPrepareInput): Promise<unknown> {
+  async #prepare(input: BenchmarkWorkflowParams): Promise<unknown> {
     const fragment = this.#getFragment();
     await fragment.callServices(() =>
       fragment.services.createInstance(BENCHMARK_WORKFLOW_NAME, {
@@ -165,6 +206,9 @@ export class WorkflowBenchmarkObject {
         params: {
           workload: input.workload,
           historicalEmissionCount: input.historicalEmissionCount,
+          unrelatedEmissionCount: input.unrelatedEmissionCount,
+          replayEmissionCount: input.replayEmissionCount,
+          readPreviousEmissions: input.readPreviousEmissions,
           batchCount: input.batchCount,
           emissionsPerBatch: input.emissionsPerBatch,
           payloadBytes: input.payloadBytes,
@@ -182,47 +226,38 @@ export class WorkflowBenchmarkObject {
     }
 
     const instance = await this.#readBenchmarkInstance();
-    const payload = {
-      type:
-        input.workload === "cleanup"
-          ? "cleanup-benchmark-emission"
-          : "historical-benchmark-emission",
-      payload: "h".repeat(input.payloadBytes),
-    };
+    const payload = { type: "benchmark-history-emission", payload: "h".repeat(input.payloadBytes) };
 
-    for (
-      let chunkStart = 0;
-      chunkStart < input.historicalEmissionCount;
-      chunkStart += HISTORICAL_SEED_CHUNK_SIZE
-    ) {
-      const chunkEnd = Math.min(
-        chunkStart + HISTORICAL_SEED_CHUNK_SIZE,
-        input.historicalEmissionCount,
-      );
-      const unitOfWork = this.#databaseAdapter.createUnitOfWork(
-        workflowsSchema,
-        workflowsSchema.name,
-        `seed-workflow-emissions-${chunkStart}-${chunkEnd}`,
-      );
-
-      for (let sequence = chunkStart; sequence < chunkEnd; sequence += 1) {
-        unitOfWork.create("workflow_step_emission", {
-          instanceRef: instance.id,
-          stepKey:
-            input.workload === "cleanup" ? CLEANUP_STEP_KEY : "do:historical benchmark stream",
-          executionId:
-            input.workload === "cleanup" ? CLEANUP_EXECUTION_ID : "historical-benchmark-execution",
-          epoch: input.workload === "cleanup" ? CLEANUP_EPOCH : "historical-benchmark-epoch",
-          sequence,
-          actor: "user",
-          payload,
-        });
-      }
-
-      const mutationResult = await unitOfWork.executeMutations();
-      if (!mutationResult.success) {
-        throw new Error("Historical benchmark emission seeding encountered a conflict.");
-      }
+    if (input.workload === "previous-emissions") {
+      await this.#seedBenchmarkEmissions(instance.id, {
+        label: "unrelated",
+        count: input.unrelatedEmissionCount,
+        stepKey: UNRELATED_STEP_KEY,
+        executionId: "unrelated-benchmark-execution",
+        epoch: "unrelated-benchmark-epoch",
+        includeStartedControl: input.unrelatedEmissionCount > 0,
+        payload,
+      });
+      await this.#seedBenchmarkEmissions(instance.id, {
+        label: "selected-replay-epoch",
+        count: input.replayEmissionCount,
+        stepKey: PREVIOUS_EMISSIONS_STEP_KEY,
+        executionId: PREVIOUS_EMISSIONS_EXECUTION_ID,
+        epoch: PREVIOUS_EMISSIONS_EPOCH,
+        includeStartedControl: input.replayEmissionCount > 0,
+        payload,
+      });
+    } else {
+      await this.#seedBenchmarkEmissions(instance.id, {
+        label: input.workload,
+        count: input.historicalEmissionCount,
+        stepKey: input.workload === "cleanup" ? CLEANUP_STEP_KEY : "do:historical benchmark stream",
+        executionId:
+          input.workload === "cleanup" ? CLEANUP_EXECUTION_ID : "historical-benchmark-execution",
+        epoch: input.workload === "cleanup" ? CLEANUP_EPOCH : "historical-benchmark-epoch",
+        includeStartedControl: false,
+        payload,
+      });
     }
 
     return {
@@ -230,6 +265,9 @@ export class WorkflowBenchmarkObject {
       workflowName: BENCHMARK_WORKFLOW_NAME,
       instanceId: BENCHMARK_INSTANCE_ID,
       historicalEmissionCount: input.historicalEmissionCount,
+      unrelatedEmissionCount: input.unrelatedEmissionCount,
+      replayEmissionCount: input.replayEmissionCount,
+      readPreviousEmissions: input.readPreviousEmissions,
       status,
     };
   }
@@ -259,16 +297,18 @@ export class WorkflowBenchmarkObject {
       throw new Error(`Benchmark workflow did not complete: ${status.status}`);
     }
 
-    const expectedBatches = Math.ceil(
-      (params.batchCount * params.emissionsPerBatch + 2) / CLEANUP_PAGE_SIZE,
-    );
+    const measuredEmissionCount =
+      params.workload === "previous-emissions" ? 0 : params.batchCount * params.emissionsPerBatch;
+    const expectedBatches = Math.ceil((measuredEmissionCount + 2) / CLEANUP_PAGE_SIZE);
     for (let pass = 0; pass < expectedBatches; pass += 1) {
       await this.#host.alarm();
     }
     const persistedEmissionCount = await this.#countBenchmarkEmissions(instance.id, params);
-    if (persistedEmissionCount !== params.historicalEmissionCount) {
+    const expectedPersistedEmissionCount = expectedPersistedBenchmarkEmissionCount(params);
+    if (persistedEmissionCount !== expectedPersistedEmissionCount) {
       throw new Error(
-        `Benchmark cleanup left ${persistedEmissionCount} emissions; expected ${params.historicalEmissionCount}.`,
+        `Benchmark cleanup left ${persistedEmissionCount} emissions; ` +
+          `expected ${expectedPersistedEmissionCount}.`,
       );
     }
     return status;
@@ -352,6 +392,58 @@ export class WorkflowBenchmarkObject {
     return emissionCount;
   }
 
+  async #seedBenchmarkEmissions(
+    instanceId: FragnoId,
+    options: {
+      label: string;
+      count: number;
+      stepKey: string;
+      executionId: string;
+      epoch: string;
+      includeStartedControl: boolean;
+      payload: { type: string; payload: string };
+    },
+  ): Promise<void> {
+    for (let chunkStart = 0; chunkStart < options.count; chunkStart += HISTORICAL_SEED_CHUNK_SIZE) {
+      const chunkEnd = Math.min(chunkStart + HISTORICAL_SEED_CHUNK_SIZE, options.count);
+      const unitOfWork = this.#databaseAdapter.createUnitOfWork(
+        workflowsSchema,
+        workflowsSchema.name,
+        `seed-${options.label}-emissions-${chunkStart}-${chunkEnd}`,
+      );
+
+      if (options.includeStartedControl && chunkStart === 0) {
+        unitOfWork.create("workflow_step_emission", {
+          instanceRef: instanceId,
+          stepKey: options.stepKey,
+          executionId: options.executionId,
+          epoch: options.epoch,
+          sequence: 0,
+          actor: "system",
+          payload: createWorkflowStepStartedControlPayload(),
+        });
+      }
+
+      const sequenceOffset = options.includeStartedControl ? 1 : 0;
+      for (let emissionIndex = chunkStart; emissionIndex < chunkEnd; emissionIndex += 1) {
+        unitOfWork.create("workflow_step_emission", {
+          instanceRef: instanceId,
+          stepKey: options.stepKey,
+          executionId: options.executionId,
+          epoch: options.epoch,
+          sequence: emissionIndex + sequenceOffset,
+          actor: "user",
+          payload: options.payload,
+        });
+      }
+
+      const mutationResult = await unitOfWork.executeMutations();
+      if (!mutationResult.success) {
+        throw new Error(`Benchmark ${options.label} emission seeding encountered a conflict.`);
+      }
+    }
+  }
+
   async #readBenchmarkInstance() {
     const [instance] = await this.#databaseAdapter
       .createUnitOfWork(workflowsSchema, workflowsSchema.name, "read-benchmark-instance")
@@ -396,23 +488,38 @@ export default {
   },
 };
 
-function parsePrepareInput(value: unknown): BenchmarkPrepareInput {
+function parsePrepareInput(value: unknown): BenchmarkWorkflowParams {
   if (!isRecord(value)) {
     throw new Error("Benchmark prepare input must be a JSON object.");
   }
 
-  if (value["workload"] !== "stream" && value["workload"] !== "cleanup") {
-    throw new Error("Benchmark workload must be stream or cleanup.");
+  if (
+    value["workload"] !== "stream" &&
+    value["workload"] !== "cleanup" &&
+    value["workload"] !== "previous-emissions"
+  ) {
+    throw new Error("Benchmark workload must be stream, cleanup, or previous-emissions.");
   }
 
   return {
     workload: value["workload"],
     historicalEmissionCount: parseInteger(value, "historicalEmissionCount", 0, 100_000),
+    unrelatedEmissionCount: parseInteger(value, "unrelatedEmissionCount", 0, 100_000),
+    replayEmissionCount: parseInteger(value, "replayEmissionCount", 0, 100_000),
+    readPreviousEmissions: parseBoolean(value, "readPreviousEmissions"),
     batchCount: parseInteger(value, "batchCount", 1, 10_000),
     emissionsPerBatch: parseInteger(value, "emissionsPerBatch", 1, 10_000),
     payloadBytes: parseInteger(value, "payloadBytes", 0, 1_000_000),
     intervalMs: parseInteger(value, "intervalMs", 0, 60_000),
   };
+}
+
+function parseBoolean(value: Record<string, unknown>, field: string): boolean {
+  const candidate = value[field];
+  if (typeof candidate !== "boolean") {
+    throw new Error(`Benchmark ${field} must be a boolean.`);
+  }
+  return candidate;
 }
 
 function parseInteger(

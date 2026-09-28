@@ -210,6 +210,35 @@ result materialization and Fragno row decoding. `runWorkflowsTick` still retriev
 `workflow_step_emission` for the instance, even though the live pump itself now reads only system
 controls.
 
+A September 28 focused `previousEmissions()` suite separates unrelated history from the selected
+replay epoch. Each case performs one runner tick with no measured delay or recurring emission
+batches. Three matched fresh-process allocation runs compared the current eager instance-wide read
+with an experimental lazy exact-epoch implementation:
+
+| Case                                      | Eager → lazy allocation | Eager → lazy duration |
+| ----------------------------------------- | ----------------------: | --------------------: |
+| no history, API unused                    |         3.75 → 3.43 MiB |        68.5 → 86.2 ms |
+| 10,000 unrelated, API unused              |        17.57 → 3.23 MiB |       108.8 → 64.3 ms |
+| 100 selected, API read                    |         3.86 → 3.97 MiB |        64.3 → 68.6 ms |
+| 100 selected + 10,000 unrelated, API read |        18.56 → 3.44 MiB |       151.7 → 66.5 ms |
+| 10,000 selected, API read                 |       20.14 → 19.52 MiB |      118.3 → 116.9 ms |
+
+The experiment loaded only system controls initially, then queried the selected instance, step, and
+epoch when `previousEmissions()` was first called. It demonstrated that unrelated history can be
+removed from the replay allocation path, but it was reverted because the deferred query could see a
+valid previous-attempt emission persisted after the new recovery attempt started. That visibility
+changed Pi transcript recovery based on timing and violated the existing pre-attempt snapshot
+semantics.
+
+The experimental allocation for 10,000 unread unrelated rows fell 14.34 MiB (81.6%), while adding
+the same unrelated history to a selected 100-row replay fell 15.12 MiB (81.5%). The selected
+10,000-row case remained within 0.62 MiB and 1.4 ms of its eager result. Empty and selected-100
+cases also remained near baseline. A one-run heap screen remained natural-GC-sensitive—the unrelated
+unread case reported a 3.36 MiB delta while the selected-100-plus-unrelated case collected below
+baseline—so this result demonstrates an optimization opportunity, not current production behavior or
+a production peak-heap claim. The benchmark remains available for evaluating a future design that
+preserves the fixed recovery snapshot.
+
 The current deterministic 4× recorded Pi stream produced 4,270 user emissions, cleaned them in 43
 pages, and sampled 1,099.9 MiB of server allocation with a 38.6 MiB heap rise. Excluding the
 recorded provider's benchmark-only message construction, the largest owners were outbox mutation
@@ -295,9 +324,12 @@ serialized entry assembly. See
 
 Recommended implementation order from here:
 
-1. Narrow the runner's instance-wide emission retrieval. At minimum, avoid decoding stale user
-   payloads that cannot participate in the current replay; preserve system controls and active-step
-   replay semantics.
+1. Narrow the runner's instance-wide emission retrieval without deferring recovery reads past the
+   start of the current attempt. Preserve the fixed pre-attempt snapshot and cleanup behavior.
+2. Run a comparable production-preview heap-only workload after that semantics-preserving change.
+3. If explicitly selected Pi epochs remain too large, add Pi-specific compact transcript checkpoints
+   rather than interpreting or compacting arbitrary workflow emission payloads in the generic
+   runner.
 
 Do not start by increasing cleanup page size or forcing GC. Page size only trades hook overhead for
 larger individual transactions, while forced GC hides rather than removes the measured allocation.

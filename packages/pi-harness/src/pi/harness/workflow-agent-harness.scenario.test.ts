@@ -1,11 +1,15 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
 import { defineScenario, runScenario } from "@fragno-dev/workflows/scenario";
+import { workflowsSchema } from "@fragno-dev/workflows/schema";
+import { createWorkflowStepStartedControlPayload } from "@fragno-dev/workflows/step-emission-control";
+import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
 import { defineWorkflow, type WorkflowStepEmission } from "@fragno-dev/workflows/workflow";
 import { Type } from "typebox";
 import { z } from "zod";
 
 import { instantiate } from "@fragno-dev/core";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import {
   AgentHarness,
@@ -614,6 +618,117 @@ describe("workflow-backed AgentHarness state", () => {
     });
 
     await expect(secondRecovery.storage.getEntries()).resolves.toEqual([userEntry]);
+  });
+
+  test("does not restore a Pi session entry persisted after the recovery attempt starts", async () => {
+    const workflowName = "workflow-agent-harness-recovery-snapshot";
+    const instanceId = "recovery-snapshot-session";
+    const operationId = `${workflowName}:${instanceId}:recoverable`;
+    const timestamp = "2026-09-28T10:00:00.000Z";
+    const lateEntry: SessionTreeEntry = {
+      type: "message",
+      id: `${operationId}:entry-0`,
+      parentId: null,
+      timestamp,
+      message: {
+        role: "user",
+        content: "late message from the previous attempt",
+        timestamp: new Date(timestamp).getTime(),
+      },
+    };
+    const models = createModelsForStreamFn(mockModel, createTextStreamFn("must not run"));
+    let persistLatePreviousAttemptEntry = async (): Promise<void> => {
+      throw new Error("TEST_LATE_PREVIOUS_ATTEMPT_ENTRY_WRITER_NOT_READY");
+    };
+
+    const RecoverySnapshotWorkflow = defineWorkflow({ name: workflowName }, async (event, step) => {
+      const state = createPiHarnessSessionState({
+        metadata: { id: event.instanceId, createdAt: event.timestamp.toISOString() },
+      });
+      const restoredEntryIds = await step.do("recoverable", async (tx) => {
+        await persistLatePreviousAttemptEntry();
+        const restored = restoreWorkflowBackedSession({
+          operationId,
+          state,
+          previousEmissions: await tx.previousEmissions(),
+          models,
+        });
+        return (await restored.storage.getEntries()).map((entry) => entry.id);
+      });
+
+      return { restoredEntryIds };
+    });
+    const harness = await createWorkflowsTestHarness({
+      workflows: { RECOVERY_SNAPSHOT: RecoverySnapshotWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    await harness.createInstance("RECOVERY_SNAPSHOT", { id: instanceId });
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read-pi-recovery-snapshot-instance")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (builder) => builder.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    assert(instance);
+
+    const seed = harness.db
+      .createUnitOfWork("seed-pi-recovery-snapshot")
+      .forSchema(workflowsSchema);
+    seed.create("workflow_step_emission", {
+      instanceRef: instance.id,
+      stepKey: "do:recoverable",
+      executionId: "previous-execution",
+      epoch: "previous-epoch",
+      sequence: 0,
+      actor: "system",
+      payload: createWorkflowStepStartedControlPayload(),
+    });
+    seed.create("workflow_step_emission", {
+      instanceRef: instance.id,
+      stepKey: "do:recoverable",
+      executionId: "previous-execution",
+      epoch: "previous-epoch",
+      sequence: 1,
+      actor: "user",
+      payload: {
+        kind: "harness-operation-start",
+        operationId,
+        replay: { protocol: "pi-harness-operation", version: 1 },
+      },
+    });
+    assert((await seed.executeMutations()).success);
+
+    persistLatePreviousAttemptEntry = async () => {
+      const append = harness.db
+        .createUnitOfWork("append-late-pi-recovery-snapshot-entry")
+        .forSchema(workflowsSchema);
+      append.create("workflow_step_emission", {
+        instanceRef: instance.id,
+        stepKey: "do:recoverable",
+        executionId: "previous-execution",
+        epoch: "previous-epoch",
+        sequence: 2,
+        actor: "user",
+        payload: { kind: "harness-session-entry", entry: lateEntry },
+      });
+      assert((await append.executeMutations()).success);
+    };
+
+    await harness.tick({
+      workflowName,
+      instanceId,
+      instanceRef: instance.id.toString(),
+      reason: "create",
+    });
+
+    await expect(harness.getStatus("RECOVERY_SNAPSHOT", instanceId)).resolves.toMatchObject({
+      status: "complete",
+      output: { restoredEntryIds: [] },
+    });
   });
 
   test("preserves completed tool results and aborts only missing results", async () => {

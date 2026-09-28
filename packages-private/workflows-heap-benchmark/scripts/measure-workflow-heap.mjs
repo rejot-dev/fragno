@@ -47,8 +47,8 @@ function parseArguments(args) {
 
     switch (argument) {
       case "--workload":
-        if (!new Set(["stream", "cleanup"]).has(value)) {
-          throw new Error("--workload must be stream or cleanup");
+        if (!new Set(["stream", "cleanup", "previous-emissions"]).has(value)) {
+          throw new Error("--workload must be stream, cleanup, or previous-emissions");
         }
         parsed.workload = value;
         break;
@@ -95,6 +95,14 @@ function parseArguments(args) {
   if (parsed.histories.length === 0) {
     throw new Error("--histories requires at least one count");
   }
+  if (parsed.workload === "previous-emissions") {
+    if (parsed.histories.length !== 2) {
+      throw new Error("--workload previous-emissions requires exactly two --histories counts");
+    }
+    if (parsed.histories[0] > parsed.histories[1]) {
+      throw new Error("--workload previous-emissions requires small,large --histories ordering");
+    }
+  }
   return parsed;
 }
 
@@ -110,7 +118,8 @@ function printUsage() {
   console.log(`Usage: pnpm measure -- [options]
 
 Options:
-  --workload <stream|cleanup>    Measured workflow phase (default: stream)
+  --workload <stream|cleanup|previous-emissions>
+                                  Measured workflow phase (default: stream)
   --mode <heap|allocation|both>  Measurement mode (default: both)
   --histories <counts>           Comma-separated historical emission counts
   --runs <count>                 Fresh Workerd processes per case (default: 1)
@@ -126,20 +135,21 @@ Options:
 async function runMeasurements(measurementOptions) {
   const modes =
     measurementOptions.mode === "both" ? ["heap", "allocation"] : [measurementOptions.mode];
+  const measurementCases = buildMeasurementCases(measurementOptions);
   const results = [];
 
   for (const mode of modes) {
-    for (const historicalEmissionCount of measurementOptions.histories) {
+    for (const measurementCase of measurementCases) {
       for (let run = 1; run <= measurementOptions.runs; run += 1) {
         console.error(
           `Running ${measurementOptions.workload} ${mode} measurement: ` +
-            `history=${historicalEmissionCount}, run=${run}/${measurementOptions.runs}`,
+            `case=${measurementCase.caseName}, run=${run}/${measurementOptions.runs}`,
         );
         results.push(
           await runOneMeasurement({
             ...measurementOptions,
+            ...measurementCase,
             mode,
-            historicalEmissionCount,
             run,
           }),
         );
@@ -165,6 +175,57 @@ async function runMeasurements(measurementOptions) {
   };
 }
 
+function buildMeasurementCases(measurementOptions) {
+  if (measurementOptions.workload !== "previous-emissions") {
+    return measurementOptions.histories.map((historicalEmissionCount) => ({
+      caseName: `history-${historicalEmissionCount}`,
+      historicalEmissionCount,
+      unrelatedEmissionCount: 0,
+      replayEmissionCount: 0,
+      readPreviousEmissions: false,
+    }));
+  }
+
+  const [smallEmissionCount, largeEmissionCount] = measurementOptions.histories;
+  return [
+    {
+      caseName: "unread-empty",
+      historicalEmissionCount: 0,
+      unrelatedEmissionCount: 0,
+      replayEmissionCount: 0,
+      readPreviousEmissions: false,
+    },
+    {
+      caseName: `unread-unrelated-${largeEmissionCount}`,
+      historicalEmissionCount: 0,
+      unrelatedEmissionCount: largeEmissionCount,
+      replayEmissionCount: 0,
+      readPreviousEmissions: false,
+    },
+    {
+      caseName: `read-selected-${smallEmissionCount}`,
+      historicalEmissionCount: 0,
+      unrelatedEmissionCount: 0,
+      replayEmissionCount: smallEmissionCount,
+      readPreviousEmissions: true,
+    },
+    {
+      caseName: `read-selected-${smallEmissionCount}-unrelated-${largeEmissionCount}`,
+      historicalEmissionCount: 0,
+      unrelatedEmissionCount: largeEmissionCount,
+      replayEmissionCount: smallEmissionCount,
+      readPreviousEmissions: true,
+    },
+    {
+      caseName: `read-selected-${largeEmissionCount}`,
+      historicalEmissionCount: 0,
+      unrelatedEmissionCount: 0,
+      replayEmissionCount: largeEmissionCount,
+      readPreviousEmissions: true,
+    },
+  ];
+}
+
 async function runOneMeasurement(optionsForRun) {
   const ports = await resolveRunPorts(optionsForRun);
   const runOptions = { ...optionsForRun, ...ports };
@@ -172,7 +233,7 @@ async function runOneMeasurement(optionsForRun) {
     path.join(tmpdir(), "fragno-workflows-heap-benchmark-"),
   );
   const server = startWrangler(runOptions, persistenceDirectory);
-  const benchmarkId = `${runOptions.mode}-${runOptions.historicalEmissionCount}-${runOptions.run}-${Date.now()}`;
+  const benchmarkId = `${runOptions.mode}-${runOptions.caseName}-${runOptions.run}-${Date.now()}`;
   const baseUrl = `http://127.0.0.1:${runOptions.workerPort}`;
 
   try {
@@ -182,6 +243,9 @@ async function runOneMeasurement(optionsForRun) {
       body: JSON.stringify({
         workload: runOptions.workload,
         historicalEmissionCount: runOptions.historicalEmissionCount,
+        unrelatedEmissionCount: runOptions.unrelatedEmissionCount,
+        replayEmissionCount: runOptions.replayEmissionCount,
+        readPreviousEmissions: runOptions.readPreviousEmissions,
         batchCount: runOptions.batchCount,
         emissionsPerBatch: runOptions.emissionsPerBatch,
         payloadBytes: runOptions.payloadBytes,
@@ -212,7 +276,11 @@ async function runOneMeasurement(optionsForRun) {
       return {
         workload: runOptions.workload,
         mode: runOptions.mode,
+        caseName: runOptions.caseName,
         historicalEmissionCount: runOptions.historicalEmissionCount,
+        unrelatedEmissionCount: runOptions.unrelatedEmissionCount,
+        replayEmissionCount: runOptions.replayEmissionCount,
+        readPreviousEmissions: runOptions.readPreviousEmissions,
         run: runOptions.run,
         measurement,
         result,
@@ -232,7 +300,7 @@ async function runOneMeasurement(optionsForRun) {
 
 async function runMeasuredWorkload(baseUrl, benchmarkId, optionsForRun) {
   const benchmarkQuery = `benchmarkId=${encodeURIComponent(benchmarkId)}`;
-  if (optionsForRun.workload === "stream") {
+  if (optionsForRun.workload === "stream" || optionsForRun.workload === "previous-emissions") {
     return await fetchJson(`${baseUrl}/run?${benchmarkQuery}`, { method: "POST" });
   }
 
@@ -533,6 +601,38 @@ function assertBenchmarkResult(result, optionsForRun) {
     }
     return;
   }
+  if (optionsForRun.workload === "previous-emissions") {
+    const expectedPreviousEmissionCount = optionsForRun.readPreviousEmissions
+      ? optionsForRun.replayEmissionCount
+      : 0;
+    const expectedPersistedEmissionCount =
+      optionsForRun.unrelatedEmissionCount +
+      optionsForRun.replayEmissionCount +
+      (optionsForRun.unrelatedEmissionCount > 0 ? 1 : 0) +
+      (optionsForRun.replayEmissionCount > 0 ? 1 : 0);
+    if (result?.status?.status !== "complete") {
+      throw new Error(`Previous-emissions benchmark did not complete: ${JSON.stringify(result)}`);
+    }
+    if (output?.previousEmissionCount !== expectedPreviousEmissionCount) {
+      throw new Error(
+        `Previous-emissions benchmark read ${output?.previousEmissionCount}; ` +
+          `expected ${expectedPreviousEmissionCount}.`,
+      );
+    }
+    if (
+      output?.previousPayloadBytes !==
+      expectedPreviousEmissionCount * optionsForRun.payloadBytes
+    ) {
+      throw new Error("Previous-emissions benchmark payload byte count did not match its input");
+    }
+    if (result?.persistedEmissionCount !== expectedPersistedEmissionCount) {
+      throw new Error(
+        `Previous-emissions benchmark retained ${result?.persistedEmissionCount} rows; ` +
+          `expected ${expectedPersistedEmissionCount}.`,
+      );
+    }
+    return;
+  }
   if (result?.status?.status !== "complete") {
     throw new Error(`Benchmark result was not complete: ${JSON.stringify(result)}`);
   }
@@ -598,20 +698,24 @@ async function readWranglerVersion() {
 function calculateMedians(results) {
   const grouped = new Map();
   for (const result of results) {
-    const key = `${result.mode}:${result.historicalEmissionCount}`;
+    const key = `${result.mode}\0${result.caseName}`;
     const group = grouped.get(key) ?? [];
     group.push(result);
     grouped.set(key, group);
   }
 
-  return [...grouped].map(([key, group]) => {
-    const [mode, historicalEmissionCount] = key.split(":");
+  return [...grouped.values()].map((group) => {
+    const first = group[0];
     return {
-      mode,
-      historicalEmissionCount: Number(historicalEmissionCount),
+      mode: first.mode,
+      caseName: first.caseName,
+      historicalEmissionCount: first.historicalEmissionCount,
+      unrelatedEmissionCount: first.unrelatedEmissionCount,
+      replayEmissionCount: first.replayEmissionCount,
+      readPreviousEmissions: first.readPreviousEmissions,
       runCount: group.length,
       durationMs: median(group.map((result) => result.measurement.durationMs)),
-      ...(mode === "heap"
+      ...(first.mode === "heap"
         ? {
             peakDeltaBytes: median(group.map((result) => result.measurement.peakDeltaBytes)),
             settledDeltaBytes: median(group.map((result) => result.measurement.settledDeltaBytes)),
@@ -637,14 +741,14 @@ function printReport(report) {
   for (const result of report.medians) {
     if (result.mode === "heap") {
       console.log(
-        `heap history=${result.historicalEmissionCount} runs=${result.runCount} ` +
+        `heap case=${result.caseName} runs=${result.runCount} ` +
           `peakDelta=${formatBytes(result.peakDeltaBytes)} ` +
           `settledDelta=${formatBytes(result.settledDeltaBytes)} ` +
           `duration=${result.durationMs.toFixed(1)}ms`,
       );
     } else {
       console.log(
-        `allocation history=${result.historicalEmissionCount} runs=${result.runCount} ` +
+        `allocation case=${result.caseName} runs=${result.runCount} ` +
           `sampled=${formatBytes(result.sampledAllocationBytes)} ` +
           `duration=${result.durationMs.toFixed(1)}ms`,
       );

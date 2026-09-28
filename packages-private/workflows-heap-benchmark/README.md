@@ -45,6 +45,34 @@ pnpm --filter @fragno-private/workflows-heap-benchmark measure -- \
 Each measured case lasts approximately 3.6 seconds. It compares the allocation cost of the same 300
 new emissions and 30 flush opportunities against short and long pre-existing histories.
 
+## Measure `previousEmissions()` pressure
+
+Run the focused five-case heap suite while iterating on runner replay retrieval:
+
+```bash
+pnpm --filter @fragno-private/workflows-heap-benchmark measure -- \
+  --workload previous-emissions \
+  --mode heap \
+  --histories 100,10000 \
+  --runs 1 \
+  --payload-bytes 256 \
+  --json benchmark-results/previous-emissions-heap.json
+```
+
+The suite measures:
+
+1. no history without calling `previousEmissions()`;
+2. 10,000 unrelated emissions without calling it;
+3. 100 emissions in the selected replay epoch;
+4. the same selected 100 plus 10,000 unrelated emissions;
+5. 10,000 emissions in the selected replay epoch.
+
+The workflow performs no measured delays or recurring live-pump batches, so each measured request is
+a single runner tick plus cleanup. Every case still uses a fresh Workerd process to keep heap peaks
+comparable. Use `--mode allocation` separately when call-frame attribution is needed; `--mode both`
+doubles the number of fresh processes. For this workload, `--histories` must contain exactly the
+small and large selected counts.
+
 ## Isolate terminal cleanup
 
 Use the same Workerd harness to seed one terminal step scope and measure only its durable cleanup:
@@ -133,7 +161,8 @@ Use `--mode heap` while iterating on peak heap without allocation-profiler disto
 ## Options
 
 ```text
---workload <stream|cleanup>    Measured workflow phase (default: stream)
+--workload <stream|cleanup|previous-emissions>
+                                  Measured workflow phase (default: stream)
 --mode <heap|allocation|both>  Measurement mode (default: both)
 --histories <counts>           Comma-separated historical emission counts
 --runs <count>                 Fresh Workerd processes per case (default: 1)
