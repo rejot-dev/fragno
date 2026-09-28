@@ -14,7 +14,9 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
 import { createInMemoryBackofficeRuntime } from "../in-memory-runtime";
+import type { LocalBackofficeDurableHooks } from "./local-runtime";
 import { startNodeBackofficeAlarmScheduler } from "./node-alarm-scheduler";
+import { SqliteBackofficeObjectStorage } from "./sqlite-object-storage";
 
 function createVoidDeferred() {
   let resolve!: () => void;
@@ -387,6 +389,164 @@ describe("file-backed SQLite Backoffice scenario", () => {
       releaseAlarm.resolve();
       await scheduler.stop();
       await runtime.cleanup();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("alarm scheduling continues when another persisted object fails discovery", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-sqlite-discovery-failure-"));
+    const healthyAlarmFinished = createVoidDeferred();
+    const schedulerErrorReported = createVoidDeferred();
+    const schedulerErrors: unknown[] = [];
+    const processor = await createInMemoryBackofficeRuntime({
+      sqliteDataDirectory: directory,
+      objectFactories: {
+        UPLOAD: ({ name, runtime, state }) => {
+          if (name.endsWith("org-1")) {
+            runtime.objectRuntime?.registerRefresh(async () => {
+              throw new Error("Expected persisted object refresh failure.");
+            });
+          }
+          return {
+            async alarm() {
+              await state.storage.put("alarmFinished", true);
+              healthyAlarmFinished.resolve();
+            },
+          };
+        },
+      },
+    });
+    const scheduler = startNodeBackofficeAlarmScheduler(processor, {
+      intervalMs: 1,
+      onError(error) {
+        schedulerErrors.push(error);
+        schedulerErrorReported.resolve();
+      },
+    });
+
+    try {
+      await runBackofficeScenario(
+        defineBackofficeScenario({
+          name: "a broken persisted object does not block another object's alarm",
+          options: { drain: false, sqliteDataDirectory: directory },
+          objectFactories: {
+            UPLOAD: ({ state }) => ({
+              async fetch(request: Request) {
+                if (new URL(request.url).pathname === "/schedule") {
+                  await state.storage.setAlarm(Date.now() - 1);
+                  return new Response(null, { status: 204 });
+                }
+                return Response.json({ alarmFinished: await state.storage.get("alarmFinished") });
+              },
+            }),
+          },
+          steps: ({ then }) => [
+            then.assert(
+              "schedule alarms for the broken and healthy objects",
+              async ({ runtime }) => {
+                await runtime.objects.upload
+                  .forOrg("org-1")
+                  .http.fetch(new Request("https://backoffice.example/schedule"));
+                await runtime.objects.upload
+                  .forOrg("org-2")
+                  .http.fetch(new Request("https://backoffice.example/schedule"));
+              },
+            ),
+            then.assert("the healthy alarm runs despite discovery failure", async ({ runtime }) => {
+              await Promise.race([
+                Promise.all([healthyAlarmFinished.promise, schedulerErrorReported.promise]),
+                new Promise<never>((_, reject) => {
+                  setTimeout(
+                    () => reject(new Error("Healthy persisted object alarm was not delivered.")),
+                    2_000,
+                  );
+                }),
+              ]);
+
+              const response = await runtime.objects.upload
+                .forOrg("org-2")
+                .http.fetch(new Request("https://backoffice.example/state"));
+              assert.deepEqual(await response.json(), { alarmFinished: true });
+              expect(schedulerErrors[0]).toBeInstanceOf(AggregateError);
+            }),
+          ],
+        }),
+      );
+    } finally {
+      await scheduler.stop();
+      await processor.cleanup();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("runtime startup ignores persisted objects for removed bindings", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-sqlite-removed-binding-"));
+    const storage = new SqliteBackofficeObjectStorage(directory);
+    storage.registerObject("REMOVED:v1:org:org-1");
+    storage.close();
+
+    try {
+      await runBackofficeScenario(
+        defineBackofficeScenario({
+          name: "removed persisted bindings do not prevent startup",
+          options: { drain: false, sqliteDataDirectory: directory },
+          steps: ({ then }) => [
+            then.assert("known objects remain available", async ({ runtime }) => {
+              const response = await runtime.objects.upload
+                .forOrg("org-1")
+                .http.fetch(new Request("https://backoffice.example/state"));
+              assert.equal(response.status, 404);
+            }),
+          ],
+        }),
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("runtime cleanup closes object storage after an earlier cleanup failure", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-sqlite-cleanup-failure-"));
+    const capturedStorages: DurableObjectStorage[] = [];
+    const durableHooks: LocalBackofficeDurableHooks = {
+      createFragmentHostOperations: () => null,
+      async unregisterObject() {},
+      async cleanup() {
+        throw new Error("Expected durable hook cleanup failure.");
+      },
+    };
+
+    try {
+      await expect(
+        runBackofficeScenario(
+          defineBackofficeScenario({
+            name: "cleanup releases later resources after an earlier failure",
+            durableHooks,
+            options: { drain: false, sqliteDataDirectory: directory },
+            objectFactories: {
+              UPLOAD: ({ state }) => ({
+                async fetch() {
+                  capturedStorages.push(state.storage);
+                  await state.storage.put("created", true);
+                  return new Response(null, { status: 204 });
+                },
+              }),
+            },
+            steps: ({ then }) => [
+              then.assert("create file-backed object storage", async ({ runtime }) => {
+                await runtime.objects.upload
+                  .forOrg("org-1")
+                  .http.fetch(new Request("https://backoffice.example/create"));
+              }),
+            ],
+          }),
+        ),
+      ).rejects.toThrow("Expected durable hook cleanup failure.");
+
+      const [closedStorage] = capturedStorages;
+      assert(closedStorage);
+      await expect(closedStorage.get("created")).rejects.toThrow();
+    } finally {
       await rm(directory, { recursive: true, force: true });
     }
   });

@@ -28,10 +28,26 @@ export function startNodeBackofficeAlarmScheduler(
     }
 
     const alarmDrain = (async () => {
-      await runtime.discoverPersistedObjects();
-      await runtime.drainWaitUntil();
-      await runtime.drainAlarms();
-      await runtime.drainWaitUntil();
+      const failures: Error[] = [];
+      async function runAlarmDrainStage(name: string, stage: () => Promise<void>): Promise<void> {
+        try {
+          await stage();
+        } catch (cause) {
+          failures.push(new Error(`Node Backoffice alarm drain failed during ${name}.`, { cause }));
+        }
+      }
+
+      await runAlarmDrainStage("persisted object discovery", runtime.discoverPersistedObjects);
+      await runAlarmDrainStage("pre-alarm waitUntil drain", runtime.drainWaitUntil);
+      await runAlarmDrainStage("alarm delivery", runtime.drainAlarms);
+      await runAlarmDrainStage("post-alarm waitUntil drain", runtime.drainWaitUntil);
+
+      if (failures.length > 0) {
+        throw new AggregateError(
+          failures,
+          "One or more Node Backoffice alarm drain stages failed.",
+        );
+      }
     })().catch(onError);
     const trackedAlarmDrain = alarmDrain.finally(() => {
       if (activeAlarmDrain === trackedAlarmDrain) {

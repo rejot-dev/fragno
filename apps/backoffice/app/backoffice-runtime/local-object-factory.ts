@@ -421,15 +421,37 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
 
   async restorePersistedInstances(): Promise<void> {
     for (const id of this.#sqlite?.storage.objectIds() ?? []) {
-      const { namespace, durableObjectId } = this.#resolvePersistedObject(id);
-      await namespace.restorePersisted(durableObjectId);
+      const persistedObject = this.#resolvePersistedObject(id);
+      if (persistedObject) {
+        await persistedObject.namespace.restorePersisted(persistedObject.durableObjectId);
+      }
     }
   }
 
   async discoverPersistedInstances(): Promise<void> {
-    for (const id of this.#sqlite?.storage.objectIds() ?? []) {
-      const { namespace, durableObjectId } = this.#resolvePersistedObject(id);
-      await namespace.discoverPersisted(durableObjectId);
+    const objectIds = this.#sqlite?.storage.objectIds() ?? [];
+    const discoveries = await Promise.allSettled(
+      objectIds.map(async (id) => {
+        const persistedObject = this.#resolvePersistedObject(id);
+        if (persistedObject) {
+          await persistedObject.namespace.discoverPersisted(persistedObject.durableObjectId);
+        }
+      }),
+    );
+    const failures = discoveries.flatMap((result, index) =>
+      result.status === "rejected"
+        ? [
+            new Error(`Persisted Backoffice object discovery failed for ${objectIds[index]}.`, {
+              cause: result.reason,
+            }),
+          ]
+        : [],
+    );
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        "One or more persisted Backoffice objects failed discovery.",
+      );
     }
   }
 
@@ -476,19 +498,23 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
         return alarm ? [{ namespace, instance, alarm }] : [];
       }),
     );
-    const failures: Error[] = [];
-
-    await this.#runAtCurrentTime(async () => {
-      for (const { namespace, instance, alarm: dueAlarm } of due) {
-        try {
-          await namespace.deliverAlarm(instance, dueAlarm, now);
-        } catch (cause) {
-          failures.push(
-            new Error(`Local Backoffice object alarm failed for ${instance.name}.`, { cause }),
-          );
-        }
-      }
-    });
+    const deliveries = await this.#runAtCurrentTime(
+      async () =>
+        await Promise.allSettled(
+          due.map(async ({ namespace, instance, alarm }) => {
+            await namespace.deliverAlarm(instance, alarm, now);
+          }),
+        ),
+    );
+    const failures = deliveries.flatMap((result, index) =>
+      result.status === "rejected"
+        ? [
+            new Error(`Local Backoffice object alarm failed for ${due[index].instance.name}.`, {
+              cause: result.reason,
+            }),
+          ]
+        : [],
+    );
 
     if (failures.length > 0) {
       throw new AggregateError(failures, "One or more local Backoffice object alarms failed.");
@@ -612,10 +638,13 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
 
   #resolvePersistedObject(id: string) {
     const separator = id.indexOf(":");
+    if (separator <= 0 || separator === id.length - 1) {
+      throw new Error(`Malformed persisted Backoffice object identity: ${id}`);
+    }
     const binding = id.slice(0, separator) as BackofficeObjectBindingName;
     const namespace = this.#namespaces[binding];
-    if (!namespace || separator === -1) {
-      throw new Error(`Unknown persisted Backoffice object identity: ${id}`);
+    if (!namespace) {
+      return null;
     }
     return {
       namespace,
