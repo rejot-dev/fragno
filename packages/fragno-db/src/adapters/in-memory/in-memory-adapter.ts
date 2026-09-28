@@ -1,11 +1,17 @@
 import { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
+import superjson, { type SuperJSONResult } from "superjson";
 
+import { internalSchema } from "../../fragments/internal-fragment.schema";
 import { getOutboxConfigForAdapter } from "../../internal/outbox-state";
 import {
   createNamingResolver,
   suffixNamingStrategy,
   type SqlNamingStrategy,
 } from "../../naming/sql-naming";
+import { assembleOutboxEntry } from "../../outbox/assemble-outbox-entry";
+import type { OutboxEntry, OutboxOperation } from "../../outbox/outbox";
+import type { OutboxStreamOptions, SerializedOutboxStreamEntry } from "../../outbox/outbox-stream";
+import { serializeOutboxStreamEntry } from "../../outbox/serialized-outbox-stream-entry";
 import {
   UnitOfWork,
   type RetrievalOperation,
@@ -31,6 +37,10 @@ import {
 import { createInMemoryStore, ensureNamespaceStore, type InMemoryStore } from "./store";
 
 export type InMemoryUowConfig = UnitOfWorkConfig;
+
+type OutboxEntryWithMutations = Omit<OutboxEntry, "payload"> & {
+  mutations: Array<{ payload: SuperJSONResult }>;
+};
 
 export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
   readonly options: ResolvedInMemoryAdapterOptions;
@@ -114,6 +124,49 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
     const [result] = await uow.executeRetrieve();
     for (const row of result as unknown[]) {
       yield row;
+    }
+  }
+
+  async *streamSerializedOutboxEntries(
+    options: OutboxStreamOptions,
+  ): AsyncIterableIterator<SerializedOutboxStreamEntry> {
+    if (!Number.isSafeInteger(options.limit) || options.limit < 1) {
+      throw new Error("InMemoryAdapter.streamSerializedOutboxEntries requires a positive limit.");
+    }
+
+    const afterValue = options.afterVersionstamp?.toLowerCase();
+    const uow = this.createUnitOfWork(internalSchema, null, "internal.outbox.stream");
+    uow.find("fragno_db_outbox", (builder) => {
+      const entries = afterValue
+        ? builder.whereIndex("idx_outbox_versionstamp", (expression) =>
+            expression("versionstamp", ">", afterValue),
+          )
+        : builder.whereIndex("idx_outbox_versionstamp");
+      return entries
+        .orderByIndex("idx_outbox_versionstamp", "asc")
+        .pageSize(options.limit)
+        .joinMany("mutations", "fragno_db_outbox_mutations", (mutations) =>
+          mutations
+            .onIndex("idx_outbox_mutations_entry_order", (expression) =>
+              expression("entryVersionstamp", "=", expression.parent("versionstamp")),
+            )
+            .orderByIndex("idx_outbox_mutations_entry_order", "asc")
+            .select(["payload"]),
+        );
+    });
+
+    const [operation] = uow.getRetrievalOperations();
+    if (!operation) {
+      throw new Error("In-memory outbox stream find operation was not recorded.");
+    }
+    for await (const result of this.streamRetrieval(operation)) {
+      const entry = result as OutboxEntryWithMutations;
+      const operations = entry.mutations.map((mutation) =>
+        superjson.deserialize<OutboxOperation>(mutation.payload),
+      );
+      yield serializeOutboxStreamEntry(
+        assembleOutboxEntry({ ...entry, refMap: entry.refMap }, operations),
+      );
     }
   }
 

@@ -12,11 +12,11 @@ const retrievalSchema = schema("stream_retrieval", (s) =>
   s.addTable("records", (t) => t.addColumn("id", idColumn()).addColumn("value", column("string"))),
 );
 
-function createPostgresAdapter() {
-  const executeQuery = vi.fn(async () => ({
+function createPostgresAdapter(rows: Record<string, unknown>[] = []) {
+  const executeQuery = vi.fn(async (_query: unknown, _values?: unknown[]) => ({
     command: "SELECT" as const,
-    rowCount: 0,
-    rows: [],
+    rowCount: rows.length,
+    rows,
   }));
   const release = vi.fn();
   const pool = {
@@ -53,6 +53,43 @@ async function collectRows(iterable: AsyncIterableIterator<unknown>): Promise<un
 }
 
 describe("SqlAdapter bounded retrieval execution", () => {
+  it("streams Postgres outbox payloads as opaque JSON text", async () => {
+    const payloadJson = '{"json":{"version":2,"operations":[]}}';
+    const { adapter, executeQuery } = createPostgresAdapter([
+      {
+        versionstamp: "000000000000000000000002",
+        uowId: "uow-2",
+        refMapJson: null,
+        mutationPayloadsJson: "[]",
+      },
+    ]);
+
+    try {
+      await expect(
+        collectRows(
+          adapter.streamSerializedOutboxEntries({
+            afterVersionstamp: "000000000000000000000001",
+            limit: 50,
+          }),
+        ),
+      ).resolves.toEqual([
+        {
+          versionstamp: "000000000000000000000002",
+          entryJson:
+            '{"versionstamp":"000000000000000000000002","uowId":"uow-2",' +
+            `"payload":${payloadJson}}`,
+        },
+      ]);
+      const queryCall = executeQuery.mock.calls[0];
+      assert(queryCall);
+      expect(queryCall[0]).toContain('json_agg("_fragno_outbox_stream_aggregate"');
+      expect(queryCall[0]).toContain("fragno_db_outbox_mutations");
+      expect(queryCall[1]).toContain("000000000000000000000001");
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it("uses one buffered query when Postgres has no cursor implementation", async () => {
     const { adapter, executeQuery } = createPostgresAdapter();
 

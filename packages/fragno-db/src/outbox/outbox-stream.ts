@@ -1,5 +1,17 @@
 import { FRAGNO_OUTBOX_PAGE_SIZE, type OutboxEntry } from "./outbox";
 
+/** Parameters for one bounded poll of the outbox stream. */
+export type OutboxStreamOptions = {
+  afterVersionstamp: string | undefined;
+  limit: number;
+};
+
+/** Complete stream entry JSON kept opaque between database retrieval and network framing. */
+export type SerializedOutboxStreamEntry = {
+  versionstamp: string;
+  entryJson: string;
+};
+
 /** Wire projection; payload decoding belongs to the consumer that interprets mutations. */
 export type OutboxStreamEntry = Pick<OutboxEntry, "versionstamp" | "uowId" | "payload" | "refMap">;
 

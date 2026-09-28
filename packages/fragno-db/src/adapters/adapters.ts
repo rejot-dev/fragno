@@ -1,6 +1,7 @@
 import type { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 
 import type { SqlNamingStrategy } from "../naming/sql-naming";
+import type { OutboxStreamOptions, SerializedOutboxStreamEntry } from "../outbox/outbox-stream";
 import type { QueryPolicySet } from "../query/query-policy";
 import type {
   IUnitOfWork,
@@ -81,6 +82,11 @@ export interface DatabaseAdapter<TUOWConfig = void> {
 
   /** Iterates a bounded read-only find; native cursors are used only when the adapter supports them. */
   streamRetrieval: (operation: RetrievalOperation<AnySchema>) => AsyncIterableIterator<unknown>;
+
+  /** Streams wire-ready outbox entries while keeping their stored JSON payloads opaque. */
+  streamSerializedOutboxEntries: (
+    options: OutboxStreamOptions,
+  ) => AsyncIterableIterator<SerializedOutboxStreamEntry>;
 
   prepareMigrations?: (schema: AnySchema, namespace: string | null) => PreparedMigrations;
 

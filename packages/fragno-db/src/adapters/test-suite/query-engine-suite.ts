@@ -666,6 +666,127 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
       }
     });
 
+    it("streams compacted normalized outbox mutations in bounded cursor order", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const outboxState = getOutboxStateForAdapter(adapter);
+        outboxState.config.enabled = true;
+        outboxState.enabledSchemaKeys.add(namespace);
+
+        const sharedPayloadValue = { source: "shared" };
+        const happenedOn = new Date("2026-01-02T00:00:00.000Z");
+        const createFirstEntry = createSuiteUnitOfWork(adapter, "create-streamed-outbox-entry");
+        const firstUowId = createFirstEntry.idempotencyKey;
+        createFirstEntry.create("users", {
+          id: "outbox-stream-removed-user",
+          name: "Removed",
+          email: "outbox-stream-removed@example.com",
+        });
+        createFirstEntry.create("events", {
+          id: "outbox-stream-special-event",
+          name: "Special",
+          happened_on: happenedOn,
+          payload: { first: sharedPayloadValue, second: sharedPayloadValue },
+          big_score: 99n,
+          binary_payload: new Uint8Array([1, 2, 3]),
+        });
+        createFirstEntry.create("events", {
+          id: "outbox-stream-later-event",
+          name: "Later",
+          happened_on: new Date("2026-01-03T00:00:00.000Z"),
+          payload: { position: "later" },
+          big_score: 100n,
+        });
+        assert((await createFirstEntry.executeMutations()).success);
+
+        const [firstMutationRows] = await adapter
+          .createUnitOfWork(internalSchema, null, "read-streamed-outbox-mutations")
+          .find("fragno_db_outbox_mutations", (b) =>
+            b.whereIndex("idx_outbox_mutations_uow", (eb) => eb("uowId", "=", firstUowId)),
+          )
+          .executeRetrieve();
+        const removedMutation = firstMutationRows.find(
+          (row) => row.externalId === "outbox-stream-removed-user",
+        );
+        assert(removedMutation);
+
+        const compactFirstEntry = adapter.createUnitOfWork(
+          internalSchema,
+          null,
+          "compact-streamed-outbox-entry",
+        );
+        compactFirstEntry.delete("fragno_db_outbox_mutations", removedMutation.id, (b) =>
+          b.check(),
+        );
+        assert((await compactFirstEntry.executeMutations()).success);
+
+        const createSecondEntry = createSuiteUnitOfWork(adapter, "create-later-outbox-entry");
+        createSecondEntry.create("users", {
+          id: "outbox-stream-cursor-user",
+          name: "Cursor",
+          email: "outbox-stream-cursor@example.com",
+        });
+        assert((await createSecondEntry.executeMutations()).success);
+
+        const firstPage = [];
+        for await (const entry of adapter.streamSerializedOutboxEntries({
+          afterVersionstamp: undefined,
+          limit: 1,
+        })) {
+          firstPage.push(entry);
+        }
+        expect(firstPage).toHaveLength(1);
+        const firstSerializedEntry = firstPage[0];
+        assert(firstSerializedEntry);
+        const firstEntry = JSON.parse(firstSerializedEntry.entryJson) as {
+          versionstamp: string;
+          uowId: string;
+          payload: SuperJSONResult;
+        };
+        expect(firstEntry).not.toHaveProperty("id");
+        expect(firstEntry).not.toHaveProperty("createdAt");
+        assert(firstEntry.uowId === firstUowId);
+
+        const firstPayload = superjson.deserialize<OutboxPayload>(firstEntry.payload);
+        expect(firstPayload.operations).toHaveLength(2);
+        const [specialEvent, laterEvent] = firstPayload.operations;
+        assert(specialEvent?.op === "create");
+        assert(laterEvent?.op === "create");
+        assert(specialEvent.externalId === "outbox-stream-special-event");
+        assert(laterEvent.externalId === "outbox-stream-later-event");
+        expect(specialEvent.values["happened_on"]).toEqual(happenedOn);
+        assert(specialEvent.values["big_score"] === 99n);
+        expect(specialEvent.values["binary_payload"]).toEqual(new Uint8Array([1, 2, 3]));
+        const streamedPayload = specialEvent.values["payload"] as {
+          first: unknown;
+          second: unknown;
+        };
+        assert(streamedPayload.first === streamedPayload.second);
+
+        const secondPage = [];
+        for await (const entry of adapter.streamSerializedOutboxEntries({
+          afterVersionstamp: firstSerializedEntry.versionstamp,
+          limit: 1,
+        })) {
+          secondPage.push(entry);
+        }
+        expect(secondPage).toHaveLength(1);
+        const secondSerializedEntry = secondPage[0];
+        assert(secondSerializedEntry);
+        const secondEntry = JSON.parse(secondSerializedEntry.entryJson) as {
+          payload: SuperJSONResult;
+        };
+        const secondPayload = superjson.deserialize<OutboxPayload>(secondEntry.payload);
+        expect(secondPayload.operations).toHaveLength(1);
+        expect(secondPayload.operations[0]).toMatchObject({
+          op: "create",
+          externalId: "outbox-stream-cursor-user",
+        });
+      } finally {
+        await close?.();
+      }
+    });
+
     it("fails a UOW when check() sees a changed version and rolls back following mutations", async () => {
       const { adapter, close } = await createContext();
       try {

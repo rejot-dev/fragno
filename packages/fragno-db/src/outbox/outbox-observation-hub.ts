@@ -1,14 +1,23 @@
 import { BufferedDatabasePump } from "../buffered-pump";
 import type { DatabaseHandlerTx } from "../db-fragment-definition-builder";
-import type { OutboxStreamOptions } from "../fragments/stream-outbox-entries";
-import type { OutboxEntry } from "./outbox";
-import type { OutboxStreamFrame } from "./outbox-stream";
+import type {
+  OutboxStreamFrame,
+  OutboxStreamOptions,
+  SerializedOutboxStreamEntry,
+} from "./outbox-stream";
 
 const OUTBOX_OBSERVATION_POLL_INTERVAL_MS = 300;
 const OUTBOX_LIVE_PAGE_SIZE = 50;
 const OUTBOX_CATCH_UP_PAGE_BUDGET = 4;
 
-type OutboxEntryStream = (options: OutboxStreamOptions) => AsyncIterable<OutboxEntry>;
+type OutboxEntryStream = (
+  options: OutboxStreamOptions,
+) => AsyncIterable<SerializedOutboxStreamEntry>;
+type EncodedOutboxStreamFrame = {
+  frameType: OutboxStreamFrame["type"];
+  encodedBytes: Uint8Array;
+  characterCount: number;
+};
 type OutboxCatchUpBoundary =
   | { type: "pending"; targetVersionstamp: string | null }
   | { type: "written" };
@@ -22,7 +31,7 @@ type OutboxObserverState = {
   nextHeartbeatAt: number;
   afterVersionstamp: string | undefined;
   limit: number;
-  writeFrame: (frame: string) => Promise<boolean>;
+  writeFrame: (frame: EncodedOutboxStreamFrame) => Promise<boolean>;
   recordPoll: () => void;
   recordEntryRead: () => void;
   recordError: () => void;
@@ -39,7 +48,7 @@ type OutboxObservationDelivery =
   | {
       kind: "entry";
       observerIds: string[];
-      entry: OutboxEntry;
+      entry: SerializedOutboxStreamEntry;
       receivedEntryObserverIds: Set<string>;
     }
   | {
@@ -54,7 +63,7 @@ type OutboxObserverRegistration = {
   catchUpTargetVersionstamp: string | null;
   afterVersionstamp: string | undefined;
   limit: number;
-  writeFrame: (frame: string) => Promise<boolean>;
+  writeFrame: (frame: EncodedOutboxStreamFrame) => Promise<boolean>;
   recordPoll: () => void;
   recordEntryRead: () => void;
   recordError: () => void;
@@ -115,7 +124,29 @@ export function createOutboxObservationHub(
   streamOutboxEntries: OutboxEntryStream,
 ): OutboxObservationHub {
   const observers = new Map<string, OutboxObserverState>();
+  const frameEncoder = new TextEncoder();
   let nextCatchUpGroupKey: string | undefined;
+
+  function encodeOutboxStreamFrame(frame: OutboxStreamFrame): EncodedOutboxStreamFrame {
+    const serializedFrame = `${JSON.stringify(frame)}\n`;
+    return {
+      frameType: frame.type,
+      encodedBytes: frameEncoder.encode(serializedFrame),
+      characterCount: serializedFrame.length,
+    };
+  }
+
+  function encodeOutboxEntryFrame(entry: SerializedOutboxStreamEntry): EncodedOutboxStreamFrame {
+    const serializedFrame = `{"type":"entry","entry":${entry.entryJson}}\n`;
+    return {
+      frameType: "entry",
+      encodedBytes: frameEncoder.encode(serializedFrame),
+      characterCount: serializedFrame.length,
+    };
+  }
+
+  const heartbeatFrame = encodeOutboxStreamFrame({ type: "heartbeat" });
+  const rotateFrame = encodeOutboxStreamFrame({ type: "rotate", reason: "lease-expired" });
 
   function canJoinLiveTail(observer: OutboxObserverState): boolean {
     // Readiness covers a fixed historical target. Joining the shared live poll must never move
@@ -134,7 +165,10 @@ export function createOutboxObservationHub(
     return true;
   }
 
-  async function writeOutboxObserverFrame(observerId: string, frame: string): Promise<boolean> {
+  async function writeOutboxObserverFrame(
+    observerId: string,
+    frame: EncodedOutboxStreamFrame,
+  ): Promise<boolean> {
     const observer = observers.get(observerId);
     if (!observer) {
       return false;
@@ -338,7 +372,7 @@ export function createOutboxObservationHub(
     if (
       await writeOutboxObserverFrame(
         observer.observerId,
-        `${JSON.stringify({ type: "caught-up", throughVersionstamp: target } satisfies OutboxStreamFrame)}\n`,
+        encodeOutboxStreamFrame({ type: "caught-up", throughVersionstamp: target }),
       )
     ) {
       observer.catchUpBoundary = { type: "written" };
@@ -359,10 +393,7 @@ export function createOutboxObservationHub(
           if (delivery.kind === "caught-up") {
             await writeCaughtUpFrame(observer);
           } else {
-            await writeOutboxObserverFrame(
-              observerId,
-              `${JSON.stringify({ type: "rotate", reason: "lease-expired" } satisfies OutboxStreamFrame)}\n`,
-            );
+            await writeOutboxObserverFrame(observerId, rotateFrame);
             observers.delete(observerId);
           }
         }),
@@ -373,7 +404,7 @@ export function createOutboxObservationHub(
       await Promise.all(
         delivery.observerIds.map(async (observerId) => {
           const observer = observers.get(observerId);
-          if (observer && (await writeOutboxObserverFrame(observerId, '{"type":"heartbeat"}\n'))) {
+          if (observer && (await writeOutboxObserverFrame(observerId, heartbeatFrame))) {
             observer.nextHeartbeatAt = Date.now() + OUTBOX_OBSERVATION_POLL_INTERVAL_MS;
           }
         }),
@@ -381,7 +412,9 @@ export function createOutboxObservationHub(
       return;
     }
 
-    const frame = `${JSON.stringify({ type: "entry", entry: delivery.entry } satisfies OutboxStreamFrame)}\n`;
+    // Writable streams do not transfer or mutate chunks, so compatible observers can safely share
+    // one immutable UTF-8 frame instead of allocating one encoded copy per response.
+    const frame = encodeOutboxEntryFrame(delivery.entry);
     await Promise.all(
       delivery.observerIds.map(async (observerId) => {
         const observer = observers.get(observerId);

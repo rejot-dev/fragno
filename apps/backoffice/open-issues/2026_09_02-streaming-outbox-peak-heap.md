@@ -250,16 +250,52 @@ This is a substantial improvement, but it does **not** satisfy the bounded-peak 
 remaining work is dominated by per-page retrieval, durable-hook continuation, truncate/outbox
 construction, query execution, and transaction scaffolding repeated across 100 pages.
 
+Shared outbox entry deliveries now also serialize and UTF-8 encode once, then pass the same
+immutable `Uint8Array` to every compatible observer. Per-observer write success, cursor advancement,
+timeouts, and character-count metrics remain independent. A regression verifies that observers
+receiving the same entry receive the identical encoded byte object.
+
+Three matched mixed-workload profiles compared this change against three prior runs with two current
+clients, two divergent lagging clients, 1,000 measured entries, and 128 KiB payloads:
+
+- median sampled allocation fell 1,709.1 → 1,690.1 MiB (19.0 MiB, 1.1%);
+- median peak external-memory rise fell 14.16 → 10.40 MiB (3.76 MiB, 26.6%);
+- median duration was effectively unchanged at 7.941 → 8.032 seconds;
+- median natural-GC heap rise increased 34.26 → 42.93 MiB, with no retained-heap increase.
+
+This removes duplicate encoding by construction and improves external-memory scaling with compatible
+observer count, but it was not by itself a natural-GC peak win in the two-client sample. SQLite row
+materialization, query-tree decoding, and framing still dominated the approximately 1.69 GiB sampled
+allocation.
+
+The SQL stream now keeps normalized mutation payloads opaque through retrieval and framing. It
+aggregates each entry's ordered mutation payloads as JSON text, scans only their container
+structure, parses compact SuperJSON metadata, and rebases metadata paths without materializing
+operation objects. It still reads normalized mutation rows rather than the parent entry's empty
+payload, so terminal cleanup and compaction continue to remove transient operations from future
+catch-up responses. The SQL result remains one row per entry, preserving bounded Durable Object
+cursor consumption. The wire now emits only the canonical `OutboxStreamEntry` projection rather than
+leaked storage identity/timestamp fields.
+
+Three matched mixed-workload profiles compared this path with the shared-frame baseline above:
+
+- median sampled allocation fell 1,690.1 → 1,011.7 MiB (678.4 MiB, 40.1%);
+- median natural-GC heap rise fell 42.93 → 21.76 MiB (21.17 MiB, 49.3%);
+- median duration rose 8.032 → 8.414 seconds (0.382 seconds, 4.8%);
+- median external-memory rise was effectively unchanged at 10.40 → 10.89 MiB;
+- all runs retained less heap after teardown and kept the same 60 SQLite outbox reads, 1,000 entries
+  per current client, payload bytes, and checksum.
+
+The remaining payload-sized allocations are now raw SQLite/Kysely row materialization, one shared
+UTF-8 encoding, and benchmark-side payload insertion. Query-tree `parseJsonValue`,
+`decodeChildNode`, outbox operation deserialization, and `assembleOutboxEntry` no longer appear as
+payload-sized stream allocators. The representative candidate attributed only about 2.6 MiB to
+serialized entry assembly. See
+[`../../../packages-private/pi-workflows-heap-benchmark/reports/2026-09-25-opaque-outbox-payload-streaming.md`](../../../packages-private/pi-workflows-heap-benchmark/reports/2026-09-25-opaque-outbox-payload-streaming.md).
+
 Recommended implementation order from here:
 
-1. Encode each shared outbox frame once and pass the same immutable `Uint8Array` to compatible
-   observers. `ResponseStream.writeRaw` already accepts bytes; the hub currently passes a string to
-   every observer, causing one UTF-8 allocation per response.
-2. Keep serialized outbox payloads opaque through retrieval and framing. The current stream query
-   materializes SQLite JSON, query-tree decoding parses it, and framing serializes it again. A raw
-   serialized payload path should bypass query-tree child decoding while retaining normalized
-   mutation rows for cleanup/compaction.
-3. Narrow the runner's instance-wide emission retrieval. At minimum, avoid decoding stale user
+1. Narrow the runner's instance-wide emission retrieval. At minimum, avoid decoding stale user
    payloads that cannot participate in the current replay; preserve system controls and active-step
    replay semantics.
 

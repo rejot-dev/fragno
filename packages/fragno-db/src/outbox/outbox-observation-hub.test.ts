@@ -1,27 +1,29 @@
 import { assert, describe, expect, it, vi } from "vitest";
 
 import type { DatabaseHandlerTx } from "../db-fragment-definition-builder";
-import { FragnoId } from "../schema/create";
-import type { OutboxEntry } from "./outbox";
 import { createOutboxObservationHub } from "./outbox-observation-hub";
-import { parseOutboxStreamFrame, type OutboxStreamFrame } from "./outbox-stream";
+import {
+  parseOutboxStreamFrame,
+  type OutboxStreamEntry,
+  type OutboxStreamFrame,
+} from "./outbox-stream";
+import { serializeOutboxStreamEntry } from "./serialized-outbox-stream-entry";
 
+const frameDecoder = new TextDecoder();
 const handlerTx = (() => {
   throw new Error("Outbox observation uses its configured entry stream.");
 }) as DatabaseHandlerTx;
 function stamp(version: number): string {
   return version.toString(16).padStart(24, "0");
 }
-function createEntry(version: number): OutboxEntry {
+function createEntry(version: number): OutboxStreamEntry {
   return {
-    id: FragnoId.fromExternal(`entry-${version}`, 1),
     versionstamp: stamp(version),
     uowId: `uow-${version}`,
     payload: { json: { version: 2, operations: [] } },
-    createdAt: new Date(0),
   };
 }
-function createScenario(entries: OutboxEntry[]) {
+function createScenario(entries: OutboxStreamEntry[]) {
   const reads: Array<{ afterVersionstamp: string | undefined; limit: number }> = [];
   const events: string[] = [];
   const readErrors = new Map<number, Error>();
@@ -40,7 +42,7 @@ function createScenario(entries: OutboxEntry[]) {
     try {
       for (const entry of page) {
         events.push(`read:${entry.versionstamp}`);
-        yield entry;
+        yield serializeOutboxStreamEntry(entry);
       }
     } finally {
       events.push("released");
@@ -54,13 +56,16 @@ function createScenario(entries: OutboxEntry[]) {
     write: (frame: OutboxStreamFrame) => Promise<boolean> = async () => true,
   ) {
     const frames: OutboxStreamFrame[] = [];
+    const frameWrites: Array<{ frame: OutboxStreamFrame; encodedBytes: Uint8Array }> = [];
     const observer = hub.registerOutboxObserver({
       observerId: id,
       catchUpTargetVersionstamp: target,
       afterVersionstamp,
       limit,
-      async writeFrame(serialized) {
-        const frame = parseOutboxStreamFrame(JSON.parse(serialized));
+      async writeFrame(encodedFrame) {
+        const frame = parseOutboxStreamFrame(
+          JSON.parse(frameDecoder.decode(encodedFrame.encodedBytes)),
+        );
         events.push(
           `write:${id}:${frame.type === "entry" ? frame.entry.versionstamp : frame.type}`,
         );
@@ -68,13 +73,14 @@ function createScenario(entries: OutboxEntry[]) {
           return false;
         }
         frames.push(frame);
+        frameWrites.push({ frame, encodedBytes: encodedFrame.encodedBytes });
         return true;
       },
       recordPoll() {},
       recordEntryRead() {},
       recordError() {},
     });
-    return { observer, frames };
+    return { observer, frames, frameWrites };
   }
   return { hub, reads, events, observe, readErrors };
 }
@@ -232,6 +238,17 @@ describe("outbox observation hub", () => {
     ]);
     expect(first.frames[1]).toEqual({ type: "caught-up", throughVersionstamp: stamp(0) });
     expect(second.frames[2]).toEqual({ type: "caught-up", throughVersionstamp: stamp(1) });
+    for (const versionstamp of [stamp(0), stamp(1), stamp(2)]) {
+      const firstWrite = first.frameWrites.find(
+        ({ frame }) => frame.type === "entry" && frame.entry.versionstamp === versionstamp,
+      );
+      const secondWrite = second.frameWrites.find(
+        ({ frame }) => frame.type === "entry" && frame.entry.versionstamp === versionstamp,
+      );
+      assert(firstWrite);
+      assert(secondWrite);
+      expect(firstWrite.encodedBytes).toBe(secondWrite.encodedBytes);
+    }
     first.observer.close();
     second.observer.close();
   });
