@@ -184,11 +184,34 @@ export async function createLocalBackofficeRuntime(
     hasObjectInstance: (address) => objectFactory.hasInstance(address),
     restartObject: (address) => objectFactory.restart(address),
     async cleanup() {
-      await objectFactory.drainWaitUntil();
-      await options.durableHooks?.cleanup();
-      await objectFactory.cleanup();
-      await adapters.cleanup();
-      sqliteStorage?.close();
+      const failures: Array<{ step: string; cause: unknown }> = [];
+      async function runCleanupStep(step: string, cleanup: () => void | Promise<void>) {
+        try {
+          await cleanup();
+        } catch (cause) {
+          failures.push({ step, cause });
+        }
+      }
+
+      await runCleanupStep("waitUntil drain", async () => objectFactory.drainWaitUntil());
+      await runCleanupStep("durable hooks", async () => options.durableHooks?.cleanup());
+      await runCleanupStep("object factory", async () => objectFactory.cleanup());
+      await runCleanupStep("database adapters", async () => adapters.cleanup());
+      await runCleanupStep("object storage", () => sqliteStorage?.close());
+
+      const [failure] = failures;
+      if (failures.length === 1 && failure) {
+        throw failure.cause;
+      }
+      if (failures.length > 1) {
+        throw new AggregateError(
+          failures.map(
+            ({ step, cause }) =>
+              new Error(`Node Backoffice runtime cleanup failed during ${step}.`, { cause }),
+          ),
+          "Multiple Node Backoffice runtime cleanup steps failed.",
+        );
+      }
     },
   };
 }

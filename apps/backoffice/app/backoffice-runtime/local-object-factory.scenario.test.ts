@@ -111,6 +111,74 @@ test("an alarm rescheduled by its handler remains deliverable", async () => {
   );
 });
 
+test("a suspended alarm does not block another object's alarm", async () => {
+  const firstAlarmStarted = createVoidDeferred();
+  const releaseFirstAlarm = createVoidDeferred();
+  const secondAlarmFinished = createVoidDeferred();
+
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "unrelated object alarms are delivered independently",
+      options: { drain: false },
+      objectFactories: {
+        UPLOAD: ({ name, state, nowEpochMs }) => ({
+          async fetch(request: Request) {
+            if (new URL(request.url).pathname === "/state") {
+              return Response.json(Object.fromEntries(await state.storage.list()));
+            }
+            await state.storage.setAlarm(nowEpochMs());
+            return new Response(null, { status: 204 });
+          },
+          async alarm() {
+            if (name.endsWith("org-1")) {
+              firstAlarmStarted.resolve();
+              await releaseFirstAlarm.promise;
+              return;
+            }
+            await state.storage.put("alarmFinished", true);
+            secondAlarmFinished.resolve();
+          },
+        }),
+      },
+      steps: ({ then }) => [
+        then.assert("schedule alarms for both objects", async ({ runtime }) => {
+          await runtime.objects.upload
+            .forOrg("org-1")
+            .http.fetch(new Request("https://backoffice.example/schedule"));
+          await runtime.objects.upload
+            .forOrg("org-2")
+            .http.fetch(new Request("https://backoffice.example/schedule"));
+        }),
+        then.assert(
+          "the second alarm finishes while the first remains suspended",
+          async ({ runtime }) => {
+            const draining = runtime.drainAlarms();
+            await firstAlarmStarted.promise;
+            try {
+              await Promise.race([
+                secondAlarmFinished.promise,
+                new Promise<never>((_, reject) => {
+                  setTimeout(
+                    () => reject(new Error("Unrelated alarm delivery remained blocked.")),
+                    1_000,
+                  );
+                }),
+              ]);
+              const response = await runtime.objects.upload
+                .forOrg("org-2")
+                .http.fetch(new Request("https://backoffice.example/state"));
+              expect(await response.json()).toEqual({ alarmFinished: true });
+            } finally {
+              releaseFirstAlarm.resolve();
+              await draining;
+            }
+          },
+        ),
+      ],
+    }),
+  );
+});
+
 test("detached alarm work observes live logical time after the drain ends", async () => {
   const releaseDetachedWork = createVoidDeferred();
   let alarmTime = 0;
