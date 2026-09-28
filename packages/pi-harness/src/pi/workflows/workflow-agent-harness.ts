@@ -250,9 +250,14 @@ const appendUniqueSessionEntries = (
   entries: readonly SessionTreeEntry[],
   appendedEntries: readonly SessionTreeEntry[],
 ): SessionTreeEntry[] => {
-  const entryIds = new Set(entries.map((entry) => entry.id));
-  if (entryIds.size !== entries.length) {
-    throw new Error("WORKFLOW_AGENT_HARNESS_DUPLICATE_SESSION_ENTRY");
+  const entryIds = new Set<string>();
+  const combinedEntries: SessionTreeEntry[] = [];
+  for (const entry of entries) {
+    if (entryIds.has(entry.id)) {
+      throw new Error("WORKFLOW_AGENT_HARNESS_DUPLICATE_SESSION_ENTRY");
+    }
+    entryIds.add(entry.id);
+    combinedEntries.push(entry);
   }
   for (const entry of appendedEntries) {
     if (entryIds.has(entry.id)) {
@@ -262,8 +267,9 @@ const appendUniqueSessionEntries = (
       throw new Error(`WORKFLOW_AGENT_HARNESS_UNKNOWN_PARENT_ENTRY:${entry.parentId}`);
     }
     entryIds.add(entry.id);
+    combinedEntries.push(entry);
   }
-  return [...entries, ...appendedEntries];
+  return combinedEntries;
 };
 
 type InterruptedTranscript = {
@@ -394,7 +400,10 @@ const sessionEntriesToRoot = (
     return [];
   }
 
-  const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
+  const entriesById = new Map<string, SessionTreeEntry>();
+  for (const entry of entries) {
+    entriesById.set(entry.id, entry);
+  }
   const branch: SessionTreeEntry[] = [];
   let entry = entriesById.get(leafId);
   if (!entry) {
@@ -402,7 +411,7 @@ const sessionEntriesToRoot = (
   }
 
   while (entry) {
-    branch.unshift(entry);
+    branch.push(entry);
     if (entry.parentId === null) {
       break;
     }
@@ -414,6 +423,7 @@ const sessionEntriesToRoot = (
     }
   }
 
+  branch.reverse();
   return branch;
 };
 
@@ -471,7 +481,10 @@ export const restoreWorkflowBackedSession = (
   if (attempt.completion !== undefined) {
     recovery = { kind: "completed", result: attempt.completion };
   } else if (attempt.started) {
-    const operationEntryIds = new Set(attempt.sessionEntries.map((entry) => entry.id));
+    const operationEntryIds = new Set<string>();
+    for (const entry of attempt.sessionEntries) {
+      operationEntryIds.add(entry.id);
+    }
     const activeOperationBranch = sessionEntriesToRoot(
       storageEntries,
       sessionEntriesLeafId(storageEntries),
@@ -623,6 +636,24 @@ const appendInterruptedToolResults = (
 export const hasSummarizableCompactionHistory = (preparation: CompactionPreparation): boolean =>
   preparation.messagesToSummarize.length > 0 || preparation.turnPrefixMessages.length > 0;
 
+async function readWorkflowAgentHarnessEntrySuffixes(options: {
+  storage: WorkflowBackedSessionStorage;
+  checkpointEntryStart: number;
+  operationEntryStart: number;
+}): Promise<{
+  checkpointEntries: SessionTreeEntry[];
+  operationEntries: SessionTreeEntry[];
+}> {
+  const checkpointEntries = await options.storage.getEntries({
+    afterEntrySeq: options.checkpointEntryStart,
+  });
+  const operationOffset = options.operationEntryStart - options.checkpointEntryStart;
+  return {
+    checkpointEntries,
+    operationEntries: checkpointEntries.slice(operationOffset),
+  };
+}
+
 export const withWorkflowAgentHarness = async <TResult>({
   restored,
   harness,
@@ -644,7 +675,7 @@ export const withWorkflowAgentHarness = async <TResult>({
 
   if (recovery.kind === "completed") {
     const result = recovery.result as WorkflowAgentHarnessStepResult<TResult>;
-    const operationEntries = (await storage.getEntries()).slice(operationEntryStart);
+    const operationEntries = await storage.getEntries({ afterEntrySeq: operationEntryStart });
     await onTerminalOutcome?.({ operationId, operationEntries, result });
     if (!checkpointTerminalAssistantError) {
       assertTerminalAssistantSucceeded(operationEntries);
@@ -678,14 +709,17 @@ export const withWorkflowAgentHarness = async <TResult>({
 
       await appendInterruptedToolResults(session, recovery.transcript.missingToolCalls);
 
-      const entries = await storage.getEntries();
+      const { checkpointEntries, operationEntries } = await readWorkflowAgentHarnessEntrySuffixes({
+        storage,
+        checkpointEntryStart,
+        operationEntryStart,
+      });
       const result = {
         type: "harness-run",
         outcome: "aborted",
-        appendedEntries: entries.slice(checkpointEntryStart),
+        appendedEntries: checkpointEntries,
         leafId: await storage.getLeafId(),
       } satisfies WorkflowAgentHarnessStepResult<TResult>;
-      const operationEntries = entries.slice(operationEntryStart);
 
       await onTerminalOutcome?.({ operationId, operationEntries, result });
 
@@ -779,9 +813,11 @@ export const withWorkflowAgentHarness = async <TResult>({
       throw eventHandlerErrors[0];
     }
 
-    const entries = await storage.getEntries();
-    const operationEntries = entries.slice(operationEntryStart);
-    const checkpointEntries = entries.slice(checkpointEntryStart);
+    const { checkpointEntries, operationEntries } = await readWorkflowAgentHarnessEntrySuffixes({
+      storage,
+      checkpointEntryStart,
+      operationEntryStart,
+    });
     const terminalAssistant = latestAssistantMessage(operationEntries);
     const result: WorkflowAgentHarnessStepResult<TResult> =
       terminalAssistant?.stopReason === "aborted"

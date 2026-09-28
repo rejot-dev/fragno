@@ -54,16 +54,14 @@ export type WorkflowBackedSessionStorageOptions<
 > = {
   metadata: TMetadata;
   entryIds: WorkflowBackedSessionEntryIdAllocator;
+  /** Entries are retained by reference and must remain immutable after storage construction. */
   entries?: readonly SessionTreeEntry[];
   /**
    * Optional append hook used by workflow/database adapters to persist or emit
-   * entries after the in-memory projection has accepted them.
+   * the same immutable entry accepted by the in-memory projection.
    */
   onAppendEntry?: PersistSessionEntry;
 };
-
-const cloneEntry = <TEntry extends SessionTreeEntry>(entry: TEntry): TEntry =>
-  structuredClone(entry);
 
 const leafIdAfterEntry = (entry: SessionTreeEntry): string | null =>
   entry.type === "leaf" ? entry.targetId : entry.id;
@@ -89,14 +87,6 @@ const updateLabelCache = (labelsById: Map<string, string>, entry: SessionTreeEnt
   }
 };
 
-const buildLabelsById = (entries: readonly SessionTreeEntry[]): Map<string, string> => {
-  const labelsById = new Map<string, string>();
-  for (const entry of entries) {
-    updateLabelCache(labelsById, entry);
-  }
-  return labelsById;
-};
-
 const createUniqueEntryId = (
   byId: ReadonlyMap<string, SessionTreeEntry>,
   allocator: WorkflowBackedSessionEntryIdAllocator,
@@ -114,6 +104,7 @@ const createUniqueEntryId = (
   );
 };
 
+/** In-memory Pi session storage that retains immutable session entries by reference. */
 export class WorkflowBackedSessionStorage<
   TMetadata extends SessionMetadata = SessionMetadata,
 > implements SessionStorage<TMetadata> {
@@ -129,10 +120,16 @@ export class WorkflowBackedSessionStorage<
     this.metadata = options.metadata;
     this.onAppendEntry = options.onAppendEntry;
     this.entryIds = options.entryIds;
-    this.entries = (options.entries ?? []).map(cloneEntry);
-    this.byId = new Map(this.entries.map((entry) => [entry.id, entry]));
-    this.labelsById = buildLabelsById(this.entries);
-    this.leafId = sessionEntriesLeafId(this.entries);
+    this.entries = [...(options.entries ?? [])];
+    this.byId = new Map();
+    this.labelsById = new Map();
+    this.leafId = null;
+
+    for (const entry of this.entries) {
+      this.byId.set(entry.id, entry);
+      updateLabelCache(this.labelsById, entry);
+      this.leafId = leafIdAfterEntry(entry);
+    }
 
     if (this.leafId !== null && !this.byId.has(this.leafId)) {
       throw new SessionError("invalid_session", `Entry ${this.leafId} not found`);
@@ -180,26 +177,24 @@ export class WorkflowBackedSessionStorage<
       throw new SessionError("invalid_entry", `Parent entry ${entry.parentId} not found`);
     }
 
-    const stored = cloneEntry(entry);
-    this.entries.push(stored);
-    this.byId.set(stored.id, stored);
-    updateLabelCache(this.labelsById, stored);
-    this.leafId = leafIdAfterEntry(stored);
+    this.entries.push(entry);
+    this.byId.set(entry.id, entry);
+    updateLabelCache(this.labelsById, entry);
+    this.leafId = leafIdAfterEntry(entry);
 
-    await this.onAppendEntry?.(cloneEntry(stored));
+    await this.onAppendEntry?.(entry);
   }
 
   async getEntry(id: string): Promise<SessionTreeEntry | undefined> {
-    const entry = this.byId.get(id);
-    return entry ? cloneEntry(entry) : undefined;
+    return this.byId.get(id);
   }
 
   async findEntries<TType extends SessionTreeEntry["type"]>(
     type: TType,
   ): Promise<Array<Extract<SessionTreeEntry, { type: TType }>>> {
-    return this.entries
-      .filter((entry): entry is Extract<SessionTreeEntry, { type: TType }> => entry.type === type)
-      .map(cloneEntry);
+    return this.entries.filter(
+      (entry): entry is Extract<SessionTreeEntry, { type: TType }> => entry.type === type,
+    );
   }
 
   async getLabel(id: string): Promise<string | undefined> {
@@ -207,8 +202,13 @@ export class WorkflowBackedSessionStorage<
   }
 
   async getSessionName(): Promise<string | undefined> {
-    const entries = await this.findEntries("session_info");
-    return entries.at(-1)?.name?.trim() || undefined;
+    for (let index = this.entries.length - 1; index >= 0; index -= 1) {
+      const entry = this.entries[index];
+      if (entry.type === "session_info") {
+        return entry.name?.trim() || undefined;
+      }
+    }
+    return undefined;
   }
 
   async getSessionStats() {
@@ -257,7 +257,7 @@ export class WorkflowBackedSessionStorage<
     }
 
     while (current) {
-      path.unshift(cloneEntry(current));
+      path.push(current);
       if (stopAtEntryId !== null && current.id === stopAtEntryId) {
         break;
       }
@@ -278,6 +278,7 @@ export class WorkflowBackedSessionStorage<
       current = parent;
     }
 
+    path.reverse();
     return path;
   }
 
@@ -293,7 +294,7 @@ export class WorkflowBackedSessionStorage<
     }
 
     while (current) {
-      path.unshift(cloneEntry(current));
+      path.push(current);
       if (!current.parentId) {
         break;
       }
@@ -305,12 +306,13 @@ export class WorkflowBackedSessionStorage<
       current = parent;
     }
 
+    path.reverse();
     return path;
   }
 
   async getEntries(options?: SessionEntryCursorOptions): Promise<SessionTreeEntry[]> {
     const start = options?.afterEntrySeq ?? 0;
     const end = options?.limit === undefined ? undefined : start + options.limit;
-    return this.entries.slice(start, end).map(cloneEntry);
+    return this.entries.slice(start, end);
   }
 }
