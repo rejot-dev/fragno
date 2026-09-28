@@ -22,9 +22,15 @@ heartbeats are no longer used.
 | `heartbeat` | none                                                                                                    | Transport liveness only, including while waiting for a catch-up scheduler turn.                               |
 | `rotate`    | `reason: "lease-expired"`                                                                               | Final frame of a planned 30-second response rotation. Reconnect immediately.                                  |
 
-The wire entry retains the full existing outbox entry shape. The exported `OutboxStreamEntry` type
-is the projection consumers need; identity/timestamp storage fields are not needed for ingestion.
-The serialized mutation payload remains opaque until its consumer decodes it.
+The wire entry contains `versionstamp`, `uowId`, the complete serialized `payload`, and `refMap`
+when present. Internal outbox row identity and creation timestamps are not sent because ingestion
+does not use them. The exported `OutboxStreamEntry` type is the canonical wire projection.
+
+SQL adapters preserve normalized mutation rows for cleanup and compaction, but no longer materialize
+their operation payloads as JavaScript objects during streaming. The ordered mutation payloads are
+aggregated as JSON text, their compact SuperJSON metadata is rebased onto the entry's operation
+indexes, and the operation JSON remains opaque through network framing. In-memory adapters retain
+the decoded reconstruction path for their native object store.
 
 ## Fixed readiness boundary
 
@@ -81,5 +87,9 @@ another bounded pass immediately, yielding to the event loop between passes. The
 interval applies only when no backlog remains (or a read failed); heartbeats retain their
 per-observer cadence rather than being emitted on every rapid drain pass. Network writes retain
 item-wise backpressure, failed observers do not terminate healthy observers, and bounded database
-iterators are exhausted on cancellation so cursor-backed connections are released. Durable Object
-SQLite pages are consumed before network awaits. Closing the final response ends recurring polling.
+iterators are exhausted on cancellation so cursor-backed connections are released. A frame shared by
+compatible observers is serialized and UTF-8 encoded once; every observer writes the same immutable
+byte sequence while retaining independent write success and cursor advancement. Durable Object
+SQLite pages are consumed before network awaits. The SQL projection still returns one row per outbox
+entry, so a 50-entry Durable Object query is exhausted within its configured chunk even when an
+entry contains multiple normalized mutations. Closing the final response ends recurring polling.

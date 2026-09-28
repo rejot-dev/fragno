@@ -303,7 +303,11 @@ export const createInternalFragmentOutboxRoutes = () =>
           let completionReason: "aborted" | "expired" | "failed" = "failed";
           console.info("fragno.outbox_stream.started", { streamId });
 
-          const writeOutboxStreamFrame = async (frame: string): Promise<boolean> => {
+          const writeOutboxStreamFrame = async (
+            frame: string | Uint8Array,
+            characterCount: number,
+            frameType: OutboxStreamFrame["type"],
+          ): Promise<boolean> => {
             let timeout: ReturnType<typeof setTimeout> | undefined;
             let writeCompleted: boolean;
             try {
@@ -326,10 +330,10 @@ export const createInternalFragmentOutboxRoutes = () =>
               await stream.abort();
             } else {
               framesWritten += 1;
-              // Encoding again just to count wire bytes would inflate the heap being measured.
-              frameCharacters += frame.length;
-              largestFrameCharacters = Math.max(largestFrameCharacters, frame.length);
-              if (frame === '{"type":"heartbeat"}\n') {
+              // Decoding shared bytes just for metrics would recreate the payload string.
+              frameCharacters += characterCount;
+              largestFrameCharacters = Math.max(largestFrameCharacters, characterCount);
+              if (frameType === "heartbeat") {
                 heartbeatFrames += 1;
               }
             }
@@ -361,7 +365,14 @@ export const createInternalFragmentOutboxRoutes = () =>
             | undefined;
           let streamLeaseTimeout: ReturnType<typeof setTimeout> | undefined;
           try {
-            if (!(await writeOutboxStreamFrame(`${JSON.stringify(startedFrame)}\n`))) {
+            const serializedStartedFrame = `${JSON.stringify(startedFrame)}\n`;
+            if (
+              !(await writeOutboxStreamFrame(
+                serializedStartedFrame,
+                serializedStartedFrame.length,
+                startedFrame.type,
+              ))
+            ) {
               return;
             }
 
@@ -370,7 +381,8 @@ export const createInternalFragmentOutboxRoutes = () =>
               catchUpTargetVersionstamp,
               afterVersionstamp,
               limit: limitResult.limit,
-              writeFrame: writeOutboxStreamFrame,
+              writeFrame: ({ encodedBytes, characterCount, frameType }) =>
+                writeOutboxStreamFrame(encodedBytes, characterCount, frameType),
               recordPoll: () => {
                 pollCount += 1;
               },

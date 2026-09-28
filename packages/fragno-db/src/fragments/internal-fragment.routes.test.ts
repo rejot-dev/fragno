@@ -31,6 +31,20 @@ async function nextOutboxEntry(stream: AsyncGenerator): Promise<IteratorResult<u
   }
 }
 
+function projectListedOutboxStreamEntry(entry: {
+  versionstamp: string;
+  uowId: string;
+  payload: unknown;
+  refMap?: Record<string, string>;
+}) {
+  return {
+    versionstamp: entry.versionstamp,
+    uowId: entry.uowId,
+    payload: entry.payload,
+    ...(entry.refMap === undefined ? {} : { refMap: entry.refMap }),
+  };
+}
+
 const alphaSchema = schema("alpha", (s) =>
   s.addTable("alpha_items", (t) =>
     t.addColumn("id", idColumn()).addColumn("name", column("string")),
@@ -464,7 +478,16 @@ describe("internal fragment describe routes", () => {
     });
     const listedResponse = await alphaFragment.callRoute("GET", "/_internal/outbox" as never);
     assert(listedResponse.type === "json");
-    const expectedEntry = (listedResponse.data as Array<{ versionstamp: string }>)[1];
+    const listedEntry = (
+      listedResponse.data as Array<{
+        versionstamp: string;
+        uowId: string;
+        payload: unknown;
+        refMap?: Record<string, string>;
+      }>
+    )[1];
+    assert(listedEntry);
+    const expectedEntry = projectListedOutboxStreamEntry(listedEntry);
 
     const streamResponse = await alphaFragment.callRoute(
       "GET",
@@ -635,7 +658,16 @@ describe("internal fragment describe routes", () => {
       try {
         const first = await nextOutboxEntry(streamed.stream);
         assert(!first.done);
-        expect(first.value).toEqual((listed.data as unknown[])[0]);
+        const listedEntry = (
+          listed.data as Array<{
+            versionstamp: string;
+            uowId: string;
+            payload: unknown;
+            refMap?: Record<string, string>;
+          }>
+        )[0];
+        assert(listedEntry);
+        expect(first.value).toEqual(projectListedOutboxStreamEntry(listedEntry));
         expect(
           (first.value as { payload: { json: { operations: unknown[] } } }).payload.json.operations,
         ).toHaveLength(2);

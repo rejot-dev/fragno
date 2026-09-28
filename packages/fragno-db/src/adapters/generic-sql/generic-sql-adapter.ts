@@ -6,6 +6,7 @@ import {
   type NamingResolver,
   type SqlNamingStrategy,
 } from "../../naming/sql-naming";
+import type { OutboxStreamOptions, SerializedOutboxStreamEntry } from "../../outbox/outbox-stream";
 import type {
   CompiledMutation,
   IUnitOfWork,
@@ -35,6 +36,7 @@ import { createPreparedMigrations, type PreparedMigrations } from "./migration/p
 import { GenericSQLUOWOperationCompiler } from "./query/generic-sql-uow-operation-compiler";
 import type { SQLiteStorageMode } from "./sqlite-storage";
 import { sqliteStorageDefault, sqliteStoragePrisma } from "./sqlite-storage";
+import { streamSqlSerializedOutboxEntries } from "./stream-serialized-outbox-entries";
 import { UnitOfWorkDecoder } from "./uow-decoder";
 
 export interface UnitOfWorkConfig {
@@ -233,6 +235,17 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
         yield decodeRow(row);
       }
     }
+  }
+
+  streamSerializedOutboxEntries(
+    options: OutboxStreamOptions,
+  ): AsyncIterableIterator<SerializedOutboxStreamEntry> {
+    return streamSqlSerializedOutboxEntries({
+      driver: this.#driver,
+      driverConfig: this.driverConfig,
+      namingStrategy: this.namingStrategy,
+      streamOptions: options,
+    });
   }
 
   async getSchemaVersion(namespace: string): Promise<string | undefined> {

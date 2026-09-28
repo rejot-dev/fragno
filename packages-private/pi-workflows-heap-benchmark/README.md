@@ -98,8 +98,8 @@ pnpm --filter @fragno-private/pi-workflows-heap-benchmark measure:outbox -- --st
 
 Profiled runs write an `outbox-*.heapprofile` and matching `outbox-*.benchmark-metrics.json`
 sidecar. See `reports/2026-09-24-outbox-only-poll-vs-stream.md` for the five-pair server-only
-poll-versus-stream baseline and `reports/2026-09-25-shared-outbox-observation.md` for concurrent
-client scaling.
+poll-versus-stream baseline, `reports/2026-09-25-shared-outbox-observation.md` for concurrent client
+scaling, and `reports/2026-09-25-opaque-outbox-payload-streaming.md` for the raw JSON delivery path.
 
 ## Analyze server profiles
 
