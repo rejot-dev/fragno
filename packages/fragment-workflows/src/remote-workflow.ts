@@ -4,11 +4,56 @@ import type {
   WorkflowStep,
   WorkflowStepConfig,
   WorkflowStepConsumeTx,
+  WorkflowStepHookOperation,
   WorkflowStepTx,
 } from "./workflow";
 
 export type { WorkflowStepIdentity } from "./step-identity";
 export type { WorkflowStepWorkflowOperation } from "./workflow";
+
+/** Hook intent sent over RPC; the target names a mount in the trusted host's scope. */
+export type RemoteWorkflowHookIntent = Omit<WorkflowStepHookOperation, "namespace"> & {
+  target: string;
+  schemaName: string;
+};
+
+/** A host-owned hook grant bound to one mounted fragment's actual namespace. */
+export type RemoteWorkflowAllowedHook = {
+  target: string;
+  schemaName: string;
+  hookName: string;
+  namespace: string;
+};
+
+/** Resolve a remote hook against the host's scoped mounts before queuing the step mutation. */
+export function resolveRemoteWorkflowHookIntent(
+  operation: RemoteWorkflowHookIntent,
+  allowedHooks: readonly RemoteWorkflowAllowedHook[],
+): WorkflowStepHookOperation {
+  const matchingTargets = allowedHooks.filter(
+    (hook) =>
+      hook.target === operation?.target &&
+      hook.schemaName === operation?.schemaName &&
+      hook.hookName === operation?.hookName,
+  );
+  const target = matchingTargets[0];
+  if (!target) {
+    throw new Error(
+      `REMOTE_WORKFLOW_HOOK_NOT_ALLOWED: ${operation?.target}/${operation?.schemaName}/${operation?.hookName}`,
+    );
+  }
+  if (matchingTargets.length > 1) {
+    throw new Error(
+      `REMOTE_WORKFLOW_HOOK_TARGET_AMBIGUOUS: ${operation.target}/${operation.schemaName}/${operation.hookName}`,
+    );
+  }
+  return {
+    namespace: target.namespace,
+    hookName: operation.hookName,
+    payload: operation.payload,
+    when: operation.when,
+  };
+}
 
 export type RemoteWorkflowStepScope = WorkflowStepIdentity | null;
 

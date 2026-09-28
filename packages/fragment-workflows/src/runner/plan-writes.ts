@@ -12,7 +12,7 @@ import type {
   WorkflowTerminalHookPayload,
 } from "../workflow";
 import { validateAndNormalizeWorkflowOperation } from "../workflow-operation";
-import type { RunnerState } from "./state";
+import type { RunnerState, WorkflowStepTxMutation } from "./state";
 import type { RunnerStepSuspended } from "./step";
 import type {
   WorkflowInstanceRecord,
@@ -77,13 +77,9 @@ function resolveStepDraftTimes(
 }
 
 /**
- * Run queued WorkflowStepTx mutate callbacks against a handler context.
- * Bigger picture: lets user workflow code schedule arbitrary mutations in the same tick.
+ * Apply queued workflow step mutations and hook intents in registration order.
  */
-function applyTxMutations(
-  uow: IUnitOfWork,
-  mutations: Array<(ctx: HandlerTxContext<HooksMap>) => void>,
-) {
+function applyTxMutations(uow: IUnitOfWork, mutations: readonly WorkflowStepTxMutation[]) {
   if (mutations.length === 0) {
     return;
   }
@@ -94,8 +90,12 @@ function applyTxMutations(
     currentAttempt: 0,
   };
 
-  for (const mutate of mutations) {
-    mutate(ctx);
+  for (const mutation of mutations) {
+    if (typeof mutation === "function") {
+      mutation(ctx);
+    } else {
+      uow.triggerHook(mutation.namespace, mutation.hookName, mutation.payload);
+    }
   }
 }
 

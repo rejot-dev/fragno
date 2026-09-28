@@ -2,6 +2,9 @@ import {
   createRemoteWorkflowSuspension,
   isRemoteWorkflowSuspension,
   RemoteWorkflowSuspendedError,
+  resolveRemoteWorkflowHookIntent,
+  type RemoteWorkflowAllowedHook,
+  type RemoteWorkflowHookIntent,
   type RemoteWorkflowStepHost,
   type RemoteWorkflowStepScope,
 } from "./remote-workflow";
@@ -37,7 +40,8 @@ type RemoteWorkflowMessageRequest = {
     | "tx.emit"
     | "tx.previousEmissions"
     | "tx.previousConsumedEvents"
-    | "tx.workflowServiceCalls";
+    | "tx.workflowServiceCalls"
+    | "tx.triggerHook";
   payload: Record<string, unknown>;
 };
 
@@ -133,9 +137,14 @@ const toErrorResponse = (error: unknown): RemoteWorkflowMessageResponse["error"]
 
 export class WorkflowStepMessageTxTarget {
   readonly #tx: WorkflowStepTx | WorkflowStepConsumeTx;
+  readonly #allowedHooks: readonly RemoteWorkflowAllowedHook[];
 
-  constructor(tx: WorkflowStepTx | WorkflowStepConsumeTx) {
+  constructor(
+    tx: WorkflowStepTx | WorkflowStepConsumeTx,
+    allowedHooks: readonly RemoteWorkflowAllowedHook[],
+  ) {
     this.#tx = tx;
+    this.#allowedHooks = allowedHooks;
   }
 
   emit(payload: unknown): void {
@@ -162,6 +171,15 @@ export class WorkflowStepMessageTxTarget {
     workflowServiceCalls(() => operations);
   }
 
+  triggerHook(operation: RemoteWorkflowHookIntent): void {
+    const resolved = resolveRemoteWorkflowHookIntent(operation, this.#allowedHooks);
+    const triggerHook = (this.#tx as Partial<WorkflowStepTx>).triggerHook;
+    if (!triggerHook) {
+      return unsupportedRemoteTxFeature("TRIGGER_HOOK");
+    }
+    triggerHook(resolved);
+  }
+
   onEvent(type: string, handler: (event: WorkflowStepEvent) => void | Promise<void>) {
     const onEvent = (this.#tx as Partial<WorkflowStepTx>).onEvent;
     if (!onEvent) {
@@ -186,6 +204,7 @@ export class WorkflowStepMessageTxTarget {
 export class WorkflowStepMessageTarget {
   readonly #host: RemoteWorkflowStepHost;
   readonly #port: RemoteWorkflowMessagePort;
+  readonly #allowedHooks: readonly RemoteWorkflowAllowedHook[];
   readonly #callbackResults = new Map<
     number,
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
@@ -194,9 +213,14 @@ export class WorkflowStepMessageTarget {
   #nextId = 1;
   #disposeListener: (() => void) | undefined;
 
-  constructor(host: RemoteWorkflowStepHost, port: RemoteWorkflowMessagePort) {
+  constructor(
+    host: RemoteWorkflowStepHost,
+    port: RemoteWorkflowMessagePort,
+    allowedHooks: readonly RemoteWorkflowAllowedHook[],
+  ) {
     this.#host = host;
     this.#port = port;
+    this.#allowedHooks = allowedHooks;
   }
 
   attach(): () => void {
@@ -311,6 +335,11 @@ export class WorkflowStepMessageTarget {
         );
         return undefined;
       }
+      case "tx.triggerHook": {
+        const tx = this.#getTx(message.payload["txId"]);
+        tx.triggerHook(message.payload["operation"] as RemoteWorkflowHookIntent);
+        return undefined;
+      }
     }
 
     throw new Error("Unsupported remote workflow request method.");
@@ -391,7 +420,7 @@ export class WorkflowStepMessageTarget {
   ): Promise<unknown> {
     const id = this.#nextId++;
     const txId = this.#nextId++;
-    this.#txs.set(txId, new WorkflowStepMessageTxTarget(tx));
+    this.#txs.set(txId, new WorkflowStepMessageTxTarget(tx, this.#allowedHooks));
     try {
       const result = await new Promise<unknown>((resolve, reject) => {
         this.#callbackResults.set(id, { resolve, reject });
@@ -426,7 +455,9 @@ export class WorkflowStepMessageTarget {
   }
 }
 
+/** Bind a remote message port to host steps with an explicit remote hook allowlist. */
 export const createWorkflowStepMessageTarget = (
   host: RemoteWorkflowStepHost,
   port: RemoteWorkflowMessagePort,
-): WorkflowStepMessageTarget => new WorkflowStepMessageTarget(host, port);
+  allowedHooks: readonly RemoteWorkflowAllowedHook[],
+): WorkflowStepMessageTarget => new WorkflowStepMessageTarget(host, port, allowedHooks);

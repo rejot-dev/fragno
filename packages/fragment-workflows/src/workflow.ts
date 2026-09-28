@@ -105,7 +105,16 @@ export type WorkflowStepConsumeTx<THooks extends HooksMap = HooksMap> = {
   previousEmissions: () => Promise<WorkflowStepEmission[]>;
 };
 
+/** A host-resolved hook operation committed with the selected step outcome; RPC callers cannot set its namespace. */
+export type WorkflowStepHookOperation = {
+  namespace: string;
+  hookName: string;
+  payload: unknown;
+  when: "success" | "terminal-error" | "both";
+};
+
 export type WorkflowStepTx<THooks extends HooksMap = HooksMap> = WorkflowStepConsumeTx<THooks> & {
+  triggerHook: (operation: WorkflowStepHookOperation) => void;
   /** Events durably acknowledged by this step before the current attempt started. */
   previousConsumedEvents: <TPayload = unknown>() => Promise<WorkflowStepConsumedEvent<TPayload>[]>;
   workflowServiceCalls: (factory: () => readonly WorkflowStepWorkflowOperation[]) => void;

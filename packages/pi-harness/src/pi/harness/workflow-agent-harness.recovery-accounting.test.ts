@@ -175,6 +175,7 @@ const createAccountingAttempt = (): AccountingAttempt => {
     serviceCalls: () => undefined,
     workflowServiceCalls: () => undefined,
     mutate: (mutation: Mutation) => mutations.push(mutation),
+    triggerHook: () => undefined,
     emit: (payload: unknown) =>
       emitted.push(payload as PiHarnessEmission<WorkflowAgentHarnessStepResult<AssistantMessage>>),
     previousEmissions: async () => [],

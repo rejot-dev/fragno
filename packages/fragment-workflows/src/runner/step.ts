@@ -4,7 +4,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
 
-import type { DatabaseRequestContext, HandlerTxContext, HooksMap } from "@fragno-dev/db";
+import type { DatabaseRequestContext } from "@fragno-dev/db";
 
 import { WorkflowsLogger } from "../debug-log";
 import type {
@@ -40,7 +40,7 @@ import type {
 } from "../workflow";
 import { WaitForEventTimeoutError } from "../workflow";
 import { validateAndNormalizeWorkflowOperation } from "../workflow-operation";
-import type { RunnerState, WorkflowStepSnapshot } from "./state";
+import type { RunnerState, WorkflowStepSnapshot, WorkflowStepTxMutation } from "./state";
 import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./step-live-pump";
 import type { WorkflowStepLivePump, WorkflowStepLivePumpRegistry } from "./step-live-pump";
 import type {
@@ -1008,14 +1008,35 @@ export class RunnerStep implements WorkflowStep {
   }
 
   #createStepTxQueue(identity: WorkflowStepIdentity): StepTxQueue {
-    const pendingMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void> = [];
+    const pendingMutations: WorkflowStepTxMutation[] = [];
     const pendingServiceCalls: AnyTxResult[] = [];
     const pendingWorkflowServiceCalls: WorkflowStepWorkflowOperation[] = [];
-    const pendingTerminalErrorMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void> = [];
+    const pendingTerminalErrorMutations: WorkflowStepTxMutation[] = [];
 
     const tx: WorkflowStepTx = {
       mutate: (fn) => {
         pendingMutations.push(fn);
+      },
+      triggerHook: (operation) => {
+        if (
+          !operation ||
+          typeof operation !== "object" ||
+          typeof operation.namespace !== "string" ||
+          operation.namespace.length === 0 ||
+          typeof operation.hookName !== "string" ||
+          operation.hookName.length === 0 ||
+          (operation.when !== "success" &&
+            operation.when !== "terminal-error" &&
+            operation.when !== "both")
+        ) {
+          throw new Error("WORKFLOW_STEP_HOOK_OPERATION_INVALID");
+        }
+        if (operation.when !== "terminal-error") {
+          pendingMutations.push(operation);
+        }
+        if (operation.when !== "success") {
+          pendingTerminalErrorMutations.push(operation);
+        }
       },
       onTerminalError: {
         mutate: (fn) => {
