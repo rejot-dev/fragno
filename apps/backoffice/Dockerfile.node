@@ -1,0 +1,58 @@
+# syntax=docker/dockerfile:1.7
+
+FROM node:26.10.0-bookworm-slim AS pnpm-base
+
+RUN npm install --global pnpm@11.1.3 turbo@2.10.1
+
+WORKDIR /app
+
+FROM pnpm-base AS pruner
+
+COPY . .
+RUN turbo prune @fragno-apps/backoffice-rr --docker
+
+FROM pnpm-base AS builder
+
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends build-essential python3 \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=pruner /app/out/json/ .
+RUN pnpm install --frozen-lockfile
+
+COPY --from=pruner /app/out/full/ .
+COPY .oxfmtrc.json .oxfmtrc.json
+RUN pnpm install --frozen-lockfile
+RUN turbo run build:node \
+  --filter=@fragno-apps/backoffice-rr \
+  --output-logs=errors-only
+RUN CI=true pnpm install --prod --frozen-lockfile
+
+FROM denoland/deno:bin-2.9.7 AS deno
+
+FROM node:26.10.0-bookworm-slim AS runtime
+
+RUN apt-get update \
+  && apt-get install --yes --no-install-recommends ca-certificates procps tini \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=deno /deno /usr/local/bin/deno
+COPY --from=builder --chown=node:node /app /app
+
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV PORT=5173
+ENV DOCS_PUBLIC_BASE_URL=http://backoffice.localhost:5173
+ENV BACKOFFICE_SQLITE_DIR=/data
+ENV DENO_EXECUTABLE=/usr/local/bin/deno
+
+RUN mkdir --parents /data && chown node:node /data
+
+WORKDIR /app/apps/backoffice
+USER node
+
+EXPOSE 5173
+VOLUME ["/data"]
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "scripts/node-server/start-node-processes.mjs"]

@@ -12,6 +12,7 @@ import { createLocalBackofficeRuntime } from "../../app/backoffice-runtime/node/
 import { createExternallyProcessedNodeBackofficeDurableHooks } from "../../app/backoffice-runtime/node/node-durable-hooks";
 import { createBackofficeRouterContextProvider } from "../../app/worker-runtime/router-context-provider.server";
 import { createNodeBackofficeProcessConfig } from "./node-process-config";
+import { registerNodeBackofficeHealthCheck } from "./node-server-health";
 import {
   formatNodeBackofficeListenUrls,
   startNodeBackofficeListeners,
@@ -34,6 +35,7 @@ const kernel = new BackofficeKernel(runtime.services);
 const staticDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "client");
 const app = express();
 app.disable("x-powered-by");
+registerNodeBackofficeHealthCheck(app);
 configureNodeBackofficeProxy(
   app,
   config.publicBaseUrl,

@@ -43,7 +43,7 @@ function processIsAlive(processId) {
 function spawnNodeBackofficeService(definition) {
   const child = spawn(
     process.execPath,
-    ["--env-file=.dev.vars", path.join(backofficeDirectory, definition.entrypoint)],
+    ["--env-file-if-exists=.dev.vars", path.join(backofficeDirectory, definition.entrypoint)],
     {
       cwd: backofficeDirectory,
       env: process.env,

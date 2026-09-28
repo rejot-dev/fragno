@@ -23,13 +23,15 @@ import {
   defineBackofficeScenario,
   runBackofficeScenario,
 } from "../../app/fragno/automation/scenario";
+import { registerNodeBackofficeHealthCheck } from "./node-server-health";
 import { configureNodeBackofficeProxy } from "./node-server-proxy";
 
-async function postNodeProxyAuthRequest(input: {
+async function sendNodeProxyRequest(input: {
   port: number;
   path: string;
+  method: "GET" | "POST";
   headers: Record<string, string>;
-  body: Record<string, string>;
+  body: Record<string, string> | null;
 }): Promise<{ status: number; body: string }> {
   return await new Promise((resolve, reject) => {
     const request = httpRequest(
@@ -37,7 +39,7 @@ async function postNodeProxyAuthRequest(input: {
         host: "127.0.0.1",
         port: input.port,
         path: input.path,
-        method: "POST",
+        method: input.method,
         headers: input.headers,
       },
       (response) => {
@@ -50,8 +52,17 @@ async function postNodeProxyAuthRequest(input: {
       },
     );
     request.on("error", reject);
-    request.end(JSON.stringify(input.body));
+    request.end(input.body === null ? undefined : JSON.stringify(input.body));
   });
+}
+
+async function postNodeProxyAuthRequest(input: {
+  port: number;
+  path: string;
+  headers: Record<string, string>;
+  body: Record<string, string>;
+}): Promise<{ status: number; body: string }> {
+  return await sendNodeProxyRequest({ ...input, method: "POST" });
 }
 
 test("Node proxy accepts public HTTPS and direct localhost or 127.0.0.1 HTTP while rejecting forged origins", async () => {
@@ -93,6 +104,7 @@ test("Node proxy accepts public HTTPS and direct localhost or 127.0.0.1 HTTP whi
                 routeDiscovery: { mode: "initial", manifestPath: "/__manifest" },
               } satisfies ServerBuild;
               const app = express();
+              registerNodeBackofficeHealthCheck(app);
               configureNodeBackofficeProxy(app, "https://public.example.test/", "loopback");
               app.use(createRequestHandler({ build, mode: "production" }));
               const server = app.listen(0, "127.0.0.1");
@@ -100,6 +112,18 @@ test("Node proxy accepts public HTTPS and direct localhost or 127.0.0.1 HTTP whi
                 await once(server, "listening");
                 const address = server.address();
                 assert(address && typeof address !== "string");
+                const healthCheck = await sendNodeProxyRequest({
+                  port: address.port,
+                  path: "/healthz",
+                  method: "GET",
+                  headers: {
+                    host: "load-balancer-health-check.invalid",
+                    "x-forwarded-for": "35.191.0.1",
+                  },
+                  body: null,
+                });
+                assert.deepEqual(healthCheck, { status: 200, body: "ok\n" });
+
                 const headers = {
                   host: "public.example.test",
                   "x-forwarded-host": "malicious.example.test:443",

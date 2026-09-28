@@ -36,6 +36,43 @@ file and default data directory are ignored by git.
 pnpm --dir apps/backoffice start:node
 ```
 
+### Run the Node version in Docker
+
+Build the repository-pruned production image from the repository root:
+
+```bash
+pnpm --dir apps/backoffice docker:build:node
+```
+
+Create an environment file outside the repository with stable secrets. Keep the same values when
+restarting against an existing data volume.
+
+```dotenv
+AUTH_ACCESS_TOKEN_SECRET=<strong-random-secret>
+BACKOFFICE_INTERNAL_REQUEST_SECRET=<different-strong-random-secret>
+DOCS_PUBLIC_BASE_URL=http://backoffice.localhost:5173
+```
+
+Run the web server and processor in one container, backed by a named SQLite volume:
+
+```bash
+docker run --rm \
+  --name fragno-backoffice-node \
+  --publish 127.0.0.1:5173:5173 \
+  --volume fragno-backoffice-data:/data \
+  --env-file /absolute/path/to/backoffice-node.env \
+  fragno-backoffice-node
+```
+
+The image binds `0.0.0.0:5173` inside the container, persists SQLite under `/data`, runs as the
+non-root `node` user, and includes Deno for sandboxed codemode execution. The default public URL is
+`http://backoffice.localhost:5173`; the dedicated `.localhost` name lets container traffic pass the
+same strict origin checks used outside Docker without treating the Docker bridge as a direct
+loopback connection. Set `DOCS_PUBLIC_BASE_URL` to the externally visible HTTPS URL and configure
+the trusted proxy settings described below when exposing the container through a reverse proxy. Pass
+optional integration credentials as additional environment variables; the image does not contain
+`.dev.vars` or other local environment files.
+
 `start:node` builds with Turbo once, then multiplexes the web server and runtime processor as two
 separate Node processes. This matches the production process topology while keeping one local
 command. Both processes load the **same `.dev.vars`** used for local Cloudflare development, and the
