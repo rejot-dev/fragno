@@ -237,6 +237,7 @@ describe("Pi execCodeMode tool", () => {
         },
         remote,
         env,
+        allowedHooks: [],
         families: runtimeToolFamilies,
         toolContext: createTrustedSystemBackofficeToolContext({
           runtimes: { state: stateBackend },
@@ -332,6 +333,7 @@ describe("Pi execCodeMode tool", () => {
         },
         remote,
         env,
+        allowedHooks: [],
         families: runtimeToolFamilies,
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       });

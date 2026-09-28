@@ -86,6 +86,7 @@ export const executeWorkflowCodemodeAutomation = async ({
     remote,
     env,
     globalOutbound: null,
+    allowedHooks: [],
     families: runtimeToolFamilies,
     toolContext,
     workflowAgent,

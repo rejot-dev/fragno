@@ -2,6 +2,9 @@ import {
   createRemoteWorkflowSuspension,
   isRemoteWorkflowSuspension,
   RemoteWorkflowSuspendedError,
+  resolveRemoteWorkflowHookIntent,
+  type RemoteWorkflowAllowedHook,
+  type RemoteWorkflowHookIntent,
   type RemoteWorkflowStepHost,
   type RemoteWorkflowStepScope,
   type WorkflowStepIdentity,
@@ -45,10 +48,15 @@ export const returnRemoteWorkflowSuspensionOrThrow = (
 
 class WorkflowStepTxTarget extends RpcTarget {
   readonly #tx: WorkflowStepTx | WorkflowStepConsumeTx;
+  readonly #allowedHooks: readonly RemoteWorkflowAllowedHook[];
 
-  constructor(tx: WorkflowStepTx | WorkflowStepConsumeTx) {
+  constructor(
+    tx: WorkflowStepTx | WorkflowStepConsumeTx,
+    allowedHooks: readonly RemoteWorkflowAllowedHook[],
+  ) {
     super();
     this.#tx = tx;
+    this.#allowedHooks = allowedHooks;
   }
 
   emit(payload: unknown): void {
@@ -75,6 +83,15 @@ class WorkflowStepTxTarget extends RpcTarget {
     workflowServiceCalls(() => operations);
   }
 
+  triggerHook(operation: RemoteWorkflowHookIntent): void {
+    const resolved = resolveRemoteWorkflowHookIntent(operation, this.#allowedHooks);
+    const triggerHook = (this.#tx as Partial<WorkflowStepTx>).triggerHook;
+    if (!triggerHook) {
+      return unsupportedRemoteTxFeature("TRIGGER_HOOK");
+    }
+    triggerHook(resolved);
+  }
+
   onEvent(type: string, handler: (event: WorkflowStepEvent) => void | Promise<void>) {
     const onEvent = (this.#tx as Partial<WorkflowStepTx>).onEvent;
     if (!onEvent) {
@@ -96,12 +113,15 @@ class WorkflowStepTxTarget extends RpcTarget {
   }
 }
 
+/** Host-side RPC target; only the trusted caller supplies permitted remote hook identities. */
 export class WorkflowStepTarget extends RpcTarget {
   readonly #host: RemoteWorkflowStepHost;
+  readonly #allowedHooks: readonly RemoteWorkflowAllowedHook[];
 
-  constructor(host: RemoteWorkflowStepHost) {
+  constructor(host: RemoteWorkflowStepHost, allowedHooks: readonly RemoteWorkflowAllowedHook[]) {
     super();
     this.#host = host;
+    this.#allowedHooks = allowedHooks;
   }
 
   async do<T>(
@@ -113,7 +133,7 @@ export class WorkflowStepTarget extends RpcTarget {
     try {
       return await this.#host.do(parentScope, name, config, async (tx, scope) => {
         try {
-          const result = await callback(new WorkflowStepTxTarget(tx), scope);
+          const result = await callback(new WorkflowStepTxTarget(tx, this.#allowedHooks), scope);
           if (isRemoteWorkflowSuspension(result)) {
             throw new RemoteWorkflowSuspendedError(result.reason);
           }
@@ -172,7 +192,7 @@ export class WorkflowStepTarget extends RpcTarget {
         timeout: options.timeout,
         onConsume: options.onConsume
           ? async (tx, event) => {
-              await options.onConsume?.(new WorkflowStepTxTarget(tx), event);
+              await options.onConsume?.(new WorkflowStepTxTarget(tx, this.#allowedHooks), event);
             }
           : undefined,
       });

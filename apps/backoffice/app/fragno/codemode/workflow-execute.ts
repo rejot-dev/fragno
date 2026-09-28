@@ -1,5 +1,6 @@
 import {
   RemoteWorkflowSuspendedError,
+  type RemoteWorkflowAllowedHook,
   type RemoteWorkflowStepHost,
   type RemoteWorkflowSuspension,
 } from "@fragno-dev/workflows/remote-workflow";
@@ -62,6 +63,8 @@ type WorkflowWorkerEntrypoint<TParams, TOutput> = {
 export type BackofficeCodemodeWorkflowOptions = {
   families: readonly BackofficeRuntimeToolFamily[];
   toolContext: BackofficeToolContext;
+  /** Hook identities the trusted host permits this sandbox to trigger. */
+  allowedHooks: readonly RemoteWorkflowAllowedHook[];
   /**
    * Outbound network policy for the workflow sandbox. The dynamic worker the
    * codemode runs in is created with this as its `globalOutbound`, which decides
@@ -170,6 +173,7 @@ const createRemoteWorkflowStep = (stepTarget, agentTarget) => {
       previousEmissions: async () => await txTarget.previousEmissions(),
       previousConsumedEvents: async () => await txTarget.previousConsumedEvents(),
       workflowServiceCalls: (factory) => queue(txTarget.workflowServiceCalls(factory())),
+      triggerHook: (operation) => queue(txTarget.triggerHook(operation)),
       onEvent: (type, handler) => {
         let active = true;
         const unsubscribePromise = txTarget.onEvent(type, handler);
@@ -188,7 +192,12 @@ const createRemoteWorkflowStep = (stepTarget, agentTarget) => {
         mutate: createUnsupportedTxMethod("REMOTE_WORKFLOW_TX_ON_TERMINAL_ERROR_MUTATE_UNSUPPORTED"),
       },
       __flush: async () => {
-        await Promise.all(pending);
+        const results = await Promise.allSettled(pending);
+        for (const result of results) {
+          if (result.status === "rejected") {
+            throw result.reason;
+          }
+        }
       },
     };
   };
@@ -202,11 +211,9 @@ const createRemoteWorkflowStep = (stepTarget, agentTarget) => {
       const parentScope = scopeStorage.getStore() ?? null;
       const result = await stepTarget.do(parentScope, name, config, async (txTarget, childScope) => {
         return await scopeStorage.run(childScope, async () => {
+          const tx = wrapTx(txTarget);
           try {
-            const tx = wrapTx(txTarget);
-            const result = await callback(tx);
-            await tx.__flush();
-            return result;
+            return await callback(tx);
           } catch (error) {
             if (isRemoteWorkflowSuspension(error)) {
               return error;
@@ -215,6 +222,9 @@ const createRemoteWorkflowStep = (stepTarget, agentTarget) => {
               return createRemoteWorkflowSuspension(error.reason);
             }
             throw error;
+          } finally {
+            // Terminal-error hook intents must reach the host before the failed step settles.
+            await tx.__flush();
           }
         });
       });
@@ -322,13 +332,14 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
   globalOutbound,
   dependencies,
   workflowAgent,
+  allowedHooks,
 }: {
   code: string;
   event: CodemodeWorkflowEvent<TParams>;
   remote: RemoteWorkflowStepHost;
   env: BackofficeCodemodeEnv;
 } & BackofficeCodemodeWorkflowOptions): Promise<TOutput> => {
-  const stepTarget = new WorkflowStepTarget(remote);
+  const stepTarget = new WorkflowStepTarget(remote, allowedHooks);
   const agentTarget = workflowAgent ? new CodemodeWorkflowAgentTarget(workflowAgent) : null;
   const executor = new DynamicWorkerExecutor({
     loader: env.LOADER,

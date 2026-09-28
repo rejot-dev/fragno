@@ -1,5 +1,7 @@
 import { describe, expect, test, assert } from "vitest";
 
+import { schema } from "@fragno-dev/db/schema";
+import type { RemoteWorkflowAllowedHook } from "@fragno-dev/workflows/remote-workflow";
 import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
 import {
   defineRemoteWorkflow,
@@ -9,6 +11,8 @@ import {
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 
+import { defineFragment, instantiate } from "@fragno-dev/core";
+import { getDurableHooksService, withDatabase } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import {
@@ -29,6 +33,7 @@ const createHarness = async <TRegistry extends WorkflowsRegistry>(workflows: TRe
   });
 
 const createSystemWorkflowOptions = () => ({
+  allowedHooks: [],
   families: runtimeToolFamilies,
   toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
 });
@@ -403,6 +408,7 @@ describe("codemode workflow execution", () => {
           event,
           remote,
           env,
+          allowedHooks: [],
           families: runtimeToolFamilies,
           toolContext: createTrustedSystemBackofficeToolContext({
             runtimes: {},
@@ -575,6 +581,7 @@ describe("codemode workflow execution", () => {
         }`,
         env,
         {
+          allowedHooks: [],
           families: [
             defineBackofficeRuntimeToolFamily({
               namespace: "math",
@@ -970,6 +977,136 @@ describe("codemode workflow execution", () => {
     );
   });
 
+  test("commits allowed codemode hooks on success and terminal failure but rejects unlisted hooks", async () => {
+    const hookSchema = schema("codemode-remote-hook-test", (s) => s);
+    const hookFragment = defineFragment("codemode-remote-hook-test")
+      .extend(withDatabase(hookSchema))
+      .provideHooks(({ defineHook }) => ({
+        onStepRecorded: defineHook(async function () {}),
+      }))
+      .build();
+    const hookCode = `async (event, step) => {
+          await step.do("record hook", async (tx) => {
+            tx.triggerHook({
+              target: "tenant",
+              schemaName: "codemode-remote-hook-test",
+              hookName: "onStepRecorded",
+              payload: { instanceId: event.instanceId },
+              when: "both",
+            });
+            if (event.payload.fail) {
+              throw new Error("EXPECTED_REMOTE_FAILURE");
+            }
+          });
+          return "done";
+        }`;
+    const allowedHooks: RemoteWorkflowAllowedHook[] = [];
+    const Workflow = defineRemoteWorkflow<"codemode-remote-hook", { fail: boolean }>(
+      { name: "codemode-remote-hook" },
+      defineCodemodeWorkflowRun<{ fail: boolean }, string>(hookCode, env, {
+        ...createSystemWorkflowOptions(),
+        allowedHooks,
+      }),
+    );
+    const DeniedWorkflow = defineRemoteWorkflow<"codemode-remote-hook-denied", { fail: boolean }>(
+      { name: "codemode-remote-hook-denied" },
+      defineCodemodeWorkflowRun<{ fail: boolean }, string>(
+        hookCode,
+        env,
+        createSystemWorkflowOptions(),
+      ),
+    );
+    const harness = await createWorkflowsTestHarness({
+      workflows: { WORKFLOW: Workflow, DENIED: DeniedWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      configureBuilder: (builder) => builder.withFragment("hookTest", instantiate(hookFragment)),
+    });
+
+    try {
+      allowedHooks.push({
+        target: "tenant",
+        schemaName: hookSchema.name,
+        hookName: "onStepRecorded",
+        namespace: getDurableHooksService(harness.fragments.hookTest.fragment).namespace,
+      });
+      for (const [instanceId, fail] of [
+        ["codemode-hook-success", false],
+        ["codemode-hook-terminal", true],
+      ] as const) {
+        await harness.createInstance("WORKFLOW", {
+          id: instanceId,
+          params: { fail },
+          remoteWorkflowName: "codemode-remote-hook-body",
+        });
+        await harness.runUntilIdle({
+          workflowName: "codemode-remote-hook",
+          instanceId,
+          reason: "create",
+        });
+      }
+
+      await harness.createInstance("DENIED", {
+        id: "codemode-hook-denied",
+        params: { fail: false },
+        remoteWorkflowName: "codemode-remote-hook-body",
+      });
+      await harness.runUntilIdle({
+        workflowName: "codemode-remote-hook-denied",
+        instanceId: "codemode-hook-denied",
+        reason: "create",
+      });
+
+      await expect(harness.getStatus("DENIED", "codemode-hook-denied")).resolves.toMatchObject({
+        status: "errored",
+        error: {
+          message:
+            "REMOTE_WORKFLOW_HOOK_NOT_ALLOWED: tenant/codemode-remote-hook-test/onStepRecorded",
+        },
+      });
+      await expect(harness.getStatus("WORKFLOW", "codemode-hook-success")).resolves.toMatchObject({
+        status: "complete",
+        output: "done",
+      });
+      await expect(harness.getStatus("WORKFLOW", "codemode-hook-terminal")).resolves.toMatchObject({
+        status: "errored",
+        error: { message: "EXPECTED_REMOTE_FAILURE" },
+      });
+      expect((await harness.getHistory("WORKFLOW", "codemode-hook-success")).steps).toEqual([
+        expect.objectContaining({ stepKey: "do:record hook", status: "completed" }),
+      ]);
+      expect((await harness.getHistory("WORKFLOW", "codemode-hook-terminal")).steps).toEqual([
+        expect.objectContaining({ stepKey: "do:record hook", status: "errored" }),
+      ]);
+
+      const { hookService, namespace } = getDurableHooksService(
+        harness.fragments.hookTest.fragment,
+      );
+      const hooks = await harness.fragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(() => [hookService.getHooksByNamespace(namespace)] as const)
+          .transform(({ serviceResult: [records] }) => records)
+          .execute();
+      });
+      expect(hooks).toHaveLength(2);
+      expect(hooks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            hookName: "onStepRecorded",
+            payload: { instanceId: "codemode-hook-success" },
+          }),
+          expect.objectContaining({
+            hookName: "onStepRecorded",
+            payload: { instanceId: "codemode-hook-terminal" },
+          }),
+        ]),
+      );
+    } finally {
+      await harness.test.cleanup();
+    }
+  });
+
   test("surfaces unsupported remote tx mutations as workflow errors", async () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-mutate-unsupported" },
@@ -982,6 +1119,7 @@ describe("codemode workflow execution", () => {
         }`,
         env,
         {
+          allowedHooks: [],
           families: runtimeToolFamilies,
           toolContext: createTrustedSystemBackofficeToolContext({
             runtimes: {},
