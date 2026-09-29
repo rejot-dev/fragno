@@ -13,6 +13,7 @@
     "build": "react-router build",
     "build:node": "BACKOFFICE_TARGET=node react-router build --config vite.node.config.ts && vite build --config vite.node-server.config.ts",
     "docker:build:node": "docker build --file Dockerfile.node --tag fragno-backoffice-node ../..",
+    "docker:build:node:deployment": "docker buildx build --platform linux/amd64 --file Dockerfile.node --tag \"${BACKOFFICE_IMAGE_TAG:?Set BACKOFFICE_IMAGE_TAG to the deployment image tag.}\" --load ../..",
     "start:node": "turbo run build:node --filter=@fragno-apps/backoffice-rr --output-logs=errors-only && NODE_ENV=development node scripts/node-server/start-node-processes.mjs",
     "start:node:server": "turbo run build:node --filter=@fragno-apps/backoffice-rr --output-logs=errors-only && NODE_ENV=development node --env-file-if-exists=.dev.vars build-node/node-server.mjs",
     "start:node:processor": "turbo run build:node --filter=@fragno-apps/backoffice-rr && NODE_ENV=development node --env-file-if-exists=.dev.vars build-node/node-hook-processor.mjs",

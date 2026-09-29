@@ -43,11 +43,21 @@ neither they nor Cloudflare serve these maps.
 
 ### Run the Node version in Docker
 
-Build the repository-pruned production image from the repository root:
+Build the repository-pruned production image for local use from the repository root:
 
 ```bash
 pnpm --dir apps/backoffice docker:build:node
 ```
+
+Deployment targets use AMD64 and require an explicit immutable image tag:
+
+```bash
+BACKOFFICE_IMAGE_TAG="registry.example.com/backoffice:$(git rev-parse HEAD)" \
+  pnpm --dir apps/backoffice docker:build:node:deployment
+```
+
+The deployment command loads the AMD64 image into the local Docker image store so it can be pushed
+with `docker push "$BACKOFFICE_IMAGE_TAG"`.
 
 Create an environment file outside the repository with stable secrets. Keep the same values when
 restarting against an existing data volume.
