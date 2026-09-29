@@ -3,10 +3,12 @@ import {
   type FragmentDurableObjectHost,
   type FragmentDurableObjectHostContext,
   type FragmentDurableObjectHostOperations,
+  type FragmentDurableObjectInitializationInstrumentation,
   type FragmentDurableObjectMount,
   type FragmentDurableObjectRuntimeHostContext,
 } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "@fragno-dev/db/durable-hooks";
+import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
 
 import type { FragnoRequestLifecycleContext } from "@fragno-dev/core";
 
@@ -14,7 +16,6 @@ import {
   backofficeContextScopesEqual,
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
-import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   createUnconfiguredDurableHookQueueResponse,
@@ -24,9 +25,6 @@ import {
   type DurableHookQueueOptions,
   type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
-
-import { cloudflareDurableHooksInstrumentation } from "./cloudflare-durable-hooks-instrumentation";
-import { cloudflareFragmentInitializationInstrumentation } from "./cloudflare-fragment-initialization-instrumentation";
 
 /**
  * Current in-memory state for a config-backed Fragment Durable Object.
@@ -111,7 +109,18 @@ export type BackofficeFragmentDurableObjectCreateRuntimeContext<TEnv = Cloudflar
     scope: BackofficeContextScope;
   };
 
-export type BackofficeFragmentDurableObjectOptions<
+export type BackofficeConfiguredObjectLifecycle = {
+  registerRefresh: (refresh: () => Promise<void>) => void;
+  clearDurableHooks: () => Promise<void>;
+};
+
+export const noOpBackofficeConfiguredObjectLifecycle: BackofficeConfiguredObjectLifecycle = {
+  registerRefresh() {},
+  async clearDurableHooks() {},
+};
+
+/** Config-backed Fragment behavior without runtime-specific infrastructure. */
+export type BackofficeFragmentDurableObjectDefinition<
   TStored,
   TSource,
   TRuntime,
@@ -120,11 +129,6 @@ export type BackofficeFragmentDurableObjectOptions<
 > = {
   /** Human-readable fragment/DO name used in logs, errors, and default messages. */
   name: string;
-  /** The object state used by the fragment host. */
-  state: BackofficeObjectState;
-  /** Runtime-specific environment passed through to hosted fragments. */
-  env: TEnv;
-  objectRuntime: BackofficeRuntimeServices["objectRuntime"];
   /** Storage key for the persisted config. Defaults to `${name.toLowerCase()}-config`. */
   configKey?: string;
   /** Storage key for the persisted outbox. Defaults to `${name.toLowerCase()}-outbox`. */
@@ -167,8 +171,6 @@ export type BackofficeFragmentDurableObjectOptions<
   getMigrationFragments?: (runtime: TRuntime) => readonly AnyFragnoInstantiatedDatabaseFragment[];
   /** Override durable hook reads. Intended for tests that use lightweight fragment doubles. */
   durableHooks?: BackofficeDurableHookDependencies;
-  /** Replaces Cloudflare alarm dispatch with a runtime-specific Fragno hook dispatcher. */
-  fragmentHostOperations?: FragmentDurableObjectHostOperations<TEnv>;
   /** Override which migrated fragments participate in durable-hook alarm processing. */
   getHookFragments?: (
     runtime: TRuntime,
@@ -185,6 +187,24 @@ export type BackofficeFragmentDurableObjectOptions<
     dispatch: (item: TOutbox, context: { env: TEnv; stored: TStored }) => Promise<void>;
     retryDelayMs?: number;
   };
+};
+
+export type BackofficeFragmentDurableObjectOptions<
+  TStored,
+  TSource,
+  TRuntime,
+  TOutbox extends BackofficeOutboxItem = BackofficeOutboxItem,
+  TEnv = CloudflareEnv,
+> = BackofficeFragmentDurableObjectDefinition<TStored, TSource, TRuntime, TOutbox, TEnv> & {
+  /** The object state used by the fragment host. */
+  state: BackofficeObjectState;
+  /** Runtime-specific environment passed through to hosted fragments. */
+  env: TEnv;
+  configuredObjectLifecycle: BackofficeConfiguredObjectLifecycle;
+  durableHooksInstrumentation?: DurableHooksInstrumentation;
+  initializationInstrumentation?: FragmentDurableObjectInitializationInstrumentation;
+  /** Replaces Cloudflare alarm dispatch with a runtime-specific Fragno hook dispatcher. */
+  fragmentHostOperations?: FragmentDurableObjectHostOperations<TEnv>;
 };
 
 /** Runtime controller returned to an individual backoffice Durable Object class. */
@@ -349,8 +369,8 @@ export function createBackofficeFragmentDurableObject<
     getHookFragments: options.getHookFragments,
     hostRuntime: options.hostRuntime,
     mounts: options.mounts,
-    durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
-    initializationInstrumentation: cloudflareFragmentInitializationInstrumentation,
+    durableHooksInstrumentation: options.durableHooksInstrumentation,
+    initializationInstrumentation: options.initializationInstrumentation,
     operations: options.fragmentHostOperations,
     onProcessError: (error: unknown) => {
       console.error(`${options.name} hook processor error`, error);
@@ -405,7 +425,7 @@ export function createBackofficeFragmentDurableObject<
   const initializeFromStored = async (stored: TStored | null) => {
     if (!isConfigured(stored)) {
       current = { configured: false, stored };
-      await options.objectRuntime?.clearDurableHooks();
+      await options.configuredObjectLifecycle.clearDurableHooks();
       await ensurePendingOutboxAlarm();
       return current;
     }
@@ -572,7 +592,7 @@ export function createBackofficeFragmentDurableObject<
 
   // Node processes keep derived runtimes, not authoritative config caches. Reload at event and
   // processor-discovery boundaries; only a changed source needs serialized initialization.
-  options.objectRuntime?.registerRefresh(async () => {
+  options.configuredObjectLifecycle.registerRefresh(async () => {
     const stored = await loadStored();
     if (isConfigured(stored) && current.configured) {
       const source = toSource(stored);

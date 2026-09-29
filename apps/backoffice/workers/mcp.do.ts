@@ -1,17 +1,11 @@
-import {
-  createFragmentDurableObjectHost,
-  type FragmentDurableObjectHost,
-} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
+import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import {
   backofficeContextScopeFromDurableObjectId,
   type McpObject,
 } from "@/backoffice-runtime/object-registry";
-import {
-  createCloudflareDurableObjectRuntimeServices,
-  type BackofficeRuntimeServices,
-} from "@/backoffice-runtime/runtime-services";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import {
@@ -26,7 +20,8 @@ import {
 } from "@/fragno/scoped-public-fragment-routes";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
-import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
+import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
+import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 import {
   createScopedFragmentDurableObjectRuntime,
   type ScopedFragmentDurableObjectRuntime,
@@ -43,33 +38,25 @@ function scopeSubject(scope: BackofficeRoutableScope, serverId?: string) {
 }
 
 export class InMemoryMcpObject extends RpcTarget implements McpObject {
-  readonly #env: McpObjectEnv;
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #host: FragmentDurableObjectHost<McpConfig, McpFragment>;
   readonly #scopedRuntime: ScopedFragmentDurableObjectRuntime<McpFragment>;
 
   constructor({
     state,
-    env,
     runtime,
+    implementation,
   }: {
     state: BackofficeObjectState;
     env?: McpObjectEnv;
     runtime: BackofficeRuntimeServices;
+    implementation: BackofficeObjectImplementation;
   }) {
     super();
-    this.#env = env ?? {};
     this.#runtimeServices = runtime;
-    this.#host = createFragmentDurableObjectHost({
+    this.#host = implementation.createFragmentHost({
       name: "MCP",
-      state,
-      env: this.#env,
-      createRuntime: (config) =>
-        createMcpServer(config, {
-          adapters: this.#runtimeServices.adapters,
-        }),
-      durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
-      operations: this.#runtimeServices.fragmentHostOperations ?? undefined,
+      createRuntime: (config) => createMcpServer(config, implementation.fragmentDatabase),
       onProcessError: (error) => {
         console.error("MCP hook processor error", error);
       },
@@ -164,11 +151,7 @@ export class Mcp extends DurableObject<CloudflareEnv> implements McpObject {
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryMcpObject({
-      state,
-      env,
-      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
-    });
+    this.#object = new InMemoryMcpObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async alarm(): Promise<void> {

@@ -1,7 +1,4 @@
-import {
-  createFragmentDurableObjectHost,
-  type FragmentDurableObjectHost,
-} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
+import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
@@ -10,10 +7,7 @@ import type { OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
 import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
 import type { OtpObject } from "@/backoffice-runtime/object-registry";
-import {
-  createCloudflareDurableObjectRuntimeServices,
-  type BackofficeRuntimeServices,
-} from "@/backoffice-runtime/runtime-services";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
   loadDurableHook,
   loadDurableHookQueue,
@@ -40,7 +34,8 @@ import {
 import { sha256Hex } from "@/lib/crypto";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
-import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
+import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
+import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
 export type IssueEmailVerificationInput = {
   userId: string;
@@ -312,31 +307,23 @@ export class InMemoryOtpObject implements OtpObject {
 
   constructor({
     state,
-    env,
     runtime,
+    implementation,
   }: {
     state: BackofficeObjectState;
     env?: unknown;
     runtime: BackofficeRuntimeServices;
+    implementation: BackofficeObjectImplementation;
   }) {
     this.#runtime = runtime;
-    this.#host = createFragmentDurableObjectHost({
+    this.#host = implementation.createFragmentHost({
       name: "OTP",
-      state,
-      env,
       createRuntime: () =>
-        createOtpServer(
-          {
-            adapters: this.#runtime.adapters,
+        createOtpServer(implementation.fragmentDatabase, {
+          hooks: {
+            onOtpConfirmed: this.#handleOtpConfirmed.bind(this),
           },
-          {
-            hooks: {
-              onOtpConfirmed: this.#handleOtpConfirmed.bind(this),
-            },
-          },
-        ),
-      durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
-      operations: this.#runtime.fragmentHostOperations ?? undefined,
+        }),
       onProcessError: (error) => {
         console.error("OTP hook processor error", error);
       },
@@ -623,11 +610,7 @@ export class Otp extends DurableObject<CloudflareEnv> implements OtpObject {
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryOtpObject({
-      state,
-      env,
-      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
-    });
+    this.#object = new InMemoryOtpObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async issueEmailVerification(

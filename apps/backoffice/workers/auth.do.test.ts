@@ -590,7 +590,7 @@ describe("Auth Durable Object email verification delivery", () => {
     const runtime = await createInMemoryBackofficeRuntime({
       env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
       objectFactories: {
-        OTP: ({ state, env, runtime: runtimeServices }) =>
+        OTP: ({ state, env, runtime: runtimeServices, implementation }) =>
           new (class extends InMemoryOtpObject {
             override async issueEmailVerification(
               input: IssueEmailVerificationInput,
@@ -603,7 +603,7 @@ describe("Auth Durable Object email verification delivery", () => {
               }
               return issued;
             }
-          })({ state, env, runtime: runtimeServices }),
+          })({ state, env, runtime: runtimeServices, implementation }),
         RESEND: () => resend,
       },
     });

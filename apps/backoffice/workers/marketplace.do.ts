@@ -1,14 +1,8 @@
-import {
-  createFragmentDurableObjectHost,
-  type FragmentDurableObjectHost,
-} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
+import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import type { MarketplaceObject } from "@/backoffice-runtime/object-registry";
-import {
-  createCloudflareDurableObjectRuntimeServices,
-  type BackofficeRuntimeServices,
-} from "@/backoffice-runtime/runtime-services";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type {
   MarketplaceAddDraftVersionInput,
   MarketplaceArchiveListingInput,
@@ -40,7 +34,8 @@ import type { MarketplaceFragment } from "@/fragno/marketplace/index";
 import { createMarketplaceServer } from "@/fragno/marketplace/marketplace";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
-import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
+import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
+import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
 export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceObject {
   readonly #host: FragmentDurableObjectHost<void, MarketplaceFragment>;
@@ -48,21 +43,17 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
 
   constructor({
     state,
-    env,
-    runtime,
+    implementation,
   }: {
     state: BackofficeObjectState;
     env?: unknown;
     runtime: BackofficeRuntimeServices;
+    implementation: BackofficeObjectImplementation;
   }) {
     super();
-    this.#host = createFragmentDurableObjectHost({
+    this.#host = implementation.createFragmentHost({
       name: "Marketplace",
-      state,
-      env,
-      createRuntime: () => createMarketplaceServer({ adapters: runtime.adapters }),
-      durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
-      operations: runtime.fragmentHostOperations ?? undefined,
+      createRuntime: () => createMarketplaceServer(implementation.fragmentDatabase),
       onProcessError: (error) => {
         console.error("Marketplace hook processor error", error);
       },
@@ -211,11 +202,9 @@ export class Marketplace extends DurableObject<CloudflareEnv> implements Marketp
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryMarketplaceObject({
-      state,
-      env,
-      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
-    });
+    this.#object = new InMemoryMarketplaceObject(
+      createCloudflareBackofficeObjectContext(state, env),
+    );
   }
 
   listPublishedListings(input: MarketplaceListingPageInput = {}): Promise<MarketplaceListingPage> {

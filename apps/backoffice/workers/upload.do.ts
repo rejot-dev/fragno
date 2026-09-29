@@ -5,10 +5,7 @@ import {
   decodeBackofficeObjectScope,
   type UploadObject,
 } from "@/backoffice-runtime/object-registry";
-import {
-  createCloudflareDurableObjectRuntimeServices,
-  type BackofficeRuntimeServices,
-} from "@/backoffice-runtime/runtime-services";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { uploadConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/upload";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
@@ -28,12 +25,16 @@ import {
 } from "@/fragno/upload";
 import { createUploadServerForProvider, type UploadFragment } from "@/fragno/upload-server";
 
-import {
-  createBackofficeFragmentDurableObject,
-  type BackofficeDurableHookDependencies,
-  type BackofficeFragmentDurableObject,
-  type BackofficeObjectState,
+import type {
+  BackofficeDurableHookDependencies,
+  BackofficeFragmentDurableObject,
+  BackofficeObjectState,
 } from "./lib/backoffice-fragment-durable-object";
+import type {
+  BackofficeObjectFragmentDatabase,
+  BackofficeObjectImplementation,
+} from "./lib/backoffice-object-implementation";
+import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
 const hasOwn = (record: Record<string, unknown>, key: string) =>
   Object.prototype.hasOwnProperty.call(record, key);
@@ -180,6 +181,7 @@ export class InMemoryUploadObject implements UploadObject {
   readonly #storagePolicy: UploadStoragePolicy;
   readonly #env: Parameters<typeof createUploadServerForProvider>[3];
   readonly #runtimeServices: BackofficeRuntimeServices;
+  readonly #fragmentDatabase: BackofficeObjectFragmentDatabase;
   readonly #host: BackofficeFragmentDurableObject<
     StoredUploadAdminConfig,
     StoredUploadAdminConfig,
@@ -191,23 +193,22 @@ export class InMemoryUploadObject implements UploadObject {
     state,
     env,
     runtime,
+    implementation,
     durableHooks,
   }: {
     state: BackofficeObjectState & Pick<DurableObjectState, "id">;
     env: Parameters<typeof createUploadServerForProvider>[3];
     runtime: BackofficeRuntimeServices;
+    implementation: BackofficeObjectImplementation;
     durableHooks?: BackofficeDurableHookDependencies;
   }) {
     this.#state = state;
     this.#storagePolicy = resolveUploadStoragePolicy(state.id);
     this.#env = env;
     this.#runtimeServices = runtime;
-    this.#host = createBackofficeFragmentDurableObject({
+    this.#fragmentDatabase = implementation.fragmentDatabase;
+    this.#host = implementation.createConfiguredFragmentHost({
       name: "Upload",
-      state,
-      env,
-      fragmentHostOperations: this.#runtimeServices.fragmentHostOperations ?? undefined,
-      objectRuntime: runtime.objectRuntime,
       configKey: UPLOAD_ADMIN_CONFIG_KEY,
       parseStored: (raw) =>
         normalizeStoredUploadAdminConfig(raw) ?? (raw as StoredUploadAdminConfig),
@@ -305,14 +306,7 @@ export class InMemoryUploadObject implements UploadObject {
     for (const provider of configuredProvidersFromResponse(response)) {
       fragmentsByProvider.set(
         provider,
-        createUploadServerForProvider(
-          stored,
-          provider,
-          {
-            adapters: this.#runtimeServices.adapters,
-          },
-          this.#env,
-        ),
+        createUploadServerForProvider(stored, provider, this.#fragmentDatabase, this.#env),
       );
     }
 
@@ -524,9 +518,7 @@ export class Upload extends DurableObject<CloudflareEnv> implements UploadObject
   ) {
     super(state, env);
     this.#object = new InMemoryUploadObject({
-      state,
-      env,
-      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+      ...createCloudflareBackofficeObjectContext(state, env),
       durableHooks,
     });
   }

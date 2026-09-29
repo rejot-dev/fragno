@@ -4,12 +4,7 @@ import type {
 } from "@fragno-dev/db/transaction-instrumentation";
 import { tracing } from "cloudflare:workers";
 
-const transactionSpanName = (context: DatabaseTransactionInstrumentationContext) => {
-  const transactionName = context.transactionName ?? "(anonymous)";
-  return context.callback
-    ? `fragno.db.${context.transactionKind}.${transactionName}.${context.callback}`
-    : `fragno.db.${context.transactionKind}.${transactionName}`;
-};
+import { backofficeDatabaseTransactionSpanName } from "@/backoffice-runtime/runtime-instrumentation";
 
 const runCloudflareTransactionSpan = <T>(
   context: DatabaseTransactionInstrumentationContext,
@@ -21,7 +16,7 @@ const runCloudflareTransactionSpan = <T>(
 
   let enteredSpan = false;
   try {
-    const result = tracing.enterSpan(transactionSpanName(context), (span) => {
+    const result = tracing.enterSpan(backofficeDatabaseTransactionSpanName(context), (span) => {
       enteredSpan = true;
       span.setAttribute("fragno.db.transaction.kind", context.transactionKind);
       span.setAttribute("fragno.db.transaction.name", context.transactionName);

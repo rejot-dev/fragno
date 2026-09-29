@@ -1,6 +1,7 @@
 import { createLocalBackofficeRuntime } from "../../app/backoffice-runtime/node/local-runtime";
 import { startNodeBackofficeAlarmScheduler } from "../../app/backoffice-runtime/node/node-alarm-scheduler";
 import { createNodeBackofficeDurableHooks } from "../../app/backoffice-runtime/node/node-durable-hooks";
+import { shutdownNodeOpenTelemetry } from "../../app/backoffice-runtime/node/node-opentelemetry-lifecycle";
 import { createNodeBackofficeProcessConfig } from "./node-process-config";
 import { stopNodeBackofficeOnSupervisorDisconnect } from "./node-supervisor-disconnect";
 
@@ -22,15 +23,19 @@ function shutdownNodeBackofficeHookProcessor(): Promise<void> {
   }
 
   shutdownPromise = (async () => {
-    await alarmScheduler.stop();
-    await runtime.cleanup();
+    try {
+      await alarmScheduler.stop();
+      await runtime.cleanup();
+    } finally {
+      await shutdownNodeOpenTelemetry();
+    }
   })();
   return shutdownPromise;
 }
 
 stopNodeBackofficeOnSupervisorDisconnect("hook processor", shutdownNodeBackofficeHookProcessor);
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.on(signal, () => {
     void shutdownNodeBackofficeHookProcessor().then(
       () => process.exit(0),

@@ -914,8 +914,6 @@ const createScopedMcpRuntimeServices = (
     adapters: {} as BackofficeRuntimeServices["adapters"],
     authorityResolver: unrestrictedBackofficeAuthorityResolver,
     kernelObserver: noopBackofficeKernelObserver,
-    fragmentHostOperations: null,
-    objectRuntime: null,
     codemodeEnv: null,
     workerTypeChecker: null,
     config: {

@@ -1,7 +1,4 @@
-import {
-  createFragmentDurableObjectHost,
-  type FragmentDurableObjectHost,
-} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
+import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
@@ -9,10 +6,7 @@ import {
   requireBackofficeContextScopeFromDurableObjectId,
   type SandboxManagerObject,
 } from "@/backoffice-runtime/object-registry";
-import {
-  createCloudflareDurableObjectRuntimeServices,
-  type BackofficeRuntimeServices,
-} from "@/backoffice-runtime/runtime-services";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 import type {
@@ -27,8 +21,8 @@ import { CLOUDFLARE_SANDBOX_PROVIDER } from "@/sandbox/contracts";
 import type { SandboxCommandResult, SandboxRuntimeProvider } from "@/sandbox/contracts";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
-import { cloudflareDatabaseTransactionInstrumentation } from "./lib/cloudflare-database-transaction-instrumentation";
-import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
+import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
+import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
 function buildSandboxAutomationEvent(
   scope: BackofficeContextScope,
@@ -81,10 +75,12 @@ export class InMemorySandboxManagerObject extends RpcTarget implements SandboxMa
     state,
     env,
     runtime,
+    implementation,
   }: {
     state: BackofficeObjectState;
     env: CloudflareEnv;
     runtime: BackofficeRuntimeServices;
+    implementation: BackofficeObjectImplementation;
   }) {
     super();
     const runtimeServices = runtime;
@@ -104,25 +100,17 @@ export class InMemorySandboxManagerObject extends RpcTarget implements SandboxMa
         },
       }),
     };
-    this.#host = createFragmentDurableObjectHost({
+    this.#host = implementation.createFragmentHost({
       name: "SandboxManager",
-      state,
-      env,
       createRuntime: () => {
-        const runtime = createSandboxManagerRuntime(
-          {
-            adapters: runtimeServices.adapters,
-            transactionInstrumentation: cloudflareDatabaseTransactionInstrumentation,
+        const runtime = createSandboxManagerRuntime(implementation.fragmentDatabase, {
+          sandboxProviders: this.#sandboxProviders,
+          deliverLifecycleEvent: async (event) => {
+            await runtimeServices.objects.automations
+              .for(scope)
+              .commands.triggerIngestEvent(buildSandboxAutomationEvent(scope, event));
           },
-          {
-            sandboxProviders: this.#sandboxProviders,
-            deliverLifecycleEvent: async (event) => {
-              await runtimeServices.objects.automations
-                .for(scope)
-                .commands.triggerIngestEvent(buildSandboxAutomationEvent(scope, event));
-            },
-          },
-        );
+        });
         return runtime;
       },
       getMigrationFragments: (runtime) => [
@@ -138,8 +126,6 @@ export class InMemorySandboxManagerObject extends RpcTarget implements SandboxMa
         { id: "sandbox-manager", target: (runtime) => runtime.sandboxManagerFragment },
         { id: "workflows", target: (runtime) => runtime.workflowsFragment },
       ],
-      durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
-      operations: runtimeServices.fragmentHostOperations ?? undefined,
       onProcessError: (error) => {
         console.error("Sandbox manager hook processor error", error);
       },
@@ -230,11 +216,9 @@ export class SandboxManager extends DurableObject<CloudflareEnv> implements Sand
   readonly #object: InMemorySandboxManagerObject;
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemorySandboxManagerObject({
-      state,
-      env,
-      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
-    });
+    this.#object = new InMemorySandboxManagerObject(
+      createCloudflareBackofficeObjectContext(state, env),
+    );
   }
   async listSandboxInstances(input?: { provider?: SandboxProvider; limit?: number }) {
     return await this.#object.listSandboxInstances(input);

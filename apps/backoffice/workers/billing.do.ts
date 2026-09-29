@@ -1,7 +1,4 @@
-import {
-  createFragmentDurableObjectHost,
-  type FragmentDurableObjectHost,
-} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
+import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
@@ -10,10 +7,7 @@ import {
   type BackofficeRpcContext,
   type BillingObject,
 } from "@/backoffice-runtime/object-registry";
-import {
-  createCloudflareDurableObjectRuntimeServices,
-  type BackofficeRuntimeServices,
-} from "@/backoffice-runtime/runtime-services";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type {
   BillingEventInput,
   BillingFragment,
@@ -26,8 +20,8 @@ import type {
 import { createBillingServer } from "@/fragno/billing/billing";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
-import { cloudflareDatabaseTransactionInstrumentation } from "./lib/cloudflare-database-transaction-instrumentation";
-import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
+import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
+import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
 type BillingOwnerScope = Extract<BackofficeContextScope, { kind: "org" }>;
 
@@ -38,12 +32,12 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
 
   constructor({
     state,
-    env,
-    runtime,
+    implementation,
   }: {
     state: BackofficeObjectState;
     env?: unknown;
     runtime: BackofficeRuntimeServices;
+    implementation: BackofficeObjectImplementation;
   }) {
     super();
     const ownerScope = requireBackofficeContextScopeFromDurableObjectId(state.id, "BILLING");
@@ -51,17 +45,9 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
       throw new Error("Billing objects require an organization scope.");
     }
     this.#ownerScope = ownerScope;
-    this.#host = createFragmentDurableObjectHost({
+    this.#host = implementation.createFragmentHost({
       name: "Billing",
-      state,
-      env,
-      createRuntime: () =>
-        createBillingServer({
-          adapters: runtime.adapters,
-          transactionInstrumentation: cloudflareDatabaseTransactionInstrumentation,
-        }),
-      durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
-      operations: runtime.fragmentHostOperations ?? undefined,
+      createRuntime: () => createBillingServer(implementation.fragmentDatabase),
       onProcessError: (error) => {
         console.error("Billing hook processor error", error);
       },
@@ -119,11 +105,7 @@ export class Billing extends DurableObject<CloudflareEnv> implements BillingObje
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryBillingObject({
-      state,
-      env,
-      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
-    });
+    this.#object = new InMemoryBillingObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async recordEvent(

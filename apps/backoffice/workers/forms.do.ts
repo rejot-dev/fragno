@@ -1,14 +1,8 @@
-import {
-  createFragmentDurableObjectHost,
-  type FragmentDurableObjectHost,
-} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
+import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import type { FormsObject } from "@/backoffice-runtime/object-registry";
-import {
-  createCloudflareDurableObjectRuntimeServices,
-  type BackofficeRuntimeServices,
-} from "@/backoffice-runtime/runtime-services";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import {
   loadDurableHook,
@@ -18,7 +12,8 @@ import {
 import { createFormsServer, type FormsFragment } from "@/fragno/forms";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
-import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
+import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
+import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
 const SYSTEM_SCOPE = { kind: "system" } as const;
 
@@ -28,18 +23,17 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
 
   constructor({
     state,
-    env,
     runtime,
+    implementation,
   }: {
     state: BackofficeObjectState;
     env?: unknown;
     runtime: BackofficeRuntimeServices;
+    implementation: BackofficeObjectImplementation;
   }) {
     super();
-    this.#host = createFragmentDurableObjectHost({
+    this.#host = implementation.createFragmentHost({
       name: "Forms",
-      state,
-      env,
       createRuntime: () =>
         createFormsServer(
           {
@@ -121,10 +115,8 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
               );
             },
           },
-          { adapters: runtime.adapters },
+          implementation.fragmentDatabase,
         ),
-      durableHooksInstrumentation: cloudflareDurableHooksInstrumentation,
-      operations: runtime.fragmentHostOperations ?? undefined,
       onProcessError: (error) => {
         console.error("Forms hook processor error", error);
       },
@@ -167,11 +159,7 @@ export class Forms extends DurableObject<CloudflareEnv> implements FormsObject {
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryFormsObject({
-      state,
-      env,
-      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
-    });
+    this.#object = new InMemoryFormsObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async getDurableHookQueue(options?: DurableHookQueueOptions) {

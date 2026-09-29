@@ -3,7 +3,10 @@ import { describe, expect, test } from "vitest";
 
 import { env } from "cloudflare:workers";
 
-import { createBackofficeFragmentDurableObject } from "./backoffice-fragment-durable-object";
+import {
+  createBackofficeFragmentDurableObject,
+  noOpBackofficeConfiguredObjectLifecycle,
+} from "./backoffice-fragment-durable-object";
 
 type TestStoredConfig = {
   scope: { kind: "org"; orgId: string };
@@ -52,7 +55,7 @@ const runOutboxHarness = async <TResult>(
       TestOutboxItem
     >({
       name: "OutboxHarness",
-      objectRuntime: null,
+      configuredObjectLifecycle: noOpBackofficeConfiguredObjectLifecycle,
       state,
       env: env as unknown as CloudflareEnv,
       configKey: "outbox-harness-config",

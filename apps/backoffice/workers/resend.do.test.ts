@@ -30,11 +30,12 @@ describe("Resend Durable Object", () => {
     }));
     const runtime = await createInMemoryBackofficeRuntime({
       objectFactories: {
-        RESEND: ({ state, env, runtime: runtimeServices }) =>
+        RESEND: ({ state, env, runtime: runtimeServices, implementation }) =>
           new InMemoryResendObject({
             state,
             env,
             runtime: runtimeServices,
+            implementation,
             createClient: () =>
               ({
                 webhooks: { create: createWebhook },

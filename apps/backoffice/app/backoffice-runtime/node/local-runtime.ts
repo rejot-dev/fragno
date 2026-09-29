@@ -106,8 +106,6 @@ export async function createLocalBackofficeRuntime(
         { now: () => objectFactory.now() },
       ),
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
-    fragmentHostOperations: null,
-    objectRuntime: null,
     codemodeEnv:
       options.runtimeEnv.LOADER && options.runtimeEnv.compileWorker
         ? {

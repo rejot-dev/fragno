@@ -4,11 +4,7 @@ import type {
 } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { tracing } from "cloudflare:workers";
 
-function initializationSpanName(context: FragmentDurableObjectInitializationContext): string {
-  return context.phase === "createRuntime"
-    ? "fragno.fragment_runtime.create"
-    : "fragno.fragment.migrate";
-}
+import { backofficeFragmentInitializationSpanName } from "@/backoffice-runtime/runtime-instrumentation";
 
 function runCloudflareFragmentInitializationSpan<T>(
   context: FragmentDurableObjectInitializationContext,
@@ -16,7 +12,7 @@ function runCloudflareFragmentInitializationSpan<T>(
 ): T {
   let enteredSpan = false;
   try {
-    const result = tracing.enterSpan(initializationSpanName(context), (span) => {
+    const result = tracing.enterSpan(backofficeFragmentInitializationSpanName(context), (span) => {
       enteredSpan = true;
       span.setAttribute("fragno.runtime.host.name", context.hostName);
       span.setAttribute("fragno.runtime.initialization.phase", context.phase);

@@ -29,10 +29,7 @@ import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
 } from "@/backoffice-runtime/permissions";
-import {
-  createCloudflareDurableObjectRuntimeServices,
-  type BackofficeRuntimeServices,
-} from "@/backoffice-runtime/runtime-services";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { backofficeScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import type {
   AutomationEvent,
@@ -103,13 +100,13 @@ import { PI_SUPPORTED_MODELS, type PiApiKeys, type PiRuntimeState } from "@/frag
 import type { PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
-import {
-  createBackofficeFragmentDurableObject,
-  type BackofficeFragmentDurableObject,
-  type BackofficeObjectState,
-  type BackofficeOutboxItem,
+import type {
+  BackofficeFragmentDurableObject,
+  BackofficeObjectState,
+  BackofficeOutboxItem,
 } from "./lib/backoffice-fragment-durable-object";
-import { cloudflareDatabaseTransactionInstrumentation } from "./lib/cloudflare-database-transaction-instrumentation";
+import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
+import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
 type AutomationDurableObjectConfig = {
   scope: BackofficeContextScope;
@@ -252,6 +249,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     state,
     env,
     runtime,
+    implementation,
     nowEpochMs = Date.now,
     readAutomationSource,
     createPiRuntime,
@@ -260,6 +258,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     state: BackofficeObjectState;
     env?: unknown;
     runtime: BackofficeRuntimeServices;
+    implementation: BackofficeObjectImplementation;
     nowEpochMs?: () => number;
     readAutomationSource?: AutomationSourceReader;
     piModels?: Models;
@@ -304,28 +303,18 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
           config: this.#runtimeServices.config,
           path,
         }));
-    this.#host = createBackofficeFragmentDurableObject({
+    this.#host = implementation.createConfiguredFragmentHost({
       name: "Automations",
-      state,
-      env,
-      fragmentHostOperations: this.#runtimeServices.fragmentHostOperations ?? undefined,
-      objectRuntime: runtime.objectRuntime,
       isConfigured: (stored): stored is AutomationDurableObjectConfig => Boolean(stored?.scope),
       createRuntime: (config) =>
-        createAutomationsRuntime(
-          {
-            adapters: this.#runtimeServices.adapters,
-            transactionInstrumentation: cloudflareDatabaseTransactionInstrumentation,
-          },
-          {
-            env: this.#env,
-            runtime: this.#runtimeServices,
-            ownerScope: config.scope,
-            kernel: this.#kernel,
-            pi: this.#createPiRuntimeOptions(config.scope),
-            readAutomationSource: automationSourceReader,
-          },
-        ),
+        createAutomationsRuntime(implementation.fragmentDatabase, {
+          env: this.#env,
+          runtime: this.#runtimeServices,
+          ownerScope: config.scope,
+          kernel: this.#kernel,
+          pi: this.#createPiRuntimeOptions(config.scope),
+          readAutomationSource: automationSourceReader,
+        }),
       getMigrationFragments: (runtime) => [
         runtime.workflowsFragment,
         runtime.automationFragment,
@@ -1183,11 +1172,9 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryAutomationsObject({
-      state,
-      env,
-      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
-    });
+    this.#object = new InMemoryAutomationsObject(
+      createCloudflareBackofficeObjectContext(state, env),
+    );
   }
 
   async alarm() {
