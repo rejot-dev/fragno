@@ -1,11 +1,9 @@
-import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import express from "express";
 import type { ServerBuild } from "react-router";
 
-import { trace } from "@opentelemetry/api";
 import { createRequestHandler } from "@react-router/express";
 
 import { BackofficeKernel } from "../../app/backoffice-runtime/kernel";
@@ -14,6 +12,7 @@ import { createExternallyProcessedNodeBackofficeDurableHooks } from "../../app/b
 import { shutdownNodeOpenTelemetry } from "../../app/backoffice-runtime/node/node-opentelemetry-lifecycle";
 import { createBackofficeRouterContextProvider } from "../../app/worker-runtime/router-context-provider.server";
 import { createNodeBackofficeProcessConfig } from "./node-process-config";
+import { registerNodeBackofficeRequestObservability } from "./node-request-observability";
 import { registerNodeBackofficeHealthCheck } from "./node-server-health";
 import {
   formatNodeBackofficeListenUrls,
@@ -38,6 +37,7 @@ const kernel = new BackofficeKernel(runtime.services);
 const staticDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "client");
 const app = express();
 app.disable("x-powered-by");
+registerNodeBackofficeRequestObservability(app);
 registerNodeBackofficeHealthCheck(app);
 configureNodeBackofficeProxy(
   app,
@@ -55,12 +55,6 @@ app.use(
   }),
 );
 app.use(express.static(staticDirectory, { maxAge: "1m", index: false, redirect: false }));
-app.use((_request, response, next) => {
-  const requestId = randomUUID();
-  response.setHeader("backoffice-request-id", requestId);
-  trace.getActiveSpan()?.setAttribute("backoffice.request_id", requestId);
-  next();
-});
 app.use(
   createRequestHandler({
     build: serverBuild,
@@ -106,7 +100,13 @@ const listeners = await startNodeBackofficeListeners({
   hosts: config.listenHosts,
   port: config.port,
 }).catch(async (error: unknown) => {
-  await runtime.cleanup();
+  try {
+    await runtime.cleanup();
+  } catch (cleanupError) {
+    console.error("Node Backoffice startup cleanup failed", cleanupError);
+  } finally {
+    await shutdownNodeOpenTelemetry();
+  }
   throw error;
 });
 console.info(
@@ -133,7 +133,7 @@ function shutdownNodeBackofficeServer(): Promise<void> {
 
 stopNodeBackofficeOnSupervisorDisconnect("server", shutdownNodeBackofficeServer);
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.on(signal, () => {
     void shutdownNodeBackofficeServer().then(
       () => process.exit(0),
