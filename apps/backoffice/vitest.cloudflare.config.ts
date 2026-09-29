@@ -6,11 +6,6 @@ import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 
 import { docsVitestResolveConfig } from "./vitest.shared";
 
-const workerBundlerWasm = path.join(
-  import.meta.dirname,
-  "node_modules/@cloudflare/worker-bundler/dist/esbuild.wasm",
-);
-
 export default defineProject({
   plugins: [
     {
@@ -18,7 +13,8 @@ export default defineProject({
       enforce: "pre",
       resolveId(source, importer) {
         if (source === "./esbuild.wasm" && importer?.includes("@cloudflare/worker-bundler/dist/")) {
-          return workerBundlerWasm;
+          // Resolve beside the compiler's dependency, not a duplicate Backoffice dependency.
+          return path.join(path.dirname(importer), "esbuild.wasm");
         }
         return undefined;
       },

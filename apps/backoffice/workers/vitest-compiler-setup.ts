@@ -1,9 +1,7 @@
+import { buildWorkerProject } from "@fragno-apps/cf-sandbox-bridge/compiler/build-worker-project";
+import { typeCheckProject } from "@fragno-apps/cf-sandbox-bridge/compiler/type-check-project";
+import type { TypeCheckFilesInput } from "@fragno-dev/codemode/compiler/compile-worker";
 import { env } from "cloudflare:workers";
-
-import type { TypeCheckFilesInput } from "@/backoffice-runtime/dynamic-workers/compile-worker";
-
-import { buildWorkerProject } from "./compiler/build-worker-project";
-import { typeCheckProject } from "./compiler/type-check-project";
 
 async function typeCheckFiles(input: TypeCheckFilesInput) {
   const files = await Promise.all(
@@ -20,7 +18,7 @@ async function typeCheckFiles(input: TypeCheckFilesInput) {
   });
 }
 
-// Workers tests use the production compiler implementation without requiring a separately deployed service.
+// Backoffice scenarios use the real compiler directly; the bridge's tests cover private RPC wiring.
 Object.assign(env, {
   compileWorker: buildWorkerProject,
   typeCheckFiles,

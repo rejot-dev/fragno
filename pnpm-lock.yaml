@@ -204,9 +204,6 @@ importers:
       '@cloudflare/sandbox':
         specifier: ^0.12.4
         version: 0.12.4
-      '@cloudflare/worker-bundler':
-        specifier: 0.2.2
-        version: 0.2.2(patch_hash=57e354ce5b0a9fe3b481b3745de50a79f3307c5a9370df5f65443d0967ef9212)
       '@earendil-works/pi-agent-core':
         specifier: 'catalog:'
         version: 0.83.0(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.5.4))(ws@8.21.3)(zod@4.5.4)
@@ -222,6 +219,9 @@ importers:
       '@fragno-dev/cloudflare-fragment':
         specifier: workspace:*
         version: link:../../packages/cloudflare-fragment
+      '@fragno-dev/codemode':
+        specifier: workspace:*
+        version: link:../../packages/codemode
       '@fragno-dev/core':
         specifier: workspace:*
         version: link:../../packages/fragno
@@ -394,6 +394,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^5.20260804.1
         version: 5.20260804.1
+      '@fragno-apps/cf-sandbox-bridge':
+        specifier: workspace:*
+        version: link:../cf-sandbox-bridge
       '@fragno-dev/test':
         specifier: workspace:*
         version: link:../../packages/fragno-test
@@ -442,9 +445,6 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: '@typescript/typescript6@6.0.2'
-      typescript-runtime:
-        specifier: npm:typescript@6.0.3
-        version: typescript@6.0.3
       undici:
         specifier: ^8.3.0
         version: 8.4.1
