@@ -84,7 +84,7 @@ app.use(
       return createBackofficeRouterContextProvider(contextRequest, {
         runtime: runtime.services,
         kernel,
-        env: runtime.env as CloudflareEnv,
+        env: runtime.env as unknown as CloudflareEnv,
         ctx: {
           waitUntil: (promise: Promise<unknown>) => void promise.catch(console.error),
         } as ExecutionContext,

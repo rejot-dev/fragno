@@ -1,9 +1,9 @@
-import jsTokens, { type Token } from "js-tokens";
-
 import type {
   TypeCheckDiagnostic,
   WorkerTypeChecker,
-} from "@/backoffice-runtime/dynamic-workers/compile-worker";
+} from "@fragno-dev/codemode/compiler/compile-worker";
+import jsTokens, { type Token } from "js-tokens";
+
 import { isPathWithin, normalizeAbsolutePath } from "@/files/normalize-path";
 import type { BackofficeCodemodeExecuteResult } from "@/fragno/codemode/execute";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
@@ -157,16 +157,23 @@ function findStandaloneJavaScriptImport(code: string): StandaloneJavaScriptImpor
       continue;
     }
 
+    if (nextValue === "*") {
+      return standaloneJavaScriptImportViolation(code, positionedToken);
+    }
+
     let braceDepth = 0;
-    for (const candidate of tokens.slice(index + 1)) {
+    for (const [candidateOffset, candidate] of tokens.slice(index + 1).entries()) {
       if (candidate.token.value === "{") {
         braceDepth += 1;
       } else if (candidate.token.value === "}") {
         braceDepth -= 1;
-      } else if (candidate.token.value === "from" && braceDepth === 0) {
-        return standaloneJavaScriptImportViolation(code, positionedToken);
-      } else if (candidate.token.value === ";" && braceDepth === 0) {
-        break;
+        if (braceDepth === 0) {
+          const tokenAfterExportList = tokens[index + candidateOffset + 2]?.token.value;
+          if (tokenAfterExportList === "from") {
+            return standaloneJavaScriptImportViolation(code, positionedToken);
+          }
+          break;
+        }
       }
     }
   }

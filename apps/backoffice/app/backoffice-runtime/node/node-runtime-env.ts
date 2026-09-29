@@ -1,20 +1,29 @@
+import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/transport/codemode-node-client";
+
 import type { BackofficeRuntimeEnv } from "../backoffice-runtime-env";
-import { compileNodeWorker } from "../dynamic-workers/compile-node-worker";
-import { createDenoWorkerLoader, resolveDenoCodemodeExecutable } from "./deno-worker-loader";
 
 export type CreateNodeBackofficeRuntimeEnvInput = {
-  denoExecutable: string | undefined;
-  env: Omit<BackofficeRuntimeEnv, "LOADER" | "compileWorker">;
+  executorUrl: string | undefined;
+  executorApiKey: string | undefined;
+  env: Omit<BackofficeRuntimeEnv, "codemode">;
 };
 
-/** Creates the production Node environment with Deno-isolated codemode execution. */
+/** Creates Node-owned runtime services without loading or compiling guest code in the VPS process. */
 export async function createNodeBackofficeRuntimeEnv(
   input: CreateNodeBackofficeRuntimeEnvInput,
 ): Promise<BackofficeRuntimeEnv> {
-  const denoExecutable = await resolveDenoCodemodeExecutable(input.denoExecutable);
+  if (!input.executorUrl || !input.executorApiKey) {
+    throw new Error(
+      "Node codemode requires CODEMODE_EXECUTOR_URL and CODEMODE_EXECUTOR_API_KEY in .dev.vars; no local executor fallback is available.",
+    );
+  }
   return {
     ...input.env,
-    LOADER: createDenoWorkerLoader(denoExecutable),
-    compileWorker: compileNodeWorker,
+    codemode: {
+      remoteExecutor: createCodemodeNodeExecutor({
+        url: input.executorUrl,
+        apiKey: input.executorApiKey,
+      }),
+    },
   };
 }

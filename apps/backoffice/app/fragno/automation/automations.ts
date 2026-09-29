@@ -188,6 +188,7 @@ export const createAutomationsRuntime = (
       workflows: {
         CODEMODE_SCRIPT: defineCodemodeWorkflow({
           ...config,
+          env: config.runtime?.codemodeEnv ?? undefined,
           createPiAutomationContext: ({ execution }) => ({
             runtime: createHostedPiRuntime(execution),
           }),

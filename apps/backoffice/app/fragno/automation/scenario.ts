@@ -1996,13 +1996,13 @@ const runScenarioCodemode = async (
     execution,
   });
   const toolContext = createBackofficeToolContext(runtimeContext);
-  const loader = ctx.runtime.env.LOADER;
-  if (!loader) {
-    throw new Error("Backoffice scenario codemode requires a Worker Loader.");
+  const codemode = ctx.runtime.env.codemode;
+  if (!codemode) {
+    throw new Error("Backoffice scenario codemode requires an executor.");
   }
   const result = await runBackofficeCodemode({
     code: input.code,
-    env: { LOADER: loader, compileWorker: ctx.runtime.env.compileWorker },
+    env: codemode,
     timeout: input.timeout,
     families: runtimeToolFamilies,
     toolContext: toolContext,

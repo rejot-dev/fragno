@@ -43,7 +43,8 @@ export async function createNodeBackofficeProcessConfig(): Promise<NodeBackoffic
   }
 
   const runtimeEnv = await createNodeBackofficeRuntimeEnv({
-    denoExecutable: process.env.DENO_EXECUTABLE,
+    executorUrl: process.env.CODEMODE_EXECUTOR_URL,
+    executorApiKey: process.env.CODEMODE_EXECUTOR_API_KEY,
     env: {
       AUTH_ACCESS_TOKEN_SECRET: tokenSecret,
       BACKOFFICE_INTERNAL_REQUEST_SECRET: internalSecret,

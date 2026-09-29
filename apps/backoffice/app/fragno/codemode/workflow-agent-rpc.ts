@@ -50,15 +50,21 @@ export type CodemodeWorkflowAgent = {
     name: string,
     input: CodemodeWorkflowAgentPromptInput,
     toolExecutor: CodemodeWorkflowAgentToolExecutor | null,
+    signal: AbortSignal,
   ): Promise<CodemodeWorkflowAgentPromptResult>;
 };
 
 export class CodemodeWorkflowAgentTarget extends RpcTarget {
   readonly #agent: CodemodeWorkflowAgent;
+  readonly #abort = new AbortController();
 
   constructor(agent: CodemodeWorkflowAgent) {
     super();
     this.#agent = agent;
+  }
+
+  close(): void {
+    this.#abort.abort(new Error("CODEMODE_AGENT_INTERRUPTED"));
   }
 
   async prompt(
@@ -68,7 +74,8 @@ export class CodemodeWorkflowAgentTarget extends RpcTarget {
     toolExecutor: CodemodeWorkflowAgentToolExecutor | null,
   ): Promise<CodemodeWorkflowAgentPromptResult | RemoteWorkflowSuspension> {
     try {
-      return await this.#agent.prompt(parentScope, name, input, toolExecutor);
+      this.#abort.signal.throwIfAborted();
+      return await this.#agent.prompt(parentScope, name, input, toolExecutor, this.#abort.signal);
     } catch (error) {
       return returnRemoteWorkflowSuspensionOrThrow(error);
     }

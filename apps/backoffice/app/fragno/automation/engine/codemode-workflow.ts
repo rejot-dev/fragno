@@ -22,7 +22,7 @@ import { type AutomationPiBashContext, type AutomationRuntimeHostContext } from 
 
 export type CodemodeWorkflowConfig = {
   readAutomationSource?: AutomationSourceReader;
-  env?: BackofficeCodemodeEnv & CloudflareEnv;
+  env?: BackofficeCodemodeEnv;
   runtime?: BackofficeRuntimeServices;
   createPiAutomationContext?: (input: {
     event: AutomationEvent;
@@ -138,8 +138,8 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
       checkpoint: "step",
     },
     async function executeCodemodeWorkflow(event, remote) {
-      if (!config.env?.LOADER) {
-        throw new Error("Codemode workflows require the Cloudflare Worker Loader.");
+      if (!config.env) {
+        throw new Error("Codemode workflows require a configured executor.");
       }
       if (!config.runtime) {
         throw new Error("Codemode workflows require Backoffice runtime services.");
