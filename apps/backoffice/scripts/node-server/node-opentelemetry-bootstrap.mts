@@ -30,6 +30,7 @@ if (exporterEndpoint && !telemetryDisabled) {
     processRole === "processor" ? "rejot-backoffice-processor" : "rejot-backoffice-web";
   process.env.OTEL_PROPAGATORS ??= "tracecontext";
   process.env.OTEL_LOGS_EXPORTER ??= "none";
+  process.env.OTEL_METRICS_EXPORTER = "none";
   process.env.OTEL_RESOURCE_ATTRIBUTES = appendOpenTelemetryResourceAttribute(
     appendOpenTelemetryResourceAttribute(
       process.env.OTEL_RESOURCE_ATTRIBUTES,
@@ -43,38 +44,25 @@ if (exporterEndpoint && !telemetryDisabled) {
   const [
     { NodeSDK },
     { OTLPTraceExporter },
-    { OTLPMetricExporter },
-    { PeriodicExportingMetricReader },
     { HttpInstrumentation },
     { ExpressInstrumentation },
     { UndiciInstrumentation },
-    { RuntimeNodeInstrumentation },
   ] = await Promise.all([
     import("@opentelemetry/sdk-node"),
     import("@opentelemetry/exporter-trace-otlp-proto"),
-    import("@opentelemetry/exporter-metrics-otlp-proto"),
-    import("@opentelemetry/sdk-metrics"),
     import("@opentelemetry/instrumentation-http"),
     import("@opentelemetry/instrumentation-express"),
     import("@opentelemetry/instrumentation-undici"),
-    import("@opentelemetry/instrumentation-runtime-node"),
   ]);
 
   const sdk = new NodeSDK({
     traceExporter: new OTLPTraceExporter({ timeoutMillis: nodeOpenTelemetryExportTimeoutMs }),
-    metricReaders: [
-      new PeriodicExportingMetricReader({
-        exporter: new OTLPMetricExporter({ timeoutMillis: nodeOpenTelemetryExportTimeoutMs }),
-        exportTimeoutMillis: nodeOpenTelemetryExportTimeoutMs,
-      }),
-    ],
     instrumentations: [
       new HttpInstrumentation({
         ignoreIncomingRequestHook: (request) => request.url === "/healthz",
       }),
       new ExpressInstrumentation(),
       new UndiciInstrumentation(),
-      new RuntimeNodeInstrumentation(),
     ],
   });
 
