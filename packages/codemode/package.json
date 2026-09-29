@@ -1,0 +1,106 @@
+{
+  "name": "@fragno-dev/codemode",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./testing/codemode-test-server": {
+      "types": "./dist/testing/codemode-test-server.d.ts",
+      "default": "./dist/testing/codemode-test-server.js"
+    },
+    "./runtime-api": {
+      "types": "./dist/runtime-api.d.ts",
+      "default": "./dist/runtime-api.js"
+    },
+    "./worker/codemode-dispatcher": {
+      "types": "./dist/worker/codemode-dispatcher.d.ts",
+      "default": "./dist/worker/codemode-dispatcher.js"
+    },
+    "./worker/codemode-executor": {
+      "types": "./dist/worker/codemode-executor.d.ts",
+      "default": "./dist/worker/codemode-executor.js"
+    },
+    "./worker/codemode-guest-source": {
+      "types": "./dist/worker/codemode-guest-source.d.ts",
+      "default": "./dist/worker/codemode-guest-source.js"
+    },
+    "./worker/workflow-source": {
+      "types": "./dist/worker/workflow-source.d.ts",
+      "default": "./dist/worker/workflow-source.js"
+    },
+    "./compiler/codemode-compiler-admission": {
+      "types": "./dist/compiler/codemode-compiler-admission.d.ts",
+      "default": "./dist/compiler/codemode-compiler-admission.js"
+    },
+    "./compiler/compile-worker": {
+      "types": "./dist/compiler/compile-worker.d.ts",
+      "default": "./dist/compiler/compile-worker.js"
+    },
+    "./compiler/worker-bundle": {
+      "types": "./dist/compiler/worker-bundle.d.ts",
+      "default": "./dist/compiler/worker-bundle.js"
+    },
+    "./compiler/compiler-service-client": {
+      "types": "./dist/compiler/compiler-service-client.d.ts",
+      "default": "./dist/compiler/compiler-service-client.js"
+    },
+    "./compiler/compiler-service-protocol": {
+      "types": "./dist/compiler/compiler-service-protocol.d.ts",
+      "default": "./dist/compiler/compiler-service-protocol.js"
+    },
+    "./transport/codemode-protocol": {
+      "types": "./dist/transport/codemode-protocol.d.ts",
+      "default": "./dist/transport/codemode-protocol.js"
+    },
+    "./transport/codemode-errors": {
+      "types": "./dist/transport/codemode-errors.d.ts",
+      "default": "./dist/transport/codemode-errors.js"
+    },
+    "./codemode-limits": {
+      "types": "./dist/codemode-limits.d.ts",
+      "default": "./dist/codemode-limits.js"
+    },
+    "./transport/codemode-peer": {
+      "types": "./dist/transport/codemode-peer.d.ts",
+      "default": "./dist/transport/codemode-peer.js"
+    },
+    "./transport/codemode-values": {
+      "types": "./dist/transport/codemode-values.d.ts",
+      "default": "./dist/transport/codemode-values.js"
+    },
+    "./transport/codemode-node-client": {
+      "types": "./dist/transport/codemode-node-client.d.ts",
+      "default": "./dist/transport/codemode-node-client.js"
+    },
+    "./worker/codemode-worker-session": {
+      "types": "./dist/worker/codemode-worker-session.d.ts",
+      "default": "./dist/worker/codemode-worker-session.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "types:check": "tsc --noEmit",
+    "test": "vitest run",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "dependencies": {
+    "@fragno-dev/workflows": "workspace:*",
+    "ws": "^8.21.3",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260804.1",
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^24.10.9",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.28.1",
+    "miniflare": "^5.20260730.0-alpha",
+    "tsdown": "^0.22.4",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

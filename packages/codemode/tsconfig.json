@@ -1,0 +1,11 @@
+{
+  "extends": "@fragno-private/typescript-config/tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["@cloudflare/workers-types", "node"],
+    "outDir": "./dist",
+    "noPropertyAccessFromIndexSignature": false
+  },
+  "include": ["src", "tsdown.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
